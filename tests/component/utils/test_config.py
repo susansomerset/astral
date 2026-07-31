@@ -3034,3 +3034,37 @@ class TestAst1081ContactShapesConfig:
         assert "full" not in edit_keys
         assert "contact.websites" not in list_keys
         assert "full" not in list_keys
+
+
+class TestAst1082ProfileContactLabelsNav:
+    """AST-1082: GitHub/LinkedIn username-or-URL labels; no Title Patterns nav duplicate."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_github_linkedin_username_or_url_labels(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.github"]["label"] == "GitHub (username or URL)"
+        assert by_key["contact.linkedin_url"]["label"] == "LinkedIn (username or URL)"
+        # Keys/types unchanged from AST-1081 shapes contract
+        assert by_key["contact.github"]["type"] == "text"
+        assert by_key["contact.linkedin_url"]["type"] == "text"
+
+    def test_candidate_nav_omits_title_patterns(self) -> None:
+        candidate = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in candidate["items"]]
+        paths = [i["path"] for i in candidate["items"]]
+        assert "Title Patterns" not in labels
+        assert "/candidate/title_patterns" not in paths
+        assert "/candidate/profile" in paths
+
+    def test_profile_shapes_keep_title_patterns_section(self) -> None:
+        # Single edit surface remains on Profile (not nav)
+        sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        title = next(s for s in sections if s["label"] == "Title Patterns")
+        assert title["fields"][0]["key"] == "contact.title_patterns"

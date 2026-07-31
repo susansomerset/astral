@@ -1572,3 +1572,26 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/utils/test_config.py::TestAst1081ContactShapesConfig \
   -q
 ```
+
+
+---
+
+### AST-1082 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav`.
+
+`DATA_SHAPES` Contact labels: GitHub/LinkedIn → username-or-URL copy (keys/types unchanged). Candidate `NAV_CONFIG` has no Title Patterns item; Profile `Title Patterns` section (`contact.title_patterns`) retained. Profile page: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Labels + NAV + Profile Title Patterns section | `src/utils/config.py` | **`TestAst1082ProfileContactLabelsNav`** |
+
+**Broken / obsolete:** none — label strings + nav verify-or-remove.
+
+**Integration:** none — config/nav vocabulary; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1082ProfileContactLabelsNav \
+  -q
+```

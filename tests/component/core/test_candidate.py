@@ -3049,3 +3049,158 @@ class TestAst1081ContactShapesSaveContract:
             candidate_mod.save_candidate_data(
                 "c1", {"contact": {"websites": "https://not-a-list.example"}}
             )
+
+
+# Branches: within collapse; cross hard-fail; Style D; initiate wire (AST-1080).
+class TestAst1080ContactUniqueness:
+    """AST-1080: contact uniqueness gate on save / initiate via AST-1079 config."""
+
+    def _other(self, cid: str, **contact_fields: object) -> dict:
+        return {
+            "astral_candidate_id": cid,
+            "candidate_data": {"contact": dict(contact_fields)},
+        }
+
+    def test_within_dedupe_clears_duplicate_reply_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "Ada@Example.com",
+                    "reply_email": "ada@example.com",
+                }
+            },
+        )
+        contact = save.call_args.kwargs["candidate_data"]["contact"]
+        assert contact["contact_email"] == "Ada@Example.com"
+        assert contact["reply_email"] == ""
+
+    def test_within_dedupe_collapses_websites(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "websites": [
+                        "https://a.example",
+                        "HTTPS://A.EXAMPLE",
+                        "https://b.example",
+                    ]
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == [
+            "https://a.example",
+            "https://b.example",
+        ]
+
+    def test_cross_collision_casefold_email_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="Ada@Example.com")
+            ],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"This contact info is already used by another candidate \(ada@example\.com\)\.",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"contact_email": "ada@example.com"}}
+            )
+        assert save.call_count == 0
+
+    def test_same_candidate_keeps_own_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda *_a, **_k: self._other("c1", contact_email="ada@example.com"),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("c1", contact_email="ada@example.com")
+            ],
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"contact_email": "ada@example.com", "phone": "555"}}
+        )
+        assert save.call_count == 1
+        assert (
+            save.call_args.kwargs["candidate_data"]["contact"]["contact_email"]
+            == "ada@example.com"
+        )
+
+    def test_initiate_candidate_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="taken@ex.com")
+            ],
+        )
+        with pytest.raises(
+            ValueError, match="already used by another candidate"
+        ):
+            candidate_mod.initiate_candidate(
+                "new-c",
+                {"contact": {"contact_email": "taken@ex.com"}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
+    def test_debug_emits_within_and_cross_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        caplog.set_level("DEBUG")
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "solo@ex.com",
+                    "reply_email": "solo@ex.com",
+                }
+            },
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "enforce_contact_uniqueness" in combined
+        assert "within_dedupe" in combined or "recorded|within_dedupe" in combined
+        assert "cross_clear" in combined or "recorded|cross_clear" in combined
+

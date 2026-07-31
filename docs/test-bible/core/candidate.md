@@ -663,3 +663,24 @@ Optional `preamble_confirmed_at` on `candidate_data.topic_menu` (normalize / val
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_FormFields.test.tsx
 ```
+
+
+### AST-1080 · AST-1045
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1080-enforce-uniqueness-on-candidate-contact-save`.
+
+Contact uniqueness gate on `save_candidate_data` / `initiate_candidate` / `initiate_prospect_candidate`: within-candidate collapse (duplicate reply/websites), cross-candidate hard-fail `ValueError` (toast-ready), Style D when `debug=True`. Vocabulary: **AST-1079** (`CANDIDATE_CONTACT_UNIQUENESS_CONFIG`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Within collapse + cross hard-fail + debug + initiate | `src/core/candidate.py` | **`TestAst1080ContactUniqueness`** |
+
+**Broken / obsolete:** none — additive gate; existing library save paths unchanged when no collision.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1080ContactUniqueness \
+  -q
+```
