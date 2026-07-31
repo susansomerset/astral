@@ -29,23 +29,3 @@ Admin Contact skills: `GET /api/admin/contact/skills` + `POST /api/admin/contact
   tests/component/ui/api/test_api_contact.py::TestAst1071ContactSkillsApi \
   -q
 ```
-
-### AST-1067 · AST-1043
-
-**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
-
-Admin Manage Slack listen: `GET`/`PUT /api/admin/contact/listen` (`@require_admin`). Thin wrappers over `slack_listen_enabled` / `set_slack_listen_enabled` + deploy label / production gate. Core: **`docs/test-bible/core/contact.md`**. Page §6c: **`docs/test-bible/frontend/pages.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| GET/PUT + 400/502 + auth 401/403 | `src/ui/api/api_contact.py` | **`TestAst1067ContactListenApi`** |
-
-**Broken / obsolete:** none — additive routes on `contact_bp`.
-
-**Integration:** no existing scenario asserts Contact listen API — no revision.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_contact.py::TestAst1067ContactListenApi \
-  -q
-```

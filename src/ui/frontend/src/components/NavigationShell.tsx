@@ -82,8 +82,7 @@ export default function NavigationShell() {
               onChange={e => isAdmin && setSelectedId(e.target.value)}
             >
               {candidates.map(c => {
-                const cd = c.candidate_data || {}
-                const label = [cd.first, cd.last].filter(Boolean).join(" ") || c.astral_candidate_id
+                const label = [c.first, c.last].filter(Boolean).join(" ") || c.astral_candidate_id
                 return <option key={c.astral_candidate_id} value={c.astral_candidate_id}>{label}</option>
               })}
             </select>

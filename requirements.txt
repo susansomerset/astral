@@ -24,6 +24,9 @@ pytest-asyncio>=0.23.0
 flask==3.0.0
 gunicorn>=21.2.0
 
+# Slack Socket Mode (local/dev script only — AST-1069)
+websocket-client>=1.6.0
+
 # Google Gmail
 google-auth
 google-auth-oauthlib

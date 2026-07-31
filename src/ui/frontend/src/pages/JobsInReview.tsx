@@ -61,7 +61,7 @@ function gradeAndConfidenceForCol(job: Job, gradeKey: string, col: JobListRubric
     return {
       grade,
       confidence: row.confidence,
-      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason),
+      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason, row.confidence),
     }
   }
   if (typeof g === "object") {

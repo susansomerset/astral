@@ -2290,3 +2290,58 @@ input.side-tab-heading-editable:focus {
   font-style: italic;
   margin: 0.5rem 0 1rem;
 }
+
+/* ---- Intake preamble (AST-1017) — Estelle-consistent Intro/steps ---- */
+.intake-preamble-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.intake-preamble-input {
+  width: 100%;
+  min-width: 12rem;
+  min-height: 4rem;
+  box-sizing: border-box;
+  margin-top: 0.5rem;
+}
+
+.intake-preamble-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.intake-topic-menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.intake-topic-menu-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.intake-topic-menu-input {
+  width: 100%;
+  min-width: 12rem;
+  min-height: 4rem;
+  box-sizing: border-box;
+  margin-top: 0.5rem;
+}
+
+.intake-topic-menu-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.intake-topic-menu-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}

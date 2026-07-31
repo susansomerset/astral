@@ -7,51 +7,60 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 - **astral_candidate_id** — Primary key. Lowercase last name (e.g. `somerset`), same convention as company `short_name`.
 - **state** — UPPERCASE; one of `CANDIDATE_STATES` (see state machine below).
 - **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` may be null until candidate batch claim exists; readers treat null as no batch.
-- **candidate_data** — One JSON blob; see below.
+- **first**, **last**, **full**, **pronouns** — High-frequency identity columns (AST-1014). Not nested in any blob. `full` is recomputed from first+last on save when omitted. `pronouns` holds a `PRONOUN_PREFERENCE_OPTIONS` value (default `they/them`).
+- **candidate_data** — One JSON blob; see below (three library sections + meta).
 - **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
 
 No batch primitives on candidate — candidates are not batch-processed.
 
-## candidate_data (one JSON blob)
+## candidate_data (library + meta)
 
-Structured dict with three top-level sections: `profile`, `context`, `artifacts`. No schema enforced in the data layer; core/callers decide keys. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`.
+Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`, `topic_menu`) are **siblings** of the three library blobs — not inside them.
 
-### profile (identity / contact)
+Do **not** store first/last/full/pronouns inside contact/context/artifacts. Do **not** write a `profile` key (renamed to `contact`; writers refuse shadow copies).
 
-Human-entered. Maps 1:1 to the Profile page form fields.
+### contact (identity / comms + Profile-adjacent fields)
+
+Human-entered. Profile/Admin edit this blob (plus name/pronoun columns).
 
 | Key | Token | Description |
 |-----|-------|-------------|
-| `profile.first` | `{$FIRST_NAME}` | First name |
-| `profile.last` | `{$LAST_NAME}` | Last name |
-| `profile.contact_email` | `{$CONTACT_EMAIL}` | Contact email |
-| `profile.reply_email` | `{$REPLY_EMAIL}` | Reply-to email for applications |
-| `profile.phone` | `{$PHONE}` | Phone number |
-| `profile.location` | `{$LOCATION}` | City/region |
-| `profile.github` | `{$GITHUB}` | GitHub URL |
-| `profile.linkedin_url` | `{$LINKEDIN_URL}` | LinkedIn URL |
-| `profile.timezone` | — | IANA timezone (e.g. `America/New_York`); used for all date/time display |
+| `contact.contact_email` | `{$CONTACT_EMAIL}` | Astral-message / contact email |
+| `contact.reply_email` | `{$REPLY_EMAIL}` | Reply-to email for applications |
+| `contact.phone` | `{$PHONE}` | Phone number |
+| `contact.location` | `{$LOCATION}` | City/region |
+| `contact.github` | `{$GITHUB}` | GitHub URL (username coerced to URL on save) |
+| `contact.linkedin_url` | `{$LINKEDIN_URL}` | LinkedIn URL (username coerced to URL on save) |
+| `contact.websites` | — | List of profile / portfolio URLs |
+| `contact.timezone` | — | IANA timezone for date/time display |
+| `contact.cover_letter_signature` | `{$COVER_LETTER_SIGNATURE}` | Signature text |
+| `contact.cover_letter_signature_image` | — | JPEG data URL (validated) |
+| `contact.title_patterns` | `{$TITLE_PATTERNS}` | Newline-delimited job-title regexes |
+| `contact.reason_codes` | `{$REASON_CODES}` | Reason codes |
 
-### context (candidate-provided, unaltered)
+### context (candidate-provided prose + raw sources)
 
-Raw text input from the candidate. Four of these feed `check_context_complete` (intake completeness); they do not write a state transition (see state machine).
+Raw text passable whole-cloth into AI prompts. Completeness gate fields do not write state (see state machine).
 
 | Key | Token | Gate? | Description |
 |-----|-------|-------|-------------|
-| `context.starting_resume_text` | `{$STARTING_RESUME_TEXT}` | No | Original resume text (pasted) |
-| `context.linkedin_profile_text` | `{$LINKEDIN_PROFILE_TEXT}` | No | LinkedIn profile text (pasted) |
-| `context.sample_cover_text` | `{$SAMPLE_COVER_TEXT}` | No | Sample cover letter |
-| `context.bio_summary` | `{$BIO_SUMMARY}` | No | AI-generated bio summary (from `bootstrap_candidate_context`) |
-| `context.strengths` | `{$STRENGTHS}` | Yes | Candidate's strengths |
+| `context.raw_resume` | `{$STARTING_RESUME_TEXT}` | No | Original resume text (was `starting_resume_text`) |
+| `context.raw_profile` | `{$LINKEDIN_PROFILE_TEXT}` | No | LinkedIn profile text (was `linkedin_profile_text`) |
+| `context.raw_sample` | `{$SAMPLE_COVER_TEXT}` | No | Sample cover letter (was `sample_cover_text`) |
+| `context.bio_summary` | `{$BIO_SUMMARY}` | No | Bio summary |
+| `context.strengths` | `{$STRENGTHS}` | Yes | Strengths |
 | `context.priorities` | `{$PRIORITIES}` | Yes | Job search priorities |
 | `context.deal_breakers` | `{$DEAL_BREAKERS}` | Yes | Deal breakers |
-| `context.backstory` | `{$BACKSTORY}` | Yes | Career backstory / narrative |
-| `context.writing_preferences` | `{$WRITING_PREFERENCES}` | No | Freeform style constraints for artifact prompts (e.g. phrasing bans); optional until profile UI persists it (see Astral Artifacts / token docs). |
+| `context.backstory` | `{$BACKSTORY}` | Yes | Career backstory |
+| `context.writing_preferences` | `{$WRITING_PREFERENCES}` | No | Style constraints for artifact prompts |
+| `context.hopes` | — | No | Topic Menu input (seeded empty) |
+| `context.interests` | — | No | Topic Menu input (seeded empty) |
+| `context.concerns` | — | No | Topic Menu input (seeded empty) |
 
 ### artifacts (AI-produced / human-revised)
 
-Generated by agent tasks, then editable by the candidate on Artifacts pages. Each artifact is the response output of a `craft_*` task.
+Generated by agent tasks, then editable on Artifacts pages. Each artifact is the response output of a `craft_*` task.
 
 | Key | Token | Produced by |
 |-----|-------|-------------|
@@ -66,8 +75,6 @@ Generated by agent tasks, then editable by the candidate on Artifacts pages. Eac
 
 **Rubric criterion rows** (`joblist_rubric`, `jobdesc_rubric`, `get_rubric`, `do_rubric`, `like_rubric`, and `company_prefilter` when shaped as the same list-of-criteria pattern) are JSON objects per vector, typically including `label`, markdown `content`, optional short `code`, and **`importance`**: integer **1–10** (UI default **5** when missing; normalized on save in `normalize_rubric_artifacts_on_save`). The global importance→multiplier table for future scoring lives in **`ASTRAL_CONFIG["consult_importance"]`** in `config.py` (see `importance_multiplier`); consult scoring still uses stored list order until **AST-358**.
 
-Do not store identity/contact fields (first, last, email, etc.) inside `context` or `artifacts` — they live in `profile`.
-
 ### artifacts.resume_structure (per-candidate section catalog)
 
 Candidate-owned ordered section catalog (AST-477). Drives tab labels/order for Base Resume Content (AST-519), `craft_resume_base` response shape, and job `resume_content` key filtering (AST-518).
@@ -79,15 +86,39 @@ Candidate-owned ordered section catalog (AST-477). Drives tab labels/order for B
 
 `artifacts.base_resume` holds **string content only** keyed by enabled section ids from this catalog (no `accent_color` on `base_resume` after AST-517; legacy `base_resume.accent_color` is read only until regenerate). Contact/header section ids (`candidate_name`, `candidate_title`, `candidate_contact_detail`) are in the catalog with `job_agent_editable: false`.
 
+### topic_menu (AST-1074 / AST-953)
+
+Intake orchestration state for the durable Topic Menu. Config: `TOPIC_MENU_CONFIG` in `src/utils/config.py`. Core helpers: `get_topic_menu` / `validate_topic` / `revise_topic_menu` / `save_topic_menu` in `src/core/candidate.py`. Generation/confirm is **AST-1075**; `informs` declares intent only (does not craft artifacts).
+
+```text
+candidate_data.topic_menu = {
+  "topics": [
+    {
+      "id": "<stable str>",
+      "name": "<display name>",
+      "ask": "<directed question>",
+      "required": true|false,
+      "informs": ["backstory", ...],  # ⊆ TOPIC_MENU_CONFIG["informs"], non-empty
+      "status": "open" | "ready" | "retired"
+    }
+  ],
+  "preamble_confirmed_at": "<YYYY-MM-DD HH:MM:SS>"  # optional; AST-1075 after Estelle accept
+}
+```
+
+Revising keeps prior topics: dropped ids become `status: "retired"` rather than deleted from the list. Default save path is revise-by-id (`save_topic_menu(..., revise=True)`). Optional `preamble_confirmed_at` is stamped by `mark_topic_menu_preamble_confirmed` when Estelle confirm accepts (AST-1075); normalize/validate/revise preserve it.
+
 ## Token resolution
 
-Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Each entry maps a token name to a source and dot-path into `candidate_data`:
+Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Name/pronoun tokens read **columns** via `build_candidate_token_view(candidate_row)`. Contact/context/artifacts tokens walk the library blobs on that view.
 
 ```
-"FIRST_NAME": {"source": "candidate", "path": "profile.first"}
+"FIRST_NAME": {"source": "candidate", "path": "first"}
+"FULL_NAME":  {"source": "candidate", "path": "full"}
+"CONTACT_EMAIL": {"source": "candidate", "path": "contact.contact_email"}
 ```
 
-`resolve_tokens()` walks the dot-path on the candidate's `candidate_data` blob to produce the substituted value. Tokens not found resolve to empty string.
+`resolve_tokens()` walks the path on the token view. Pronoun tokens (`{$THEY}` …) resolve from the `pronouns` column (default they/them). Tokens not found resolve to empty string.
 
 ## State machine
 
@@ -137,8 +168,8 @@ Jobs do not have a direct `candidate_id` column; they are scoped via their paren
 
 ## Snake_case
 
-- **DB columns:** astral_candidate_id, state, state_history, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
-- **candidate_data keys:** profile, context, artifacts, and all nested keys above.
-- **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, etc.
+- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
+- **candidate_data keys:** contact, context, artifacts, and all nested keys above; meta siblings as listed.
+- **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, `CANDIDATE_LIBRARY_CONFIG`, etc.
 
 If a spec or external doc uses camelCase, implementation still uses snake_case.
