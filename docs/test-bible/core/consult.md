@@ -505,25 +505,25 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ### AST-844 · AST-788 (UAT bug)
 
-**AST-844 (UAT bug):** Terminal hop **`propose_application_responses`** dispatch on flat **`BUILD_ARTIFACTS`** was rejected by **`_resolve_chain_start_task_key`** (resume-hop-only set) → chain skipped → no **`CANDIDATE_REVIEW`** graduation. **`build_artifacts_chain_task_keys()`** expands hop membership; consult wrapper fixes superseded by **AST-848/849** (**`do_task`** graduation + **`dispatch_chain_row_matches_job`**).
+**AST-844 (UAT bug):** Terminal hop **`propose_application_responses`** dispatch on flat **`BUILD_ARTIFACTS`** was rejected by **`_resolve_chain_start_task_key`** (resume-hop-only set) → chain skipped → no **`CANDIDATE_REVIEW`** graduation. Historical **`build_artifacts_chain_task_keys()`** expanded hop membership; consult wrapper fixes superseded by **AST-848/849** (**`do_task`** graduation + **`dispatch_chain_row_matches_job`**). **AST-1111** deletes that frozenset/wrapper — registry obligation moves to absence asserts + §2.6.0 helpers (**`docs/test-bible/utils/config.md`** AST-1111).
 
 | # | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| 1 | Full chain hop registry (excludes **`draft_cover_letter`**) | `src/utils/config.py` | **`TestAst844BuildArtifactsChainTaskKeys::test_includes_terminal_and_cover_hops_excludes_draft_cover_letter`** |
+| 1 | Config hop-registry frozenset | `src/utils/config.py` | **RETIRED (AST-1111)** — **`TestAst1111JobArtifactEntryShadowDeleted`** |
 | 2–5 | Terminal/mid-chain consult wrapper (historical) | — | **Superseded —** **`TestAst849DispatchChainClaimStates::test_terminal_hop_row_matches_flat_build_artifacts`** + **AST-849** narrowed run |
 
-**Regression (required):** item 1 + **AST-849** manifest (**`docs/test-bible/core/agent.md`**).
+**Regression (required):** **AST-1111** absence asserts + **AST-849** manifest (**`docs/test-bible/core/agent.md`**).
 
-**AST-844** narrowed run:
+**AST-844** narrowed run (post-AST-1111):
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/utils/test_config.py::TestAst1111JobArtifactEntryShadowDeleted \
   tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates::test_terminal_hop_row_matches_flat_build_artifacts \
   -q
 ```
 
-**Pass criterion:** pytest green on items 1–5 + regression graduation cases — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on revised item 1 + AST-849 terminal match — not zero-arg harness / branch-lock gate.
 
 ---
 

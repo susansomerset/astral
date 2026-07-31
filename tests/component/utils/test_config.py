@@ -363,20 +363,9 @@ class TestAst740RemoveConfigGrouping:
             assert "phase" not in entry, task_key
             assert "seq" not in entry, task_key
 
-    def test_job_artifact_entry_task_keys_membership(self) -> None:
-        expected = {
-            "anticipate_scan",
-            "contemplate_job",
-            "advise_job_resume",
-            "draft_job_resume",
-            "check_job_resume",
-            "finalize_job_resume",
-            "check_cover_letter",
-            "finalize_cover_letter",
-            "propose_application_responses",
-        }
-        assert cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS == frozenset(expected)
-        assert "draft_cover_letter" not in cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS
+    def test_job_artifact_entry_task_keys_absent(self) -> None:
+        # AST-1111: frozenset shadow deleted — chain membership is run_next (§2.6.0).
+        assert not hasattr(cfg, "JOB_ARTIFACT_ENTRY_TASK_KEYS")
 
 
 class TestAst594DraftJobResumeSchema:
@@ -709,16 +698,12 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
-class TestAst844BuildArtifactsChainTaskKeys:
-    """AST-844: full BUILD_ARTIFACTS CHAIN hop set for consult resolution."""
+class TestAst1111JobArtifactEntryShadowDeleted:
+    """AST-1111: JOB_ARTIFACT_ENTRY_TASK_KEYS + cover-letter carve-out wrapper gone."""
 
-    def test_includes_terminal_and_cover_hops_excludes_draft_cover_letter(self) -> None:
-        keys = cfg.build_artifacts_chain_task_keys()
-        assert "propose_application_responses" in keys
-        assert "check_cover_letter" in keys
-        assert "finalize_cover_letter" in keys
-        assert "draft_cover_letter" not in keys
-        assert keys == cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS - frozenset({"draft_cover_letter"})
+    def test_entry_frozenset_and_wrapper_absent(self) -> None:
+        assert not hasattr(cfg, "JOB_ARTIFACT_ENTRY_TASK_KEYS")
+        assert not hasattr(cfg, "build_artifacts_chain_task_keys")
 
 
 class TestAst848DispatchHopLabels:
