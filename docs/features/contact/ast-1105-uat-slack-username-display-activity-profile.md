@@ -203,7 +203,7 @@ Exact insertion: after `{"key": "full", ...}` and before `contact.contact_email`
 |-------|-------|
 | Status | Code Complete |
 | Publish ref | `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` |
-| Tip | (set after push) |
+| Tip | `e8017442` |
 | Branch | `sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` |
 
 Stages 1–5 landed: `fetch_user_profile.username`, activity identity fields, resolve persist/backfill + activity wiring, Profile Slack fields, Manage Slack Username/Display columns.
