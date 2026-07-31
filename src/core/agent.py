@@ -48,7 +48,6 @@ from src.utils.config import (
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
     get_task_keys,
-    resume_artifact_hop_task_keys,
     dispatch_chain_graduation_target,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
@@ -565,25 +564,13 @@ def _do_task_debug_entry(
         return
     dbg = _do_task_debug_logger(debug)
     entity_id = (index or task_key or "?").strip()
-    if task_key in resume_artifact_hop_task_keys():
-        keys = resume_artifact_hop_task_keys()
-        hop_idx = keys.index(task_key) + 1
-        hop_total = len(keys)
-        dbg.debug_index(
-            func=f"do_task({task_key})",
-            index=hop_idx,
-            total=hop_total,
-            identifier=entity_id,
-            outcome="hop",
-        )
-    else:
-        dbg.debug_index(
-            func="do_task",
-            index=1,
-            total=1,
-            identifier=entity_id,
-            outcome="task start",
-        )
+    dbg.debug_index(
+        func="do_task",
+        index=1,
+        total=1,
+        identifier=entity_id,
+        outcome="task start",
+    )
     dbg.debug_detail(
         f"task_key={task_key} batch_id={batch_id or ''} index={index or ''} "
         f"in_run_next_chain={in_chain}"
@@ -620,16 +607,6 @@ def _mid_chain_empty_caller_tokens(
 
 
 # AST-597: mid-chain resume — hydrate {$CALLER_*} from stored agent_data
-def _resume_artifact_parent_hop_key(entry_task_key: str) -> Optional[str]:
-    keys = resume_artifact_hop_task_keys()
-    if entry_task_key not in keys:
-        return None
-    idx = keys.index(entry_task_key)
-    if idx == 0:
-        return None
-    return keys[idx - 1]
-
-
 _HOP_FAILURE_RESPONSE_PREFIXES = (
     "Validation failed:",
     "Schema parse failed:",
@@ -757,8 +734,6 @@ def _parent_hop_task_key_for_child(child_task_key: str) -> Optional[str]:
     if len(matches) == 1:
         return matches[0]
     if len(matches) > 1:
-        if child_task_key in resume_artifact_hop_task_keys():
-            return _resume_artifact_parent_hop_key(child_task_key)
         logger.warning(
             "ambiguous run_next parents for %s: %s",
             child_task_key,
@@ -895,7 +870,7 @@ def _hydrate_resume_entry_chain_context(
     astral_job_id: str,
     entry_task_key: str,
 ) -> Tuple[Optional[Dict[str, str]], Optional[str]]:
-    parent = _resume_artifact_parent_hop_key(entry_task_key)
+    parent = _parent_hop_task_key_for_child(entry_task_key)
     if parent is None:
         return ({}, None)
     return _hydrate_caller_chain_context(
@@ -940,17 +915,6 @@ def _resume_hop_debug_index(
             outcome="hop",
         )
         return
-    if task_key not in resume_artifact_hop_task_keys():
-        return
-    keys = resume_artifact_hop_task_keys()
-    dbg = get_logger(__name__, debug_flag=True)
-    dbg.debug_index(
-        func=f"do_task({task_key})",
-        index=keys.index(task_key) + 1,
-        total=len(keys),
-        identifier=task_key,
-        outcome="hop",
-    )
 
 
 def _dispatch_chain_ctx(ctx: Optional[Dict[str, Any]]) -> tuple[str, bool]:
