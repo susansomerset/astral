@@ -126,3 +126,19 @@ No other files. Do not import or reference the new constant from core/UI/data in
 
 - **Commit:** `29d55902`
 - **Branch:** `sub/AST-1077/AST-1084-config-constant-jd-vectors`
+
+### Radia — code-rubric.v1 (2026-07-31)
+
+[code-rubric] revision=1
+**Overall:** DISCUSS (product CLEAN; three plan-exclusion stragglers on the three-dot diff)
+
+**What's solid**
+- `EMBEDDED_EVALUATE_JD_CRITERIA` matches Stage 1 literally (QC then GC; importance 1; QC A/B/C/F; GC A/B/C/D/F/X).
+- No runtime import/merge — boundary to AST-1085 held.
+- `code(AST-1084)` touches only `src/utils/config.py`; Betty owns tests via one `merge-tests`.
+
+**Issues (discuss)**
+- Straggler vs Joan Excluded: `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` — excluded at plan time (plan Files Changed = config only) but in-scope on `origin/dev...origin/<publish-ref>` because plan + Betty test-tree landed on the sub. All three score **conforms**; no product fix.
+
+**Recommended actions**
+- resolve-child: acknowledge stragglers; no src change required for this review.
