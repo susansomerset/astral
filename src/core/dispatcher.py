@@ -297,7 +297,7 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
 def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
     """Idempotent insert of the shared Astral inbox gaze_email row (null candidate_id).
 
-    Does not wire due-task eligibility or the mailbox runner (AST-1090).
+    Due eligibility + mailbox runner live on AST-1090 (`get_due_tasks` / `_dispatch_one`).
     """
     tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
     if tk not in TASK_CONFIG:
@@ -675,6 +675,7 @@ async def _dispatch_one(task: Dict) -> None:
 
     # AST-1090: null-candidate gaze_email mailbox — no candidate API key; one runner call.
     if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"]:
+        # late: keep gaze_email off module-top load (peer late imports in this file)
         from src.core.gaze_email import run_gaze_email
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"

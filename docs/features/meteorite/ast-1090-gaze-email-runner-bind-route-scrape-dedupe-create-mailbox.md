@@ -354,3 +354,14 @@ None for fix-now.
 ### Statutes checked (summary)
 
 56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1090-…`. No violates. Full table in Linear review comment.
+
+## Resolution
+
+**2026-07-31** — `resolve(AST-1090)` after Radia CLEAN (`11ffdedd`).
+
+| Finding | Action |
+|---------|--------|
+| fix-now | none |
+| discuss (Joan straggler Excluded vs tip paths) | no product change — sweep scoring note only |
+| advisory — late `run_gaze_email` import lacks comment | added `# late: keep gaze_email off module-top load` above the import in `_dispatch_one` |
+| advisory — `ensure_gaze_email_dispatch_task` docstring still said runner unwired | docstring now points at AST-1090 due/`_dispatch_one` wiring |
