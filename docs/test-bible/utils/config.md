@@ -1832,3 +1832,24 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   tests/component/utils/test_config.py::TestAst1100ArtifactTabPinKeys \
   -q
 ```
+
+### AST-1105 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`.
+
+Profile Contact Information: `contact.slack_user_id` + `contact.slack_username` (not Contact skill ACL).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Profile Slack fields | `src/utils/config.py` | **`TestAst1105ProfileSlackFields`** |
+
+**Broken / obsolete:** none — additive Profile fields.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
+  -q
+```
+

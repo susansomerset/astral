@@ -79,6 +79,7 @@ class TestAst1068FetchUserProfile:
             return_value={
                 "ok": True,
                 "user": {
+                    "name": "ada.lovelace",
                     "profile": {
                         "first_name": "Ada",
                         "last_name": "Lovelace",
@@ -95,6 +96,7 @@ class TestAst1068FetchUserProfile:
             "first": "Ada",
             "last": "Lovelace",
             "display_name": "ada",
+            "username": "ada.lovelace",
         }
         assert get.call_args.args[0].endswith("/users.info")
         assert get.call_args.kwargs["params"]["user"] == "U1"
@@ -154,4 +156,19 @@ class TestAst1070FetchConversationHistory:
         monkeypatch.setattr(slack_mod.requests, "get", MagicMock(return_value=resp))
         with pytest.raises(RuntimeError, match="channel_not_found"):
             slack_mod.fetch_conversation_history(channel="C1", limit=1)
+
+# Branches: empty username when Slack omits user.name (AST-1105).
+class TestAst1105FetchUserProfileUsername:
+    def test_username_empty_when_omitted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
+        monkeypatch.setenv(CONTACT_CONFIG["bot_token_env"], "xoxb-test")
+        resp = MagicMock()
+        resp.raise_for_status = MagicMock()
+        resp.json = MagicMock(
+            return_value={"ok": True, "user": {"profile": {"first_name": "A"}}}
+        )
+        monkeypatch.setattr(slack_mod.requests, "get", MagicMock(return_value=resp))
+        out = slack_mod.fetch_user_profile("U2")
+        assert out["username"] == ""
+        assert out["first"] == "A"
 
