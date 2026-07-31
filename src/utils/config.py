@@ -1908,6 +1908,81 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     },
 )
 
+# AST-1084 / AST-1077: embedded evaluate_jd vectors — definitions only;
+# merge/append into jobdesc / evaluate_jd hydration is AST-1085.
+EMBEDDED_EVALUATE_JD_CRITERIA: tuple[dict, ...] = (
+    {
+        "code": "QC",
+        "label": "Quality Check",
+        "importance": 1,
+        "content": (
+            "Quality Check — is this enough of a JD to analyze?\n"
+            "A = This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.\n"
+            "B = This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.\n"
+            "C = This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.\n"
+            "F = This is not enough information to perform job fit analysis, either because it is not a job description, or it is too vague to determine fit for the candidate."
+        ),
+        "grade_descriptions": [
+            {
+                "grade": "A",
+                "description": "This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.",
+            },
+            {
+                "grade": "B",
+                "description": "This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.",
+            },
+            {
+                "grade": "C",
+                "description": "This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.",
+            },
+            {
+                "grade": "F",
+                "description": "This is not enough information to perform job fit analysis, either because it is not a job description, or it is too vague to determine fit for the candidate.",
+            },
+        ],
+    },
+    {
+        "code": "GC",
+        "label": "Gut Check",
+        "importance": 1,
+        "content": (
+            "Gut Check — is this even plausible for this candidate?\n"
+            "A = Based on the candidate's bio provided, this job would be a slam dunk for them.\n"
+            "B = Based on the candidate's bio provided, this job could be a good fit for them.\n"
+            "C = Based on the candidate's bio, this job would be doable, with caveats, for them.\n"
+            "D = Based on the candidate's bio, this job would be a stretch-to-impossible for them.\n"
+            "F = There's really no way this candidate could ever do this job.\n"
+            "X = There's not enough information about the job to make this determination with certainty."
+        ),
+        "grade_descriptions": [
+            {
+                "grade": "A",
+                "description": "Based on the candidate's bio provided, this job would be a slam dunk for them.",
+            },
+            {
+                "grade": "B",
+                "description": "Based on the candidate's bio provided, this job could be a good fit for them.",
+            },
+            {
+                "grade": "C",
+                "description": "Based on the candidate's bio, this job would be doable, with caveats, for them.",
+            },
+            {
+                "grade": "D",
+                "description": "Based on the candidate's bio, this job would be a stretch-to-impossible for them.",
+            },
+            {
+                "grade": "F",
+                "description": "There's really no way this candidate could ever do this job.",
+            },
+            {
+                "grade": "X",
+                "description": "There's not enough information about the job to make this determination with certainty.",
+            },
+        ],
+    },
+)
+
 # AST-803: legacy BUILD_ARTIFACTS.<hop> names for in-flight rows (mid-chain resume until flattened).
 def _legacy_build_artifacts_compound_state_for_hop(task_key: str) -> str:
     return f"{LEGACY_BUILD_ARTIFACTS_PREFIX}{task_key}"
