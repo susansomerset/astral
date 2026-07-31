@@ -208,3 +208,33 @@ python3 -c "import json; json.load(open('data/admin/agent_task.json')); assert a
 | 2 | `8d6eefe7` | Ruth `agent_task.json` + AST-756 fixture (+ inventory comment) |
 
 **Tip:** `8d6eefe7a8bd998190d000f8cccd43723b6ef1db` on `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1089
+**Publish ref tip (at review):** `1ae256abc40f6df55a8e32985026d48c238c49ca`
+**Overall:** FIX-NOW
+
+### What’s solid
+
+- Stage 1–2 Ruth slice matches plan: `METEORITE_EMAIL_PARSE_CONFIG`, `TASK_CONFIG["parse_meteorite_email"]` with `requires_candidate_key: True`, Ruth `agent_task` row, AST-756 fixture byte-identical.
+- Parse modes / schema / prompts align with Decisions; not added to `METEORITE_DISPATCH_TASKS`.
+- Betty `test` + single `merge-tests` SHA on the sub.
+
+### Issues
+
+**fix-now:** `src/utils/config.py` `dispatch_task_admin_defaults` early-return references `GAZE_EMAIL_CONFIG["task_key"]` but **`GAZE_EMAIL_CONFIG` is not defined** on this tip (and `gaze_email` is not in `TASK_CONFIG`). Introduced in `8d6eefe7` (AST-1089 code). Every successful call to `dispatch_task_admin_defaults` will `NameError`. Also AST-1088 shell scope smuggled into this ticket (`astral.standards.in-scope-only` / plan Out of scope).
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; three-dot tip includes `docs/features/**` + Betty test-tree — scored in-scope on diff (verdicts still conforms).
+
+### Recommended actions
+
+1. Remove the `GAZE_EMAIL_CONFIG` early-return from this sub (belongs on AST-1088 with the config definition), or do not land that hunk here.
+2. Re-run a quick import/`dispatch_task_admin_defaults` smoke after the delete.
+3. Straggler discuss rows need no product change unless resolve wants Joan re-ack.
+
+### Statutes checked (summary)
+
+56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1089-…`. One **violates** (`astral.standards.in-scope-only`). Full table in Linear review comment.
