@@ -199,3 +199,16 @@ superseded_by: null
 - `astral.git.engineer-test-tree-ban`
 
 **Recommended:** resolve-child can treat as acknowledge-and-proceed unless implementer wants plan Files Changed to list the plan path + Betty bible for future Joan runs.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `fc651c68` (`docs(AST-1110): Radia review — findings`)
+
+Radia overall **DISCUSS** — no fix-now product or plan-doc edits. Deliverable statutes all **conforms**.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss (Joan Excluded C4 stragglers on three-dot tip: spikes-under-debug-dir, features-single-file-per-ticket, betty-no-src-or-features, engineer-test-tree-ban) | Accepted as non-blocking; each scored **conforms** in Radia’s sweep; no product change. Files Changed left as engineer canon/docs deliverables (Betty bible stays Betty-owned, not retrofitted into plan Files Changed). |
+
+No product commits on this resolve pass.
