@@ -246,3 +246,12 @@ The plan is binding. Execute stages in order. One commit per stage on the epic w
 
 **Recommended:** Engineer may treat Overall DISCUSS as non-blocking for resolve unless they want a plan-rubric exclusion refresh; no code changes required for the stragglers.
 
+## Resolution
+
+**Date:** 2026-07-31  
+**Engineer:** Hedy  
+**Outcome:** clean — no product code changes
+
+Radia `[code-rubric] revision=1` Overall **DISCUSS** with **zero fix-now**. C4 discuss stragglers (`spikes-under-debug-dir`, `features-single-file-per-ticket`, `engineer-test-tree-ban`) explicitly **no product action**. Advisory unicode-escape noise in `agent_task.json` left as merge artifact (Stage 3 `contact_estelle_turn` row already correct).
+
+Publish tip at resolve: see commit after this section lands.
