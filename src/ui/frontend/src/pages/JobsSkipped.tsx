@@ -67,7 +67,7 @@ function gradeAndConfidenceForCol(job: Job, gradeKey: string, col: JobListRubric
     return {
       grade,
       confidence: row.confidence,
-      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason),
+      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason, row.confidence),
     }
   }
   if (typeof g === "object") {
@@ -298,7 +298,7 @@ export default function Skipped() {
                           <th key={c.code} className="sortable" title={c.headerTooltip}
                             style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
                             onClick={() => handleSort(sortKey, c.code)}>
-                            {c.code}{sortIndicator(sortKey, c.code)}
+                            {c.headerCode}{sortIndicator(sortKey, c.code)}
                           </th>
                         ))}
                         {!isFloor && showScore && (

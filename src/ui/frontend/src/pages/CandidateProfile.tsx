@@ -60,11 +60,20 @@ export default function Profile() {
 
   function editValuesFromCandidate(c: Record<string, unknown>): Record<string, unknown> {
     const d = (c.candidate_data ?? {}) as Record<string, unknown>
+    // Always include full so PUT cannot omit it while sending first/last (would wipe overrides).
+    const raw = (d.contact as Record<string, unknown>) ?? {}
+    const websites = Array.isArray(raw.websites)
+      ? raw.websites.map(v => String(v))
+      : []
+    const extra_emails = Array.isArray(raw.extra_emails)
+      ? raw.extra_emails.map(v => String(v))
+      : []
     return {
       first: c.first ?? "",
       last: c.last ?? "",
+      full: c.full ?? "",
       pronouns: c.pronouns ?? "",
-      contact: (d.contact as Record<string, unknown>) ?? {},
+      contact: { ...raw, websites, extra_emails },
       context: (d.context as Record<string, unknown>) ?? {},
       artifacts: (d.artifacts as Record<string, unknown>) ?? {},
     }

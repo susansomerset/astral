@@ -7,7 +7,7 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 - **astral_candidate_id** — Primary key. Lowercase last name (e.g. `somerset`), same convention as company `short_name`.
 - **state** — UPPERCASE; one of `CANDIDATE_STATES` (see state machine below).
 - **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` may be null until candidate batch claim exists; readers treat null as no batch.
-- **first**, **last**, **full**, **pronouns** — High-frequency identity columns (AST-1014). Not nested in any blob. `full` is recomputed from first+last on save when omitted. `pronouns` holds a `PRONOUN_PREFERENCE_OPTIONS` value (default `they/them`).
+- **first**, **last**, **full**, **pronouns** — High-frequency identity columns (AST-1014). Not nested in any blob. `full` is recomputed from first+last on save when omitted or empty/whitespace; a non-empty value is an explicit override. `pronouns` holds a `PRONOUN_PREFERENCE_OPTIONS` value (default `they/them`).
 - **candidate_data** — One JSON blob; see below (three library sections + meta).
 - **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
@@ -26,13 +26,14 @@ Human-entered. Profile/Admin edit this blob (plus name/pronoun columns).
 
 | Key | Token | Description |
 |-----|-------|-------------|
-| `contact.contact_email` | `{$CONTACT_EMAIL}` | Astral-message / contact email |
-| `contact.reply_email` | `{$REPLY_EMAIL}` | Reply-to email for applications |
+| `contact.contact_email` | `{$CONTACT_EMAIL}` | Email for resume / applications |
+| `contact.reply_email` | `{$REPLY_EMAIL}` | Email for messages (if different from resume email) |
+| `contact.extra_emails` | — | Additional binding emails (JSON string list; Profile `string_list`; lookup `email_list_paths` + uniqueness `list_paths`) |
 | `contact.phone` | `{$PHONE}` | Phone number |
 | `contact.location` | `{$LOCATION}` | City/region |
 | `contact.github` | `{$GITHUB}` | GitHub URL (username coerced to URL on save) |
 | `contact.linkedin_url` | `{$LINKEDIN_URL}` | LinkedIn URL (username coerced to URL on save) |
-| `contact.websites` | — | List of profile / portfolio URLs |
+| `contact.websites` | — | List of profile / portfolio URLs (JSON string list; Profile shape type `string_list`) |
 | `contact.timezone` | — | IANA timezone for date/time display |
 | `contact.cover_letter_signature` | `{$COVER_LETTER_SIGNATURE}` | Signature text |
 | `contact.cover_letter_signature_image` | — | JPEG data URL (validated) |

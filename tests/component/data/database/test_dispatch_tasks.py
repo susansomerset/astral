@@ -1393,3 +1393,106 @@ class TestAst972CandidateStageEligibility:
             freq_hrs=0,
         )
         assert "c972c" in db.list_candidate_ids_with_dispatch_tasks()
+
+# Branches: nullable candidate_id + gaze_email-only save gate + partial unique (AST-1088).
+class TestAst1088NullCandidateGazeEmail:
+    """AST-1088: shared Astral inbox dispatch_task row may have null candidate_id."""
+
+    def test_save_null_candidate_for_gaze_email(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
+
+        db = sqlite_in_memory
+        tk = GAZE_EMAIL_CONFIG["task_key"]
+        tid = db.save_dispatch_task(
+            candidate_id=None,
+            task_key=tk,
+            min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
+            auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
+            entity_type=GAZE_EMAIL_CONFIG["entity_type"],
+            trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
+            batch_size=GAZE_EMAIL_CONFIG["batch_size"],
+            freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+        )
+        row = db.get_dispatch_task(tid)
+        assert row is not None
+        assert row["candidate_id"] is None
+        assert row["task_key"] == tk
+        assert int(row["auto_mode"]) == 1
+        assert row["entity_type"] is None
+        assert row["trigger_state"] is None
+
+    def test_second_null_shell_unique(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
+
+        db = sqlite_in_memory
+        tk = GAZE_EMAIL_CONFIG["task_key"]
+        db.save_dispatch_task(candidate_id=None, task_key=tk, min_count=1, auto_mode=True)
+        with pytest.raises(Exception, match="UNIQUE"):
+            db.save_dispatch_task(candidate_id=None, task_key=tk, min_count=1, auto_mode=True)
+
+    def test_null_candidate_rejected_for_other_keys(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            db.save_dispatch_task(candidate_id=None, task_key="evaluate_jd", min_count=1)
+
+    def test_schema_nullable_and_partial_unique_index(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db._dispatch_task_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_dispatch_task_schema(conn)
+            cols = {r[1]: r for r in conn.execute("PRAGMA table_info(dispatch_task)").fetchall()}
+            assert cols["candidate_id"][3] == 0  # notnull=0
+            idx_sql = conn.execute(
+                "SELECT sql FROM sqlite_master WHERE type='index' "
+                "AND name='idx_dispatch_task_null_candidate_task_key'"
+            ).fetchone()[0]
+            assert "WHERE candidate_id IS NULL" in idx_sql
+            assert "task_key" in idx_sql
+        finally:
+            conn.close()
+
+# Branches: null-candidate gaze_email due signal (AST-1090).
+class TestAst1090GazeEmailDue:
+    def test_get_due_includes_gaze_email_when_freq_zero(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
+
+        db = sqlite_in_memory
+        tk = GAZE_EMAIL_CONFIG["task_key"]
+        db.save_dispatch_task(
+            candidate_id=None,
+            task_key=tk,
+            min_count=1,
+            auto_mode=True,
+            entity_type=None,
+            trigger_state=None,
+            freq_hrs=0,
+        )
+        due = db.get_due_tasks()
+        keys = [t["task_key"] for t in due]
+        assert tk in keys
+        row = next(t for t in due if t["task_key"] == tk)
+        assert row["available_count"] == 1
+
+    def test_count_eligible_respects_freq(self, sqlite_in_memory) -> None:
+        from datetime import datetime, timedelta, timezone
+        from src.utils.config import GAZE_EMAIL_CONFIG
+
+        db = sqlite_in_memory
+        tk = GAZE_EMAIL_CONFIG["task_key"]
+        tid = db.save_dispatch_task(
+            candidate_id=None,
+            task_key=tk,
+            min_count=1,
+            auto_mode=True,
+            freq_hrs=24,
+        )
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        db.update_dispatch_task(tid, last_run_at=recent)
+        task = db.get_dispatch_task(tid)
+        assert db.count_eligible_for_dispatch_task(task) == 0
+        old = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
+        db.update_dispatch_task(tid, last_run_at=old)
+        task = db.get_dispatch_task(tid)
+        assert db.count_eligible_for_dispatch_task(task) == 1
+

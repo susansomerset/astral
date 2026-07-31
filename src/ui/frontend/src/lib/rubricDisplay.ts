@@ -38,17 +38,38 @@ export function parseGradeDescriptions(
   return out
 }
 
-/** Grade-dot tooltip: job `reason` when present, else rubric criterion text for that letter. */
+/** Byte-identical mirror of `src/utils/config.py` CONFIDENCE_DESCRIPTIONS (UI display only). */
+export const CONFIDENCE_DESCRIPTIONS: Record<number, string> = {
+  5: "The source explicitly states it.",
+  4: "The source strongly suggests it.",
+  3: "The source hints about it.",
+  2: "The source makes a vague reference.",
+  1: "The source doesn't say it out loud, but it's possible.",
+}
+
+/** Map confidence 1–5 → description; empty when missing / out of range. */
+export function confidenceDescription(confidence?: number): string {
+  if (typeof confidence !== "number" || Number.isNaN(confidence)) return ""
+  const n = Math.floor(confidence)
+  if (n < 1 || n > 5) return ""
+  return CONFIDENCE_DESCRIPTIONS[n] ?? ""
+}
+
+/** Grade-dot tooltip: rubric text (reason else criterion) + optional confidence parenthetical. */
 export function formatGradeDotTooltip(
   col: JobListRubricColumn,
   grade: string,
   reasonFromJob?: string,
+  confidence?: number,
 ): string {
   const fromJob = (reasonFromJob ?? "").trim()
-  if (fromJob) return fromJob
   const letter = (grade ?? "").trim().toUpperCase()
-  if (!letter) return ""
-  return col.gradeDescriptions[letter] ?? ""
+  const fromRubric = letter ? (col.gradeDescriptions[letter] ?? "") : ""
+  const base = fromJob || fromRubric
+  const conf = confidenceDescription(confidence)
+  if (conf && base) return `${base} (${conf})`
+  if (conf) return `(${conf})`
+  return base
 }
 
 /** Tooltip for job-list rubric `<th title=…>` — `Label (7)` not full editor header. */
@@ -58,8 +79,20 @@ export function formatRubricColumnTooltip(label: string | undefined, importance?
   return `${lab} (${imp})`
 }
 
+/** Parse grades vector / object key → compact code + clean label (`Technical (TE)` → TE / Technical). */
+export function parseGradesVectorName(raw: string): { code: string; label: string } {
+  const s = (raw ?? "").trim()
+  const m = s.match(/^(.*?)\s*\(([A-Z]{2})\)\s*$/)
+  if (m) return { label: m[1].trim(), code: m[2] }
+  return { label: s, code: s }
+}
+
 export function resolveRubricHeaderCode(item: { code?: string; label?: string }): string {
-  return item.code || item.label?.slice(0, 2).toUpperCase() || "??"
+  if (item.code) return item.code
+  const label = (item.label ?? "").trim()
+  const m = label.match(/^(.*?)\s*\(([A-Z]{2})\)\s*$/)
+  if (m) return m[2]
+  return label.slice(0, 2).toUpperCase() || "??"
 }
 
 export function sortJobListRubricColumns(cols: JobListRubricColumn[]): JobListRubricColumn[] {
@@ -95,12 +128,12 @@ export function buildJobListRubricColumnsFromJobGrades(
     if (Array.isArray(g)) {
       return sortJobListRubricColumns(
         (g as Array<{ vector: string }>).map(i => {
-          const label = i.vector
+          const { code, label } = parseGradesVectorName(i.vector || "")
           return {
-            code: label,
+            code,
             label,
             importance: RUBRIC_DEFAULT_IMPORTANCE,
-            headerCode: label,
+            headerCode: resolveRubricHeaderCode({ code, label }),
             headerTooltip: formatRubricColumnTooltip(label, RUBRIC_DEFAULT_IMPORTANCE),
             gradeDescriptions: {},
           }
@@ -109,14 +142,17 @@ export function buildJobListRubricColumnsFromJobGrades(
     }
     if (typeof g === "object") {
       return sortJobListRubricColumns(
-        Object.keys(g as object).map(k => ({
-          code: k,
-          label: k,
-          importance: RUBRIC_DEFAULT_IMPORTANCE,
-          headerCode: k,
-          headerTooltip: formatRubricColumnTooltip(k, RUBRIC_DEFAULT_IMPORTANCE),
-          gradeDescriptions: {},
-        })),
+        Object.keys(g as object).map(k => {
+          const { code, label } = parseGradesVectorName(k)
+          return {
+            code,
+            label,
+            importance: RUBRIC_DEFAULT_IMPORTANCE,
+            headerCode: resolveRubricHeaderCode({ code, label }),
+            headerTooltip: formatRubricColumnTooltip(label, RUBRIC_DEFAULT_IMPORTANCE),
+            gradeDescriptions: {},
+          }
+        }),
       )
     }
   }

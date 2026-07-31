@@ -8,8 +8,19 @@ type ListenState = {
   is_production: boolean
 }
 
+type EstelleActivityRow = {
+  slack_user_id: string
+  bind_ok: boolean
+  astral_candidate_id: string | null
+  candidate_state: string | null
+  inbound_message_count: number
+  last_channel: string | null
+  last_message_ts: string | null
+}
+
 export default function AdminManageSlack() {
   const [state, setState] = useState<ListenState | null>(null)
+  const [activity, setActivity] = useState<EstelleActivityRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -22,11 +33,15 @@ export default function AdminManageSlack() {
       setLoading(true)
       setError(null)
       try {
-        const r = await api("/api/admin/contact/listen")
-        const data = await r.json().catch(() => ({} as Record<string, unknown>))
-        if (!r.ok) {
+        const [listenRes, activityRes] = await Promise.all([
+          api("/api/admin/contact/listen"),
+          api("/api/admin/contact/estelle_activity"),
+        ])
+        const listenData = await listenRes.json().catch(() => ({} as Record<string, unknown>))
+        if (!listenRes.ok) {
           const msg =
-            (typeof data.error === "string" && data.error) || `HTTP ${r.status}`
+            (typeof listenData.error === "string" && listenData.error) ||
+            `HTTP ${listenRes.status}`
           if (!cancelled) {
             setError(msg)
             setToast({ text: msg, variant: "error" })
@@ -35,10 +50,39 @@ export default function AdminManageSlack() {
         }
         if (!cancelled) {
           setState({
-            listen_enabled: Boolean(data.listen_enabled),
-            environment: typeof data.environment === "string" ? data.environment : "",
-            is_production: Boolean(data.is_production),
+            listen_enabled: Boolean(listenData.listen_enabled),
+            environment:
+              typeof listenData.environment === "string" ? listenData.environment : "",
+            is_production: Boolean(listenData.is_production),
           })
+        }
+        // Activity load failure toasts but does not block listen controls.
+        const activityData = await activityRes.json().catch(() => ({} as Record<string, unknown>))
+        if (!activityRes.ok) {
+          const msg =
+            (typeof activityData.error === "string" && activityData.error) ||
+            `HTTP ${activityRes.status}`
+          if (!cancelled) {
+            setToast({ text: msg, variant: "error" })
+            setActivity([])
+          }
+        } else if (!cancelled) {
+          const users = Array.isArray(activityData.users) ? activityData.users : []
+          setActivity(
+            users.map((u: Record<string, unknown>) => ({
+              slack_user_id: typeof u.slack_user_id === "string" ? u.slack_user_id : "",
+              bind_ok: Boolean(u.bind_ok),
+              astral_candidate_id:
+                typeof u.astral_candidate_id === "string" ? u.astral_candidate_id : null,
+              candidate_state:
+                typeof u.candidate_state === "string" ? u.candidate_state : null,
+              inbound_message_count:
+                typeof u.inbound_message_count === "number" ? u.inbound_message_count : 0,
+              last_channel: typeof u.last_channel === "string" ? u.last_channel : null,
+              last_message_ts:
+                typeof u.last_message_ts === "string" ? u.last_message_ts : null,
+            })).filter((r: EstelleActivityRow) => r.slack_user_id),
+          )
         }
       } catch (e) {
         const msg = e instanceof Error ? e.message : "Failed to load listen state"
@@ -99,38 +143,75 @@ export default function AdminManageSlack() {
         <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>
       )}
       {!loading && !error && state && (
-        <div style={{ maxWidth: 480 }}>
-          <p style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)" }}>
-            Environment: <strong style={{ color: "var(--text-primary)" }}>{state.environment || "—"}</strong>
-          </p>
-          <p style={{ margin: "0 0 16px", fontSize: 14, color: "var(--text-secondary)" }}>
-            Listen:{" "}
-            <strong style={{ color: "var(--text-primary)" }}>
-              {state.listen_enabled ? "On" : "Off"}
-            </strong>
-          </p>
-          {state.is_production ? (
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
-              Production — replies are not prefixed.
+        <>
+          <div style={{ maxWidth: 480 }}>
+            <p style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)" }}>
+              Environment:{" "}
+              <strong style={{ color: "var(--text-primary)" }}>{state.environment || "—"}</strong>
             </p>
-          ) : (
-            <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
-              Non-production — replies are prefixed with [{state.environment}]{" "}
+            <p style={{ margin: "0 0 16px", fontSize: 14, color: "var(--text-secondary)" }}>
+              Listen:{" "}
+              <strong style={{ color: "var(--text-primary)" }}>
+                {state.listen_enabled ? "On" : "Off"}
+              </strong>
             </p>
-          )}
-          <button
-            type="button"
-            disabled={busy}
-            onClick={() => void toggleListen()}
-            style={{
-              padding: "8px 14px",
-              fontSize: 14,
-              cursor: busy ? "wait" : "pointer",
-            }}
-          >
-            {state.listen_enabled ? "Disable listen" : "Enable listen"}
-          </button>
-        </div>
+            {state.is_production ? (
+              <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
+                Production — replies are not prefixed.
+              </p>
+            ) : (
+              <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
+                Non-production — replies are prefixed with [{state.environment}]{" "}
+              </p>
+            )}
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => void toggleListen()}
+              style={{
+                padding: "8px 14px",
+                fontSize: 14,
+                cursor: busy ? "wait" : "pointer",
+              }}
+            >
+              {state.listen_enabled ? "Disable listen" : "Enable listen"}
+            </button>
+          </div>
+          <h2 style={{ margin: "32px 0 12px", fontSize: 16, color: "var(--text-primary)" }}>
+            @Estelle users
+          </h2>
+          <div className="list-page-table-wrap">
+            <table className="list-page-table">
+              <thead>
+                <tr>
+                  <th>Slack user</th>
+                  <th>Bind</th>
+                  <th>Candidate</th>
+                  <th>Messages</th>
+                  <th>Last channel</th>
+                  <th>Last ts</th>
+                </tr>
+              </thead>
+              <tbody>
+                {activity.map(row => (
+                  <tr key={row.slack_user_id}>
+                    <td>{row.slack_user_id}</td>
+                    <td>{row.bind_ok ? "ok" : "fail"}</td>
+                    <td>{row.astral_candidate_id || "—"}</td>
+                    <td>{row.inbound_message_count}</td>
+                    <td>{row.last_channel || "—"}</td>
+                    <td>{row.last_message_ts || "—"}</td>
+                  </tr>
+                ))}
+                {activity.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No @Estelle users recorded yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
       {toast && <Toast message={toast} onDone={clearToast} />}
     </div>

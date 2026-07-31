@@ -261,3 +261,47 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst1062QualifyMeteoriteChunkExhaust \
   -q
 ```
+
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+`ensure_gaze_email_dispatch_task` / `provision_gaze_email_dispatch_task` insert one null-`candidate_id` `gaze_email` row from `GAZE_EMAIL_CONFIG` (idempotent; `skipped_missing_config` if key absent from `TASK_CONFIG`). `start_scheduler` provisions after meteorite. Does **not** wire due-task / mailbox runner (**AST-1090**). Config / data / Gmail: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/external/gmail.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure add/skip; missing config; provision wrapper; scheduler hook | `src/core/dispatcher.py` | **`TestAst1088GazeEmailDispatchProvision`** |
+| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised **`TestAst972…::test_start_scheduler_invokes_stage_provision`**, **`TestAst1054…::test_start_scheduler_invokes_meteorite_provision`** (stub gaze provision) |
+
+**Broken / obsolete:** start_scheduler unit helpers must stub `provision_gaze_email_dispatch_task` so the new try-path does not hit live DB.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1088GazeEmailDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_invokes_meteorite_provision \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
+  -q
+```
+
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+`_dispatch_one` special-cases `gaze_email`: no candidate API key; ledger uses `dispatch_ledger_candidate_id`; awaits `run_gaze_email` (not `_run_unified`). Due path: **`docs/test-bible/data/database/dispatch_tasks.md`**. Runner: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gaze dispatch route | `src/core/dispatcher.py` | **`TestAst1090GazeEmailDispatchOne`** |
+
+**Broken / obsolete:** none — additive branch before unified loop.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  -q
+```
+

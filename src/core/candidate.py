@@ -43,6 +43,7 @@ from src.utils.config import (
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
+    EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -171,6 +172,7 @@ def _collect_uniqueness_tokens_from_contact(contact: Dict[str, Any]) -> list:
     )
 
 
+
 def _dedupe_contact_list_path(
     contact: dict, path: str, mode: str, seen: set, notes: list
 ) -> None:
@@ -267,6 +269,7 @@ def _find_cross_candidate_contact_collision(
             display = display_by_path.get(path) or tok
             return (display, path, other_id)
     return None
+
 
 
 def _coerce_contact_string_lists(contact: dict) -> None:
@@ -559,13 +562,21 @@ def save_candidate_data(
         else:
             blob[key] = val
 
-    if "first" in col_kwargs or "last" in col_kwargs:
-        if "full" not in col_kwargs:
-            # Merge with existing columns when only one side provided
+    # Empty/whitespace full → library join; omit full when first/last change → same
+    if "full" in col_kwargs:
+        full_stripped = str(col_kwargs["full"]).strip()
+        if not full_stripped:
             existing = database.get_candidate(candidate_id) or {}
             first = col_kwargs.get("first", existing.get("first") or "")
             last = col_kwargs.get("last", existing.get("last") or "")
             col_kwargs["full"] = recompute_full_name(str(first), str(last))
+        else:
+            col_kwargs["full"] = full_stripped
+    elif "first" in col_kwargs or "last" in col_kwargs:
+        existing = database.get_candidate(candidate_id) or {}
+        first = col_kwargs.get("first", existing.get("first") or "")
+        last = col_kwargs.get("last", existing.get("last") or "")
+        col_kwargs["full"] = recompute_full_name(str(first), str(last))
 
     if "pronouns" in col_kwargs:
         pref = (col_kwargs["pronouns"] or "").strip()
@@ -574,7 +585,6 @@ def save_candidate_data(
 
     contact = blob.get("contact")
     if isinstance(contact, dict):
-        # Coerce websites / extra_emails (AST-1081 / AST-1092 / AST-1095).
         _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         # Proposed contact after merge (merge=True) or replace payload (merge=False).
@@ -897,6 +907,22 @@ def _rubric_rows_to_criteria(rows: list) -> list:
     return out
 
 
+def _merge_embedded_evaluate_jd_criteria(criteria: list) -> list:
+    """Append EMBEDDED_EVALUATE_JD_CRITERIA; embedded wins on duplicate code (AST-1085)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_EVALUATE_JD_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    head = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return head + list(EMBEDDED_EVALUATE_JD_CRITERIA)
+
+
 def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
     if not candidate_id or not owner_task_key:
@@ -915,6 +941,8 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+    if owner_task_key == "evaluate_jd":
+        return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
 
@@ -940,6 +968,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
             raise ValueError(f"No rubric owner task_key for artifact {key!r}")
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
+        # AST-1085: restore QC/GC on save (append; embedded wins on code).
+        if owner == "evaluate_jd":
+            val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 
@@ -2025,6 +2056,9 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         criteria = parsed.get("criteria")
         if not isinstance(criteria, list) or len(criteria) == 0:
             raise ValueError(f"{task_key} returned no criteria")
+        # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
+        if artifact_key == "jobdesc_rubric":
+            criteria = _merge_embedded_evaluate_jd_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
@@ -2417,6 +2451,12 @@ def run_candidate_artifact_generation(
                     },
                     500,
                 )
+            # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
+            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
             if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
             ):

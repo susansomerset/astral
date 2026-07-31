@@ -308,6 +308,25 @@ def set_slack_listen_enabled(enabled: bool, *, debug: bool = False) -> bool:
     return bool(CONTACT_CONFIG["listen_enabled"])
 
 
+def list_estelle_activity(*, debug: bool = False) -> list[dict]:
+    """Return durable @Estelle activity rows for Manage Slack (AST-1094)."""
+    from src.data.contact_estelle_activity import list_estelle_activity_rows
+
+    rows = list_estelle_activity_rows()
+    if debug:
+        log = get_logger(__name__)
+        log.set_debug_flag(True)
+        log.debug_index(
+            func="contact.list_estelle_activity",
+            index=1,
+            total=1,
+            identifier="activity",
+            outcome="listed",
+        )
+        log.debug_detail(f"row_count={len(rows)}")
+    return rows
+
+
 def format_contact_reply_text(text: str) -> str:
     """Prefix non-production Contact replies with ``[<environment>] ``; production unchanged."""
     body = text if isinstance(text, str) else ""
@@ -897,14 +916,67 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
     }
     user = result.get("user")
     if isinstance(user, str) and user.strip():
-        resolved = resolve_slack_user(user, estelle_in_play=True, debug=debug)
-        result["astral_candidate_id"] = resolved["astral_candidate_id"]
-        result["candidate_state"] = resolved["state"]
-        result["candidate_created"] = resolved["created"]
+        try:
+            resolved = resolve_slack_user(user, estelle_in_play=True, debug=debug)
+            result["astral_candidate_id"] = resolved["astral_candidate_id"]
+            result["candidate_state"] = resolved["state"]
+            result["candidate_created"] = resolved["created"]
+        except Exception as exc:
+            log.error("contact resolve_slack_user failed: %s", exc, exc_info=True)
+            result["astral_candidate_id"] = None
+            result["candidate_state"] = None
+            result["candidate_created"] = False
+            result["resolve_error"] = str(exc)
     else:
         result["astral_candidate_id"] = None
         result["candidate_state"] = None
         result["candidate_created"] = False
+    # AST-1094: durable activity summary for Manage Slack (not conversation SoT).
+    user_for_activity = user if isinstance(user, str) and user.strip() else None
+    if user_for_activity is not None:
+        bind_ok = isinstance(result.get("astral_candidate_id"), str) and bool(
+            result.get("astral_candidate_id")
+        )
+        try:
+            from src.data.contact_estelle_activity import record_estelle_activity
+
+            record_estelle_activity(
+                slack_user_id=user_for_activity,
+                bind_ok=bind_ok,
+                astral_candidate_id=result.get("astral_candidate_id")
+                if isinstance(result.get("astral_candidate_id"), str)
+                else None,
+                candidate_state=result.get("candidate_state")
+                if isinstance(result.get("candidate_state"), str)
+                else None,
+                last_channel=channel if isinstance(channel, str) else None,
+                last_message_ts=msg_ts if isinstance(msg_ts, str) else None,
+            )
+            if debug:
+                log.debug_index(
+                    func="contact.handle_slack_event",
+                    index=1,
+                    total=1,
+                    identifier=event_id,
+                    outcome="activity_recorded",
+                )
+                log.debug_detail(
+                    f"activity user={user_for_activity!r} bind_ok={bind_ok} "
+                    f"channel={channel!r} ts={msg_ts!r}"
+                )
+        except Exception as exc:
+            log.error("contact estelle activity record failed: %s", exc, exc_info=True)
+    elif result.get("accepted"):
+        # Accepted event with no Slack user → cannot key a row; skip record.
+        if debug:
+            log.debug_index(
+                func="contact.handle_slack_event",
+                index=1,
+                total=1,
+                identifier=event_id,
+                outcome="activity_skipped_no_user",
+            )
+            log.debug_detail("activity skipped: missing slack user")
     # Warm process-local cache — key uses Slack thread_ts only (never message ts).
     if isinstance(channel, str) and channel and isinstance(msg_ts, str) and msg_ts:
         append_slack_conversation_message(

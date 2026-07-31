@@ -1354,6 +1354,26 @@ body {
   color: var(--text-primary);
 }
 
+.dep-string-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dep-string-list-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dep-string-list-row .dep-input {
+  flex: 1;
+}
+
+.dep-string-list-add {
+  align-self: flex-start;
+}
+
 /* === 10b. Candidate Profile === */
 
 .profile-contact-grid {

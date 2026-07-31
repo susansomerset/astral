@@ -118,16 +118,16 @@ No conflicts requiring `conf-!!-NONE`.
 
 **Date:** 2026-07-31  
 **Review tip:** `adb3f86a` (`docs(AST-1095): Radia review — FIX-NOW scope creep`)  
-**Publish tip:** `efe8f556` (`resolve(AST-1095): — findings addressed`)  
-**Outcome:** findings addressed — product tip on `origin/ftr` with Stage 1 uniqueness + minimal prereqs only. **§9a blocked** into `origin/dev` until ftr absorbs `origin/dev` (do not pull-merge `origin/dev` onto this sub — pollutes `validate-sub-log`).
+**Publish tip:** (post-merge resolve) — Stage 1 uniqueness on refreshed `origin/ftr` (= `origin/dev` absorb).  
+**Outcome:** findings addressed; §9a unblocked after ftr←dev refresh — merge refreshed ftr into sub with uniqueness kept (websites-only `list_paths`; no `get_candidate_id_for_query` email_list expansion).
 
 | Finding | Disposition |
 | -- | -- |
 | fix-now — strip unrelated AST-1085/1087–1090 / DATA_SHAPES / full-name / craft hunks | Restored `config.py` + `candidate.py` from `origin/ftr`; re-applied uniqueness email pool + `contact_keys`/`email_list_paths` prereqs only |
 | fix-now — revert `get_candidate_id_for_query` | Confirmed no hunk vs ftr (bind expansion not on tip) |
 | discuss — premature resolve docs | Superseded by this Resolution |
-| Betty `TestAst1092…labels_and_extra_emails_shape` | Fails on plan-scoped tip (no Profile DATA_SHAPES). Prefer ftr absorb of `origin/dev` (brings 1092 labels); else `[qa-handoff]` |
-| §9a into `origin/dev` | BLOCKED — uniqueness `list_paths` / coerce / bible+tests diverge from `origin/dev` 1092 shape. Absorbed once via bad pull-merge then force-with-lease reverted to keep `validate-sub-log` green. Need `@chuckles` merge `origin/dev` → `origin/ftr/AST-1045-verify-unique-contact-info`, then Ada rebuild tip on refreshed ftr |
+| Betty `TestAst1092…labels_and_extra_emails_shape` | Cleared via ftr←dev (Profile DATA_SHAPES labels on base) |
+| §9a into `origin/dev` / ftr | Cleared after ftr←dev refresh — merge refreshed ftr into sub; dry-runs clean |
 
 ### Radia — code-rubric.v1
 

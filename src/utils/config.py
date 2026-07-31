@@ -37,6 +37,8 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
+  GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
+  METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
@@ -515,6 +517,32 @@ TASK_CONFIG = {
         "trigger_state": None,
         "agent_task": "qualify_meteorite",
     },
+    # AST-1087 / AST-1089: Ruth parse of bound meteorite email HTML (not a dispatch claim task).
+    # AST-1090 calls do_task with METEORITE_EMAIL_PARSE_CONFIG["task_key"] + candidate ctx.
+    "parse_meteorite_email": {
+        "response_format": "json",
+        "output_type": "fields",
+        "scored": False,
+        "response_schema": {
+            "parse_mode": {"type": "str", "required": True},
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": {
+                    "job_link": {"type": "str", "required": True},
+                    "job_title": {"type": "str", "required": False},
+                    "metadata": {"type": "str", "required": False},
+                },
+            },
+            "jd_link": {"type": "str", "required": False},
+            "content_text": {"type": "str", "required": False},
+        },
+        "context_format": "parse_meteorite_email_{index}",
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "parse_meteorite_email",
+    },
     # EVALUATE JD - Grace 2
     "evaluate_jd": {
         "response_format": "json",          # outer envelope is JSON; agent_payload is a compact encoded string
@@ -885,6 +913,12 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
+    },
+    # AST-1088: mailbox dispatch shell (no Ruth prompts — AST-1089; runner — AST-1090).
+    "gaze_email": {
+        "entity_type": None,
+        "requires_candidate_key": False,
+        "trigger_state": None,
     },
 }
 
@@ -1373,7 +1407,7 @@ CANDIDATE_LOOKUP_CONFIG = {
         "profile.contact_email",   # transitional pre-1014
         "profile.reply_email",
     ),
-    # List-valued binding emails (AST-1092 prereq for AST-1095 email pool).
+    # List-valued binding emails (AST-1092) — not in scalar email_paths (_lookup_path_value is str-only).
     "email_list_paths": (
         "contact.extra_emails",
     ),
@@ -1439,6 +1473,7 @@ assert CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True  # email uniqueness mus
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"], tuple) and CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"]
 assert isinstance(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"], tuple)
+assert isinstance(CANDIDATE_LOOKUP_CONFIG["email_list_paths"], tuple)
 assert CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scopes"] == ("within_candidate", "cross_candidate")
 for _p in CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"]:
     assert isinstance(_p, str) and _p.startswith("contact."), _p
@@ -1467,6 +1502,8 @@ CONTACT_CONFIG = {
     "listen_enabled": False,
     # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
     "listen_state_filename": "contact_slack_listen.json",
+    # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
+    "activity_state_filename": "contact_estelle_activity.json",
     # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
     "production_deploy_env": "production",
     # Format with environment= (deploy label). AST-1067 applies when listen is on
@@ -1526,6 +1563,7 @@ CONTACT_CONFIG = {
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["skills"], dict)
 assert CONTACT_CONFIG["bot_token_env"] == "SLACK_BOT_TOKEN"
@@ -1982,6 +2020,81 @@ EMBEDDED_COMPANY_PREFILTER_CRITERIA: tuple[dict, ...] = (
     },
 )
 
+# AST-1084 / AST-1077: embedded evaluate_jd vectors — definitions only;
+# merge/append into jobdesc / evaluate_jd hydration is AST-1085.
+EMBEDDED_EVALUATE_JD_CRITERIA: tuple[dict, ...] = (
+    {
+        "code": "QC",
+        "label": "Quality Check",
+        "importance": 1,
+        "content": (
+            "Quality Check — is this enough of a JD to analyze?\n"
+            "A = This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.\n"
+            "B = This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.\n"
+            "C = This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.\n"
+            "F = This is not enough information to perform job fit analysis, either because it is not a job description, or it is too vague to determine fit for the candidate."
+        ),
+        "grade_descriptions": [
+            {
+                "grade": "A",
+                "description": "This is a valid job description with full details of the role and requirements and information about the company the candidate would be working for.",
+            },
+            {
+                "grade": "B",
+                "description": "This is a valid job description with full details of the role and requirements, but limited information about the company the candidate would be working for.",
+            },
+            {
+                "grade": "C",
+                "description": "This content references a job with enough detail about the role and requirements to perform fit analysis for the candidate.",
+            },
+            {
+                "grade": "F",
+                "description": "This is not enough information to perform job fit analysis, either because it is not a job description, or it is too vague to determine fit for the candidate.",
+            },
+        ],
+    },
+    {
+        "code": "GC",
+        "label": "Gut Check",
+        "importance": 1,
+        "content": (
+            "Gut Check — is this even plausible for this candidate?\n"
+            "A = Based on the candidate's bio provided, this job would be a slam dunk for them.\n"
+            "B = Based on the candidate's bio provided, this job could be a good fit for them.\n"
+            "C = Based on the candidate's bio, this job would be doable, with caveats, for them.\n"
+            "D = Based on the candidate's bio, this job would be a stretch-to-impossible for them.\n"
+            "F = There's really no way this candidate could ever do this job.\n"
+            "X = There's not enough information about the job to make this determination with certainty."
+        ),
+        "grade_descriptions": [
+            {
+                "grade": "A",
+                "description": "Based on the candidate's bio provided, this job would be a slam dunk for them.",
+            },
+            {
+                "grade": "B",
+                "description": "Based on the candidate's bio provided, this job could be a good fit for them.",
+            },
+            {
+                "grade": "C",
+                "description": "Based on the candidate's bio, this job would be doable, with caveats, for them.",
+            },
+            {
+                "grade": "D",
+                "description": "Based on the candidate's bio, this job would be a stretch-to-impossible for them.",
+            },
+            {
+                "grade": "F",
+                "description": "There's really no way this candidate could ever do this job.",
+            },
+            {
+                "grade": "X",
+                "description": "There's not enough information about the job to make this determination with certainty.",
+            },
+        ],
+    },
+)
+
 # AST-803: legacy BUILD_ARTIFACTS.<hop> names for in-flight rows (mid-chain resume until flattened).
 def _legacy_build_artifacts_compound_state_for_hop(task_key: str) -> str:
     return f"{LEGACY_BUILD_ARTIFACTS_PREFIX}{task_key}"
@@ -2115,6 +2228,46 @@ METEORITE_EMAIL_INGEST_CONFIG = {
     # Skip create when visible/body text length is below this after strip/fetch.
     "min_jd_chars": 40,
 }
+
+
+# AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id row).
+# Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
+# AST-1090 runner extends this block (schemes / ledger placeholder / Style D func).
+# Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
+GAZE_EMAIL_CONFIG = {
+    "task_key": "gaze_email",
+    "account_address": "astral.career.match@gmail.com",
+    "unbound_retention_days": 7,
+    "auto_mode": True,
+    "min_count": 1,
+    "batch_size": 1,
+    "freq_hrs": 0,
+    # Mailbox poller — no entity claim queue on the dispatch_task row.
+    "entity_type": None,
+    "trigger_state": None,
+    # AST-1090 runner — subject-is-URL detection (urlparse.scheme).
+    "subject_url_schemes": ("http", "https"),
+    # Ledger / registry placeholder when dispatch_task.candidate_id is NULL.
+    "dispatch_ledger_candidate_id": "",
+    # Style D func= string for the runner.
+    "debug_func": "gaze_email.run",
+}
+
+assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
+assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
+assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
+assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
+assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
+# AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
+# Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
+# must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
+METEORITE_EMAIL_PARSE_CONFIG = {
+    "task_key": "parse_meteorite_email",
+    # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
+    "parse_modes": ("html_links", "subject_body"),
+}
+assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
+assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -2571,6 +2724,14 @@ def dispatch_task_admin_defaults(
         raise KeyError(retired)
     if tk not in TASK_CONFIG:
         raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}")
+    # Mailbox poller — no ENTITY_TYPES claim queue (do not use entity/trigger/sort helpers).
+    if tk == GAZE_EMAIL_CONFIG["task_key"]:
+        return {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
     entity_type = _dispatch_entity_type_for_task_key(tk)
     override = (trigger_state or "").strip()
     effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
@@ -3862,12 +4023,15 @@ DATA_SHAPES = {
                     "fields": [
                         {"key": "first", "label": "First Name", "type": "text"},
                         {"key": "last", "label": "Last Name", "type": "text"},
-                        {"key": "contact.contact_email", "label": "Contact Email", "type": "text"},
-                        {"key": "contact.reply_email", "label": "Reply Email", "type": "text"},
+                        {"key": "full", "label": "Full Name", "type": "text"},
+                        {"key": "contact.contact_email", "label": "Email for Resume", "type": "text"},
+                        {"key": "contact.reply_email", "label": "Email for Messages (if different)", "type": "text"},
+                        {"key": "contact.extra_emails", "label": "Extra emails (binding)", "type": "string_list"},
                         {"key": "contact.phone", "label": "Phone", "type": "text"},
                         {"key": "contact.location", "label": "Location", "type": "text"},
-                        {"key": "contact.github", "label": "GitHub", "type": "text"},
-                        {"key": "contact.linkedin_url", "label": "LinkedIn URL", "type": "text"},
+                        {"key": "contact.github", "label": "GitHub (username or URL)", "type": "text"},
+                        {"key": "contact.linkedin_url", "label": "LinkedIn (username or URL)", "type": "text"},
+                        {"key": "contact.websites", "label": "Websites", "type": "string_list"},
                         {"key": "contact.timezone", "label": "Timezone", "type": "select", "options": [
                             {"value": "", "label": "(UTC)"},
                             {"value": "America/New_York", "label": "Eastern"},
@@ -3885,6 +4049,7 @@ DATA_SHAPES = {
                             {"value": "ze/zir", "label": "ze/zir"},
                             {"value": "e/eir", "label": "e/eir"},
                         ]},
+                        {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
                     ],
                 },
                 {

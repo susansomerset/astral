@@ -270,3 +270,45 @@ Restore **`list_candidate_ids_with_dispatch_tasks`** (AST-972 contract dropped w
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NULL) + partial unique index `idx_dispatch_task_null_candidate_task_key` on `task_key WHERE candidate_id IS NULL`. `save_dispatch_task` accepts `candidate_id=None` **only** for `GAZE_EMAIL_CONFIG["task_key"]`; other keys still raise `ValueError("candidate_id is required")`. Provision / config / Gmail: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`** · **`docs/test-bible/external/gmail.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Null save + unique + reject other keys + schema/index | `src/data/database.py` | **`TestAst1088NullCandidateGazeEmail`** |
+
+**Broken / obsolete:** none — additive nullable path; existing positional `save_dispatch_task(cid, task_key, …)` callers unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail \
+  -q
+```
+
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+`get_due_tasks` / `count_eligible_for_dispatch_task` special-case `gaze_email` via `_gaze_email_available_count` (freq gate; available_count=1 when due — not live inbox size). Per-candidate link helper lives on jobs cluster (**`TestAst1090JobLinkExistsForCandidate`** in `test_jobs.py`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Due signal for null-candidate shell | `src/data/database.py` | **`TestAst1090GazeEmailDue`** |
+| Per-candidate job_link | `src/data/database.py` | **`TestAst1090JobLinkExistsForCandidate`** (`test_jobs.py`) |
+
+**Broken / obsolete:** none — additive due path (null entity rows previously skipped).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  tests/component/data/database/test_jobs.py::TestAst1090JobLinkExistsForCandidate \
+  -q
+```
+

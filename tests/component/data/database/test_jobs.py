@@ -257,3 +257,28 @@ class TestAst1061MeteoriteEmailDedupeHelpers:
         assert db.job_link_exists(link + "/") is False
         assert db.job_link_exists("") is False
         assert db.job_link_exists("   ") is False
+
+# Branches: per-candidate exact job_link (AST-1090) — not global job_link_exists.
+class TestAst1090JobLinkExistsForCandidate:
+    def test_scoped_to_meteorite_company(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        link = "https://jobs.example.com/same"
+        c1 = METEORITE_CONFIG["short_name_template"].format(candidate_id="cand-a")
+        c2 = METEORITE_CONFIG["short_name_template"].format(candidate_id="cand-b")
+        db.save_job("ja", company=c1, state="METEORITE_NEW", job_link=link, job_title="A")
+        assert db.job_link_exists_for_candidate("cand-a", link) is True
+        # Same URL for another candidate is not a hit (AC5 cross-candidate OK).
+        assert db.job_link_exists_for_candidate("cand-b", link) is False
+        db.save_job("jb", company=c2, state="METEORITE_NEW", job_link=link, job_title="B")
+        assert db.job_link_exists_for_candidate("cand-b", link) is True
+        # Global helper still sees either.
+        assert db.job_link_exists(link) is True
+
+    def test_empty_args_false(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.job_link_exists_for_candidate("", "https://x") is False
+        assert db.job_link_exists_for_candidate("cand-a", "") is False
+        assert db.job_link_exists_for_candidate("cand-a", "   ") is False
+

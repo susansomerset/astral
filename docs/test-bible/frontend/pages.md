@@ -1201,6 +1201,31 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1086 · AST-1078
+
+**Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
+
+Skipped + In Review (§6c): grade `<th>` paints compact `headerCode` with full-name `title`; grade-dot hover includes rubric text + confidence parenthetical when confidence is 1–5. Helpers: **`docs/test-bible/frontend/lib.md`** (**AST-1086**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Compact header + grade-dot tooltip (Skipped) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1086 compact headers and grade-dot tooltips`** |
+| Compact header + grade-dot tooltip (In Review) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1086 compact headers and grade-dot tooltips`** |
+| Grades-only parse / tooltip helpers | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1086 compact headers and grade-dot confidence tooltips`** |
+
+**Broken / obsolete:** `test_rubricDisplay` grades-only `headerCode === "Technical (TE)"` — revised to compact `"TE"`.
+
+**Integration:** none revised (UI display only; no existing scenario maps these headers).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx
+```
+
+---
+
 ### AST-1067 · AST-1043
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
@@ -1214,6 +1239,26 @@ Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin
 **Broken / obsolete:** none — new Admin page.
 
 **Integration:** no existing Manage Slack scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx
+```
+
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+Admin **Manage Slack** (§6c): below listen controls, **@Estelle users** table from `GET /api/admin/contact/estelle_activity` — Slack user, bind ok/fail, candidate, message count, last channel/ts. Empty copy when no rows. API: **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Activity table + empty state (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** (AST-1094 cases) |
+
+**Broken / obsolete:** none — additive table on existing Manage Slack page; listen tests still require listen GET (activity GET mocked empty).
+
+**Integration:** none.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
@@ -1242,4 +1287,55 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
   ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx
+```
+
+
+---
+
+### AST-1082 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav`.
+
+Candidate Profile (§6c): `editValuesFromCandidate` always includes top-level `full` and normalizes `contact.websites` to `string[]` on load/post-Save remap; PUT body has columns + `contact.*` (never `profile`); shapes labels GitHub/LinkedIn username-or-URL; Title Patterns tab stays on Profile. Nav/route hygiene: **`docs/test-bible/utils/config.md`**, **`test_routes.test.tsx`**. Shapes/`string_list`/empty-full coerce = **AST-1081**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile load/save `full` + websites (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile AST-1082 contact manage`** |
+| Labels + Candidate NAV omit Title Patterns | `src/utils/config.py` | **`TestAst1082ProfileContactLabelsNav`** (map: **`docs/test-bible/utils/config.md`**) |
+| Route absent | `routes.tsx` | existing **`test_routes.test.tsx`** (`candidate/title_patterns` false) |
+
+**Broken / obsolete:** Profile GET mock omitted top-level `full` — revised in-place so load maps `c.full`. No product assertion breakage from AST-1014 Profile cases.
+
+**Integration:** no existing Profile contact round-trip scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1082ProfileContactLabelsNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+Candidate Profile (§6c): Resume/Messages labels; `extra_emails` normalize to `string[]` + Add round-trip. Config/core: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile labels + extra_emails (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile AST-1092 extra binding emails`**; revised AST-1082 websites Add scoped to Websites field |
+
+**Broken / obsolete:** AST-1082 websites Add used global `getByRole('Add')` — revised to scope under Websites label (second `string_list`).
+
+**Integration:** none — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
 ```

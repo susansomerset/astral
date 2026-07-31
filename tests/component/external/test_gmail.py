@@ -51,11 +51,19 @@ def _inbox_service(
             calls.append({"op": "send", **kwargs})
             return _Exec({"id": "sent-1"})
 
+        def modify(self, **kwargs: Any) -> _Exec:
+            calls.append({"op": "modify", **kwargs})
+            return _Exec({"id": kwargs["id"]})
+
+        def trash(self, **kwargs: Any) -> _Exec:
+            calls.append({"op": "trash", **kwargs})
+            return _Exec({"id": kwargs["id"]})
+
     service = SimpleNamespace(users=lambda: SimpleNamespace(messages=lambda: _Messages()))
     return {"service": service, "calls": calls}
 
 
-# Branches: Gmail API success; any exception returns False; dual-scope creds.
+# Branches: Gmail API success; any exception returns False; gmail.modify scope (AST-1088).
 class TestSendEmail:
     def test_send_email_success(self, monkeypatch, fake_gmail_service) -> None:
         monkeypatch.setattr(gmail_mod, "build", lambda *args, **kwargs: fake_gmail_service["service"])
@@ -82,7 +90,8 @@ class TestSendEmail:
         assert gmail_mod.send_email("to@example.com", "S", "B") is True
         assert captured["token_uri"] == "https://token.example/oauth2/token"
 
-    def test_send_email_uses_dual_gmail_scopes(self, monkeypatch, fake_gmail_service) -> None:
+    def test_send_email_uses_modify_gmail_scope(self, monkeypatch, fake_gmail_service) -> None:
+        # AST-1088: sole gmail.modify (subsumes prior send+readonly pair).
         captured: dict = {}
 
         def _build(_api, _version, credentials=None, **_kwargs):
@@ -92,8 +101,7 @@ class TestSendEmail:
         monkeypatch.setattr(gmail_mod, "build", _build)
         assert gmail_mod.send_email("to@example.com", "S", "B") is True
         assert captured["scopes"] == gmail_mod._GMAIL_SCOPES
-        assert "https://www.googleapis.com/auth/gmail.send" in captured["scopes"]
-        assert "https://www.googleapis.com/auth/gmail.readonly" in captured["scopes"]
+        assert captured["scopes"] == ["https://www.googleapis.com/auth/gmail.modify"]
 
 
 # Branches: empty inbox; pagination; skip bad ids; raise on API failure; unread flag.
@@ -145,6 +153,7 @@ class TestListInboxMessages:
             "from_address": "a@x",
             "date": "Mon, 1 Jan 2026",
             "unread": True,
+            "internal_date_ms": 0,
         }
         assert rows[1]["unread"] is False
         assert rows[1]["thread_id"] == ""
@@ -171,6 +180,7 @@ class TestListInboxMessages:
                 "from_address": "",
                 "date": "",
                 "unread": False,
+                "internal_date_ms": 0,
             }
         ]
 
@@ -323,6 +333,39 @@ class TestGmailHelpers:
         assert row["id"] == ""
         assert row["thread_id"] == ""
         assert row["unread"] is False
+        assert row["internal_date_ms"] == 0
+
+
+# Branches: internalDate parse for retention age (AST-1090).
+@pytest.mark.skipif(
+    not hasattr(gmail_mod, "_internal_date_ms"),
+    reason="AST-1090 internal_date_ms not on this publish tip",
+)
+class TestAst1090InternalDateMs:
+    def test_parses_string_and_int(self) -> None:
+        assert gmail_mod._internal_date_ms({"internalDate": "1700000000000"}) == 1700000000000
+        assert gmail_mod._internal_date_ms({"internalDate": 42}) == 42
+
+    def test_missing_or_bad_yields_zero(self) -> None:
+        assert gmail_mod._internal_date_ms({}) == 0
+        assert gmail_mod._internal_date_ms({"internalDate": ""}) == 0
+        assert gmail_mod._internal_date_ms({"internalDate": "nope"}) == 0
+
+    def test_list_row_includes_internal_date(self, monkeypatch) -> None:
+        fake = _inbox_service(
+            list_pages=[{"messages": [{"id": "m1"}]}],
+            metadata_by_id={
+                "m1": {
+                    "id": "m1",
+                    "internalDate": "99",
+                    "labelIds": ["INBOX"],
+                    "payload": {"headers": []},
+                }
+            },
+        )
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        rows = gmail_mod.list_inbox_messages()
+        assert rows[0]["internal_date_ms"] == 99
 
 
 # Branches: integration harness blocks live Gmail send/list/get without live opt-in.
@@ -353,9 +396,59 @@ class TestControlledExternalIo:
             gmail_mod.get_message_html("m1")
         build.assert_not_called()
 
+    def test_archive_message_blocked(self, integration_block, monkeypatch) -> None:
+        build = MagicMock()
+        monkeypatch.setattr(gmail_mod, "build", build)
+        with pytest.raises(RuntimeError, match="gmail.archive_message"):
+            gmail_mod.archive_message("m1")
+        build.assert_not_called()
+
+    def test_trash_message_blocked(self, integration_block, monkeypatch) -> None:
+        build = MagicMock()
+        monkeypatch.setattr(gmail_mod, "build", build)
+        with pytest.raises(RuntimeError, match="gmail.trash_message"):
+            gmail_mod.trash_message("m1")
+        build.assert_not_called()
+
     def test_live_opt_in_allows_list(self, monkeypatch, fake_gmail_service) -> None:
         monkeypatch.setenv("ASTRAL_INTEGRATION_MODE", "1")
         monkeypatch.setenv("ASTRAL_ALLOW_LIVE_EXTERNAL_IO", "1")
         fake = _inbox_service(list_pages=[{"messages": []}])
         monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
         assert gmail_mod.list_inbox_messages() == []
+
+
+# Branches: archive removes INBOX; trash moves to Trash; raise on API failure (AST-1088).
+@pytest.mark.skipif(
+    not hasattr(gmail_mod, "archive_message"),
+    reason="AST-1088 archive/trash not on this publish tip",
+)
+class TestAst1088ArchiveTrash:
+    def test_archive_removes_inbox_label(self, monkeypatch) -> None:
+        fake = _inbox_service(list_pages=[])
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        gmail_mod.archive_message("m-arch")
+        mods = [c for c in fake["calls"] if c["op"] == "modify"]
+        assert len(mods) == 1
+        assert mods[0]["id"] == "m-arch"
+        assert mods[0]["userId"] == "me"
+        assert mods[0]["body"] == {"removeLabelIds": ["INBOX"]}
+
+    def test_trash_calls_messages_trash(self, monkeypatch) -> None:
+        fake = _inbox_service(list_pages=[])
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        gmail_mod.trash_message("m-trash")
+        trashes = [c for c in fake["calls"] if c["op"] == "trash"]
+        assert len(trashes) == 1
+        assert trashes[0]["id"] == "m-trash"
+        assert trashes[0]["userId"] == "me"
+
+    def test_archive_raises_on_api_failure(self, monkeypatch) -> None:
+        monkeypatch.setattr(gmail_mod, "build", MagicMock(side_effect=RuntimeError("mod boom")))
+        with pytest.raises(RuntimeError, match="mod boom"):
+            gmail_mod.archive_message("m1")
+
+    def test_trash_raises_on_api_failure(self, monkeypatch) -> None:
+        monkeypatch.setattr(gmail_mod, "build", MagicMock(side_effect=RuntimeError("trash boom")))
+        with pytest.raises(RuntimeError, match="trash boom"):
+            gmail_mod.trash_message("m1")
