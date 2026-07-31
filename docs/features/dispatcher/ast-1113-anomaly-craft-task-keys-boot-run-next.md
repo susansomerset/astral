@@ -115,3 +115,15 @@ Expected chain (former `craft_task_keys` order → terminal empty):
 | 1 | `56a9635d` | craft entry key only — drop craft_task_keys list |
 | 2 | `b511d46b` | walk craft run_next with suppress_run_next |
 | 3 | `978103de` | boot craft run_next chain + admin JSON |
+
+### Radia — code-rubric.v1 (AST-1113)
+
+`[code-rubric] revision=1` · tip reviewed `2e55bcd1` · **Overall: DISCUSS** (C4 stragglers only; deliverable conforms)
+
+**What's solid**
+
+- `craft_task_keys` gone under `src/`; singular `craft_task_key` entry only; walk via `_current_agent_task_run_next` + cycle guard.
+- `suppress_run_next` keeps per-hop persist and UI single-hop generate.
+- Boot migration + admin JSON match expected seven-hop craft topology; missing rows skipped (no AST-1108 invent).
+
+**Discuss (C4 stragglers)** — Joan excluded; three-dot in-scope (scores `conforms`): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`.
