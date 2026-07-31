@@ -128,3 +128,97 @@ assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG
 - **Publish ref:** `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`
 - **Tip:** `c7ff9851` — listen re-read + hear-ack (stages 1–2)
 - **Stage commits:** `84d97108` (config), `c7ff9851` (contact)
+
+
+---
+
+## Radia review — code-rubric.v1
+
+**Overall:** CLEAN  
+**Publish tip reviewed:** `2a3ea72c` (`origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`)  
+**Diff:** `origin/dev...2a3ea72c` — layers `{core, utils, docs}`; change_types `{add, modify}`; 7 paths (focused UAT hear evidence).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | hear_ack_reply_text in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1101 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits touch src only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external edits; post via contact_post_message |
+| astral.layers.import-direction | scoped | conforms | core+utils only; UI/external signatures unchanged |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui layer in three-dot tip |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | no ui/** in tip |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer in tip |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/** in tip |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on hear-ack when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | small background wrapper + hear-ack block |
+| astral.standards.in-scope-only | scoped | conforms | no Socket Mode / envelope / activity schema ownership |
+| astral.standards.logging-via-utils | scoped | conforms | background failures via get_logger |
+| astral.standards.no-cross-contamination | scoped | conforms | three-dot tip is 7 focused paths |
+| astral.standards.no-hardcoded-sets | scoped | conforms | hear-ack copy from CONTACT_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | private _run_handle_slack_event_background |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | no state transition ownership |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend in tip |
+| astral.ui.naming-conventions | scoped | not-applicable | no ui/** in tip |
+| astral.ui.single-gunicorn-worker | scoped | conforms | durable listen re-read; no multi-worker invent |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHA 2a3ea72c |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1101-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | tip tree vs origin/dev focused; no lost AST-1017 paths |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1101-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held (re-read listen; hear-ack fallback) |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 land as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Hedy remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.core.contact-agent (proposed) | conforms | listen re-read + Events log wrap + hear-ack |
+| pattern.config.config-block | conforms | CONTACT_CONFIG hear_ack_reply_text |
+
+### Plan adherence
+
+Stages 1–2 match: `hear_ack_reply_text`, remove once-hydrate, background exception log, hear-ack only when accepted + channel and Estelle `slack_post.ok` is not True, via `format_contact_reply_text` + `contact_post_message`. Self-Assessment Single-Component / high / Medium matches footprint. Sibling boundaries held.
+
+### Findings
+
+None.
+
+### What’s solid
+
+Sticky listen hydrate removed; daemon thread failures logged; hear-ack is fallback not fabricated activity; prefix still only via AST-1067 helper; no verify/challenge/UI edits.
+
+### Notes
+
+no plan-rubric verdict attached
+
