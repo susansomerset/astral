@@ -37,6 +37,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
+  METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
