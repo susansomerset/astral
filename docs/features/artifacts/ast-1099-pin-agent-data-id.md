@@ -109,3 +109,10 @@ Reuses existing `_store_response_block` id + `save_job_data` deep-merge artifact
 | §3.3 imports | Core → tracker/config; lazy import breaks agent↔tracker cycle |
 
 No conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review
+
+**Branch:** `sub/AST-1091/AST-1099-pin-agent-data-id`  
+**Commit:** (filled at Code Complete publish)

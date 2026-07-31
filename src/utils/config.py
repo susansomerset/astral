@@ -2362,7 +2362,16 @@ JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
     "cover_letter",
     "application_responses",
+    "job_resume",
+    "proposed_answers",
 )
+
+# AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
+JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
+    "finalize_job_resume": "job_resume",
+    "finalize_cover_letter": "cover_letter",
+    "propose_application_responses": "proposed_answers",
+}
 
 _JOBS_RECOMMENDED_CANCEL_BUILD_ACTION = {
     "action_key": "cancel_build",

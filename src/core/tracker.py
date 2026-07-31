@@ -196,6 +196,34 @@ def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, A
     save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
 
 
+def pin_job_artifact_agent_data_id(
+    astral_job_id: str,
+    artifact_key: str,
+    agent_data_id: Any,
+    *,
+    debug: bool = False,
+) -> bool:
+    """AST-1099: merge RESPONSE agent_data_id into job_data.artifacts[key]. Never store empty."""
+    dbg = get_logger(__name__, debug_flag=True) if debug else None
+
+    def _skip(reason: str, key: str = "") -> bool:
+        if dbg is not None:
+            dbg.debug_detail(f"artifact_pin key={key or artifact_key} skipped reason={reason}")
+        return False
+
+    if not astral_job_id or not str(astral_job_id).strip():
+        return _skip("missing_job_id")
+    if not artifact_key or not str(artifact_key).strip():
+        return _skip("missing_artifact_key")
+    pin_id = str(agent_data_id).strip() if agent_data_id is not None else ""
+    if not pin_id:
+        return _skip("empty_agent_data_id", str(artifact_key))
+    save_job_data(astral_job_id, {"artifacts": {str(artifact_key): pin_id}})
+    if dbg is not None:
+        dbg.debug_detail(f"artifact_pin key={artifact_key} agent_data_id={pin_id} recorded")
+    return True
+
+
 def _artifact_shape_required_keys(shape_name: str) -> List[str]:
     shape = (BUILD_CONFIG.get("artifact_shapes") or {}).get(shape_name) or {}
     return [
