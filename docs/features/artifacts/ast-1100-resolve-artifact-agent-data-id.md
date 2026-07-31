@@ -147,5 +147,5 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 ## Review (build)
 
 **Branch:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`  
-**Tip:** _(filled after push)_  
+**Tip:** `b6be8d5e`  
 **Built:** Stages 1–5 — tab remap to pin slots; `resolve_job_artifact_agent_data_body` + `hydrate_job_artifacts_for_display`; job GET hydrate; PUT aliases for `job_resume` / `proposed_answers`; builder pin resolve; FE visibility helpers. Tests/bible deferred to Betty.
