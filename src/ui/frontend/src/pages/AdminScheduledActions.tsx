@@ -50,7 +50,7 @@ function taskKeyChangePatch(form: DispatchFormState, key: string, cfg: TaskKeyMe
 
 interface DispatchTask {
   id: number
-  candidate_id: string
+  candidate_id: string | null
   task_key: string
   entity_type: string | null
   trigger_state?: string | null
@@ -244,7 +244,7 @@ function ScheduledPhaseTable({
                   </span>
                 </td>
                 <td>
-                  <ListTableTruncatedCell text={row.candidate_id} maxChars={truncateChars} />
+                  <ListTableTruncatedCell text={row.candidate_id || "—"} maxChars={truncateChars} />
                 </td>
                 <td style={{ textAlign: "right" }}>
                   <ListTableTruncatedCell text={formatAvailableCount(row.available_count)} maxChars={truncateChars} />
@@ -585,7 +585,7 @@ export default function ScheduledActions() {
     setEditRow(row)
     const cfg = allTaskKeys[row.task_key]
     setForm({
-      candidate_id: row.candidate_id,
+      candidate_id: row.candidate_id ?? "",
       task_key: row.task_key,
       trigger_state: row.trigger_state || cfg?.trigger_state || "",
       freq_hrs: String(row.freq_hrs ?? 0),
