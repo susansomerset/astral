@@ -71,8 +71,7 @@ _GMAIL_USER = os.environ["GMAIL_USER"]
 _TOKEN_URI = os.environ.get("GOOGLE_TOKEN_URI", "https://oauth2.googleapis.com/token")
 
 _GMAIL_SCOPES = [
-    "https://www.googleapis.com/auth/gmail.send",
-    "https://www.googleapis.com/auth/gmail.readonly",
+    "https://www.googleapis.com/auth/gmail.modify",
 ]
 _LIST_PAGE_SIZE = 500  # Gmail API page size only — not a result cap; paginate until exhausted
 
