@@ -140,22 +140,3 @@ Compact grades-only `headerCode` (`Technical (TE)` → `TE`), clean label toolti
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts
 ```
-
-### AST-1100 · AST-1091
-
-**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
-
-`artifactHasContent` treats non-empty pin strings as content. `printResumeVisible` / `materialsPreviewVisible` gate on `job_resume` (+ legacy `resume_content`). Fixture `report_artifact_tabs` keys remapped to pin slots.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Visibility + fixture keys | `recommendedJobReport.tsx`, `stateUiManifestFixture.ts` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-1100 pin-slot visibility`** (+ revised AST-581 / AST-951 key asserts) |
-
-**Broken / obsolete:** fixture `artifact_key` `resume_content` / `application_responses` → `job_resume` / `proposed_answers`; `anyReportArtifactContent` assert updated to `job_resume`.
-
-**Integration:** none.
-
-```bash
-cd src/ui/frontend && npm run test:component -- \
-  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
-```

@@ -138,8 +138,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         {
           tab_id: "artifact_resume",
           nav_label: "Job Resume",
-          // AST-1100: pin slots (hydrate resolves id → body on job GET).
-          artifact_key: "job_resume",
+          artifact_key: "resume_content",
           shapes_key: null,
           use_resume_structure: true,
         },
@@ -153,7 +152,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         {
           tab_id: "artifact_application",
           nav_label: "Application Questions",
-          artifact_key: "proposed_answers",
+          artifact_key: "application_responses",
           shapes_key: null,
           use_resume_structure: false,
         },

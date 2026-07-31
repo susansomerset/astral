@@ -4037,6 +4037,8 @@ DATA_SHAPES = {
                         {"key": "first", "label": "First Name", "type": "text"},
                         {"key": "last", "label": "Last Name", "type": "text"},
                         {"key": "full", "label": "Full Name", "type": "text"},
+                        {"key": "contact.slack_user_id", "label": "Slack user id", "type": "text"},
+                        {"key": "contact.slack_username", "label": "Slack username", "type": "text"},
                         {"key": "contact.contact_email", "label": "Email for Resume", "type": "text"},
                         {"key": "contact.reply_email", "label": "Email for Messages (if different)", "type": "text"},
                         {"key": "contact.extra_emails", "label": "Extra emails (binding)", "type": "string_list"},

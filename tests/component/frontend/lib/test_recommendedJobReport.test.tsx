@@ -23,15 +23,10 @@ describe("recommendedJobReport — AST-581 materialsPreviewVisible", () => {
     expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
   })
 
-  it("returns true on BUILD_ARTIFACTS when job_resume or resume_content has text", () => {
+  it("returns true on BUILD_ARTIFACTS when resume_content has text", () => {
     expect(
       materialsPreviewVisible("BUILD_ARTIFACTS", {
-        job_resume: { professional_summary: "draft" },
-      }),
-    ).toBe(true)
-    expect(
-      materialsPreviewVisible("BUILD_ARTIFACTS", {
-        resume_content: { professional_summary: "legacy" },
+        resume_content: { professional_summary: "draft" },
       }),
     ).toBe(true)
   })
@@ -48,26 +43,6 @@ describe("recommendedJobReport — AST-948 print helpers", () => {
     expect(printCoverVisible({ cover_letter: { Letter: "Hello" } })).toBe(true)
     expect(printCoverVisible({ cover_letter: { Letter: "  " } })).toBe(false)
     expect(printCoverVisible({ resume_content: { professional_summary: "x" } })).toBe(false)
-  })
-})
-
-describe("recommendedJobReport — AST-1100 pin-slot visibility", () => {
-  it("artifactHasContent treats non-empty pin strings as content", () => {
-    expect(artifactHasContent({ job_resume: "batch-1-response-aaaa" }, "job_resume")).toBe(true)
-    expect(artifactHasContent({ job_resume: "   " }, "job_resume")).toBe(false)
-    expect(artifactHasContent({ job_resume: { professional_summary: "x" } }, "job_resume")).toBe(true)
-  })
-
-  it("printResumeVisible accepts job_resume pin or legacy resume_content", () => {
-    expect(printResumeVisible({ job_resume: "pin-id" })).toBe(true)
-    expect(printResumeVisible({ resume_content: { professional_summary: "x" } })).toBe(true)
-    expect(printResumeVisible({})).toBe(false)
-  })
-
-  it("materialsPreviewVisible uses remapped resume/cover checks", () => {
-    expect(materialsPreviewVisible("RECOMMENDED", { job_resume: "pin-id" })).toBe(true)
-    expect(materialsPreviewVisible("RECOMMENDED", { cover_letter: "pin-cover" })).toBe(true)
-    expect(materialsPreviewVisible("RECOMMENDED", {})).toBe(false)
   })
 })
 
@@ -147,7 +122,7 @@ describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
     const tabs = STATE_UI_MANIFEST_FIXTURE.jobs.recommended.report_artifact_tabs!
     expect(anyReportArtifactContent({}, tabs)).toBe(false)
     expect(
-      anyReportArtifactContent({ job_resume: { professional_summary: "x" } }, tabs),
+      anyReportArtifactContent({ resume_content: { professional_summary: "x" } }, tabs),
     ).toBe(true)
   })
 })

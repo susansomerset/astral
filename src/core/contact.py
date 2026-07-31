@@ -512,10 +512,47 @@ def resolve_slack_user(
     if not sid:
         raise ValueError("slack_user_id is required")
 
+    def _identity_from_contact(row: Optional[dict]) -> Tuple[str, str]:
+        cd = (row or {}).get("candidate_data") or {}
+        contact = cd.get("contact") if isinstance(cd, dict) else None
+        if not isinstance(contact, dict):
+            return "", ""
+        uname = contact.get("slack_username")
+        return (
+            uname.strip() if isinstance(uname, str) else "",
+            "",
+        )
+
     cid = get_candidate_id_for_query(sid, debug=debug)
     if cid is not None:
         row = get_candidate(cid)
         state = (row or {}).get("state")
+        username, _ = _identity_from_contact(row)
+        display = ""
+        # users.info for activity display; persist username when contact lacks it (AST-1105).
+        try:
+            profile = fetch_user_profile(sid)
+            fetched_user = str(profile.get("username") or "").strip()
+            display = str(profile.get("display_name") or "").strip()
+            if fetched_user:
+                if not username:
+                    save_candidate_data(
+                        cid,
+                        {
+                            "contact": {
+                                "slack_user_id": sid,
+                                "slack_username": fetched_user,
+                            }
+                        },
+                        debug=debug,
+                    )
+                username = fetched_user
+        except Exception as exc:
+            logger.error(
+                "contact resolve_slack_user username backfill failed: %s",
+                exc,
+                exc_info=True,
+            )
         if debug:
             logger.debug_index(
                 func="contact.resolve_slack_user",
@@ -527,10 +564,13 @@ def resolve_slack_user(
             logger.debug_detail(f"slack_user_id={sid}")
             logger.debug_detail(f"candidate_id={cid}")
             logger.debug_detail(f"state={state}")
+            logger.debug_detail(f"slack_username={username!r}")
         return {
             "astral_candidate_id": cid,
             "state": state,
             "created": False,
+            "slack_username": username,
+            "slack_display_name": display,
         }
 
     if not estelle_in_play:
@@ -547,6 +587,8 @@ def resolve_slack_user(
             "astral_candidate_id": None,
             "state": None,
             "created": False,
+            "slack_username": "",
+            "slack_display_name": "",
         }
 
     profile = fetch_user_profile(sid)
@@ -559,10 +601,14 @@ def resolve_slack_user(
     first = str(profile.get("first") or "").strip()
     last = str(profile.get("last") or "").strip()
     display = str(profile.get("display_name") or "").strip()
+    username = str(profile.get("username") or "").strip()
     if not first and not last and display:
         first = display
     candidate_data = {
-        "contact": {"slack_user_id": sid},
+        "contact": {
+            "slack_user_id": sid,
+            "slack_username": username,
+        },
     }
     try:
         initiate_prospect_candidate(new_id, candidate_data, first=first, last=last)
@@ -572,10 +618,13 @@ def resolve_slack_user(
         if cid is None:
             raise
         row = get_candidate(cid)
+        uname, _ = _identity_from_contact(row)
         return {
             "astral_candidate_id": cid,
             "state": (row or {}).get("state"),
             "created": False,
+            "slack_username": uname or username,
+            "slack_display_name": display,
         }
 
     if debug:
@@ -589,11 +638,14 @@ def resolve_slack_user(
         logger.debug_detail(f"slack_user_id={sid}")
         logger.debug_detail(f"candidate_id={new_id}")
         logger.debug_detail("state=PROSPECT")
+        logger.debug_detail(f"slack_username={username!r}")
 
     return {
         "astral_candidate_id": new_id,
         "state": "PROSPECT",
         "created": True,
+        "slack_username": username,
+        "slack_display_name": display,
     }
 
 
@@ -904,23 +956,46 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         "text": text,
     }
     user = result.get("user")
+    # AST-1105: identity for activity rows (filled by resolve or fallback fetch).
+    resolved_meta = {"slack_username": None, "slack_display_name": None}
     if isinstance(user, str) and user.strip():
         try:
             resolved = resolve_slack_user(user, estelle_in_play=True, debug=debug)
             result["astral_candidate_id"] = resolved["astral_candidate_id"]
             result["candidate_state"] = resolved["state"]
             result["candidate_created"] = resolved["created"]
+            uname = resolved.get("slack_username")
+            dname = resolved.get("slack_display_name")
+            resolved_meta["slack_username"] = (
+                uname if isinstance(uname, str) and uname.strip() else None
+            )
+            resolved_meta["slack_display_name"] = (
+                dname if isinstance(dname, str) and dname.strip() else None
+            )
         except Exception as exc:
             log.error("contact resolve_slack_user failed: %s", exc, exc_info=True)
             result["astral_candidate_id"] = None
             result["candidate_state"] = None
             result["candidate_created"] = False
             result["resolve_error"] = str(exc)
+            # Activity names only — do not create candidate here.
+            try:
+                profile = fetch_user_profile(user.strip())
+                uname = str(profile.get("username") or "").strip()
+                dname = str(profile.get("display_name") or "").strip()
+                resolved_meta["slack_username"] = uname or None
+                resolved_meta["slack_display_name"] = dname or None
+            except Exception as fetch_exc:
+                log.error(
+                    "contact activity identity fetch failed: %s",
+                    fetch_exc,
+                    exc_info=True,
+                )
     else:
         result["astral_candidate_id"] = None
         result["candidate_state"] = None
         result["candidate_created"] = False
-    # AST-1094: durable activity summary for Manage Slack (not conversation SoT).
+    # AST-1094 / AST-1105: durable activity summary for Manage Slack (not conversation SoT).
     user_for_activity = user if isinstance(user, str) and user.strip() else None
     if user_for_activity is not None:
         bind_ok = isinstance(result.get("astral_candidate_id"), str) and bool(
@@ -940,6 +1015,8 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                 else None,
                 last_channel=channel if isinstance(channel, str) else None,
                 last_message_ts=msg_ts if isinstance(msg_ts, str) else None,
+                slack_username=resolved_meta.get("slack_username"),
+                slack_display_name=resolved_meta.get("slack_display_name"),
             )
             if debug:
                 log.debug_index(

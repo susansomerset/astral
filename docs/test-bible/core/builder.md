@@ -385,23 +385,3 @@ Equivalent harness:
 ### AST-1014 · AST-952
 
 `_apply_contact_to_render_dict` + `_coerce_candidate_blob` `_first`/`_last`/`_full`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestAst1014BuilderContact`**, revised **`TestBuilderHelpers`**.
-
-### AST-1100 · AST-1091
-
-**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
-
-`_resolve_resume_sections` / `_resolve_cover_letter` resolve pin strings via `resolve_job_artifact_agent_data_body` when legacy body dicts are absent.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Pin → HTML body | `src/core/builder.py` | **`TestAst1100BuilderPinResolve`** |
-
-**Broken / obsolete:** none.
-
-**Integration:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_builder.py::TestAst1100BuilderPinResolve \
-  -q
-```
