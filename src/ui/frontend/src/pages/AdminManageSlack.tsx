@@ -10,6 +10,8 @@ type ListenState = {
 
 type EstelleActivityRow = {
   slack_user_id: string
+  slack_username: string | null
+  slack_display_name: string | null
   bind_ok: boolean
   astral_candidate_id: string | null
   candidate_state: string | null
@@ -71,6 +73,10 @@ export default function AdminManageSlack() {
           setActivity(
             users.map((u: Record<string, unknown>) => ({
               slack_user_id: typeof u.slack_user_id === "string" ? u.slack_user_id : "",
+              slack_username:
+                typeof u.slack_username === "string" ? u.slack_username : null,
+              slack_display_name:
+                typeof u.slack_display_name === "string" ? u.slack_display_name : null,
               bind_ok: Boolean(u.bind_ok),
               astral_candidate_id:
                 typeof u.astral_candidate_id === "string" ? u.astral_candidate_id : null,
@@ -185,6 +191,8 @@ export default function AdminManageSlack() {
               <thead>
                 <tr>
                   <th>Slack user</th>
+                  <th>Username</th>
+                  <th>Display</th>
                   <th>Bind</th>
                   <th>Candidate</th>
                   <th>Messages</th>
@@ -196,6 +204,8 @@ export default function AdminManageSlack() {
                 {activity.map(row => (
                   <tr key={row.slack_user_id}>
                     <td>{row.slack_user_id}</td>
+                    <td>{row.slack_username || "—"}</td>
+                    <td>{row.slack_display_name || "—"}</td>
                     <td>{row.bind_ok ? "ok" : "fail"}</td>
                     <td>{row.astral_candidate_id || "—"}</td>
                     <td>{row.inbound_message_count}</td>
@@ -205,7 +215,7 @@ export default function AdminManageSlack() {
                 ))}
                 {activity.length === 0 && (
                   <tr>
-                    <td colSpan={6}>No @Estelle users recorded yet.</td>
+                    <td colSpan={8}>No @Estelle users recorded yet.</td>
                   </tr>
                 )}
               </tbody>
