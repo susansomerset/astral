@@ -1243,3 +1243,32 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
   ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx
 ```
+
+
+---
+
+### AST-1082 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav`.
+
+Candidate Profile (§6c): `editValuesFromCandidate` always includes top-level `full` and normalizes `contact.websites` to `string[]` on load/post-Save remap; PUT body has columns + `contact.*` (never `profile`); shapes labels GitHub/LinkedIn username-or-URL; Title Patterns tab stays on Profile. Nav/route hygiene: **`docs/test-bible/utils/config.md`**, **`test_routes.test.tsx`**. Shapes/`string_list`/empty-full coerce = **AST-1081**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile load/save `full` + websites (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile AST-1082 contact manage`** |
+| Labels + Candidate NAV omit Title Patterns | `src/utils/config.py` | **`TestAst1082ProfileContactLabelsNav`** (map: **`docs/test-bible/utils/config.md`**) |
+| Route absent | `routes.tsx` | existing **`test_routes.test.tsx`** (`candidate/title_patterns` false) |
+
+**Broken / obsolete:** Profile GET mock omitted top-level `full` — revised in-place so load maps `c.full`. No product assertion breakage from AST-1014 Profile cases.
+
+**Integration:** no existing Profile contact round-trip scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1082ProfileContactLabelsNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+```

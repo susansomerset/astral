@@ -552,3 +552,23 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx
 ```
+
+
+---
+
+### AST-1081 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1081-contact-shapes-websites-full`.
+
+FormFields `string_list`: ordered text inputs + Remove + Add (label `Add`); value round-trips as `string[]`; non-array → `[]`. Profile page host = **AST-1082** (§6c page tests there). Core/config: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| string_list Add / edit / Remove / non-array | `FormFields.tsx` | **`test_FormFields.test.tsx`** — **`FormFields string_list (AST-1081)`** |
+
+**Broken / obsolete:** none — additive field type.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_FormFields.test.tsx
+```
