@@ -3136,3 +3136,44 @@ class TestAst1084EvaluateJdCriteria:
         for letter, desc in by_grade.items():
             assert f"{letter} = {desc}" in gc["content"]
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
+
+
+# Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
+@pytest.mark.skipif(
+    "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1089 parse_meteorite_email TASK_CONFIG not on this publish tip",
+)
+class TestAst1089ParseMeteoriteEmailConfig:
+    """AST-1089: Ruth email-HTML parse config — not a dispatch claim task."""
+
+    def test_parse_config_and_task_shell(self) -> None:
+        parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
+        assert parse_cfg["task_key"] == "parse_meteorite_email"
+        assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
+
+        tc = cfg.TASK_CONFIG["parse_meteorite_email"]
+        assert tc["scored"] is False
+        assert tc["output_type"] == "fields"
+        assert tc["response_format"] == "json"
+        assert tc["agent_task"] == "parse_meteorite_email"
+        assert tc["entity_type"] is None
+        assert tc["requires_candidate_key"] is True
+        assert tc["trigger_state"] is None
+        assert "pass_state" not in tc
+        assert "fail_state" not in tc
+        assert "error_state" not in tc
+
+        schema = tc["response_schema"]
+        assert schema["parse_mode"]["required"] is True
+        assert schema["jobs"]["required"] is True
+        assert schema["jobs"]["items_schema"]["job_link"]["required"] is True
+        assert schema["jd_link"]["required"] is False
+        assert schema["content_text"]["required"] is False
+
+    def test_not_a_meteorite_dispatch_claim(self) -> None:
+        assert all(
+            e["task_key"] != "parse_meteorite_email" for e in cfg.METEORITE_DISPATCH_TASKS
+        )
+        assert "parse_meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        with pytest.raises(KeyError, match="parse_meteorite_email"):
+            cfg._dispatch_trigger_state_for_task_key("parse_meteorite_email")
