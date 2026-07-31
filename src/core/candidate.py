@@ -43,6 +43,7 @@ from src.utils.config import (
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
+    EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -120,7 +121,8 @@ def _uniqueness_compare_token(raw: Any, mode: str) -> str:
 def _iter_uniqueness_path_values(source: Dict[str, Any], dotted_path: str) -> list:
     """Raw stripped string values for one uniqueness path (scalar or list)."""
     cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
-    if dotted_path in cfg["list_paths"]:
+    # List-valued: non-email list_paths + email_list_paths (shared email pool).
+    if dotted_path in cfg["list_paths"] or dotted_path in cfg["email_list_paths"]:
         parts = dotted_path.split(".")
         cur: Any = source.get("candidate_data") or {}
         if not isinstance(cur, dict):
@@ -146,8 +148,10 @@ def _collect_uniqueness_tokens_from_candidate(candidate: Dict[str, Any]) -> list
     cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
     compare = cfg["compare"]
     out: list = []
+    # Email pool first (scalars then list emails), then other identity groups.
     groups = (
         (cfg["email_paths"], compare["email"]),
+        (cfg["email_list_paths"], compare["email"]),
         (cfg["scalar_paths"], compare["scalar"]),
         (cfg["list_paths"], compare["list"]),
         (cfg["slack_user_id_paths"], compare["slack_user_id"]),
@@ -166,6 +170,33 @@ def _collect_uniqueness_tokens_from_contact(contact: Dict[str, Any]) -> list:
     return _collect_uniqueness_tokens_from_candidate(
         {"candidate_data": {"contact": contact}}
     )
+
+
+def _dedupe_contact_list_path(
+    contact: dict, path: str, mode: str, seen: set, notes: list
+) -> None:
+    """Keep-first rebuild for one contact.* list uniqueness path."""
+    if not path.startswith("contact."):
+        return
+    key = path.split(".", 1)[1]
+    raw_list = contact.get(key)
+    if not isinstance(raw_list, list):
+        return
+    kept: list = []
+    for item in raw_list:
+        if not isinstance(item, str):
+            kept.append(item)
+            continue
+        tok = _uniqueness_compare_token(item, mode)
+        if not tok:
+            kept.append(item)
+            continue
+        if tok in seen:
+            notes.append(f"removed duplicate from {path}")
+            continue
+        seen.add(tok)
+        kept.append(item)
+    contact[key] = kept
 
 
 def _dedupe_contact_within(contact: dict) -> list:
@@ -194,30 +225,11 @@ def _dedupe_contact_within(contact: dict) -> list:
                 notes.append(f"cleared {path} (duplicate)")
             else:
                 seen.add(tok)
-    # List paths (websites): keep first unique entries; drop tokens already seen.
+    # Email list paths (extra_emails) then non-email lists (websites).
+    for path in cfg["email_list_paths"]:
+        _dedupe_contact_list_path(contact, path, compare["email"], seen, notes)
     for path in cfg["list_paths"]:
-        if not path.startswith("contact."):
-            continue
-        key = path.split(".", 1)[1]
-        mode = compare["list"]
-        raw_list = contact.get(key)
-        if not isinstance(raw_list, list):
-            continue
-        kept: list = []
-        for item in raw_list:
-            if not isinstance(item, str):
-                kept.append(item)
-                continue
-            tok = _uniqueness_compare_token(item, mode)
-            if not tok:
-                kept.append(item)
-                continue
-            if tok in seen:
-                notes.append(f"removed duplicate from {path}")
-                continue
-            seen.add(tok)
-            kept.append(item)
-        contact[key] = kept
+        _dedupe_contact_list_path(contact, path, compare["list"], seen, notes)
     return notes
 
 
@@ -234,6 +246,7 @@ def _find_cross_candidate_contact_collision(
     display_by_path: Dict[str, str] = {}
     for path in (
         tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"])
         + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"])
         + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
         + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"])
@@ -255,6 +268,22 @@ def _find_cross_candidate_contact_collision(
             display = display_by_path.get(path) or tok
             return (display, path, other_id)
     return None
+
+
+def _coerce_contact_string_lists(contact: dict) -> None:
+    """Trim websites / extra_emails lists in place (AST-1081 / AST-1092 / AST-1095)."""
+    for list_key in ("websites", "extra_emails"):
+        if list_key not in contact:
+            continue
+        raw_list = contact[list_key]
+        if raw_list is None:
+            contact[list_key] = []
+        elif isinstance(raw_list, list):
+            contact[list_key] = [
+                str(x).strip() for x in raw_list if str(x).strip()
+            ]
+        else:
+            raise ValueError(f"contact.{list_key} must be a list of strings")
 
 
 def _enforce_contact_uniqueness(
@@ -449,6 +478,7 @@ def initiate_candidate(
         raise ValueError("profile was renamed to contact; refuse shadow write")
     contact = cd.get("contact")
     if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
     first_v = "" if first is None else str(first)
@@ -489,6 +519,7 @@ def initiate_prospect_candidate(
         raise ValueError("profile was renamed to contact; refuse shadow write")
     contact = cd.get("contact")
     if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
     first_v = "" if first is None else str(first)
@@ -529,13 +560,21 @@ def save_candidate_data(
         else:
             blob[key] = val
 
-    if "first" in col_kwargs or "last" in col_kwargs:
-        if "full" not in col_kwargs:
-            # Merge with existing columns when only one side provided
+    # Empty/whitespace full → library join; omit full when first/last change → same
+    if "full" in col_kwargs:
+        full_stripped = str(col_kwargs["full"]).strip()
+        if not full_stripped:
             existing = database.get_candidate(candidate_id) or {}
             first = col_kwargs.get("first", existing.get("first") or "")
             last = col_kwargs.get("last", existing.get("last") or "")
             col_kwargs["full"] = recompute_full_name(str(first), str(last))
+        else:
+            col_kwargs["full"] = full_stripped
+    elif "first" in col_kwargs or "last" in col_kwargs:
+        existing = database.get_candidate(candidate_id) or {}
+        first = col_kwargs.get("first", existing.get("first") or "")
+        last = col_kwargs.get("last", existing.get("last") or "")
+        col_kwargs["full"] = recompute_full_name(str(first), str(last))
 
     if "pronouns" in col_kwargs:
         pref = (col_kwargs["pronouns"] or "").strip()
@@ -544,6 +583,8 @@ def save_candidate_data(
 
     contact = blob.get("contact")
     if isinstance(contact, dict):
+        # Coerce websites / extra_emails (AST-1081 / AST-1092 / AST-1095).
+        _coerce_contact_string_lists(contact)
         normalize_contact_urls(contact)
         # Proposed contact after merge (merge=True) or replace payload (merge=False).
         if not replace:
@@ -865,6 +906,22 @@ def _rubric_rows_to_criteria(rows: list) -> list:
     return out
 
 
+def _merge_embedded_evaluate_jd_criteria(criteria: list) -> list:
+    """Append EMBEDDED_EVALUATE_JD_CRITERIA; embedded wins on duplicate code (AST-1085)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_EVALUATE_JD_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    head = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return head + list(EMBEDDED_EVALUATE_JD_CRITERIA)
+
+
 def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
     if not candidate_id or not owner_task_key:
@@ -883,6 +940,8 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+    if owner_task_key == "evaluate_jd":
+        return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
 
@@ -908,6 +967,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
             raise ValueError(f"No rubric owner task_key for artifact {key!r}")
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
+        # AST-1085: restore QC/GC on save (append; embedded wins on code).
+        if owner == "evaluate_jd":
+            val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 
@@ -1072,12 +1134,20 @@ def get_candidate_id_for_query(
         + tuple(CANDIDATE_LOOKUP_CONFIG["name_paths"])
         + tuple(CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"])
     )
+    # List-valued binding emails only — do not walk all uniqueness list_paths
+    # (that would treat contact.websites as bind emails).
+    email_list_paths = tuple(CANDIDATE_LOOKUP_CONFIG["email_list_paths"])
     for candidate in list_candidates(include_deleted=False):
         values = []
         for path in paths:
             v = _lookup_path_value(candidate, path)
             if v:
                 values.append(v.casefold() if casefold else v)
+        for list_path in email_list_paths:
+            for raw in _iter_uniqueness_path_values(candidate, list_path):
+                if not isinstance(raw, str) or not raw.strip():
+                    continue
+                values.append(raw.casefold() if casefold else raw.strip())
         if needle_cmp not in values:
             continue
         cid = (candidate.get("astral_candidate_id") or "").strip()
@@ -1993,6 +2063,9 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         criteria = parsed.get("criteria")
         if not isinstance(criteria, list) or len(criteria) == 0:
             raise ValueError(f"{task_key} returned no criteria")
+        # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
+        if artifact_key == "jobdesc_rubric":
+            criteria = _merge_embedded_evaluate_jd_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
         apply_rubric_vectors_save(candidate_id, arts)
@@ -2385,6 +2458,12 @@ def run_candidate_artifact_generation(
                     },
                     500,
                 )
+            # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
+            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
             if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
             ):
