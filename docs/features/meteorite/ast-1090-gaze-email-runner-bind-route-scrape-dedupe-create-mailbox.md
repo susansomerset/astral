@@ -326,3 +326,31 @@ return {
 | 1 | `a5581978` | GAZE_EMAIL_CONFIG runner literals + per-cand link helper + internalDate |
 | 2 | `88f96e2b` | due-task + `_dispatch_one` gaze_email wiring + stub |
 | 3 | `0966f52b` | gaze_email runner bind/route/Ruth/scrape/dedupe/mailbox + Style D |
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1090
+**Publish ref tip (at review):** `cb049bd47bf31da0a90865dfecc685bbecd0d97a`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stages 1–3 match plan: runner literals + per-cand `job_link_exists_for_candidate` + `internalDate`; due/`_dispatch_one` gaze special-case (`available_count=1` via freq); bind/route/Ruth/`create_meteorite_job`/archive-trash + Style D gated on `debug=True`.
+- No qualify/GDL; no global AST-1061 `job_link_exists` on this path; archive on create or all-skip.
+- Betty `test` + one `merge-tests(AST-1090)` SHA on the sub.
+
+### Issues
+
+**discuss (straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; three-dot tip includes `docs/features/**` + Betty test-tree so sweep scores them in-scope (all still **conforms**).
+
+**advisory:** `from src.core.gaze_email import run_gaze_email` inside `_dispatch_one` has no lazy-import comment; matches other late imports in the same file. Stale ensure docstring still says runner unwired (AST-1088 text).
+
+### Recommended actions
+
+None for fix-now.
+
+### Statutes checked (summary)
+
+56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1090-…`. No violates. Full table in Linear review comment.
