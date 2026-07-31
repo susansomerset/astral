@@ -222,3 +222,12 @@ Sticky listen hydrate removed; daemon thread failures logged; hear-ack is fallba
 
 no plan-rubric verdict attached
 
+## Resolution
+
+**Date:** 2026-07-31  
+**Review tip:** `f695eea8` (`docs(AST-1101): Radia review — clean`)  
+**Overall:** CLEAN — **no fix-now**
+
+- Acknowledged Radia **CLEAN** (`[code-rubric] revision=1`): Findings none; Stages 1–2 match plan; sibling boundaries held.
+- No product or plan ACL changes in resolve.
+
