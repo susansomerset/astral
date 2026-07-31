@@ -121,3 +121,8 @@ No other files. Do not import or reference the new constant from core/UI/data in
 - §1.3 DRY — no second embedding mechanism; sibling reuses this constant.
 - §3.3 imports — this ticket adds no new cross-layer imports.
 - In-scope only — no evaluate_jd hydration, restore-on-delete, or other rubric owners.
+
+## Review
+
+- **Commit:** `29d55902`
+- **Branch:** `sub/AST-1077/AST-1084-config-constant-jd-vectors`
