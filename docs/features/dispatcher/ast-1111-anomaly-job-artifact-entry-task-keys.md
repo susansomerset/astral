@@ -96,3 +96,16 @@ Delete the config shadow `JOB_ARTIFACT_ENTRY_TASK_KEYS` and its wrapper `build_a
 - Betty owns test/bible retirement of frozenset asserts; engineer Stage 1 is `config.py` only.
 
 **Discuss (C4 stragglers)** — Joan excluded many scoped statutes via plan `change_types={delete}`; three-dot git status is `modify`/`add`, so they are in-scope here (scores themselves `conforms`). See Linear comment for the full list.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `b308809f` (`docs(AST-1111): Radia review — findings`)
+
+Radia overall **DISCUSS** — no fix-now product or plan-doc edits. Deliverable statutes all **conforms**.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss (Joan Excluded C4 stragglers on three-dot tip; full list in Radia Linear comment) | Accepted as non-blocking; each scored **conforms** in Radia’s sweep; no product change. Files Changed left as engineer delete-only `config.py` (Betty bible/tests stay Betty-owned). |
+
+No product commits on this resolve pass.
