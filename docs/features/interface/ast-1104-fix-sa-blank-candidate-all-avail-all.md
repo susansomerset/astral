@@ -171,3 +171,11 @@ Stage 1 pinned Branch A (`fmtTime` RangeError on invalid `timeZone`). Stage 2: `
 
 - Engineer: acknowledge C4 stragglers; no `fmt.ts` change expected. Proceed `resolve-child` → User Testing when clear.
 
+## Resolution
+
+**2026-07-31** — Radia `[code-rubric] revision=1` Overall DISCUSS; **fix-now: none**.
+
+- Acknowledged C4 stragglers (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`): Joan Excluded at plan time; three-dot scored **conforms**; no product change.
+- No `fmt.ts` / Branch B/C edits on resolve.
+- Merged `origin/dev` onto sub (mechanical keep-both in `tests/component/core/test_agent.py` for AST-1099 + AST-1083 classes).
+
