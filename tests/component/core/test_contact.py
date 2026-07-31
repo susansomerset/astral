@@ -365,13 +365,43 @@ class TestAst1068ResolveSlackUser:
     def test_resolve_found(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value="c1"))
         monkeypatch.setattr(
-            contact_mod, "get_candidate", MagicMock(return_value={"state": "INTAKE_INITIATED"})
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "state": "INTAKE_INITIATED",
+                    "candidate_data": {"contact": {"slack_user_id": "U1", "slack_username": "ada"}},
+                }
+            ),
         )
         create = MagicMock()
         monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
+        # AST-1105 found path always calls users.info for display / backfill check.
+        monkeypatch.setattr(
+            contact_mod,
+            "fetch_user_profile",
+            MagicMock(
+                return_value={
+                    "slack_user_id": "U1",
+                    "username": "ada",
+                    "display_name": "Ada",
+                    "first": "Ada",
+                    "last": "L",
+                }
+            ),
+        )
+        save = MagicMock()
+        monkeypatch.setattr(contact_mod, "save_candidate_data", save)
         out = contact_mod.resolve_slack_user("U1", estelle_in_play=True)
-        assert out == {"astral_candidate_id": "c1", "state": "INTAKE_INITIATED", "created": False}
+        assert out == {
+            "astral_candidate_id": "c1",
+            "state": "INTAKE_INITIATED",
+            "created": False,
+            "slack_username": "ada",
+            "slack_display_name": "Ada",
+        }
         create.assert_not_called()
+        save.assert_not_called()
 
     def test_resolve_miss_without_estelle_does_not_create(
         self, monkeypatch: pytest.MonkeyPatch
@@ -382,7 +412,13 @@ class TestAst1068ResolveSlackUser:
         fetch = MagicMock()
         monkeypatch.setattr(contact_mod, "fetch_user_profile", fetch)
         out = contact_mod.resolve_slack_user("Umiss", estelle_in_play=False)
-        assert out == {"astral_candidate_id": None, "state": None, "created": False}
+        assert out == {
+            "astral_candidate_id": None,
+            "state": None,
+            "created": False,
+            "slack_username": "",
+            "slack_display_name": "",
+        }
         create.assert_not_called()
         fetch.assert_not_called()
 
@@ -397,6 +433,7 @@ class TestAst1068ResolveSlackUser:
                     "first": "Ada",
                     "last": "L",
                     "display_name": "ada",
+                    "username": "ada.lovelace",
                 }
             ),
         )
@@ -406,9 +443,13 @@ class TestAst1068ResolveSlackUser:
         assert out["created"] is True
         assert out["state"] == "PROSPECT"
         assert out["astral_candidate_id"] == "slack-unew"
+        assert out["slack_username"] == "ada.lovelace"
+        assert out["slack_display_name"] == "ada"
         create.assert_called_once()
         assert create.call_args.args[0] == "slack-unew"
-        assert create.call_args.args[1] == {"contact": {"slack_user_id": "Unew"}}
+        assert create.call_args.args[1] == {
+            "contact": {"slack_user_id": "Unew", "slack_username": "ada.lovelace"}
+        }
         assert create.call_args.kwargs.get("first") == "Ada"
         assert create.call_args.kwargs.get("last") == "L"
 
@@ -423,13 +464,16 @@ class TestAst1068ResolveSlackUser:
                     "first": "",
                     "last": "",
                     "display_name": "OnlyDisplay",
+                    "username": "onlydisplay",
                 }
             ),
         )
         create = MagicMock()
         monkeypatch.setattr(contact_mod, "initiate_prospect_candidate", create)
         contact_mod.resolve_slack_user("Ux", estelle_in_play=True)
-        assert create.call_args.args[1] == {"contact": {"slack_user_id": "Ux"}}
+        assert create.call_args.args[1] == {
+            "contact": {"slack_user_id": "Ux", "slack_username": "onlydisplay"}
+        }
         assert create.call_args.kwargs.get("first") == "OnlyDisplay"
         assert create.call_args.kwargs.get("last") == ""
 
@@ -1057,4 +1101,88 @@ class TestAst1101ChannelHearEvidence:
             contact_mod._run_handle_slack_event_background({"event_id": "Ev-x"}, False)
         assert "handle_slack_event background failed" in caplog.text
         assert "boom" in caplog.text
+
+
+# Branches: username backfill on match; activity gets identity (AST-1105).
+class TestAst1105SlackUsernameDisplay:
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_resolve_backfills_missing_username(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_mod, "get_candidate_id_for_query", MagicMock(return_value="c1"))
+        monkeypatch.setattr(
+            contact_mod,
+            "get_candidate",
+            MagicMock(
+                return_value={
+                    "state": "PROSPECT",
+                    "candidate_data": {"contact": {"slack_user_id": "U1"}},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            contact_mod,
+            "fetch_user_profile",
+            MagicMock(
+                return_value={
+                    "slack_user_id": "U1",
+                    "username": "backfilled",
+                    "display_name": "BF",
+                    "first": "",
+                    "last": "",
+                }
+            ),
+        )
+        save = MagicMock()
+        monkeypatch.setattr(contact_mod, "save_candidate_data", save)
+        out = contact_mod.resolve_slack_user("U1", estelle_in_play=True)
+        assert out["slack_username"] == "backfilled"
+        assert out["slack_display_name"] == "BF"
+        assert out["created"] is False
+        save.assert_called_once()
+        assert save.call_args.args[0] == "c1"
+        assert save.call_args.args[1] == {
+            "contact": {"slack_user_id": "U1", "slack_username": "backfilled"}
+        }
+
+    def test_handle_records_activity_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "state": "PROSPECT",
+                    "created": False,
+                    "slack_username": "ada",
+                    "slack_display_name": "Ada L",
+                }
+            ),
+        )
+        _stub_estelle_turn(monkeypatch)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-1105",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U-1105",
+                    "channel": "C-1105",
+                    "ts": "1.1",
+                    "text": "<@BOT> hi",
+                },
+            },
+        )
+        assert out["accepted"] is True
+        row = contact_mod.list_estelle_activity()[0]
+        assert row["slack_user_id"] == "U-1105"
+        assert row["slack_username"] == "ada"
+        assert row["slack_display_name"] == "Ada L"
 

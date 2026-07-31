@@ -1339,3 +1339,22 @@ Candidate Profile (§6c): Resume/Messages labels; `extra_emails` normalize to `s
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
 ```
+
+### AST-1105 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`.
+
+Manage Slack activity table: **Username** + **Display** columns (`—` when null).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Username/Display columns (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** |
+
+**Broken / obsolete:** AST-1094 activity mock without identity — revised.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+

@@ -81,3 +81,38 @@ class TestAst1094EstelleActivityData:
                 last_channel=None,
                 last_message_ts=None,
             )
+
+
+# Branches: persist username/display; preserve prior when None (AST-1105).
+class TestAst1105ActivityIdentity:
+    def test_record_stores_and_preserves_identity(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        r1 = act_mod.record_estelle_activity(
+            slack_user_id="U1",
+            bind_ok=True,
+            astral_candidate_id="c1",
+            candidate_state="PROSPECT",
+            last_channel="C1",
+            last_message_ts="100.0",
+            slack_username="ada",
+            slack_display_name="Ada L",
+        )
+        assert r1["slack_username"] == "ada"
+        assert r1["slack_display_name"] == "Ada L"
+        r2 = act_mod.record_estelle_activity(
+            slack_user_id="U1",
+            bind_ok=True,
+            astral_candidate_id="c1",
+            candidate_state="PROSPECT",
+            last_channel="C2",
+            last_message_ts="200.0",
+            slack_username=None,
+            slack_display_name=None,
+        )
+        assert r2["inbound_message_count"] == 2
+        assert r2["slack_username"] == "ada"
+        assert r2["slack_display_name"] == "Ada L"
+        assert r2["last_channel"] == "C2"
+
