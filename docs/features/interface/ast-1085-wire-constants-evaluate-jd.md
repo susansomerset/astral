@@ -139,3 +139,12 @@ No `config.py` edits (definitions are AST-1084). No `consult.py` / dispatcher / 
 
 **Recommended actions**
 - resolve-child: acknowledge stragglers; no src change required.
+
+## Resolution
+
+**2026-07-31 — resolve-child (Ada)**
+
+- **fix-now:** none.
+- **discuss (stragglers):** acknowledged — `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.utils-data-late-import-only`, and `astral.ui.single-gunicorn-worker` were Joan-Excluded against plan Files Changed `{core}` but appear on the three-dot diff once plan + Betty test-tree + AST-1084 config landed. All six scored **conforms** in Radia's review; no product or plan change.
+- **advisory:** craft persist + `apply_rubric_vectors_save` double-merge is idempotent — left as-is (helper is safe to call twice).
+- **src:** no change this pass (`889a68d7` already matches Stages 1–2).
