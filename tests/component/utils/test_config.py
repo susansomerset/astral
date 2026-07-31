@@ -3338,3 +3338,23 @@ class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
         assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")
+
+
+class TestAst1099JobArtifactAgentDataPinConfig:
+    """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
+
+    def test_pin_by_task_map(self) -> None:
+        assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
+            "finalize_job_resume": "job_resume",
+            "finalize_cover_letter": "cover_letter",
+            "propose_application_responses": "proposed_answers",
+        }
+
+    def test_clear_keys_include_pin_slots(self) -> None:
+        keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "job_resume" in keys
+        assert "proposed_answers" in keys
+        assert "cover_letter" in keys
+        # Legacy body keys remain for cancel of older rows / manual PUTs.
+        assert "resume_content" in keys
+        assert "application_responses" in keys

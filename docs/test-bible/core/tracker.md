@@ -154,3 +154,27 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
   tests/component/core/test_tracker.py::TestAst997ExperienceJobArrayPersist \
   -q
 ```
+
+
+---
+
+### AST-1099 · AST-1091
+
+**Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
+
+`pin_job_artifact_agent_data_id` merges a non-empty RESPONSE `agent_data_id` into `job_data.artifacts[<slot>]` (pointer only). Blank/missing id or job/key skips write (coat-check). Style D `artifact_pin … recorded|skipped` when `debug=True`. Cancel clear removes pin slots via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pin helper + never-store-empty + debug | `src/core/tracker.py` | **`TestAst1099PinJobArtifactAgentDataId`** |
+| Cancel clears pin slots | `src/core/tracker.py` | **`TestAst1099PinJobArtifactAgentDataId::test_clear_job_build_artifacts_removes_pin_slots`** |
+
+**Broken / obsolete:** none — `persist_job_artifact_from_parsed` remains for manual/API callers; `do_task` no longer body-copies finalize hops (see **`docs/test-bible/core/agent.md`**).
+
+**Integration:** none — do not invent new integration coverage (JAR resolve = AST-1100).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1099PinJobArtifactAgentDataId \
+  -q
+```
