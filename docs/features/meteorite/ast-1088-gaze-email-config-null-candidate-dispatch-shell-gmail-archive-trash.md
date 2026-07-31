@@ -251,3 +251,17 @@ None for fix-now. Straggler discuss needs no product change unless resolve wants
 ### Statutes checked (summary)
 
 56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1088-…`. No violates. Full table in Linear review comment.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `9abf9309` (`docs(AST-1088): Radia review — CLEAN with Joan straggler discuss`)
+
+Radia overall **CLEAN** — no fix-now product or plan-doc edits.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss (Joan Excluded stragglers on three-dot tip) | Accepted as non-blocking; statutes still **conforms**; no product change |
+| advisory (AST-1089 via ftr merge on three-dot) | Noted as expected epic lineage; no scope change on this child |
+
+No product commits on this resolve pass.
