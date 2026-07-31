@@ -194,3 +194,17 @@ Exact insertion: after `{"key": "full", ...}` and before `contact.contact_email`
 - Events verify/ack, listen switch, Estelle turn envelope
 - Adding slack_username to Contact skill ACL write paths
 - Backfilling all historical activity rows via Slack history APIs (next @Estelle fills names)
+
+---
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` |
+| Tip | (set after push) |
+| Branch | `sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` |
+
+Stages 1–5 landed: `fetch_user_profile.username`, activity identity fields, resolve persist/backfill + activity wiring, Profile Slack fields, Manage Slack Username/Display columns.
+
