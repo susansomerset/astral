@@ -175,3 +175,12 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 context_tokens≈45000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `8a94d00b` (Radia `docs(AST-1100)` on merge-tests `7eb0759b` / code `b6be8d5e`)
+
+- **fix-now:** none — Radia overall DISCUSS with no product fix-now.
+- **discuss (C4 straggler):** Acknowledged. Joan’s excluded `astral.docs.features-single-file-per-ticket` / `astral.debug.spikes-under-debug-dir` are in-scope on the ticket diff and both **conform**; no product change.
+- **advisory:** Human PUT may replace pin string with body dict — left as planned Medium risk; no code change.
