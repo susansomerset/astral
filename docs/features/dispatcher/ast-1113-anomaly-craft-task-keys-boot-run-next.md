@@ -104,3 +104,14 @@ Expected chain (former `craft_task_keys` order → terminal empty):
 - **§3.3 / layers:** `suppress_run_next` stays in agent; persist stays in candidate; SQL in data.
 - **Betty test-tree ban:** Engineer does not edit `tests/` / bible.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`
+**Tip:** `978103de`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `56a9635d` | craft entry key only — drop craft_task_keys list |
+| 2 | `b511d46b` | walk craft run_next with suppress_run_next |
+| 3 | `978103de` | boot craft run_next chain + admin JSON |
