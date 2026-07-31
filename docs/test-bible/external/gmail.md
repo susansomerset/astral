@@ -49,3 +49,27 @@ Dual-scope OAuth (`gmail.send` + `gmail.readonly`) on shared credentials; `list_
 **Broken / obsolete:** exact-equality asserts on `{id, html_body}` only — revised to include subject/from_address.
 
 **Integration:** none.
+
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+Sole OAuth scope `gmail.modify` (replaces send+readonly pair). Public `archive_message` (remove `INBOX`) + `trash_message` (Trash, not permanent delete); both gate via `require_controlled_external_io` and raise on API failure. Config / provision: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Modify-only scopes | `src/external/gmail.py` | revised **`TestSendEmail::test_send_email_uses_modify_gmail_scope`** (was dual-scope) |
+| Archive + trash + raise | `src/external/gmail.py` | **`TestAst1088ArchiveTrash`** |
+| Controlled I/O gate | `src/external/gmail.py` | revised **`TestControlledExternalIo`** (archive/trash blocked) |
+
+**Broken / obsolete:** **`test_send_email_uses_dual_gmail_scopes`** — dual-scope asserts superseded by sole `gmail.modify`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_gmail.py \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.

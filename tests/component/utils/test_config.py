@@ -3138,6 +3138,49 @@ class TestAst1084EvaluateJdCriteria:
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
 
 
+# Branches: GAZE_EMAIL_CONFIG + gaze_email TASK_CONFIG shell + admin defaults (AST-1088).
+@pytest.mark.skipif(
+    not hasattr(cfg, "GAZE_EMAIL_CONFIG"),
+    reason="AST-1088 GAZE_EMAIL_CONFIG not on this publish tip",
+)
+class TestAst1088GazeEmailConfig:
+    """AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id)."""
+
+    def test_gaze_email_config_and_task_shell(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert g["task_key"] == "gaze_email"
+        assert g["account_address"] == "astral.career.match@gmail.com"
+        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        assert g["auto_mode"] is True
+        assert g["min_count"] == 1
+        assert g["batch_size"] == 1
+        assert g["freq_hrs"] == 0
+        assert g["entity_type"] is None
+        assert g["trigger_state"] is None
+
+        tc = cfg.TASK_CONFIG["gaze_email"]
+        assert tc["entity_type"] is None
+        assert tc["requires_candidate_key"] is False
+        assert tc["trigger_state"] is None
+        assert "agent_task" not in tc
+        assert "response_schema" not in tc
+
+    def test_admin_defaults_null_claim_queue(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("gaze_email")
+        assert d == {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+
+    def test_not_company_batch_or_retired(self) -> None:
+        assert "gaze_email" not in cfg._DISPATCH_COMPANY_ENTITY_TASK_KEYS
+        assert "gaze_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "gaze_email" not in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
+
+
 # Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
 @pytest.mark.skipif(
     "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
