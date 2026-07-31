@@ -141,3 +141,17 @@ Retire `BUILD_CONFIG.resume_artifact_chain.hop_task_keys` / `_RESUME_ARTIFACT_HO
 
 **Discuss (C4 stragglers)** — Joan excluded; three-dot brings in-scope (scores `conforms`): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`.
 
+## Resolution
+
+**Date:** 2026-07-31  
+**Publish tip before resolve:** `b9aee42f` (`docs(AST-1112): Radia review — findings`)
+
+Radia overall **DISCUSS** — no fix-now product or plan-doc edits. Deliverable statutes all **conforms**.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss (C4 stragglers: spikes-under-debug-dir, features-single-file-per-ticket, engineer-test-tree-ban) | Accepted as non-blocking; each scored **conforms** in Radia’s sweep; no product change. |
+| advisory (TASK_CONFIG CHAIN + ERROR_BUILD_ARTIFACTS for admin default trigger) | Accepted as plan Decision / Joan non-blocking discuss; no change. |
+
+No product commits on this resolve pass.
+
