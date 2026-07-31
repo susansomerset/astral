@@ -1639,6 +1639,26 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   -q
 ```
 
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+Extends `GAZE_EMAIL_CONFIG` with runner literals: `subject_url_schemes`, `dispatch_ledger_candidate_id`, `debug_func`. Shell keys from **AST-1088** unchanged. Primary runner: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Runner config literals | `src/utils/config.py` | **`TestAst1090GazeEmailRunnerConfig`** |
+
+**Broken / obsolete:** none — additive keys on `GAZE_EMAIL_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  -q
+```
+
 ### AST-1089 · AST-1087
 
 **Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`.

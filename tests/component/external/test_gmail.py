@@ -153,6 +153,7 @@ class TestListInboxMessages:
             "from_address": "a@x",
             "date": "Mon, 1 Jan 2026",
             "unread": True,
+            "internal_date_ms": 0,
         }
         assert rows[1]["unread"] is False
         assert rows[1]["thread_id"] == ""
@@ -179,6 +180,7 @@ class TestListInboxMessages:
                 "from_address": "",
                 "date": "",
                 "unread": False,
+                "internal_date_ms": 0,
             }
         ]
 
@@ -331,6 +333,39 @@ class TestGmailHelpers:
         assert row["id"] == ""
         assert row["thread_id"] == ""
         assert row["unread"] is False
+        assert row["internal_date_ms"] == 0
+
+
+# Branches: internalDate parse for retention age (AST-1090).
+@pytest.mark.skipif(
+    not hasattr(gmail_mod, "_internal_date_ms"),
+    reason="AST-1090 internal_date_ms not on this publish tip",
+)
+class TestAst1090InternalDateMs:
+    def test_parses_string_and_int(self) -> None:
+        assert gmail_mod._internal_date_ms({"internalDate": "1700000000000"}) == 1700000000000
+        assert gmail_mod._internal_date_ms({"internalDate": 42}) == 42
+
+    def test_missing_or_bad_yields_zero(self) -> None:
+        assert gmail_mod._internal_date_ms({}) == 0
+        assert gmail_mod._internal_date_ms({"internalDate": ""}) == 0
+        assert gmail_mod._internal_date_ms({"internalDate": "nope"}) == 0
+
+    def test_list_row_includes_internal_date(self, monkeypatch) -> None:
+        fake = _inbox_service(
+            list_pages=[{"messages": [{"id": "m1"}]}],
+            metadata_by_id={
+                "m1": {
+                    "id": "m1",
+                    "internalDate": "99",
+                    "labelIds": ["INBOX"],
+                    "payload": {"headers": []},
+                }
+            },
+        )
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        rows = gmail_mod.list_inbox_messages()
+        assert rows[0]["internal_date_ms"] == 99
 
 
 # Branches: integration harness blocks live Gmail send/list/get without live opt-in.
