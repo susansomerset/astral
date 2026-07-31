@@ -223,3 +223,31 @@ _GMAIL_SCOPES = [
 | 3 | `090c0abc` | provision null-candidate gaze_email row |
 | 4 | `7dc42f3d` | Gmail archive + trash under gmail.modify |
 | 4b | `bf172084` | sole `_GMAIL_SCOPES` = gmail.modify (Betty hold) |
+
+## Review (Radia — code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1088
+**Publish ref tip (at review):** `9e9f67c75cce0182db8c03988a97d7402bd548ae`
+**Overall:** CLEAN
+
+### What’s solid
+
+- Stages 1–4 (+4b sole `gmail.modify`) match plan: `GAZE_EMAIL_CONFIG` + shell `TASK_CONFIG`, nullable `candidate_id` + gaze-only save gate + partial unique index, startup provision, archive/trash gated and raise-on-fail (no permanent delete).
+- Due/runner still skipped for null entity/trigger/candidate — intentional until AST-1090.
+- Betty `test` + one `merge-tests(AST-1088)` SHA on the sub.
+
+### Issues
+
+**discuss (straggler):** Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`; three-dot tip includes `docs/features/**` + Betty test-tree so sweep scores them in-scope (all still **conforms**).
+
+**advisory:** Three-dot vs `origin/dev` also carries sibling AST-1089 catalog/docs via ftr merge — not AST-1088 product smuggling.
+
+### Recommended actions
+
+None for fix-now. Straggler discuss needs no product change unless resolve wants Joan re-ack.
+
+### Statutes checked (summary)
+
+56 active statutes swept vs `origin/dev...origin/sub/AST-1087/AST-1088-…`. No violates. Full table in Linear review comment.
