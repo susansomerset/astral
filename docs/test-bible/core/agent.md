@@ -542,3 +542,24 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
   tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
   -q
 ```
+
+### AST-1112 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.
+
+Primary config map: **`docs/test-bible/utils/config.md`** AST-1112. Agent surface: `_resume_artifact_parent_hop_key` deleted; `_parent_hop_task_key_for_child` is sole parent resolver (ambiguous parents → `None`); hydrate/debug no longer consult `resume_artifact_hop_task_keys`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parent via `run_next` | `src/core/agent.py` | **`TestAst597MidChainResumeHydrationAndTransitions::test_parent_hop_task_key_*`** |
+| Hydrate entry chain context | `src/core/agent.py` | revised **`test_hydrate_resume_entry_chain_context_*`** |
+
+**Broken / obsolete (Betty revision):** **`test_resume_artifact_parent_hop_key_*`**.
+
+**AST-1112** agent slice (full narrowed run in config bible):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  -q
+```

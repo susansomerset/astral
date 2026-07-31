@@ -706,6 +706,24 @@ class TestAst1111JobArtifactEntryShadowDeleted:
         assert not hasattr(cfg, "build_artifacts_chain_task_keys")
 
 
+class TestAst1112ResumeHopTaskKeysShadowDeleted:
+    """AST-1112: hop_task_keys / resume_artifact_hop_task_keys no longer chain authority."""
+
+    def test_hop_list_authority_absent(self) -> None:
+        assert not hasattr(cfg, "resume_artifact_hop_task_keys")
+        assert not hasattr(cfg, "_RESUME_ARTIFACT_HOP_TASK_KEYS")
+        assert not hasattr(cfg, "build_artifacts_claim_states")
+        assert not hasattr(cfg, "all_resume_artifact_compound_states")
+        rac = cfg.BUILD_CONFIG["resume_artifact_chain"]
+        assert "hop_task_keys" not in rac
+        assert rac.get("first_task_key") == "contemplate_job"
+
+    def test_legacy_compound_membership_via_task_config(self) -> None:
+        legacy = cfg.resume_artifact_compound_state("anticipate_scan")
+        assert cfg.legacy_build_artifacts_hop(legacy) == "anticipate_scan"
+        assert cfg.legacy_build_artifacts_hop("BUILD_ARTIFACTS.not_a_task") is None
+
+
 class TestAst848DispatchHopLabels:
     """AST-848: runtime dispatch hop labels + terminal graduation map."""
 

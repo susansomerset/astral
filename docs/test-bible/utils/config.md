@@ -1895,3 +1895,32 @@ Deletes dead `JOB_ARTIFACT_ENTRY_TASK_KEYS` and `build_artifacts_chain_task_keys
   -q
 ```
 
+### AST-1112 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.
+
+Retires `BUILD_CONFIG.resume_artifact_chain.hop_task_keys` / `_RESUME_ARTIFACT_HOP_TASK_KEYS` / `resume_artifact_hop_task_keys()` as chain-membership authority. Resume/artifact parent resolution uses `_parent_hop_task_key_for_child` (live `agent_task.run_next`). Legacy compound labels keep `TASK_CONFIG` membership via `legacy_build_artifacts_hop`. Does **not** own `JOB_ARTIFACT_ENTRY_TASK_KEYS` (**AST-1111**) or craft_task_keys / boot SQL (**AST-1113**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop-list authority absent | `src/utils/config.py` | **`TestAst1112ResumeHopTaskKeysShadowDeleted`** |
+| Parent via `run_next` (+ ambiguous → None) | `src/core/agent.py` | **`TestAst597MidChainResumeHydrationAndTransitions::test_parent_hop_task_key_*`** |
+| Hydrate uses run_next parents | `src/core/agent.py` | revised **`test_hydrate_resume_entry_chain_context_*`** (same class) |
+| Flat BUILD_ARTIFACTS + CHAIN triggers | `src/utils/config.py` | **`TestAst803FlatBuildArtifactsChainDispatch`** (unchanged surface; no hop-list helper) |
+
+**Broken / obsolete (Betty revision):** **`_resume_artifact_parent_hop_key`** tests; any assert on `resume_artifact_hop_task_keys` / `hop_task_keys` / `_RESUME_ARTIFACT_HOP_TASK_KEYS`.
+
+**Regression (required):** **AST-848** hop labels; **AST-849** claim states; **AST-855** dispatch-chain hop debug (ctx path — not config hop tuple).
+
+**AST-1112** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1112ResumeHopTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/utils/test_config.py::TestAst848DispatchHopLabels \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  -q
+```
+
