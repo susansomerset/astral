@@ -66,5 +66,5 @@ UAT Start Over posts `POST /api/candidates/{id}/intake/sessions/active/archive` 
 | -- | -- |
 | Ticket | AST-1097 |
 | Publish ref | `origin/sub/AST-1096/AST-1097-restore-archive-active-intake-api` |
-| Built |  |
+| Built | `094477b9` |
 | Notes | Stage 1 — `POST …/sessions/active/archive` in `api_intake.py`. |
