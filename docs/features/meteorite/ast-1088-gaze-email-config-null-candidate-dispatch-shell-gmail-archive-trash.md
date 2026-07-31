@@ -214,7 +214,7 @@ _GMAIL_SCOPES = [
 ## Review
 
 **Publish ref:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`
-**Tip:** `7dc42f3d` (`7dc42f3d`)
+**Tip:** `ddf97eaf`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
