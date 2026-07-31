@@ -66,6 +66,7 @@ interface DispatchTask {
   last_run_at: string | null
   updated_at: string | null
   available_count: number
+  always_visible_under_avail_gt0?: boolean
 }
 
 interface ThreadEntry {
@@ -431,7 +432,9 @@ export default function ScheduledActions() {
     if (debugFilter === "on") filtered = filtered.filter(r => !!r.debug)
     if (debugFilter === "off") filtered = filtered.filter(r => !r.debug)
     if (availGtZeroFilter === "gt0") {
-      filtered = filtered.filter(r => (r.available_count ?? 0) > 0)
+      filtered = filtered.filter(
+        r => (r.available_count ?? 0) > 0 || !!r.always_visible_under_avail_gt0,
+      )
     }
     if (freqFilter !== "") filtered = filtered.filter(r => (r.freq_hrs ?? 0) === Number(freqFilter))
     if (minCountFilter !== "") filtered = filtered.filter(r => r.min_count === Number(minCountFilter))
