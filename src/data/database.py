@@ -16,7 +16,7 @@ Tables used (inventory):
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id nullable for shared Astral inbox tasks (AST-1088). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
@@ -75,6 +75,7 @@ from src.utils.config import (
     remap_legacy_candidate_state,
     COMPANY_STATES,
     METEORITE_CONFIG,
+    GAZE_EMAIL_CONFIG,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -6428,7 +6429,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.execute("""
             CREATE TABLE dispatch_task (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
-                candidate_id TEXT NOT NULL,
+                candidate_id TEXT,
                 task_key TEXT NOT NULL,
                 entity_type TEXT,
                 trigger_state TEXT,
@@ -6448,6 +6449,14 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 UNIQUE(candidate_id, task_key, trigger_state)
             )
         """)
+        conn.commit()
+        conn.execute(
+            """
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_task_null_candidate_task_key
+            ON dispatch_task(task_key)
+            WHERE candidate_id IS NULL
+            """
+        )
         conn.commit()
     else:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(dispatch_task)").fetchall()}
@@ -6862,6 +6871,63 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             ),
         )
     conn.commit()
+    # AST-1088: allow null candidate_id for shared Astral inbox dispatch rows.
+    cid_notnull = False
+    for _cid_row in conn.execute("PRAGMA table_info(dispatch_task)").fetchall():
+        if _cid_row[1] == "candidate_id" and int(_cid_row[3] or 0) == 1:
+            cid_notnull = True
+            break
+    if cid_notnull:
+        rows = conn.execute(
+            """SELECT id, candidate_id, task_key, entity_type, trigger_state, sort_by,
+                      batch_call_mode, last_run_at, freq_hrs, min_count, batch_size, batch_id,
+                      auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
+               FROM dispatch_task
+               ORDER BY id ASC"""
+        ).fetchall()
+        conn.execute("""
+            CREATE TABLE dispatch_task_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                candidate_id TEXT,
+                task_key TEXT NOT NULL,
+                entity_type TEXT,
+                trigger_state TEXT,
+                sort_by TEXT,
+                batch_call_mode INTEGER DEFAULT 0,
+                last_run_at TIMESTAMP,
+                freq_hrs REAL DEFAULT 0,
+                min_count INTEGER NOT NULL,
+                batch_size INTEGER,
+                batch_id TEXT,
+                auto_mode INTEGER NOT NULL DEFAULT 0,
+                debug INTEGER NOT NULL DEFAULT 0,
+                skip_cache INTEGER NOT NULL DEFAULT 0,
+                max_runs INTEGER DEFAULT 1,
+                score_floor REAL,
+                updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(candidate_id, task_key, trigger_state)
+            )
+        """)
+        for r in rows:
+            conn.execute(
+                """INSERT INTO dispatch_task_new
+                   (id, candidate_id, task_key, entity_type, trigger_state, sort_by,
+                    batch_call_mode, last_run_at, freq_hrs, min_count, batch_size, batch_id,
+                    auto_mode, debug, skip_cache, max_runs, score_floor, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                tuple(r),
+            )
+        conn.execute("DROP TABLE dispatch_task")
+        conn.execute("ALTER TABLE dispatch_task_new RENAME TO dispatch_task")
+        conn.commit()
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_dispatch_task_null_candidate_task_key
+        ON dispatch_task(task_key)
+        WHERE candidate_id IS NULL
+        """
+    )
+    conn.commit()
     _dispatch_task_schema_ensured = True
 
 
@@ -6929,16 +6995,26 @@ def ensure_all_upsert_registry_schemas_at_startup() -> None:
 
 
 def save_dispatch_task(
-    candidate_id: str, task_key: str, min_count: int,
+    candidate_id: Optional[str] = None, task_key: str = "", min_count: int = 1,
     auto_mode: bool = False, entity_type: Optional[str] = None,
     trigger_state: Optional[str] = None,
     batch_size: Optional[int] = None, freq_hrs: float = 0,
     score_floor: Optional[float] = None,
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
-    Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted."""
+    Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
+    candidate_id may be NULL only for GAZE_EMAIL_CONFIG task_key (AST-1088)."""
+    tk = (task_key or "").strip()
+    cid_raw = None if candidate_id is None else str(candidate_id).strip()
+    cid_val: Optional[str]
+    if tk == GAZE_EMAIL_CONFIG["task_key"] and not cid_raw:
+        cid_val = None
+    elif not cid_raw:
+        raise ValueError("candidate_id is required")
+    else:
+        cid_val = cid_raw
     try:
-        defaults = dispatch_task_admin_defaults(task_key, trigger_state=trigger_state)
+        defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
         raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
     if not (entity_type and str(entity_type).strip()):
@@ -6957,7 +7033,7 @@ def save_dispatch_task(
                    (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
                     freq_hrs, min_count, batch_size, auto_mode, score_floor, last_run_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
-                (candidate_id, task_key, entity_type, trigger_state, sort_by, batch_call_mode,
+                (cid_val, tk, entity_type, trigger_state, sort_by, batch_call_mode,
                  freq_hrs, min_count, batch_size, int(auto_mode), score_floor, now, now),
             )
             conn.commit()
