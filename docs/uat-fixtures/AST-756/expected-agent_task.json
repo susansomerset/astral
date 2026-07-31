@@ -891,5 +891,24 @@
     "task_seq": 2.4,
     "task_name": "Parse Meteorite Email",
     "updated_at": "2026-07-31 02:02:16"
+  },
+  {
+    "task_key_uuid": "519eba14-091c-45d2-9fa7-ff94b42bf9cf",
+    "task_key": "gaze_email",
+    "current": 1,
+    "agent_id": "n/a",
+    "user_prompt": "",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-31 17:50:00",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 2.3,
+    "task_name": "gaze_email"
   }
 ]
