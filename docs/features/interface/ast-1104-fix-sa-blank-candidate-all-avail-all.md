@@ -149,3 +149,25 @@ Changes: Added conditional Files Changed rows for `useListTableColumnMeasure.ts`
 
 Stage 1 pinned Branch A (`fmtTime` RangeError on invalid `timeZone`). Stage 2: `fmt.ts` absorbs locale/timezone failures with UTC retry then raw ISO — Last Run cells cannot empty `#root`. Branches B/C not applied. SA regression smoke `AST-894|AST-887|AST-893|AST-751|AST-768|AST-785` green (24). Tests deferred to Betty.
 
+## Review (Radia)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1104
+**Publish ref tip (pre-docs):** `9a59cbe6206d5e330f0bdfc26952060f0cd8291a`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stage 1 pin → Branch A only; product diff is sole `fmt.ts` absorption matching plan.
+- Happy-path format options unchanged; invalid TZ falls back UTC then raw ISO; in-code comment ties catch to missing root ErrorBoundary.
+- Betty `merge-tests(AST-1104)` + AST-1104 frontend harness present; assignee remains Katherine.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` at plan time; ship three-dot vs `origin/dev` brings them in-scope via `docs/features/**` + Betty `tests/` / `docs/test-bible/**`. Scored **conforms** on content (single plan file; no spike misplacement; engineer did not author test-tree — Betty `test`/`merge-tests`). No product fix required.
+
+### Recommended actions
+
+- Engineer: acknowledge C4 stragglers; no `fmt.ts` change expected. Proceed `resolve-child` → User Testing when clear.
+
