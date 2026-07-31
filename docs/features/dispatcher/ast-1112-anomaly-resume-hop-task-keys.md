@@ -127,3 +127,17 @@ Retire `BUILD_CONFIG.resume_artifact_chain.hop_task_keys` / `_RESUME_ARTIFACT_HO
 |-------|--------|---------|
 | 1 | `e457b343` | retire resume hop_task_keys config authority |
 | 2 | `e0939f15` | resume hop succession via run_next parents |
+
+### Radia — code-rubric.v1 (AST-1112)
+
+`[code-rubric] revision=1` · tip reviewed `81ad0345` · **Overall: DISCUSS** (C4 stragglers only; deliverable conforms)
+
+**What's solid**
+
+- Hop-list authority retired: `_RESUME_ARTIFACT_HOP_TASK_KEYS`, `hop_task_keys`, `resume_artifact_hop_task_keys()` gone; zero `src/` hits.
+- Succession via `_parent_hop_task_key_for_child` / run_next; ambiguous-parent config tie-break removed.
+- Debug: hop-tuple Style D index removed; dispatch-trigger debug path retained.
+- Stage commits scoped to config.py + agent.py; JOB_ARTIFACT/craft left to siblings (tip also carries AST-1111 via ftr merge).
+
+**Discuss (C4 stragglers)** — Joan excluded; three-dot brings in-scope (scores `conforms`): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`.
+
