@@ -157,3 +157,14 @@ Do **not** edit: `recommendedJobReport.tsx` (out of Boundaries), `ConfidenceBull
 ### Recommended actions
 
 - Engineer: none for product. Acknowledge stragglers if desired, then resolve-child → User Testing.
+
+---
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Status:** User Testing (resolve clean)
+
+Radia **DISCUSS** overall with **no product fix-now**. Straggler callouts on `astral.debug.spikes-under-debug-dir` / `astral.docs.features-single-file-per-ticket` already **conforms** (normal single plan file). Advisory sibling test/bible tips via merge-tests left alone (outside AST-1086 product scope).
+
+No product code changes in resolve. Publish tip after this commit; §9a dry-run vs `origin/dev` and `origin/ftr/AST-1078-headers-for-job-lists` required before UT.
