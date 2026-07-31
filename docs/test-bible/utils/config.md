@@ -1924,3 +1924,28 @@ Retires `BUILD_CONFIG.resume_artifact_chain.hop_task_keys` / `_RESUME_ARTIFACT_H
   -q
 ```
 
+### AST-1113 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
+
+Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as craft succession authority; singular `craft_task_key` entry only. Walk via `_current_agent_task_run_next` with `suppress_run_next`. Boot migration confirm/corrects craft `run_next` links. Does **not** own JOB_ARTIFACT_ENTRY (**AST-1111**) or hop_task_keys (**AST-1112**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Entry key only (no `craft_task_keys`) | `src/utils/config.py` | **`TestAst1113CraftTaskKeysShadowDeleted`**; revised **`TestAst972CandidateStageDispatch`** |
+| Walk + suppress + mid-fail | `src/core/candidate.py` | revised **`TestAst972RequestedStageDispatch::test_artifacts_dispatch_*`** |
+| Boot craft run_next migration | `src/data/database.py` | **`TestAst1113CraftRunNextChainMigration`** |
+
+**Broken / obsolete (Betty revision):** asserts on `arts["craft_task_keys"]`; artifacts dispatch that reads the list for hop order.
+
+**AST-1113** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+
