@@ -196,3 +196,15 @@ python3 -c "import json; json.load(open('data/admin/agent_task.json')); assert a
 - **§3.3 imports:** No new cross-layer imports in this ticket.
 - **§3.5 naming:** `parse_meteorite_email` / `METEORITE_EMAIL_PARSE_CONFIG` match meteorite naming.
 - **in-scope-only:** Explicitly excludes AST-1088 shell and AST-1090 runner.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`
+**Plan path:** `docs/features/meteorite/ast-1089-ruth-little-brain-meteorite-email-parse-task.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `66edd249` | `METEORITE_EMAIL_PARSE_CONFIG` + `TASK_CONFIG["parse_meteorite_email"]` |
+| 2 | `8d6eefe7` | Ruth `agent_task.json` + AST-756 fixture (+ inventory comment) |
+
+**Tip:** `8d6eefe7a8bd998190d000f8cccd43723b6ef1db` on `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`
