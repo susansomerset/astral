@@ -104,3 +104,12 @@ UAT fix under AST-1045: treat every candidate email — root scalars (`contact.c
 | data-raises-caller-logs | Core raises toast-ready `ValueError`; UI already surfaces |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review
+
+| Field | Value |
+| -- | -- |
+| Ticket | AST-1095 |
+| Publish ref | `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra` |
+| Built | `a5d8c1a2313c68b7ddb5821c7ce0ad25244ac728` |
+| Notes | Stage 1 — uniqueness `email_list_paths` email pool + gate/initiate coerce; websites-only `list_paths`. |
