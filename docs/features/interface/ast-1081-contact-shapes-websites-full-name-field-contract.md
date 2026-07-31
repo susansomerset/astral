@@ -135,3 +135,12 @@ Stages 1–3: `DATA_SHAPES` Contact Information adds `full`, `contact.websites` 
 
 - Implementer: acknowledge straggler discuss; no `fix-now` product changes.
 - AST-1082 owns Profile load/save / nav for the new shape fields.
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Outcome:** clean — no product changes.
+
+- **fix-now:** none.
+- **discuss (straggler):** Acknowledged. `astral.git.engineer-test-tree-ban` is correctly **conforms** on the tip — engineer `code(AST-1081)` commits exclude the test tree; `tests/**` + `docs/test-bible/**` arrive only via Betty `merge-tests(AST-1081)`. No plan/product edit required.
+- Merged `origin/dev` onto the sub before publish (integration line advanced after review).
