@@ -75,3 +75,12 @@ Delete the config shadow `JOB_ARTIFACT_ENTRY_TASK_KEYS` and its wrapper `build_a
 - **§3.3 imports:** No new imports; unused import cleanup N/A (symbols were not imported elsewhere under `src/`).
 - **Betty test-tree ban:** Plan forbids engineer edits under `tests/` / bible.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1109/AST-1111-anomaly-job-artifact-entry-task-keys`
+**Tip:** `88ab9675`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `88ab9675` | delete JOB_ARTIFACT_ENTRY_TASK_KEYS + build_artifacts_chain_task_keys |
