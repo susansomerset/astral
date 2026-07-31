@@ -3793,8 +3793,8 @@ DATA_SHAPES = {
                         {"key": "contact.reply_email", "label": "Reply Email", "type": "text"},
                         {"key": "contact.phone", "label": "Phone", "type": "text"},
                         {"key": "contact.location", "label": "Location", "type": "text"},
-                        {"key": "contact.github", "label": "GitHub", "type": "text"},
-                        {"key": "contact.linkedin_url", "label": "LinkedIn URL", "type": "text"},
+                        {"key": "contact.github", "label": "GitHub (username or URL)", "type": "text"},
+                        {"key": "contact.linkedin_url", "label": "LinkedIn (username or URL)", "type": "text"},
                         {"key": "contact.websites", "label": "Websites", "type": "string_list"},
                         {"key": "contact.timezone", "label": "Timezone", "type": "select", "options": [
                             {"value": "", "label": "(UTC)"},
