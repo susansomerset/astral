@@ -1,15 +1,17 @@
 """
-Gmail API send + inbox read for ASTRAL.
+Gmail API send + inbox read + archive/trash for ASTRAL.
 
-Owns Gmail send and inbox list/get via one dual-scope OAuth client
-(gmail.send + gmail.readonly). send_email returns True/False and never raises
-on transient failures; list/get raise so callers can map hard failures.
+Owns Gmail send, inbox list/get, archive (remove INBOX), and trash via one
+modify-capable OAuth client (gmail.modify). send_email returns True/False and
+never raises on transient failures; list/get/archive/trash raise so callers can
+map hard failures. Live UAT must confirm GOOGLE_REFRESH_TOKEN includes modify;
+remint is ops-only if verification fails.
 
 Required env vars (validated at import time — missing vars raise RuntimeError at server startup):
   GMAIL_USER            — mailbox identity (e.g. astral.career.match@gmail.com)
   GOOGLE_CLIENT_ID      — OAuth2 client ID
   GOOGLE_CLIENT_SECRET  — OAuth2 client secret
-  GOOGLE_REFRESH_TOKEN  — OAuth2 refresh token (long-lived, dual-scope)
+  GOOGLE_REFRESH_TOKEN  — OAuth2 refresh token (long-lived, modify-capable)
 
 Optional env vars:
   GOOGLE_TOKEN_URI      — defaults to https://oauth2.googleapis.com/token
@@ -35,6 +37,8 @@ __all__ = [
     "send_email",
     "list_inbox_messages",
     "get_message_html",
+    "archive_message",
+    "trash_message",
 ]
 
 
@@ -149,6 +153,26 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
         "subject": headers.get("subject", ""),
         "from_address": headers.get("from", ""),
     }
+
+
+
+
+def archive_message(message_id: str) -> None:
+    """Remove INBOX label from a message (archive). Raises on failure."""
+    require_controlled_external_io("gmail.archive_message")
+    service = _build_service()
+    service.users().messages().modify(
+        userId="me",
+        id=message_id,
+        body={"removeLabelIds": ["INBOX"]},
+    ).execute()
+
+
+def trash_message(message_id: str) -> None:
+    """Move a message to Gmail Trash (not permanent delete). Raises on failure."""
+    require_controlled_external_io("gmail.trash_message")
+    service = _build_service()
+    service.users().messages().trash(userId="me", id=message_id).execute()
 
 
 # ---------------------------------------------------------------------------
