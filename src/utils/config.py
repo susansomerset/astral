@@ -196,7 +196,8 @@ TASK_CONFIG = {
         "requires_candidate_key": False,
         "trigger_state": None,
     },
-    # BOOTSTRAP CANDIDATE CONTEXT - Estelle 3
+    # DECOMMISSIONED (AST-1108): superseded by intake chat; keep key for legacy callers/tests.
+    # Do not re-seed into data/admin/agent_task.json.
     "bootstrap_candidate_context": {
         "response_schema": {
             "bio_summary": {"type": "str", "required": True},
