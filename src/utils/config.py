@@ -3820,12 +3820,22 @@ ADMIN_CONFIG = {
         # Prefix for downloaded reconciliation CSV filenames.
         "export_filename_prefix": "astral",
     },
+    # AST-1106: mailbox shells kept under Scheduled Actions default Avail > 0 (zero entity avail).
+    "always_visible_under_avail_gt0_dispatch_task_keys": (
+        GAZE_EMAIL_CONFIG["task_key"],
+    ),
 }
 
 
 def admin_hidden_dispatch_task_keys() -> frozenset:
     """task_key values hidden from Scheduled Actions admin UI (dispatch backend unchanged)."""
     raw = ADMIN_CONFIG.get("hidden_dispatch_task_keys") or ()
+    return frozenset(raw)
+
+
+def admin_always_visible_under_avail_gt0_dispatch_task_keys() -> frozenset:
+    """task_key values kept visible under Scheduled Actions Avail > 0 (mailbox shells)."""
+    raw = ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
     return frozenset(raw)
 
 # ---------------------------------------------------------------------------
