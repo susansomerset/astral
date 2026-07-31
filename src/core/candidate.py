@@ -529,13 +529,21 @@ def save_candidate_data(
         else:
             blob[key] = val
 
-    if "first" in col_kwargs or "last" in col_kwargs:
-        if "full" not in col_kwargs:
-            # Merge with existing columns when only one side provided
+    # Empty/whitespace full → library join; omit full when first/last change → same
+    if "full" in col_kwargs:
+        full_stripped = str(col_kwargs["full"]).strip()
+        if not full_stripped:
             existing = database.get_candidate(candidate_id) or {}
             first = col_kwargs.get("first", existing.get("first") or "")
             last = col_kwargs.get("last", existing.get("last") or "")
             col_kwargs["full"] = recompute_full_name(str(first), str(last))
+        else:
+            col_kwargs["full"] = full_stripped
+    elif "first" in col_kwargs or "last" in col_kwargs:
+        existing = database.get_candidate(candidate_id) or {}
+        first = col_kwargs.get("first", existing.get("first") or "")
+        last = col_kwargs.get("last", existing.get("last") or "")
+        col_kwargs["full"] = recompute_full_name(str(first), str(last))
 
     if "pronouns" in col_kwargs:
         pref = (col_kwargs["pronouns"] or "").strip()
@@ -544,6 +552,16 @@ def save_candidate_data(
 
     contact = blob.get("contact")
     if isinstance(contact, dict):
+        if "websites" in contact:
+            raw_sites = contact["websites"]
+            if raw_sites is None:
+                contact["websites"] = []
+            elif isinstance(raw_sites, list):
+                contact["websites"] = [
+                    str(x).strip() for x in raw_sites if str(x).strip()
+                ]
+            else:
+                raise ValueError("contact.websites must be a list of strings")
         normalize_contact_urls(contact)
         # Proposed contact after merge (merge=True) or replace payload (merge=False).
         if not replace:

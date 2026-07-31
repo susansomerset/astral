@@ -3847,12 +3847,14 @@ DATA_SHAPES = {
                     "fields": [
                         {"key": "first", "label": "First Name", "type": "text"},
                         {"key": "last", "label": "Last Name", "type": "text"},
+                        {"key": "full", "label": "Full Name", "type": "text"},
                         {"key": "contact.contact_email", "label": "Contact Email", "type": "text"},
                         {"key": "contact.reply_email", "label": "Reply Email", "type": "text"},
                         {"key": "contact.phone", "label": "Phone", "type": "text"},
                         {"key": "contact.location", "label": "Location", "type": "text"},
-                        {"key": "contact.github", "label": "GitHub", "type": "text"},
-                        {"key": "contact.linkedin_url", "label": "LinkedIn URL", "type": "text"},
+                        {"key": "contact.github", "label": "GitHub (username or URL)", "type": "text"},
+                        {"key": "contact.linkedin_url", "label": "LinkedIn (username or URL)", "type": "text"},
+                        {"key": "contact.websites", "label": "Websites", "type": "string_list"},
                         {"key": "contact.timezone", "label": "Timezone", "type": "select", "options": [
                             {"value": "", "label": "(UTC)"},
                             {"value": "America/New_York", "label": "Eastern"},
@@ -3870,6 +3872,7 @@ DATA_SHAPES = {
                             {"value": "ze/zir", "label": "ze/zir"},
                             {"value": "e/eir", "label": "e/eir"},
                         ]},
+                        {"key": "contact.reason_codes", "label": "Reason Codes", "type": "textarea"},
                     ],
                 },
                 {
