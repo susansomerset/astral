@@ -2705,6 +2705,9 @@ async def do_task(
 
     planned_next = (agent_task_row.get("run_next") or "").strip()
     effective_next = planned_next
+    # AST-1113: caller walks run_next itself (per-hop persist) — do not recurse here.
+    if (ctx or {}).get("suppress_run_next"):
+        effective_next = ""
     # AST-469: roster select_job_page chains to parse_job_list only when titles were confirmed —
     # DB run_next may be set unconditionally; suppress for other response_type values.
     if effective_next and task_key == "select_job_page":  # pragma: no branch

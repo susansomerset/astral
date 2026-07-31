@@ -2116,7 +2116,7 @@ async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = Fals
 
 
 async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → sequential craft_* → ARTIFACTS_READY / retry / error."""
+    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
@@ -2126,15 +2126,21 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
     primary = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
+    craft_key = (stage.get("craft_task_key") or "").strip()
+    seen: set[str] = set()
     try:
-        for craft_key in stage["craft_task_keys"]:
+        while craft_key:
+            if craft_key in seen:
+                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
+            seen.add(craft_key)
             # Refresh ctx each hop so later crafts see earlier persists.
             candidate = database.get_candidate(candidate_id) or candidate
+            task_ctx = {**(candidate or {}), "suppress_run_next": True}
             response = await do_task(
                 task_key=craft_key,
                 live_content="",
                 index=candidate_id,
-                ctx=candidate,
+                ctx=task_ctx,
                 debug=debug,
             )
             if not response or not response.get("success"):
@@ -2142,6 +2148,7 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
                     (response or {}).get("error") if response else f"do_task None for {craft_key}"
                 )
             _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
+            craft_key = _current_agent_task_run_next(craft_key)
         transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
@@ -2358,7 +2365,7 @@ def run_candidate_artifact_generation(
                     task_key=task_key,
                     live_content=live_content or "",
                     index=candidate_id,
-                    ctx=candidate,
+                    ctx={**(candidate or {}), "suppress_run_next": True},
                     debug=debug,
                 )
             )
