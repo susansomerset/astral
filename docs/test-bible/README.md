@@ -52,6 +52,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component or integration tests.** **`test-child`:** docs-acceptance (ADR §§1–8 + Linear Document title `ADR — Integration testing program (AST-915)`) — no pytest. Do **not** invent `tests/integration/scenarios/`.
 
+### AST-1110 · AST-1109 (statute — run_next is chain authority)
+
+**Docs-only** (canon statute + proposed pattern + CODE_RULES pointer). Live edits on **`origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority`**: `canon/statutes/astral/dispatch/astral.dispatch.run-next-is-chain-authority.md` (active, Archie-approved) + statutes README/HARVEST register (active count **58**); `canon/patterns/dispatch/pattern.dispatch.run-next-chain-authority.md` (`status: proposed`) + patterns README/HARVEST; `docs/ASTRAL_CODE_RULES.md` §2.6.0 statute pointer + clarifying sentence. No `src/**`, no frozenset deletes, no boot SQL (siblings AST-1111–AST-1113).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute active + Archie frontmatter; pattern `proposed`; CODE_RULES §2.6.0 cites `astral.dispatch.run-next-is-chain-authority`; statutes README/HARVEST count **58**) — no pytest / zero-arg harness / branch-lock gate. Sibling anomaly remediations under parent **AST-1109** are out of scope.
+
 ### Retired monolith section map
 
 
