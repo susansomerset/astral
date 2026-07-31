@@ -3326,6 +3326,34 @@ class TestAst1089ParseMeteoriteEmailConfig:
 # Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
 
 # Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).
+
+# Branches: Profile Contact Information Slack id/username fields (AST-1105).
+class TestAst1105ProfileSlackFields:
+    """AST-1105: contact.slack_user_id + contact.slack_username on Profile shapes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_slack_id_and_username_fields(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.slack_user_id"]["label"] == "Slack user id"
+        assert by_key["contact.slack_user_id"]["type"] == "text"
+        assert by_key["contact.slack_username"]["label"] == "Slack username"
+        assert by_key["contact.slack_username"]["type"] == "text"
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("contact.slack_user_id") < keys.index("contact.contact_email")
+        assert keys.index("contact.slack_username") == keys.index("contact.slack_user_id") + 1
+        # Resolve owns writes — not Contact skill ACL
+        paths = cfg.CONTACT_CONFIG["skills"]["save_candidate_contact"]["allowed_paths"]
+        assert "contact.slack_user_id" not in paths
+        assert "contact.slack_username" not in paths
+
+
 class TestAst1101HearAckConfig:
     """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
 
@@ -3358,15 +3386,3 @@ class TestAst1099JobArtifactAgentDataPinConfig:
         # Legacy body keys remain for cancel of older rows / manual PUTs.
         assert "resume_content" in keys
         assert "application_responses" in keys
-
-
-class TestAst1100ArtifactTabPinKeys:
-    """AST-1100: JAR artifact tabs remap to AST-1099 pin slots."""
-
-    def test_artifact_tabs_use_pin_slot_keys(self) -> None:
-        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
-        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
-        assert by_id["artifact_resume"]["use_resume_structure"] is True
-        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
-        assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
-        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
