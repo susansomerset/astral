@@ -684,3 +684,72 @@ Contact uniqueness gate on `save_candidate_data` / `initiate_candidate` / `initi
   tests/component/core/test_candidate.py::TestAst1080ContactUniqueness \
   -q
 ```
+
+---
+
+### AST-1085 · AST-1077
+
+**Parent:** [AST-1077 — Add a constant set of rubric vectors to generated JD evaluate vectors](https://linear.app/astralcareermatch/issue/AST-1077/add-a-constant-set-of-rubric-vectors-to-generated-jd-evaluate-vectors). **Publish:** `origin/sub/AST-1077/AST-1085-wire-constants-evaluate-jd`.
+
+Append-merge `EMBEDDED_EVALUATE_JD_CRITERIA` (QC then GC; AST-1084) into `evaluate_jd` / `jobdesc_rubric` / `craft_jobdesc_rubric` hydrate, save, and generate — embedded wins on duplicate code; other rubric owners unchanged. Config definitions: **`docs/test-bible/utils/config.md`** (**AST-1084**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + hydrate / save / craft generate / persist | `src/core/candidate.py` | **`TestAst1085EvaluateJdEmbeddedMerge`** |
+
+**Broken / obsolete:** none — additive owner-gated merge; AST-723 prefilter prepend path unchanged.
+
+**Integration:** none revised (no existing scenario asserts QC/GC append on evaluate_jd hydrate).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1085EvaluateJdEmbeddedMerge \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  -q
+```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+`save_candidate_data` coerces `contact.extra_emails` like websites; `get_candidate_id_for_query` expands `email_list_paths` only (not uniqueness websites). Config/Profile: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Coerce + bind via extra_emails | `src/core/candidate.py` | **`TestAst1092ExtraBindingEmails`** |
+
+**Broken / obsolete:** none for core — websites coerce path shared; AST-1081 websites asserts still match.
+
+**Integration:** none — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1092ExtraBindingEmails \
+  tests/component/core/test_candidate.py::TestAst1081ContactShapesSaveContract \
+  -q
+```
+
+### AST-1095 · AST-1045 (UAT)
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra`.
+
+Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_emails`) under casefold email compare on save/initiate; within-candidate root+extra collapse; cross root↔extra / extra↔extra hard-fail toast `ValueError`; initiate coerce parity for `extra_emails`. Config: **`docs/test-bible/utils/config.md`**. Base gate: **AST-1080**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Root↔extra / extra↔extra cross + within + initiate | `src/core/candidate.py` | **`TestAst1095EmailUniqueRootAndExtra`** |
+
+**Broken / obsolete:** none for AST-1080 scalar/website cases — additive email-list pool walk.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1095EmailUniqueRootAndExtra \
+  tests/component/core/test_candidate.py::TestAst1080ContactUniqueness \
+  -q
+```
+

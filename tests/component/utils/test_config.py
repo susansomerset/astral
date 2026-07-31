@@ -2981,6 +2981,9 @@ class TestAst1079ContactUniquenessConfig:
             "contact.linkedin_url",
         )
         assert uniq["list_paths"] == ("contact.websites",)
+        assert uniq["email_list_paths"] is cfg.CANDIDATE_LOOKUP_CONFIG["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert "contact.extra_emails" not in uniq["list_paths"]
         assert uniq["scopes"] == ("within_candidate", "cross_candidate")
         assert uniq["compare"] == {
             "email": "casefold",
@@ -2990,6 +2993,305 @@ class TestAst1079ContactUniquenessConfig:
         }
         assert cfg.CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True
         contact_keys = set(cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"])
-        for path in uniq["scalar_paths"] + uniq["list_paths"]:
+        for path in uniq["scalar_paths"] + uniq["list_paths"] + uniq["email_list_paths"]:
             assert path.startswith("contact.")
             assert path.split(".", 1)[1] in contact_keys
+
+
+class TestAst1081ContactShapesConfig:
+    """AST-1081: DATA_SHAPES Contact Information exposes full / websites / reason_codes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_full_websites_reason_codes_in_contact_shapes(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["full"]["label"] == "Full Name"
+        assert by_key["full"]["type"] == "text"
+        assert by_key["contact.websites"]["label"] == "Websites"
+        assert by_key["contact.websites"]["type"] == "string_list"
+        assert by_key["contact.reason_codes"]["label"] == "Reason Codes"
+        assert by_key["contact.reason_codes"]["type"] == "textarea"
+        # Still columns + contact.* — never profile.*
+        keys = list(by_key)
+        assert "first" in keys and "last" in keys
+        assert not any(k.startswith("profile.") for k in keys)
+
+    def test_field_order_full_after_last_websites_after_linkedin(self) -> None:
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("full") == keys.index("last") + 1
+        assert keys.index("contact.websites") == keys.index("contact.linkedin_url") + 1
+        assert keys.index("contact.reason_codes") > keys.index("pronouns")
+
+    def test_admin_manage_shapes_unchanged_no_websites(self) -> None:
+        # Boundary: Admin Manage Candidates stays on its narrow field set
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        list_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["list"]["manage"]]
+        assert "contact.websites" not in edit_keys
+        assert "contact.reason_codes" not in edit_keys
+        assert "full" not in edit_keys
+        assert "contact.websites" not in list_keys
+        assert "full" not in list_keys
+
+
+class TestAst1082ProfileContactLabelsNav:
+    """AST-1082: GitHub/LinkedIn username-or-URL labels; no Title Patterns nav duplicate."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_github_linkedin_username_or_url_labels(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.github"]["label"] == "GitHub (username or URL)"
+        assert by_key["contact.linkedin_url"]["label"] == "LinkedIn (username or URL)"
+        # Keys/types unchanged from AST-1081 shapes contract
+        assert by_key["contact.github"]["type"] == "text"
+        assert by_key["contact.linkedin_url"]["type"] == "text"
+
+    def test_candidate_nav_omits_title_patterns(self) -> None:
+        candidate = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in candidate["items"]]
+        paths = [i["path"] for i in candidate["items"]]
+        assert "Title Patterns" not in labels
+        assert "/candidate/title_patterns" not in paths
+        assert "/candidate/profile" in paths
+
+    def test_profile_shapes_keep_title_patterns_section(self) -> None:
+        # Single edit surface remains on Profile (not nav)
+        sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        title = next(s for s in sections if s["label"] == "Title Patterns")
+        assert title["fields"][0]["key"] == "contact.title_patterns"
+
+
+class TestAst1092ExtraBindingEmailsConfig:
+    """AST-1092: Resume/Messages labels, extra_emails key, lookup email_list_paths."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_resume_messages_labels_and_extra_emails_shape(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.contact_email"]["label"] == "Email for Resume"
+        assert by_key["contact.reply_email"]["label"] == "Email for Messages (if different)"
+        assert by_key["contact.extra_emails"]["label"] == "Extra emails (binding)"
+        assert by_key["contact.extra_emails"]["type"] == "string_list"
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("contact.extra_emails") == keys.index("contact.reply_email") + 1
+
+    def test_library_lookup_uniqueness_extra_emails_aligned(self) -> None:
+        assert "extra_emails" in cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        assert luc["email_list_paths"] == ("contact.extra_emails",)
+        # AST-1095: extras are email pool via email_list_paths, not list_paths
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert "contact.extra_emails" not in uniq["list_paths"]
+        # Bind list emails must not be scalar email_paths (str-only reader)
+        assert "contact.extra_emails" not in luc["email_paths"]
+        # Admin manage still unchanged (Profile owns this UAT surface)
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        assert "contact.extra_emails" not in edit_keys
+
+
+
+# Branches: shared email pool email_paths ∪ email_list_paths (AST-1095).
+class TestAst1095EmailUniqueRootAndExtraConfig:
+    """AST-1095: uniqueness email_list_paths identity; list_paths websites-only."""
+
+    def test_email_list_paths_identity_and_websites_only_list_paths(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert set(uniq["email_list_paths"]).isdisjoint(set(uniq["list_paths"]))
+
+
+class TestAst1084EvaluateJdCriteria:
+    """AST-1084: EMBEDDED_EVALUATE_JD_CRITERIA QC/GC definitions (wire-up is AST-1085)."""
+
+    def test_qc_gc_registry_order_and_shape(self) -> None:
+        rows = cfg.EMBEDDED_EVALUATE_JD_CRITERIA
+        assert isinstance(rows, tuple)
+        assert len(rows) == 2
+        qc, gc = rows
+        assert qc["code"] == "QC"
+        assert qc["label"] == "Quality Check"
+        assert qc["importance"] == 1
+        assert gc["code"] == "GC"
+        assert gc["label"] == "Gut Check"
+        assert gc["importance"] == 1
+        # Boundary: not folded into the company prefilter RC registry
+        pf_codes = {r["code"] for r in cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA}
+        assert "QC" not in pf_codes and "GC" not in pf_codes
+
+    def test_qc_grades_abcdef_subset_and_descriptions(self) -> None:
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        by_grade = {g["grade"]: g["description"] for g in qc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "F"]
+        assert by_grade["A"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements and information about the company the candidate would be working for."
+        )
+        assert by_grade["B"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements, but limited information about the company the candidate would be working for."
+        )
+        assert by_grade["C"] == (
+            "This content references a job with enough detail about the role and "
+            "requirements to perform fit analysis for the candidate."
+        )
+        assert by_grade["F"] == (
+            "This is not enough information to perform job fit analysis, either because "
+            "it is not a job description, or it is too vague to determine fit for the candidate."
+        )
+        # content mirrors letter lines (Reality Check A = … style)
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in qc["content"]
+        assert "Quality Check — is this enough of a JD to analyze?" in qc["content"]
+
+    def test_gc_grades_include_d_x_and_descriptions(self) -> None:
+        gc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[1]
+        by_grade = {g["grade"]: g["description"] for g in gc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+        assert by_grade["A"] == (
+            "Based on the candidate's bio provided, this job would be a slam dunk for them."
+        )
+        assert by_grade["B"] == (
+            "Based on the candidate's bio provided, this job could be a good fit for them."
+        )
+        assert by_grade["C"] == (
+            "Based on the candidate's bio, this job would be doable, with caveats, for them."
+        )
+        assert by_grade["D"] == (
+            "Based on the candidate's bio, this job would be a stretch-to-impossible for them."
+        )
+        assert by_grade["F"] == "There's really no way this candidate could ever do this job."
+        assert by_grade["X"] == (
+            "There's not enough information about the job to make this determination with certainty."
+        )
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in gc["content"]
+        assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
+
+
+# Branches: GAZE_EMAIL_CONFIG + gaze_email TASK_CONFIG shell + admin defaults (AST-1088).
+@pytest.mark.skipif(
+    not hasattr(cfg, "GAZE_EMAIL_CONFIG"),
+    reason="AST-1088 GAZE_EMAIL_CONFIG not on this publish tip",
+)
+class TestAst1088GazeEmailConfig:
+    """AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id)."""
+
+    def test_gaze_email_config_and_task_shell(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert g["task_key"] == "gaze_email"
+        assert g["account_address"] == "astral.career.match@gmail.com"
+        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        assert g["auto_mode"] is True
+        assert g["min_count"] == 1
+        assert g["batch_size"] == 1
+        assert g["freq_hrs"] == 0
+        assert g["entity_type"] is None
+        assert g["trigger_state"] is None
+
+        tc = cfg.TASK_CONFIG["gaze_email"]
+        assert tc["entity_type"] is None
+        assert tc["requires_candidate_key"] is False
+        assert tc["trigger_state"] is None
+        assert "agent_task" not in tc
+        assert "response_schema" not in tc
+
+    def test_admin_defaults_null_claim_queue(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("gaze_email")
+        assert d == {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+
+    def test_not_company_batch_or_retired(self) -> None:
+        assert "gaze_email" not in cfg._DISPATCH_COMPANY_ENTITY_TASK_KEYS
+        assert "gaze_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "gaze_email" not in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
+
+
+# Branches: GAZE_EMAIL_CONFIG runner literals (AST-1090).
+@pytest.mark.skipif(
+    "subject_url_schemes" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
+    reason="AST-1090 GAZE_EMAIL_CONFIG runner keys not on this publish tip",
+)
+class TestAst1090GazeEmailRunnerConfig:
+    def test_runner_literals(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert set(g["subject_url_schemes"]) == {"http", "https"}
+        assert g["dispatch_ledger_candidate_id"] == ""
+        assert g["debug_func"] == "gaze_email.run"
+        # Shell keys from AST-1088 remain.
+        assert g["task_key"] == "gaze_email"
+        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+
+
+# Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
+@pytest.mark.skipif(
+    "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1089 parse_meteorite_email TASK_CONFIG not on this publish tip",
+)
+class TestAst1089ParseMeteoriteEmailConfig:
+    """AST-1089: Ruth email-HTML parse config — not a dispatch claim task."""
+
+    def test_parse_config_and_task_shell(self) -> None:
+        parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
+        assert parse_cfg["task_key"] == "parse_meteorite_email"
+        assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
+
+        tc = cfg.TASK_CONFIG["parse_meteorite_email"]
+        assert tc["scored"] is False
+        assert tc["output_type"] == "fields"
+        assert tc["response_format"] == "json"
+        assert tc["agent_task"] == "parse_meteorite_email"
+        assert tc["entity_type"] is None
+        assert tc["requires_candidate_key"] is True
+        assert tc["trigger_state"] is None
+        assert "pass_state" not in tc
+        assert "fail_state" not in tc
+        assert "error_state" not in tc
+
+        schema = tc["response_schema"]
+        assert schema["parse_mode"]["required"] is True
+        assert schema["jobs"]["required"] is True
+        assert schema["jobs"]["items_schema"]["job_link"]["required"] is True
+        assert schema["jd_link"]["required"] is False
+        assert schema["content_text"]["required"] is False
+
+    def test_not_a_meteorite_dispatch_claim(self) -> None:
+        assert all(
+            e["task_key"] != "parse_meteorite_email" for e in cfg.METEORITE_DISPATCH_TASKS
+        )
+        assert "parse_meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        with pytest.raises(KeyError, match="parse_meteorite_email"):
+            cfg._dispatch_trigger_state_for_task_key("parse_meteorite_email")
+
+
+# Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
+class TestAst1094ActivityConfig:
+    def test_activity_state_filename(self) -> None:
+        assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
+        assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")

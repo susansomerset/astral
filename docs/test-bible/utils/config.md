@@ -1549,3 +1549,204 @@ CHAT-only conversational envelope: `CONVERSATIONAL_OUTCOMES` / `CONVERSATIONAL_P
   tests/component/utils/test_config.py::TestAst1073ContactEstelleTurnConfig \
   -q
 ```
+
+
+---
+
+### AST-1081 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1081-contact-shapes-websites-full`.
+
+`DATA_SHAPES["candidates"]["detail"]["profile"]` Contact Information: editable `full`, `contact.websites` (`type: string_list`), `contact.reason_codes` (`textarea`); Admin `list.manage` / `edit.manage` unchanged. Save contract + FormFields: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Contact shapes + Admin boundary | `src/utils/config.py` | **`TestAst1081ContactShapesConfig`** |
+
+**Broken / obsolete:** none — additive shape fields.
+
+**Integration:** none — shapes vocabulary only; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1081ContactShapesConfig \
+  -q
+```
+
+
+---
+
+### AST-1082 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav`.
+
+`DATA_SHAPES` Contact labels: GitHub/LinkedIn → username-or-URL copy (keys/types unchanged). Candidate `NAV_CONFIG` has no Title Patterns item; Profile `Title Patterns` section (`contact.title_patterns`) retained. Profile page: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Labels + NAV + Profile Title Patterns section | `src/utils/config.py` | **`TestAst1082ProfileContactLabelsNav`** |
+
+**Broken / obsolete:** none — label strings + nav verify-or-remove.
+
+**Integration:** none — config/nav vocabulary; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1082ProfileContactLabelsNav \
+  -q
+```
+
+
+---
+
+### AST-1084 · AST-1077
+
+**Parent:** [AST-1077 — Add a constant set of rubric vectors to generated JD evaluate vectors](https://linear.app/astralcareermatch/issue/AST-1077/add-a-constant-set-of-rubric-vectors-to-generated-jd-evaluate-vectors). **Publish:** `origin/sub/AST-1077/AST-1084-config-constant-jd-vectors`.
+
+`EMBEDDED_EVALUATE_JD_CRITERIA` — QC then GC (importance **1**; grade letters/descriptions from parent Original brief). Definitions only; wire-up into evaluate_jd hydrate/save/generate is **AST-1085** (`docs/test-bible/core/candidate.md`). Sibling of **`EMBEDDED_COMPANY_PREFILTER_CRITERIA`** (**AST-707**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Embedded QC/GC registry | `src/utils/config.py` | **`TestAst1084EvaluateJdCriteria`** |
+
+**Broken / obsolete:** none — additive constant; consume path covered under **AST-1085**.
+
+**Integration:** none — config definitions only; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1084EvaluateJdCriteria \
+  -q
+```
+
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+`GAZE_EMAIL_CONFIG` (task key, account expectation, unbound retention days, row seed) + `TASK_CONFIG["gaze_email"]` shell (`requires_candidate_key: False`; null entity/trigger — mailbox poller, no claim queue). `dispatch_task_admin_defaults("gaze_email")` returns null entity/trigger/sort_by and `batch_call_mode=0`. Secrets stay environ. Data/provision/Gmail: **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/external/gmail.md`**. Ruth parse / runner are siblings **AST-1089** / **AST-1090**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block + TASK_CONFIG shell + admin defaults | `src/utils/config.py` | **`TestAst1088GazeEmailConfig`** |
+
+**Broken / obsolete:** none for config (additive).
+
+**Integration:** no existing scenarios assert `GAZE_EMAIL_CONFIG` / `gaze_email` task key — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  -q
+```
+
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+Extends `GAZE_EMAIL_CONFIG` with runner literals: `subject_url_schemes`, `dispatch_ledger_candidate_id`, `debug_func`. Shell keys from **AST-1088** unchanged. Primary runner: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Runner config literals | `src/utils/config.py` | **`TestAst1090GazeEmailRunnerConfig`** |
+
+**Broken / obsolete:** none — additive keys on `GAZE_EMAIL_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  -q
+```
+
+### AST-1089 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1089-ruth-little-brain-meteorite-email-parse-task`.
+
+`METEORITE_EMAIL_PARSE_CONFIG` (`task_key` + `parse_modes` `html_links` / `subject_body`) + `TASK_CONFIG["parse_meteorite_email"]` (fields schema; `requires_candidate_key: True`; `entity_type` / `trigger_state` None — **not** a meteorite dispatch claim). Catalog shell: **`docs/test-bible/core/repo_admin_json.md`**. Gaze shell / runner are siblings **AST-1088** / **AST-1090**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse config + TASK_CONFIG (not dispatch) | `src/utils/config.py` | **`TestAst1089ParseMeteoriteEmailConfig`** |
+| Catalog + AST-756 byte lock | `data/admin/agent_task.json` | **`TestAst1089ParseMeteoriteEmailCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** (47 keys) |
+
+**Broken / obsolete:** AST-786 **46 → 47** (+ UAT fixture byte lock for `parse_meteorite_email`).
+
+**Integration:** no existing scenarios assert parse_meteorite_email / METEORITE_EMAIL_PARSE_CONFIG — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  -q
+```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library + lookup `email_list_paths`. (Uniqueness email pool via **`email_list_paths`** is **AST-1095** — not `list_paths`.) Save/bind + Profile: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Labels + key + email_list_paths + uniqueness align | `src/utils/config.py` | **`TestAst1092ExtraBindingEmailsConfig`**; revised **`TestAst1079ContactUniquenessConfig`** / **AST-1095** for pool |
+
+**Broken / obsolete:** AST-1079 originally websites-only `list_paths`; AST-1092 briefly parked extras on `list_paths` — **AST-1095** moves extras to uniqueness `email_list_paths`.
+
+**Integration:** no existing Profile extra-email bind scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  -q
+```
+
+
+
+### AST-1095 · AST-1045 (UAT)
+
+**Parent:** [AST-1045 — Verify unique contact info](https://linear.app/astralcareermatch/issue/AST-1045/verify-unique-contact-info). **Publish:** `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra`.
+
+`CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"]` (identity with lookup); `list_paths` websites-only. Email pool = `email_paths` ∪ `email_list_paths` under `compare["email"]`. Gate: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| email_list_paths identity + websites-only list_paths | `src/utils/config.py` | **`TestAst1095EmailUniqueRootAndExtraConfig`**; revised **`TestAst1079ContactUniquenessConfig`**, **`TestAst1092ExtraBindingEmailsConfig`** |
+
+**Broken / obsolete:** AST-1079 / AST-1092 asserts that put `contact.extra_emails` on uniqueness `list_paths` — revised to `email_list_paths`.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1095EmailUniqueRootAndExtraConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  -q
+```
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+`CONTACT_CONFIG["activity_state_filename"]` = `contact_estelle_activity.json` (durable @Estelle activity summary under `db_dir`). Data/core/API/UI: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/ui/api/api_contact.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| activity_state_filename | `src/utils/config.py` | **`TestAst1094ActivityConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG key.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1094ActivityConfig \
+  -q
+```
+

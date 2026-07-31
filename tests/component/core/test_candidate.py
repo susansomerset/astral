@@ -3204,3 +3204,330 @@ class TestAst1080ContactUniqueness:
         assert "within_dedupe" in combined or "recorded|within_dedupe" in combined
         assert "cross_clear" in combined or "recorded|cross_clear" in combined
 
+class TestAst1085EvaluateJdEmbeddedMerge:
+    """AST-1085: append-merge QC/GC into evaluate_jd hydrate / save / generate."""
+
+    _CANDIDATE_ROW = {
+        "code": "JD",
+        "label": "Job Description Fit",
+        "content": "Candidate JD criterion",
+        "importance": 5,
+        "grade_descriptions": [{"grade": "A", "description": "good"}],
+    }
+
+    def test_merge_helper_appends_and_dedupes_by_code(self) -> None:
+        from src.utils.config import EMBEDDED_EVALUATE_JD_CRITERIA
+
+        stale_qc = {
+            "code": "QC",
+            "label": "Stale",
+            "content": "operator edit",
+            "importance": 9,
+            "grade_descriptions": [{"grade": "A", "description": "x"}],
+        }
+        out = candidate_mod._merge_embedded_evaluate_jd_criteria(
+            [self._CANDIDATE_ROW, stale_qc],
+        )
+        assert [r["code"] for r in out] == ["JD", "QC", "GC"]
+        assert out[-2]["label"] == EMBEDDED_EVALUATE_JD_CRITERIA[0]["label"]
+        assert out[-2]["importance"] == 1
+        assert [r["code"] for r in candidate_mod._merge_embedded_evaluate_jd_criteria([])] == ["QC", "GC"]
+
+    def test_hydrate_appends_qc_gc_after_candidate_rows(self, seeded_db) -> None:
+        from src.utils.config import EMBEDDED_EVALUATE_JD_CRITERIA
+
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", "evaluate_jd", [self._CANDIDATE_ROW],
+        )
+        rubric = candidate_mod.rubric_criteria_for_task("cand-1", "evaluate_jd")
+        assert [r["code"] for r in rubric] == ["JD", "QC", "GC"]
+        assert rubric[-2]["label"] == EMBEDDED_EVALUATE_JD_CRITERIA[0]["label"]
+        assert rubric[-1]["label"] == EMBEDDED_EVALUATE_JD_CRITERIA[1]["label"]
+
+        cd: Dict[str, Any] = {"artifacts": {}}
+        candidate_mod.hydrate_rubric_artifacts_for_response("cand-1", cd)
+        assert [r["code"] for r in cd["artifacts"]["jobdesc_rubric"]] == ["JD", "QC", "GC"]
+
+    def test_other_owners_do_not_gain_qc_gc(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("qualify_job_listings", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", "qualify_job_listings", [self._CANDIDATE_ROW],
+        )
+        rubric = candidate_mod.rubric_criteria_for_task("cand-1", "qualify_job_listings")
+        assert [r["code"] for r in rubric] == ["JD"]
+        assert not any(r["code"] in ("QC", "GC") for r in rubric)
+
+    def test_apply_save_restores_qc_gc_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        arts: Dict[str, Any] = {"jobdesc_rubric": [self._CANDIDATE_ROW]}
+        candidate_mod.apply_rubric_vectors_save("c1085", arts)
+        assert "jobdesc_rubric" not in arts
+        assert synced[0][:2] == ("c1085", "evaluate_jd")
+        assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
+
+    def test_craft_jobdesc_generate_merges_into_response_and_stash(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
+        saves: list[tuple[Any, ...]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: dict(store) if store.get("astral_candidate_id") == candidate_id else None,
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        parsed = {"criteria": [self._CANDIDATE_ROW]}
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_jobdesc_rubric", None,
+        )
+        assert status == 200
+        assert [r["code"] for r in body["parsed_response"]["criteria"]] == ["JD", "QC", "GC"]
+        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]["craft_jobdesc_rubric"]
+        assert [r["code"] for r in pending["parsed_response"]["criteria"]] == ["JD", "QC", "GC"]
+
+    def test_persist_craft_jobdesc_merges_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        # _criterion content includes a trailing grade table so normalize_rubric_artifacts_on_save passes.
+        candidate_mod._persist_craft_dispatch_success(
+            "c1085",
+            "craft_jobdesc_rubric",
+            {"criteria": [_criterion(code="JD", label="Job Description Fit")]},
+        )
+        assert synced
+        assert synced[0][1] == "evaluate_jd"
+        assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
+
+
+
+# AST-1092: extra_emails coerce + bind via email_list_paths (not websites).
+class TestAst1092ExtraBindingEmails:
+    """AST-1092: save coerce extra_emails; get_candidate_id_for_query expands email_list_paths."""
+
+    def test_extra_emails_none_and_list_coerce(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"extra_emails": None, "phone": "555"}}
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["extra_emails"] == []
+        save.reset_mock()
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "extra_emails": ["  a@ex.com  ", "", "  ", "b@ex.com"],
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["extra_emails"] == [
+            "a@ex.com",
+            "b@ex.com",
+        ]
+
+    def test_extra_emails_non_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        with pytest.raises(ValueError, match="contact.extra_emails must be a list"):
+            candidate_mod.save_candidate_data(
+                "c1", {"contact": {"extra_emails": "solo@ex.com"}}
+            )
+
+    def test_lookup_binds_extra_email_not_websites(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [
+            {
+                "astral_candidate_id": "c1",
+                "first": "",
+                "last": "",
+                "full": "",
+                "candidate_data": {
+                    "contact": {
+                        "extra_emails": ["Extra@Ex.com"],
+                        "websites": ["https://not-an-email.example"],
+                    }
+                },
+            }
+        ]
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: rows
+        )
+        assert candidate_mod.get_candidate_id_for_query("extra@ex.com") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("EXTRA@EX.COM") == "c1"
+        # Websites must not participate in email bind
+        assert (
+            candidate_mod.get_candidate_id_for_query("https://not-an-email.example")
+            is None
+        )
+
+# Branches: root↔extra shared email pool on uniqueness gate (AST-1095).
+class TestAst1095EmailUniqueRootAndExtra:
+    """AST-1095: root and extra_emails share casefold email pool across candidates."""
+
+    def _other(self, cid: str, **contact_fields: object) -> dict:
+        return {
+            "astral_candidate_id": cid,
+            "candidate_data": {"contact": dict(contact_fields)},
+        }
+
+    def test_cross_root_blocks_extra_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        owner = self._other("owner", contact_email="Ada@Example.com")
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [owner],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"This contact info is already used by another candidate \(ada@example\.com\)\.",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"extra_emails": ["ada@example.com"]}}
+            )
+        assert save.call_count == 0
+        assert owner["candidate_data"]["contact"]["contact_email"] == "Ada@Example.com"
+
+    def test_cross_extra_blocks_root_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        owner = self._other("owner", extra_emails=["Taken@Ex.com"])
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [owner],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"already used by another candidate \(taken@ex\.com\)",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"contact_email": "taken@ex.com"}}
+            )
+        assert save.call_count == 0
+        assert owner["candidate_data"]["contact"]["extra_emails"] == ["Taken@Ex.com"]
+
+    def test_cross_extra_blocks_extra_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", extra_emails=["dup@ex.com"])
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"extra_emails": ["DUP@ex.com"]}}
+            )
+        assert save.call_count == 0
+
+    def test_within_root_and_extra_collapses_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "Ada@Example.com",
+                    "extra_emails": ["ada@example.com", "other@ex.com"],
+                }
+            },
+        )
+        contact = save.call_args.kwargs["candidate_data"]["contact"]
+        assert contact["contact_email"] == "Ada@Example.com"
+        assert contact["extra_emails"] == ["other@ex.com"]
+
+    def test_initiate_extra_emails_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="taken@ex.com")
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.initiate_candidate(
+                "new-c",
+                {"contact": {"extra_emails": ["  taken@ex.com  "]}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
+    def test_initiate_prospect_extra_emails_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", extra_emails=["taken@ex.com"])
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.initiate_prospect_candidate(
+                "new-p",
+                {"contact": {"contact_email": "taken@ex.com"}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
