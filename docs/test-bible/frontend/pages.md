@@ -1201,6 +1201,31 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1086 · AST-1078
+
+**Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
+
+Skipped + In Review (§6c): grade `<th>` paints compact `headerCode` with full-name `title`; grade-dot hover includes rubric text + confidence parenthetical when confidence is 1–5. Helpers: **`docs/test-bible/frontend/lib.md`** (**AST-1086**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Compact header + grade-dot tooltip (Skipped) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1086 compact headers and grade-dot tooltips`** |
+| Compact header + grade-dot tooltip (In Review) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1086 compact headers and grade-dot tooltips`** |
+| Grades-only parse / tooltip helpers | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1086 compact headers and grade-dot confidence tooltips`** |
+
+**Broken / obsolete:** `test_rubricDisplay` grades-only `headerCode === "Technical (TE)"` — revised to compact `"TE"`.
+
+**Integration:** none revised (UI display only; no existing scenario maps these headers).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx
+```
+
+---
+
 ### AST-1067 · AST-1043
 
 **Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.

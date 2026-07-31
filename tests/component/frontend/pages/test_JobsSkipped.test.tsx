@@ -231,4 +231,42 @@ describe("JobsSkipped", () => {
       expect(screen.getByText("Same Two")).toBeInTheDocument()
     })
   })
+
+  describe("AST-1086 compact headers and grade-dot tooltips", () => {
+    it("grades-only Failed LIKE shows compact TE header with full-name title", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [failedJob]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      const th = screen.getByRole("columnheader", { name: "TE" })
+      expect(th).toHaveAttribute("title", "Technical (5)")
+      expect(th.textContent).toMatch(/^TE/)
+      expect(screen.queryByRole("columnheader", { name: /Technical \(TE\)/ })).not.toBeInTheDocument()
+    })
+
+    it("grade-dot title includes reason and confidence parenthetical", async () => {
+      const job = {
+        astral_job_id: "tip-1",
+        job_title: "Tooltip Role",
+        company: "TipCo",
+        state: "FAILED_LIKE",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        like_grades: [{
+          vector: "Technical (TE)",
+          grade: "B",
+          confidence: 4,
+          reason: "Strong match on stack",
+        }],
+      }
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [job]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      const dot = document.querySelector(".grade-dot.dot-b")
+      expect(dot).toBeTruthy()
+      expect(dot?.getAttribute("title")).toBe(
+        "Strong match on stack (The source strongly suggests it.)",
+      )
+    })
+  })
 })
