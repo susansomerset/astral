@@ -1,9 +1,5 @@
 [
   {
-    "ticket_id": "AST-1043",
-    "recorded_at": "2026-07-30T16:42:57Z"
-  },
-  {
     "ticket_id": "AST-952",
     "recorded_at": "2026-07-30T18:56:05Z"
   },
@@ -26,5 +22,9 @@
   {
     "ticket_id": "AST-1065",
     "recorded_at": "2026-07-31T03:46:02Z"
+  },
+  {
+    "ticket_id": "AST-1043",
+    "recorded_at": "2026-07-31T04:11:36Z"
   }
 ]
