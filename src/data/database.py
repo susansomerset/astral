@@ -7357,6 +7357,13 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         cid = task.get("candidate_id")
+        tk = (task.get("task_key") or "").strip()
+        if tk == GAZE_EMAIL_CONFIG["task_key"]:
+            avail = count_eligible_for_dispatch_task(task)
+            if avail >= (task.get("min_count") or 1):
+                task["available_count"] = avail
+                due.append(task)
+            continue
         if not et or not ts or not cid:
             continue
         avail = count_eligible_for_dispatch_task(task)
@@ -7471,12 +7478,43 @@ def _state_in_sql(states: List[str]) -> tuple[str, List[Any]]:
     placeholders = ",".join("?" for _ in states)
     return f"state IN ({placeholders})", list(states)
 
+def _parse_dispatch_last_run_at(raw: Any) -> Optional[datetime]:
+    """Parse dispatch_task.last_run_at (ISO or SQLite space form) to aware UTC datetime."""
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace(" ", "T"))
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _gaze_email_available_count(task: Dict[str, Any]) -> int:
+    """Due signal for null-candidate gaze_email: 1 when freq allows, else 0 (AST-1090)."""
+    freq = float(task.get("freq_hrs") or 0)
+    if freq > 0:
+        last = _parse_dispatch_last_run_at(task.get("last_run_at"))
+        if last is not None:
+            age = datetime.now(timezone.utc) - last
+            if age.total_seconds() < freq * 3600:
+                return 0
+    return 1
+
+
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH/gaze).
 
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter)."""
+    tk = (task.get("task_key") or "").strip()
+    if tk == GAZE_EMAIL_CONFIG["task_key"]:
+        return _gaze_email_available_count(task)
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
