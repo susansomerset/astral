@@ -73,6 +73,18 @@ BASE_SCHEMA = {
     "failure_note": {"type": "str", "required": False},
 }
 
+CONVERSATIONAL_OUTCOMES = ("success", "failure", "concern")
+CONVERSATIONAL_PERFORMANCE_SCHEMA = {
+    "status": {
+        "type": "str",
+        "required": True,
+        "enum": list(CONVERSATIONAL_OUTCOMES),
+    },
+    "failure_note": {"type": "str", "required": False},
+    "admin_aside": {"type": "str", "required": False},
+}
+
+
 # Post-decode jobs[] item for grade_do / grade_get / grade_like (grades_encoded_notes).
 _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
     "astral_job_id": {"type": "str", "required": True},
@@ -852,7 +864,34 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    "contact_estelle_turn": {
+        "print_label": "Contact Estelle Turn",
+        "response_format": "json",
+        "response_schema": {
+            "reply": {"type": "str", "required": True},
+            # Optional ACL skill requests — executed by Contact turn loop (AST-1073).
+            "skill_calls": {
+                "type": "list",
+                "required": False,
+                "items_schema": {
+                    "skill_key": {"type": "str", "required": True},
+                    "fields": {"type": "object", "required": True},
+                },
+            },
+        },
+        "entity_type": None,
+        "requires_candidate_key": False,
+        "trigger_state": None,
+        "task_type": "CHAT",
+        "agent_task": "contact_estelle_turn",
+    },
 }
+
+def is_conversational_task(task_key: str) -> bool:
+    """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
+    cfg = TASK_CONFIG.get(task_key) or {}
+    return cfg.get("task_type") == "CHAT"
+
 
 # Dispatch consult hops that enter the job-artifact chain (AST-534 / AST-740).
 # Excludes draft_cover_letter — cover-letter chain uses _run_craft_job_cover_letter_batch.
@@ -3364,6 +3403,20 @@ def get_model(model_code: str) -> dict:
 # ---------------------------------------------------------------------------
 BRAIN_LITTLE = "Little"
 BRAIN_MEDIUM = "Medium"
+CONTACT_ESTELLE_CONFIG = {
+    "default_brain_setting": "Medium",
+    "task_key": "contact_estelle_turn",
+    # Max Slack messages included in live_content (trim from oldest).
+    "turn_context_message_limit": 40,
+    # Max chars per message text in live_content (truncate with …).
+    "turn_context_text_max_chars": 500,
+}
+assert CONTACT_ESTELLE_CONFIG["default_brain_setting"] == BRAIN_MEDIUM
+assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_message_limit"], int)
+assert CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] > 0
+assert isinstance(CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"], int)
+assert CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] > 0
+
 BRAIN_BIG = "Big"
 BRAIN_SETTINGS: tuple[str, str, str] = (BRAIN_LITTLE, BRAIN_MEDIUM, BRAIN_BIG)
 
@@ -4550,8 +4603,14 @@ def stringify_response_schema(task_key: str) -> str:
         payload: object = example
     else:
         payload = _schema_to_example(schema)
+    # CHAT tasks use concern-capable performance schema; others keep BASE_SCHEMA.
+    perf_schema = (
+        CONVERSATIONAL_PERFORMANCE_SCHEMA
+        if is_conversational_task(task_key)
+        else BASE_SCHEMA
+    )
     envelope = {
-        "agent_performance": _schema_to_example(BASE_SCHEMA),
+        "agent_performance": _schema_to_example(perf_schema),
         "agent_payload": payload,
     }
     return json.dumps(envelope, indent=2)
