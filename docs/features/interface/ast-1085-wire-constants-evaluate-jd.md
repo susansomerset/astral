@@ -123,3 +123,19 @@ No `config.py` edits (definitions are AST-1084). No `consult.py` / dispatcher / 
 
 - **Commit:** `889a68d7`
 - **Branch:** `sub/AST-1077/AST-1085-wire-constants-evaluate-jd`
+
+### Radia — code-rubric.v1 (2026-07-31)
+
+[code-rubric] revision=1
+**Overall:** DISCUSS (product CLEAN; plan-exclusion stragglers on three-dot diff)
+
+**What's solid**
+- `_merge_embedded_evaluate_jd_criteria` + hydrate/save/generate call sites match Stage 1/2 literals (append; embedded wins).
+- Owner gates limited to `evaluate_jd` / `jobdesc_rubric` / `craft_jobdesc_rubric`; consult reads hydrate via `rubric_criteria_for_task`.
+- `code(AST-1085)` touches only `src/core/candidate.py`; one Betty `merge-tests`.
+
+**Issues (discuss)**
+- Stragglers vs Joan Excluded (in-scope on `origin/dev...publish-ref` because plan + Betty tests + AST-1084 config landed on the sub): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.utils-data-late-import-only`, `astral.ui.single-gunicorn-worker`. All score **conforms**; no product fix.
+
+**Recommended actions**
+- resolve-child: acknowledge stragglers; no src change required.
