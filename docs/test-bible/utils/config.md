@@ -784,17 +784,17 @@ Bootstrap / admin: **`docs/test-bible/core/bootstrap.md`** · **`docs/test-bible
 
 ### AST-962 · AST-856 (UAT fix)
 
-**Scope:** `_dispatch_trigger_state_for_task_key` defaults **`check_cover_letter`** / **`finalize_cover_letter`** / **`propose_application_responses`** → **`CANDIDATE_REVIEW`** (same as **`draft_cover_letter`**) so form meta + **`dispatch_task_admin_defaults`** / **`save_dispatch_task`** succeed without a hand-picked Input State. AST-955 Save membership unchanged; no schedulable frozenset (AST-960).
+**Scope (historical AST-962):** mid-hop cover-letter defaults so form meta + **`dispatch_task_admin_defaults`** / **`save_dispatch_task`** succeed without a hand-picked Input State. **Superseded default value:** **AST-1108** retargets those defaults from **`CANDIDATE_REVIEW`** → **`BUILD_ARTIFACTS`** (`CANDIDATE_REVIEW` remains graduation *output*). AST-955 Save membership unchanged; no schedulable frozenset (AST-960). Override-based tests may still use **`CANDIDATE_REVIEW`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Mid-hop default trigger + admin defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst962CoverLetterMidHopDefaultTrigger` |
-| AST-955 obsolete revise | same | `TestAst955RegisteredKeyDispatchAdminDefaults::test_check_cover_letter_without_override_defaults_candidate_review` |
+| Mid-hop default trigger + admin defaults | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst962CoverLetterMidHopDefaultTrigger` (**AST-1108** expects **`BUILD_ARTIFACTS`**) |
+| AST-955 obsolete revise | same | `TestAst955RegisteredKeyDispatchAdminDefaults::test_check_cover_letter_without_override_defaults_build_artifacts` |
 | DB insert omits trigger | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst962SaveDispatchTaskCoverLetterDefaults` |
 
-**Broken / obsolete (Betty revision this pass):** `TestAst955RegisteredKeyDispatchAdminDefaults::test_check_cover_letter_without_override_raises_no_rule` — now defaults to **`CANDIDATE_REVIEW`**.
+**Broken / obsolete (Betty revision this pass):** see **### AST-1108** (defaults were **`CANDIDATE_REVIEW`**; now **`BUILD_ARTIFACTS`**).
 
-**AST-962** narrowed run:
+**AST-962** narrowed run (post–AST-1108 values):
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -1948,4 +1948,32 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
   -q
 ```
+
+### AST-1108 (standalone — Track 3 cover-letter defaults)
+
+**Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.
+
+**Scope (Betty test lane):** Artifact-chain / cover-letter dispatch defaults claim **`BUILD_ARTIFACTS`**, not graduation output **`CANDIDATE_REVIEW`**. Product already on ftr (`_dispatch_trigger_state_for_task_key` + retarget migration). Override-based tests that pass **`trigger_state="CANDIDATE_REVIEW"`** stay. **No new integration scenarios.**
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Mid-hop + draft defaults | `src/utils/config.py` | revised **`TestAst962CoverLetterMidHopDefaultTrigger`** (all four keys → **`BUILD_ARTIFACTS`**; `grade_do` → **`PASSED_JD`** unchanged) |
+| AST-955 without-override | same | renamed/revised **`test_check_cover_letter_without_override_defaults_build_artifacts`** |
+| DB insert omits trigger | `src/data/database.py` | revised **`TestAst962SaveDispatchTaskCoverLetterDefaults`** |
+
+**Broken / obsolete (Betty revision this pass):** prior AST-962 asserts that default Input State is **`CANDIDATE_REVIEW`** for `draft_cover_letter` / `check_cover_letter` / `finalize_cover_letter` / `propose_application_responses`.
+
+**Out of scope for this pass:** Track 1 compliance, Topic Menu grouping polish, unrelated pre-existing `test_config.py` / `test_api_admin.py` reds (gaze_email `freq_hrs`, seed-statute registration, prefilter grouping, resolve-tokens) — do not misattribute to Track 3.
+
+**AST-1108** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst962CoverLetterMidHopDefaultTrigger \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst962SaveDispatchTaskCoverLetterDefaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
