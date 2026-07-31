@@ -142,3 +142,11 @@ No other files. Do not import or reference the new constant from core/UI/data in
 
 **Recommended actions**
 - resolve-child: acknowledge stragglers; no src change required for this review.
+
+## Resolution
+
+**2026-07-31 — resolve-child (Ada)**
+
+- **fix-now:** none.
+- **discuss (stragglers):** acknowledged — `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` were Joan-Excluded against plan Files Changed `{utils}` but appear on the three-dot diff once plan + Betty test-tree landed. All three scored **conforms** in Radia's review; no product or plan change.
+- **src:** no change this pass (constant already matches Stage 1 @ `29d55902`).
