@@ -16,15 +16,15 @@
     "recorded_at": "2026-07-31T00:25:58Z"
   },
   {
-    "ticket_id": "AST-1065",
-    "recorded_at": "2026-07-31T00:36:25Z"
-  },
-  {
     "ticket_id": "AST-1077",
     "recorded_at": "2026-07-31T01:05:36Z"
   },
   {
     "ticket_id": "AST-1087",
     "recorded_at": "2026-07-31T02:52:34Z"
+  },
+  {
+    "ticket_id": "AST-1065",
+    "recorded_at": "2026-07-31T03:46:02Z"
   }
 ]
