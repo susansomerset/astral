@@ -111,5 +111,10 @@ No conflicts requiring `conf-!!-NONE`.
 | -- | -- |
 | Ticket | AST-1095 |
 | Publish ref | `origin/sub/AST-1045/AST-1095-uat-email-unique-root-and-extra` |
-| Built | `a5d8c1a2313c68b7ddb5821c7ce0ad25244ac728` |
-| Notes | Stage 1 — uniqueness `email_list_paths` email pool + gate/initiate coerce; websites-only `list_paths`. |
+| Built | `e47d94f4` (rebuild on `origin/ftr`; prior `a5d8c1a2`) |
+| Notes | Stage 1 — uniqueness `email_list_paths` email pool + gate/initiate coerce; websites-only `list_paths`. FIX-UAT — no Radia code-rubric pass. |
+
+## Resolution
+
+**Date:** 2026-07-31  
+**Outcome:** clean (FIX-UAT) — Betty manifest green (17 passed); no Radia fix-now; publish tip rebuilt on `origin/ftr` without pull-merge ancestry.
