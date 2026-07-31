@@ -175,3 +175,14 @@ No conflicts requiring `conf-!!-NONE`.
 **Recommended actions**
 - Ada: no code change required for stragglers; proceed `resolve-child` → User Testing unless a discuss thread is opened.
 - Full statutes-checked table + Linear comment on AST-1079.
+
+## Resolution
+
+**Date:** 2026-07-30  
+**Review tip:** `249a8a37` (`docs(AST-1079): Radia review — uniqueness field contract`)  
+**Outcome:** clean — no fix-now; no product or config changes.
+
+| Finding | Disposition |
+| -- | -- |
+| discuss (straggler) — Joan excluded spike/docs/engineer-test-tree-ban at plan time; three-dot diff scores conforms | Accepted as documented; no code or plan vocabulary change |
+| Joan non-blocking discuss — `slack_user_id` in uniqueness via shared lookup paths | Left as plan Decision; not reopened |
