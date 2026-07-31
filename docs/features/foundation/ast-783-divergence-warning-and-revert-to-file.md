@@ -1,3 +1,120 @@
+<!-- linear-archive: AST-783 archived 2026-07-22 -->
+
+## Linear archive (AST-783)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-783/divergence-warning-and-revert-to-file-ui-create-repo-json-files-for  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-756 — create repo json files for agent and agent_task.  
+**Blocked by / blocks / related:** parent: AST-756
+
+### Description
+
+## What this implements
+
+When database content for `agent` or `agent_task` diverges from the checked-in repo JSON files, Manage Agents and Manage Tasks warn Susan that changes will be clobbered on the next deploy/restart unless she exports and commits the repo JSON. Provide **Revert to file** to restore database content from checked-in JSON without a server restart. Includes admin API support and React UI on both admin prompt screens.
+
+## Acceptance criteria
+
+* After Susan edits a persona or task prompt in admin and saves, the change is visible immediately without restarting.
+* When database content diverges from repo JSON, opening Manage Agents or Manage Tasks shows a warning that changes will be clobbered on the next deploy/restart unless repo JSON is updated and committed.
+* **Revert to file** restores database content for that table from the checked-in JSON without requiring a server restart.
+
+## Boundaries
+
+* Does not implement startup upsert or initial seed JSON files (sibling Ada ticket).
+* Does not change `push_tables_to_prod.py` / `upsert_tables_from_prod.py`.
+* Tables limited to `agent` and `agent_task`.
+
+## Notes for planning
+
+* Depends on repo paths and upsert/export contract from AST-757.
+* Warning on page load when DB snapshot differs from repo file; editing still allowed.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-756-repo-json-agent-agent-task`, child `sub/AST-756/AST-758-divergence-warning-and-revert-to-file`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-24T05:34:28.760Z
+### Plan fidelity (AST-783)
+
+Diff \`origin/dev...origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file\` @ \`3d0132c\` (+ doc \`b1d5cf1\`).
+
+Stages 1–3 match plan: core \`get_repo_admin_json_divergence_status\` / \`revert_repo_admin_json_table\` (export-shape compare + scalar normalization, transactional revert reusing AST-782 apply paths); admin \`GET /api/admin/repo_json/status\` + \`POST /api/admin/repo_json/revert/<table_key>\`; shared \`RepoJsonDivergenceBanner\` on Manage Agents / Manage Tasks with \`refreshToken\`, danger \`useUserConfirm\`, CLI-only export copy. Layers OK (§3.3): React → API → core; no new data SQL; no new logging.
+
+**fix-now:** none.
+
+**discuss:** Inherited from AST-782 — \`data/admin/agent.json\` is still \`[]\`; **Revert to file** on Manage Agents uses repo-wins delete-all-agents semantics. Confirm intentional before relying on revert in prod.
+
+**advisory:** Branch diff vs \`origin/dev\` includes full AST-782 foundation (bootstrap, seed JSON, data upsert) as dependency on this publish ref — not AST-783 scope smuggling.
+
+Combined review: \`docs/features/foundation/ast-783-divergence-warning-and-revert-to-file.md\` (Radia review section).
+
+#### betty — 2026-06-24T05:31:08.813Z
+**Bible shasum correction:** `docs/test-bible/core/repo_admin_json.md` → `17ef06ea2fd973255d99bd91e0d764f8da94d2771f52df188d3d43c9e322b96c` (prior manifest line used pre-AST-783 block hash).
+
+#### betty — 2026-06-24T05:31:05.163Z
+## QA test manifest (AST-783)
+
+**Publish:** `origin/sub/AST-756/AST-783-divergence-warning-and-revert-to-file` @ `3d0132c` (`merge-tests(AST-783): origin/tests 402b70b`)
+
+**Prerequisite:** AST-782 repo JSON startup/export on publish tip (sibling `merge-tests` bleed expected).
+
+### Manifest (test-child)
+
+1. **Core divergence compare + revert** — `tests/component/core/test_repo_admin_json.py::TestAst783RepoAdminJsonDivergence`
+
+2. **Admin API status + revert** — `tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi`
+
+3. **Shared banner + themed confirm** — `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` (full file)
+
+4. **Manage Agents routed page (§6c)** — `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — `AST-783: shows agent repo JSON divergence banner on routed page`
+
+5. **Manage Tasks routed page (§6c)** — `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — `AST-783: shows task repo JSON divergence banner on routed page`
+
+**Narrowed pytest:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst783RepoAdminJsonDivergence \
+  tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi \
+  -q
+```
+
+**Narrowed Vitest:**
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  -t "AST-783"
+```
+
+**Pass criterion:** items 1–2 pytest green + items 3–5 Vitest green — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/repo_admin_json.md` `e814f3e26b35ddb89bf4eeba53b3c405c0b0eea4952db504750e5038b6ede0b1`
+- `docs/test-bible/ui/api/api_admin.md` `8408a8dbe35fda263e0226dd6b4dadd9ba3fd6ff643d8613809216ea8369245f`
+- `docs/test-bible/frontend/components.md` `89adf534db381b3eed493c15ef7406b2355024de521a7373b0ec6718743f3cfe`
+- `docs/test-bible/frontend/pages.md` `9dbc1628425e5d9883be54cb762c21c661e2b3eb0208908c31b70de3795187f5`
+
+#### katherine — 2026-06-24T05:25:46.205Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-756/AST-783-divergence-warning-and-revert-to-file/docs/features/foundation/ast-783-divergence-warning-and-revert-to-file.md`
+
+**Scope:** Single-Component — core compare/revert on existing AST-782 repo JSON paths, two admin API routes, one shared React banner wired on Manage Agents and Manage Tasks.
+
+**Conf:** Medium — export/apply contract is landed in AST-782; scalar normalization for SQLite-vs-JSON compare is the subtle part, but revert reuses startup apply verbatim.
+
+**Risk:** Medium — false compare results could hide deploy clobber risk or spam warnings; Revert to file uses repo-wins delete/retire semantics behind a destructive confirm.
+
+---
+
 # AST-783 — Divergence warning and Revert to file UI
 
 **Linear (this ticket):** [AST-783](https://linear.app/astralcareermatch/issue/AST-783/divergence-warning-and-revert-to-file-ui-create-repo-json-files-for)  

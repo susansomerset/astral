@@ -264,7 +264,7 @@ Equivalent harness:
 | `{prefix}_notes` always written (empty clears) | `src/core/consult.py` (`_apply_render_verdict_decoded_job`) | `tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes::test_apply_render_verdict_always_persists_notes_including_empty` |
 | `joblist_score` on pass/fail | `src/core/consult.py` (`qualify_job_listings`) | `TestAst726LatestOnlyConsultOutcomes::test_qualify_job_listings_persists_joblist_score_on_pass`; `::test_qualify_job_listings_persists_joblist_score_on_fail` (grades only, no score on F fail) |
 
-Entity ref upsert + modal story: **`docs/test-bible/data/database/agent_responses.md`**, **`docs/test-bible/core/roster.md`** (**AST-726**).
+Entity-row JSON ref upsert retired (**AST-984**); modal story + latest refs: **`docs/test-bible/data/database/agent_responses.md`**, **`docs/test-bible/core/roster.md`**.
 
 **AST-726** narrowed run:
 
@@ -505,25 +505,25 @@ Runtime cutover after **AST-796**: **`fetch_jd`** routing via **`fetch_jd_batch`
 
 ### AST-844 · AST-788 (UAT bug)
 
-**AST-844 (UAT bug):** Terminal hop **`propose_application_responses`** dispatch on flat **`BUILD_ARTIFACTS`** was rejected by **`_resolve_chain_start_task_key`** (resume-hop-only set) → chain skipped → no **`CANDIDATE_REVIEW`** graduation. **`build_artifacts_chain_task_keys()`** expands hop membership; consult wrapper fixes superseded by **AST-848/849** (**`do_task`** graduation + **`dispatch_chain_row_matches_job`**).
+**AST-844 (UAT bug):** Terminal hop **`propose_application_responses`** dispatch on flat **`BUILD_ARTIFACTS`** was rejected by **`_resolve_chain_start_task_key`** (resume-hop-only set) → chain skipped → no **`CANDIDATE_REVIEW`** graduation. Historical **`build_artifacts_chain_task_keys()`** expanded hop membership; consult wrapper fixes superseded by **AST-848/849** (**`do_task`** graduation + **`dispatch_chain_row_matches_job`**). **AST-1111** deletes that frozenset/wrapper — registry obligation moves to absence asserts + §2.6.0 helpers (**`docs/test-bible/utils/config.md`** AST-1111).
 
 | # | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| 1 | Full chain hop registry (excludes **`draft_cover_letter`**) | `src/utils/config.py` | **`TestAst844BuildArtifactsChainTaskKeys::test_includes_terminal_and_cover_hops_excludes_draft_cover_letter`** |
+| 1 | Config hop-registry frozenset | `src/utils/config.py` | **RETIRED (AST-1111)** — **`TestAst1111JobArtifactEntryShadowDeleted`** |
 | 2–5 | Terminal/mid-chain consult wrapper (historical) | — | **Superseded —** **`TestAst849DispatchChainClaimStates::test_terminal_hop_row_matches_flat_build_artifacts`** + **AST-849** narrowed run |
 
-**Regression (required):** item 1 + **AST-849** manifest (**`docs/test-bible/core/agent.md`**).
+**Regression (required):** **AST-1111** absence asserts + **AST-849** manifest (**`docs/test-bible/core/agent.md`**).
 
-**AST-844** narrowed run:
+**AST-844** narrowed run (post-AST-1111):
 
 ```bash
 .venv/bin/python -m pytest \
-  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/utils/test_config.py::TestAst1111JobArtifactEntryShadowDeleted \
   tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates::test_terminal_hop_row_matches_flat_build_artifacts \
   -q
 ```
 
-**Pass criterion:** pytest green on items 1–5 + regression graduation cases — not zero-arg harness / branch-lock gate.
+**Pass criterion:** pytest green on revised item 1 + AST-849 terminal match — not zero-arg harness / branch-lock gate.
 
 ---
 
@@ -695,5 +695,73 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
   tests/component/core/test_consult.py::TestConsultBatchFailDest \
   tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
   tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states \
+  -q
+```
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
+
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`evaluate_jd` / `grade_do` / `grade_get`); vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Overlay + `_render_pass_fail` entity_state | `src/core/consult.py` | **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+
+**Broken / obsolete:** none — additive helper; existing `_render_pass_fail` call sites without `entity_state` unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  tests/component/core/test_consult.py::TestRenderPassFail \
+  -q
+```
+
+---
+
+### AST-1055 · AST-1052
+
+**Publish:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`.
+
+`run_consult_task` routes `meteorite_like` through encoded LIKE (`meteorite_like_batch`) and `meteorite_upshot` through `_run_analysis_upshot_batch(..., task_key=)`; upshot always persists `job_data.analysis_upshot`. Config/catalog: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin routes + persist key | `src/core/consult.py` | **`TestAst1055MeteoriteConsultRoutes`** |
+
+**Broken / obsolete:** none for consult paths — additive routing.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes \
+  -q
+```
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+`qualify_meteorite` Pattern-A fields batch: content gates → FAILED_QUALIFY; pass → `initialize_job` + METEORITE_QUALIFIED; collision → fail count without transition; Style D only when `debug=True`. Not in `_STRICT_ENCODED_BATCH_CONSULT_KEYS`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Batch apply + gates | `src/core/consult.py` | **`TestAst1062QualifyMeteorite`**; revised **`TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches`** |
+
+**Broken / obsolete:** route test omitted `qualify_meteorite` arm (revised).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
   -q
 ```

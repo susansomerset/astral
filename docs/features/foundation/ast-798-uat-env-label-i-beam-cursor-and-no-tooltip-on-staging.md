@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-798 archived 2026-07-22 -->
+
+## Linear archive (AST-798)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-798/uat-env-label-i-beam-cursor-and-no-tooltip-on-staging  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-791 — List of UAT issues in environment tooltip is not updating  
+**Blocked by / blocks / related:** parent: AST-791
+
+### Description
+
+## What failed
+
+On staging after the AST-792 merge, hovering the admin deploy footer **environment label** shows an **I-beam (text) cursor** over the environment text and **no tooltip** appears. Susan reports this worked on **localhost** before the latest merge.
+
+## Expected
+
+With `ASTRAL_DEPLOY_ENV` set and admin session, hovering the environment label shows **pointer** cursor and, after **0.5 seconds**, a tooltip with up to **20** ticket lines (`AST-NNN` + timestamp) for parents currently in **User Testing** — same AST-691 UX as before this epic.
+
+When no parents qualify, the env label is **non-interactive** (no pointer, no tooltip).
+
+## Repro
+
+1. Log in as admin on **staging** (fresh deploy from current `origin/dev` after AST-791 prep-uat).
+2. Open left nav deploy footer; locate the environment label (e.g. `staging`).
+3. Hover the environment text for ≥0.5s.
+4. **Observed:** I-beam cursor; no tooltip.
+5. **Expected:** pointer cursor; tooltip lines when any User Testing parents are on the deploy.
+
+## Parent AC (quoted inline)
+
+> 3. A parent prep-uat'd to staging while in **User Testing** appears in the tooltip with an updated timestamp; re-prep-uat of the same parent updates timestamp only (no duplicate lines).
+
+> 6. When no logged parents are in **User Testing**, the env label is non-interactive (same as AST-691 empty-list behavior).
+
+## Boundaries
+
+* Does **not** change User Testing filter semantics or Linear client behavior unless required to restore tooltip UX.
+* Does **not** re-scope AST-792 backend filter — fix the staging/admin hover regression only.
+
+### Comments
+
+#### radia — 2026-06-25T01:35:35.108Z
+### Radia review — AST-798
+
+**Diff:** `origin/dev...origin/sub/AST-791/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging` @ `2306d71`
+**Doc:** `docs/features/foundation/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging.md` (§ Radia review)
+
+**What's solid**
+- `_resolve_linear_api_key()` with rollcall env precedence (`LINEAR_API_KEY` → `LINEAR_KEY_CHUCKLES` → `LINEAR_KEY_CURSOR`); missing all → `LinearApiError("Linear API key not configured")` — core fail-closed unchanged.
+- CSS: `.nav-deploy-env { cursor: default; user-select: none; }`; interactive class still `pointer`.
+- `src/` scope clean: `linear.py`, `App.css`, `env.example` only.
+- Betty manifest: key resolution tests + AdminDeployFooter static-env coverage.
+
+**advisory:** Frontend test asserts App.css source contract instead of `getComputedStyle` cursor — adequate, slightly below plan wording.
+
+**fix-now:** none
+**discuss:** none
+
+**Susan manual:** confirm Railway staging has at least one Linear env var before UAT (plan § Manual verify).
+
+#### betty — 2026-06-25T01:34:06.632Z
+## QA test manifest (AST-798)
+
+**Publish:** `origin/sub/AST-791/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging` @ `ce78bfa` (`merge-tests(AST-798): origin/tests ca81fd0`)
+
+**Scope:** Linear API key env precedence (`_resolve_linear_api_key`) + static env label CSS (`cursor: default; user-select: none`). No AST-792 filter or AdminDeployFooter logic changes.
+
+### Manifest (test-child)
+
+1. **Linear key resolution** — `tests/component/external/test_linear.py::TestResolveLinearApiKey` (3 tests): prefers `LINEAR_API_KEY`, falls back to `LINEAR_KEY_CHUCKLES`, raises `LinearApiError` when all unset.
+
+2. **Static env cursor (CSS contract)** — `tests/component/frontend/components/test_AdminDeployFooter.test.tsx` — extend **`test_renders_static_environment_span_when_merge_tickets_empty_or_missing`**: `nav-deploy-env` class, no `nav-deploy-env-interactive`, App.css source regex for `cursor: default` + `user-select: none` on `.nav-deploy-env`.
+
+```bash
+.venv/bin/python -m pytest tests/component/external/test_linear.py -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_AdminDeployFooter.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest — not zero-arg harness / branch-lock gate.
+
+**Manual UAT (Susan):** set `LINEAR_API_KEY` / `LINEAR_KEY_CHUCKLES` / `LINEAR_KEY_CURSOR` on Railway staging; hover env label ≥0.5s → pointer + `AST-791` tooltip line.
+
+**Bible shasums (`origin/sub/...` @ `ce78bfa`):**
+- `docs/test-bible/external/linear.md`: `c434106945877c5c24c34db7496b1aa50b006e0eb852c4d52e8e39f1e82bb148`
+- `docs/test-bible/frontend/components.md`: `776c57ef4cae76ed3b22b523ed484af7ba28463e688a3749568874c64051cfd3`
+
+— Betty
+
+#### ada — 2026-06-25T01:28:13.617Z
+Plan doc: [ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging.md](https://github.com/susansomerset/astral/blob/sub/AST-791/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging/docs/features/foundation/ast-798-uat-env-label-i-beam-cursor-and-no-tooltip-on-staging.md)
+
+**Scope:** `scope-minor` — Linear API key env precedence in `external/linear.py` plus default-cursor CSS on static env label; no AST-792 filter or AdminDeployFooter logic changes.
+
+**Conf:** `high` — Staging empty `merge_tickets` from missing `LINEAR_API_KEY` matches AST-693/692 pattern; rollcall env names are established; AST-691 defines default vs I-beam cursor.
+
+**Risk:** `risk-low` — Tooltip still empty if Railway env unset after deploy; CSS fix is cosmetic for empty state only.
+
+Two product stages + Betty manifest; Susan must set Linear key on Railway staging for tooltip content.
+
+---
+
 # UAT: env label I-beam cursor and no tooltip on staging
 
 **Linear:** [AST-798 — UAT: env label I-beam cursor and no tooltip on staging](https://linear.app/astralcareermatch/issue/AST-798/uat-env-label-i-beam-cursor-and-no-tooltip-on-staging)

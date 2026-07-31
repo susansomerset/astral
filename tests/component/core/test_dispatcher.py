@@ -33,6 +33,15 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(dispatcher_mod._tick_event, "wait", _wait_breaks_tick_loop)
     monkeypatch.setattr(dispatcher_mod._tick_event, "clear", MagicMock())
+    # AST-972: tick ages waiting stages before get_due_tasks — keep unit ticks DB-free
+    monkeypatch.setattr(
+        "src.core.candidate.age_stale_candidate_states",
+        MagicMock(return_value=0),
+    )
+    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
+    monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
+    # AST-1022: tick Style D AUTO-off side path lists stage rows — keep unit ticks DB-free
+    monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
 
 
 class TestDispatchWrappers:
@@ -298,10 +307,10 @@ class TestRunUnified:
         consult_out = {"total_processed": 1, "total_passed": 2, "total_failed": 0, "total_errors": 0}
         run = AsyncMock(return_value=consult_out)
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
-        ctx = {"astral_candidate_id": "c505", "state": "LIVE_PROMPTS", "candidate_data": {}}
+        ctx = {"astral_candidate_id": "c505", "state": "ACTIVE_SEARCH", "candidate_data": {}}
         task = {
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "task_key": "inflow_discovery",
             "batch_call_mode": 0,
         }
@@ -310,7 +319,7 @@ class TestRunUnified:
         clear_co.assert_not_called()
         clear_job.assert_not_called()
         run.assert_awaited_once_with(
-            "candidate", "LIVE_PROMPTS", [ctx], batch_id, ctx, False, dispatch_task_key="inflow_discovery",
+            "candidate", "ACTIVE_SEARCH", [ctx], batch_id, ctx, False, dispatch_task_key="inflow_discovery",
         )
 
     @pytest.mark.asyncio
@@ -487,7 +496,7 @@ class TestRunUnified:
             "batch_size": 10,
         }
         await dispatcher_mod._run_unified(task, {"astral_candidate_id": "cand-1"}, False)
-        assert claim.call_args.kwargs["states"] == ["HOMEPAGE_READY"]
+        assert claim.call_args.kwargs["states"] == ["HOMEPAGE_READY", "WEBSITE_FOUND_RETRY"]
 
     @pytest.mark.asyncio
     async def test_ast501_job_batch_call_mode_single_run_consult_with_all_claimed_entities(
@@ -1197,7 +1206,7 @@ class TestAst802InflowDiscoveryDebug:
         self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
     ) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c802", state="NEW", candidate_data={})
+        db.save_candidate("c802", state="NEW_CANDIDATE", candidate_data={})
         log = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "logger", log)
         run = AsyncMock()
@@ -1207,7 +1216,7 @@ class TestAst802InflowDiscoveryDebug:
             "id": 802,
             "task_key": "inflow_discovery",
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c802",
             "auto_mode": 1,
             "min_count": 1,
@@ -1225,7 +1234,7 @@ class TestAst814InflowDiscoveryDebug:
         self, monkeypatch: pytest.MonkeyPatch, sqlite_in_memory
     ) -> None:
         db = sqlite_in_memory
-        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c814", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c814", ["term"])
         db.update_company_search_term_last_scan_at("c814", "term")
         log = MagicMock()
@@ -1237,7 +1246,7 @@ class TestAst814InflowDiscoveryDebug:
             "id": 814,
             "task_key": "inflow_discovery",
             "entity_type": "candidate",
-            "trigger_state": "LIVE_PROMPTS",
+            "trigger_state": "ACTIVE_SEARCH",
             "candidate_id": "c814",
             "auto_mode": 1,
             "min_count": 1,
@@ -1401,6 +1410,11 @@ class TestScheduler:
         clear = MagicMock()
         monkeypatch.setattr(dispatcher_mod._tick_event, "clear", clear)
         monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        monkeypatch.setattr(
+            "src.core.candidate.age_stale_candidate_states",
+            MagicMock(return_value=0),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
         with pytest.raises(StopIteration):
             dispatcher_mod._tick_loop()
         clear.assert_called()
@@ -1423,10 +1437,10 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
         run = MagicMock()
         monkeypatch.setattr(dispatcher_mod, "run_task", run, raising=False)
 
-        db.save_candidate("tmpl", state="LIVE_PROMPTS", candidate_data={})
-        db.save_candidate("tgt", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("tmpl", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_candidate("tgt", state="ACTIVE_SEARCH", candidate_data={})
         db.save_dispatch_task(
-            "tmpl", "fetch_website", min_count=2, trigger_state="WEBSITE_FOUND", auto_mode=True, batch_size=4,
+            "tmpl", "qualify_job_listings", min_count=2, trigger_state="NEW", auto_mode=True, batch_size=4,
         )
         db.save_dispatch_task(
             "tgt", "evaluate_jd", min_count=1, trigger_state="JD_READY",
@@ -1441,7 +1455,7 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
         assert out["count"] == 1
         rows = db.list_dispatch_tasks_for_candidate("tgt")
         assert len(rows) == 1
-        assert rows[0]["task_key"] == "fetch_website"
+        assert rows[0]["task_key"] == "qualify_job_listings"
         assert rows[0]["auto_mode"] in (1, True)
         assert rows[0]["last_run_at"] is None
         assert rows[0]["batch_id"] is None
@@ -1459,6 +1473,687 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("  ")
         with pytest.raises(LookupError, match="Template candidate not found"):
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
-        db.save_candidate("tmpl", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("tmpl", state="ACTIVE_SEARCH", candidate_data={})
         with pytest.raises(LookupError, match="Candidate not found"):
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "ensure_candidate_stage_dispatch_tasks"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst972CandidateStageDispatch:
+    """AST-972: provision rows, claim gate, tick aging."""
+
+    def test_ensure_stage_tasks_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        existing = [
+            {"task_key": "candidate_requested_resume", "trigger_state": "REQUESTED_RESUME"},
+        ]
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append({"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]})
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        first = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert first["added"] == 1 and first["skipped"] == 1
+        second = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert second["added"] == 0 and second["skipped"] == 2
+        assert {s["task_key"] for s in saves} == {"candidate_requested_artifacts"}
+
+    def test_provision_requires_template_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda cid: None)
+        with pytest.raises(LookupError, match="Template candidate"):
+            dispatcher_mod.provision_candidate_stage_dispatch_tasks()
+
+    def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "ACTIVE_SEARCH"},
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_candidate_ids_with_dispatch_tasks",
+            lambda: ["tmpl", "c2"],
+        )
+        calls: list[str] = []
+
+        def _ensure(cid):
+            calls.append(cid)
+            return {"candidate_id": cid, "added": 0, "skipped": 2}
+
+        monkeypatch.setattr(dispatcher_mod, "ensure_candidate_stage_dispatch_tasks", _ensure)
+        out = dispatcher_mod.provision_candidate_stage_dispatch_tasks()
+        assert calls[0] == "tmpl"
+        assert "tmpl" in calls and "c2" in calls
+        assert out["candidates_touched"] == 2
+
+    @pytest.mark.asyncio
+    async def test_run_unified_candidate_claim_gate(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        run = AsyncMock(return_value=dict(dispatcher_mod._SUMMARY_ZERO))
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        task = {
+            "id": 1,
+            "task_key": "candidate_requested_resume",
+            "trigger_state": "REQUESTED_RESUME",
+            "entity_type": "candidate",
+            "batch_size": 1,
+            "batch_call_mode": 0,
+        }
+        bad = {"astral_candidate_id": "c1", "state": "ACTIVE_SEARCH"}
+        await dispatcher_mod._run_unified(task, bad, False)
+        run.assert_not_called()
+        good = {"astral_candidate_id": "c1", "state": "REQUESTED_RESUME"}
+        out = await dispatcher_mod._run_unified(task, good, False)
+        assert out == dispatcher_mod._SUMMARY_ZERO
+        run.assert_awaited_once()
+        assert run.await_args.args[0] == "candidate"
+        assert run.await_args.args[1] == "REQUESTED_RESUME"
+        assert run.await_args.args[2] == [good]
+        assert run.await_args.kwargs["dispatch_task_key"] == "candidate_requested_resume"
+
+    def test_tick_loop_invokes_stale_aging(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        aged = MagicMock(return_value=0)
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: [])
+        _run_one_tick(monkeypatch)
+        monkeypatch.setattr("src.core.candidate.age_stale_candidate_states", aged)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        aged.assert_called_once_with()
+
+    def test_start_scheduler_invokes_stage_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0))
+        provision = MagicMock(
+            return_value={
+                "template_candidate_id": "tmpl",
+                "candidates_touched": 1,
+                "added": 2,
+                "skipped": 0,
+            }
+        )
+        monkeypatch.setattr(dispatcher_mod, "provision_candidate_stage_dispatch_tasks", provision)
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "provision_meteorite_dispatch_tasks",
+            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+        )
+        # AST-1088: gaze_email provision runs after meteorite — stub so stage test stays DB-free.
+        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
+            monkeypatch.setattr(
+                dispatcher_mod,
+                "provision_gaze_email_dispatch_task",
+                MagicMock(return_value={"task_key": "gaze_email", "added": 0, "skipped": 1}),
+            )
+        dispatcher_mod.start_scheduler()
+        provision.assert_called_once_with()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "ensure_meteorite_dispatch_tasks"),
+    reason="AST-1054 meteorite dispatch provision not on this publish tip",
+)
+class TestAst1054MeteoriteDispatchProvision:
+    """AST-1054: ensure/provision meteorite GDL dispatch rows; twins skip without TASK_CONFIG."""
+
+    def test_ensure_inserts_shared_gdl_and_twins_per_task_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"], "id": len(existing) + 1}
+            )
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", MagicMock())
+        twins_present = {"meteorite_like", "meteorite_upshot"} <= set(dispatcher_mod.TASK_CONFIG)
+        qualify_present = "qualify_meteorite" in dispatcher_mod.TASK_CONFIG
+        # Base GDL = 3; +qualify (AST-1060) = 4; +twins = 6.
+        expect_add = (6 if twins_present else 4) if qualify_present else (5 if twins_present else 3)
+        expect_missing = 0 if twins_present else 2
+        first = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert first["added"] == expect_add and first["skipped_missing_config"] == expect_missing
+        assert first["skipped"] == 0
+        assert first.get("retired", 0) == 0
+        by_key = {s["task_key"]: s for s in saves}
+        # AST-1060: evaluate_jd inserts at METEORITE_QUALIFIED.
+        assert by_key["evaluate_jd"]["trigger_state"] == "METEORITE_QUALIFIED"
+        assert by_key["evaluate_jd"]["score_floor"] is None
+        assert by_key["grade_do"]["score_floor"] == 0.0
+        assert by_key["grade_get"]["score_floor"] == 0.0
+        if qualify_present:
+            assert by_key["qualify_meteorite"]["trigger_state"] == "METEORITE_NEW"
+            assert by_key["qualify_meteorite"]["score_floor"] is None
+        if twins_present:
+            assert by_key["meteorite_like"]["score_floor"] == 0.0
+            assert by_key["meteorite_upshot"]["batch_size"] == 1
+        else:
+            assert "meteorite_like" not in by_key
+        second = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert second["added"] == 0 and second["skipped"] == expect_add
+        assert second["skipped_missing_config"] == expect_missing
+        assert second.get("retired", 0) == 0
+
+    def test_ensure_inserts_twins_when_task_config_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"], "id": len(existing) + 1}
+            )
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", MagicMock())
+        patched = dict(dispatcher_mod.TASK_CONFIG)
+        patched["meteorite_like"] = {"agent_task": "meteorite_like"}
+        patched["meteorite_upshot"] = {"agent_task": "meteorite_upshot"}
+        monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", patched)
+        out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        qualify_present = "qualify_meteorite" in patched
+        expect_add = 6 if qualify_present else 5
+        assert out["added"] == expect_add and out["skipped_missing_config"] == 0
+        by_key = {s["task_key"]: s for s in saves}
+        assert by_key["meteorite_like"]["trigger_state"] == "METEORITE_PASSED_GET"
+        assert by_key["meteorite_like"]["score_floor"] == 0.0
+        assert by_key["meteorite_upshot"]["trigger_state"] == "METEORITE_PASSED_LIKE"
+        assert by_key["meteorite_upshot"]["score_floor"] == 0.0
+        assert by_key["meteorite_upshot"]["batch_size"] == 1
+
+    def test_ensure_retires_stale_evaluate_jd_at_meteorite_new(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1060: delete evaluate_jd@METEORITE_NEW; leave evaluate_jd@JD_READY."""
+        if "qualify_meteorite" not in dispatcher_mod.TASK_CONFIG:
+            pytest.skip("AST-1060 qualify_meteorite not on this tip")
+        existing = [
+            {"id": 10, "task_key": "evaluate_jd", "trigger_state": "METEORITE_NEW"},
+            {"id": 11, "task_key": "evaluate_jd", "trigger_state": "JD_READY"},
+        ]
+        saves: list[dict] = []
+        deleted: list[int] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {
+                    "id": 100 + len(saves),
+                    "task_key": kwargs["task_key"],
+                    "trigger_state": kwargs["trigger_state"],
+                }
+            )
+
+        def _delete(row_id: int) -> None:
+            deleted.append(row_id)
+            existing[:] = [r for r in existing if int(r["id"]) != int(row_id)]
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", _delete)
+        out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert out["retired"] == 1
+        assert deleted == [10]
+        assert any(
+            s["task_key"] == "evaluate_jd" and s["trigger_state"] == "METEORITE_QUALIFIED"
+            for s in saves
+        )
+        assert any(r["task_key"] == "evaluate_jd" and r["trigger_state"] == "JD_READY" for r in existing)
+        assert not any(
+            r["task_key"] == "evaluate_jd" and r["trigger_state"] == "METEORITE_NEW" for r in existing
+        )
+
+    def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid},
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_candidate_ids_with_dispatch_tasks",
+            lambda: ["tmpl", "c2"],
+        )
+        calls: list[str] = []
+
+        def _ensure(cid):
+            calls.append(cid)
+            return {
+                "candidate_id": cid,
+                "added": 0,
+                "skipped": 3,
+                "skipped_missing_config": 2,
+                "retired": 0,
+            }
+
+        monkeypatch.setattr(dispatcher_mod, "ensure_meteorite_dispatch_tasks", _ensure)
+        out = dispatcher_mod.provision_meteorite_dispatch_tasks()
+        assert calls[0] == "tmpl"
+        assert "tmpl" in calls and "c2" in calls
+        assert out["candidates_touched"] == 2
+        # Template ensure + loop over ["tmpl","c2"] → 3 ensures × stub 2 = 6.
+        assert out["skipped_missing_config"] == 6
+        assert out.get("retired", 0) == 0
+
+    def test_start_scheduler_invokes_meteorite_provision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(
+            dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
+        )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "provision_candidate_stage_dispatch_tasks",
+            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+        )
+        mprovision = MagicMock(
+            return_value={
+                "template_candidate_id": "tmpl",
+                "candidates_touched": 1,
+                "added": 3,
+                "skipped": 0,
+                "skipped_missing_config": 2,
+            }
+        )
+        monkeypatch.setattr(dispatcher_mod, "provision_meteorite_dispatch_tasks", mprovision)
+        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
+            monkeypatch.setattr(
+                dispatcher_mod,
+                "provision_gaze_email_dispatch_task",
+                MagicMock(return_value={"task_key": "gaze_email", "added": 0, "skipped": 1}),
+            )
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        dispatcher_mod.start_scheduler()
+        mprovision.assert_called_once_with()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "ensure_gaze_email_dispatch_task"),
+    reason="AST-1088 gaze_email dispatch provision not on this publish tip",
+)
+class TestAst1088GazeEmailDispatchProvision:
+    """AST-1088: ensure/provision null-candidate gaze_email shell; start_scheduler hook."""
+
+    def test_ensure_adds_then_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks",
+            lambda: list(existing),
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            row = {
+                "id": 41,
+                "task_key": kwargs["task_key"],
+                "candidate_id": kwargs.get("candidate_id"),
+            }
+            existing.append(row)
+            return 41
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        first = dispatcher_mod.ensure_gaze_email_dispatch_task()
+        assert first["added"] == 1 and first["skipped"] == 0
+        assert first["id"] == 41
+        assert saves[0]["candidate_id"] is None
+        assert saves[0]["task_key"] == dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        assert saves[0]["auto_mode"] is True
+        assert saves[0]["entity_type"] is None
+        assert saves[0]["trigger_state"] is None
+        second = dispatcher_mod.ensure_gaze_email_dispatch_task()
+        assert second["added"] == 0 and second["skipped"] == 1
+        assert second["id"] == 41
+        assert len(saves) == 1
+
+    def test_ensure_skips_missing_task_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", {})
+        out = dispatcher_mod.ensure_gaze_email_dispatch_task()
+        assert out["skipped_missing_config"] == 1
+        assert out["added"] == 0 and out["skipped"] == 0
+
+    def test_provision_wraps_ensure(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        ensure = MagicMock(return_value={"task_key": "gaze_email", "added": 1, "skipped": 0, "id": 9})
+        monkeypatch.setattr(dispatcher_mod, "ensure_gaze_email_dispatch_task", ensure)
+        assert dispatcher_mod.provision_gaze_email_dispatch_task() is ensure.return_value
+        ensure.assert_called_once_with()
+
+    def test_start_scheduler_invokes_gaze_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dispatcher_mod._tick_thread = None
+        monkeypatch.setattr(
+            dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
+        )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "provision_candidate_stage_dispatch_tasks",
+            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+        )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "provision_meteorite_dispatch_tasks",
+            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+        )
+        gprovision = MagicMock(
+            return_value={
+                "task_key": "gaze_email",
+                "added": 1,
+                "skipped": 0,
+                "skipped_missing_config": 0,
+                "id": 7,
+            }
+        )
+        monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_task", gprovision)
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                self.daemon = daemon
+
+            def start(self) -> None:
+                return None
+
+            def is_alive(self) -> bool:
+                return False
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        dispatcher_mod.start_scheduler()
+        gprovision.assert_called_once_with()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_debug_log_auto_off_stage_skips"),
+    reason="AST-1022 product not on this publish tip",
+)
+class TestAst1022HonorAutoOffStageDispatch:
+    """AST-1022: stage seed AUTO off; ensure insert-only; tick Style D AUTO-off skips."""
+
+    def test_ensure_seeds_auto_mode_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: [],
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "save_dispatch_task",
+            lambda **kwargs: saves.append(kwargs),
+        )
+        out = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert out["added"] == 2 and out["skipped"] == 0
+        assert {s["task_key"] for s in saves} == {
+            "candidate_requested_resume",
+            "candidate_requested_artifacts",
+        }
+        assert all(s["auto_mode"] is False for s in saves)
+
+    def test_ensure_does_not_rewrite_existing_auto_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Operator left resume AUTO on; artifacts already off — second ensure must not touch either.
+        existing = [
+            {
+                "task_key": "candidate_requested_resume",
+                "trigger_state": "REQUESTED_RESUME",
+                "auto_mode": 1,
+            },
+            {
+                "task_key": "candidate_requested_artifacts",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "auto_mode": 0,
+            },
+        ]
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "save_dispatch_task",
+            lambda **kwargs: saves.append(kwargs),
+        )
+        out = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
+        assert out["added"] == 0 and out["skipped"] == 2
+        assert saves == []
+
+    def test_debug_log_auto_off_stage_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {
+                "id": 1,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c1",
+                "min_count": 1,
+            },
+            {
+                "id": 2,
+                "task_key": "candidate_requested_artifacts",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "candidate_id": "c1",
+                "min_count": 1,
+            },
+            # Non-stage / wrong gates — must not emit
+            {
+                "id": 3,
+                "task_key": "evaluate_jd",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "job",
+                "trigger_state": "JD_READY",
+                "candidate_id": "c1",
+                "min_count": 1,
+            },
+            {
+                "id": 4,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 0,
+                "debug": 0,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c2",
+                "min_count": 1,
+            },
+            {
+                "id": 5,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 1,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c3",
+                "min_count": 1,
+            },
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda task: 1,
+        )
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        run = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "run_task", run)
+        dispatcher_mod._debug_log_auto_off_stage_skips()
+        run.assert_not_called()
+        log.set_debug_flag.assert_called_once_with(True)
+        assert log.debug_index.call_count == 2
+        kwargs_list = [c.kwargs for c in log.debug_index.call_args_list]
+        assert kwargs_list[0]["index"] == 1 and kwargs_list[0]["total"] == 2
+        assert kwargs_list[1]["index"] == 2 and kwargs_list[1]["total"] == 2
+        assert kwargs_list[0]["func"] == "dispatcher._tick_loop"
+        assert kwargs_list[0]["outcome"] == "skipped — AUTO off"
+        assert {k["identifier"] for k in kwargs_list} == {
+            "candidate_requested_resume",
+            "candidate_requested_artifacts",
+        }
+        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
+        assert any("candidate_id='c1'" in d and "auto_mode=0" in d for d in details)
+
+    def test_debug_log_skips_when_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {
+                "id": 9,
+                "task_key": "candidate_requested_resume",
+                "auto_mode": 0,
+                "debug": 1,
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_RESUME",
+                "candidate_id": "c1",
+                "min_count": 2,
+            },
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda task: 1,
+        )
+        log = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "logger", log)
+        dispatcher_mod._debug_log_auto_off_stage_skips()
+        log.set_debug_flag.assert_not_called()
+        log.debug_index.assert_not_called()
+
+    def test_tick_loop_calls_auto_off_debug_helper_before_spawn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        due = [{"id": 20}]
+        monkeypatch.setattr(dispatcher_mod.database, "get_due_tasks", lambda: due)
+        order: list[str] = []
+
+        def _dbg() -> None:
+            order.append("debug")
+
+        def _run(task_id: int) -> bool:
+            order.append(f"run:{task_id}")
+            return True
+
+        monkeypatch.setattr(dispatcher_mod, "_debug_log_auto_off_stage_skips", _dbg)
+        monkeypatch.setattr(dispatcher_mod, "run_task", _run)
+        _run_one_tick(monkeypatch)
+        with pytest.raises(StopIteration):
+            dispatcher_mod._tick_loop()
+        assert order == ["debug", "run:20"]
+
+
+# Branches: qualify_meteorite in chunk-exhaust set with listing qualify (AST-1062).
+class TestAst1062QualifyMeteoriteChunkExhaust:
+    def test_chunk_exhaust_includes_qualify_meteorite(self) -> None:
+        import pytest
+        from src.core import dispatcher as dispatcher_mod
+
+        keys = dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
+        assert "qualify_job_listings" in keys
+        if "qualify_meteorite" not in keys:
+            pytest.skip("AST-1062 qualify_meteorite chunk-exhaust not on this tip")
+        assert "qualify_meteorite" in keys
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "GAZE_EMAIL_CONFIG"),
+    reason="AST-1090 gaze_email wiring not on this publish tip",
+)
+class TestAst1090GazeEmailDispatchOne:
+    """AST-1090: _dispatch_one routes gaze_email without candidate API key."""
+
+    @pytest.mark.asyncio
+    async def test_calls_runner_without_candidate_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import gaze_email as ge_mod
+
+        get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
+        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", get_cand)
+        runner = AsyncMock(
+            return_value={
+                "total_processed": 2,
+                "total_passed": 2,
+                "total_failed": 0,
+                "total_errors": 0,
+            }
+        )
+        monkeypatch.setattr(ge_mod, "run_gaze_email", runner)
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
+        upd = MagicMock()
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", upd)
+        loop = AsyncMock()
+        monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
+        task = {
+            "id": 90,
+            "task_key": dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"],
+            "candidate_id": None,
+            "auto_mode": 1,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[90] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        runner.assert_awaited_once()
+        loop.assert_not_called()
+        get_cand.assert_not_called()
+        assert upd.called

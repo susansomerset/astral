@@ -142,3 +142,51 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+---
+
+### AST-1015 · AST-952
+
+**Product:** Add **`preamble_validate_response`** current row (`college_intern_ruth`, Candidate Preamble); keep **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-identical (AST-786 contract). After tip `merge origin/dev` (meteorite / simple_resume_parse catalog), size is **41 → 42** with this row.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog count + frozenset + startup apply | `data/admin/agent_task.json`, fixture | `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` |
+| Ruth row fields | same | `tests/component/core/test_repo_admin_json.py::TestAst1015PreambleValidateCatalogRow` |
+
+**Broken / revised:** **`TestAst786AgentTaskRepoJsonSeed`** — assert **42** rows; **`AST786_EXPECTED_TASK_KEYS`** includes **`preamble_validate_response`** (return pass after origin/dev merge on epic tip).
+
+**AST-1015** narrowed run: see **`docs/test-bible/utils/config.md`** § AST-1015.
+
+---
+
+### AST-1037 · AST-1036
+
+**Product:** Add **`simple_resume_parse`** current row (`college_intern_ruth`, Candidate Artifacts seq 6); keep **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-identical (AST-786 contract). Catalog stays **39** on the current origin/dev base (adds `simple_resume_parse`; parallel AST-1015 `preamble_validate_response` is not on that base).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog count + frozenset + startup apply | `data/admin/agent_task.json`, fixture | `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` |
+| Ruth simple parse row + Judith craft unchanged | same | `tests/component/core/test_repo_admin_json.py::TestAst1037SimpleResumeParseCatalogRow` |
+
+**Broken / revised:** **`TestAst786AgentTaskRepoJsonSeed`** — **`AST786_EXPECTED_TASK_KEYS`** includes **`simple_resume_parse`** (replaces parallel-epic `preamble_validate_response` membership on this tip).
+
+**AST-1037** narrowed run: see **`docs/test-bible/utils/config.md`** § AST-1037.
+
+### AST-1113 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
+
+Idempotent `_apply_ast1113_craft_run_next_chain_migration` (wired from `_ensure_agent_task_schema` after AST-834) confirm/corrects craft `run_next` succession; skips missing rows (no ghost inserts). Admin JSON aligned on tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Correct / idempotent / skip-missing | `src/data/database.py` | **`TestAst1113CraftRunNextChainMigration`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+

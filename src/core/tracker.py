@@ -147,7 +147,7 @@ def _candidate_data_for_job(astral_job_id: str) -> dict:
     return cd if isinstance(cd, dict) else {}
 
 
-def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, str]:
+def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: dict) -> Dict[str, Any]:
     """Filter to candidate catalog; snapshot contact sections from payload or base_resume."""
     structure = candidate_mod.resolve_resume_structure(candidate_data)
     filtered = candidate_mod.filter_content_to_resume_structure(
@@ -168,7 +168,7 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
         else:
             base_val = base_resume.get(sid)
             snapshot[sid] = str(base_val) if isinstance(base_val, str) else ""
-    merged = dict(filtered)
+    merged: Dict[str, Any] = dict(filtered)
     merged.update(snapshot)
     return merged
 
@@ -196,6 +196,89 @@ def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, A
     save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
 
 
+def pin_job_artifact_agent_data_id(
+    astral_job_id: str,
+    artifact_key: str,
+    agent_data_id: Any,
+    *,
+    debug: bool = False,
+) -> bool:
+    """AST-1099: merge RESPONSE agent_data_id into job_data.artifacts[key]. Never store empty."""
+    dbg = get_logger(__name__, debug_flag=True) if debug else None
+
+    def _skip(reason: str, key: str = "") -> bool:
+        if dbg is not None:
+            dbg.debug_detail(f"artifact_pin key={key or artifact_key} skipped reason={reason}")
+        return False
+
+    if not astral_job_id or not str(astral_job_id).strip():
+        return _skip("missing_job_id")
+    if not artifact_key or not str(artifact_key).strip():
+        return _skip("missing_artifact_key")
+    pin_id = str(agent_data_id).strip() if agent_data_id is not None else ""
+    if not pin_id:
+        return _skip("empty_agent_data_id", str(artifact_key))
+    save_job_data(astral_job_id, {"artifacts": {str(artifact_key): pin_id}})
+    if dbg is not None:
+        dbg.debug_detail(f"artifact_pin key={artifact_key} agent_data_id={pin_id} recorded")
+    return True
+
+
+_JOB_ARTIFACT_PIN_KEYS = ("job_resume", "cover_letter", "proposed_answers")
+
+
+def resolve_job_artifact_agent_data_body(
+    agent_data_id: Any,
+    *,
+    debug: bool = False,
+) -> Any:
+    """AST-1100: load RESPONSE body by pin id. Never writes. Blank/missing → None."""
+    dbg = get_logger(__name__, debug_flag=True) if debug else None
+
+    def _skip(reason: str) -> None:
+        if dbg is not None:
+            dbg.debug_detail(f"artifact_resolve skipped reason={reason}")
+
+    pin_id = str(agent_data_id).strip() if agent_data_id is not None else ""
+    if not pin_id:
+        _skip("empty_agent_data_id")
+        return None
+    row = database.get_agent_data(pin_id)
+    if not row:
+        _skip("missing_agent_data_row")
+        return None
+    text = row.get("block_data") or row.get("content") or ""
+    if not isinstance(text, str) or not text.strip():
+        _skip("empty_block_data")
+        return None
+    # Lazy: reuse agent parse (JSON / agent_payload unwrap) without import cycle at module load.
+    from src.core.agent import _parsed_response_from_stored_response_text
+
+    body = _parsed_response_from_stored_response_text(text, "")
+    if dbg is not None:
+        dbg.debug_detail(f"artifact_resolve agent_data_id={pin_id} recorded")
+    return body
+
+
+def hydrate_job_artifacts_for_display(
+    artifacts: Any,
+    *,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """AST-1100: shallow-copy artifacts; replace pin-slot strings with resolved bodies (no save)."""
+    if not isinstance(artifacts, dict):
+        return {}
+    out = dict(artifacts)
+    for key in _JOB_ARTIFACT_PIN_KEYS:
+        raw = out.get(key)
+        if not isinstance(raw, str) or not raw.strip():
+            continue
+        body = resolve_job_artifact_agent_data_body(raw, debug=debug)
+        if body is not None:
+            out[key] = body
+    return out
+
+
 def _artifact_shape_required_keys(shape_name: str) -> List[str]:
     shape = (BUILD_CONFIG.get("artifact_shapes") or {}).get(shape_name) or {}
     return [
@@ -204,24 +287,36 @@ def _artifact_shape_required_keys(shape_name: str) -> List[str]:
     ]
 
 
-def _resume_payload_body(parsed: Any) -> Dict[str, str]:
-    """Flat string section dict from terminal hop JSON (optional agent_payload wrapper)."""
+def _resume_section_has_body(sid: str, val: Any) -> bool:
+    if sid == "experience" and candidate_mod.is_experience_job_array(val) and val:
+        return True
+    return isinstance(val, str) and bool(val.strip())
+
+
+def _resume_payload_body(parsed: Any) -> Dict[str, Any]:
+    """Flat section dict from terminal hop JSON (strings + experience job arrays)."""
     if not isinstance(parsed, dict):
         return {}
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
     if not isinstance(body, dict):
         return {}
-    return {k: v for k, v in body.items() if isinstance(v, str)}
+    out: Dict[str, Any] = {}
+    for k, v in body.items():
+        if isinstance(v, str):
+            out[k] = v
+        elif k == "experience" and candidate_mod.is_experience_job_array(v):
+            out[k] = v
+    return out
 
 
 def parsed_matches_resume_content_shape(parsed: Any, candidate_data: dict) -> bool:
-    """True when at least one enabled catalog section has non-empty string content (AST-551)."""
+    """True when at least one enabled catalog section has body content (AST-551)."""
     structure = candidate_mod.resolve_resume_structure(candidate_data)
     enabled = set(candidate_mod.enabled_resume_section_ids(structure))
     if not enabled:
         return False
     body = _resume_payload_body(parsed)
-    return any((body.get(sid) or "").strip() for sid in enabled)
+    return any(_resume_section_has_body(sid, body.get(sid)) for sid in enabled)
 
 
 def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
@@ -235,8 +330,7 @@ def parsed_matches_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
     for sid in candidate_mod.enabled_resume_section_ids(structure):
         if sid in contact:
             continue
-        val = body.get(sid)
-        if isinstance(val, str) and val.strip():
+        if _resume_section_has_body(sid, body.get(sid)):
             return True
     return False
 
@@ -255,8 +349,7 @@ def job_has_persisted_resume_body(astral_job_id: str, job: Optional[Dict[str, An
     for sid in candidate_mod.enabled_resume_section_ids(structure):
         if sid in contact:
             continue
-        val = rc.get(sid)
-        if isinstance(val, str) and val.strip():
+        if _resume_section_has_body(sid, rc.get(sid)):
             return True
     return False
 
@@ -684,11 +777,6 @@ def score_floor_by_trigger_for_candidate(candidate_id: str) -> Dict[str, float]:
 def get_company(short_name: str) -> Optional[Dict[str, Any]]:
     """Thin delegate: company row by short_name (same as database.get_company)."""
     return database.get_company(short_name)
-
-
-def append_agent_response(entity_type: str, entity_id: str, entry: Dict[str, Any]) -> None:
-    """Thin delegate — upserts by task_key; latest ref wins; full history stays in agent_data."""
-    database.append_agent_response(entity_type, entity_id, entry)
 
 
 def list_timesheets(**kwargs: Any) -> List[Dict[str, Any]]:

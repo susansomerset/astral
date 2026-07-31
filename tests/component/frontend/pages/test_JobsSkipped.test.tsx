@@ -133,4 +133,140 @@ describe("JobsSkipped", () => {
       expect(screen.queryByText("Floor Role")).not.toBeInTheDocument()
     })
   })
+
+  describe("AST-1064 group-by job-carried rubric", () => {
+    const rubricNarrow = [{ code: "ET", label: "Employment Type", importance: 5, grade_descriptions: [] }]
+    const rubricWide = [
+      { code: "CS", label: "Company Stage", importance: 5, grade_descriptions: [] },
+      { code: "ET", label: "Employment Type", importance: 3, grade_descriptions: [] },
+    ]
+
+    it("renders separate tables for different like_rubric shapes and paints grades + phase score", async () => {
+      const jobs = [
+        {
+          astral_job_id: "a1",
+          job_title: "Aligned A",
+          company: "meteorite-somerset",
+          state: "FAILED_LIKE",
+          state_changed_at: "2026-01-05T00:00:00Z",
+          like_rubric: rubricNarrow,
+          like_grades: [{ vector: "Employment Type", grade: "X", confidence: 0 }],
+          like_score: 10,
+          latest_score: 1,
+        },
+        {
+          astral_job_id: "a2",
+          job_title: "Aligned B",
+          company: "meteorite-somerset",
+          state: "FAILED_LIKE",
+          state_changed_at: "2026-01-04T00:00:00Z",
+          like_rubric: rubricNarrow,
+          like_grades: [{ vector: "Employment Type", grade: "X", confidence: 0 }],
+          like_score: 10,
+          latest_score: 1,
+        },
+        {
+          astral_job_id: "b1",
+          job_title: "Other Shape",
+          company: "OtherCo",
+          state: "FAILED_LIKE",
+          state_changed_at: "2026-01-03T00:00:00Z",
+          like_rubric: rubricWide,
+          like_grades: [
+            { vector: "Company Stage", grade: "F", confidence: 2 },
+            { vector: "Employment Type", grade: "X", confidence: 0 },
+          ],
+          like_score: 3.5,
+          latest_score: 99,
+        },
+      ]
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", jobs))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+
+      const tables = document.querySelectorAll(".list-page-table")
+      expect(tables.length).toBeGreaterThanOrEqual(2)
+      expect(screen.getAllByRole("columnheader", { name: "ET" }).length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByRole("columnheader", { name: "CS" })).toBeInTheDocument()
+      expect(screen.getByText("Aligned A")).toBeInTheDocument()
+      expect(screen.getByText("Other Shape")).toBeInTheDocument()
+      expect(document.querySelectorAll(".grade-dot").length).toBeGreaterThanOrEqual(3)
+      expect(screen.getAllByText("10.00").length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByText("3.50")).toBeInTheDocument()
+      expect(screen.queryByText("99.00")).not.toBeInTheDocument()
+      expect(screen.queryByText("1.00")).not.toBeInTheDocument()
+    })
+
+    it("keeps one table when all jobs share the same job-carried rubric", async () => {
+      const jobs = [
+        {
+          astral_job_id: "s1",
+          job_title: "Same One",
+          company: "Co",
+          state: "FAILED_LIKE",
+          state_changed_at: "2026-01-02T00:00:00Z",
+          like_rubric: rubricNarrow,
+          like_grades: [{ vector: "Employment Type", grade: "X", confidence: 0 }],
+          like_score: 2,
+        },
+        {
+          astral_job_id: "s2",
+          job_title: "Same Two",
+          company: "Co",
+          state: "FAILED_LIKE",
+          state_changed_at: "2026-01-01T00:00:00Z",
+          like_rubric: rubricNarrow,
+          like_grades: [{ vector: "Employment Type", grade: "F", confidence: 2 }],
+          like_score: 4,
+        },
+      ]
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", jobs))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      expect(document.querySelectorAll(".list-page-table")).toHaveLength(1)
+      expect(screen.getByRole("columnheader", { name: "ET" })).toBeInTheDocument()
+      expect(screen.getByText("Same One")).toBeInTheDocument()
+      expect(screen.getByText("Same Two")).toBeInTheDocument()
+    })
+  })
+
+  describe("AST-1086 compact headers and grade-dot tooltips", () => {
+    it("grades-only Failed LIKE shows compact TE header with full-name title", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [failedJob]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      const th = screen.getByRole("columnheader", { name: "TE" })
+      expect(th).toHaveAttribute("title", "Technical (5)")
+      expect(th.textContent).toMatch(/^TE/)
+      expect(screen.queryByRole("columnheader", { name: /Technical \(TE\)/ })).not.toBeInTheDocument()
+    })
+
+    it("grade-dot title includes reason and confidence parenthetical", async () => {
+      const job = {
+        astral_job_id: "tip-1",
+        job_title: "Tooltip Role",
+        company: "TipCo",
+        state: "FAILED_LIKE",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        like_grades: [{
+          vector: "Technical (TE)",
+          grade: "B",
+          confidence: 4,
+          reason: "Strong match on stack",
+        }],
+      }
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [job]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      const dot = document.querySelector(".grade-dot.dot-b")
+      expect(dot).toBeTruthy()
+      expect(dot?.getAttribute("title")).toBe(
+        "Strong match on stack (The source strongly suggests it.)",
+      )
+    })
+  })
 })

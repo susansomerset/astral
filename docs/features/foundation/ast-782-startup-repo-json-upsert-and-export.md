@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-782 archived 2026-07-22 -->
+
+## Linear archive (AST-782)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-782/startup-repo-json-upsert-and-export-create-repo-json-files-for-agent  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-756 — create repo json files for agent and agent_task.  
+**Blocked by / blocks / related:** parent: AST-756; blocks: AST-783
+
+### Description
+
+## What this implements
+
+Repo-owned JSON under `data/admin/` for the `agent` and `agent_task` tables, startup upsert during `bootstrap_runtime()` (set all rows `current=0`, then upsert JSON as current rows), bootstrap ordering before `sync_agent_tasks`, and an export path that writes current=1 rows only.
+
+## Acceptance criteria
+
+* After a fresh clone and server start, current (`current = 1`) rows in `agent` and `agent_task` match the checked-in `data/admin/` JSON files (field values for every row present in JSON).
+* Rows absent from repo JSON do not appear in Manage Agents / Manage Tasks after startup upsert; retired versions remain stored with `current = 0`.
+* Deploying a commit that changes either repo JSON file results in updated prompt/persona content after the next server restart, without manual Table Upsert or prod push scripts.
+* Export from the current database produces JSON containing current rows only and round-trips through startup upsert without data loss.
+* `sync_agent_tasks` runs after repo JSON upsert and only adds missing blank catalog rows for new task keys — it does not overwrite repo-loaded prompt bodies.
+
+## Boundaries
+
+* Does not implement Manage Agents / Manage Tasks divergence UI or Revert to file (sibling Katherine ticket).
+* Does not include `dispatch_task`, `candidate`, or other tables.
+* Does not auto-commit or push repo JSON on admin save.
+
+## Notes for planning
+
+* Paths: `data/admin/agent.json` and `data/admin/agent_task.json` (or equivalent under `data/admin/` per config block).
+* Attach to existing `bootstrap_runtime()` after validation, before `sync_agent_tasks`.
+* Reuse or extend existing config-table upsert semantics where possible.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-756-repo-json-agent-agent-task`, child `sub/AST-756/AST-757-startup-repo-json-upsert-and-export`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-24T05:22:17.764Z
+### Plan fidelity (AST-782)
+
+Diff `origin/dev...origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` @ `1cb5ba9` (+ doc `4fd6901`).
+
+Stages 1–4 match plan: `REPO_ADMIN_JSON_CONFIG`, `repo_admin_json.py`, data upsert/export, bootstrap wire before `sync_agent_tasks`, export CLI + `data/admin/*.json`. Layers OK (§3.3): core orchestrates + count-only INFO; data raises, no log. Transaction: `BEGIN IMMEDIATE`, FK on, rollback on failure. `agent_task` reuses `apply_agent_task_copy_upsert` after retire-all-current; `agent` upsert excludes legacy `model_code`. Tests cover manifest + bootstrap ordering.
+
+**fix-now:** none.
+
+**discuss:** `data/admin/agent.json` is `[]` — startup runs `DELETE FROM agent` when the array is empty (plan hand-verify `agent=0`). By design per plan HIGH-risk note; confirm empty personas in repo until export is intentional before prod deploy.
+
+**advisory:** Full branch diff vs `origin/dev` also includes sibling **AST-775/776** bible/roster test rollup from epic merge; AST-782 product commits stay within the plan file table.
+
+Combined review: `docs/features/foundation/ast-782-startup-repo-json-upsert-and-export.md` (Radia review section).
+
+#### betty — 2026-06-24T05:19:34.049Z
+## QA test manifest (AST-782)
+
+**Publish:** `origin/sub/AST-756/AST-782-startup-repo-json-upsert-and-export` @ `1cb5ba9` (`merge-tests(AST-782): origin/tests 68cad04`)
+
+**Broken / revised this pass:** `TestBootstrapRuntime` call-order — must include `apply_repo_admin_json_at_startup` between validation and `sync_agent_tasks`.
+
+### Manifest (test-child)
+
+1. **Bootstrap ordering** — `tests/component/core/test_bootstrap.py` (full file)
+
+2. **Core repo JSON load / apply / export** — `tests/component/core/test_repo_admin_json.py` (full file)
+
+3. **Config paths + apply order** — `tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig`
+
+4. **Agent repo upsert + export queries** — `tests/component/data/database/test_agents.py::TestAst782AgentRepoJsonStartup`
+
+5. **Agent_task repo upsert + export queries** — `tests/component/data/database/test_agent_tasks.py::TestAst782AgentTaskRepoJsonStartup`
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_bootstrap.py \
+  tests/component/core/test_repo_admin_json.py \
+  tests/component/utils/test_config.py::TestAst782RepoAdminJsonConfig \
+  tests/component/data/database/test_agents.py::TestAst782AgentRepoJsonStartup \
+  tests/component/data/database/test_agent_tasks.py::TestAst782AgentTaskRepoJsonStartup \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–5 — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/core/bootstrap.md` `c5ffd707d42fae585d46f2728f92a2276ad171864410a26640d81975f8a8d8d9`
+- `docs/test-bible/core/repo_admin_json.md` `e814f3e26b35ddb89bf4eeba53b3c405c0b0eea4952db504750e5038b6ede0b1`
+- `docs/test-bible/data/database/agents.md` `fc17d14b040b113563fd278d237f4d2f24cb3be1ed95e567928c78b1c51e1cf8`
+- `docs/test-bible/data/database/agent_tasks.md` `c2206c05ffc7aff8805aacf5521b81e530b7d11f38cdcac9e19f8c121f92da4d`
+- `docs/test-bible/ui/server.md` `f105fc40da48906c354b5952cf735ea7e98bfab2122a959a268f94d5d3c58043`
+- `docs/test-bible/utils/config.md` `0e9143144c039cf6362364266447c4a2e7af1dbe791c8f4a91758d999ce89e7c`
+
+#### ada — 2026-06-24T02:59:27.490Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-756/AST-782-startup-repo-json-upsert-and-export/docs/features/foundation/ast-782-startup-repo-json-upsert-and-export.md
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — config block, new `repo_admin_json` core module, data-layer startup upsert/export queries, bootstrap ordering, seed JSON under `data/admin/`, export CLI.
+- **Conf:** Medium — reuses `apply_agent_task_copy_upsert` for task import; `agent` deletes rows absent from JSON (no `current` column); seed content comes from local DB at build time.
+- **Risk:** HIGH — bad startup upsert could wipe prompts on deploy; mitigated by transactional apply, fail-loud missing files, retire-all-current before task import, and insert-only `sync_agent_tasks`.
+
+---
+
 # AST-782 — Startup repo JSON upsert and export
 
 **Linear (this ticket):** [AST-782](https://linear.app/astralcareermatch/issue/AST-782/startup-repo-json-upsert-and-export-create-repo-json-files-for-agent)  

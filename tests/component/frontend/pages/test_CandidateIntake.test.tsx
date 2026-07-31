@@ -8,6 +8,7 @@ import IntakeChatModal, {
   type IntakeTranscriptEntry,
 } from "../../../../src/ui/frontend/src/components/IntakeChatModal"
 import CandidateIntake from "../../../../src/ui/frontend/src/pages/CandidateIntake"
+import { AST1017_PREAMBLE_CONFIG } from "../fixtures/ast1017PreambleConfig"
 import { renderWithProviders } from "../test-utils"
 import { candidateId, installBaseApiMocks, jsonResponse } from "./page-mocks"
 
@@ -70,19 +71,24 @@ type IntakeMockState = {
   stickyAwaiting?: boolean
   /** Capture last session POST RequestInit (unmount regression). */
   sessionCreateInits?: RequestInit[]
+  /** AST-1017 Ruth validate outcome (default Valid). */
+  validateOutcome?: "Valid" | "Try Again" | "Escalate"
 }
 
 function installIntakeMocks(state: IntakeMockState = {}) {
-  const materials = state.materials ?? defaultMaterials
+  const materials: IntakeSourceMaterials = { ...(state.materials ?? defaultMaterials) }
   let active = state.activeSession === undefined ? null : state.activeSession
   const sessionCreateBodies = state.sessionCreateBodies ?? []
   const turnBodies = state.turnBodies ?? []
   const buildCalls = state.buildCalls ?? []
+  const putBodies: Record<string, unknown>[] = []
+  const validateBodies: Record<string, unknown>[] = []
   let archiveCalls = state.archiveCalls ?? 0
   let activeGetCalls = 0
   const sessionCreateInits = state.sessionCreateInits ?? []
   const pollAfter = state.pollUntilAssistantAfterGets
   const stickyAwaiting = state.stickyAwaiting ?? false
+  const validateOutcome = state.validateOutcome ?? "Valid"
 
   const resolveAwaitingAssistant = () => {
     if (!active?.awaiting_agent || stickyAwaiting) return
@@ -94,16 +100,78 @@ function installIntakeMocks(state: IntakeMockState = {}) {
   }
 
   installBaseApiMocks(mockedApi, (url, init) => {
+    if ((url === "/api/ui_config" || url === "/api/system/ui_config") && !init) {
+      return jsonResponse({
+        preamble: AST1017_PREAMBLE_CONFIG,
+        topic_menu_gen: {
+          ui: {
+            panel_title: "Confirm preamble with Estelle",
+            accept_label: "Looks good — generate Topic Menu",
+            send_label: "Send to Estelle",
+            placeholder: "Tell Estelle what to change, or accept below.",
+            generating_label: "Estelle is building your Topic Menu…",
+            done_title: "Topic Menu ready",
+          },
+        },
+        column_types: {},
+      })
+    }
+    if (url === `/api/candidates/${candidateId}/topic-menu/confirm` && init?.method === "POST") {
+      return jsonResponse({
+        success: true,
+        outcome: "continue",
+        assistant_message: "Anything here you would change?",
+        applied_patches: [],
+        packet: {},
+        batch_id: "intake-topic_menu_preamble_confirm-x",
+        error: null,
+      })
+    }
+    if (url === `/api/candidates/${candidateId}/topic-menu/generate` && init?.method === "POST") {
+      return jsonResponse({
+        success: true,
+        menu: { topics: [{ id: "t1", name: "Story", ask: "Win?", required: true, informs: ["backstory"], status: "open" }] },
+        rejected_topic_count: 0,
+        informs_covered: ["backstory"],
+        batch_id: "intake-topic_menu_generate-x",
+        error: null,
+      })
+    }
     if (url === `/api/candidates/${candidateId}` && !init) {
-      return jsonResponse({ candidate_data: { context: materials } })
+      return jsonResponse({
+        candidate_data: {
+          context: {
+            raw_resume: materials.starting_resume_text,
+            raw_sample: materials.sample_cover_text,
+            raw_profile: materials.linkedin_profile_text,
+          },
+        },
+      })
+    }
+    if (url === `/api/candidates/${candidateId}/preamble/validate` && init?.method === "POST") {
+      const body = JSON.parse(String(init.body)) as Record<string, unknown>
+      validateBodies.push(body)
+      return jsonResponse({
+        success: true,
+        outcome: validateOutcome,
+        error: null,
+        batch_id: "preamble-preamble_validate_response-x",
+      })
+    }
+    if (url === `/api/candidates/${candidateId}/data` && init?.method === "PUT") {
+      const body = JSON.parse(String(init.body)) as { context?: Record<string, string> }
+      putBodies.push(body)
+      const ctx = body.context ?? {}
+      if (ctx.raw_resume != null) materials.starting_resume_text = ctx.raw_resume
+      if (ctx.raw_profile != null) materials.linkedin_profile_text = ctx.raw_profile
+      if (ctx.raw_sample != null) materials.sample_cover_text = ctx.raw_sample
+      return jsonResponse({ ok: true })
     }
     if (url === `/api/candidates/${candidateId}/intake/sessions/active` && !init) {
       if (pollAfter != null) {
         activeGetCalls += 1
         if (activeGetCalls < pollAfter) {
-          return jsonResponse(
-            sessionDto({ transcript: [], awaiting_agent: true }),
-          )
+          return jsonResponse(sessionDto({ transcript: [], awaiting_agent: true }))
         }
         active = sessionDto({
           transcript: [transcriptEntry("assistant", "Estelle arrived after poll", "initiate_candidate")],
@@ -121,10 +189,7 @@ function installIntakeMocks(state: IntakeMockState = {}) {
       sessionCreateInits.push(init)
       const body = JSON.parse(String(init.body)) as IntakeSourceMaterials
       sessionCreateBodies.push(body)
-      const created = sessionDto({
-        transcript: [],
-        awaiting_agent: true,
-      })
+      const created = sessionDto({ transcript: [], awaiting_agent: true })
       const delayMs = state.delaySessionCreateMs ?? 0
       const respond = () => {
         active = created
@@ -192,10 +257,13 @@ function installIntakeMocks(state: IntakeMockState = {}) {
   })
 
   return {
+    materials,
     sessionCreateBodies,
     sessionCreateInits,
     turnBodies,
     buildCalls,
+    putBodies,
+    validateBodies,
     getArchiveCalls: () => archiveCalls,
     getActiveGetCalls: () => activeGetCalls,
     getActive: () => active,
@@ -221,18 +289,20 @@ describe("CandidateIntake page", () => {
     )
   })
 
-  it("shows Start Intake confirm before modal (§6c routed page)", async () => {
+  it("shows Start Intake confirm then preamble Modal (§6c routed page)", async () => {
     installIntakeMocks()
     localStorage.setItem("astral_selected_candidate", candidateId)
     renderWithProviders(<CandidateIntake />, { router: { initialEntries: ["/candidate/intake"] } })
     const dialog = await screen.findByRole("alertdialog", { name: "Start Intake" })
-    expect(dialog).toHaveTextContent(/saved resume and profile materials/i)
+    expect(dialog).toHaveTextContent(/collect any missing source materials/i)
     expect(screen.queryByRole("heading", { name: "Candidate Intake" })).not.toBeInTheDocument()
     await userEvent.click(within(dialog).getByRole("button", { name: "Continue" }))
     await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Intake" })).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByText("Estelle welcomes you.")).toBeInTheDocument())
-    expect(screen.queryByLabelText(/Original Resume Text/i)).not.toBeInTheDocument()
-    expect(screen.queryByRole("button", { name: "Start interview" })).not.toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByText(AST1017_PREAMBLE_CONFIG.intro)).toBeInTheDocument(),
+    )
+    expect(screen.getByText(AST1017_PREAMBLE_CONFIG.steps[1].prompt_1st_try)).toBeInTheDocument()
+    expect(screen.queryByText("Estelle welcomes you.")).not.toBeInTheDocument()
   })
 
   it("does not open modal when confirm is cancelled", async () => {
@@ -246,14 +316,48 @@ describe("CandidateIntake page", () => {
     )
   })
 
-  it("redirects away when resume text is missing on candidate", async () => {
-    installIntakeMocks({ materials: { ...defaultMaterials, starting_resume_text: "" } })
+  it("opens preamble when resume text is missing (no Profile hard-gate)", async () => {
+    installIntakeMocks({
+      materials: { starting_resume_text: "", sample_cover_text: "", linkedin_profile_text: "" },
+    })
     localStorage.setItem("astral_selected_candidate", candidateId)
     renderWithProviders(<CandidateIntake />, { router: { initialEntries: ["/candidate/intake"] } })
+    const dialog = await screen.findByRole("alertdialog", { name: "Start Intake" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Continue" }))
     await waitFor(() =>
-      expect(screen.getByText("Add Original Resume Text on Profile before starting Intake.")).toBeInTheDocument(),
+      expect(screen.getByText(AST1017_PREAMBLE_CONFIG.steps[0].prompt_1st_try)).toBeInTheDocument(),
     )
-    expect(screen.queryByRole("alertdialog", { name: "Start Intake" })).not.toBeInTheDocument()
+    expect(
+      screen.queryByText("Add Original Resume Text on Profile before starting Intake."),
+    ).not.toBeInTheDocument()
+  })
+
+  it("preamble Valid handoff opens Topic Menu confirm (§6c AST-1075)", async () => {
+    const fullGaps: IntakeSourceMaterials = {
+      starting_resume_text: "",
+      sample_cover_text: "",
+      linkedin_profile_text: "",
+    }
+    const { sessionCreateBodies, putBodies } = installIntakeMocks({ materials: fullGaps })
+    localStorage.setItem("astral_selected_candidate", candidateId)
+    renderWithProviders(<CandidateIntake />, { router: { initialEntries: ["/candidate/intake"] } })
+    const dialog = await screen.findByRole("alertdialog", { name: "Start Intake" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Continue" }))
+    await screen.findByText(AST1017_PREAMBLE_CONFIG.steps[0].prompt_1st_try)
+
+    for (const answer of ["Resume body", "LinkedIn body", "Cover body"]) {
+      await userEvent.clear(screen.getByPlaceholderText(/Paste your answer/i))
+      await userEvent.type(screen.getByPlaceholderText(/Paste your answer/i), answer)
+      await userEvent.click(screen.getByRole("button", { name: "Submit" }))
+      await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
+    }
+    // AST-1075: mechanical preamble complete → Topic Menu phase (not legacy Estelle chat).
+    await waitFor(() =>
+      expect(screen.getByText("Confirm preamble with Estelle")).toBeInTheDocument(),
+    )
+    expect(screen.getByText("Anything here you would change?")).toBeInTheDocument()
+    expect(sessionCreateBodies).toHaveLength(0)
+    expect(screen.queryByText("Estelle welcomes you.")).not.toBeInTheDocument()
   })
 
   it("shows resume dialog when active session exists (not Start Intake confirm)", async () => {
@@ -286,7 +390,7 @@ describe("CandidateIntake page", () => {
     expect(sessionCreateBodies).toHaveLength(0)
   })
 
-  it("Start Over archives then auto-starts fresh session", async () => {
+  it("Start Over archives then opens preamble (not Estelle yet)", async () => {
     const { getArchiveCalls, sessionCreateBodies } = installIntakeMocks({
       activeSession: sessionDto({
         transcript: [transcriptEntry("assistant", "Prior thread", "initiate_candidate")],
@@ -297,9 +401,12 @@ describe("CandidateIntake page", () => {
     const dialog = await screen.findByRole("alertdialog", { name: RESUME_DIALOG_NAME })
     await userEvent.click(within(dialog).getByRole("button", { name: "Start Over" }))
     await waitFor(() => expect(getArchiveCalls()).toBe(1))
-    await waitFor(() => expect(sessionCreateBodies).toHaveLength(1))
-    await waitFor(() => expect(screen.getByText("Estelle welcomes you.")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText(AST1017_PREAMBLE_CONFIG.intro)).toBeInTheDocument(),
+    )
+    expect(sessionCreateBodies).toHaveLength(0)
     expect(screen.queryByText("Prior thread")).not.toBeInTheDocument()
+    expect(screen.queryByText("Estelle welcomes you.")).not.toBeInTheDocument()
   })
 
   it("Start Over archive failure keeps resume dialog and does not open modal", async () => {
@@ -319,7 +426,7 @@ describe("CandidateIntake page", () => {
     expect(screen.queryByRole("heading", { name: "Candidate Intake" })).not.toBeInTheDocument()
   })
 
-  it("Start Over treats archive 404 as success and opens fresh session", async () => {
+  it("Start Over treats archive 404 as success and opens preamble", async () => {
     const { sessionCreateBodies } = installIntakeMocks({
       activeSession: sessionDto({
         transcript: [transcriptEntry("assistant", "Prior thread", "initiate_candidate")],
@@ -330,13 +437,14 @@ describe("CandidateIntake page", () => {
     renderWithProviders(<CandidateIntake />, { router: { initialEntries: ["/candidate/intake"] } })
     const dialog = await screen.findByRole("alertdialog", { name: RESUME_DIALOG_NAME })
     await userEvent.click(within(dialog).getByRole("button", { name: "Start Over" }))
-    await waitFor(() => expect(sessionCreateBodies).toHaveLength(1))
-    await waitFor(() => expect(screen.getByRole("heading", { name: "Candidate Intake" })).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByText("Estelle welcomes you.")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText(AST1017_PREAMBLE_CONFIG.intro)).toBeInTheDocument(),
+    )
+    expect(sessionCreateBodies).toHaveLength(0)
     expect(screen.queryByText("Prior thread")).not.toBeInTheDocument()
   })
 
-  it("Start Over shows hold copy while initiate runs", async () => {
+  it("Start Over shows preamble Intro before Estelle hold/initiate", async () => {
     installIntakeMocks({
       activeSession: sessionDto({
         transcript: [transcriptEntry("assistant", "Prior thread", "initiate_candidate")],
@@ -347,8 +455,10 @@ describe("CandidateIntake page", () => {
     renderWithProviders(<CandidateIntake />, { router: { initialEntries: ["/candidate/intake"] } })
     const dialog = await screen.findByRole("alertdialog", { name: RESUME_DIALOG_NAME })
     await userEvent.click(within(dialog).getByRole("button", { name: "Start Over" }))
-    await waitFor(() => expect(screen.getByText(HOLD_COPY)).toBeInTheDocument())
-    await waitFor(() => expect(screen.getByText("Estelle welcomes you.")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByText(AST1017_PREAMBLE_CONFIG.intro)).toBeInTheDocument(),
+    )
+    expect(screen.queryByText(HOLD_COPY)).not.toBeInTheDocument()
   })
 
   it("dismiss resume dialog does not open modal", async () => {
@@ -362,7 +472,6 @@ describe("CandidateIntake page", () => {
     const dialog = await screen.findByRole("alertdialog", { name: RESUME_DIALOG_NAME })
     const overlay = dialog.closest(".user-prompt-overlay")
     expect(overlay).toBeTruthy()
-    // Click overlay backdrop (not the centered card — card stopPropagation blocks dismiss)
     fireEvent.click(overlay!, { clientX: 4, clientY: 4 })
     await waitFor(() =>
       expect(screen.queryByRole("alertdialog", { name: RESUME_DIALOG_NAME })).not.toBeInTheDocument(),

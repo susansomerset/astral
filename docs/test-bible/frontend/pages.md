@@ -482,6 +482,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Regression guard:** full **`test_AdminPerformanceMonitor.test.tsx`** — default **All** preserves **AST-532**, **AST-634**, and copy-toolbar describes.
 
+### AST-980 · AST-976
+
+**AST-976 (parent):** Add level **DEBUG** to `app_log` / Execution History. **AST-980** owns the Execution History Level-list UI portion of parent AC4. Build was **confirm-only / no-op product delta** — AST-840 already ships `LOG_LEVELS` including **DEBUG**, URL `log_level`, generic `visibleLogs` filter/Copy/empty-state, and `.dispatch-log-level-debug`. Persistence of real DEBUG rows is **AST-979**.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-980** | Confirm DEBUG on Level list + client filter (no product delta) | `src/ui/frontend/src/pages/AdminPerformanceMonitor.tsx`, `App.css` (unchanged this ticket) | **Existing** **`AST-840 log level filter`** describe in **`test_AdminPerformanceMonitor.test.tsx`** (dropdown includes DEBUG; filter/Copy/empty-state generic) — **no new tests** |
+
+**AST-980** narrowed run (same gate as AST-840):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  -t "AST-840 log level filter"
+```
+
 ---
 
 ### AST-677 · AST-655
@@ -910,3 +926,485 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on narrowed pattern; engineer may widen to full file.
+
+---
+
+### AST-948 · AST-858
+
+**List entry regression only** — **`JobsRecommended.tsx`** unchanged this ticket. Row-click still opens JAR; Vitest updated for horizontal **Summary** / **Analysis** / **Artifacts** chrome (no `.side-tab-list`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Recommended list → JAR shell | `JobsRecommended.tsx` (untouched) + JAR shell | **`test_JobsRecommended.test.tsx`** — **`opens the report modal from a row click`** (AST-948 horizontal tabs) |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+
+### AST-1035 · AST-1019
+
+**AST-1035 (UAT):** Admin **Session Resume Paste** — **View Parsed JSON** between Parse and Open HTML; read-only Modal shows the exact `lastParse` (`resume_structure` + `base_resume`) Open HTML POSTs; disabled when no successful parse; close does not clear `lastParse`. No new API. Parse/HTML contracts unchanged (**AST-987** / **AST-986**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| View Parsed JSON button order + modal payload (§6c) | `AdminSessionResumePaste.tsx` | **`test_AdminSessionResumePaste.test.tsx`** — AST-1035 modal case + Parse/Open HTML regressions |
+
+**Broken / obsolete this pass:** none — additive UI control; AST-987 page tests extended in place.
+
+**Integration:** no existing scenario asserts Session Resume Paste JSON inspect — no revision; do not invent new integration coverage.
+
+**AST-1035** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```
+
+---
+
+### AST-987 · AST-985
+
+**AST-987:** Admin **Session Resume Paste** page + session HTML — paste → AST-986 parse API; `useLocalStorage` retention (`session_resume:paste_text` / `session_resume:last_parse`); Open HTML via `POST /api/admin/session_resume/html` → blob URL tab. Builder `build_session_base_resume` emits print HTML from in-memory structure/content (**no** `get_candidate` / profile overlay). Failed parse/HTML never opens a tab. Sibling **AST-986** owns parse core/route. View Parsed JSON control = **AST-1035**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session HTML builder (no bind) | `src/core/builder.py` **`build_session_base_resume`** | **`TestAst987BuildSessionBaseResume`** (`test_builder.py`) |
+| Admin HTML POST | `src/ui/api/api_admin.py` **`session_resume_html`** | **`TestAst987SessionResumeHtmlApi`** (`test_api_admin.py`) |
+| Admin paste page (§6c) | `AdminSessionResumePaste.tsx` + nav/route | **`test_AdminSessionResumePaste.test.tsx`** — render, parse success/fail, View Parsed JSON modal, Open HTML blob/error, localStorage restore |
+
+**Broken / obsolete:** none — new surface; candidate-bound `/candidate/resume/base` and craft persist paths unchanged.
+
+**AST-987** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/ui/api/test_api_admin.py::TestAst987SessionResumeHtmlApi \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```
+
+---
+
+### AST-1025 · AST-1023
+
+**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab; failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav item after Session Resume Paste. Core emit = sibling **AST-1024**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Admin page render + Open HTML + localStorage (§6c) | `AdminSessionCoverLetter.tsx` + route | **`test_AdminSessionCoverLetter.test.tsx`** |
+| Nav label/path order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1025SessionCoverLetterNav`** (`test_config.py`) |
+
+**Broken / obsolete this pass:** none — additive Admin page; Session Resume Paste unchanged.
+
+**Integration:** existing `tests/integration/scenarios/test_candidate_nav_api.py` asserts Jobs group gates only — no Admin item inventory; no revision; do not invent new integration coverage.
+
+**AST-1025** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+---
+
+### AST-1033 · AST-1031
+
+**Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`.
+
+Admin **Read email** page (§6c): first-paint list via `GET /api/admin/inbox/messages`; row click → wide `Modal` + body panel for `html_body` (**AST-1040** revised presentation to escaped `<pre>` raw source — was sandboxed iframe); empty subject → title `Message`; list/body errors inline (+ toast on list). API: **`docs/test-bible/ui/api/api_inbox.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page list + modal body (§6c) | `AdminReadEmail.tsx` + route | **`test_AdminReadEmail.test.tsx`** (modal body assertions revised by **AST-1040**) |
+| Nav label/path order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1033ReadEmailNav`** (`test_config.py`) |
+| Auth-gated list/get API | `src/ui/api/api_inbox.py` | **`TestAst1033InboxApi`** (`test_api_inbox.py`) |
+
+**Broken / obsolete this pass:** none — additive Admin seed; AST-1032 Gmail/core coverage unchanged.
+
+**Integration:** no existing scenarios inventory Admin Read email or `/api/admin/inbox/*` — none revised; do not invent new integration coverage.
+
+**AST-1033** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminReadEmail.test.tsx
+```
+
+---
+
+### AST-1040 · AST-1031 (UAT)
+
+**Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1040-uat-read-email-modal-raw-html`.
+
+UAT: modal must show Gmail `html_body` as **escaped raw source** (`<pre class="email-html-source">`), not a rendered iframe/`srcDoc` preview. API/nav/list unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Modal raw HTML source (revises AST-1033 iframe cases) | `AdminReadEmail.tsx` + `App.css` | **`test_AdminReadEmail.test.tsx`** — click → `<pre title="Email body">` text content; no `iframe` |
+
+**Broken / obsolete this pass:** AST-1033 Vitest cases that asserted `sandbox` / `srcdoc` on iframe — revised in place.
+
+**Integration:** none touched.
+
+**AST-1040** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminReadEmail.test.tsx
+```
+
+---
+
+### AST-1014 · AST-952
+
+Candidate Profile + Admin Manage Candidates edit columns + `contact` (no `profile.*`); §6c routed Profile page; middle skipped. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx
+```
+
+
+### AST-1048 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`.
+
+Rename **Read email** → **Manage Email** (`AdminManageEmail.tsx`, route `/admin/manage_email`). List **Candidate** column + modal bind from AST-1047 `candidate_match`; **Create** enabled only when `candidate_match.matched` (stub click — AST-1049 wires meteorite). Unmatched browse (list + HTML modal) unchanged. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page rename + match column/modal + Create enablement (§6c) | `AdminManageEmail.tsx` + route + `App.css` | **`test_AdminManageEmail.test.tsx`** (replaces **`test_AdminReadEmail.test.tsx`**) |
+| Nav label/path | `src/utils/config.py` | revised **`TestAst1033ReadEmailNav`** (`test_manage_email_follows_session_cover_letter`) |
+
+**Broken / obsolete:** **`test_AdminReadEmail.test.tsx`** (page rename); **`TestAst1033ReadEmailNav.test_read_email_follows_session_cover_letter`** (`/admin/read_email` / "Read email") — revised in place.
+
+**Integration:** no existing Admin Manage Email scenarios — no revision; do not invent new integration coverage.
+
+**AST-1048** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+
+### AST-1049 · AST-1044
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
+
+Manage Email **Create** wires `POST .../create-job` with success/error toast; matched gate from AST-1048 retained. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create POST + toast (§6c page) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** Create success/failure cases |
+
+**Broken / obsolete:** none — extends AST-1048 page suite.
+
+**Integration:** none.
+
+
+### AST-1051 · AST-1044 (UAT)
+
+**Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1051-uat-create-button-on-manage-email-list-rows`.
+
+UAT: **Create** moves from HTML-preview modal to matched list-row **Actions** column; unmatched rows omit Create; Create does not open the modal; create-job POST + toast unchanged (AST-1049).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List-row Create + no modal Create (§6c) | `AdminManageEmail.tsx` + `App.css` | revised **`test_AdminManageEmail.test.tsx`** |
+
+**Broken / obsolete:** AST-1048/1049 cases that asserted Create inside the modal / disabled Create on unmatched modal — revised for Actions column + omit Create on unmatched.
+
+**Integration:** none.
+
+---
+
+### AST-1057 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1057-recommended-page-meteorites-section`.
+
+Recommended list partitions jobs whose `company` starts with manifest `meteorite_section.company_prefix` into a prepended **Meteorites** section; vetted-company Recommended / In Progress / Ready unchanged. Config: **`docs/test-bible/utils/config.md`** (**AST-1057**). Fixture: **`stateUiManifestFixture.ts`** carries `meteorite_section`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Partition + prepend Meteorites | `JobsRecommended.tsx` + `StateUiContext` type | **`test_JobsRecommended.test.tsx`** — AST-1057 cases |
+
+**Broken / obsolete:** none — additive partition; existing section/sort/Skip cases still hold without meteorite rows.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+### AST-1061 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
+
+Manage Email Create toasts use `created`/`skipped` arrays (`Created job …` / `Created N jobs` / `Skipped N (already known or empty)`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Multi-result toasts | `AdminManageEmail.tsx` | revised **`test_AdminManageEmail.test.tsx`** (+ all-skipped) |
+
+**Broken / obsolete:** toast assumed single `astral_job_id` only — still works as fallback; mocks now include `created`/`skipped`.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+### AST-1064 · AST-1059
+
+**Parent:** [AST-1059 — Issue with the rubric grade displays on the Jobs List pages](https://linear.app/astralcareermatch/issue/AST-1059/issue-with-the-rubric-grade-displays-on-the-jobs-list-pages). **Publish:** `origin/sub/AST-1059/AST-1064-group-by-aligned-rubric-jobs-list-tables`.
+
+Skipped + In Review list tables group by job-carried rubric fingerprint; columns from `*_rubric` (grades fallback); Score from `{prefix}_score` then `latest_score`. Helpers: **`docs/test-bible/frontend/components.md`** (**AST-1064**). Hydration payload: sibling **AST-1063**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Group-by tables + phase score (Skipped) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1064 group-by job-carried rubric`** |
+| Group-by tables + phase score (In Review) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1064 group-by job-carried rubric`** |
+| Fingerprint / group / columns / score helpers | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1064 job-carried list helpers`** |
+
+**Broken / obsolete:** none — additive grouping; existing Expand One / resurrect / floor cases still green without `*_rubric`.
+
+**Integration:** none revised.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx
+```
+
+---
+
+### AST-1086 · AST-1078
+
+**Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
+
+Skipped + In Review (§6c): grade `<th>` paints compact `headerCode` with full-name `title`; grade-dot hover includes rubric text + confidence parenthetical when confidence is 1–5. Helpers: **`docs/test-bible/frontend/lib.md`** (**AST-1086**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Compact header + grade-dot tooltip (Skipped) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1086 compact headers and grade-dot tooltips`** |
+| Compact header + grade-dot tooltip (In Review) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1086 compact headers and grade-dot tooltips`** |
+| Grades-only parse / tooltip helpers | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1086 compact headers and grade-dot confidence tooltips`** |
+
+**Broken / obsolete:** `test_rubricDisplay` grades-only `headerCode === "Technical (TE)"` — revised to compact `"TE"`.
+
+**Integration:** none revised (UI display only; no existing scenario maps these headers).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx
+```
+
+---
+
+### AST-1067 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1067-manage-slack-admin-listen-switch`.
+
+Admin **Manage Slack** page (§6c): first-paint listen state via `GET /api/admin/contact/listen`; toggle `PUT` enables/disables listen for this environment; non-prod copy notes `[<environment>]` reply prefix. API: **`docs/test-bible/ui/api/api_contact.md`**. Nav: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page render + toggle (§6c) | `AdminManageSlack.tsx` + route | **`test_AdminManageSlack.test.tsx`** |
+
+**Broken / obsolete:** none — new Admin page.
+
+**Integration:** no existing Manage Slack scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx
+```
+
+
+### AST-1094 · AST-1043
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`.
+
+Admin **Manage Slack** (§6c): below listen controls, **@Estelle users** table from `GET /api/admin/contact/estelle_activity` — Slack user, bind ok/fail, candidate, message count, last channel/ts. Empty copy when no rows. API: **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Activity table + empty state (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** (AST-1094 cases) |
+
+**Broken / obsolete:** none — additive table on existing Manage Slack page; listen tests still require listen GET (activity GET mocked empty).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx
+```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+`CandidateIntake` (§6c): after mechanical preamble complete → **`topic_menu`** phase (`IntakeTopicMenuPanel`), not auto-open legacy Estelle chat. Active-session resume still opens chat. Panel: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page preamble → Topic Menu (§6c) | `CandidateIntake.tsx` | revised **`test_CandidateIntake.test.tsx`** — **`preamble Valid handoff opens Topic Menu confirm`** |
+| Topic Menu panel | `IntakeTopicMenuPanel.tsx` | **`test_IntakeTopicMenuPanel.test.tsx`** |
+
+**Broken / obsolete:** **`preamble Valid handoff opens Estelle chat`** — product now routes to Topic Menu confirm (AST-1075); revised in-place.
+
+**Integration:** no existing intake Topic Menu scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
+  ../../../tests/component/frontend/components/test_IntakeTopicMenuPanel.test.tsx
+```
+
+
+---
+
+### AST-1082 · AST-1065
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1082-profile-contact-manage-nav`.
+
+Candidate Profile (§6c): `editValuesFromCandidate` always includes top-level `full` and normalizes `contact.websites` to `string[]` on load/post-Save remap; PUT body has columns + `contact.*` (never `profile`); shapes labels GitHub/LinkedIn username-or-URL; Title Patterns tab stays on Profile. Nav/route hygiene: **`docs/test-bible/utils/config.md`**, **`test_routes.test.tsx`**. Shapes/`string_list`/empty-full coerce = **AST-1081**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile load/save `full` + websites (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile AST-1082 contact manage`** |
+| Labels + Candidate NAV omit Title Patterns | `src/utils/config.py` | **`TestAst1082ProfileContactLabelsNav`** (map: **`docs/test-bible/utils/config.md`**) |
+| Route absent | `routes.tsx` | existing **`test_routes.test.tsx`** (`candidate/title_patterns` false) |
+
+**Broken / obsolete:** Profile GET mock omitted top-level `full` — revised in-place so load maps `c.full`. No product assertion breakage from AST-1014 Profile cases.
+
+**Integration:** no existing Profile contact round-trip scenario — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1082ProfileContactLabelsNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/test_routes.test.tsx
+```
+
+
+---
+
+### AST-1092 · AST-1065 (UAT)
+
+**Parent:** [AST-1065 — Update candidate ui for contact info](https://linear.app/astralcareermatch/issue/AST-1065/update-candidate-ui-for-contact-info). **Publish:** `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`.
+
+Candidate Profile (§6c): Resume/Messages labels; `extra_emails` normalize to `string[]` + Add round-trip. Config/core: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile labels + extra_emails (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile AST-1092 extra binding emails`**; revised AST-1082 websites Add scoped to Websites field |
+
+**Broken / obsolete:** AST-1082 websites Add used global `getByRole('Add')` — revised to scope under Websites label (second `string_list`).
+
+**Integration:** none — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+### AST-1105 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`.
+
+Manage Slack activity table: **Username** + **Display** columns (`—` when null).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Username/Display columns (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** |
+
+**Broken / obsolete:** AST-1094 activity mock without identity — revised.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+
+---
+
+### AST-1104 · AST-1102
+
+**Parent:** [AST-1102 — Bug when select All candidates and All avail count](https://linear.app/astralcareermatch/issue/AST-1102/bug-when-select-all-candidates-and-all-avail-count). **Publish:** `origin/sub/AST-1102/AST-1104-fix-sa-blank-candidate-all-avail-all`.
+
+Scheduled Actions blank-page survival (§6c): Candidate All + Avail All must keep title/filters/list mounted when nav-selected candidate `contact.timezone` is a non-IANA string — Last Run `<Time>` → `fmtTime` absorbs `RangeError` (UTC retry). Avail All still shows zero/empty Avail rows; default Avail `gt0` unchanged. Product fix is `fmt.ts` only (Branch A).
+
+| # | Scenario | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| 1 | Candidate All + Avail All keeps chrome + zero-Avail Last Run (§6c) | `AdminScheduledActions.tsx` (untouched) + `fmt.ts` / `Time` | **`test_AdminScheduledActions_AST1104.test.tsx`** — **`AST-1104 Candidate All + Avail All blank-page survival`** (2 cases) |
+| 2 | Invalid IANA zone → UTC fallback (lib) | `fmt.ts` | **`test_fmt.test.ts`** — falls back to UTC when timezone invalid |
+| 3 | `<Time>` invalid `contact.timezone` → UTC | `Time.tsx` | **`test_Time.test.tsx`** — invalid timezone case; fixtures use `contact.timezone` |
+| 4 | Regression: Avail default / Expand All / filters | same | **`test_AdminScheduledActions.test.tsx`** — **`AST-894\|AST-887\|AST-893\|AST-751\|AST-768\|AST-785`** |
+
+**Broken / obsolete:** **`test_Time.test.tsx`** still mocked `candidate_data.profile.timezone` after contact-path product — revised to `contact.timezone`.
+
+**Integration:** no existing SA blank-page / timezone scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1104.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/lib/test_fmt.test.ts \
+  ../../../tests/component/frontend/components/test_Time.test.tsx \
+  --testNamePattern="AST-1104|AST-894|AST-887|AST-893|AST-751|AST-768|AST-785|fmtTime|Time"
+```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
+
+| # | Area | Source | Component tests |
+| --- | --- | --- | --- |
+| 1 | Routed page Avail gt0 carve-out (§6c) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions_AST1106.test.tsx`** — **`AST-1106 gaze_email always visible under Avail gt0`** (2 cases) |
+| 2 | Regression: default gt0 still hides non-flag zero-avail | same | case 2 in that file; re-run **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
+
+**Broken / obsolete:** none (predicate widened via API flag only).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1106|AST-887|AST-894"
+```
+

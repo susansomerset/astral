@@ -1,100 +1,102 @@
-import type { ReportPrimaryAction } from "../lib/recommendedJobReport"
-
-export interface ProfileLink {
-  key: string
-  label: string
-  value: string
-  copyable?: boolean
-}
-
 interface Props {
+  jobTitle: string
+  jobLink: string | null
   companyName: string
   companyWebsite: string | null
-  jobLink: string | null
-  jobState: string
-  profileLinks: ProfileLink[]
-  primaryAction: ReportPrimaryAction | null
-  onPrimaryAction: () => void
-  primaryBusy: boolean
-  stateLabel?: string
+  applicationEmail: string | null
+  linkedInUrl: string | null
   copyFeedback?: string | null
-  onCopyLink?: (value: string, linkKey: string) => void
-  previewMaterials?: { onClick: () => void }
+  onCopyApplicationEmail?: () => void
+  onCopyLinkedIn?: () => void
+  showPrintResume: boolean
+  showPrintCover: boolean
+  onPrintResume?: () => void
+  onPrintCover?: () => void
 }
 
+/** Sticky Recommended Job Report header — deeplinks, copy, print (AST-948). */
 export default function RecommendedJobReportHeader({
+  jobTitle,
+  jobLink,
   companyName,
   companyWebsite,
-  jobLink,
-  jobState,
-  profileLinks,
-  primaryAction,
-  onPrimaryAction,
-  primaryBusy,
-  stateLabel,
+  applicationEmail,
+  linkedInUrl,
   copyFeedback,
-  onCopyLink,
-  previewMaterials,
+  onCopyApplicationEmail,
+  onCopyLinkedIn,
+  showPrintResume,
+  showPrintCover,
+  onPrintResume,
+  onPrintCover,
 }: Props) {
-  const applyDisabled =
-    primaryAction?.action_key === "apply" && (!jobLink || primaryBusy)
+  const link = jobLink?.trim() || null
 
   return (
     <div className="recommended-report-header">
       <div className="recommended-report-header-row">
+        {link ? (
+          <a
+            href={link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="recommended-report-title-link"
+          >
+            {jobTitle}
+          </a>
+        ) : (
+          <span className="recommended-report-title">{jobTitle}</span>
+        )}
         {companyWebsite ? (
           <a
             href={companyWebsite}
             target="_blank"
             rel="noopener noreferrer"
-            className="recommended-report-company recommended-report-company-link"
+            className="recommended-report-company-link"
           >
             {companyName}
           </a>
         ) : (
           <span className="recommended-report-company">{companyName}</span>
         )}
-        <span className="recommended-report-state">
-          {stateLabel ?? jobState.replace(/_/g, " ")}
-        </span>
       </div>
-      {profileLinks.length > 0 && (
+      {(applicationEmail || linkedInUrl) && (
         <div className="recommended-report-links">
-          {profileLinks.map(link => (
+          {applicationEmail && (
             <button
-              key={link.key}
               type="button"
               className="recommended-report-copy-link"
-              title={`Copy ${link.label}`}
-              onClick={() => onCopyLink?.(link.value, link.key)}
+              title="Copy Application Email"
+              onClick={() => onCopyApplicationEmail?.()}
             >
-              {link.label}
+              Copy Application Email
             </button>
-          ))}
+          )}
+          {linkedInUrl && (
+            <button
+              type="button"
+              className="recommended-report-copy-link"
+              title="Copy LinkedIn Profile"
+              onClick={() => onCopyLinkedIn?.()}
+            >
+              Copy LinkedIn Profile
+            </button>
+          )}
           {copyFeedback && (
             <span className="recommended-report-copy-feedback">{copyFeedback}</span>
           )}
         </div>
       )}
-      {(previewMaterials || primaryAction) && (
+      {(showPrintResume || showPrintCover) && (
         <div className="recommended-report-header-actions">
-          {previewMaterials && (
-            <button
-              type="button"
-              className="modal-btn cancel"
-              onClick={previewMaterials.onClick}
-            >
-              Preview Materials
+          {showPrintResume && (
+            <button type="button" className="modal-btn cancel" onClick={() => onPrintResume?.()}>
+              Print Resume
             </button>
           )}
-          {primaryAction && (
-            <button
-              type="button"
-              className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
-              disabled={primaryBusy || applyDisabled}
-              onClick={onPrimaryAction}
-            >
-              {primaryBusy ? "Working…" : primaryAction.label}
+          {showPrintCover && (
+            <button type="button" className="modal-btn cancel" onClick={() => onPrintCover?.()}>
+              Print Cover Letter
             </button>
           )}
         </div>

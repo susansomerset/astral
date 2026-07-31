@@ -1,3 +1,116 @@
+<!-- linear-archive: AST-823 archived 2026-07-22 -->
+
+## Linear archive (AST-823)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-823/homepage-ready-prefilter-consult-routing-get-prefilter-company-to-work  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-821 — Get prefilter_company to work  
+**Blocked by / blocks / related:** parent: AST-821
+
+### Description
+
+## What this implements
+
+Susan's **HOMEPAGE_READY** prefilter dispatch hits `run_company_task` with no handler — every company logs `unhandled input_state=HOMEPAGE_READY` and the batch reports 100% errors. **AST-702** established that the schedulable **prefilter** dispatch task must route through `prefilter_company_batch` (via `consult.run_consult_task`), not the `run_company_task` fallthrough. This ticket restores that routing so batch prefilter evaluate runs and companies advance to pass/fail terminal states per existing semantics.
+
+## Acceptance criteria
+
+1. Given companies in **HOMEPAGE_READY** with persisted **homepage_text** (and **nav_links** when required for link decode), running the **prefilter** scheduled dispatch task produces no `unhandled input_state=HOMEPAGE_READY` warnings.
+2. Each company in the batch transitions to an appropriate terminal or retry state (**PREFILTER_PASSED**, **PREFILTER_FAILED**, **NO_PREFILTER_JOBLISTS**, **WEBSITE_FOUND_RETRY**, **CANNOT_READ_WEBSITE**, **TO_WATCH**, or **IGNORE**) — not stuck in **HOMEPAGE_READY** with dispatch errors.
+3. Prefilter grades, score, notes, and link fields persist per company matching today's prefilter semantics for inflow vs legacy paths.
+4. Companies without **homepage_text** are skipped or failed via the readiness path — not sent to the agent and not counted as unhandled routing errors.
+5. Dispatch batch summary shows **total_processed > 0** and **total_errors** reflecting only genuine failures — not 100% errors when eligible companies exist.
+6. With **debug=True**, Susan can trace each company's prefilter evaluate step via index headers and substantive detail lines.
+
+## Boundaries
+
+* Does **not** change the **prefilter_company** rubric, encoded output shape, or decode contract (**AST-603**, **AST-697**).
+* Does **not** change **fetch_website** scrape behavior or **HOMEPAGE_READY** ingestion (**AST-701**).
+* Does **not** change post-prefilter locate / parse / select flows (**AST-716**–**721**, **AST-719**).
+* Does **not** reintroduce monolithic **WEBSITE_FOUND** scrape+prefilter inside **run_company_task**.
+* Sibling scope on parent covers full epic; this child owns consult/dispatcher routing to the batch runner only unless investigation proves a minimal roster touch is required for the same repro.
+
+## Notes for planning
+
+* Precedent: **AST-817** — surgical `consult.py` mis-route removal for company vet dispatch; existing `TestRunConsultTaskRoutes::test_routes_prefilter_company_batch` may already cover happy path — reproduce Susan's fallthrough and lock the fix.
+* `dispatch_task_key=prefilter` must reach `roster.prefilter_company_batch` per **AST-702**; `run_company_task` intentionally has no **HOMEPAGE_READY** branch.
+* If root cause is stale dispatch row (**task_key** / **batch_call_mode**) rather than consult routing, fix idempotently in `database.py` migration per **AST-703** pattern — keep product diff minimal.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-821-get-prefilter-company-to-work`, child `sub/AST-821/<child-segment>`. Created at **dispatch-parent**. Engineers publish to `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### radia — 2026-06-26T04:12:32.302Z
+### Review — `origin/dev...origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing` @ `823de9a`
+
+**Plan fidelity:** Single-component scope held. Stage 2 widens the existing AST-702 `prefilter` consult branch to `("prefilter", "prefilter_company")` — one line in `run_consult_task`, body unchanged including `skipped` error math. Stage 3 appends idempotent company `dispatch_task` UPDATEs after the existing AST-702/703 DELETE+retarget block; `batch_call_mode=0` fix matches Susan's stale-DB repro.
+
+**Rubric (§3 / §1):** No new imports, layer bends, silent failures, or debug-contract changes on touched paths. Routing-only — batch claim/process/clear and state transitions stay in roster.
+
+**Tests:** Betty manifest covers legacy dispatch key and AST-823 migration (`TestAst823PrefilterDispatchMigration`). Engineer follow-on for legacy-key test is satisfied.
+
+**fix-now:** None.
+
+**discuss:** `database.py` AST-823 migration — if a candidate has both an already-correct `(prefilter, HOMEPAGE_READY)` row and a legacy `(prefilter_company, …)` row, the agent-key UPDATE can hit the triple-unique constraint. UAT repro likely has only the mis-keyed row; if schema ensure errors on migrate, delete the duplicate companion before UPDATE (AST-703 collision precedent).
+
+**advisory:** Doc commit `f92921f` — `docs/features/roster/ast-823-homepage-ready-prefilter-consult-routing.md` § Review.
+
+#### betty — 2026-06-26T04:09:32.164Z
+## QA test manifest (AST-823)
+
+**Publish:** `origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing` @ `cf28de3` (`merge-tests(AST-823): origin/tests 01348df`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/consult.md` → `316451e20ca0201fe75a83caaa05983f0d702a55`
+- `docs/test-bible/core/roster.md` → `adef7c664672092dfda522d2a577e2df35b83d27`
+
+**Manifest (test-child — narrowed run):**
+
+1. `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch`
+2. `tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key`
+3. `tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch`
+4. `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states`
+5. `tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration`
+6. `tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration` (regression)
+7. `tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision` (regression)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_prefilter_company_batch_legacy_dispatch_key \
+  tests/component/core/test_roster.py::TestAst702PrefilterCompanyBatch \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_company_prefilter_passes_union_claim_states \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst823PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst702PrefilterDispatchMigration \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Betty revisions:** legacy `prefilter_company` dispatch-key routing test; AST-823 dispatch migration tests; `TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts` rubric stub (embedded RC + `astral_candidate_id`).
+
+— Betty
+
+#### hedy — 2026-06-26T04:02:29.827Z
+origin/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing @ `29b2d91` — Betty: consider `test_routes_prefilter_company_batch_legacy_dispatch_key` (`dispatch_task_key='prefilter_company'`) on manifest.
+
+#### hedy — 2026-06-26T04:00:59.244Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-821/AST-823-homepage-ready-prefilter-consult-routing/docs/features/roster/ast-823-homepage-ready-prefilter-consult-routing.md @ `8d955a8`
+
+**Self-assessment**
+- **Scope:** `Single-Component` — consult company-branch routing widened to catch legacy `prefilter_company` dispatch keys plus idempotent `dispatch_task` row retarget; reuses AST-702 `prefilter_company_batch` without roster evaluate changes.
+- **Conf:** `high` — Susan's `unhandled input_state=HOMEPAGE_READY` log matches consult fallthrough when `dispatch_task_key != "prefilter"`; AST-702 batch path and `test_routes_prefilter_company_batch` already specify happy-path routing; AST-817 is the same surgical consult fix pattern.
+- **Risk:** `Medium` — `run_consult_task` is dispatch-hot, but only extends the existing prefilter branch and normalizes DB rows; fetch_website, fetch_job_pages, vet/inflow, and job consult paths untouched.
+
+---
+
 # AST-823 — HOMEPAGE_READY prefilter consult routing
 
 - **Linear:** [AST-823 — HOMEPAGE_READY prefilter consult routing (Get prefilter_company to work)](https://linear.app/astralcareermatch/issue/AST-823/homepage-ready-prefilter-consult-routing-get-prefilter-company-to-work)

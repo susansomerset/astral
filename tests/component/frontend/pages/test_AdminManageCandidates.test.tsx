@@ -14,7 +14,7 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 const mockedApi = vi.mocked(api)
 
 const pronounFieldDef = {
-  key: "profile.pronoun_preference",
+  key: "pronouns",
   label: "Pronoun preference",
   type: "select" as const,
   options: [
@@ -43,10 +43,11 @@ const candidate = {
   astral_candidate_id: "doe_jane",
   state: "ACTIVE",
   has_api_key: true,
+  first: "Jane",
+  last: "Doe",
+  pronouns: "she/her",
   candidate_data: {
-    profile: { first: "Jane", middle: "Q", last: "Doe", contact_email: "jane@example.com", pronoun_preference: "she/her" },
-    first: "Jane",
-    last: "Doe",
+    contact: { contact_email: "jane@example.com" },
   },
 }
 
@@ -93,7 +94,7 @@ describe("AdminManageCandidates", () => {
     await waitFor(() => expect(screen.getByText(/Candidate "New Person" created/)).toBeInTheDocument())
 
     await userEvent.click(screen.getByRole("button", { name: "View" }))
-    expect(screen.getByText(/"first": "Jane"/)).toBeInTheDocument()
+    expect(screen.getByText(/"contact_email": "jane@example.com"/)).toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Close" }))
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
@@ -132,7 +133,7 @@ describe("AdminManageCandidates", () => {
     await waitFor(() => expect(screen.getByText("Create failed")).toBeInTheDocument())
   }, 15000)
 
-  it("includes profile.pronoun_preference in create and edit payloads", async () => {
+  it("includes pronouns in create and edit payloads", async () => {
     let postBody: Record<string, unknown> | null = null
     let putBody: Record<string, unknown> | null = null
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
@@ -160,7 +161,8 @@ describe("AdminManageCandidates", () => {
     await userEvent.selectOptions(comboboxByFieldLabel(addModal, "Pronoun preference"), "they/them")
     await userEvent.click(within(addModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(postBody).not.toBeNull())
-    expect((postBody!.candidate_data as { profile: { pronoun_preference: string } }).profile.pronoun_preference).toBe("they/them")
+    expect((postBody!.candidate_data as { contact: { contact_email: string } }).contact.contact_email).toBe("")
+    expect(postBody!.pronouns).toBe("they/them")
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
     const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
@@ -168,7 +170,7 @@ describe("AdminManageCandidates", () => {
     await userEvent.selectOptions(comboboxByFieldLabel(editModal, "Pronoun preference"), "he/him")
     await userEvent.click(within(editModal).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(putBody).not.toBeNull())
-    expect((putBody!.profile as { pronoun_preference: string }).pronoun_preference).toBe("he/him")
+    expect(putBody!.pronouns).toBe("he/him")
 
     await userEvent.click(screen.getByRole("button", { name: "Edit" }))
     const editClear = screen.getByText(/Edit: doe_jane/).closest(".modal-card") as HTMLElement
@@ -176,7 +178,7 @@ describe("AdminManageCandidates", () => {
     putBody = null
     await userEvent.click(within(editClear).getByRole("button", { name: "Save" }))
     await waitFor(() => expect(putBody).not.toBeNull())
-    expect((putBody!.profile as { pronoun_preference: string }).pronoun_preference).toBe("")
+    expect(putBody!.pronouns).toBe("")
   }, 20000)
 
   // AST-511 canceled — no middle field on AdminManageCandidates until ticket is revived.

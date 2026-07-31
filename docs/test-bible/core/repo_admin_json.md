@@ -36,7 +36,7 @@ Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks
 
 Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-783**).
 
-**UAT seed (AST-786 / AST-878):** populated **38**-row catalog (includes **`fetch_culture_pages`**) — see **`docs/test-bible/data/database/agent_tasks.md`** (**AST-786**, **AST-878**).
+**UAT seed (AST-786 / AST-878 / AST-1037 / AST-1055 / AST-1060 / AST-1072):** populated **46**-row catalog on the AST-1073 tip (includes **`contact_estelle_turn`**, **`preamble_validate_response`**, **`topic_menu_preamble_confirm`**, **`topic_menu_generate`**). Parallel **AST-1015** **`preamble_validate_response`** stays in **`TestAst1015PreambleValidateCatalogRow`** — not folded into AST-786 on this tip. See **`docs/test-bible/data/database/agent_tasks.md`**.
 
 **UAT seed (AST-787):** six agent personas — see **`docs/test-bible/data/database/agents.md`** (**AST-787**).
 
@@ -75,3 +75,155 @@ Repo **`agent_task.json`** catalog gains **`fetch_culture_pages`** — primary m
 ### AST-880 · AST-879
 
 **`vet_inflow_discovery`** repo JSON + UAT fixture carry AST-880 encoded A–F rubric marker — byte identity with **`docs/uat-fixtures/AST-756/expected-agent_task.json`** unchanged (**AST-786**). DB migration: **`docs/test-bible/data/database/agent_tasks.md`** / **`TestAst880VetInflowEncodedPromptMigration`**.
+
+---
+
+### AST-1055 · AST-1052
+
+Repo **`agent_task.json`** gains **`meteorite_like`** + **`meteorite_upshot`** (Grace / Estelle prompt twins). Catalog frozenset **39 → 41**; UAT fixture **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-locked. Primary TASK_CONFIG / consult: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + prompts | `data/admin/agent_task.json` | **`TestAst1055MeteoriteCatalogRows`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **39**-row asserts → **41** (superseded to **42** by **AST-1060**).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  -q
+```
+
+### AST-1060 · AST-1058
+
+Repo **`agent_task.json`** gains **`qualify_meteorite`** (Ruth enrichment shell). Catalog frozenset **41 → 42**; UAT fixture byte-locked. Primary config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + Ruth prompts | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **41**-row asserts → **42** (qualify only; do **not** fold AST-1015 preamble into this tip’s lock).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  -q
+```
+
+
+### AST-1072 · AST-1046
+
+Repo **`agent_task.json`** gains **`contact_estelle_turn`** (Estelle CHAT seed — ternary envelope prompts). Catalog frozenset **42 → 43**; UAT fixture **`docs/uat-fixtures/AST-756/expected-agent_task.json`** byte-locked. Primary config / agent: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/core/agent.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + Estelle envelope prompts | `data/admin/agent_task.json` | **`TestAst1072ContactEstelleTurnCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **42**-row asserts → **43** (`contact_estelle_turn` only; do **not** fold AST-1015 preamble into this tip’s lock).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+```
+
+
+---
+
+### AST-1075 · AST-953
+
+**Parent:** [AST-953 — Topic Menu Generation](https://linear.app/astralcareermatch/issue/AST-953/topic-menu-generation). **Publish:** `origin/sub/AST-953/AST-1075-estelle-preamble-confirm-and-topic-menu-generation`.
+
+Repo `agent_task.json` gains Estelle rows `topic_menu_preamble_confirm` + `topic_menu_generate` (Topic Menu group; confirm ask + closed informs generate prompts). Full AST-786 frozenset/UAT fixture lock stays tip-owned (parallel epics); this ticket asserts the two new rows only. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog Estelle Topic Menu rows | `data/admin/agent_task.json` | **`TestAst1075TopicMenuCatalogRows`** |
+
+**Broken / obsolete:** do **not** fold these keys into AST-786 tip lock from other epics in this pass — row-level assert only.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```
+
+### AST-1073 · AST-1046
+
+Repo **`agent_task.json`** enriches **`contact_estelle_turn`** prompts (ACL `skill_calls` + Slack/live_content). Catalog frozenset **43 → 46** on this tip (also carries preamble + topic_menu rows from rolled base); UAT fixture byte-locked. Primary: **`docs/test-bible/core/contact.md`** / **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt enrich + catalog lock | `data/admin/agent_task.json` | revised **`TestAst1072ContactEstelleTurnCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **43**-row asserts → **46**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1072ContactEstelleTurnCatalogRow \
+  -q
+```
+
+### AST-1089 · AST-1087
+
+Repo **`agent_task.json`** gains **`parse_meteorite_email`** (Ruth email-HTML parse shell; both `html_links` / `subject_body` modes in prompts). Catalog frozenset **46 → 47**; UAT fixture byte-locked. Primary config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + Ruth parse prompts | `data/admin/agent_task.json` | **`TestAst1089ParseMeteoriteEmailCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** |
+
+**Broken / obsolete:** AST-786 **46**-row asserts → **47**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  -q
+```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+Repo **`agent_task.json`** gains empty-prompt **`gaze_email`** Job Review shell (`task_seq` 2.3); AST-756 fixture byte-locked. Catalog frozenset **47 → 48**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog row + fixture lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1106GazeEmailCatalogRow`**; revised **`TestAst786AgentTaskRepoJsonSeed`** (48) |
+
+**Broken / obsolete:** AST-786 **47**-row asserts → **48**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  -q
+```
+
+### AST-1107 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1107-uat-admin-task-name-should-equal-task-key-for-now`.
+
+Temporary UAT clarity: every current `agent_task.task_name` equals that row’s `task_key` (repo JSON + AST-756 fixture). Grouping / prompts / `task_key` identifiers unchanged. UI already renders `task_name || task_key`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog label rewrite + fixture lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1107TaskNameEqualsTaskKey`**; revised catalog row asserts that pinned friendly labels |
+
+**Broken / obsolete:** Friendly `task_name` asserts (Qualify Meteorite, Parse Meteorite Email, Topic Menu…, etc.) → `task_name == task_key`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1107TaskNameEqualsTaskKey \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  -q
+```
+

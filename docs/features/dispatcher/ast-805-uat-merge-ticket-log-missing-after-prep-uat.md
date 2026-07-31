@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-805 archived 2026-07-22 -->
+
+## Linear archive (AST-805)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-805/uat-ast-801-missing-from-deploy-env-user-testing-tooltip-after-prep  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-801 — Inflow discovery is not recognizing candidate ready for scanning  
+**Blocked by / blocks / related:** parent: AST-801
+
+### Description
+
+## What failed
+
+After **AST-801** prep-uat landed on **origin/dev**, Susan restarted from **origin/dev** and hovered the deploy env label. The User Testing tooltip did **not** list **AST-801** among parents ready for UAT (other User Testing parents appear; **AST-801** is missing).
+
+`data/merge_ticket_log.json` on **origin/dev** after land contains seven parents (**AST-378**, **AST-512**, **AST-716**, **AST-752**, **AST-753**, **AST-754**, **AST-794**) but **not AST-801**.
+
+## Expected
+
+When Chuckles runs **prep-uat** for a parent and lands **ftr** on **origin/dev**, that parent appears in **merge_tickets** (deploy env tooltip) once the parent is in Linear **User Testing** and Susan pulls **origin/dev** — without manual log surgery.
+
+## Repro
+
+1. Land **AST-801** via **prep-uat** (**ftr** merged to **origin/dev**; parent moved to **User Testing**).
+2. Pull **origin/dev** locally or on staging.
+3. Hover the deploy env label (AST-791 tooltip).
+4. Observe **AST-801** is absent from the User Testing parent list.
+
+## Parent AC (quoted inline)
+
+> 1. Susan's repro (**somerset**, **LIVE_PROMPTS**, fourteen saved terms on local — see list in Susan's 2026-06-25 note): **inflow_discovery** shows **Available > 0** in Scheduled Actions and manual **Run** executes discovery instead of skipping with **0 available (min_count=1)**.
+
+(Susan cannot verify AC #1 on staging until the parent is visible in the UAT tooltip and she knows this epic is on the deploy line.)
+
+## Boundaries
+
+* This bug does **not** change: **inflow_discovery** eligibility product logic (**AST-802** — already **User Testing**).
+* Does not revert **AST-800** rebuild semantics (log = all qualifying User Testing parents on dev); fixes the **prep-uat land** gap so the parent being landed is included.
+* No React tooltip UX changes beyond reflecting a correct log.
+
+### Comments
+
+#### radia — 2026-06-25T17:04:30.775Z
+### Review (`origin/dev...origin/sub/AST-801/AST-805-uat-merge-ticket-log-missing-after-prep-uat` @ `7f84f9d`)
+
+**fix-now:** none
+
+**discuss:** none
+
+**advisory:** none
+
+**Plan fidelity:** Stages 1–2 match — `--landing-parent` unions landing id with Linear UAT set in `_collect_entries`; ftr-on-dev and `recorded_at` gates unchanged (AST-800); `record-landed-parent.sh` passes flag; stdout JSON includes `landing_parent`.
+
+**Scope:** Scripts-only fix for prep-uat ordering gap; no deploy-status read path, Linear fetch API, or AST-802 eligibility changes.
+
+**Tests:** Betty manifest — union when not in Linear UAT, skip without ftr-on-dev, blank flag ignored, JSON summary, shell argv guard, integration stub.
+
+**Doc:** `docs/features/dispatcher/ast-805-uat-merge-ticket-log-missing-after-prep-uat.md` § Radia review (2026-06-25)
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory — clean.
+
+#### betty — 2026-06-25T17:03:23.160Z
+## QA test manifest (AST-805)
+
+**Publish:** `origin/sub/AST-801/AST-805-uat-merge-ticket-log-missing-after-prep-uat` @ `7ae3670` (`merge-tests(AST-805): origin/tests 1cc4dde`)
+
+**Scope:** Prep-uat **`--landing-parent`** bypass — union landing parent id with Linear User Testing set in **`rebuild_merge_ticket_log.py`**; wire through **`record-landed-parent.sh`**. Deploy-status read path unchanged.
+
+### Manifest (test-child)
+
+1. **Rebuild CLI union** — `tests/component/scripts/test_rebuild_merge_ticket_log.py::TestRebuildMergeTicketLogLandingParent` (4 tests): landing parent not in mocked Linear UAT set; ftr-on-dev gate; blank flag ignored; stdout JSON **`landing_parent`**.
+
+2. **Shell wiring** — `tests/component/scripts/test_record_landed_parent.py::TestRecordLandedParentShell::test_record_landed_parent_passes_landing_parent_flag`
+
+3. **Temp-repo integration** — `TestRecordLandedParent::test_record_landed_parent_rebuilds_and_commits` (stub asserts **`--landing-parent`** argv)
+
+4. **Regression (required)** — remainder of **`test_record_landed_parent.py`** (AST-800 rebuild wiring)
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (`origin/sub/...` @ `7ae3670`):**
+- `docs/test-bible/dev/record_landed_parent.md`: `73b38be09240d76f190859368b099c2b3518d9c17ddc2579244b25d420ae331f`
+- `docs/test-bible/utils/merge_ticket_log.md`: `0b2983b7eb1a6e731cc22373d2ca09640edc4c685014fe484bef491a612c7b03`
+
+— Betty
+
+#### ada — 2026-06-25T17:00:22.881Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-801/AST-805-uat-merge-ticket-log-missing-after-prep-uat/docs/features/dispatcher/ast-805-uat-merge-ticket-log-missing-after-prep-uat.md
+
+**Root cause:** prep-uat rebuild queries Linear **User Testing** before Chuckles moves the landing parent to that state — **AST-801** was still **In Progress** at rebuild time despite ftr already on dev.
+
+**Fix:** `--landing-parent` on rebuild CLI, wired from `record-landed-parent.sh`.
+
+**Self-assessment**
+- **Scope:** minor — two script files only
+- **Conf:** high — root cause reproduced; minimal union fix preserves AST-800 semantics
+- **Risk:** low — prep-uat log path only; ftr-on-dev gate unchanged
+
+---
+
 # UAT: AST-801 missing from deploy env User Testing tooltip after prep-uat
 
 **Linear:** [AST-805 — UAT: AST-801 missing from deploy env User Testing tooltip after prep-uat](https://linear.app/astralcareermatch/issue/AST-805/uat-ast-801-missing-from-deploy-env-user-testing-tooltip-after-prep)

@@ -1,3 +1,117 @@
+<!-- linear-archive: AST-837 archived 2026-07-22 -->
+
+## Linear archive (AST-837)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-837/google-cse-query-pacing-and-rate-limit-pause-rate-limit-queries-for-a  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-835 — Rate limit queries for a config-driven pause  
+**Blocked by / blocks / related:** parent: AST-835
+
+### Description
+
+## What this implements
+
+Add config-driven pacing between Google CSE HTTP requests and a configurable pause-and-retry when Google returns HTTP 429 or quota-exceeded errors. Apply shared behavior in the Google CSE client so both inflow discovery batch (per search term, including paginated pages) and company website resolution receive the same pacing and backoff. After retries are exhausted, discovery counts an error for that term without bumping `last_scan_at` and continues remaining terms; resolve returns CSE failure without company state transition. When `debug=True`, log pacing delays and pause/retry cycles under Style D index headers.
+
+## Acceptance criteria
+
+1. With a non-zero configured inter-query delay, a discovery batch that issues multiple CSE requests spaces HTTP calls by at least that delay (observable via test mocks or timed integration).
+2. On HTTP 429, the system pauses for the configured duration before retrying; with `debug=True`, each pause and retry is visible under the current index header.
+3. After configured retries are exhausted, discovery behavior for that term matches pre-change error semantics (`last_scan_at` not bumped; error counted; remaining terms still attempted).
+4. Website resolution receives the same pacing and 429 pause-and-retry behavior; exhausted retries return CSE failure without company state transition.
+5. Inter-query delay, rate-limit pause duration, and max retry count live as config literals with documented units—no environment-variable overrides.
+
+## Boundaries
+
+* Does not change search term selection, `freq_hrs` cadence, `max_results_per_query`, or date-restrict settings.
+* Does not add admin UI knobs for pause or delay values.
+* Does not rate-limit Anthropic, Playwright, or other external I/O.
+* Does not fix the job-table UNIQUE constraint crash from the parent log (separate ticket).
+* Does not alter dispatch scheduler active/paused toggle behavior.
+* Sibling scope: none — this ticket owns the full CSE pacing feature.
+
+## Notes for planning
+
+* Primary touch: `src/external/google_cse.py` (HTTP + retry), `src/utils/config.py` (literals in INFLOW or dedicated CSE block), roster call sites already delegate to `search_google_cse`.
+* ASTRAL_CODE_RULES §2.1: behavior literals in config; §1.5.1 debug contract on touched batch paths.
+* Parent: AST-835.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-835-rate-limit-queries-for-a-config-driven-pause`, child `sub/AST-835/<child-id>-<slug>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-02T20:38:48.151Z
+### AST-837 review — clean
+
+**Diff:** `origin/dev...origin/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause` @ `7521a29`
+**Doc:** `docs/features/foundation/ast-837-google-cse-query-pacing-and-rate-limit-pause.md` § Review (Radia)
+
+**Plan fidelity:** Stages 1–3 delivered — `GOOGLE_CSE_CONFIG`, shared pacing/retry in `google_cse.py`, roster `pace_detail` wiring at discovery + resolve call sites.
+
+**Rules (no fix-now):**
+- §1.4 — pacing literals in config; no env overrides
+- §1.5.1 — debug trace via roster `debug_detail` after existing `debug_index`; gated on `debug=True`
+- §2.5 — external layer uses `pace_detail` callback only; no logging in `google_cse.py`
+- §2.6 — exhausted retries keep today's failure semantics; discovery continues remaining terms
+- §3.3 — layer imports clean
+
+**Advisory:**
+- Roster component test covers discovery `pace_detail` flush only; `resolve_company_website` mirrors the same pattern but lacks a symmetric test (low risk — external `pace_detail` tests cover callback behavior)
+- Process-global `_last_cse_request_at` acceptable per plan single-worker assumption; revisit if worker count changes
+
+**Verdict:** Clean — `resolve-child` may proceed.
+
+#### betty — 2026-07-02T20:35:02.451Z
+## QA test manifest (AST-837)
+
+**Publish:** `origin/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause` @ `68a99d4` (`merge-tests(AST-837): origin/tests 77b7362`)
+
+**Bible shasum:** `docs/test-bible/external/google_cse.md` → `61358d7e3e0b6f1aad094a5cf773e64c0e2b085c`
+
+1. **Regression (required):** full module — pacing/retry must not break AST-489 paths:
+```bash
+./scripts/testing/run_component_tests.sh tests/component/external/test_google_cse.py
+```
+
+2. **AST-837 pacing + rate-limit retry (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/external/test_google_cse.py::TestGoogleCseAst837PacingAndRateLimit tests/component/external/test_google_cse.py::TestGoogleCseHelpers::test_is_rate_limit_response_http_429 tests/component/external/test_google_cse.py::TestGoogleCseHelpers::test_is_rate_limit_response_json_envelope tests/component/external/test_google_cse.py::TestGoogleCseHelpers::test_is_rate_limit_response_quota_403_not_rate_limit
+```
+
+3. **Roster debug `pace_detail` flush — AC2 (required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/core/test_roster.py::TestAst837CsePaceDebug
+```
+
+**Pass criterion:** pytest green on items 1–3 — not zero-arg harness / branch-lock gate.
+
+**Existing coverage (bible):** `docs/test-bible/external/google_cse.md` § AST-489 regression + § AST-837 block.
+
+**Broken / obsolete:** none — AST-489 tests unchanged in behavior; new tests cover pacing delay, 429/JSON-envelope retry, exhausted retry raise, and roster debug_detail wiring.
+
+— Betty
+
+#### hedy — 2026-07-02T20:30:34.714Z
+Plan: `docs/features/foundation/ast-837-google-cse-query-pacing-and-rate-limit-pause.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause/docs/features/foundation/ast-837-google-cse-query-pacing-and-rate-limit-pause.md
+
+Published @ `f9af298` on `origin/sub/AST-835/AST-837-google-cse-query-pacing-and-rate-limit-pause`.
+
+**Scope:** Single-Component — `GOOGLE_CSE_CONFIG`, shared pacing/retry in `google_cse.py`, and roster debug callback wiring at the two existing CSE call sites only.
+
+**Conf:** Medium — rate-limit shapes are specified, but Susan will confirm inter-query delay (1.2s) and pause duration (65s) literals at UAT per parent open question #2.
+
+**Risk:** Medium — pacing applies process-wide to all CSE HTTP traffic; wrong retry detection could still burn quota or slow batches, but non-rate-limit errors keep today's immediate `RuntimeError` paths.
+
+---
+
 # AST-837 — Google CSE query pacing and rate-limit pause
 
 - **Linear (this ticket):** [AST-837 — Google CSE query pacing and rate-limit pause](https://linear.app/astralcareermatch/issue/AST-837/google-cse-query-pacing-and-rate-limit-pause-rate-limit-queries-for-a)

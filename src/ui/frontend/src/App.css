@@ -13,6 +13,7 @@
  *  8. ListPage
  *  8b. Job list candidate actions (AST-312)
  *  8c. Job Analysis Report — analysis upshot (AST-481)
+ *  8d. Recommended report shell / horizontal tabs (AST-948)
  *  9. Modal
  * 10. DetailsEditPage & FormFields
  * 10e. CollapsiblePanel
@@ -644,21 +645,26 @@ body {
   max-height: min(80vh, 900px);
 }
 
-.recommended-report-header {
+/* Sticky chrome: header + horizontal tabs stay while section list scrolls */
+.recommended-report-chrome {
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--bg-card);
+  flex-shrink: 0;
+}
+
+.recommended-report-header {
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   padding: 12px 16px 14px;
-  flex-shrink: 0;
 }
 
 .recommended-report-header-row {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
   margin-bottom: 6px;
 }
 
@@ -667,6 +673,19 @@ body {
   font-size: 18px;
   font-weight: 600;
   color: var(--text-primary);
+}
+
+.recommended-report-title-link {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.recommended-report-title-link:hover {
+  color: var(--accent-gold);
+  text-decoration: underline;
 }
 
 .recommended-report-state {
@@ -679,6 +698,17 @@ body {
 .recommended-report-company {
   font-weight: 500;
   color: var(--text-primary);
+}
+
+.recommended-report-company-link {
+  font-weight: 500;
+  color: var(--text-primary);
+  text-decoration: none;
+}
+
+.recommended-report-company-link:hover {
+  color: var(--accent-gold);
+  text-decoration: underline;
 }
 
 .recommended-report-external-link {
@@ -731,19 +761,61 @@ body {
   flex-direction: column;
 }
 
-.recommended-report-body .side-tab-panel {
-  flex: 1 1 auto;
-  min-height: 0;
+.recommended-report-tabs {
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-card);
+  padding: 0 8px;
 }
 
-.recommended-report-body .side-tab-content {
+.recommended-report-tabs .tabbed-ta-bar {
+  margin-bottom: 0;
+  border-bottom: none;
+}
+
+.recommended-report-tab-pane {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow: auto;
+  padding: 12px 16px 16px;
+}
+
+.recommended-report-section-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.recommended-report-artifacts-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
 }
 
 .recommended-report-tab-label .grade-dot {
   font-size: 11px;
   display: inline-flex;
   margin-left: 2px;
+}
+
+/* AST-950: Analysis section header — grade + confidence glance row */
+.recommended-report-phase-grade-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 6px 8px;
+}
+
+.recommended-report-phase-grade-cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.recommended-report-phase-grade-cell .grade-dot {
+  font-size: 11px;
 }
 
 .recommended-report-empty {
@@ -1280,6 +1352,26 @@ body {
 .dep-toggle-label {
   font-size: 14px;
   color: var(--text-primary);
+}
+
+.dep-string-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.dep-string-list-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.dep-string-list-row .dep-input {
+  flex: 1;
+}
+
+.dep-string-list-add {
+  align-self: flex-start;
 }
 
 /* === 10b. Candidate Profile === */
@@ -1973,6 +2065,46 @@ input.side-tab-heading-editable:focus {
   padding: 0;
 }
 
+/* AST-1040: Gmail HTML source fills wide modal; scroll inside the pre */
+.email-html-frame {
+  height: 100%;
+  overflow: hidden;
+}
+.email-html-source {
+  margin: 0;
+  padding: 16px 20px;
+  height: 100%;
+  box-sizing: border-box;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  background: #fff;
+  color: var(--text-primary);
+}
+
+/* AST-1048: Manage Email match bind + Create enablement */
+.manage-email-match {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.manage-email-match--modal {
+  margin: 0;
+  padding: 12px 20px 0;
+  font-size: 13px;
+}
+.manage-email-create {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.manage-email-create:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* SideTabPanel fills the modal-body */
 .modal-card--wide .side-tab-panel {
   height: 100%;
@@ -2177,4 +2309,59 @@ input.side-tab-heading-editable:focus {
   color: var(--muted, #888);
   font-style: italic;
   margin: 0.5rem 0 1rem;
+}
+
+/* ---- Intake preamble (AST-1017) — Estelle-consistent Intro/steps ---- */
+.intake-preamble-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.intake-preamble-input {
+  width: 100%;
+  min-width: 12rem;
+  min-height: 4rem;
+  box-sizing: border-box;
+  margin-top: 0.5rem;
+}
+
+.intake-preamble-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.intake-topic-menu-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-height: 0;
+}
+
+.intake-topic-menu-title {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.intake-topic-menu-input {
+  width: 100%;
+  min-width: 12rem;
+  min-height: 4rem;
+  box-sizing: border-box;
+  margin-top: 0.5rem;
+}
+
+.intake-topic-menu-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+  justify-content: flex-end;
+}
+
+.intake-topic-menu-list {
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
 }

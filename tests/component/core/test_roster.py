@@ -2970,20 +2970,24 @@ class TestEntityAgentStory:
         assert roster_mod.get_entity_agent_story({}) == []
 
     def test_enriches_scored_response_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-984: story from list_entity_latest_agent_refs, not entity JSON column.
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "qualify_job_listings",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
         monkeypatch.setattr(
             roster_mod,
             "get_agent_data_for_ids",
             MagicMock(return_value={"block-1": {"block_data": json.dumps({"jobs": [{"astral_job_id": "job-1", "title": "Role"}]})}}),
         )
-        scored_key = "qualify_job_listings"
         entity = {
             "astral_job_id": "job-1",
-            "agent_responses": [
-                {
-                    "task_key": scored_key,
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
-                }
-            ],
             "job_data": {"joblist_grades": {"fit": "A"}},
         }
         story = roster_mod.get_entity_agent_story(entity)
@@ -2993,18 +2997,20 @@ class TestEntityAgentStory:
     def test_ast520_agent_story_phase_and_print_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"block-1": {"block_data": '{"note": "scan insight"}'}}),
-        )
-        entity = {
-            "astral_job_id": "job-520",
-            "agent_responses": [
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
                 {
                     "task_key": "anticipate_scan",
                     "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
                 }
             ],
-        }
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "get_agent_data_for_ids",
+            MagicMock(return_value={"block-1": {"block_data": '{"note": "scan insight"}'}}),
+        )
+        entity = {"astral_job_id": "job-520"}
         story = roster_mod.get_entity_agent_story(entity)
         assert story[0]["task_key"] == "anticipate_scan"
         assert story[0]["blocks"][0]["content"] == '{"note": "scan insight"}'
@@ -3512,32 +3518,39 @@ class TestEntityAgentStoryBranches:
     def test_skips_invalid_block_refs_and_labels_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"b1": {"block_data": "one"}, "b2": {"block_data": "two"}}),
-        )
-        entity = {
-            "agent_responses": [
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
                 {
                     "task_key": "parse_job_list",
                     "prompt_blocks": ["bad", {"type": "NO_CACHE", "id": "b1"}, {"type": "NO_CACHE", "id": "b2"}],
                 }
-            ]
-        }
+            ],
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "get_agent_data_for_ids",
+            MagicMock(return_value={"b1": {"block_data": "one"}, "b2": {"block_data": "two"}}),
+        )
+        entity = {"short_name": "acme"}
         story = roster_mod.get_entity_agent_story(entity)
         assert story[0]["blocks"][0]["type"] == "NO_CACHE"
         assert story[0]["blocks"][1]["type"] == "NO_CACHE (2)"
 
     def test_scored_response_without_job_id_keeps_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        scored_key = next(key for key, cfg in TASK_CONFIG.items() if cfg.get("scored"))
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {"task_key": scored_key, "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}]},
+            ],
+        )
         monkeypatch.setattr(
             roster_mod,
             "get_agent_data_for_ids",
             MagicMock(return_value={"block-1": {"block_data": json.dumps({"jobs": [{"title": "Role"}]})}}),
         )
-        scored_key = next(key for key, cfg in TASK_CONFIG.items() if cfg.get("scored"))
-        entity = {
-            "astral_job_id": "job-1",
-            "agent_responses": [{"task_key": scored_key, "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}]}],
-        }
+        entity = {"astral_job_id": "job-1"}
         story = roster_mod.get_entity_agent_story(entity)
         assert story[0]["blocks"][0]["content"] == ""
 
@@ -4404,7 +4417,7 @@ class TestAst505InflowDiscovery:
         db = seeded_db
         db.save_candidate(
             "c505",
-            state="LIVE_PROMPTS",
+            state="ACTIVE_SEARCH",
             candidate_data={"artifacts": {"company_search_terms": "x"}},
         )
         assert roster_mod.ingest_new_companies("c505", "acme_inflow", None) is True
@@ -4415,7 +4428,7 @@ class TestAst505InflowDiscovery:
 
     def test_ingest_creates_website_found_with_url(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c505", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c505", state="ACTIVE_SEARCH", candidate_data={})
         assert roster_mod.ingest_new_companies("c505", "with_site", "https://withsite.example") is True
         row = db.get_company("with_site")
         assert row is not None
@@ -4457,7 +4470,7 @@ class TestAst505InflowDiscovery:
     @pytest.mark.asyncio
     async def test_run_batch_no_stale_terms_returns_zero_errors(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fresh"])
         db.update_company_search_term_last_scan_at("c1", "fresh")
         out = await roster_mod.run_inflow_discovery_batch(
@@ -4471,7 +4484,7 @@ class TestAst505InflowDiscovery:
     @pytest.mark.asyncio
     async def test_run_batch_happy_path(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
         hits = [{"title": "Co", "url": "https://co.example", "snippet": "snip"}]
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
@@ -4491,7 +4504,7 @@ class TestAst505InflowDiscovery:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
     ) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["bad", "good"])
 
         def _cse(query: str, **kwargs: Any) -> List[Dict[str, str]]:
@@ -4515,7 +4528,7 @@ class TestAst505InflowDiscovery:
     @pytest.mark.asyncio
     async def test_run_batch_searches_only_stale_terms(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fresh", "stale"])
         db.update_company_search_term_last_scan_at("c1", "fresh")
         searched: list[str] = []
@@ -4541,7 +4554,7 @@ class TestAst505InflowDiscovery:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c814", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c814", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c814", ["fresh"])
         db.update_company_search_term_last_scan_at("c814", "fresh")
         searched: list[str] = []
@@ -4569,7 +4582,7 @@ class TestAst505InflowDiscovery:
             "astral_candidate_id": "c505",
             "candidate_data": {"artifacts": {"company_search_terms": "fintech"}},
         }
-        out = await consult_mod.run_consult_task("candidate", "LIVE_PROMPTS", [cand], "batch-505", cand, False)
+        out = await consult_mod.run_consult_task("candidate", "ACTIVE_SEARCH", [cand], "batch-505", cand, False)
         assert out["total_passed"] == 1
         proc.assert_awaited_once_with(cand, "batch-505", cand, False)
 
@@ -4582,7 +4595,7 @@ class TestAst837CsePaceDebug:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["fintech"])
         events: list[str] = []
 
@@ -4671,7 +4684,7 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_creates_new_with_blurb_and_notes(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
         hit = {"title": "Hit Co", "url": "https://hit.example", "snippet": "about"}
         ok, outcome = roster_mod.record_inflow_discovery_hit("c775", hit, index=0)
         assert ok is True
@@ -4685,7 +4698,7 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_skips_duplicate_url_via_notes(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
         db.save_company(
             "existing",
             state="NEW",
@@ -4702,7 +4715,7 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_skips_duplicate_url_via_blurb(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
         db.save_company(
             "from_blurb",
             state="NEW",
@@ -4720,8 +4733,8 @@ class TestAst775InflowDiscoveryRecordNew:
 
     def test_record_hit_slug_collision_suffix_other_candidate(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c775", state="LIVE_PROMPTS", candidate_data={})
-        db.save_candidate("other", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c775", state="ACTIVE_SEARCH", candidate_data={})
+        db.save_candidate("other", state="ACTIVE_SEARCH", candidate_data={})
         db.save_company(
             "shared_example",
             state="NEW",
@@ -4739,7 +4752,7 @@ class TestAst775InflowDiscoveryRecordNew:
     @pytest.mark.asyncio
     async def test_run_batch_no_deduped_hits_is_success(self, seeded_db, monkeypatch: pytest.MonkeyPatch) -> None:
         db = seeded_db
-        db.save_candidate("c1", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c1", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c1", ["empty"])
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=[]))
         cand = {"astral_candidate_id": "c1", "candidate_data": {}}
@@ -5311,23 +5324,26 @@ class TestAst692JobsiteScrapeIssue:
 
 
 class TestAst726LatestOnlyRosterStory:
-    """AST-726: modal story dedup + latest-only company prefilter outcomes."""
+    """AST-726/984: modal story from list API + latest-only company prefilter outcomes."""
 
-    def test_dedupe_agent_responses_latest_wins_per_task_key(self) -> None:
-        entries = [
-            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
-            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "do"},
-            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
-        ]
-        deduped = roster_mod.dedupe_agent_responses_latest(entries)
-        assert len(deduped) == 2
-        assert deduped[0]["task_key"] == "consult_get"
-        assert deduped[0]["batch_id"] == "new"
-        assert deduped[1]["task_key"] == "consult_do"
+    def test_dedupe_and_normalize_helpers_retired(self) -> None:
+        # AST-984: column helpers gone; latest-per-task lives in list_entity_latest_agent_refs.
+        assert not hasattr(roster_mod, "dedupe_agent_responses_latest")
+        assert not hasattr(roster_mod, "normalize_agent_responses_for_backfill")
 
     def test_company_prefilter_vector_grades_from_company_data(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "prefilter_company",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
+                }
+            ],
+        )
         monkeypatch.setattr(
             roster_mod,
             "get_agent_data_for_ids",
@@ -5335,12 +5351,6 @@ class TestAst726LatestOnlyRosterStory:
         )
         entity = {
             "short_name": "acme",
-            "agent_responses": [
-                {
-                    "task_key": "prefilter_company",
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
-                }
-            ],
             "company_data": {"prefilter_grades": [{"grade": "A", "vector": "fit"}]},
         }
         story = roster_mod.get_entity_agent_story(entity)
@@ -5363,34 +5373,12 @@ class TestAst726LatestOnlyRosterStory:
         assert saved["prefilter_score"] is None
 
 
-
 class TestAst727NormalizeAgentResponsesForBackfill:
-    """AST-727: shared backfill normalizer matches runtime dedupe rules."""
+    """AST-727 helpers retired with entity columns (AST-984)."""
 
-    def test_drops_empty_task_key_and_dedupes(self) -> None:
-        entries = [
-            {"task_key": "", "batch_id": "orphan"},
-            {"task_key": "consult_get", "created_at": "2026-06-01 00:00:00", "batch_id": "old"},
-            {"task_key": "consult_get", "created_at": "2026-06-02 00:00:00", "batch_id": "new"},
-            "bad",
-        ]
-        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
-        assert stats == {"dropped_empty_key": 1, "deduped_removed": 1}
-        assert len(normalized) == 1
-        assert normalized[0]["batch_id"] == "new"
-
-    def test_coerces_non_list_to_empty(self) -> None:
-        normalized, stats = roster_mod.normalize_agent_responses_for_backfill({})
-        assert normalized == []
-        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
-
-    def test_idempotent_on_already_normalized(self) -> None:
-        entries = [
-            {"task_key": "consult_do", "created_at": "2026-06-01 00:00:00", "batch_id": "b1"},
-        ]
-        normalized, stats = roster_mod.normalize_agent_responses_for_backfill(entries)
-        assert normalized == entries
-        assert stats == {"dropped_empty_key": 0, "deduped_removed": 0}
+    def test_normalize_helper_removed(self) -> None:
+        assert not hasattr(roster_mod, "normalize_agent_responses_for_backfill")
+        assert not hasattr(roster_mod, "dedupe_agent_responses_latest")
 
 
 class TestAst877OriginatingSearchTerm:
@@ -5398,7 +5386,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_record_hit_stamps_search_term(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         hit = {"title": "Hit Co", "url": "https://hit877.example", "snippet": "about"}
         ok, outcome = roster_mod.record_inflow_discovery_hit(
             "c877", hit, index=0, search_term="fintech startups",
@@ -5411,7 +5399,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_record_hit_without_term_leaves_null(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         ok, outcome = roster_mod.record_inflow_discovery_hit(
             "c877",
             {"title": "X", "url": "https://noterm877.example", "snippet": ""},
@@ -5424,7 +5412,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_record_hit_term_survives_vet_failed_update(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         ok, _ = roster_mod.record_inflow_discovery_hit(
             "c877",
             {"title": "Y", "url": "https://vet877.example", "snippet": ""},
@@ -5439,7 +5427,7 @@ class TestAst877OriginatingSearchTerm:
 
     def test_ingest_new_companies_kwarg_and_source_hit(self, seeded_db) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         assert roster_mod.ingest_new_companies(
             "c877", "ingest877_a", None, originating_search_term="kwarg term",
         ) is True
@@ -5457,7 +5445,7 @@ class TestAst877OriginatingSearchTerm:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c877", ["fintech"])
         hits = [{"title": "Co", "url": "https://co877.example", "snippet": "snip"}]
         monkeypatch.setattr(roster_mod, "search_google_cse", MagicMock(return_value=hits))
@@ -5473,7 +5461,7 @@ class TestAst877OriginatingSearchTerm:
         self, seeded_db, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         db = seeded_db
-        db.save_candidate("c877", state="LIVE_PROMPTS", candidate_data={})
+        db.save_candidate("c877", state="ACTIVE_SEARCH", candidate_data={})
         db.sync_company_search_terms("c877", ["fintech"])
         details: list[str] = []
 

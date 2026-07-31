@@ -1,3 +1,133 @@
+<!-- linear-archive: AST-803 archived 2026-07-22 -->
+
+## Linear archive (AST-803)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-803/build-artifacts-chain-dispatch-and-state-flattening-build-artifacts  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-788 — BUILD_ARTIFACTS substates do not graduate  
+**Blocked by / blocks / related:** parent: AST-788
+
+### Description
+
+## What this implements
+
+Revert AST-789, remove compound `BUILD_ARTIFACTS.<task_key>` states and graduation helpers, add `CHAIN` task type (plus schema-only CRAFT|RUBRIC|CHAT), add `ERROR_BUILD_ARTIFACTS`, and implement `do_chain()` in consult so BUILD_ARTIFACTS hops run via `dispatch_tasks` + `run_next` with one base state, mid-chain resume, retry hold on last completed state, and terminal `BUILD_ARTIFACTS → CANDIDATE_REVIEW`.
+
+## Acceptance criteria
+
+1. AST-789 reverted on `origin/dev`; compound states and graduation helper removed from touched paths.
+2. `CHAIN` type recognized; `do_chain()` runs BUILD_ARTIFACTS hops via dispatch sequence + `run_next`, same `batch_id` throughout.
+3. Successful chain end: `BUILD_ARTIFACTS → CANDIDATE_REVIEW`; job under **Ready** in Recommended Jobs UI.
+4. Mid-chain resume from `BUILD_ARTIFACTS*` completes remaining hops and graduates.
+5. Retryable failure: job on last completed state; hard failure: `ERROR_BUILD_ARTIFACTS`; no false promotion to `CANDIDATE_REVIEW`.
+6. Component coverage: chain entry, full chain, mid-chain resume, retry, error state, terminal graduation.
+
+## Boundaries
+
+* No coat-check / post-run `agent_data` harvest (follow-on).
+* CRAFT/RUBRIC/CHAT schema only — no consult wiring beyond CHAIN.
+* Does not change hop prompts or `run_next` graph content.
+
+## Notes for planning
+
+* Parent AST-788 definition — Design considerations + `do_chain()` spec.
+* Remove `run_resume_artifact_chain_for_job`, `_maybe_transition_resume_hop_progress`, compound JOB_STATES registry.
+* ASTRAL_CODE_RULES §2.1 config-driven states; §2.4 batch_id reuse.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law**: parent `ftr/AST-788-build-artifacts-chain-dispatch`, child `sub/AST-788/<child-id>-build-artifacts-chain-dispatch`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-25T05:43:22.736Z
+### Plan fidelity + ASTRAL_CODE_RULES (`origin/dev...origin/sub/AST-788/AST-803-build-artifacts-chain-dispatch`)
+
+**Solid:** Config flattening (`BUILD_ARTIFACTS`, `ERROR_BUILD_ARTIFACTS`, `task_type: CHAIN`, legacy compound read helpers); agent compound transitions + `run_resume_artifact_chain_for_job` removed; tracker flat generate/cancel + `list_dispatch_tasks_for_candidate`; dispatcher `build_artifacts_claim_states()` + flat/legacy trigger guard; admin validation; `do_chain_for_job` → single `do_task` entry (internal `run_next` recursion is correct chain walker); `_chain_graduate_to_candidate_review` persist gate; retry releases claim via `_artifact_entry_hop_failed`; cover-letter side effect removed from `contemplate_job` entry; Betty tests on tip align with manifest.
+
+**fix-now:** `src/core/consult.py` `do_chain_for_job` (~1805–1806) — early `Missing candidate_data` return bypasses `_chain_failure_mode`; no `ERROR_BUILD_ARTIFACTS` transition. Plan Stage 5.6 / AC hard path requires same treatment as post-`do_task` failure (~1837–1842).
+
+**discuss:** `_build_artifacts_chain_entry_task_key` implemented + tested but never wired into `_resolve_chain_start_task_key` (plan Stage 5.4). Flat path always returns `dispatch_task_key` when `job_state == BUILD_ARTIFACTS` — OK for AST-534 if rows are hop-specific; confirm discovery still needed or remove dead helper.
+
+**discuss:** `_build_artifacts_chain_entry_task_key` second fallback (~1673–1681) when all hops have incoming `run_next` — not in plan; misconfigured dispatch graph could start wrong hop.
+
+**discuss:** Plan Stage 5.3 `_chain_last_successful_hop` not implemented — defer or add for mid-chain `agent_responses` progress?
+
+**advisory:** `do_chain_for_job` `batch_id` / `input_state` unused in body — `batch_id` propagates via dispatcher `log_batch_id` context (production path OK). `_run_build_artifacts_chain_batch` has no per-job `debug_index` when `debug=True` (§1.5.1); `do_task` internal debug may suffice.
+
+Plan doc: `docs/features/consult/ast-803-build-artifacts-chain-dispatch.md` § Review (Radia) — `2317dc4`
+
+#### betty — 2026-06-25T05:37:29.013Z
+## QA test manifest (AST-803)
+
+**Publish ref:** `origin/sub/AST-788/AST-803-build-artifacts-chain-dispatch` @ `92bc89b` (`merge-tests(AST-803): origin/tests 6d3aa30`)
+
+**Bible shasum:** `docs/test-bible/core/consult.md` → `1dec9a3a3e9ceea36ba13ffa9cc7833bcedd518b`
+
+1. **Chain entry discovery** — `tests/component/core/test_consult.py::TestAst803ChainHelpers::test_chain_entry_picks_hop_without_incoming_run_next`
+2. **Full chain terminal graduation** — `TestAst803ChainGraduation::{test_do_chain_graduates_after_successful_do_task,test_do_chain_graduates_on_anticipate_scan_entry}`
+3. **Mid-chain resume helpers** — `TestAst803ChainHelpers::test_legacy_compound_job_state_resolves_start_key`
+4. **Legacy compound trigger** — `TestAst534DispatchTaskKeyHonesty::test_legacy_compound_trigger_claims_matching_entry`
+5. **Retry hold** — `TestAst371ResumeArtifactDispatch::test_chain_batch_retry_failure_releases_claim`
+6. **Hard error → ERROR_BUILD_ARTIFACTS** — `TestAst803ChainGraduation::test_do_chain_hard_failure_transitions_error_build_artifacts`
+7. **Flat generate/cancel** — `TestAst562ArtifactBuildTransitions::{test_start_artifact_build_from_recommended,test_cancel_from_mid_hop_compound_state}`; `TestAst562GenerateCancelRoutes::test_generate_artifacts_happy_path`
+8. **Dispatcher guard** — `TestRunUnified::{test_ast534_forwards_dispatch_task_key_to_consult,test_ast596_resume_hop_mismatch_skips_claim}`
+9. **Flat config + CHAIN task_type** — `TestAst803FlatBuildArtifactsChainDispatch` (replaces `TestAst595CompoundBuildArtifactsHopStates`)
+10. **Hydration without per-hop transition** — `TestAst597MidChainResumeHydrationAndTransitions::test_do_task_success_does_not_transition_compound_build_state`
+
+**Narrow run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst803ChainGraduation \
+  tests/component/core/test_consult.py::TestAst803ChainHelpers \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast534_forwards_dispatch_task_key_to_consult \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast596_resume_hop_mismatch_skips_claim \
+  tests/component/utils/test_config.py::TestAst803FlatBuildArtifactsChainDispatch \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### hedy — 2026-06-25T05:30:44.374Z
+origin/sub/AST-788/AST-803-build-artifacts-chain-dispatch @ `3382acd`
+
+Betty manifest — rewrite AST-595/789 compound tests for flat BUILD_ARTIFACTS + do_chain_for_job:
+- chain entry, full chain terminal graduation, mid-chain resume, legacy compound resume
+- retry hold (BUILD_ARTIFACTS, release claim), hard error → ERROR_BUILD_ARTIFACTS
+- flat generate/cancel, dispatcher flat+legacy trigger guard
+
+Narrow run:
+```
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty \
+  tests/component/core/test_consult.py::TestAst789TerminalGraduation \
+  tests/component/core/test_tracker.py::TestAst562ArtifactBuildTransitions \
+  tests/component/core/test_dispatcher.py::TestRunUnified \
+  tests/component/utils/test_config.py::TestAst595CompoundBuildArtifactsHopStates
+```
+
+#### hedy — 2026-06-25T05:25:54.021Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-788/AST-803-build-artifacts-chain-dispatch/docs/features/consult/ast-803-build-artifacts-chain-dispatch.md @ `4cb2481`
+
+**Scope — MAJOR-CHANGE:** Six modules (config, consult, agent, tracker, dispatcher, api_admin) replace compound BUILD_ARTIFACTS.* with flat BUILD_ARTIFACTS + do_chain().
+
+**Conf — Medium:** Reuses do_task/run_next; mid-chain + legacy compound coexistence needs validation against real dispatch rows.
+
+**Risk — HIGH:** Wrong chain entry, graduation, or retry/error paths break Ready vs In Progress UX and mid-chain dispatch honesty (AST-534/596).
+
+---
+
 # BUILD_ARTIFACTS CHAIN dispatch and state flattening (BUILD_ARTIFACTS substates do not graduate)
 
 **Linear:** [AST-803](https://linear.app/astralcareermatch/issue/AST-803/build-artifacts-chain-dispatch-and-state-flattening-build-artifacts)  

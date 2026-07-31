@@ -1045,7 +1045,7 @@ describe("AdminScheduledActions", () => {
       id: 3,
       task_key: "inflow_discovery",
       entity_type: "candidate",
-      trigger_state: "LIVE_PROMPTS",
+      trigger_state: "ACTIVE_SEARCH",
       is_scored: false,
       score_floor: null as number | null,
     }
@@ -1053,7 +1053,7 @@ describe("AdminScheduledActions", () => {
       ...taskKeysConfig,
       inflow_discovery: {
         entity_type: "candidate",
-        trigger_state: "LIVE_PROMPTS",
+        trigger_state: "ACTIVE_SEARCH",
         task_group_order: "A. Candidate",
         task_group_name: "A. Candidate",
         task_seq: 1,
@@ -1064,7 +1064,7 @@ describe("AdminScheduledActions", () => {
     const candidateStateOptions = {
       job: ["NEW", "PASSED_JD"],
       company: ["WATCH"],
-      candidate: ["LIVE_PROMPTS", "NEW"],
+      candidate: ["ACTIVE_SEARCH", "NEW_CANDIDATE"],
     }
 
     it("edit modal Input State lists candidate states for inflow_discovery row", async () => {
@@ -1085,7 +1085,7 @@ describe("AdminScheduledActions", () => {
       await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
       const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
       const inputStateSelect = within(modal).getAllByRole("combobox")[1]
-      expect(within(inputStateSelect).getByRole("option", { name: "LIVE_PROMPTS" })).toBeInTheDocument()
+      expect(within(inputStateSelect).getByRole("option", { name: "ACTIVE_SEARCH" })).toBeInTheDocument()
       expect(within(inputStateSelect).queryByRole("option", { name: "PASSED_JD" })).not.toBeInTheDocument()
     }, 20000)
   })

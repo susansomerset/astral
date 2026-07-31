@@ -2,7 +2,8 @@
 Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
-transition_candidate_state, parse_candidate_resume, check_context_complete.
+transition_candidate_state, parse_candidate_resume, check_context_complete,
+contact uniqueness enforcement on save (AST-1080).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -14,7 +15,8 @@ import copy
 import json
 import re
 import uuid
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from email.utils import parseaddr
 from typing import Any, Dict, Optional, Tuple
 
 from src.data import database
@@ -31,9 +33,19 @@ from src.utils import rubric_text
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
+    CANDIDATE_CONFIG,
+    CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
+    CANDIDATE_LIBRARY_CONFIG,
+    CANDIDATE_LOOKUP_CONFIG,
+    TOPIC_MENU_CONFIG,
     CANDIDATE_STATES,
+    CANDIDATE_STAGE_DISPATCH,
+    CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
+    EMBEDDED_EVALUATE_JD_CRITERIA,
+    PRONOUN_PREFERENCE_DEFAULT,
+    PRONOUN_PREFERENCE_OPTIONS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
@@ -41,13 +53,293 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
 )
-from src.utils.logging import flush_log_buffer, get_logger, log_batch_id
+from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
 
-_CANDIDATE_STATE_LIST = list(CANDIDATE_STATES.keys())
-_PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
 
+_NAME_COLUMNS = CANDIDATE_LIBRARY_CONFIG["name_columns"]
+_LIBRARY_BLOB_KEYS = ("contact", "context", "artifacts")
+
+
+def build_candidate_token_view(candidate: dict) -> dict:
+    """Walkable dict for resolve_tokens: name columns + library blobs (no meta)."""
+    cd = candidate.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return {
+        "first": candidate.get("first") or "",
+        "last": candidate.get("last") or "",
+        "full": candidate.get("full") or "",
+        "pronouns": candidate.get("pronouns") or "",
+        "contact": cd.get("contact") if isinstance(cd.get("contact"), dict) else {},
+        "context": cd.get("context") if isinstance(cd.get("context"), dict) else {},
+        "artifacts": cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {},
+        "_astral_candidate_id": candidate.get("astral_candidate_id") or "",
+    }
+
+
+def recompute_full_name(first: str, last: str) -> str:
+    join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
+    parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
+    return join.join(parts)
+
+
+def normalize_contact_urls(contact: dict) -> None:
+    """URL-or-username → URL for linkedin_url / github (mutates in place)."""
+    if not isinstance(contact, dict):
+        return
+    for key, base in (
+        ("linkedin_url", CANDIDATE_LIBRARY_CONFIG["linkedin_url_base"]),
+        ("github", CANDIDATE_LIBRARY_CONFIG["github_url_base"]),
+    ):
+        raw = contact.get(key)
+        if not isinstance(raw, str):
+            continue
+        val = raw.strip()
+        if not val:
+            continue
+        if "://" in val:
+            contact[key] = val
+            continue
+        handle = val.lstrip("@").strip()
+        contact[key] = f"{base}{handle}" if handle else val
+
+
+def _uniqueness_compare_token(raw: Any, mode: str) -> str:
+    """Strip + compare-mode normalize for uniqueness tokens (AST-1080)."""
+    if not isinstance(raw, str):
+        return ""
+    stripped = raw.strip()
+    if not stripped:
+        return ""
+    if mode == "exact":
+        return stripped
+    return stripped.casefold()
+
+
+def _iter_uniqueness_path_values(source: Dict[str, Any], dotted_path: str) -> list:
+    """Raw stripped string values for one uniqueness path (scalar or list)."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    # List-valued: non-email list_paths + email_list_paths (shared email pool).
+    if dotted_path in cfg["list_paths"] or dotted_path in cfg["email_list_paths"]:
+        parts = dotted_path.split(".")
+        cur: Any = source.get("candidate_data") or {}
+        if not isinstance(cur, dict):
+            return []
+        for seg in parts:
+            if not isinstance(cur, dict):
+                return []
+            cur = cur.get(seg)
+        out: list = []
+        if isinstance(cur, list):
+            for item in cur:
+                if isinstance(item, str) and item.strip():
+                    out.append(item.strip())
+        elif isinstance(cur, str) and cur.strip():
+            out.append(cur.strip())
+        return out
+    v = _lookup_path_value(source, dotted_path)
+    return [v] if v else []
+
+
+def _collect_uniqueness_tokens_from_candidate(candidate: Dict[str, Any]) -> list:
+    """Return [(compare_token, path), ...] in config path order."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    compare = cfg["compare"]
+    out: list = []
+    # Email pool first (scalars then list emails), then other identity groups.
+    groups = (
+        (cfg["email_paths"], compare["email"]),
+        (cfg["email_list_paths"], compare["email"]),
+        (cfg["scalar_paths"], compare["scalar"]),
+        (cfg["list_paths"], compare["list"]),
+        (cfg["slack_user_id_paths"], compare["slack_user_id"]),
+    )
+    for paths, mode in groups:
+        for path in paths:
+            for raw in _iter_uniqueness_path_values(candidate, path):
+                tok = _uniqueness_compare_token(raw, mode)
+                if tok:
+                    out.append((tok, path))
+    return out
+
+
+def _collect_uniqueness_tokens_from_contact(contact: Dict[str, Any]) -> list:
+    """Tokens from a bare contact dict (write-side proposed blob)."""
+    return _collect_uniqueness_tokens_from_candidate(
+        {"candidate_data": {"contact": contact}}
+    )
+
+
+
+def _dedupe_contact_list_path(
+    contact: dict, path: str, mode: str, seen: set, notes: list
+) -> None:
+    """Keep-first rebuild for one contact.* list uniqueness path."""
+    if not path.startswith("contact."):
+        return
+    key = path.split(".", 1)[1]
+    raw_list = contact.get(key)
+    if not isinstance(raw_list, list):
+        return
+    kept: list = []
+    for item in raw_list:
+        if not isinstance(item, str):
+            kept.append(item)
+            continue
+        tok = _uniqueness_compare_token(item, mode)
+        if not tok:
+            kept.append(item)
+            continue
+        if tok in seen:
+            notes.append(f"removed duplicate from {path}")
+            continue
+        seen.add(tok)
+        kept.append(item)
+    contact[key] = kept
+
+
+def _dedupe_contact_within(contact: dict) -> list:
+    """Collapse duplicate uniqueness tokens inside one contact blob (mutates)."""
+    cfg = CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+    compare = cfg["compare"]
+    seen: set = set()
+    notes: list = []
+    # Scalar / email / slack under contact.* — keep first, clear later dups.
+    scalar_groups = (
+        (cfg["email_paths"], compare["email"]),
+        (cfg["scalar_paths"], compare["scalar"]),
+        (cfg["slack_user_id_paths"], compare["slack_user_id"]),
+    )
+    for paths, mode in scalar_groups:
+        for path in paths:
+            if not path.startswith("contact."):
+                continue
+            key = path.split(".", 1)[1]
+            raw = contact.get(key)
+            tok = _uniqueness_compare_token(raw, mode)
+            if not tok:
+                continue
+            if tok in seen:
+                contact[key] = ""
+                notes.append(f"cleared {path} (duplicate)")
+            else:
+                seen.add(tok)
+    # Email list paths (extra_emails) then non-email lists (websites).
+    for path in cfg["email_list_paths"]:
+        _dedupe_contact_list_path(contact, path, compare["email"], seen, notes)
+    for path in cfg["list_paths"]:
+        _dedupe_contact_list_path(contact, path, compare["list"], seen, notes)
+    return notes
+
+
+def _find_cross_candidate_contact_collision(
+    candidate_id: str, contact: dict
+) -> Optional[Tuple[str, str, str]]:
+    """Return (display_value, path, other_id) on first cross-candidate token hit."""
+    mine = _collect_uniqueness_tokens_from_contact(contact)
+    if not mine:
+        return None
+    mine_map = {tok: path for tok, path in mine}
+    self_id = (candidate_id or "").strip()
+    # Display values from this contact (path → first stripped raw).
+    display_by_path: Dict[str, str] = {}
+    for path in (
+        tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["email_list_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["scalar_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["list_paths"])
+        + tuple(CANDIDATE_CONTACT_UNIQUENESS_CONFIG["slack_user_id_paths"])
+    ):
+        if not path.startswith("contact."):
+            continue
+        for raw in _iter_uniqueness_path_values(
+            {"candidate_data": {"contact": contact}}, path
+        ):
+            display_by_path.setdefault(path, raw)
+    for other in list_candidates(include_deleted=False):
+        other_id = (other.get("astral_candidate_id") or "").strip()
+        if not other_id or other_id == self_id:
+            continue
+        for tok, _opath in _collect_uniqueness_tokens_from_candidate(other):
+            if tok not in mine_map:
+                continue
+            path = mine_map[tok]
+            display = display_by_path.get(path) or tok
+            return (display, path, other_id)
+    return None
+
+
+
+def _coerce_contact_string_lists(contact: dict) -> None:
+    """Trim websites / extra_emails lists in place (AST-1081 / AST-1092 / AST-1095)."""
+    for list_key in ("websites", "extra_emails"):
+        if list_key not in contact:
+            continue
+        raw_list = contact[list_key]
+        if raw_list is None:
+            contact[list_key] = []
+        elif isinstance(raw_list, list):
+            contact[list_key] = [
+                str(x).strip() for x in raw_list if str(x).strip()
+            ]
+        else:
+            raise ValueError(f"contact.{list_key} must be a list of strings")
+
+
+def _enforce_contact_uniqueness(
+    candidate_id: str, contact: dict, *, debug: bool = False
+) -> None:
+    """Within-candidate collapse + cross-candidate hard-fail (AST-1080)."""
+    notes = _dedupe_contact_within(contact)
+    if debug:
+        logger.debug_index(
+            func="enforce_contact_uniqueness",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded|within_dedupe" if notes else "found|within_clean",
+        )
+        if notes:
+            for line in truncate_debug_content("; ".join(notes)):
+                logger.debug_detail(f"within={line}")
+        else:
+            logger.debug_detail("within=clean")
+        logger.debug_detail(
+            f"token_count={len(_collect_uniqueness_tokens_from_contact(contact))}"
+        )
+    hit = _find_cross_candidate_contact_collision(candidate_id, contact)
+    if hit:
+        display, path, other_id = hit
+        if debug:
+            logger.debug_index(
+                func="enforce_contact_uniqueness",
+                index=2,
+                total=2,
+                identifier=candidate_id,
+                outcome="found|cross_collision",
+            )
+            logger.debug_detail(f"path={path}")
+            for line in truncate_debug_content(display):
+                logger.debug_detail(f"value={line}")
+            logger.debug_detail(f"other_candidate_id={other_id}")
+        shown = display if len(display) <= 80 else display[:80]
+        raise ValueError(
+            f"This contact info is already used by another candidate ({shown})."
+        )
+    if debug:
+        logger.debug_index(
+            func="enforce_contact_uniqueness",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded|cross_clear",
+        )
+        logger.debug_detail("cross=clear")
+
+
+_PENDING_CRAFT_GENERATIONS_KEY = "pending_craft_generations"
 
 def _ledger_task_key_for_ui_generate(task_key: str) -> str:
     return f"user-{task_key}"
@@ -154,15 +446,416 @@ def _normalize_importance_value(raw: Any, ci: dict) -> int:
     return n
 
 
-def initiate_candidate(astral_candidate_id: str, candidate_data: Optional[Dict[str, Any]] = None) -> None:
-    """Create a new candidate record with state=NEW. Follows ingest_jobs pattern."""
-    database.save_candidate(astral_candidate_id, state="NEW", candidate_data=candidate_data or {})
+def _append_candidate_state_history(
+    candidate: Dict[str, Any],
+    from_state: str,
+    to_state: str,
+    timestamp: str,
+) -> list:
+    """Return candidate state_history plus one company-shaped entry (no DB write)."""
+    history = list(candidate.get("state_history") or [])
+    history.append({
+        "from_state": from_state,
+        "to_state": to_state,
+        "timestamp": timestamp,
+        "batch_id": candidate.get("batch_id"),
+    })
+    return history
 
 
-def save_candidate_data(candidate_id: str, data: Dict[str, Any], replace: bool = False) -> None:
-    """Merge (or replace) candidate_data. Follows save_job_data pattern.
-    Pure data persistence — no side effects, no AI calls."""
-    database.save_candidate(candidate_id, candidate_data=data, merge=not replace)
+def initiate_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+    *,
+    first: Optional[str] = None,
+    last: Optional[str] = None,
+    full: Optional[str] = None,
+    pronouns: Optional[str] = None,
+) -> None:
+    """Create a new candidate record with CANDIDATE_CONFIG initial_state."""
+    initial = CANDIDATE_CONFIG["initial_state"]
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cd = dict(candidate_data or {})
+    if "profile" in cd:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+    contact = cd.get("contact")
+    if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
+        normalize_contact_urls(contact)
+        _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
+    first_v = "" if first is None else str(first)
+    last_v = "" if last is None else str(last)
+    full_v = full if full is not None else recompute_full_name(first_v, last_v)
+    pronouns_v = ("" if pronouns is None else str(pronouns)).strip()
+    if pronouns_v not in PRONOUN_PREFERENCE_OPTIONS:
+        pronouns_v = PRONOUN_PREFERENCE_DEFAULT
+    database.save_candidate(
+        astral_candidate_id,
+        state=initial,
+        candidate_data=cd,
+        first=first_v,
+        last=last_v,
+        full=full_v,
+        pronouns=pronouns_v,
+        state_history=_append_candidate_state_history({}, "", initial, now),
+    )
+
+
+
+def initiate_prospect_candidate(
+    astral_candidate_id: str,
+    candidate_data: Optional[Dict[str, Any]] = None,
+    *,
+    first: Optional[str] = None,
+    last: Optional[str] = None,
+) -> None:
+    """Create a candidate row in PROSPECT (Slack create-on-miss). Not NEW_CANDIDATE."""
+    cid = (astral_candidate_id or "").strip()
+    if not cid:
+        raise ValueError("astral_candidate_id is required")
+    if get_candidate(cid) is not None:
+        raise ValueError(f"candidate already exists: {cid}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    cd = dict(candidate_data or {})
+    if "profile" in cd:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+    contact = cd.get("contact")
+    if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
+        normalize_contact_urls(contact)
+        _enforce_contact_uniqueness(astral_candidate_id, contact, debug=False)
+    first_v = "" if first is None else str(first)
+    last_v = "" if last is None else str(last)
+    full_v = recompute_full_name(first_v, last_v)
+    database.save_candidate(
+        cid,
+        state="PROSPECT",
+        candidate_data=cd,
+        first=first_v,
+        last=last_v,
+        full=full_v,
+        pronouns=PRONOUN_PREFERENCE_DEFAULT,
+        state_history=_append_candidate_state_history({}, "", "PROSPECT", now),
+    )
+
+
+def save_candidate_data(
+    candidate_id: str,
+    data: Dict[str, Any],
+    replace: bool = False,
+    *,
+    debug: bool = False,
+) -> None:
+    """Merge (or replace) library blobs + optional name columns (AST-1014).
+    Pure data persistence — no AI calls. Rejects legacy ``profile`` writes."""
+    logger.set_debug_flag(debug)
+    if not isinstance(data, dict):
+        raise ValueError("candidate data must be a dict")
+    if "profile" in data:
+        raise ValueError("profile was renamed to contact; refuse shadow write")
+
+    col_kwargs: Dict[str, Any] = {}
+    blob: Dict[str, Any] = {}
+    for key, val in data.items():
+        if key in _NAME_COLUMNS:
+            col_kwargs[key] = "" if val is None else str(val)
+        else:
+            blob[key] = val
+
+    # Empty/whitespace full → library join; omit full when first/last change → same
+    if "full" in col_kwargs:
+        full_stripped = str(col_kwargs["full"]).strip()
+        if not full_stripped:
+            existing = database.get_candidate(candidate_id) or {}
+            first = col_kwargs.get("first", existing.get("first") or "")
+            last = col_kwargs.get("last", existing.get("last") or "")
+            col_kwargs["full"] = recompute_full_name(str(first), str(last))
+        else:
+            col_kwargs["full"] = full_stripped
+    elif "first" in col_kwargs or "last" in col_kwargs:
+        existing = database.get_candidate(candidate_id) or {}
+        first = col_kwargs.get("first", existing.get("first") or "")
+        last = col_kwargs.get("last", existing.get("last") or "")
+        col_kwargs["full"] = recompute_full_name(str(first), str(last))
+
+    if "pronouns" in col_kwargs:
+        pref = (col_kwargs["pronouns"] or "").strip()
+        if pref and pref not in PRONOUN_PREFERENCE_OPTIONS:
+            raise ValueError(f"Invalid pronouns value: {pref!r}")
+
+    contact = blob.get("contact")
+    if isinstance(contact, dict):
+        _coerce_contact_string_lists(contact)
+        normalize_contact_urls(contact)
+        # Proposed contact after merge (merge=True) or replace payload (merge=False).
+        if not replace:
+            existing = database.get_candidate(candidate_id) or {}
+            existing_cd = existing.get("candidate_data") or {}
+            if not isinstance(existing_cd, dict):
+                existing_cd = {}
+            existing_contact = existing_cd.get("contact")
+            if isinstance(existing_contact, dict):
+                proposed = copy.deepcopy(existing_contact)
+                # Match database._deep_merge overwrite/list-replace for contact keys.
+                for k, v in contact.items():
+                    if (
+                        k in proposed
+                        and isinstance(proposed[k], dict)
+                        and isinstance(v, dict)
+                    ):
+                        inner = copy.deepcopy(proposed[k])
+                        for ik, iv in v.items():
+                            inner[ik] = iv
+                        proposed[k] = inner
+                    else:
+                        proposed[k] = v
+            else:
+                proposed = copy.deepcopy(contact)
+        else:
+            proposed = copy.deepcopy(contact)
+        _enforce_contact_uniqueness(candidate_id, proposed, debug=debug)
+        blob["contact"] = proposed
+
+    steps = []
+    if col_kwargs:
+        steps.append(("columns", sorted(col_kwargs.keys())))
+    for bk in _LIBRARY_BLOB_KEYS:
+        if bk in blob:
+            steps.append((bk, "recorded"))
+    meta_keys = [k for k in blob if k not in _LIBRARY_BLOB_KEYS]
+    if meta_keys:
+        steps.append(("meta", meta_keys))
+
+    if debug and steps:
+        total = len(steps)
+        for i, (label, detail) in enumerate(steps, start=1):
+            logger.debug_index(
+                func="save_candidate_data",
+                index=i,
+                total=total,
+                identifier=candidate_id,
+                outcome=f"recorded|{label}",
+            )
+            logger.debug_detail(f"{label}={detail!r}")
+
+    save_kwargs: Dict[str, Any] = dict(col_kwargs)
+    if blob:
+        save_kwargs["candidate_data"] = blob
+        save_kwargs["merge"] = not replace
+    elif col_kwargs:
+        pass
+    else:
+        return
+    database.save_candidate(candidate_id, **save_kwargs)
+
+
+def _topic_menu_key() -> str:
+    return str(TOPIC_MENU_CONFIG["candidate_data_key"])
+
+
+def empty_topic_menu() -> dict:
+    """Empty Topic Menu envelope (AST-1074)."""
+    return {"topics": []}
+
+
+def normalize_topic_menu(raw: Any) -> dict:
+    """Coerce stored/raw menu to ``{"topics": list}`` without validating members."""
+    if not isinstance(raw, dict):
+        return empty_topic_menu()
+    topics = raw.get("topics")
+    if not isinstance(topics, list):
+        return empty_topic_menu()
+    out: dict = {"topics": list(topics)}
+    confirmed = raw.get("preamble_confirmed_at")
+    if isinstance(confirmed, str) and confirmed.strip():
+        out["preamble_confirmed_at"] = confirmed.strip()
+    return out
+
+
+def get_topic_menu(candidate_id: str) -> dict:
+    """Load ``candidate_data.topic_menu`` (normalized). Raises if candidate missing."""
+    cand = get_candidate(candidate_id)
+    if not cand:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = cand.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return normalize_topic_menu(cd.get(_topic_menu_key()))
+
+
+def validate_topic(topic: Any) -> dict:
+    """Return a normalized topic dict or raise ValueError."""
+    if not isinstance(topic, dict):
+        raise ValueError("topic must be a dict")
+    tid = topic.get("id")
+    if not isinstance(tid, str) or not tid.strip():
+        raise ValueError("topic id must be a non-empty string")
+    tid = tid.strip()
+    name = topic.get("name")
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError(f"topic {tid!r}: name must be a non-empty string")
+    name = name.strip()
+    ask = topic.get("ask")
+    if not isinstance(ask, str) or not ask.strip():
+        raise ValueError(f"topic {tid!r}: ask must be a non-empty string")
+    ask = ask.strip()
+    required = topic.get("required")
+    if not isinstance(required, bool):
+        raise ValueError(f"topic {tid!r}: required must be a bool")
+    informs_raw = topic.get("informs")
+    if not isinstance(informs_raw, list) or not informs_raw:
+        raise ValueError(f"topic {tid!r}: informs must be a non-empty list")
+    allowed = TOPIC_MENU_CONFIG["informs"]
+    seen: set = set()
+    informs: list = []
+    for item in informs_raw:
+        if not isinstance(item, str) or not item.strip():
+            raise ValueError(f"topic {tid!r}: informs entries must be non-empty strings")
+        key = item.strip()
+        if key not in allowed:
+            raise ValueError(f"topic {tid!r}: informs target {key!r} not in TOPIC_MENU_CONFIG")
+        if key in seen:
+            continue
+        seen.add(key)
+        informs.append(key)
+    if not informs:
+        raise ValueError(f"topic {tid!r}: informs must be non-empty after dedupe")
+    status = topic.get("status", TOPIC_MENU_CONFIG["default_status"])
+    if status not in TOPIC_MENU_CONFIG["statuses"]:
+        raise ValueError(f"topic {tid!r}: status {status!r} not in TOPIC_MENU_CONFIG")
+    return {
+        "id": tid,
+        "name": name,
+        "ask": ask,
+        "required": required,
+        "informs": informs,
+        "status": status,
+    }
+
+
+def validate_topic_menu(menu: Any) -> dict:
+    """Validate a full menu; raise on duplicate topic ids."""
+    normalized = normalize_topic_menu(menu)
+    out: list = []
+    seen_ids: set = set()
+    for topic in normalized["topics"]:
+        row = validate_topic(topic)
+        if row["id"] in seen_ids:
+            raise ValueError(f"duplicate topic id: {row['id']!r}")
+        seen_ids.add(row["id"])
+        out.append(row)
+    result: dict = {"topics": out}
+    if "preamble_confirmed_at" in normalized:
+        result["preamble_confirmed_at"] = normalized["preamble_confirmed_at"]
+    return result
+
+
+def revise_topic_menu(existing: Any, incoming: Any) -> dict:
+    """Merge incoming topics onto existing by id; missing ids become retired (no wipe)."""
+    existing_n = validate_topic_menu(existing)
+    incoming_n = validate_topic_menu(incoming)
+    incoming_ids = {t["id"] for t in incoming_n["topics"]}
+    out: list = []
+    for topic in incoming_n["topics"]:
+        out.append(topic)
+    for topic in existing_n["topics"]:
+        if topic["id"] in incoming_ids:
+            continue
+        retired = dict(topic)
+        retired["status"] = "retired"
+        out.append(retired)
+    result: dict = {"topics": out}
+    # Prefer incoming stamp when both set; else keep existing.
+    if "preamble_confirmed_at" in incoming_n:
+        result["preamble_confirmed_at"] = incoming_n["preamble_confirmed_at"]
+    elif "preamble_confirmed_at" in existing_n:
+        result["preamble_confirmed_at"] = existing_n["preamble_confirmed_at"]
+    return result
+
+
+def save_topic_menu(
+    candidate_id: str,
+    menu: Any,
+    *,
+    revise: bool = True,
+    debug: bool = False,
+) -> dict:
+    """Persist Topic Menu under candidate_data; default revise keeps retired history."""
+    logger.set_debug_flag(debug)
+    current = get_topic_menu(candidate_id)
+    if revise:
+        to_store = revise_topic_menu(current, menu)
+    else:
+        to_store = validate_topic_menu(menu)
+
+    if debug:
+        cur_ids = [t.get("id") for t in current.get("topics") or [] if isinstance(t, dict)]
+        logger.debug_index(
+            func="candidate.save_topic_menu",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"current_count={len(cur_ids)} revise={revise}")
+        id_blob = ",".join(str(x) for x in cur_ids)
+        for line in truncate_debug_content(id_blob):
+            logger.debug_detail(f"current_ids={line}")
+
+    save_candidate_data(candidate_id, {_topic_menu_key(): to_store}, debug=debug)
+
+    if debug:
+        status_counts = {s: 0 for s in TOPIC_MENU_CONFIG["statuses"]}
+        for t in to_store["topics"]:
+            st = t.get("status")
+            if st in status_counts:
+                status_counts[st] += 1
+        logger.debug_index(
+            func="candidate.save_topic_menu",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(
+            f"stored_count={len(to_store['topics'])} "
+            f"open={status_counts['open']} ready={status_counts['ready']} "
+            f"retired={status_counts['retired']} revise={revise}"
+        )
+    return to_store
+
+
+def mark_topic_menu_preamble_confirmed(
+    candidate_id: str,
+    *,
+    when: str | None = None,
+    debug: bool = False,
+) -> dict:
+    """Stamp ``preamble_confirmed_at`` on topic_menu without wiping topics (AST-1075)."""
+    logger.set_debug_flag(debug)
+    menu = get_topic_menu(candidate_id)
+    if debug:
+        logger.debug_index(
+            func="candidate.mark_topic_menu_preamble_confirmed",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"topics={len(menu.get('topics') or [])}")
+    stamp = when or datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    menu["preamble_confirmed_at"] = stamp
+    save_candidate_data(candidate_id, {_topic_menu_key(): menu}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.mark_topic_menu_preamble_confirmed",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"preamble_confirmed_at={stamp}")
+    return menu
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
@@ -214,6 +907,22 @@ def _rubric_rows_to_criteria(rows: list) -> list:
     return out
 
 
+def _merge_embedded_evaluate_jd_criteria(criteria: list) -> list:
+    """Append EMBEDDED_EVALUATE_JD_CRITERIA; embedded wins on duplicate code (AST-1085)."""
+    embedded_codes = {
+        str(c.get("code")).strip().upper()
+        for c in EMBEDDED_EVALUATE_JD_CRITERIA
+        if isinstance(c, dict) and c.get("code")
+    }
+    head = [
+        c
+        for c in (criteria or [])
+        if isinstance(c, dict)
+        and str(c.get("code") or "").strip().upper() not in embedded_codes
+    ]
+    return head + list(EMBEDDED_EVALUATE_JD_CRITERIA)
+
+
 def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
     """Active rubric criteria from rubric_vector for (candidate, owner task_key)."""
     if not candidate_id or not owner_task_key:
@@ -232,6 +941,8 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
+    if owner_task_key == "evaluate_jd":
+        return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
 
@@ -257,6 +968,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
             raise ValueError(f"No rubric owner task_key for artifact {key!r}")
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
+        # AST-1085: restore QC/GC on save (append; embedded wins on code).
+        if owner == "evaluate_jd":
+            val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
 
@@ -367,6 +1081,109 @@ def list_candidates(include_deleted: bool = False) -> list:
     return [c for c in all_candidates if c.get("state") != "DELETED"]
 
 
+def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
+    """Resolve one CANDIDATE_LOOKUP_CONFIG path against a candidate row + candidate_data."""
+    parts = dotted_path.split(".")
+    if len(parts) == 1:
+        val = candidate.get(parts[0])
+    else:
+        cur: Any = candidate.get("candidate_data") or {}
+        if not isinstance(cur, dict):
+            return ""
+        for seg in parts:
+            if not isinstance(cur, dict):
+                return ""
+            cur = cur.get(seg)
+        val = cur
+    if not isinstance(val, str):
+        return ""
+    return val.strip()
+
+
+def get_candidate_id_for_query(
+    query: str,
+    *,
+    debug: bool = False,
+) -> Optional[str]:
+    """Match a string against configured email/name homes; return id only on unique hit."""
+    if debug:
+        logger.set_debug_flag(True)
+
+    raw = (query or "").strip()
+    if not raw:
+        if debug:
+            logger.debug_index(
+                func="get_candidate_id_for_query",
+                index=1,
+                total=1,
+                identifier="",
+                outcome="found|empty_query",
+            )
+            logger.debug_detail("query=")
+            logger.debug_detail("needle=")
+        return None
+
+    _display, parsed_email = parseaddr(raw)
+    addr = (parsed_email or "").strip()
+    needle = addr if "@" in addr else raw
+    casefold = bool(CANDIDATE_LOOKUP_CONFIG["match_casefold"])
+    needle_cmp = needle.casefold() if casefold else needle
+
+    hit_ids: set[str] = set()
+    paths = (
+        tuple(CANDIDATE_LOOKUP_CONFIG["email_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["name_paths"])
+        + tuple(CANDIDATE_LOOKUP_CONFIG["slack_user_id_paths"])
+    )
+    for candidate in list_candidates(include_deleted=False):
+        values = []
+        for path in paths:
+            v = _lookup_path_value(candidate, path)
+            if v:
+                values.append(v.casefold() if casefold else v)
+        if needle_cmp not in values:
+            continue
+        cid = (candidate.get("astral_candidate_id") or "").strip()
+        if cid:
+            hit_ids.add(cid)
+
+    if len(hit_ids) == 1:
+        matched_id = next(iter(hit_ids))
+        if debug:
+            ident = next(iter(truncate_debug_content(needle)), needle[:80])
+            logger.debug_index(
+                func="get_candidate_id_for_query",
+                index=1,
+                total=1,
+                identifier=ident,
+                outcome="found|matched",
+            )
+            for line in truncate_debug_content(raw):
+                logger.debug_detail(f"query={line}")
+            for line in truncate_debug_content(needle):
+                logger.debug_detail(f"needle={line}")
+            logger.debug_detail(f"candidate_id={matched_id}")
+        return matched_id
+
+    if debug:
+        ident = next(iter(truncate_debug_content(needle)), needle[:80])
+        outcome = "found|ambiguous" if len(hit_ids) >= 2 else "found|none"
+        logger.debug_index(
+            func="get_candidate_id_for_query",
+            index=1,
+            total=1,
+            identifier=ident,
+            outcome=outcome,
+        )
+        for line in truncate_debug_content(raw):
+            logger.debug_detail(f"query={line}")
+        for line in truncate_debug_content(needle):
+            logger.debug_detail(f"needle={line}")
+        if len(hit_ids) >= 2:
+            logger.debug_detail(f"candidate_ids={sorted(hit_ids)}")
+    return None
+
+
 def preview_task_prompt(
     task_key: str,
     candidate_id: str = "",
@@ -431,50 +1248,181 @@ def preview_task_prompt(
 
 
 def delete_candidate(candidate_id: str) -> None:
-    """Logical delete — sets state to DELETED, bypassing transition validation."""
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        raise ValueError(f"Candidate not found: {candidate_id}")
-    database.save_candidate(candidate_id, state="DELETED")
+    """Logical delete — transition to DELETED (starts reap timer)."""
+    transition_candidate_state(candidate_id, "DELETED")
+
+
+def _candidate_prior_states(to_state: str):
+    cfg = CANDIDATE_STATES.get(to_state)
+    if cfg is None:
+        raise ValueError(f"Unknown candidate state: {to_state}")
+    return cfg.get("prior_states")
+
+
+def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
+    prior = _candidate_prior_states(to_state)
+    if prior is None:
+        return True
+    return from_state in prior
+
+
+def _start_candidate_reap_timer(candidate_id: str) -> None:
+    hours = int(CANDIDATE_STATES["DELETED"]["reap_after_hours"])
+    started = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    database.save_candidate(
+        candidate_id,
+        candidate_data={
+            "lifecycle": {"reap_after_hours": hours, "reap_started_at": started},
+        },
+        merge=True,
+    )
+
+
+def _parse_utc_ts(raw: Any) -> Optional[datetime]:
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    if not s:
+        return None
+    # Accept "Z" and space-separated SQLite timestamps
+    s = s.replace(" ", "T")
+    if s.endswith("Z"):
+        s = s[:-1] + "+00:00"
+    try:
+        dt = datetime.fromisoformat(s)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
+def candidate_reap_due_at(candidate: dict) -> Optional[datetime]:
+    """UTC due datetime when state is DELETED and lifecycle.reap_started_at is set."""
+    if (candidate.get("state") or "") != "DELETED":
+        return None
+    life = ((candidate.get("candidate_data") or {}).get("lifecycle") or {})
+    started = _parse_utc_ts(life.get("reap_started_at"))
+    if started is None:
+        return None
+    hours = life.get("reap_after_hours")
+    if hours is None:
+        hours = CANDIDATE_STATES["DELETED"].get("reap_after_hours", 0)
+    try:
+        hours_i = int(hours)
+    except (TypeError, ValueError):
+        return None
+    return started + timedelta(hours=hours_i)
+
+
+def is_candidate_reap_due(candidate: dict, *, now: Optional[datetime] = None) -> bool:
+    """True when DELETED and now >= candidate_reap_due_at."""
+    due = candidate_reap_due_at(candidate)
+    if due is None:
+        return False
+    clock = now if now is not None else datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    return clock.astimezone(timezone.utc) >= due
+
+
+def hard_delete_candidate(candidate_id: str) -> Dict[str, int]:
+    """Physical delete — database.hard_delete_candidate. Not a state transition."""
+    return database.hard_delete_candidate(candidate_id)
+
+
+def purge_reap_due_candidates(*, now: Optional[datetime] = None) -> int:
+    """Hard-delete every candidate where is_candidate_reap_due(...). Return count."""
+    n = 0
+    for row in list_candidates(include_deleted=True):
+        if (row.get("state") or "") != "DELETED":
+            continue
+        if not is_candidate_reap_due(row, now=now):
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        hard_delete_candidate(cid)
+        n += 1
+    return n
 
 
 def transition_candidate_state(candidate_id: str, to_state: str) -> None:
-    """Validate transition is allowed per ASTRAL_CONFIG, then update state.
-    Raises ValueError if the transition is not in candidate_state_transitions."""
+    """Validate prior_states on CANDIDATE_STATES, then update state.
+    Raises ValueError if the hop is disallowed."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
+    if to_state not in CANDIDATE_STATES:
+        raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
-    transitions = ASTRAL_CONFIG.get("candidate_state_transitions", [])
-    if (from_state, to_state) not in transitions:
+    if not _candidate_state_allowed(from_state, to_state):
         raise ValueError(
             f"Invalid candidate state transition: {from_state} -> {to_state}"
         )
-    database.save_candidate(candidate_id, state=to_state)
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    history = _append_candidate_state_history(candidate, from_state, to_state, now)
+    database.save_candidate(candidate_id, state=to_state, state_history=history)
+    if to_state == "DELETED":
+        _start_candidate_reap_timer(candidate_id)
 
 
 _CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
-_CONTEXT_READY_IDX = _CANDIDATE_STATE_LIST.index("CONTEXT_READY")
 
 
 def check_context_complete(candidate_id: str) -> bool:
-    """If every context text field is non-empty, transition to CONTEXT_READY.
-    Returns True if candidate is (now) context-ready."""
+    """True when all four context text fields are non-empty (no state write).
+    Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return False
     current_state = candidate.get("state", "")
-    if current_state in _CANDIDATE_STATE_LIST[_CONTEXT_READY_IDX:]:
+    rank = int((CANDIDATE_STATES.get(current_state) or {}).get("progress_rank", -1))
+    ready_rank = int(CANDIDATE_STATES["ALL_TOPICS_READY"]["progress_rank"])
+    if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
     for key in _CONTEXT_TEXT_KEYS:
         if not (ctx.get(key) or "").strip():
             return False
-    try:
-        transition_candidate_state(candidate_id, "CONTEXT_READY")
-    except ValueError:
-        return False
     return True
+
+
+def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
+    """Move waiting-stage candidates past stale_after_hours into stale_state.
+    Returns count of successful transitions. No scheduler wiring (AST-972)."""
+    clock = now if now is not None else datetime.now(timezone.utc)
+    if clock.tzinfo is None:
+        clock = clock.replace(tzinfo=timezone.utc)
+    clock = clock.astimezone(timezone.utc)
+    moved = 0
+    for row in list_candidates(include_deleted=False):
+        state = row.get("state") or ""
+        cfg = CANDIDATE_STATES.get(state) or {}
+        stale_state = cfg.get("stale_state")
+        hours = cfg.get("stale_after_hours")
+        if not stale_state or hours is None:
+            continue
+        if state == stale_state:
+            continue
+        changed = _parse_utc_ts(row.get("state_changed_at"))
+        if changed is None:
+            continue
+        try:
+            hours_i = int(hours)
+        except (TypeError, ValueError):
+            continue
+        if clock < changed + timedelta(hours=hours_i):
+            continue
+        cid = row.get("astral_candidate_id")
+        if not cid:
+            continue
+        try:
+            transition_candidate_state(cid, stale_state)
+            moved += 1
+        except ValueError:
+            continue
+    return moved
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
@@ -554,7 +1502,16 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     """Keep only section-id keys; drop accent_color and other non-section keys."""
     if not isinstance(content, dict):
         return {}
-    return {k: str(v) for k, v in content.items() if k in section_ids}
+    out: Dict[str, Any] = {}
+    for k, v in content.items():
+        if k not in section_ids:
+            continue
+        if k == "experience" and _is_experience_job_array(v):
+            out[k] = v
+        elif isinstance(v, str):
+            out[k] = v
+        # else: drop unexpected shapes (do not str()-corrupt)
+    return out
 
 
 def format_base_resume_for_token(candidate_data: dict) -> str:
@@ -617,7 +1574,17 @@ _CRAFT_RESUME_NESTED_CONTENT_KEYS = ("content", "text", "value", "body")
 _CRAFT_RESUME_CONTENT_DICT_KEYS = ("content", "section_content", "base_resume")
 
 
+def _is_experience_job_array(val: Any) -> bool:
+    return isinstance(val, list) and all(isinstance(item, dict) for item in val)
+
+
+# Public alias for tracker / builder (AST-996 / AST-997 / AST-998).
+is_experience_job_array = _is_experience_job_array
+
+
 def _coerce_resume_section_string(val: Any) -> Optional[str]:
+    if _is_experience_job_array(val):
+        return None
     if isinstance(val, str) and val.strip():
         return val
     if isinstance(val, list):
@@ -634,12 +1601,18 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
     raw_struct = payload.get("resume_structure")
     if not isinstance(raw_struct, dict):
         return
+    # AST-1005: still promote content / direct keys when sections is missing (before default wipe).
     sections = raw_struct.get("sections")
     if not isinstance(sections, dict):
-        return
+        sections = None
 
     def _promote(sid: str, val: Any) -> None:
         if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+            return
+        if sid == "experience" and _is_experience_job_array(payload.get(sid)):
+            return
+        if sid == "experience" and _is_experience_job_array(val):
+            payload[sid] = val
             return
         if _coerce_resume_section_string(payload.get(sid)):
             return
@@ -658,6 +1631,13 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
             for sid, val in block.items():
                 _promote(sid, val)
 
+    # Direct keys on resume_structure (e.g. candidate_name) — not sections/content metadata.
+    for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        if sid in raw_struct:
+            _promote(sid, raw_struct[sid])
+
+    if sections is None:
+        return
     for sid, spec in sections.items():
         if not isinstance(spec, dict) or not spec.get("enabled"):
             continue
@@ -725,6 +1705,8 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
         if not isinstance(block, dict):
             continue
         for sid, val in block.items():
+            if sid == "experience" and _is_experience_job_array(val):
+                continue
             if _coerce_resume_section_string(inner.get(sid)):
                 continue
             text = _coerce_resume_section_string(val)
@@ -733,11 +1715,54 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
     for key, val in list(inner.items()):
         if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
             continue
+        if key == "experience" and _is_experience_job_array(val):
+            continue
         if isinstance(val, (list, dict)):
             text = _coerce_resume_section_string(val)
             if text:
                 inner[key] = text
     _apply_draft_job_resume_section_aliases(inner)
+
+
+def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> None:
+    """Restore company/title/dates/location from base jobs matched by (company, title)."""
+    if not isinstance(payload, dict) or not isinstance(candidate_data, dict):
+        return
+    artifacts = candidate_data.get("artifacts")
+    base = artifacts.get("base_resume") if isinstance(artifacts, dict) else None
+    if not isinstance(base, dict):
+        return
+    base_exp = base.get("experience")
+    tailored = payload.get("experience")
+    if not _is_experience_job_array(base_exp) or not _is_experience_job_array(tailored):
+        return
+    unused = list(base_exp)
+    for job in tailored:
+        if not isinstance(job, dict):
+            continue
+        pair = (
+            str(job.get("company") or "").strip().lower(),
+            str(job.get("title") or "").strip().lower(),
+        )
+        match_i = None
+        for i, base_job in enumerate(unused):
+            if not isinstance(base_job, dict):
+                continue
+            base_pair = (
+                str(base_job.get("company") or "").strip().lower(),
+                str(base_job.get("title") or "").strip().lower(),
+            )
+            if base_pair == pair:
+                match_i = i
+                break
+        if match_i is None:
+            continue
+        base_job = unused.pop(match_i)
+        for field in ("company", "title", "dates", "location"):
+            if field in base_job:
+                job[field] = base_job[field]
+            elif field == "location":
+                job[field] = ""
 
 
 def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Optional[str]:
@@ -759,11 +1784,24 @@ def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Opt
             return f"Unknown resume section key '{key}' (not in candidate catalog: {sorted(allowed)})"
         if val is None or val == "":
             continue
+        if key == "experience":
+            if _is_experience_job_array(val):
+                for job in val:
+                    if not isinstance(job, dict):
+                        return "Section 'experience' must be a job array or prose string"
+                    if not isinstance(job.get("location"), str):
+                        job["location"] = "" if job.get("location") is None else str(job.get("location") or "")
+                continue
+            if isinstance(val, str):
+                continue
+            if isinstance(val, (list, dict)):
+                return "Section 'experience' must be a job array or prose string"
         text = _coerce_resume_section_string(val)
         if text is None:
             return f"Section '{key}' must be prose text (string or coercible list)"
         if text != val:
             payload[key] = text
+    pin_experience_job_facts_from_base(payload, candidate_data)
     return None
 
 
@@ -780,12 +1818,14 @@ def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
     enabled_ids = {
         sid for sid, spec in structure["sections"].items() if spec.get("enabled")
     }
-    content: Dict[str, str] = {}
+    content: Dict[str, Any] = {}
     for key in enabled_ids:
         if key not in parsed:
             continue
         val = parsed[key]
-        if isinstance(val, str):
+        if key == "experience" and _is_experience_job_array(val):
+            content[key] = val
+        elif isinstance(val, str):
             content[key] = val
     return structure, content
 
@@ -815,39 +1855,42 @@ def filter_content_to_resume_structure(
     *,
     allow_contact: bool = True,
 ) -> dict:
-    """Keep string values for enabled section ids; omit empty strings."""
+    """Keep values for enabled section ids; omit empty strings / empty job arrays."""
     if not isinstance(content, dict):
         return {}
     allowed = set(enabled_resume_section_ids(resume_structure))
     if not allow_contact:
         allowed -= set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
-    out: Dict[str, str] = {}
+    out: Dict[str, Any] = {}
     for key in allowed:
         val = content.get(key)
-        if isinstance(val, str) and val.strip():
+        if key == "experience" and _is_experience_job_array(val) and val:
+            out[key] = val
+        elif isinstance(val, str) and val.strip():
             out[key] = val
     return out
 
 
-async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
-    """Parse context.starting_resume_text via do_task('craft_resume_base').
-    Reads from candidate_data.context.starting_resume_text, writes parsed
+async def parse_candidate_resume(candidate_id: str, *, debug: bool = False) -> Dict[str, Any]:
+    """Parse context.raw_resume via do_task('craft_resume_base').
+    Reads from candidate_data.context.raw_resume, writes parsed
     result to candidate_data.artifacts.base_resume.
-    On success: transitions to PROFILE_READY.
-    On failure: returns error dict.
+    Does not change candidate state (AST-970 — no PROFILE_READY auto-hop).
 
     Async — called from CLI/scripts via asyncio.run(), never from Flask handlers."""
+    logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {"success": False, "error": f"Candidate not found: {candidate_id}"}
-    resume_raw = (candidate.get("candidate_data") or {}).get("context", {}).get("starting_resume_text", "")
+    resume_raw = (candidate.get("candidate_data") or {}).get("context", {}).get("raw_resume", "")
     if not resume_raw or not resume_raw.strip():
-        return {"success": False, "error": "No starting_resume_text in candidate_data.context"}
+        return {"success": False, "error": "No raw_resume in candidate_data.context"}
 
     response = await do_task(
         task_key="craft_resume_base",
         live_content=resume_raw,
         index=candidate_id,
+        debug=debug,
     )
     if response is None:
         return {"success": False, "error": "do_task returned None for parse_resume"}
@@ -864,11 +1907,48 @@ async def parse_candidate_resume(candidate_id: str) -> Dict[str, Any]:
         candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
         merge=True,
     )
-    # Transition to PROFILE_READY only if currently NEW
-    current = database.get_candidate(candidate_id)
-    if current and current.get("state") == "NEW":
-        transition_candidate_state(candidate_id, "PROFILE_READY")
+    if debug:
+        logger.debug_index(
+            func="parse_candidate_resume",
+            index=1,
+            total=1,
+            identifier=candidate_id,
+            outcome="ok",
+        )
+        _debug_experience_jobs(logger, content)
     return {"success": True, "parsed": parsed}
+
+
+def _debug_experience_jobs(log, content_or_parsed: Any) -> None:
+    """Style D detail for recorded experience jobs (AST-996)."""
+    blob = content_or_parsed if isinstance(content_or_parsed, dict) else {}
+    exp = blob.get("experience")
+    if _is_experience_job_array(exp):
+        for i, job in enumerate(exp):
+            if not isinstance(job, dict):
+                log.debug_detail(f"experience[{i}] shape=non_dict")
+                continue
+            log.debug_detail(
+                f"experience[{i}] company={job.get('company')!r} title={job.get('title')!r} "
+                f"dates={job.get('dates')!r} location={job.get('location')!r}"
+            )
+            acc = job.get("accomplishments")
+            if isinstance(acc, str) and acc.strip():
+                for line in truncate_debug_content(acc):
+                    log.debug_detail(f"experience[{i}] accomplishments: {line}")
+            else:
+                log.debug_detail(f"experience[{i}] accomplishments=<empty>")
+        return
+    if isinstance(exp, str):
+        log.debug_detail("experience_shape=str")
+    elif exp is None:
+        log.debug_detail("experience_shape=missing")
+    else:
+        log.debug_detail(f"experience_shape=other type={type(exp).__name__}")
+
+
+# Public alias for agent tailor hops (AST-997).
+debug_experience_jobs = _debug_experience_jobs
 
 
 def save_candidate_admin(candidate_id: str, **kwargs: Any) -> None:
@@ -948,6 +2028,302 @@ def get_pending_craft_generation(
     )
 
 
+
+def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: Any) -> None:
+    """Persist craft success for REQUESTED_* dispatch (AST-972) — no nested ledger."""
+    if task_key == "craft_resume_base":
+        if not isinstance(parsed, dict):
+            raise ValueError("craft_resume_base parsed_response must be a dict")
+        structure, content = split_craft_resume_base_payload(parsed)
+        database.save_candidate(
+            candidate_id,
+            candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
+            merge=True,
+        )
+        return
+    if task_key == "craft_company_search_terms":
+        if not isinstance(parsed, dict):
+            raise ValueError("craft_company_search_terms parsed_response must be a dict")
+        terms = parsed.get("search_terms")
+        if not isinstance(terms, str):
+            raise ValueError("craft_company_search_terms search_terms must be a string")
+        apply_company_search_terms_save(candidate_id, {"company_search_terms": terms})
+        return
+    artifact_key = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+    if artifact_key:
+        if not isinstance(parsed, dict):
+            raise ValueError(f"{task_key} parsed_response must be a dict")
+        criteria = parsed.get("criteria")
+        if not isinstance(criteria, list) or len(criteria) == 0:
+            raise ValueError(f"{task_key} returned no criteria")
+        # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
+        if artifact_key == "jobdesc_rubric":
+            criteria = _merge_embedded_evaluate_jd_criteria(criteria)
+        arts = {artifact_key: criteria}
+        normalize_rubric_artifacts_on_save(arts)
+        apply_rubric_vectors_save(candidate_id, arts)
+        return
+    raise ValueError(f"unsupported craft task_key for dispatch persist: {task_key!r}")
+
+
+def _requested_stage_failure_target(primary_state: str, current_state: str) -> str:
+    """Primary → retry_state; already on retry (or other) → error_state."""
+    cfg = CANDIDATE_STATES[primary_state]
+    retry = cfg["retry_state"]
+    error = cfg["error_state"]
+    if current_state == primary_state:
+        return retry
+    return error
+
+
+async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
+    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
+    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+    logger.set_debug_flag(debug)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return {**zero, "total_processed": 1, "total_errors": 1}
+    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
+    primary = stage["trigger_state"]
+    pass_state = stage["pass_state"]
+    craft_key = stage["craft_task_key"]
+    current = (candidate.get("state") or "").strip()
+    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
+    try:
+        response = await do_task(
+            task_key=craft_key,
+            live_content=live,
+            index=candidate_id,
+            ctx=candidate,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else "do_task returned None"
+            )
+        parsed = response.get("parsed_response")
+        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
+        transition_candidate_state(candidate_id, pass_state)
+        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+    except Exception as e:
+        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        target = _requested_stage_failure_target(primary, current)
+        try:
+            transition_candidate_state(candidate_id, target)
+        except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+
+
+async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
+    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
+    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
+    logger.set_debug_flag(debug)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        return {**zero, "total_processed": 1, "total_errors": 1}
+    stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+    primary = stage["trigger_state"]
+    pass_state = stage["pass_state"]
+    current = (candidate.get("state") or "").strip()
+    craft_key = (stage.get("craft_task_key") or "").strip()
+    seen: set[str] = set()
+    try:
+        while craft_key:
+            if craft_key in seen:
+                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
+            seen.add(craft_key)
+            # Refresh ctx each hop so later crafts see earlier persists.
+            candidate = database.get_candidate(candidate_id) or candidate
+            task_ctx = {**(candidate or {}), "suppress_run_next": True}
+            response = await do_task(
+                task_key=craft_key,
+                live_content="",
+                index=candidate_id,
+                ctx=task_ctx,
+                debug=debug,
+            )
+            if not response or not response.get("success"):
+                raise RuntimeError(
+                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
+                )
+            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
+            craft_key = _current_agent_task_run_next(craft_key)
+        transition_candidate_state(candidate_id, pass_state)
+        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+    except Exception as e:
+        logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
+        target = _requested_stage_failure_target(primary, current)
+        try:
+            transition_candidate_state(candidate_id, target)
+        except ValueError:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
+        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+
+
+def run_session_resume_parse(
+    resume_text: str,
+    *,
+    debug: bool = False,
+) -> Tuple[Dict[str, Any], int]:
+    """Parse pasted resume text via simple_resume_parse (Ruth / Little); no candidate bind/persist.
+
+    Returns (json_body, http_status) for Admin session-resume paste (AST-986 / AST-1038).
+    """
+    if not isinstance(resume_text, str) or not resume_text.strip():
+        return ({"success": False, "error": "resume_text is required"}, 400)
+
+    logger.set_debug_flag(debug)
+    paste = resume_text.strip()
+    structure = default_resume_structure()
+    # Synthetic token ctx only — no astral_candidate_id (do not load a real candidate).
+    ctx = {
+        "candidate_data": {
+            "context": {"raw_resume": paste},
+            "artifacts": {"resume_structure": structure},
+        },
+    }
+
+    ledger_task_key = "user-session-parse-resume"
+    batch_id = f"{ledger_task_key}-{uuid.uuid4()}"
+    started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    database.save_dispatch_ledger(
+        batch_id,
+        ledger_task_key,
+        "session",  # sentinel for Admin cost visibility — not an astral_candidate_id
+        started_at,
+        entity_type=None,
+        batch_size=1,
+    )
+    log_batch_id.set(batch_id)
+    try:
+        try:
+            result = asyncio.run(
+                do_task(
+                    task_key="simple_resume_parse",
+                    live_content=paste,
+                    index=batch_id,
+                    ctx=ctx,
+                    debug=debug,
+                )
+            )
+        except Exception as e:
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S"),
+                total_processed=1,
+                total_failed=1,
+            )
+            logger.error(
+                "session resume parse exception batch_id=%s error=%s",
+                batch_id,
+                e,
+            )
+            if debug:
+                logger.debug_index(
+                    func="run_session_resume_parse",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="exception",
+                )
+                logger.debug_detail(str(e))
+            return ({"success": False, "error": str(e), "batch_id": batch_id}, 500)
+
+        completed_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        if not result or not result.get("success"):
+            err = (
+                result.get("error", "Generation failed")
+                if result
+                else "do_task returned None"
+            )
+            total_cost = compute_batch_cost(batch_id)
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=completed_at,
+                total_processed=1,
+                total_passed=0,
+                total_failed=1,
+                total_cost=total_cost,
+            )
+            logger.error(
+                "session resume parse failed batch_id=%s error=%s",
+                batch_id,
+                err,
+            )
+            if debug:
+                logger.debug_index(
+                    func="run_session_resume_parse",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="failed",
+                )
+                logger.debug_detail(str(err))
+            return ({"success": False, "error": err, "batch_id": batch_id}, 500)
+
+        parsed = result.get("parsed_response")
+        if not isinstance(parsed, dict):
+            total_cost = compute_batch_cost(batch_id)
+            database.update_dispatch_ledger(
+                batch_id,
+                status="FAILED",
+                completed_at=completed_at,
+                total_processed=1,
+                total_passed=0,
+                total_failed=1,
+                total_cost=total_cost,
+            )
+            err = "simple_resume_parse returned non-dict parsed_response"
+            if debug:
+                logger.debug_index(
+                    func="run_session_resume_parse",
+                    index=1,
+                    total=1,
+                    identifier=batch_id,
+                    outcome="invalid payload",
+                )
+                logger.debug_detail(err)
+            return ({"success": False, "error": err, "batch_id": batch_id}, 500)
+
+        structure_out, content = split_craft_resume_base_payload(parsed)
+        total_cost = compute_batch_cost(batch_id)
+        database.update_dispatch_ledger(
+            batch_id,
+            status="COMPLETED",
+            completed_at=completed_at,
+            total_processed=1,
+            total_passed=1,
+            total_failed=0,
+            total_cost=total_cost,
+        )
+        if debug:
+            logger.debug_index(
+                func="run_session_resume_parse",
+                index=1,
+                total=1,
+                identifier=batch_id,
+                outcome="ok",
+            )
+            _debug_experience_jobs(logger, content)
+        return (
+            {
+                "success": True,
+                "resume_structure": structure_out,
+                "base_resume": content,
+                "parsed_response": parsed,
+                "batch_id": batch_id,
+                "timesheet": result.get("timesheet", {}),
+            },
+            200,
+        )
+    finally:
+        flush_log_buffer()
+        log_batch_id.set(None)
+
+
 def run_candidate_artifact_generation(
     candidate_id: str,
     task_key: str,
@@ -989,7 +2365,7 @@ def run_candidate_artifact_generation(
                     task_key=task_key,
                     live_content=live_content or "",
                     index=candidate_id,
-                    ctx=candidate,
+                    ctx={**(candidate or {}), "suppress_run_next": True},
                     debug=debug,
                 )
             )
@@ -1082,6 +2458,12 @@ def run_candidate_artifact_generation(
                     },
                     500,
                 )
+            # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
+            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+                crit = parsed_response.get("criteria")
+                if isinstance(crit, list):
+                    parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)
+                    criteria_count = len(parsed_response["criteria"])
             if not _stash_pending_craft_generation(
                 candidate_id, task_key, response_batch_id, parsed_response
             ):
@@ -1148,6 +2530,15 @@ def run_candidate_artifact_generation(
                 candidate_data={"artifacts": {"resume_structure": structure, "base_resume": content}},
                 merge=True,
             )
+            if debug:
+                logger.debug_index(
+                    func="run_candidate_artifact_generation",
+                    index=1,
+                    total=1,
+                    identifier=task_key,
+                    outcome="craft_resume_base persisted",
+                )
+                _debug_experience_jobs(logger, content)
         return (
             {
                 "success": True,

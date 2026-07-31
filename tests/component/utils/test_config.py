@@ -363,20 +363,9 @@ class TestAst740RemoveConfigGrouping:
             assert "phase" not in entry, task_key
             assert "seq" not in entry, task_key
 
-    def test_job_artifact_entry_task_keys_membership(self) -> None:
-        expected = {
-            "anticipate_scan",
-            "contemplate_job",
-            "advise_job_resume",
-            "draft_job_resume",
-            "check_job_resume",
-            "finalize_job_resume",
-            "check_cover_letter",
-            "finalize_cover_letter",
-            "propose_application_responses",
-        }
-        assert cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS == frozenset(expected)
-        assert "draft_cover_letter" not in cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS
+    def test_job_artifact_entry_task_keys_absent(self) -> None:
+        # AST-1111: frozenset shadow deleted — chain membership is run_next (§2.6.0).
+        assert not hasattr(cfg, "JOB_ARTIFACT_ENTRY_TASK_KEYS")
 
 
 class TestAst594DraftJobResumeSchema:
@@ -404,7 +393,8 @@ class TestAst520AnticipateScanTaskKey:
 
     def test_build_artifacts_entry_unchanged(self) -> None:
         assert cfg.BUILD_CONFIG["resume_artifact_chain"]["first_task_key"] == "contemplate_job"
-        assert "anticipate_scan" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        # AST-960: no parallel schedulable frozenset — membership is TASK_CONFIG only.
+        assert "anticipate_scan" in cfg.TASK_CONFIG
         assert (
             cfg.dispatch_task_admin_defaults("contemplate_job")["trigger_state"]
             == cfg.BUILD_ARTIFACTS_BASE_STATE
@@ -447,12 +437,35 @@ class TestBuildStateUiManifest:
         assert cfg.ERROR_BUILD_ARTIFACTS_STATE in priors
 
     def test_ast565_recommended_report_manifest_tabs(self) -> None:
+        # AST-948: report_fixed_tabs → report_top_tabs + report_summary_sections;
+        # phase/artifact rows keep keys but become section chrome labels.
         manifest = cfg.build_state_ui_manifest()
         rec = manifest["jobs"]["recommended"]
-        assert [t["tab_id"] for t in rec["report_fixed_tabs"]] == ["summary", "jd_full"]
+        assert "report_fixed_tabs" not in rec
+        assert [t["tab_id"] for t in rec["report_top_tabs"]] == ["summary", "analysis", "artifacts"]
+        assert [t["nav_label"] for t in rec["report_top_tabs"]] == ["Summary", "Analysis", "Artifacts"]
+        assert [s["section_id"] for s in rec["report_summary_sections"]] == [
+            "job_summary",
+            "company_upshot",
+            "caveats",
+            "questions",
+            "raw_jd",
+        ]
+        assert rec["report_summary_sections"][-1]["default_expanded"] is False
         assert len(rec["report_phase_tabs"]) == 4
         assert rec["report_phase_tabs"][0]["take_key"] == "take_jd"
+        assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
+            "JD Analysis",
+            "DO Analysis",
+            "GET Analysis",
+            "LIKE Analysis",
+        ]
         assert len(rec["report_artifact_tabs"]) == 3
+        assert [a["nav_label"] for a in rec["report_artifact_tabs"]] == [
+            "Job Resume",
+            "Cover Letter",
+            "Application Questions",
+        ]
         assert rec["primary_actions_by_state"]["CANDIDATE_REVIEW"][0]["action_key"] == "apply"
 
 
@@ -507,8 +520,9 @@ class TestAst471DispatchConfigHelpers:
             cfg.dispatch_task_admin_defaults("consult_do")
 
     def test_grade_dispatch_schedulable_defaults(self) -> None:
-        assert "grade_do" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "consult_do" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        # AST-960: registered catalog is TASK_CONFIG (frozenset deleted).
+        assert "grade_do" in cfg.TASK_CONFIG
+        assert "consult_do" not in cfg.TASK_CONFIG
         d = cfg.dispatch_task_admin_defaults("grade_do")
         assert d["entity_type"] == "job"
         assert d["trigger_state"] == "PASSED_JD"
@@ -519,14 +533,13 @@ class TestAst471DispatchConfigHelpers:
         assert cfg.dispatch_task_key_is_scored("consult_get") is False
         assert cfg.dispatch_task_key_is_scored("gaze_board") is False
 
-    def test_dispatch_schedulable_keys_excludes_retired_consult(self) -> None:
-        assert "gaze_board" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "analysis_upshot" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "analysis_upshot" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+    def test_dispatch_catalog_excludes_retired_includes_analysis_upshot(self) -> None:
+        assert "gaze_board" in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert "analysis_upshot" in cfg.TASK_CONFIG
 
     def test_ast485_roster_dispatch_trio_matches_config_defaults(self) -> None:
-        assert "locate_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "find_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "locate_job_page" not in cfg.TASK_CONFIG
+        assert "find_job_page" not in cfg.TASK_CONFIG
         parse = cfg.dispatch_task_admin_defaults("parse_job_list")
         assert parse["trigger_state"] == "JOBLIST_IDENTIFIED"
         assert parse["entity_type"] == "company"
@@ -564,20 +577,26 @@ class TestAst471DispatchConfigHelpers:
 
 
 class TestAst796FetchJdSchedulableCutover:
-    """AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired."""
+    """AST-796: fetch_jd gazer hop; scrape_jd / validate_title / gaze_board retired.
 
-    def test_fetch_jd_schedulable_defaults(self) -> None:
-        assert "fetch_jd" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "scrape_jd" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "validate_title" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "gaze_board" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        fd = cfg.dispatch_task_admin_defaults("fetch_jd")
-        assert fd == {
-            "entity_type": "job",
-            "trigger_state": "PASSED_JOBLIST",
-            "sort_by": "updated_at",
-            "batch_call_mode": 0,
-        }
+    AST-960: fetch_jd is not a TASK_CONFIG catalog key (gazer runtime only) — admin
+    defaults membership is TASK_CONFIG; derivation helpers remain for runtime wiring.
+    """
+
+    def test_fetch_jd_gazer_hop_not_task_config_catalog(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert "fetch_jd" not in cfg.TASK_CONFIG
+        assert "scrape_jd" in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert "validate_title" in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert "gaze_board" in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert _dispatch_trigger_state_for_task_key("fetch_jd") == "PASSED_JOBLIST"
+        assert _dispatch_entity_type_for_task_key("fetch_jd") == "job"
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("fetch_jd")
 
     def test_gazer_config_fetch_jd_without_transitional_alias(self) -> None:
         """AST-797 removed AST-796 read alias — runtime uses fetch_jd only."""
@@ -613,8 +632,10 @@ class TestAst549DispatchAdminDefaults:
     """AST-549: config-built dispatch_task admin defaults; no parallel seed dicts."""
 
     def test_unknown_task_key_raises(self) -> None:
-        with pytest.raises(KeyError, match="not schedulable"):
-            cfg.dispatch_task_admin_defaults("anticipate_scan")
+        # AST-955: Save membership is TASK_CONFIG — not DISPATCH_SCHEDULABLE_TASK_KEYS.
+        # anticipate_scan is registered (hop-derived BUILD_ARTIFACTS); use a junk key.
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
 
     def test_qualify_job_listings_batch_call_mode_and_sort(self) -> None:
         d = cfg.dispatch_task_admin_defaults("qualify_job_listings")
@@ -677,16 +698,40 @@ class TestAst803FlatBuildArtifactsChainDispatch:
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in priors
 
 
-class TestAst844BuildArtifactsChainTaskKeys:
-    """AST-844: full BUILD_ARTIFACTS CHAIN hop set for consult resolution."""
+class TestAst1111JobArtifactEntryShadowDeleted:
+    """AST-1111: JOB_ARTIFACT_ENTRY_TASK_KEYS + cover-letter carve-out wrapper gone."""
 
-    def test_includes_terminal_and_cover_hops_excludes_draft_cover_letter(self) -> None:
-        keys = cfg.build_artifacts_chain_task_keys()
-        assert "propose_application_responses" in keys
-        assert "check_cover_letter" in keys
-        assert "finalize_cover_letter" in keys
-        assert "draft_cover_letter" not in keys
-        assert keys == cfg.JOB_ARTIFACT_ENTRY_TASK_KEYS - frozenset({"draft_cover_letter"})
+    def test_entry_frozenset_and_wrapper_absent(self) -> None:
+        assert not hasattr(cfg, "JOB_ARTIFACT_ENTRY_TASK_KEYS")
+        assert not hasattr(cfg, "build_artifacts_chain_task_keys")
+
+
+class TestAst1112ResumeHopTaskKeysShadowDeleted:
+    """AST-1112: hop_task_keys / resume_artifact_hop_task_keys no longer chain authority."""
+
+    def test_hop_list_authority_absent(self) -> None:
+        assert not hasattr(cfg, "resume_artifact_hop_task_keys")
+        assert not hasattr(cfg, "_RESUME_ARTIFACT_HOP_TASK_KEYS")
+        assert not hasattr(cfg, "build_artifacts_claim_states")
+        assert not hasattr(cfg, "all_resume_artifact_compound_states")
+        rac = cfg.BUILD_CONFIG["resume_artifact_chain"]
+        assert "hop_task_keys" not in rac
+        assert rac.get("first_task_key") == "contemplate_job"
+
+    def test_legacy_compound_membership_via_task_config(self) -> None:
+        legacy = cfg.resume_artifact_compound_state("anticipate_scan")
+        assert cfg.legacy_build_artifacts_hop(legacy) == "anticipate_scan"
+        assert cfg.legacy_build_artifacts_hop("BUILD_ARTIFACTS.not_a_task") is None
+
+
+class TestAst1113CraftTaskKeysShadowDeleted:
+    """AST-1113: craft_task_keys list gone; singular craft_task_key entry only."""
+
+    def test_requested_artifacts_entry_key_only(self) -> None:
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert "craft_task_keys" not in arts
+        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert arts["craft_task_key"] in cfg.TASK_CONFIG
 
 
 class TestAst848DispatchHopLabels:
@@ -1015,13 +1060,19 @@ class TestAst702PrefilterBatchConfig:
         assert ("HOMEPAGE_READY", "CANNOT_READ_WEBSITE") in transitions
 
     def test_prefilter_dispatch_batch_mode_and_defaults(self) -> None:
-        from src.utils.config import _dispatch_batch_call_mode_for
+        from src.utils.config import (
+            _dispatch_batch_call_mode_for,
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
 
+        # AST-960: prefilter is roster runtime (not TASK_CONFIG) — helpers stay; defaults gate.
+        assert "prefilter" not in cfg.TASK_CONFIG
         assert _dispatch_batch_call_mode_for("prefilter") == 1
-        d = cfg.dispatch_task_admin_defaults("prefilter")
-        assert d["trigger_state"] == "HOMEPAGE_READY"
-        assert d["batch_call_mode"] == 1
-        assert d["entity_type"] == "company"
+        assert _dispatch_trigger_state_for_task_key("prefilter") == "HOMEPAGE_READY"
+        assert _dispatch_entity_type_for_task_key("prefilter") == "company"
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("prefilter")
 
 
 class TestAst707EmbeddedPrefilterConfig:
@@ -1068,8 +1119,8 @@ class TestAst721ParseJobListConfig:
         from src.utils.config import _dispatch_trigger_state_for_task_key
 
         assert _dispatch_trigger_state_for_task_key("parse_job_list") == "JOBLIST_IDENTIFIED"
-        assert "parse_job_list" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
-        assert "find_job_page" not in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "parse_job_list" in cfg.TASK_CONFIG
+        assert "find_job_page" not in cfg.TASK_CONFIG
 
 
 class TestAst720SelectJobPageConfig:
@@ -1119,17 +1170,21 @@ class TestAst719FetchJobPagesConfig:
         assert entry["fallback_batch_size"] == 10
 
     def test_dispatch_registry_and_pjl_data_keys(self) -> None:
-        from src.utils.config import _dispatch_trigger_state_for_task_key
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
 
-        assert "fetch_job_pages" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        # AST-960: fetch_job_pages is gazer runtime — not TASK_CONFIG catalog.
+        assert "fetch_job_pages" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_job_pages") == "PREFILTER_PASSED"
+        assert _dispatch_entity_type_for_task_key("fetch_job_pages") == "company"
         keys = cfg.ROSTER_CONFIG["company_data_keys"]
         assert keys["pjl_scrape_pages"] == "pjl_scrape_pages"
         assert keys["pjl_assembled_content"] == "pjl_assembled_content"
         assert keys["pjl_nav_links"] == "pjl_nav_links"
-        defaults = cfg.dispatch_task_admin_defaults("fetch_job_pages")
-        assert defaults["trigger_state"] == "PREFILTER_PASSED"
-        assert defaults["entity_type"] == "company"
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("fetch_job_pages")
 
 
 class TestAst701FetchWebsiteConfig:
@@ -1151,14 +1206,18 @@ class TestAst701FetchWebsiteConfig:
         assert entry["fallback_batch_size"] == 10
 
     def test_dispatch_registry_and_homepage_text_key(self) -> None:
-        from src.utils.config import _dispatch_trigger_state_for_task_key
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
 
-        assert "fetch_website" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        # AST-960: fetch_website is gazer runtime — not TASK_CONFIG catalog.
+        assert "fetch_website" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_website") == "WEBSITE_FOUND"
+        assert _dispatch_entity_type_for_task_key("fetch_website") == "company"
         assert cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"] == "homepage_text"
-        defaults = cfg.dispatch_task_admin_defaults("fetch_website")
-        assert defaults["trigger_state"] == "WEBSITE_FOUND"
-        assert defaults["entity_type"] == "company"
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("fetch_website")
 
 
 class TestAst874FetchCulturePagesConfig:
@@ -1181,12 +1240,12 @@ class TestAst874FetchCulturePagesConfig:
         assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
         assert entry["no_links_state"] == "NO_CULTURE_LINKS"
         assert entry["fallback_batch_size"] == 10
-        assert "fetch_culture_pages" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG catalog.
+        assert "fetch_culture_pages" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_culture_pages") == "PASSED_GET"
         assert _dispatch_trigger_state_for_task_key("grade_like") == "CULTURE_READY"
-        defaults = cfg.dispatch_task_admin_defaults("fetch_culture_pages")
-        assert defaults["trigger_state"] == "PASSED_GET"
-        assert defaults["entity_type"] == "job"
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("fetch_culture_pages")
         like_defaults = cfg.dispatch_task_admin_defaults("grade_like")
         assert like_defaults["trigger_state"] == "CULTURE_READY"
 
@@ -1291,7 +1350,7 @@ class TestAst505InflowDiscoveryConfig:
         assert d["max_results_per_query"] == 100
         assert d["date_restrict_days"] == 7
         assert "dispatch_freq_hrs" not in d
-        assert d["dispatch_trigger_state"] == "LIVE_PROMPTS"
+        assert d["dispatch_trigger_state"] == "ACTIVE_SEARCH"
         assert d["task_key"] == "inflow_discovery"
         assert d["vet_task_key"] == "vet_inflow_discovery"
         assert d["vet_dispatch_trigger_state"] == "NEW"
@@ -1336,17 +1395,24 @@ class TestAst505InflowDiscoveryConfig:
         assert "required on every grade including F" in ot["payload_instructions"]
 
     def test_inflow_discovery_dispatch_admin_defaults(self) -> None:
-        d = cfg.dispatch_task_admin_defaults("inflow_discovery")
-        assert d["entity_type"] == "candidate"
-        assert d["trigger_state"] == "LIVE_PROMPTS"
-        assert "inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG catalog.
+        assert "inflow_discovery" not in cfg.TASK_CONFIG
+        assert _dispatch_entity_type_for_task_key("inflow_discovery") == "candidate"
+        assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "ACTIVE_SEARCH"
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("inflow_discovery")
 
     def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
         assert d["entity_type"] == "company"
         assert d["trigger_state"] == "NEW"
         assert d["batch_call_mode"] == 1
-        assert "vet_inflow_discovery" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        assert "vet_inflow_discovery" in cfg.TASK_CONFIG
 
 
 class TestAst506InflowResolveConfig:
@@ -1361,11 +1427,19 @@ class TestAst506InflowResolveConfig:
         assert r["ai_task_key"] == "find_company_website"
 
     def test_inflow_resolve_website_dispatch_admin_defaults(self) -> None:
-        d = cfg.dispatch_task_admin_defaults("inflow_resolve_website")
-        assert d["entity_type"] == "company"
-        assert d["trigger_state"] == "NEW"
-        assert d["batch_call_mode"] == 0
-        assert "inflow_resolve_website" in cfg.DISPATCH_SCHEDULABLE_TASK_KEYS
+        from src.utils.config import (
+            _dispatch_batch_call_mode_for,
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG catalog.
+        assert "inflow_resolve_website" not in cfg.TASK_CONFIG
+        assert _dispatch_entity_type_for_task_key("inflow_resolve_website") == "company"
+        assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "NEW"
+        assert _dispatch_batch_call_mode_for("inflow_resolve_website") == 0
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("inflow_resolve_website")
 
 
 class TestAst508InflowLocateConfig:
@@ -1412,19 +1486,19 @@ class TestAst575PronounTokens:
             assert cfg.TOKEN_SOURCES[name] == {"source": "pronoun"}
 
     def test_resolve_all_five_tokens_she_her(self) -> None:
-        candidate = {"profile": {"pronoun_preference": "she/her"}}
+        candidate = {"pronouns": "she/her"}
         text = "{$THEY} {$THEIR} {$THEIRS} {$THEM} {$THEMSELF}"
         out = cfg.resolve_tokens(text, candidate, "draft_cover_letter")
         assert out == "she her hers her herself"
 
     def test_resolve_default_when_preference_missing(self) -> None:
         text = "{$THEY} {$THEIR} {$THEIRS} {$THEM} {$THEMSELF}"
-        for candidate in ({}, {"profile": {}}):
+        for candidate in ({}, {"contact": {}}):
             out = cfg.resolve_tokens(text, candidate, "draft_cover_letter")
             assert out == "they their theirs them themselves"
 
     def test_resolve_default_when_preference_invalid(self) -> None:
-        candidate = {"profile": {"pronoun_preference": "custom/xyz"}}
+        candidate = {"pronouns": "custom/xyz"}
         out = cfg.resolve_tokens("{$THEY}", candidate, "draft_cover_letter")
         assert out == "they"
 
@@ -1437,30 +1511,135 @@ class TestAst575PronounTokens:
         ],
     )
     def test_resolve_preference_subject_form(self, preference: str, expected_they: str) -> None:
-        candidate = {"profile": {"pronoun_preference": preference}}
+        candidate = {"pronouns": preference}
         assert cfg.resolve_tokens("{$THEY}", candidate, "draft_cover_letter") == expected_they
 
     def test_first_name_unchanged_with_pronoun_set(self) -> None:
         candidate = {
-            "profile": {"first": "Ada", "pronoun_preference": "she/her"},
+            "first": "Ada",
+            "pronouns": "she/her",
         }
         out = cfg.resolve_tokens("Hi {$FIRST_NAME}, {$THEY}", candidate, "draft_cover_letter")
         assert out == "Hi Ada, she"
 
 
-@pytest.mark.skip(reason="AST-510 canceled — middle name not in DATA_SHAPES on integration branches")
 class TestAst510MiddleNameConfig:
-    """AST-510: profile.middle DATA_SHAPES field + MIDDLE_NAME token."""
+    """AST-510 canceled — middle name removed by AST-1014; first/last/pronouns + FULL_NAME remain."""
 
-    def test_middle_name_in_candidate_profile_shapes(self) -> None:
+    def test_middle_name_absent_from_candidate_profile_shapes(self) -> None:
         sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
         contact = next(s for s in sections if s["label"] == "Contact Information")
         keys = [f["key"] for f in contact["fields"]]
-        assert keys.index("profile.middle") == keys.index("profile.first") + 1
-        assert keys.index("profile.last") == keys.index("profile.middle") + 1
+        assert "profile.middle" not in keys
+        assert "middle" not in keys
+        assert "first" in keys
+        assert "last" in keys
+        assert "pronouns" in keys
 
-    def test_middle_name_token_source(self) -> None:
-        assert cfg.TOKEN_SOURCES["MIDDLE_NAME"] == {"source": "candidate", "path": "profile.middle"}
+    def test_middle_name_token_source_removed(self) -> None:
+        assert "MIDDLE_NAME" not in cfg.TOKEN_SOURCES
+
+    def test_full_name_token_source(self) -> None:
+        assert cfg.TOKEN_SOURCES["FULL_NAME"] == {"source": "candidate", "path": "full"}
+
+
+class TestAst1014CandidateLibraryConfig:
+    """AST-1014: contact/context/artifacts library + name columns in config contract."""
+
+    def test_library_config_vocabulary(self) -> None:
+        lib = cfg.CANDIDATE_LIBRARY_CONFIG
+        assert lib["name_columns"] == ("first", "last", "full", "pronouns")
+        assert lib["context_key_remap"]["starting_resume_text"] == "raw_resume"
+        assert "title_patterns" in lib["contact_keys"]
+        assert "hopes" in lib["context_keys"]
+
+    def test_data_shapes_use_columns_and_contact_not_profile(self) -> None:
+        contact_section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        keys = [f["key"] for f in contact_section["fields"]]
+        assert "first" in keys
+        assert "contact.contact_email" in keys
+        assert not any(k.startswith("profile.") for k in keys)
+        resume_fields = next(
+            s for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"] if s["label"] == "Original Resume Text"
+        )
+        assert resume_fields["fields"][0]["key"] == "context.raw_resume"
+
+    def test_token_sources_use_library_paths(self) -> None:
+        assert cfg.TOKEN_SOURCES["FIRST_NAME"]["path"] == "first"
+        assert cfg.TOKEN_SOURCES["STARTING_RESUME_TEXT"]["path"] == "context.raw_resume"
+        assert cfg.TOKEN_SOURCES["TITLE_PATTERNS"]["path"] == "contact.title_patterns"
+        assert "profile." not in str(cfg.TOKEN_SOURCES)
+
+    def test_intake_build_field_paths_use_contact_title_patterns(self) -> None:
+        assert "contact.title_patterns" in cfg.INTAKE_CONFIG["build_field_paths"]
+        assert not any(p.startswith("profile.") for p in cfg.INTAKE_CONFIG["build_field_paths"])
+
+
+class TestAst1015PreambleValidationConfig:
+    """AST-1015: PREAMBLE_VALIDATION_CONFIG + TASK_CONFIG Ruth task_key."""
+
+    def test_validation_config_outcomes_and_task_key(self) -> None:
+        pvc = cfg.PREAMBLE_VALIDATION_CONFIG
+        assert pvc["task_key"] == "preamble_validate_response"
+        assert pvc["outcome_field"] == "outcome"
+        assert pvc["outcomes"] == ("Valid", "Try Again", "Escalate")
+        assert "preamble_validate_response" in cfg.get_task_keys()
+
+    def test_task_config_schema_requires_outcome(self) -> None:
+        entry = cfg.TASK_CONFIG["preamble_validate_response"]
+        assert entry["response_format"] == "json"
+        assert entry["requires_candidate_key"] is True
+        assert entry["entity_type"] == "candidate"
+        assert entry["response_schema"]["outcome"]["required"] is True
+
+    def test_task_key_matches_preamble_config_when_present(self) -> None:
+        # Sibling AST-1016 may land on the same tip via ftr; equality is the epic contract.
+        if hasattr(cfg, "PREAMBLE_CONFIG"):
+            assert (
+                cfg.PREAMBLE_VALIDATION_CONFIG["task_key"]
+                == cfg.PREAMBLE_CONFIG["validation_task_key"]
+            )
+
+
+class TestAst1016PreambleConfig:
+    """AST-1016: PREAMBLE_CONFIG Intro + three context.raw_* steps + Ruth task_key."""
+
+    _STEP_KEYS = (
+        "id", "order", "prompt_1st_try", "prompt_2nd_try", "target", "validation_question",
+    )
+
+    def test_preamble_intro_and_validation_task_key(self) -> None:
+        pc = cfg.PREAMBLE_CONFIG
+        assert isinstance(pc["intro"], str) and pc["intro"].strip()
+        assert pc["validation_task_key"] == "preamble_validate_response"
+
+    def test_preamble_three_ordered_context_raw_steps(self) -> None:
+        steps = cfg.PREAMBLE_CONFIG["steps"]
+        assert len(steps) == 3
+        assert sorted(s["order"] for s in steps) == [1, 2, 3]
+        by_order = {s["order"]: s for s in steps}
+        assert by_order[1]["id"] == "raw_resume"
+        assert by_order[2]["id"] == "raw_profile"
+        assert by_order[3]["id"] == "raw_sample"
+        for step in steps:
+            assert all(k in step for k in self._STEP_KEYS)
+            assert step["target"]["blob"] == "context"
+            assert step["target"]["field"] == step["id"]
+            assert step["target"]["field"] in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+            assert step["prompt_1st_try"].strip()
+            assert step["prompt_2nd_try"].strip()
+            assert step["validation_question"].strip()
+
+    def test_preamble_targets_only_mechanical_raw_fields(self) -> None:
+        fields = {s["target"]["field"] for s in cfg.PREAMBLE_CONFIG["steps"]}
+        assert fields == {"raw_resume", "raw_profile", "raw_sample"}
+        # Contact/name/pronoun and Topic Menu keys stay out of this script.
+        assert "hopes" not in fields
+        assert "contact_email" not in fields
 
 
 class TestAst517ResumeStructureConfig:
@@ -1726,4 +1905,1524 @@ class TestAst898NewRetryQualifyHolding:
         assert consult_mod._consult_batch_fail_dest("NEW", err) == "NEW_RETRY"
         assert consult_mod._consult_batch_fail_dest("NEW_RETRY", err) == err
         assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
+
+
+class TestAst955RegisteredKeyDispatchAdminDefaults:
+    """AST-955: admin defaults for any registered TASK_CONFIG key (+ optional trigger)."""
+
+    def test_check_cover_letter_with_trigger_override(self) -> None:
+        assert "check_cover_letter" in cfg.TASK_CONFIG
+        d = cfg.dispatch_task_admin_defaults(
+            "check_cover_letter", trigger_state="CANDIDATE_REVIEW"
+        )
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "CANDIDATE_REVIEW"
+        assert d["sort_by"]
+        assert d["batch_call_mode"] == 0
+
+    def test_check_cover_letter_without_override_defaults_candidate_review(self) -> None:
+        # AST-962: mid-chain cover-letter hops default Input State (was KeyError no rule).
+        d = cfg.dispatch_task_admin_defaults("check_cover_letter")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "CANDIDATE_REVIEW"
+        assert d["sort_by"]
+        assert d["batch_call_mode"] == 0
+
+    def test_already_schedulable_grade_do_unchanged(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("grade_do")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_JD"
+        assert d["batch_call_mode"] == 1
+
+    def test_resume_hops_still_derive_build_artifacts(self) -> None:
+        assert cfg.dispatch_task_admin_defaults("check_job_resume")["trigger_state"] == (
+            cfg.BUILD_ARTIFACTS_BASE_STATE
+        )
+        assert cfg.dispatch_task_admin_defaults("finalize_job_resume")["trigger_state"] == (
+            cfg.BUILD_ARTIFACTS_BASE_STATE
+        )
+
+    def test_retired_consult_still_rejected(self) -> None:
+        with pytest.raises(KeyError, match="retired"):
+            cfg.dispatch_task_admin_defaults("consult_do")
+
+
+
+class TestAst960DropSchedulableFrozensetInventory:
+    """AST-960: DISPATCH_SCHEDULABLE_TASK_KEYS deleted; scored-trigger walks TASK_CONFIG."""
+
+    def test_frozenset_gone(self) -> None:
+        assert not hasattr(cfg, "DISPATCH_SCHEDULABLE_TASK_KEYS")
+
+    def test_trigger_state_used_by_scored_via_task_config(self) -> None:
+        assert cfg.trigger_state_used_by_scored_dispatch_task("NEW") is True
+        assert cfg.trigger_state_used_by_scored_dispatch_task("PASSED_LIKE") is True
+        assert cfg.trigger_state_used_by_scored_dispatch_task("VALID_TITLE") is False
+
+    def test_gap_keys_do_not_break_scored_trigger_helper(self) -> None:
+        # Gap keys remain outside TASK_CONFIG; helper must not KeyError while scanning.
+        assert "fetch_jd" not in cfg.TASK_CONFIG
+        assert "prefilter" not in cfg.TASK_CONFIG
+        assert cfg.trigger_state_used_by_scored_dispatch_task("PASSED_JOBLIST") is True
+
+    def test_check_cover_letter_defaults_override_unchanged(self) -> None:
+        d = cfg.dispatch_task_admin_defaults(
+            "check_cover_letter", trigger_state="CANDIDATE_REVIEW"
+        )
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "CANDIDATE_REVIEW"
+
+
+class TestAst962CoverLetterMidHopDefaultTrigger:
+    """AST-962: cover-letter mid-hops default to CANDIDATE_REVIEW (form/Save without override)."""
+
+    MID_HOPS = (
+        "check_cover_letter",
+        "finalize_cover_letter",
+        "propose_application_responses",
+    )
+
+    def test_dispatch_trigger_state_defaults(self) -> None:
+        for tk in self.MID_HOPS:
+            assert cfg._dispatch_trigger_state_for_task_key(tk) == "CANDIDATE_REVIEW"
+
+    def test_admin_defaults_without_override(self) -> None:
+        for tk in self.MID_HOPS:
+            d = cfg.dispatch_task_admin_defaults(tk)
+            assert d["entity_type"] == "job"
+            assert d["trigger_state"] == "CANDIDATE_REVIEW"
+            assert d["sort_by"]
+            assert d["batch_call_mode"] == 0
+
+    def test_draft_cover_letter_and_grade_do_unchanged(self) -> None:
+        assert cfg.dispatch_task_admin_defaults("draft_cover_letter")["trigger_state"] == (
+            "CANDIDATE_REVIEW"
+        )
+        assert cfg.dispatch_task_admin_defaults("grade_do")["trigger_state"] == "PASSED_JD"
+
+
+class TestAst970CandidateStateRegistry:
+    """AST-970: job-style CANDIDATE_STATES registry (prior_states + companions; PROSPECT added AST-1068)."""
+
+    def test_initial_state_and_prospect_entry(self) -> None:
+        # AST-1068: PROSPECT is a real entry state; admin initiate stays NEW_CANDIDATE.
+        assert "PROSPECT" in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["progress_rank"] == -1
+        assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
+        assert cfg.CANDIDATE_CONFIG["initial_state"] in cfg.CANDIDATE_STATES
+
+    def test_no_parallel_transitions_list(self) -> None:
+        assert "candidate_state_transitions" not in cfg.ASTRAL_CONFIG
+
+    def test_every_entry_has_prior_and_rank(self) -> None:
+        for name, entry in cfg.CANDIDATE_STATES.items():
+            assert "prior_states" in entry, name
+            assert "progress_rank" in entry, name
+
+    def test_happy_path_keys_present(self) -> None:
+        for key in (
+            "NEW_CANDIDATE",
+            "INTAKE_INITIATED",
+            "REQUIRED_TOPICS_READY",
+            "ALL_TOPICS_READY",
+            "REQUESTED_RESUME",
+            "RESUME_READY",
+            "REQUESTED_ARTIFACTS",
+            "ARTIFACTS_READY",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+            "INACTIVE",
+            "DELETED",
+        ):
+            assert key in cfg.CANDIDATE_STATES
+
+    def test_stale_companions_and_hours(self) -> None:
+        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_after_hours"] == 72
+        assert cfg.CANDIDATE_STATES["REQUIRED_TOPICS_READY"]["stale_state"] == "REQUIRED_TOPICS_READY_STALE"
+        assert cfg.CANDIDATE_STATES["RESUME_READY"]["stale_after_hours"] == 168
+        assert cfg.CANDIDATE_STATES["DELETED"]["reap_after_hours"] == 720
+
+    def test_stale_to_next_priors(self) -> None:
+        assert "REQUIRED_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["ALL_TOPICS_READY"]["prior_states"]
+        assert "ALL_TOPICS_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_RESUME"]["prior_states"]
+        assert "RESUME_READY_STALE" in cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"]
+        assert "ARTIFACTS_READY_STALE" in cfg.CANDIDATE_STATES["ACTIVE_SEARCH"]["prior_states"]
+
+    def test_terminals_unrestricted(self) -> None:
+        assert cfg.CANDIDATE_STATES["INACTIVE"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["DELETED"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["INACTIVE"]["progress_rank"] == -1
+        assert cfg.CANDIDATE_STATES["DELETED"]["progress_rank"] == -1
+
+    def test_error_states_closed_forward(self) -> None:
+        resume_priors = cfg.CANDIDATE_STATES["RESUME_READY"]["prior_states"] or []
+        assert "REQUESTED_RESUME_ERROR" not in resume_priors
+        art_priors = cfg.CANDIDATE_STATES["ARTIFACTS_READY"]["prior_states"] or []
+        assert "REQUESTED_ARTIFACTS_ERROR" not in art_priors
+
+    def test_nav_and_gen_states_use_new_vocab(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
+        assert jobs["visible"] == "ACTIVE_SEARCH"
+        assert companies["visible"] == "ACTIVE_SEARCH"
+        assert artifacts["visible"] == "RESUME_READY"
+        gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
+        assert gen == ["RESUME_READY", "ACTIVE_SEARCH"]
+        assert all(s in cfg.CANDIDATE_STATES for s in gen)
+
+    def test_retired_four_step_names_absent(self) -> None:
+        for retired in ("NEW", "PROFILE_READY", "CONTEXT_READY", "LIVE_PROMPTS"):
+            assert retired not in cfg.CANDIDATE_STATES
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst972CandidateStageDispatch:
+    """AST-972: CANDIDATE_STAGE_DISPATCH + claim/trigger helpers for REQUESTED_*."""
+
+    def test_stage_dispatch_map_and_task_config(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["task_key"] == "candidate_requested_resume"
+        assert resume["trigger_state"] == "REQUESTED_RESUME"
+        assert resume["pass_state"] == "RESUME_READY"
+        assert resume["craft_task_key"] == "craft_resume_base"
+        assert arts["task_key"] == "candidate_requested_artifacts"
+        assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
+        assert arts["pass_state"] == "ARTIFACTS_READY"
+        assert "craft_resume_base" in cfg.TASK_CONFIG
+        assert resume["task_key"] in cfg.TASK_CONFIG
+        assert arts["task_key"] in cfg.TASK_CONFIG
+        # AST-1113: singular entry key — hop order is agent_task.run_next, not craft_task_keys.
+        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert "craft_task_keys" not in arts
+        assert arts["craft_task_key"] in cfg.TASK_CONFIG
+
+    def test_claim_states_include_retry_companions(self) -> None:
+        assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate") == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("ACTIVE_SEARCH", "candidate") == ["ACTIVE_SEARCH"]
+
+    def test_trigger_and_entity_helpers(self) -> None:
+        from src.utils.config import (
+            _dispatch_entity_type_for_task_key,
+            _dispatch_trigger_state_for_task_key,
+        )
+
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_resume") == "REQUESTED_RESUME"
+        assert _dispatch_trigger_state_for_task_key("candidate_requested_artifacts") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_resume") == "candidate"
+        assert _dispatch_entity_type_for_task_key("candidate_requested_artifacts") == "candidate"
+        d = cfg.dispatch_task_admin_defaults("candidate_requested_resume")
+        assert d["entity_type"] == "candidate"
+        assert d["trigger_state"] == "REQUESTED_RESUME"
+
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst1022HonorAutoOffStageDispatch:
+    """AST-1022: CANDIDATE_STAGE_DISPATCH seeds AUTO off for new stage rows."""
+
+    def test_stage_dispatch_auto_mode_seed_false(self) -> None:
+        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert resume["auto_mode"] is False
+        assert arts["auto_mode"] is False
+
+
+class TestAst973LegacyCandidateRemap:
+    """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
+
+    def test_map_and_trigger_frozenset(self) -> None:
+        assert cfg.CANDIDATE_LEGACY_STATE_MAP == {
+            "LIVE_PROMPTS": "ACTIVE_SEARCH",
+            "NEW": "NEW_CANDIDATE",
+            "PROFILE_READY": "NEW_CANDIDATE",
+            "CONTEXT_READY": "NEW_CANDIDATE",
+        }
+        assert "DELETED" not in cfg.CANDIDATE_LEGACY_STATE_MAP
+        assert cfg.CANDIDATE_LEGACY_TRIGGER_STATES == frozenset(
+            {"LIVE_PROMPTS", "PROFILE_READY", "CONTEXT_READY"}
+        )
+        assert all(v in cfg.CANDIDATE_STATES for v in cfg.CANDIDATE_LEGACY_STATE_MAP.values())
+
+    def test_remap_helper(self) -> None:
+        assert cfg.remap_legacy_candidate_state("LIVE_PROMPTS") == "ACTIVE_SEARCH"
+        assert cfg.remap_legacy_candidate_state("NEW") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("PROFILE_READY") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("CONTEXT_READY") == "NEW_CANDIDATE"
+        assert cfg.remap_legacy_candidate_state("ACTIVE_SEARCH") == "ACTIVE_SEARCH"
+        assert cfg.remap_legacy_candidate_state("") == cfg.CANDIDATE_CONFIG["initial_state"]
+        assert cfg.remap_legacy_candidate_state("totally_unknown") == "NEW_CANDIDATE"
+        # DELETED is a live registry key — remap is identity; Phase B never selects it
+        assert cfg.remap_legacy_candidate_state("DELETED") == "DELETED"
+
+
+class TestAst996ExperienceJobArrayConfig:
+    """AST-996: shared experience job-array schema on craft-base + artifact shapes."""
+
+    _JOB_KEYS = ("company", "title", "dates", "location", "accomplishments")
+
+    def test_craft_resume_base_experience_is_job_array_field(self) -> None:
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
+        assert schema["type"] == "list"
+        assert schema["required"] is True
+        assert set(schema["items_schema"]) == set(self._JOB_KEYS)
+        for key in self._JOB_KEYS:
+            assert schema["items_schema"][key] == {"type": "str", "required": True}
+
+    def test_resume_content_shape_shares_experience_field_object(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
+        resume = cfg.BUILD_CONFIG["artifact_shapes"]["resume_content"]["experience"]
+        assert craft is resume
+
+    def test_data_shapes_experience_type_is_experience_jobs(self) -> None:
+        fields = cfg.DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]
+        exp = next(f for f in fields if f["key"] == "experience")
+        assert exp["type"] == "experience_jobs"
+        assert exp["label"] == "Experience"
+
+    def test_stringify_craft_resume_base_shows_job_array_example(self) -> None:
+        out = json.loads(cfg.stringify_response_schema("craft_resume_base"))
+        exp = out["agent_payload"]["experience"]
+        assert isinstance(exp, list)
+        assert len(exp) >= 1
+        assert set(exp[0]) == set(self._JOB_KEYS)
+
+    def test_prior_experience_remains_string(self) -> None:
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["prior_experience"]
+        assert schema["type"] == "str"
+
+
+class TestAst997FinalizeExperienceJobArray:
+    """AST-997: finalize_job_resume experience optional job-array shares items_schema."""
+
+    def test_finalize_experience_optional_shares_items_schema(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
+        fin = cfg.TASK_CONFIG["finalize_job_resume"]["response_schema"]["experience"]
+        assert fin["type"] == "list"
+        assert fin["required"] is False
+        assert fin["items_schema"] is craft["items_schema"]
+        assert craft["required"] is True
+
+
+
+class TestAst998ExperienceBodyKind:
+    """AST-998: BUILD_CONFIG experience body_kind is experience_jobs."""
+
+    def test_experience_body_kind_experience_jobs(self) -> None:
+        assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
+        assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
+
+class TestAst1020DefaultStyleColorTokens:
+    """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
+
+    def test_golden_text_and_border_color_tokens(self) -> None:
+        colors = cfg.BUILD_CONFIG["default_style"]["colors"]
+        assert colors["text_primary"] == "#1a1a1a"
+        assert colors["text_secondary"] == "#444"
+        assert colors["text_tertiary"] == "#666"
+        assert colors["border_light"] == "#e0e0e0"
+        assert colors["border_medium"] == "#ccc"
+        # Existing consumers keep ink/muted/rule/surface (not renamed).
+        assert "ink" in colors
+        assert "muted" in colors
+        assert "rule" in colors
+        assert "surface" in colors
+        assert colors["default_accent"] == "#3c2c6e"
+        assert colors["default_header"] == "#3c2c6e"
+        assert colors["page_background"] == "#f5f5f5"
+
+
+class TestAst1024SessionCoverLetterConfig:
+    """AST-1024: BUILD_CONFIG session_cover_letter field contract + document title."""
+
+    def test_document_title_and_field_required_flags(self) -> None:
+        block = cfg.BUILD_CONFIG["session_cover_letter"]
+        assert block["document_title"] == "SomersetCover"
+        fields = block["fields"]
+        assert fields["from_block"]["required"] is True
+        assert fields["letter_date"]["required"] is True
+        assert fields["to_block"]["required"] is False
+        assert fields["subject"]["required"] is False
+        assert fields["letter"]["required"] is True
+        assert fields["signoff_closing"]["required"] is True
+        assert fields["signature"]["required"] is True
+        # Job artifact shape stays separate (Subject/Letter/signature).
+        assert "cover_letter" in cfg.BUILD_CONFIG["artifact_shapes"]
+        assert set(fields) == {
+            "from_block",
+            "letter_date",
+            "to_block",
+            "subject",
+            "letter",
+            "signoff_closing",
+            "signature",
+        }
+
+
+class TestAst1010CandidateTaglineConfig:
+    """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""
+
+    def test_tagline_in_contact_and_known_ids(self) -> None:
+        assert "candidate_tagline" in cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS
+        assert "candidate_tagline" in cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS
+        contact = cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS
+        assert contact.index("candidate_title") < contact.index("candidate_tagline")
+        assert contact.index("candidate_tagline") < contact.index("candidate_contact_detail")
+
+    def test_default_structure_orders_unique_with_tagline(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        assert "candidate_tagline" in sections
+        assert sections["candidate_tagline"]["enabled"] is True
+        assert sections["candidate_tagline"]["job_agent_editable"] is False
+        assert sections["candidate_tagline"]["order"] == 2
+        assert sections["candidate_contact_detail"]["order"] == 3
+        orders = [spec["order"] for spec in sections.values()]
+        assert len(orders) == len(set(orders))
+        assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+
+    def test_craft_and_artifact_schema_optional_tagline(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["candidate_tagline"]
+        assert craft == {"type": "str", "required": False}
+        art = cfg.BUILD_CONFIG["artifact_shapes"]["resume_content"]["candidate_tagline"]
+        assert art == {"type": "str", "required": False}
+        supported = cfg.BUILD_CONFIG["supported_sections"]["candidate_tagline"]
+        assert supported["heading_level"] == "none"
+        keys = [row["key"] for row in cfg.DATA_SHAPES["candidates"]["detail"]["base_resume_structure"]]
+        assert "candidate_tagline" in keys
+        assert keys.index("candidate_title") < keys.index("candidate_tagline")
+        assert keys.index("candidate_tagline") < keys.index("candidate_contact_detail")
+
+
+class TestAst1025SessionCoverLetterNav:
+    """AST-1025: Admin NAV_CONFIG Session Cover Letter after Session Resume Paste."""
+
+    def test_session_cover_letter_follows_session_resume_paste(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        resume_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_resume_paste")
+        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
+        assert cover_i == resume_i + 1
+        assert items[cover_i]["label"] == "Session Cover Letter"
+
+
+class TestAst1033ReadEmailNav:
+    """AST-1033 / AST-1048: Admin NAV_CONFIG Manage Email after Session Cover Letter."""
+
+    def test_manage_email_follows_session_cover_letter(self) -> None:
+        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
+        items = admin["items"]
+        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
+        manage_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_email")
+        assert manage_i == cover_i + 1
+        assert items[manage_i]["label"] == "Manage Email"
+        assert not any(it.get("path") == "/admin/read_email" for it in items)
+
+
+class TestAst1037SimpleResumeParseConfig:
+    """AST-1037: shared craft-resume schema + simple_resume_parse TASK_CONFIG + normalize keys."""
+
+    def test_simple_resume_parse_shares_schema_object_with_craft_base(self) -> None:
+        assert "simple_resume_parse" in cfg.get_task_keys()
+        simple = cfg.TASK_CONFIG["simple_resume_parse"]
+        craft = cfg.TASK_CONFIG["craft_resume_base"]
+        assert simple["response_schema"] is craft["response_schema"]
+        assert simple["response_schema"] is cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert simple["response_format"] == "json"
+        assert simple["context_format"] == "simple_resume_parse_{index}"
+        assert simple["entity_type"] is None
+        assert simple["requires_candidate_key"] is False
+        assert simple["trigger_state"] is None
+
+    def test_craft_resume_base_meta_unchanged(self) -> None:
+        craft = cfg.TASK_CONFIG["craft_resume_base"]
+        assert craft["requires_candidate_key"] is True
+        assert craft["context_format"] == "parse_resume_{index}"
+        assert craft["response_format"] == "json"
+        assert craft["entity_type"] is None
+        assert craft["trigger_state"] is None
+
+    def test_normalize_task_keys_frozenset_in_config(self) -> None:
+        keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
+        assert isinstance(keys, frozenset)
+        assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
+class TestAst1041MeteoriteConfig:
+    """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
+
+    def test_required_keys_and_ignore_state(self) -> None:
+        m = cfg.METEORITE_CONFIG
+        assert m["short_name_prefix"] == "meteorite-"
+        assert m["short_name_template"] == "meteorite-{candidate_id}"
+        assert m["company_name"] == "meteorite"
+        assert m["company_state"] == "IGNORE"
+        assert m["company_state"] in cfg.COMPANY_STATES
+        assert "note" in m["company_data"]
+        # AST-1056: create landing retargeted to METEORITE_NEW.
+        assert m["job_create_state"] == "METEORITE_NEW"
+        assert m["job_create_state"] in cfg.JOB_STATES
+        assert m["job_create_latest_score"] == 10.0
+
+    def test_template_matches_prefix_plus_candidate(self) -> None:
+        cid = "cand-42"
+        built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
+
+
+class TestAst1047CandidateLookupConfig:
+    """AST-1047: CANDIDATE_LOOKUP_CONFIG email/name paths + casefold."""
+
+    def test_lookup_paths_and_casefold(self) -> None:
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert luc["match_casefold"] is True
+        assert luc["email_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+            "profile.contact_email",
+            "profile.reply_email",
+        )
+        assert luc["name_paths"] == (
+            "first",
+            "last",
+            "full",
+            "profile.first",
+            "profile.last",
+        )
+
+class TestAst1049InboxCreateJobConfig:
+    """AST-1049: INBOX_CREATE_JOB_CONFIG strip sets + subject template."""
+
+    def test_strip_sets_and_subject_template(self) -> None:
+        ic = cfg.INBOX_CREATE_JOB_CONFIG
+        assert "script" in ic["strip_tags"]
+        assert "style" in ic["strip_attr_names"]
+        assert ic["strip_on_attrs"] is True
+        assert "{subject}" in ic["subject_html_template"]
+        assert "{body}" in ic["subject_html_template"]
+
+
+class TestAst1053MeteoriteGdlJobStates:
+    """AST-1053: parallel meteorite GDL JOB_STATES + In Review/Skipped manifests."""
+
+    _PASS = (
+        "METEORITE_NEW",
+        "METEORITE_QUALIFIED",  # AST-1060: pre-AI → Ruth qualify → GDL entry
+        "METEORITE_PASSED_JD",
+        "METEORITE_PASSED_DO",
+        "METEORITE_PASSED_GET",
+        "METEORITE_PASSED_LIKE",
+        "METEORITE_PASSED_LIKE_RETRY",
+    )
+    _FAIL = (
+        "METEORITE_FAILED_QUALIFY",  # AST-1060
+        "METEORITE_ERROR_QUALIFY",  # AST-1060
+        "METEORITE_FAILED_JD",
+        "METEORITE_ERROR_EVALUATE_JD",
+        "METEORITE_FAILED_DO",
+        "METEORITE_FAILED_TECHNICAL_DO",
+        "METEORITE_FAILED_GET",
+        "METEORITE_FAILED_TECHNICAL_GET",
+        "METEORITE_FAILED_LIKE",
+        "METEORITE_FAILED_TECHNICAL_LIKE",
+    )
+
+    def test_job_states_priors(self) -> None:
+        js = cfg.JOB_STATES
+        assert js["METEORITE_NEW"]["prior_states"] is None
+        # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
+        assert js["METEORITE_QUALIFIED"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
+        assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
+        assert js["METEORITE_PASSED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
+        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        assert js["METEORITE_PASSED_LIKE_RETRY"]["prior_states"] == ["METEORITE_PASSED_LIKE"]
+        # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
+        assert "METEORITE_CULTURE_READY" not in js
+        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+
+    def test_in_review_and_skipped_membership(self) -> None:
+        for state in self._PASS:
+            assert state in cfg.IN_REVIEW_STATES, state
+            assert state not in cfg.SKIPPED_STATES, state
+        for state in self._FAIL:
+            assert state in cfg.SKIPPED_STATES, state
+            assert state not in cfg.IN_REVIEW_STATES, state
+
+    def test_ui_sections_labels_order_and_grades(self) -> None:
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        for state in self._PASS:
+            assert state in review, state
+        assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_QUALIFIED")
+        assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
+        assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+        assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
+        assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
+        assert labels["METEORITE_PASSED_LIKE_RETRY"] == "Meteorite LIKE upshot (retry)"
+
+        order = cfg.JOBS_SKIPPED_SECTION_ORDER
+        for state in self._FAIL:
+            assert state in order, state
+            assert order.count(state) == 1, state
+        assert order.index("FAILED_TECHNICAL_LIKE") < order.index("METEORITE_FAILED_LIKE")
+        assert order.index("METEORITE_FAILED_LIKE") < order.index("FAILED_GET")
+        assert order.index("FAILED_JD") < order.index("METEORITE_FAILED_JD")
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_JD"] == "Meteorite Failed JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_EVALUATE_JD"] == "Meteorite Error Evaluate JD"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_QUALIFY"] == "Meteorite Failed Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_ERROR_QUALIFY"] == "Meteorite Error Qualify"
+        assert cfg.JOBS_SKIPPED_SECTION_LABELS["METEORITE_FAILED_TECHNICAL_LIKE"] == (
+            "Meteorite Failed Technical LIKE"
+        )
+
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_JD"] == "jd_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_DO"] == "do_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_GET"] == "get_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE"] == "like_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_LIKE_RETRY"] == "like_grades"
+        assert "METEORITE_NEW" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert "METEORITE_QUALIFIED" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_JD"] == "jd_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_DO"] == "do_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_GET"] == "get_grades"
+        assert cfg.JOBS_SKIPPED_GRADE_FIELD["METEORITE_FAILED_LIKE"] == "like_grades"
+        assert "METEORITE_FAILED_TECHNICAL_DO" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_ERROR_EVALUATE_JD" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_FAILED_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+        assert "METEORITE_ERROR_QUALIFY" not in cfg.JOBS_SKIPPED_GRADE_FIELD
+
+    def test_non_meteorite_gdl_and_recommended_untouched(self) -> None:
+        # AC2 smoke: score-gated exceptions + non-meteorite GDL priors.
+        # RECOMMENDED meteorite LIKE priors are AST-1055 (TestAst1055MeteoriteLikeUpshotTasks).
+        # AST-1054 adds METEORITE_PASSED_* (not METEORITE_NEW / fails) to PASSED_SCORE_GATED_STATES.
+        # Create landing retarget is AST-1056 (TestAst1056MeteoriteCreateLanding).
+        # AST-1060: QUALIFIED / FAILED_QUALIFY / ERROR_QUALIFY stay ungated.
+        for state in (
+            "METEORITE_NEW",
+            "METEORITE_QUALIFIED",
+            "METEORITE_PASSED_LIKE_RETRY",
+            *self._FAIL,
+        ):
+            assert state not in cfg.PASSED_SCORE_GATED_STATES, state
+        rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        assert "PASSED_LIKE" in rec_priors
+        assert "PASSED_LIKE_RETRY" in rec_priors
+        assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+        # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
+        # qualify_job_listings has no agent_task key — do not invent one.
+        qjl = cfg.TASK_CONFIG["qualify_job_listings"]
+        assert qjl["pass_state"] == "PASSED_JOBLIST"
+        assert qjl["fail_state"] == "FAILED_JOBLIST"
+        assert qjl["error_state"] == "ERROR_QUALIFY_JOB_LISTINGS"
+        assert "agent_task" not in qjl
+        assert cfg._dispatch_trigger_state_for_task_key("qualify_job_listings") == "NEW"
+
+
+class TestAst1056MeteoriteCreateLanding:
+    """AST-1056: meteorite create lands in METEORITE_NEW via METEORITE_CONFIG."""
+
+    def test_job_create_state_is_meteorite_new(self) -> None:
+        assert cfg.METEORITE_CONFIG["job_create_state"] == "METEORITE_NEW"
+        assert cfg.METEORITE_CONFIG["job_create_state"] in cfg.JOB_STATES
+        assert cfg.JOB_STATES["METEORITE_NEW"]["prior_states"] is None
+        # Score stand-in unchanged; meteorite score_floor dispatch is AST-1054.
+        assert cfg.METEORITE_CONFIG["job_create_latest_score"] == 10.0
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "METEORITE_DISPATCH_TASKS"),
+    reason="AST-1054 meteorite dispatch specs not on this publish tip",
+)
+class TestAst1054MeteoriteGdlDispatch:
+    """AST-1054: METEORITE_DISPATCH_TASKS, score_floor gating, overlay map, twin triggers."""
+
+    def test_dispatch_row_specs_and_job_states(self) -> None:
+        rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        # AST-1060: evaluate_jd claims METEORITE_QUALIFIED (not METEORITE_NEW).
+        assert ("evaluate_jd", "METEORITE_NEW") not in rows
+        assert rows[("evaluate_jd", "METEORITE_QUALIFIED")]["score_floor"] is None
+        assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
+        assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
+        assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
+        assert rows[("meteorite_upshot", "METEORITE_PASSED_LIKE")]["score_floor"] == 0.0
+        for e in cfg.METEORITE_DISPATCH_TASKS:
+            assert e["trigger_state"] in cfg.JOB_STATES
+            assert e["auto_mode"] is False
+        for task_key, overlay in cfg.METEORITE_GDL_OUTCOME_BY_TASK.items():
+            for sk in ("pass_state", "fail_state", "error_state"):
+                assert overlay[sk] in cfg.JOB_STATES, f"{task_key}.{sk}"
+
+    def test_score_floor_gating_and_trigger_defaults(self) -> None:
+        assert cfg.dispatch_claim_uses_score_floor("METEORITE_NEW") is False
+        assert cfg.dispatch_claim_uses_score_floor("METEORITE_QUALIFIED") is False
+        for state in (
+            "METEORITE_PASSED_JD",
+            "METEORITE_PASSED_DO",
+            "METEORITE_PASSED_GET",
+            "METEORITE_PASSED_LIKE",
+        ):
+            assert state in cfg.PASSED_SCORE_GATED_STATES
+            assert cfg.dispatch_claim_uses_score_floor(state) is True
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_like") == "METEORITE_PASSED_GET"
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_upshot") == "METEORITE_PASSED_LIKE"
+        assert cfg._dispatch_trigger_state_for_task_key("evaluate_jd") == "JD_READY"
+        assert cfg._dispatch_trigger_state_for_task_key("grade_do") == "PASSED_JD"
+        assert cfg._dispatch_trigger_state_for_task_key("grade_get") == "PASSED_DO"
+
+
+@pytest.mark.skipif(
+    "qualify_meteorite" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1060 qualify_meteorite TASK_CONFIG not on this publish tip",
+)
+class TestAst1060QualifyMeteoriteConfig:
+    """AST-1060: qualify states, TASK_CONFIG, dispatch claim, helper wiring."""
+
+    def test_qualify_task_config_and_dispatch_row(self) -> None:
+        tc = cfg.TASK_CONFIG["qualify_meteorite"]
+        assert tc["scored"] is False
+        assert tc["output_type"] == "fields"
+        assert tc["pass_state"] == "METEORITE_QUALIFIED"
+        assert tc["fail_state"] == "METEORITE_FAILED_QUALIFY"
+        assert tc["error_state"] == "METEORITE_ERROR_QUALIFY"
+        assert tc["agent_task"] == "qualify_meteorite"
+        assert tc["entity_type"] == "job"
+        assert tc["requires_candidate_key"] is True
+        assert tc["trigger_state"] is None
+        schema_items = tc["response_schema"]["jobs"]["items_schema"]
+        for key in ("astral_job_id", "company_job_id", "job_title", "job_link", "jd_text"):
+            assert schema_items[key]["required"] is True, key
+
+        rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        assert rows[("qualify_meteorite", "METEORITE_NEW")]["score_floor"] is None
+        # First METEORITE_DISPATCH_TASKS entry is qualify (before GDL).
+        assert cfg.METEORITE_DISPATCH_TASKS[0]["task_key"] == "qualify_meteorite"
+        assert cfg._dispatch_trigger_state_for_task_key("qualify_meteorite") == "METEORITE_NEW"
+        assert "qualify_meteorite" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert cfg._dispatch_entity_type_for_task_key("qualify_meteorite") == "job"
+        assert cfg._dispatch_entity_type_for_task_key("qualify_job_listings") == "job"
+
+
+# Branches: content-gate mins on qualify_meteorite only (AST-1062).
+class TestAst1062QualifyMeteoriteThresholds:
+    def test_min_title_and_jd_chars(self) -> None:
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        tc = cfg.TASK_CONFIG["qualify_meteorite"]
+        assert int(tc["min_job_title_length"]) == 5
+        assert int(tc["min_jd_chars"]) == 40
+        assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
+
+
+# Branches: CONTACT_CONFIG scaffold (AST-1066) + entity-save skills ACL (AST-1071).
+class TestAst1066ContactConfig:
+    """AST-1066: CONTACT_CONFIG listen/env-names + CANDIDATE_LOOKUP slack path."""
+
+    def test_contact_config_defaults_and_env_names(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["listen_enabled"] is False
+        assert cc["bot_token_env"] == "SLACK_BOT_TOKEN"
+        assert cc["signing_secret_env"] == "SLACK_SIGNING_SECRET"
+        assert cc["non_production_reply_prefix_template"] == "[{environment}] "
+        assert isinstance(cc["skills"], dict)
+        for skill_key in cc["skills"]:
+            assert skill_key not in cfg.TASK_CONFIG
+
+    def test_slack_user_id_lookup_home(self) -> None:
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert luc["slack_user_id_paths"] == ("contact.slack_user_id",)
+        assert "contact.contact_email" in luc["email_paths"]
+        assert "first" in luc["name_paths"]
+
+
+class TestAst1071ContactSkillsConfig:
+    """AST-1071: CONTACT_CONFIG skills ACL — two candidate entity-save skills."""
+
+    def test_two_skills_not_in_task_config(self) -> None:
+        skills = cfg.CONTACT_CONFIG["skills"]
+        assert set(skills.keys()) == {"save_candidate_profile", "save_candidate_contact"}
+        for key, meta in skills.items():
+            assert key not in cfg.TASK_CONFIG
+            assert meta["entity"] == "candidate"
+            assert meta["write"] is True
+            assert isinstance(meta["description"], str) and meta["description"].strip()
+            assert isinstance(meta["allowed_paths"], tuple) and meta["allowed_paths"]
+
+    def test_allowlisted_paths_no_slack_user_id(self) -> None:
+        skills = cfg.CONTACT_CONFIG["skills"]
+        assert skills["save_candidate_profile"]["allowed_paths"] == (
+            "profile.first",
+            "profile.last",
+            "profile.pronoun_preference",
+            "profile.contact_email",
+        )
+        assert skills["save_candidate_contact"]["allowed_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+        )
+        for meta in skills.values():
+            assert "contact.slack_user_id" not in meta["allowed_paths"]
+
+
+# Branches: Events/Socket Mode contracts on CONTACT_CONFIG (AST-1069).
+class TestAst1069ContactEventsConfig:
+    """AST-1069: events path, bot_event_types, dedupe max, app_token_env."""
+
+    def test_events_and_socket_mode_keys(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["events_http_path"] == "/slack/events"
+        assert str(cc["events_http_path"]).startswith("/")
+        assert cc["bot_event_types"] == ("app_mention", "message")
+        assert isinstance(cc["event_id_dedupe_max"], int) and cc["event_id_dedupe_max"] > 0
+        assert cc["event_id_dedupe_max"] == 4096
+        assert cc["app_token_env"] == "SLACK_APP_TOKEN"
+
+
+# Branches: context history/cache/TTL on CONTACT_CONFIG (AST-1070).
+class TestAst1070ContactContextConfig:
+    """AST-1070: history limit, cache max conversations, TTL seconds."""
+
+    def test_context_cache_keys(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["context_history_limit"] == 50
+        assert isinstance(cc["context_history_limit"], int) and cc["context_history_limit"] > 0
+        assert cc["context_cache_max_conversations"] == 256
+        assert (
+            isinstance(cc["context_cache_max_conversations"], int)
+            and cc["context_cache_max_conversations"] > 0
+        )
+        assert cc["context_cache_ttl_seconds"] == 300
+        assert (
+            isinstance(cc["context_cache_ttl_seconds"], int)
+            and cc["context_cache_ttl_seconds"] > 0
+        )
+
+
+
+# Branches: PROSPECT registry + prospect id template (AST-1068).
+class TestAst1068ProspectConfig:
+    """AST-1068: PROSPECT on CANDIDATE_STATES; prospect_candidate_id_template."""
+
+    def test_prospect_and_id_template(self) -> None:
+        assert "PROSPECT" in cfg.CANDIDATE_STATES
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["prior_states"] is None
+        assert cfg.CANDIDATE_STATES["PROSPECT"]["progress_rank"] == -1
+        assert cfg.CANDIDATE_CONFIG["initial_state"] == "NEW_CANDIDATE"
+        tpl = cfg.CONTACT_CONFIG["prospect_candidate_id_template"]
+        assert "{slack_user_id}" in tpl
+        assert tpl == "slack-{slack_user_id}"
+
+
+class TestAst1055MeteoriteLikeUpshotTasks:
+    """AST-1055: company-absent meteorite_like / meteorite_upshot TASK_CONFIG twins."""
+
+    def test_task_config_twins_and_schema_parity(self) -> None:
+        like = cfg.TASK_CONFIG["meteorite_like"]
+        upshot = cfg.TASK_CONFIG["meteorite_upshot"]
+        grade_like = cfg.TASK_CONFIG["grade_like"]
+        analysis = cfg.TASK_CONFIG["analysis_upshot"]
+
+        assert like["pass_state"] == "METEORITE_PASSED_LIKE"
+        assert like["fail_state"] == "METEORITE_FAILED_LIKE"
+        assert like["error_state"] == "METEORITE_FAILED_TECHNICAL_LIKE"
+        assert like["requires_company"] is False
+        assert like["rubric_artifact"] == "like_rubric"
+        assert like["grades_key"] == "like_grades"
+        assert like["agent_task"] == "meteorite_like"
+        assert like["response_schema"] == grade_like["response_schema"]
+
+        assert upshot["pass_state"] == "RECOMMENDED"
+        assert upshot["error_state"] == "METEORITE_PASSED_LIKE_RETRY"
+        assert upshot["requires_company"] is False
+        assert upshot["agent_task"] == "meteorite_upshot"
+        assert upshot["response_schema"] == analysis["response_schema"]
+        assert analysis["requires_company"] is True
+
+    def test_recommended_priors_include_meteorite_like_states(self) -> None:
+        priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
+        assert "METEORITE_PASSED_LIKE" in priors
+        assert "METEORITE_PASSED_LIKE_RETRY" in priors
+        assert "PASSED_LIKE" in priors
+        assert "PASSED_LIKE_RETRY" in priors
+
+    def test_rubric_owner_batch_and_encoded_membership(self) -> None:
+        from src.core import agent as agent_mod
+        from src.core import dispatcher as dispatcher_mod
+
+        assert cfg.rubric_owner_task_key("meteorite_like") == "grade_like"
+        assert cfg.rubric_owner_task_key("grade_like") == "grade_like"
+        assert "meteorite_like" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_upshot" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_like" in agent_mod._STRICT_ENCODED_BATCH_CONSULT_KEYS
+        assert "meteorite_like" in dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
+
+
+class TestAst1057MeteoriteRecommendedSection:
+    """AST-1057: Recommended Meteorites section config + state UI manifest."""
+
+    def test_jobs_recommended_meteorite_section_block(self) -> None:
+        sec = cfg.JOBS_RECOMMENDED_METEORITE_SECTION
+        assert sec["section_id"] == "meteorites"
+        assert sec["label"] == "Meteorites"
+        assert sec["company_prefix"] == cfg.METEORITE_CONFIG["short_name_prefix"]
+        assert sec["company_prefix"] == "meteorite-"
+
+    def test_manifest_exposes_meteorite_section(self) -> None:
+        rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
+        ms = rec["meteorite_section"]
+        assert ms == {
+            "section_id": "meteorites",
+            "label": "Meteorites",
+            "company_prefix": "meteorite-",
+        }
+        # Non-meteorite Recommended section contract unchanged (AST-522 smoke).
+        assert [row["state"] for row in rec["sections"]] == [
+            "RECOMMENDED",
+            cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "CANDIDATE_REVIEW",
+        ]
+
+
+
+# Branches: METEORITE_EMAIL_INGEST_CONFIG keys for gazer email ingest (AST-1061).
+class TestAst1061MeteoriteEmailIngestConfig:
+    def test_link_schemes_excludes_concurrency_min_jd(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        cfg = METEORITE_EMAIL_INGEST_CONFIG
+        assert set(cfg["link_schemes"]) == {"http", "https"}
+        excludes = {s.casefold() for s in cfg["link_exclude_substrings"]}
+        for frag in (
+            "unsubscribe",
+            "mailto:",
+            "list-manage.com",
+            "/preferences",
+            "/email-settings",
+        ):
+            assert frag in excludes
+        assert int(cfg["playwright_concurrency"]) == 3
+        assert int(cfg["min_jd_chars"]) == 40
+
+
+# Branches: CHAT envelope schema + contact_estelle_turn registration (AST-1072).
+class TestAst1072ConversationalEnvelopeConfig:
+    def test_conversational_outcomes_and_performance_schema(self) -> None:
+        assert cfg.CONVERSATIONAL_OUTCOMES == ("success", "failure", "concern")
+        status = cfg.CONVERSATIONAL_PERFORMANCE_SCHEMA["status"]
+        assert status["required"] is True
+        assert set(status["enum"]) == set(cfg.CONVERSATIONAL_OUTCOMES)
+        assert "admin_aside" in cfg.CONVERSATIONAL_PERFORMANCE_SCHEMA
+        # Global BASE_SCHEMA stays binary — concern is CHAT-only.
+        assert "concern" not in cfg.BASE_SCHEMA["status"]["enum"]
+
+    def test_contact_estelle_config_medium_brain(self) -> None:
+        assert cfg.CONTACT_ESTELLE_CONFIG["task_key"] == "contact_estelle_turn"
+        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+
+    def test_contact_estelle_turn_task_registration(self) -> None:
+        entry = cfg.TASK_CONFIG["contact_estelle_turn"]
+        assert entry["task_type"] == "CHAT"
+        assert entry["agent_task"] == "contact_estelle_turn"
+        assert entry["response_format"] == "json"
+        assert entry["response_schema"]["reply"]["required"] is True
+        assert entry["trigger_state"] is None
+        assert entry["requires_candidate_key"] is False
+
+    def test_is_conversational_task_chat_only(self) -> None:
+        assert cfg.is_conversational_task("contact_estelle_turn") is True
+        assert cfg.is_conversational_task("evaluate_jd") is False
+        assert cfg.is_conversational_task("missing-task") is False
+
+    def test_stringify_chat_schema_includes_concern(self) -> None:
+        chat = json.loads(cfg.stringify_response_schema("contact_estelle_turn"))
+        assert chat["agent_performance"]["status"] == "success | failure | concern"
+        assert "admin_aside" in chat["agent_performance"]
+        assert chat["agent_payload"]["reply"] == "<reply>"
+        # Non-CHAT still uses BASE_SCHEMA example (no concern).
+        other = json.loads(cfg.stringify_response_schema("evaluate_jd"))
+        assert other["agent_performance"]["status"] == "success | failure"
+
+
+# Branches: turn-loop trim keys + optional skill_calls schema (AST-1073).
+class TestAst1073ContactEstelleTurnConfig:
+    def test_turn_context_trim_keys(self) -> None:
+        assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_message_limit"] == 40
+        assert cfg.CONTACT_ESTELLE_CONFIG["turn_context_text_max_chars"] == 500
+        assert cfg.CONTACT_ESTELLE_CONFIG["default_brain_setting"] == cfg.BRAIN_MEDIUM
+
+    def test_skill_calls_optional_on_chat_schema(self) -> None:
+        schema = cfg.TASK_CONFIG["contact_estelle_turn"]["response_schema"]
+        assert schema["reply"]["required"] is True
+        calls = schema["skill_calls"]
+        assert calls["required"] is False
+        assert calls["type"] == "list"
+        assert calls["items_schema"]["skill_key"]["required"] is True
+        assert calls["items_schema"]["fields"]["required"] is True
+        # stringify shows skill_calls example list
+        chat = json.loads(cfg.stringify_response_schema("contact_estelle_turn"))
+        assert "skill_calls" in chat["agent_payload"]
+
+
+class TestAst1074TopicMenuConfig:
+    """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
+
+    _INFORMS = (
+        "rubrics",
+        "base_resume",
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "backstory",
+    )
+
+    def test_informs_and_statuses_locked(self) -> None:
+        tmc = cfg.TOPIC_MENU_CONFIG
+        assert tmc["informs"] == self._INFORMS
+        assert tmc["statuses"] == ("open", "ready", "retired")
+        assert tmc["default_status"] == "open"
+        assert tmc["candidate_data_key"] == "topic_menu"
+
+    def test_topic_required_fields_and_library_homes(self) -> None:
+        tmc = cfg.TOPIC_MENU_CONFIG
+        for key in ("id", "name", "ask", "required", "informs", "status"):
+            assert key in tmc["topic_required_fields"]
+        for ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+            assert ctx in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+        assert "base_resume" in tmc["informs"]
+
+
+
+class TestAst1075TopicMenuGenConfig:
+    """AST-1075: TOPIC_MENU_GEN_CONFIG + TASK_CONFIG confirm/generate schemas."""
+
+    def test_task_keys_outcomes_and_packet_whitelist(self) -> None:
+        g = cfg.TOPIC_MENU_GEN_CONFIG
+        assert g["confirm_task_key"] == "topic_menu_preamble_confirm"
+        assert g["generate_task_key"] == "topic_menu_generate"
+        assert g["confirm_task_key"] != g["generate_task_key"]
+        assert g["confirm_outcomes"] == ("continue", "accepted")
+        assert g["confirm_outcome_field"] == "outcome"
+        assert g["estelle_agent_id"] == "principal_recruiter_estelle"
+        lib = cfg.CANDIDATE_LIBRARY_CONFIG
+        for key in g["packet_context_keys"]:
+            assert key in lib["context_keys"]
+        for key in g["patchable_context_keys"]:
+            assert key in lib["context_keys"]
+        for key in g["packet_contact_keys"]:
+            assert key in lib["contact_keys"]
+        for key in g["packet_name_columns"]:
+            assert key in lib["name_columns"]
+        # Joan r1: preferred_name is not a contact key — must not appear.
+        assert "preferred_name" not in g["packet_contact_keys"]
+        assert g["confirm_task_key"] in cfg.TASK_CONFIG
+        assert g["generate_task_key"] in cfg.TASK_CONFIG
+        assert g["confirm_task_key"] in cfg.get_task_keys()
+        assert g["generate_task_key"] in cfg.get_task_keys()
+
+    def test_task_config_response_schemas(self) -> None:
+        confirm = cfg.TASK_CONFIG["topic_menu_preamble_confirm"]
+        assert confirm["response_format"] == "json"
+        assert confirm["entity_type"] == "candidate"
+        assert confirm["requires_candidate_key"] is True
+        assert set(confirm["response_schema"]) >= {"assistant_message", "outcome"}
+        gen = cfg.TASK_CONFIG["topic_menu_generate"]
+        assert set(gen["response_schema"]) >= {
+            "topics",
+            "informs_coverage_confirmed",
+            "informs_covered",
+        }
+
+    def test_ui_copy_keys_present(self) -> None:
+        ui = cfg.TOPIC_MENU_GEN_CONFIG["ui"]
+        for key in (
+            "panel_title",
+            "accept_label",
+            "send_label",
+            "placeholder",
+            "generating_label",
+            "done_title",
+        ):
+            assert isinstance(ui[key], str) and ui[key].strip()
+
+
+# Branches: uniqueness field contract sibling to lookup (AST-1079); enforce is AST-1080.
+class TestAst1079ContactUniquenessConfig:
+    """AST-1079: CANDIDATE_CONTACT_UNIQUENESS_CONFIG paths + compare + lookup identity."""
+
+    def test_email_and_slack_paths_shared_with_lookup(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert uniq["email_paths"] is luc["email_paths"]
+        assert uniq["slack_user_id_paths"] is luc["slack_user_id_paths"]
+        assert uniq["email_paths"] == (
+            "contact.contact_email",
+            "contact.reply_email",
+            "profile.contact_email",
+            "profile.reply_email",
+        )
+        assert uniq["slack_user_id_paths"] == ("contact.slack_user_id",)
+
+    def test_scalar_list_scopes_and_compare(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        assert uniq["scalar_paths"] == (
+            "contact.phone",
+            "contact.github",
+            "contact.linkedin_url",
+        )
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert uniq["email_list_paths"] is cfg.CANDIDATE_LOOKUP_CONFIG["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert "contact.extra_emails" not in uniq["list_paths"]
+        assert uniq["scopes"] == ("within_candidate", "cross_candidate")
+        assert uniq["compare"] == {
+            "email": "casefold",
+            "scalar": "casefold",
+            "list": "casefold",
+            "slack_user_id": "exact",
+        }
+        assert cfg.CANDIDATE_LOOKUP_CONFIG["match_casefold"] is True
+        contact_keys = set(cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"])
+        for path in uniq["scalar_paths"] + uniq["list_paths"] + uniq["email_list_paths"]:
+            assert path.startswith("contact.")
+            assert path.split(".", 1)[1] in contact_keys
+
+
+class TestAst1081ContactShapesConfig:
+    """AST-1081: DATA_SHAPES Contact Information exposes full / websites / reason_codes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_full_websites_reason_codes_in_contact_shapes(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["full"]["label"] == "Full Name"
+        assert by_key["full"]["type"] == "text"
+        assert by_key["contact.websites"]["label"] == "Websites"
+        assert by_key["contact.websites"]["type"] == "string_list"
+        assert by_key["contact.reason_codes"]["label"] == "Reason Codes"
+        assert by_key["contact.reason_codes"]["type"] == "textarea"
+        # Still columns + contact.* — never profile.*
+        keys = list(by_key)
+        assert "first" in keys and "last" in keys
+        assert not any(k.startswith("profile.") for k in keys)
+
+    def test_field_order_full_after_last_websites_after_linkedin(self) -> None:
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("full") == keys.index("last") + 1
+        assert keys.index("contact.websites") == keys.index("contact.linkedin_url") + 1
+        assert keys.index("contact.reason_codes") > keys.index("pronouns")
+
+    def test_admin_manage_shapes_unchanged_no_websites(self) -> None:
+        # Boundary: Admin Manage Candidates stays on its narrow field set
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        list_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["list"]["manage"]]
+        assert "contact.websites" not in edit_keys
+        assert "contact.reason_codes" not in edit_keys
+        assert "full" not in edit_keys
+        assert "contact.websites" not in list_keys
+        assert "full" not in list_keys
+
+
+class TestAst1082ProfileContactLabelsNav:
+    """AST-1082: GitHub/LinkedIn username-or-URL labels; no Title Patterns nav duplicate."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_github_linkedin_username_or_url_labels(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.github"]["label"] == "GitHub (username or URL)"
+        assert by_key["contact.linkedin_url"]["label"] == "LinkedIn (username or URL)"
+        # Keys/types unchanged from AST-1081 shapes contract
+        assert by_key["contact.github"]["type"] == "text"
+        assert by_key["contact.linkedin_url"]["type"] == "text"
+
+    def test_candidate_nav_omits_title_patterns(self) -> None:
+        candidate = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in candidate["items"]]
+        paths = [i["path"] for i in candidate["items"]]
+        assert "Title Patterns" not in labels
+        assert "/candidate/title_patterns" not in paths
+        assert "/candidate/profile" in paths
+
+    def test_profile_shapes_keep_title_patterns_section(self) -> None:
+        # Single edit surface remains on Profile (not nav)
+        sections = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        title = next(s for s in sections if s["label"] == "Title Patterns")
+        assert title["fields"][0]["key"] == "contact.title_patterns"
+
+
+class TestAst1092ExtraBindingEmailsConfig:
+    """AST-1092: Resume/Messages labels, extra_emails key, lookup email_list_paths."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_resume_messages_labels_and_extra_emails_shape(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.contact_email"]["label"] == "Email for Resume"
+        assert by_key["contact.reply_email"]["label"] == "Email for Messages (if different)"
+        assert by_key["contact.extra_emails"]["label"] == "Extra emails (binding)"
+        assert by_key["contact.extra_emails"]["type"] == "string_list"
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("contact.extra_emails") == keys.index("contact.reply_email") + 1
+
+    def test_library_lookup_uniqueness_extra_emails_aligned(self) -> None:
+        assert "extra_emails" in cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        assert luc["email_list_paths"] == ("contact.extra_emails",)
+        # AST-1095: extras are email pool via email_list_paths, not list_paths
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert "contact.extra_emails" not in uniq["list_paths"]
+        # Bind list emails must not be scalar email_paths (str-only reader)
+        assert "contact.extra_emails" not in luc["email_paths"]
+        # Admin manage still unchanged (Profile owns this UAT surface)
+        edit_keys = [f["key"] for f in cfg.DATA_SHAPES["candidates"]["edit"]["manage"]]
+        assert "contact.extra_emails" not in edit_keys
+
+
+
+# Branches: shared email pool email_paths ∪ email_list_paths (AST-1095).
+class TestAst1095EmailUniqueRootAndExtraConfig:
+    """AST-1095: uniqueness email_list_paths identity; list_paths websites-only."""
+
+    def test_email_list_paths_identity_and_websites_only_list_paths(self) -> None:
+        uniq = cfg.CANDIDATE_CONTACT_UNIQUENESS_CONFIG
+        luc = cfg.CANDIDATE_LOOKUP_CONFIG
+        assert uniq["email_list_paths"] is luc["email_list_paths"]
+        assert uniq["email_list_paths"] == ("contact.extra_emails",)
+        assert uniq["list_paths"] == ("contact.websites",)
+        assert set(uniq["email_list_paths"]).isdisjoint(set(uniq["list_paths"]))
+
+
+class TestAst1084EvaluateJdCriteria:
+    """AST-1084: EMBEDDED_EVALUATE_JD_CRITERIA QC/GC definitions (wire-up is AST-1085)."""
+
+    def test_qc_gc_registry_order_and_shape(self) -> None:
+        rows = cfg.EMBEDDED_EVALUATE_JD_CRITERIA
+        assert isinstance(rows, tuple)
+        assert len(rows) == 2
+        qc, gc = rows
+        assert qc["code"] == "QC"
+        assert qc["label"] == "Quality Check"
+        assert qc["importance"] == 1
+        assert gc["code"] == "GC"
+        assert gc["label"] == "Gut Check"
+        assert gc["importance"] == 1
+        # Boundary: not folded into the company prefilter RC registry
+        pf_codes = {r["code"] for r in cfg.EMBEDDED_COMPANY_PREFILTER_CRITERIA}
+        assert "QC" not in pf_codes and "GC" not in pf_codes
+
+    def test_qc_grades_abcdef_subset_and_descriptions(self) -> None:
+        qc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[0]
+        by_grade = {g["grade"]: g["description"] for g in qc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "F"]
+        assert by_grade["A"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements and information about the company the candidate would be working for."
+        )
+        assert by_grade["B"] == (
+            "This is a valid job description with full details of the role and "
+            "requirements, but limited information about the company the candidate would be working for."
+        )
+        assert by_grade["C"] == (
+            "This content references a job with enough detail about the role and "
+            "requirements to perform fit analysis for the candidate."
+        )
+        assert by_grade["F"] == (
+            "This is not enough information to perform job fit analysis, either because "
+            "it is not a job description, or it is too vague to determine fit for the candidate."
+        )
+        # content mirrors letter lines (Reality Check A = … style)
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in qc["content"]
+        assert "Quality Check — is this enough of a JD to analyze?" in qc["content"]
+
+    def test_gc_grades_include_d_x_and_descriptions(self) -> None:
+        gc = cfg.EMBEDDED_EVALUATE_JD_CRITERIA[1]
+        by_grade = {g["grade"]: g["description"] for g in gc["grade_descriptions"]}
+        assert list(by_grade) == ["A", "B", "C", "D", "F", "X"]
+        assert by_grade["A"] == (
+            "Based on the candidate's bio provided, this job would be a slam dunk for them."
+        )
+        assert by_grade["B"] == (
+            "Based on the candidate's bio provided, this job could be a good fit for them."
+        )
+        assert by_grade["C"] == (
+            "Based on the candidate's bio, this job would be doable, with caveats, for them."
+        )
+        assert by_grade["D"] == (
+            "Based on the candidate's bio, this job would be a stretch-to-impossible for them."
+        )
+        assert by_grade["F"] == "There's really no way this candidate could ever do this job."
+        assert by_grade["X"] == (
+            "There's not enough information about the job to make this determination with certainty."
+        )
+        for letter, desc in by_grade.items():
+            assert f"{letter} = {desc}" in gc["content"]
+        assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
+
+
+# Branches: GAZE_EMAIL_CONFIG + gaze_email TASK_CONFIG shell + admin defaults (AST-1088).
+@pytest.mark.skipif(
+    not hasattr(cfg, "GAZE_EMAIL_CONFIG"),
+    reason="AST-1088 GAZE_EMAIL_CONFIG not on this publish tip",
+)
+class TestAst1088GazeEmailConfig:
+    """AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id)."""
+
+    def test_gaze_email_config_and_task_shell(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert g["task_key"] == "gaze_email"
+        assert g["account_address"] == "astral.career.match@gmail.com"
+        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+        # AST-1098: seed law CLICK (was True on AST-1088 tip).
+        assert g["auto_mode"] is False
+        assert g["min_count"] == 1
+        assert g["batch_size"] == 1
+        assert g["freq_hrs"] == 0
+        assert g["entity_type"] is None
+        assert g["trigger_state"] is None
+
+        tc = cfg.TASK_CONFIG["gaze_email"]
+        assert tc["entity_type"] is None
+        assert tc["requires_candidate_key"] is False
+        assert tc["trigger_state"] is None
+        assert "agent_task" not in tc
+        assert "response_schema" not in tc
+
+    def test_admin_defaults_null_claim_queue(self) -> None:
+        d = cfg.dispatch_task_admin_defaults("gaze_email")
+        assert d == {
+            "entity_type": None,
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+
+    def test_not_company_batch_or_retired(self) -> None:
+        assert "gaze_email" not in cfg._DISPATCH_COMPANY_ENTITY_TASK_KEYS
+        assert "gaze_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "gaze_email" not in cfg.DISPATCH_RETIRED_TASK_KEYS
+        assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
+
+
+# Branches: gaze_email seed CLICK + catalog seed locks (AST-1098).
+@pytest.mark.skipif(
+    getattr(cfg, "GAZE_EMAIL_CONFIG", {}).get("auto_mode") is not False,
+    reason="AST-1098 GAZE_EMAIL_CONFIG auto_mode CLICK not on this publish tip",
+)
+class TestAst1098GazeEmailSeedClick:
+    def test_gaze_and_catalog_seeds_are_click(self) -> None:
+        assert cfg.GAZE_EMAIL_CONFIG["auto_mode"] is False
+        assert all(not bool(e.get("auto_mode")) for e in cfg.METEORITE_DISPATCH_TASKS)
+        assert all(
+            not bool(e.get("auto_mode"))
+            for e in cfg.CANDIDATE_STAGE_DISPATCH.values()
+            if "auto_mode" in e
+        )
+
+    def test_seed_auto_false_statute_registered(self) -> None:
+        from pathlib import Path
+
+        root = Path(__file__).resolve().parents[3]
+        statute = root / "canon/statutes/astral/dispatch/astral.dispatch.seed-auto-false.md"
+        assert statute.is_file()
+        body = statute.read_text()
+        assert "id: astral.dispatch.seed-auto-false" in body
+        assert "status: active" in body
+        readme = (root / "canon/statutes/README.md").read_text()
+        assert "astral.dispatch.seed-auto-false" in readme
+        assert "**57** active" in readme or "57 active" in readme
+        harvest = (root / "canon/statutes/HARVEST.md").read_text()
+        assert "astral.dispatch.seed-auto-false" in harvest
+        assert "AST-1098" in harvest
+
+
+# Branches: GAZE_EMAIL_CONFIG runner literals (AST-1090).
+@pytest.mark.skipif(
+    "subject_url_schemes" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
+    reason="AST-1090 GAZE_EMAIL_CONFIG runner keys not on this publish tip",
+)
+class TestAst1090GazeEmailRunnerConfig:
+    def test_runner_literals(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert set(g["subject_url_schemes"]) == {"http", "https"}
+        assert g["dispatch_ledger_candidate_id"] == ""
+        assert g["debug_func"] == "gaze_email.run"
+        # Shell keys from AST-1088 remain.
+        assert g["task_key"] == "gaze_email"
+        assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
+
+
+# Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
+@pytest.mark.skipif(
+    "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1089 parse_meteorite_email TASK_CONFIG not on this publish tip",
+)
+class TestAst1089ParseMeteoriteEmailConfig:
+    """AST-1089: Ruth email-HTML parse config — not a dispatch claim task."""
+
+    def test_parse_config_and_task_shell(self) -> None:
+        parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
+        assert parse_cfg["task_key"] == "parse_meteorite_email"
+        assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
+
+        tc = cfg.TASK_CONFIG["parse_meteorite_email"]
+        assert tc["scored"] is False
+        assert tc["output_type"] == "fields"
+        assert tc["response_format"] == "json"
+        assert tc["agent_task"] == "parse_meteorite_email"
+        assert tc["entity_type"] is None
+        assert tc["requires_candidate_key"] is True
+        assert tc["trigger_state"] is None
+        assert "pass_state" not in tc
+        assert "fail_state" not in tc
+        assert "error_state" not in tc
+
+        schema = tc["response_schema"]
+        assert schema["parse_mode"]["required"] is True
+        assert schema["jobs"]["required"] is True
+        assert schema["jobs"]["items_schema"]["job_link"]["required"] is True
+        assert schema["jd_link"]["required"] is False
+        assert schema["content_text"]["required"] is False
+
+    def test_not_a_meteorite_dispatch_claim(self) -> None:
+        assert all(
+            e["task_key"] != "parse_meteorite_email" for e in cfg.METEORITE_DISPATCH_TASKS
+        )
+        assert "parse_meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        with pytest.raises(KeyError, match="parse_meteorite_email"):
+            cfg._dispatch_trigger_state_for_task_key("parse_meteorite_email")
+
+
+# Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
+
+# Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).
+
+# Branches: Profile Contact Information Slack id/username fields (AST-1105).
+class TestAst1105ProfileSlackFields:
+    """AST-1105: contact.slack_user_id + contact.slack_username on Profile shapes."""
+
+    def _contact_fields(self) -> list:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Contact Information"
+        )
+        return section["fields"]
+
+    def test_slack_id_and_username_fields(self) -> None:
+        by_key = {f["key"]: f for f in self._contact_fields()}
+        assert by_key["contact.slack_user_id"]["label"] == "Slack user id"
+        assert by_key["contact.slack_user_id"]["type"] == "text"
+        assert by_key["contact.slack_username"]["label"] == "Slack username"
+        assert by_key["contact.slack_username"]["type"] == "text"
+        keys = [f["key"] for f in self._contact_fields()]
+        assert keys.index("contact.slack_user_id") < keys.index("contact.contact_email")
+        assert keys.index("contact.slack_username") == keys.index("contact.slack_user_id") + 1
+        # Resolve owns writes — not Contact skill ACL
+        paths = cfg.CONTACT_CONFIG["skills"]["save_candidate_contact"]["allowed_paths"]
+        assert "contact.slack_user_id" not in paths
+        assert "contact.slack_username" not in paths
+
+class TestAst1101HearAckConfig:
+    """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
+
+    def test_hear_ack_reply_text(self) -> None:
+        text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
+        assert isinstance(text, str) and text.strip()
+
+
+class TestAst1094ActivityConfig:
+    def test_activity_state_filename(self) -> None:
+        assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
+        assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")
+
+
+class TestAst1099JobArtifactAgentDataPinConfig:
+    """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
+
+    def test_pin_by_task_map(self) -> None:
+        assert cfg.JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK == {
+            "finalize_job_resume": "job_resume",
+            "finalize_cover_letter": "cover_letter",
+            "propose_application_responses": "proposed_answers",
+        }
+
+    def test_clear_keys_include_pin_slots(self) -> None:
+        keys = cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "job_resume" in keys
+        assert "proposed_answers" in keys
+        assert "cover_letter" in keys
+        # Legacy body keys remain for cancel of older rows / manual PUTs.
+        assert "resume_content" in keys
+        assert "application_responses" in keys
+
+
+class TestAst1100ArtifactTabPinKeys:
+    """AST-1100: JAR artifact tabs remap to AST-1099 pin slots."""
+
+    def test_artifact_tabs_use_pin_slot_keys(self) -> None:
+        by_id = {t["tab_id"]: t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS}
+        assert by_id["artifact_resume"]["artifact_key"] == "job_resume"
+        assert by_id["artifact_resume"]["use_resume_structure"] is True
+        assert by_id["artifact_cover"]["artifact_key"] == "cover_letter"
+        assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
+        assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
+
+# Branches: ADMIN_CONFIG always-visible under Avail gt0 — mailbox shells (AST-1106).
+@pytest.mark.skipif(
+    not hasattr(cfg, "admin_always_visible_under_avail_gt0_dispatch_task_keys"),
+    reason="AST-1106 admin always-visible helper not on this publish tip",
+)
+class TestAst1106AlwaysVisibleUnderAvailGt0:
+    def test_helper_seeded_from_gaze_email_config(self) -> None:
+        keys = cfg.admin_always_visible_under_avail_gt0_dispatch_task_keys()
+        assert isinstance(keys, frozenset)
+        assert cfg.GAZE_EMAIL_CONFIG["task_key"] in keys
+        raw = cfg.ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
+        assert raw[0] is cfg.GAZE_EMAIL_CONFIG["task_key"] or raw[0] == cfg.GAZE_EMAIL_CONFIG["task_key"]
 

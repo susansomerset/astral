@@ -1,3 +1,102 @@
+<!-- linear-archive: AST-796 archived 2026-07-22 -->
+
+## Linear archive (AST-796)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-796/config-schedulable-key-cutover-fetch-jd-and-retire-keys-3-task-config  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-794 — 3 task_config updates to config.py  
+**Blocked by / blocks / related:** parent: AST-794; blocks: AST-797
+
+### Description
+
+## What this implements
+
+Align `src/utils/config.py` schedulable task-key catalogs with repo `agent_task.json`: rename **scrape_jd** → **fetch_jd** in **GAZER_CONFIG** and all dispatch helper paths; remove **gaze_board** and **validate_title** from schedulable/admin catalogs; add retired-key handling so admin save rejects **scrape_jd**, **validate_title**, and **gaze_board** post-cutover.
+
+## Acceptance criteria
+
+1. Susan can create and run a **fetch_jd** dispatch row at **PASSED_JOBLIST**; admin APIs and Scheduled Actions do not offer **scrape_jd** as a schedulable key.
+2. Admin **GET /api/admin/dispatch_tasks/task_keys** and Scheduled Actions grouping show **fetch_jd** with correct metadata; retired keys are rejected on save.
+
+## Boundaries
+
+* Does not change gazer/consult runtime routing or DB rows — sibling **Hedy** ticket.
+* Does not rename job states or grading orchestration fields on scored tasks.
+* Does not reorganize **TASK_CONFIG** layout.
+
+## Notes for planning
+
+* **GAZER_CONFIG**, **DISPATCH_SCHEDULABLE_TASK_KEYS**, **DISPATCH_RETIRED_TASK_KEYS**, `_dispatch_trigger_state_for_task_key`, `_dispatch_entity_type_for_task_key`, and related helpers in `config.py`.
+* Admin validation for retired keys likely touches `api_admin.py` if save paths bypass config catalogs — keep changes minimal and config-driven per **ASTRAL_CODE_RULES** §2.1.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/ast-794-task-config-key-cutover`, child `sub/AST-794/<child-segment>`.
+
+### Comments
+
+#### radia — 2026-06-25T01:33:49.389Z
+### Radia review — AST-796
+
+**Diff:** `origin/dev...origin/sub/AST-794/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys` @ `b68b592` (doc) · product `37b1af3`
+
+**Plan fidelity:** Stage 1 complete — `GAZER_CONFIG` `fetch_jd` + transitional `scrape_jd` read alias; schedulable/retired frozensets; `dispatch_task_key_retired_message` replacement + static paths; trigger/entity helpers for `fetch_jd` @ `PASSED_JOBLIST`. Scope matches Self-Assessment (`config.py` only; runtime deferred AST-797).
+
+**ASTRAL_CODE_RULES:** §1.3 DRY (extends AST-748 retirement pattern); §1.4 catalogs in config; §2.1 admin remains config-driven via existing `api_admin` filters; §3.3 no new cross-layer imports.
+
+**Tests:** `TestAst796FetchJdSchedulableCutover`, `TestAst796FetchJdRetiredDispatchKeys` + bible manifest rows align with plan.
+
+**Doc:** `docs/features/roster/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys.md` § Radia review
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+— Radia
+
+#### betty — 2026-06-25T01:31:02.932Z
+## QA test manifest (AST-796)
+
+**Publish ref:** `origin/sub/AST-794/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys` @ `17f5bce`
+**Tests commit:** `43f8a20` on `origin/tests`
+
+**Bible shasums (publish tip):**
+- `docs/test-bible/utils/config.md` — `c8efecb4ceb6be915bcd5e42214dccf0bbee2b8c`
+- `docs/test-bible/ui/api/api_admin.md` — `0ee255ca68e2e3264d6e08ed868f9c857b5c90c1`
+
+### Manifest (test-child)
+
+1. **Config schedulable cutover (required):**
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover   -q
+```
+Expect: `fetch_jd` ∈ `DISPATCH_SCHEDULABLE_TASK_KEYS`; `scrape_jd` / `validate_title` / `gaze_board` ∉; `dispatch_task_admin_defaults("fetch_jd")` → job @ `PASSED_JOBLIST`, `batch_call_mode=0`; retired keys raise `KeyError`; `GAZER_CONFIG["scrape_jd"]` alias to `fetch_jd`.
+
+2. **Admin retirement paths (required):**
+```bash
+./scripts/testing/run_component_tests.sh   tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys   -q
+```
+Expect: `GET /api/admin/dispatch_tasks/task_keys` includes `fetch_jd`, excludes retired keys; `POST` with `scrape_jd` / `validate_title` / `gaze_board` → 400 with retired messaging.
+
+**Pass criterion:** items 1–2 green — narrowed run only (not zero-arg harness / branch-lock gate).
+
+**Broken / obsolete:** none — extends AST-747/749 retirement pattern for new retired keys.
+
+**Out of scope (AST-797):** runtime consult/gazer routing, DB row migration, inline validate_title wiring.
+
+#### ada — 2026-06-25T01:26:12.457Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-794/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys/docs/features/roster/ast-796-config-schedulable-key-cutover-fetch-jd-retire-keys.md
+
+**Scope:** Single-Component — `src/utils/config.py` only: register `fetch_jd` @ `PASSED_JOBLIST`, retire `scrape_jd` / `validate_title` / `gaze_board` from schedulable catalogs, rename `GAZER_CONFIG` JD hop with transitional `scrape_jd` read alias until AST-797.
+
+**Conf:** high — mirrors AST-748/749 retired-key pattern and prior schedulable registration tickets; runtime/DB cutover explicitly deferred to AST-797.
+
+**Risk:** Medium — admin can create `fetch_jd` rows before AST-797 runtime routing lands; acceptable within epic merge order, not for isolated dev ship.
+
+---
+
 # AST-796 — Config schedulable-key cutover: fetch_jd and retire keys
 
 - **Linear (this ticket):** [AST-796](https://linear.app/astralcareermatch/issue/AST-796/config-schedulable-key-cutover-fetch-jd-and-retire-keys-3-task-config)

@@ -38,17 +38,38 @@ export function parseGradeDescriptions(
   return out
 }
 
-/** Grade-dot tooltip: job `reason` when present, else rubric criterion text for that letter. */
+/** Byte-identical mirror of `src/utils/config.py` CONFIDENCE_DESCRIPTIONS (UI display only). */
+export const CONFIDENCE_DESCRIPTIONS: Record<number, string> = {
+  5: "The source explicitly states it.",
+  4: "The source strongly suggests it.",
+  3: "The source hints about it.",
+  2: "The source makes a vague reference.",
+  1: "The source doesn't say it out loud, but it's possible.",
+}
+
+/** Map confidence 1–5 → description; empty when missing / out of range. */
+export function confidenceDescription(confidence?: number): string {
+  if (typeof confidence !== "number" || Number.isNaN(confidence)) return ""
+  const n = Math.floor(confidence)
+  if (n < 1 || n > 5) return ""
+  return CONFIDENCE_DESCRIPTIONS[n] ?? ""
+}
+
+/** Grade-dot tooltip: rubric text (reason else criterion) + optional confidence parenthetical. */
 export function formatGradeDotTooltip(
   col: JobListRubricColumn,
   grade: string,
   reasonFromJob?: string,
+  confidence?: number,
 ): string {
   const fromJob = (reasonFromJob ?? "").trim()
-  if (fromJob) return fromJob
   const letter = (grade ?? "").trim().toUpperCase()
-  if (!letter) return ""
-  return col.gradeDescriptions[letter] ?? ""
+  const fromRubric = letter ? (col.gradeDescriptions[letter] ?? "") : ""
+  const base = fromJob || fromRubric
+  const conf = confidenceDescription(confidence)
+  if (conf && base) return `${base} (${conf})`
+  if (conf) return `(${conf})`
+  return base
 }
 
 /** Tooltip for job-list rubric `<th title=…>` — `Label (7)` not full editor header. */
@@ -58,8 +79,20 @@ export function formatRubricColumnTooltip(label: string | undefined, importance?
   return `${lab} (${imp})`
 }
 
+/** Parse grades vector / object key → compact code + clean label (`Technical (TE)` → TE / Technical). */
+export function parseGradesVectorName(raw: string): { code: string; label: string } {
+  const s = (raw ?? "").trim()
+  const m = s.match(/^(.*?)\s*\(([A-Z]{2})\)\s*$/)
+  if (m) return { label: m[1].trim(), code: m[2] }
+  return { label: s, code: s }
+}
+
 export function resolveRubricHeaderCode(item: { code?: string; label?: string }): string {
-  return item.code || item.label?.slice(0, 2).toUpperCase() || "??"
+  if (item.code) return item.code
+  const label = (item.label ?? "").trim()
+  const m = label.match(/^(.*?)\s*\(([A-Z]{2})\)\s*$/)
+  if (m) return m[2]
+  return label.slice(0, 2).toUpperCase() || "??"
 }
 
 export function sortJobListRubricColumns(cols: JobListRubricColumn[]): JobListRubricColumn[] {
@@ -95,12 +128,12 @@ export function buildJobListRubricColumnsFromJobGrades(
     if (Array.isArray(g)) {
       return sortJobListRubricColumns(
         (g as Array<{ vector: string }>).map(i => {
-          const label = i.vector
+          const { code, label } = parseGradesVectorName(i.vector || "")
           return {
-            code: label,
+            code,
             label,
             importance: RUBRIC_DEFAULT_IMPORTANCE,
-            headerCode: label,
+            headerCode: resolveRubricHeaderCode({ code, label }),
             headerTooltip: formatRubricColumnTooltip(label, RUBRIC_DEFAULT_IMPORTANCE),
             gradeDescriptions: {},
           }
@@ -109,20 +142,24 @@ export function buildJobListRubricColumnsFromJobGrades(
     }
     if (typeof g === "object") {
       return sortJobListRubricColumns(
-        Object.keys(g as object).map(k => ({
-          code: k,
-          label: k,
-          importance: RUBRIC_DEFAULT_IMPORTANCE,
-          headerCode: k,
-          headerTooltip: formatRubricColumnTooltip(k, RUBRIC_DEFAULT_IMPORTANCE),
-          gradeDescriptions: {},
-        })),
+        Object.keys(g as object).map(k => {
+          const { code, label } = parseGradesVectorName(k)
+          return {
+            code,
+            label,
+            importance: RUBRIC_DEFAULT_IMPORTANCE,
+            headerCode: resolveRubricHeaderCode({ code, label }),
+            headerTooltip: formatRubricColumnTooltip(label, RUBRIC_DEFAULT_IMPORTANCE),
+            gradeDescriptions: {},
+          }
+        }),
       )
     }
   }
   return []
 }
 
+/** Live-artifact path for non-list consumers. Skipped/In Review use buildJobListRubricColumnsForGroup (AST-1064). */
 export function buildJobListRubricColumns(opts: {
   rubricArtifactKey?: string
   artifacts: Record<string, unknown>
@@ -137,6 +174,136 @@ export function buildJobListRubricColumns(opts: {
     }
   }
   return buildJobListRubricColumnsFromJobGrades(gradeKey, jobs)
+}
+
+/** gradeKey → job-carried rubric key (`joblist_grades` → `joblist_rubric`). */
+export function jobCarriedRubricKey(gradeKey: string): string {
+  if (!gradeKey || !gradeKey.endsWith("_grades")) return ""
+  return gradeKey.replace(/_grades$/, "_rubric")
+}
+
+/** gradeKey → analysis-time score key (`jd_grades` → `jd_score`). */
+export function jobCarriedScoreKey(gradeKey: string): string {
+  if (!gradeKey || !gradeKey.endsWith("_grades")) return ""
+  return gradeKey.replace(/_grades$/, "_score")
+}
+
+/** Aligned-shape fingerprint: sorted label|code tokens (ignores importance / descriptions). */
+export function jobListRubricFingerprint(
+  rubricItems: Array<{ code?: string; label?: string }> | null | undefined,
+): string {
+  if (!Array.isArray(rubricItems) || !rubricItems.length) return ""
+  const tokens: string[] = []
+  for (const item of rubricItems) {
+    const label = normalizeRubricVectorKey(item.label || item.code || "")
+    const code = (item.code || "").trim().toUpperCase()
+    const tok = `${label}|${code}`
+    if (label || code) tokens.push(tok)
+  }
+  if (!tokens.length) return ""
+  return tokens.sort().join("\0")
+}
+
+/** Grades-only fingerprint when `*_rubric` is missing (pre-AST-1063 jobs). */
+export function jobListRubricFingerprintFromGrades(grades: unknown): string {
+  if (Array.isArray(grades)) {
+    const tokens = (grades as Array<{ vector?: string }>)
+      .map(g => normalizeRubricVectorKey(g.vector || ""))
+      .filter(Boolean)
+    if (!tokens.length) return ""
+    return tokens.sort().join("\0")
+  }
+  if (grades && typeof grades === "object") {
+    const tokens = Object.keys(grades as object)
+      .map(k => normalizeRubricVectorKey(k))
+      .filter(Boolean)
+    if (!tokens.length) return ""
+    return tokens.sort().join("\0")
+  }
+  return ""
+}
+
+export type JobListRubricGroup<T extends Record<string, unknown> = Record<string, unknown>> = {
+  fingerprint: string
+  jobs: T[]
+  /** First job in group — column source (stable first-encounter order). */
+  columnSourceJob: T
+}
+
+/** Partition jobs by aligned job-carried rubric fingerprint (AST-1064). */
+export function groupJobsByAlignedRubric<T extends Record<string, unknown>>(
+  jobs: T[],
+  gradeKey: string,
+): JobListRubricGroup<T>[] {
+  const rubricKey = jobCarriedRubricKey(gradeKey)
+  const byFp = new Map<string, JobListRubricGroup<T>>()
+  const order: string[] = []
+
+  for (const job of jobs) {
+    let fingerprint = ""
+    const rubric = rubricKey ? job[rubricKey] : undefined
+    if (Array.isArray(rubric) && rubric.length) {
+      fingerprint = jobListRubricFingerprint(
+        rubric as Array<{ code?: string; label?: string }>,
+      )
+    }
+    if (!fingerprint && gradeKey) {
+      const fromGrades = jobListRubricFingerprintFromGrades(job[gradeKey])
+      if (fromGrades) fingerprint = `grades:${fromGrades}`
+    }
+    if (!fingerprint) fingerprint = "__empty__"
+
+    const existing = byFp.get(fingerprint)
+    if (existing) {
+      existing.jobs.push(job)
+    } else {
+      const group: JobListRubricGroup<T> = {
+        fingerprint,
+        jobs: [job],
+        columnSourceJob: job,
+      }
+      byFp.set(fingerprint, group)
+      order.push(fingerprint)
+    }
+  }
+
+  return order.map(fp => byFp.get(fp)!)
+}
+
+/** Columns from job-carried `*_rubric` (or grades fallback) — never live candidate artifacts. */
+export function buildJobListRubricColumnsForGroup(opts: {
+  gradeKey: string
+  columnSourceJob: Record<string, unknown>
+}): JobListRubricColumn[] {
+  const { gradeKey, columnSourceJob } = opts
+  const rubricKey = jobCarriedRubricKey(gradeKey)
+  const items = rubricKey ? columnSourceJob[rubricKey] : undefined
+  if (Array.isArray(items) && items.length) {
+    return buildJobListRubricColumnsFromArtifact(
+      items as Array<{
+        code?: string
+        label?: string
+        importance?: unknown
+        grade_descriptions?: Array<{ grade?: string; description?: string }>
+      }>,
+    )
+  }
+  return buildJobListRubricColumnsFromJobGrades(gradeKey, [columnSourceJob])
+}
+
+/** Prefer `{prefix}_score` for the section grade field, else `latest_score`. */
+export function analysisTimeScoreForJob(
+  job: Record<string, unknown>,
+  gradeKey: string,
+): number | null {
+  if (!gradeKey) {
+    return typeof job.latest_score === "number" ? job.latest_score : null
+  }
+  const scoreKey = jobCarriedScoreKey(gradeKey)
+  const phase = scoreKey ? job[scoreKey] : undefined
+  if (typeof phase === "number") return phase
+  if (typeof job.latest_score === "number") return job.latest_score
+  return null
 }
 
 /** `{importance} - {label} ({code})` with fallback when code absent (AST-359 Stage 4). */

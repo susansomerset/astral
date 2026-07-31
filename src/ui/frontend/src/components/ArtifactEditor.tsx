@@ -8,7 +8,23 @@ import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
 import { formatRubricVectorHeader, RUBRIC_DEFAULT_IMPORTANCE, rubricItemImportance } from "../lib/rubricDisplay"
 
-interface ShapeField { key: string; label: string }
+interface ShapeField { key: string; label: string; type?: string }
+
+function sectionValueToTabContent(val: unknown): string {
+  if (typeof val === "string") return val
+  if (val == null) return ""
+  return JSON.stringify(val, null, 2)
+}
+
+function tabContentToSectionValue(key: string, content: string, fieldType?: string): unknown {
+  // experience_jobs from DATA_SHAPES, or structureMode tabs that only carry key/label
+  if (fieldType === "experience_jobs" || key === "experience") {
+    const t = content.trim()
+    if (!t) return []
+    return JSON.parse(t)
+  }
+  return content
+}
 
 interface StructureSection { id: string; label: string }
 
@@ -183,7 +199,7 @@ export default function ArtifactEditor({
     setTabs(fixedFields.map(f => ({
       id: f.key,
       label: f.label,
-      content: String(dict[f.key] ?? ""),
+      content: sectionValueToTabContent(dict[f.key]),
     })))
   }
 
@@ -253,8 +269,11 @@ export default function ArtifactEditor({
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
     if (fixedFields || (jobPersistence && !shapesKey && !structureMode)) {
-      const dict: Record<string, string> = {}
-      t.forEach(tab => { dict[tab.id] = tab.content })
+      const dict: Record<string, unknown> = {}
+      t.forEach(tab => {
+        const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+        dict[tab.id] = tabContentToSectionValue(tab.id, tab.content, fieldType)
+      })
       return dict
     }
     return t.map(tab => ({
@@ -267,6 +286,13 @@ export default function ArtifactEditor({
 
   // Save to backend
   const doSave = useCallback(async (t: SideTab[]) => {
+    let payload: ReturnType<typeof buildPayload>
+    try {
+      payload = buildPayload(t)
+    } catch {
+      setToast({ text: "Experience must be valid JSON", variant: "error" })
+      return
+    }
     if (jobPersistence) {
       setSaving(true)
       const key = jobPersistence.artifactKey
@@ -276,7 +302,7 @@ export default function ArtifactEditor({
           {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ [key]: buildPayload(t) }),
+            body: JSON.stringify({ [key]: payload }),
           },
         )
         if (!resp.ok) {
@@ -301,7 +327,7 @@ export default function ArtifactEditor({
       const resp = await api(`/api/candidates/${selectedId}/data`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifacts: { [artifactKey]: buildPayload(t) } }),
+        body: JSON.stringify({ artifacts: { [artifactKey]: payload } }),
       })
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
@@ -477,7 +503,7 @@ export default function ArtifactEditor({
         setTabs(fixedFields.map(f => ({
           id: f.key,
           label: f.label,
-          content: String((parsed as Record<string, unknown>)[f.key] ?? ""),
+          content: sectionValueToTabContent((parsed as Record<string, unknown>)[f.key]),
         })))
       } else {
         // craft_*_rubric returns { criteria: [{code?, label, content}, ...] }

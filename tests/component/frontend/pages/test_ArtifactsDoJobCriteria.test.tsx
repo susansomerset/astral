@@ -16,7 +16,7 @@ describe("ArtifactsDoJobCriteria", () => {
     mockedApi.mockReset()
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "CONTEXT_READY", candidate_data: {} }] } as Response
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
       if (url === "/api/candidates/c1" && !init) {
         return {

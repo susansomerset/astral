@@ -1,3 +1,130 @@
+<!-- linear-archive: AST-790 archived 2026-07-22 -->
+
+## Linear archive (AST-790)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-790/uat-agent-task-grouping-metadata-not-applied-on-revertstartup  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-756 — create repo json files for agent and agent_task.  
+**Blocked by / blocks / related:** parent: AST-756; related: AST-787; related: AST-786
+
+### Description
+
+## What failed
+
+Susan UAT (2026-06-24): `data/admin/agent_task.json` has full grouping metadata (`task_group_name`, `task_group_order`, `task_name`, `task_seq`) for each task — e.g. `anticipate_scan` shows `task_group_name` **Job Artifacts**, `task_group_order` **5000**, `task_name` **Anticipate Scan**, `task_seq` **1**. After **Revert to file** in admin, DB `agent_task` current rows instead show defaults: `task_group_name` **(unassigned)**, `task_group_order` **ZZZ**, `task_name` = raw `task_key`, `task_seq` **999**. Prompts/agent_id may load; grouping metadata does not.
+
+## Expected
+
+Revert-to-file and startup repo-wins upsert write **all** repo JSON columns into `agent_task`, including `task_group_name`, `task_group_order`, `task_name`, `task_seq`. Manage Tasks / Scheduled Actions grouping reflects repo JSON after revert and after fresh server start.
+
+## Repro
+
+1. Deploy branch with populated `data/admin/agent_task.json` (37 rows; `anticipate_scan` has `task_group_name`: Job Artifacts).
+2. Start server; open admin agent-task management.
+3. Trigger **Revert to file** for `agent_task`.
+4. Query or inspect `anticipate_scan` row — observe `(unassigned)` / `ZZZ` / `task_name=anticipate_scan` / `task_seq=999` instead of repo values.
+5. Optional: fresh clone + server start — confirm same metadata gap if present on cold boot.
+
+## Parent AC (quoted inline)
+
+> After a fresh clone and server start, current (`current = 1`) rows in `agent` and `agent_task` match the checked-in `data/admin/` JSON files (field values for every row present in JSON).
+
+## Boundaries
+
+* Does **not** change repo JSON seed content ([AST-786](https://linear.app/astralcareermatch/issue/AST-786/uat-agent-taskjson-missing-populated-task-metadata-37-keys)) or agent personas ([AST-787](https://linear.app/astralcareermatch/issue/AST-787/uat-agentjson-empty-seed-six-agent-personas)).
+* Fix apply/revert paths only — no unrelated admin UI redesign.
+
+### Comments
+
+#### radia — 2026-06-24T22:19:08.256Z
+### Plan fidelity (AST-790) — FIX-UAT
+
+Diff `origin/dev...origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` @ `5eda8b9` (+ doc `7e597ef`).
+
+UAT bug fix verified: `code(AST-790)` @ `cb7ec1f` extends `apply_agent_task_copy_upsert` only — forwards `task_group_order`, `task_group_name`, `task_seq`, `task_name` through `_save_agent_task_on_connection(..., import_explicit=True)`; extends `sel_cur` and skip guard so grouping-only diffs re-import when prompt content unchanged. Fixes startup (AST-782), revert (AST-783), and Copy Output paste on one path. Scope gate PASS (`database.py` only). Betty manifest `TestAst790AgentTaskGroupingImport` covers startup (`anticipate_scan`), grouping-only upsert, and revert-after-mutation.
+
+**fix-now:** none.
+
+**advisory:** `task_seq` skip compare uses float equality — fine for catalog values; note only if high-precision seq values appear later.
+
+Combined review: `docs/features/foundation/ast-790-uat-agent-task-grouping-metadata-not-applied-on-revert-startup.md` (Radia review section).
+
+#### betty — 2026-06-24T22:18:02.243Z
+## QA manifest correction (AST-790)
+
+Prior comment listed pre-merge tip — **authoritative publish:**
+
+**Publish:** `origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` @ `5eda8b9` (`merge-tests(AST-790): origin/tests e33ddda`)
+
+### Manifest (test-child)
+
+1. **Startup grouping import** — `tests/component/data/database/test_agent_tasks.py::TestAst790AgentTaskGroupingImport::test_startup_import_forwards_grouping_metadata`
+
+2. **Grouping-only copy upsert** — `TestAst790AgentTaskGroupingImport::test_copy_upsert_updates_grouping_when_prompts_unchanged`
+
+3. **Revert restores grouping when prompts match** — `TestAst790AgentTaskGroupingImport::test_revert_restores_grouping_when_prompts_match`
+
+4. **Scope gate (required):** `git show cb7ec1f --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-790-uat-agent-task-grouping-metadata-not-applied-on-revert-startup.md` (no `data/admin/**`).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst790AgentTaskGroupingImport \
+  -q
+```
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/data/database/agent_tasks.md` `9eb789d2fbe0c12828fdd628b39020f39be7006d1757d7f16e39e2b4adfb54d3`
+- `docs/test-bible/core/repo_admin_json.md` `bb566e48065dd3a2986464145714c2760287b5b5ebcd702af6d0055eb8c36861`
+
+#### betty — 2026-06-24T22:17:51.845Z
+## QA test manifest (AST-790)
+
+**Publish:** `origin/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup` @ `294a0cf` (`merge-tests(AST-790): origin/tests e33ddda`)
+
+**Scope:** `apply_agent_task_copy_upsert` forwards four grouping columns on startup, Copy Output import, and revert — **`src/data/database.py` only**. No repo JSON seed edits.
+
+### Manifest (test-child)
+
+1. **Startup grouping import** — `tests/component/data/database/test_agent_tasks.py::TestAst790AgentTaskGroupingImport::test_startup_import_forwards_grouping_metadata`
+
+2. **Grouping-only copy upsert** — `TestAst790AgentTaskGroupingImport::test_copy_upsert_updates_grouping_when_prompts_unchanged`
+
+3. **Revert restores grouping when prompts match** — `TestAst790AgentTaskGroupingImport::test_revert_restores_grouping_when_prompts_match`
+
+4. **Scope gate (required):** `git show cb7ec1f --name-only` — expect **only** `src/data/database.py` and `docs/features/foundation/ast-790-uat-agent-task-grouping-metadata-not-applied-on-revert-startup.md` (no `data/admin/**`).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst790AgentTaskGroupingImport \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–3 + scope gate item 4.
+
+**Bible shasum (`origin/sub/...`):**
+- `docs/test-bible/data/database/agent_tasks.md` `5eddc0c9bb0229710f922f87d9a2e61276043039123216a5c6c458e6af32f130`
+- `docs/test-bible/core/repo_admin_json.md` `212909019cc084659dbc2a545ee77ce186a08ac9094558fda9cbcb5552588572`
+
+#### ada — 2026-06-24T22:15:51.696Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-756/AST-790-agent-task-grouping-metadata-not-applied-on-revert-startup/docs/features/foundation/ast-790-uat-agent-task-grouping-metadata-not-applied-on-revert-startup.md
+
+**Self-assessment**
+- **Scope:** minor — `apply_agent_task_copy_upsert` in `database.py` only; forward four grouping columns + extend skip guard.
+- **Conf:** high — root cause reproduced (`anticipate_scan` → seed defaults after startup); fix reuses existing `_save_agent_task_on_connection` import path.
+- **Risk:** Medium — same function serves Admin Copy Output paste; content-versioning logic unchanged, grouping-only skip guard added.
+
+Publish ref @ `77ae551`.
+
+---
+
 # AST-790 — UAT: agent_task grouping metadata not applied on revert/startup
 
 **Linear (this ticket):** [AST-790](https://linear.app/astralcareermatch/issue/AST-790/uat-agent-task-grouping-metadata-not-applied-on-revert-startup)  

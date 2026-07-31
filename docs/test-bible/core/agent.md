@@ -264,7 +264,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 | 2 | Runtime hop write + chain graduation | `src/core/tracker.py` | **`TestAst848DispatchChainTracker`** |
 | 3 | Per-hop DB write + terminal graduation + hard failure | `src/core/agent.py` | **`TestAst848DispatchChainDoTask`** |
 
-**Regression (required):** **AST-597** mid-chain hydration without per-hop compound transitions; **AST-844** hop registry (**`TestAst844BuildArtifactsChainTaskKeys`**). Consult/dispatch claim wiring is sibling **AST-849**.
+**Regression (required):** **AST-597** mid-chain hydration without per-hop compound transitions; **AST-1111** config shadow absence (**`TestAst1111JobArtifactEntryShadowDeleted`**). Consult/dispatch claim wiring is sibling **AST-849**.
 
 **AST-848** narrowed run (agent + config + tracker slice):
 
@@ -293,7 +293,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 
 **Broken / obsolete (Betty revision):** **`TestAst803ChainGraduation`**, **`TestAst803ChainHelpers`**, **`_run_build_artifacts_chain_batch`** / **`do_chain_for_job`** / **`_run_craft_job_cover_letter_batch`** consult tests; **`test_ast596_resume_hop_mismatch_skips_claim`** (pre-claim guard removed — post-claim filter in item 2).
 
-**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`**; **AST-844** **`TestAst844BuildArtifactsChainTaskKeys`**; **AST-534** dispatch-key honesty (non-chain **`grade_do`** row in **`TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`**).
+**Regression (required):** **AST-848** **`TestAst848DispatchChainDoTask`**; **AST-1111** **`TestAst1111JobArtifactEntryShadowDeleted`**; **AST-534** dispatch-key honesty (non-chain **`grade_do`** row in **`TestAst534DispatchTaskKeyHonesty::test_consult_do_routes_via_dispatch_task_key_not_state_map`**).
 
 **AST-849** narrowed run:
 
@@ -308,7 +308,7 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/core/test_dispatcher.py::TestRunUnified::test_ast849_post_claim_filter_skips_row_mismatch \
   tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
   tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey::test_dispatch_chain_hop_label_must_match_task_key \
-  tests/component/utils/test_config.py::TestAst844BuildArtifactsChainTaskKeys \
+  tests/component/utils/test_config.py::TestAst1111JobArtifactEntryShadowDeleted \
   -q
 ```
 
@@ -372,4 +372,194 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
   tests/component/utils/test_config.py::TestAst903CraftRubricMaxTokens \
   tests/component/external/test_deepseek.py::TestAst903JsonMaxTokensHardFail \
   tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
+```
+
+### AST-977 · AST-974
+
+`agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Write trail (`debug=True`) | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome` |
+| Quiet when `debug=False` | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_store_response_debug_false_is_quiet` |
+| Read trail resolve mode | `src/core/agent.py` | `TestAst977AgentDataDedupeDebug::test_block_text_by_type_debug_emits_read_mode` |
+
+### AST-981 · AST-975
+
+**Scope:** Stop core audit writes to the standalone `agent_responses` **table**. `_store_agent_response` / `add_agent_response_entry` removed; `do_task` persists `agent_data` (`save_agent_data`); entity JSON append was sibling scope. Schema drop / docs / column retirement: AST-982 / AST-983 / **AST-984**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retired audit symbols absent | `src/core/agent.py` | `TestAst981StandaloneTableAuditRetired::test_agent_module_has_no_standalone_table_helpers` |
+| Success path: agent_data + entity append only | same | `TestAst981StandaloneTableAuditRetired::test_do_task_success_persists_agent_data_and_entity_append_only` |
+| Failure path still stores agent_data | same | `TestDoTask::test_returns_api_failure_and_stores_agent_data` |
+
+**Obsolete revised:** removed `test_store_agent_response_skips_or_records`; dropped all `add_agent_response_entry` monkeypatches / `stub_agent_storage["audit"]` (setattr raises once the import is gone).
+
+**AST-981** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst981StandaloneTableAuditRetired \
+  tests/component/core/test_agent.py::TestDoTask::test_returns_api_failure_and_stores_agent_data \
+  tests/component/data/database/test_agent_responses.py::TestAst981StandaloneTableIoRetired \
+  tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert \
+  tests/component/scripts/test_migrate_agent_data.py::TestAst981MigrateAgentDataRetired \
+  -q
+```
+
+### AST-984 · AST-975
+
+**Scope:** No `append_agent_response`; RESPONSE rows tagged with `entity_id`; hop/hydrate via `list_entity_latest_agent_refs`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No append symbol; RESPONSE save carries `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired` |
+| Hop skips failure prefix / prefers anchor batch | same | hop tests in `TestAst597*` / `TestAst769*` (list API mocks) |
+
+**AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` (§ AST-984).
+
+---
+
+### AST-1005 · AST-994
+
+**AST-1005 (UAT bug):** `_validate_response_schema` validates `items_schema` list elements via `_validate_schema_object_fields` (plain object field checks) — not recursive envelope validation — so experience job objects get path-prefixed field errors (`experience[i]: …`) instead of misleading envelope/`candidate_name` fallout. Promote path: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| items_schema object-field validation | `src/core/agent.py` | **`TestAst1005ItemsSchemaObjectValidation`**; reuse **`TestResponseSchemaBranches`** |
+
+**Broken / obsolete this pass:** `TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema` fixture updated to include required criteria `code` (items_schema now correctly enforces object fields).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1005ItemsSchemaObjectValidation \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches \
+  -q
+```
+
+---
+
+### AST-1037 · AST-1036
+
+**AST-1037:** Ruth `simple_resume_parse` task — shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` with Judith `craft_resume_base`; `_CRAFT_RESUME_NORMALIZE_TASK_KEYS` frozenset gates `normalize_craft_resume_base_agent_payload` in `do_task` (both sync validation sites). Repo `agent_task` seed + AST-756 fixture sync. Admin session wire = sibling **AST-1038**. Config: **`docs/test-bible/utils/config.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize gate membership | `src/core/agent.py` | **`TestAst1037NormalizeGateMembership`** |
+
+**Broken / obsolete:** AST-786 catalog frozenset — `preamble_validate_response` → `simple_resume_parse` on this tip’s origin/dev base (parallel AST-1015 row not on base).
+
+**Integration:** no existing scenario asserts session-parse task key — no revision; do not invent new integration coverage.
+
+**AST-1037** narrowed run (agent slice):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1037NormalizeGateMembership \
+  -q
+```
+
+
+### AST-1072 · AST-1046
+
+**Parent:** [AST-1046 — Contact Estelle conversational envelope](https://linear.app/astralcareermatch/issue/AST-1046/contact-estelle-conversational-envelope). **Publish:** `origin/sub/AST-1046/AST-1072-conversational-agent-envelope`.
+
+`do_task` CHAT contract for `contact_estelle_turn`: ternary `agent_performance.status` (`success` | `failure` | `concern`); concern requires non-empty `admin_aside` and is **not** `Agent failure`; preserve `agent_performance` + `conversational_outcome` on result; `conversational_turn_from_do_task_result` helper; brain override from `CONTACT_ESTELLE_CONFIG` Medium (Estelle agent row stays Big for upshot); Style D debug index/detail when `debug=True`. Config: **`docs/test-bible/utils/config.md`**. Catalog: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate + helper + do_task preserve / brain / debug | `src/core/agent.py` | **`TestAst1072ConversationalEnvelope`** |
+
+**Broken / obsolete:** none for agent paths — non-CHAT binary failure path unchanged.
+
+**Integration:** no existing scenario asserts conversational envelope — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1072ConversationalEnvelope \
+  -q
+```
+
+### AST-1076 · AST-1058 (UAT)
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1076-uat-qualify-meteorite-good-extract-error`.
+
+`_store_response_block` assigns `result = save_agent_data(...)` so debug `result.get("outcome")` does not NameError (mirrors prompt `_save`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| RESPONSE debug result bind | `src/core/agent.py` | **`TestAst1076StoreResponseDebugResult`** (also covered by **`TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome`**) |
+
+**Broken / obsolete:** none — bugfix for existing debug path.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1076StoreResponseDebugResult \
+  tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome \
+  -q
+```
+
+### AST-1083 · AST-952 (UAT)
+
+**Parent:** [AST-952 — Candidate profile preamble to intake](https://linear.app/astralcareermatch/issue/AST-952). **Publish:** `origin/sub/AST-952/AST-1083-uat-store-response-block-nameerror`.
+
+Same `_store_response_block` / `debug=True` `result` bind as **AST-1076** (intake initiate path on Candidate Intake). Existing suites already assert the Correct outcome — no new cases.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| RESPONSE debug result bind | `src/core/agent.py` | **`TestAst1076StoreResponseDebugResult`** + **`TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1076StoreResponseDebugResult \
+  tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug::test_store_response_debug_emits_write_outcome \
+  -q
+```
+
+### AST-1099 · AST-1091
+
+**Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
+
+After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, `do_task` pins the RESPONSE `agent_data_id` into `job_data.artifacts` **before** `run_next` (mid-chain + terminal). Failed hops do not pin. Terminal body-copy via `persist_job_artifact_from_parsed` removed for finalize hops. Config map: **`docs/test-bible/utils/config.md`**. Tracker helper: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Mid-chain / terminal pin + no body-copy | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
+
+**Broken / obsolete:** any expectation that terminal `do_task` body-copies `finalize_job_resume` / `finalize_cover_letter` into `artifacts.resume_content` / dict `cover_letter` — superseded by pointer pin (AST-1100 remaps readers).
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  -q
+```
+
+### AST-1112 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.
+
+Primary config map: **`docs/test-bible/utils/config.md`** AST-1112. Agent surface: `_resume_artifact_parent_hop_key` deleted; `_parent_hop_task_key_for_child` is sole parent resolver (ambiguous parents → `None`); hydrate/debug no longer consult `resume_artifact_hop_task_keys`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parent via `run_next` | `src/core/agent.py` | **`TestAst597MidChainResumeHydrationAndTransitions::test_parent_hop_task_key_*`** |
+| Hydrate entry chain context | `src/core/agent.py` | revised **`test_hydrate_resume_entry_chain_context_*`** |
+
+**Broken / obsolete (Betty revision):** **`test_resume_artifact_parent_hop_key_*`**.
+
+**AST-1112** agent slice (full narrowed run in config bible):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  -q
 ```

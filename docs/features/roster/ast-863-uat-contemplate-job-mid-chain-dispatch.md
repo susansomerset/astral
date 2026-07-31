@@ -1,3 +1,93 @@
+<!-- linear-archive: AST-863 archived 2026-07-29 -->
+
+## Linear archive (AST-863)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-863/uat-contemplate-job-unhandled-from-build-artifactsanticipate-scan-mid  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-752 — Use agent_data for the "caller" content  
+**Blocked by / blocks / related:** parent: AST-752
+
+### Description
+
+## What failed
+
+Manual Run on dispatch task `contemplate_job` with trigger state `BUILD_ARTIFACTS.anticipate_scan` shows Avail=1, but dispatch processes zero jobs. Console logs:
+`run_consult_task: unhandled task_key=contemplate_job for input_state=BUILD_ARTIFACTS.anticipate_scan` then `Loop mode contemplate_job: 0 processed — stopping`.
+
+## Expected
+
+Mid-chain resume-artifact dispatch from compound holding state `BUILD_ARTIFACTS.anticipate_scan` routes `contemplate_job` through the dispatch-chain consult path, runs `do_task` for the claimed job using stored upstream `agent_data` for caller tokens, and advances or fails with a domain error — not an unhandled consult routing warning with zero processed.
+
+## Repro
+
+1. Have a job in `BUILD_ARTIFACTS.anticipate_scan` with upstream artifact hops already completed (Susan: candidate `somerset`, Avail=1 on contemplate_job dispatch row for that trigger state).
+2. Admin → Scheduled Actions → Run on that dispatch task (POST `/api/admin/dispatch_tasks/11172/run`).
+3. Observe `run_consult_task: unhandled task_key=contemplate_job for input_state=BUILD_ARTIFACTS.anticipate_scan` and 0 processed.
+
+## Parent AC (quoted inline)
+
+> 3. Given an entity whose upstream hop(s) already completed successfully in a prior dispatch, starting dispatch at the next downstream hop completes without re-running upstream LLM calls — caller tokens come from stored `agent_data`.
+> 4. Given a chain that failed on hop *N* after hop *N−1* stored successfully, retrying from hop *N* (or re-dispatching at hop *N*) succeeds using stored caller content from hop *N−1* — no manual chain reconstruction.
+> 5. AST-597 resume-artifact mid-chain entry behavior is preserved through the refactored general hydration path (no parallel resume-only branch left behind).
+
+## Boundaries
+
+* Does not change Manage Tasks prompt text or `run_next` wiring on agent_task rows.
+* Does not change flat `BUILD_ARTIFACTS` entry dispatch (Generate Artifacts from RECOMMENDED) unless required for parity.
+* Does not re-open AST-828 batch-claim validation scope unless claim succeeds but consult still no-ops.
+
+## Git branch (authoritative)
+
+Parent **ftr/AST-752-agent-data-caller-content**; child **sub/AST-752/<bug-id>-<slug>**. Seed from **origin/ftr/AST-752-agent-data-caller-content**.
+
+### Comments
+
+#### betty — 2026-07-11T00:22:58.164Z
+## QA test manifest (AST-863)
+
+**Publish:** `origin/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch` @ `5b5973e`
+**Tests commit:** `origin/tests` @ `7e85bf0`
+
+1. `tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger` — `is_dispatch_chain_trigger` / `dispatch_chain_registry_trigger` / mid-chain claim states
+2. `tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch` — hop-label `input_state` routes `_run_dispatch_chain_job_batch`
+3. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger` — ctx `dispatch_trigger_state=BUILD_ARTIFACTS`
+
+**Regression:** `TestAst849DispatchChainClaimStates`, `TestAst534DispatchTaskKeyHonesty::test_mid_chain_hop_label_routes_dispatch_chain_batch`
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/utils/config.md` → `e5873d94602717dc242826cb22cd25de059d4537`
+- `docs/test-bible/core/consult.md` → `dba731c1d3fda81effa5c01822083d9bb28ce01a`
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst863MidChainHopLabelChainTrigger \
+  tests/component/utils/test_config.py::TestAst849DispatchChainClaimStates \
+  tests/component/core/test_consult.py::TestAst534DispatchTaskKeyHonesty::test_contemplate_job_hop_label_trigger_routes_chain_batch \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_hop_label_input_sets_registry_trigger \
+  -q
+```
+
+— Betty
+
+#### hedy — 2026-07-11T00:19:24.411Z
+**Plan doc:** [`docs/features/roster/ast-863-uat-contemplate-job-mid-chain-dispatch.md`](https://github.com/susansomerset/astral/blob/sub/AST-752/AST-863-contemplate-job-mid-chain-dispatch/docs/features/roster/ast-863-uat-contemplate-job-mid-chain-dispatch.md)
+
+**Root cause:** `is_dispatch_chain_trigger` only accepts bare `BUILD_ARTIFACTS`; mid-chain dispatch rows with `trigger_state=BUILD_ARTIFACTS.anticipate_scan` claim successfully but `run_consult_task` hits the unhandled branch before `_run_dispatch_chain_job_batch`.
+
+**Fix (2 stages):** Add `dispatch_chain_registry_trigger`; extend chain-trigger predicate; normalize `dispatch_trigger_state` ctx to registry key; narrow mid-chain claim states to the row label only.
+
+**Self-Assessment**
+- **Scope:** Single-Component — config normalization + consult/dispatcher routing gates.
+- **Conf:** high — reproduced locally (`is_dispatch_chain_trigger False` while row match True).
+- **Risk:** low — entry-row `BUILD_ARTIFACTS` behavior preserved via registry branch in claim helper.
+
+---
+
 # AST-863 — UAT: contemplate_job dispatch no-ops on BUILD_ARTIFACTS.anticipate_scan mid-chain trigger
 
 - **Linear:** [AST-863 — UAT: contemplate_job dispatch no-ops on BUILD_ARTIFACTS.anticipate_scan mid-chain trigger](https://linear.app/astralcareermatch/issue/AST-863/uat-contemplate-job-dispatch-no-ops-on-build-artifactsanticipate-scan-mid)

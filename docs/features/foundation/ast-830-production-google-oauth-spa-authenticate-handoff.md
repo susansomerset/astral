@@ -1,3 +1,124 @@
+<!-- linear-archive: AST-830 archived 2026-07-22 -->
+
+## Linear archive (AST-830)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-830/production-google-oauth-spa-authenticate-handoff-using-google-to-login  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-829 — Using Google to login on production doesn't work  
+**Blocked by / blocks / related:** parent: AST-829
+
+### Description
+
+## What this implements
+
+Fix the production Google OAuth user experience on [**https://astral.up.railway.app**](<https://astral.up.railway.app>): after Google redirects back, the React SPA must complete the `/authenticate` handoff and establish a Stytch client session — not show Stytch's **Login Error** page. Susan's Stytch live-project activity log shows **SessionsGet** succeeding while the browser still displays "There was an error logging you in." This ticket closes the frontend gap between OAuth completion and an authenticated app shell.
+
+## Acceptance criteria
+
+1. On [**https://astral.up.railway.app**](<https://astral.up.railway.app>), clicking **Google** on the Login page completes OAuth and lands the user in the authenticated app — not the Stytch **Login Error** page, not Login, and not a Stytch URL validation error page.
+2. Email magic-link login on production still completes successfully (same live Stytch project).
+3. Non-admin Stytch users signing in via Google on production still receive `is_admin: false` and cannot access admin routes (**403** / UI gating per **AST-612**).
+4. Railway production env vars and Stytch Dashboard live-project settings are documented (in the dev agent plan or ops notes) so a future host change does not silently break OAuth again.
+
+## Boundaries
+
+* Does **not** replace Stytch or redesign the auth stack (**AST-609** / **AST-612** / **AST-613**).
+* Does **not** change Flask backend token validation — sibling **Ada** ticket owns backend alignment.
+* Does **not** add new OAuth providers beyond Google already on Login.
+* Does **not** change session duration, idle timeout, or log-off screen behavior.
+
+## Notes for planning
+
+* Primary touchpoints: `Login.tsx`, `Authenticate.tsx`, `stytchRedirect.ts`, `stytchClient.ts`, `AuthContext.tsx` per **AST-612** / **AST-613**.
+* Production redirect URL: `https://astral.up.railway.app/authenticate` — must match Stytch Dashboard live project and `VITE_STYTCH_REDIRECT_URL` at Vite build time.
+* Live project id: **project-live-d0218f6b-c64a-4fa1-84fe-21997a66593a**.
+* Plan Stage 3: Susan must confirm Stytch Dashboard live project has Google OAuth enabled, redirect URLs (Login + Sign-up), and Authorized environments for production origin.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-829-production-google-oauth-stytch-live`, child `sub/AST-829/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-27T19:40:16.800Z
+### Radia review — `origin/dev...origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` @ `0a9df2c`
+
+Plan doc: `docs/features/foundation/ast-830-production-google-oauth-spa-authenticate-handoff.md` (Radia review section)
+
+**fix-now:** None.
+
+**discuss:**
+- Branch diff vs `origin/dev` includes **AST-832** test/bible rows (`test_consult.py`, `docs/test-bible/core/consult.md`) outside AST-830 layer contract — no `consult.py` product in diff; likely ftr rollup on publish ref. Confirm merge-child narrative or split before parent close.
+- Plan Stage 3 Susan ops checklist (Stytch Dashboard live project + Railway) still pending — production Google OAuth sign-off needs Susan confirmation; if SPA handoff succeeds but `/api/me` 401 / `session_not_found`, defer to **AST-831** per plan.
+
+**advisory:**
+- `SESSION_DURATION_MINUTES = 60` in helper matches Login `loginExpirationMinutes` / `signupExpirationMinutes`; not a shared constant — plan waived config block; low drift risk.
+- StrictMode dev remount can reset `useRef` single-flight guard; production does not double-invoke effects — acceptable for production OAuth target.
+
+**What's solid (§3.3 / §1.3 / §D2):** Frontend-only; `completeAuthenticateFromUrl` + hardened `Authenticate.tsx` (init gate, single-flight, in-app error + Try again, query strip on failure); `parseAuthenticateUrl` on client root per v19 types; Betty manifest covers helper outcomes and page states.
+
+#### betty — 2026-06-27T19:35:20.725Z
+## QA test manifest (AST-830)
+
+**Publish ref:** `origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` @ `8930265` (`merge-tests(AST-830): origin/tests 9d78794`)
+
+**Bible shasums on publish ref:**
+- `docs/test-bible/frontend/lib.md` → `32c062c70a5ed450d773994a749cf8bf205db5e6`
+- `docs/test-bible/frontend/components.md` → `f28e38e55aa3e596842ca289911abbfbf238661b`
+
+### Manifest (test-child)
+
+1. **Typecheck (required):**
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+```
+
+2. **Handoff helper unit tests (required):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts
+```
+
+3. **Authenticate routed page (required — §6c):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx
+```
+
+4. **Regression spot-check (required):** green on **`test_stytchRedirect.test.ts`** + **`test_Login.test.tsx`** — redirect URL wiring unchanged.
+
+**Pass criterion:** items 1–4 green on publish ref after merge-on-checkout from parent ftr.
+
+**Out of scope:** Flask JWT / `session_not_found` → **AST-831**; Susan Stage 3 Dashboard checklist is manual UAT, not pytest.
+
+#### katherine — 2026-06-27T19:32:27.456Z
+`origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` @ `9c8928f`
+
+**Susan — Stage 3 ops checklist (pending your confirmation):**
+1. Stytch **live** project `project-live-d0218f6b-c64a-4fa1-84fe-21997a66593a` — Redirect URLs (Login + Sign-up): `https://astral.up.railway.app/authenticate`
+2. Authorized environment: `https://astral.up.railway.app`
+3. OAuth → Google enabled
+4. Railway production build: `VITE_STYTCH_PUBLIC_TOKEN=public-token-live-…`, `VITE_STYTCH_REDIRECT_URL=https://astral.up.railway.app/authenticate` (no trailing slash)
+5. Re-test Google + magic link on production after deploy
+
+If `/api/me` still 401 after client session lands, that's **AST-831** — not patched here.
+
+#### katherine — 2026-06-27T19:27:20.854Z
+Plan: [docs/features/foundation/ast-830-production-google-oauth-spa-authenticate-handoff.md](https://github.com/susansomerset/astral/blob/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff/docs/features/foundation/ast-830-production-google-oauth-spa-authenticate-handoff.md) @ `origin/sub/AST-829/AST-830-production-google-oauth-spa-authenticate-handoff` @ `839f65a`
+
+**Approach:** Harden `/authenticate` — `completeAuthenticateFromUrl()` helper with `parseAuthenticateUrl` pre-check, awaited `authenticateByUrl`, single-flight guard (StrictMode / double-call → Stytch Login Error), and in-app error UI instead of hosted Stytch failure page. Stage 3 documents production live-project Dashboard + Railway checklist for `https://astral.up.railway.app`. Flask JWT / `session_not_found` stays **AST-831**.
+
+**Self-assessment**
+- **Scope:** Single-Component — frontend handoff helper + `Authenticate.tsx` + `env.example` ops block only.
+- **Conf:** Medium — SDK contract is clear and double-invoke matches Susan's symptom; full production repro needs live env.
+- **Risk:** Medium — auth callback is critical path, but changes are isolated to one route with guarded single-flight.
+
+---
+
 # AST-830 — Production Google OAuth SPA authenticate handoff
 
 - **Linear (this ticket):** [AST-830](https://linear.app/astralcareermatch/issue/AST-830/production-google-oauth-spa-authenticate-handoff-using-google-to-login-on)

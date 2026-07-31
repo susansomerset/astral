@@ -63,6 +63,18 @@ class TestSystemAuthRoutes:
         assert payload.get("list_table_frozen_data_columns") == 2
         assert payload.get("list_table_cell_truncate_chars") == 30
 
+    def test_ui_config_includes_preamble_config(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1016: Intro + steps for AST-1017; route alias matches existing ui_config tests.
+        from src.utils.config import PREAMBLE_CONFIG
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        preamble = payload.get("preamble")
+        assert isinstance(preamble, dict)
+        assert preamble["intro"] == PREAMBLE_CONFIG["intro"]
+        assert preamble["validation_task_key"] == PREAMBLE_CONFIG["validation_task_key"]
+        assert len(preamble["steps"]) == len(PREAMBLE_CONFIG["steps"])
+        assert [s["id"] for s in preamble["steps"]] == [s["id"] for s in PREAMBLE_CONFIG["steps"]]
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200
@@ -74,7 +86,7 @@ class TestSystemAuthRoutes:
         assert resp.status_code == 200
 
     def test_nav_config_uses_candidate_state(self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "LIVE_PROMPTS"})
+        monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {"/companies/watch_list": 4})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {"/jobs/in_review": 1})
         resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
@@ -172,8 +184,11 @@ class TestDeployStatus:
 
 class TestSystemNavHelpers:
     def test_is_at_or_past_compares_candidate_states(self) -> None:
-        assert system_mod._is_at_or_past("LIVE_PROMPTS", "CONTEXT_READY") is True
-        assert system_mod._is_at_or_past("NEW", "LIVE_PROMPTS") is False
+        assert system_mod._is_at_or_past("ACTIVE_SEARCH", "RESUME_READY") is True
+        assert system_mod._is_at_or_past("NEW_CANDIDATE", "ACTIVE_SEARCH") is False
+        # Terminals never unlock gated nav
+        assert system_mod._is_at_or_past("INACTIVE", "RESUME_READY") is False
+        assert system_mod._is_at_or_past("DELETED", "NEW_CANDIDATE") is False
 
     def test_company_counts_without_candidate(self) -> None:
         assert system_mod._get_company_counts(None) == {}
@@ -200,7 +215,7 @@ class TestSystemNavHelpers:
     def test_resolve_nav_honors_visible_and_enabled_gates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
-        nav = system_mod._resolve_nav("CONTEXT_READY", "cand-1")
+        nav = system_mod._resolve_nav("RESUME_READY", "cand-1")
         labels = {group["label"] for group in nav}
         assert "Jobs" not in labels
         artifacts = next(group for group in nav if group["label"] == "Artifacts")
@@ -209,10 +224,14 @@ class TestSystemNavHelpers:
         assert candidate["items"][0]["enabled"] is True
 
     def test_resolve_nav_uses_string_enabled_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(system_mod, "NAV_CONFIG", [{"label": "G", "items": [{"label": "X", "path": "/x", "enabled": "LIVE_PROMPTS"}]}])
+        monkeypatch.setattr(
+            system_mod,
+            "NAV_CONFIG",
+            [{"label": "G", "items": [{"label": "X", "path": "/x", "enabled": "ACTIVE_SEARCH"}]}],
+        )
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
-        nav = system_mod._resolve_nav("NEW", "cand-1")
+        nav = system_mod._resolve_nav("NEW_CANDIDATE", "cand-1")
         assert nav[0]["items"][0]["enabled"] is False
-        nav_live = system_mod._resolve_nav("LIVE_PROMPTS", "cand-1")
+        nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
         assert nav_live[0]["items"][0]["enabled"] is True

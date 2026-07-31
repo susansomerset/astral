@@ -72,30 +72,30 @@ class TestCompiledTitlePatterns:
         assert gazer_mod._compiled_title_patterns({"candidate_data": "bad"}) == []
 
     def test_returns_empty_for_non_dict_profile(self) -> None:
-        assert gazer_mod._compiled_title_patterns({"candidate_data": {"profile": "bad"}}) == []
+        assert gazer_mod._compiled_title_patterns({"candidate_data": {"contact": "bad"}}) == []
 
     def test_skips_invalid_regex_lines(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": "[unclosed"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "[unclosed"}}}
         assert gazer_mod._compiled_title_patterns(ctx) == []
 
     def test_reads_title_patterns_alias(self) -> None:
-        ctx = {"candidate_data": {"profile": {"TITLE_PATTERNS": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"TITLE_PATTERNS": "engineer"}}}
         assert len(gazer_mod._compiled_title_patterns(ctx)) == 1
 
     def test_coerces_falsy_pattern_source(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": 0}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": 0}}}
         assert gazer_mod._compiled_title_patterns(ctx) == []
 
     def test_coerces_truthy_non_string_pattern_source(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": ("engineer",)}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": ("engineer",)}}}
         assert len(gazer_mod._compiled_title_patterns(ctx)) == 1
 
     def test_skips_blank_pattern_lines(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": "\nengineer\n"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "\nengineer\n"}}}
         assert len(gazer_mod._compiled_title_patterns(ctx)) == 1
 
     def test_compiles_valid_patterns(self) -> None:
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer\n"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer\n"}}}
         patterns = gazer_mod._compiled_title_patterns(ctx)
         assert len(patterns) == 1
         assert patterns[0].search("senior engineer role")
@@ -108,7 +108,7 @@ class TestValidateTitleBatch:
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
         jobs = [{"astral_job_id": "job-1", "job_data": {"raw_job_listing": "anything"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, {"candidate_data": {}}, debug=True)
-        assert out == {"passed": 1, "failed": 0, "total": 1, "errors": 0}
+        assert out == {"passed": 1, "failed": 0, "total": 1}
         transition.assert_called_once_with(["job-1"], "VALID_TITLE")
 
     @pytest.mark.asyncio
@@ -123,7 +123,7 @@ class TestValidateTitleBatch:
     async def test_rejects_non_matching_listing(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         jobs = [{"astral_job_id": "job-2", "job_data": {"raw_job_listing": "janitor"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, ctx, debug=True)
         assert out["failed"] == 1
@@ -133,7 +133,7 @@ class TestValidateTitleBatch:
     async def test_rejects_without_debug_logging(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         jobs = [{"astral_job_id": "job-8", "job_data": {"raw_job_listing": "janitor"}}]
         out = await gazer_mod.validate_title_batch("batch-1", jobs, ctx, debug=False)
         assert out["failed"] == 1
@@ -1004,7 +1004,7 @@ class TestValidateTitleBatchDebugPaths:
     async def test_pass_fail_and_summary_with_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
         transition = MagicMock()
         monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         jobs = [
             {"astral_job_id": "job-ok", "job_data": {"raw_job_listing": "senior engineer"}},
             {"astral_job_id": "job-bad", "job_data": {"raw_job_listing": "janitor"}},
@@ -1066,7 +1066,7 @@ class TestProcessGazerBatchDebugPaths:
         monkeypatch.setattr(gazer_mod, "record_to_company_job_scan", MagicMock())
         monkeypatch.setattr(gazer_mod, "update_company_last_scan_at", MagicMock())
 
-        ctx = {"candidate_data": {"profile": {"title_patterns": "engineer"}}}
+        ctx = {"candidate_data": {"contact": {"title_patterns": "engineer"}}}
         outcomes = await gazer_mod.process_gazer_batch(
             "batch-1",
             [{"short_name": "goodco", "job_site": "https://example.com/good"}],
@@ -1205,3 +1205,115 @@ class TestFetchJdBatchDebugBranchCoverage:
         assert out["failed"] == 1
 
 
+
+
+# Branches: body vs links; Playwright mock; dedupe skips; Style D on/off (AST-1061).
+class TestAst1061MeteoriteEmailIngest:
+    def test_body_mode_creates_without_job_link(self, sqlite_in_memory, monkeypatch) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1061-body"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        html = "<div class='email-body'><p>" + ("Body JD text enough chars. " * 4) + "</p></div>"
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "body"
+        assert len(out["created"]) == 1
+        assert out["skipped"] == []
+        row = db.get_job(out["created"][0]["astral_job_id"])
+        assert row is not None
+        assert row["job_link"] is None
+        assert row["company_job_id"] is None
+
+    def test_body_mode_skips_known_company_job_id(self, sqlite_in_memory) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1061-dup"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        db.save_company("acme", state="IMPORTED")
+        db.save_job("j-known", company="acme", state="NEW", company_job_id="KNOWN-EXT-77")
+        html = "<p>" + ("x" * 20) + " KNOWN-EXT-77 " + ("y" * 20) + "</p>"
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "body"
+        assert out["created"] == []
+        assert out["skipped"][0]["reason"] == "known_company_job_id"
+        assert out["skipped"][0]["matched_company_job_id"] == "KNOWN-EXT-77"
+
+    def test_links_mode_playwright_create_and_dedupe(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        import asyncio
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1061-links"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        good = "https://jobs.example.com/role/good"
+        known = "https://jobs.example.com/role/known"
+        db.save_company("acme", state="IMPORTED")
+        db.save_job("j-link", company="acme", state="NEW", job_link=known)
+
+        async def fake_fetch(url, *, debug=False):
+            if url == known:
+                return ("visible text " * 10, url)
+            return ("Visible JD from playwright fetch with enough length!!", url)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        html = (
+            f'<a href="{good}">Apply</a>'
+            f'<a href="{known}">Known</a>'
+            '<a href="mailto:x@y">mail</a>'
+            '<a href="https://list-manage.com/unsub">bad</a>'
+        )
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "links"
+        assert len(out["created"]) == 1
+        assert out["created"][0]["astral_job_id"]
+        reasons = {s["reason"] for s in out["skipped"]}
+        assert "known_job_link" in reasons
+        row = db.get_job(out["created"][0]["astral_job_id"])
+        assert row["job_link"] == good
+
+    def test_links_jd_too_short_skipped(self, sqlite_in_memory, monkeypatch) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1061-short"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        url = "https://jobs.example.com/role/short"
+
+        async def fake_fetch(u, *, debug=False):
+            return ("tiny", u)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(
+            cid, f'<a href="{url}">x</a>', debug=False
+        )
+        assert out["mode"] == "links"
+        assert out["created"] == []
+        assert out["skipped"][0]["reason"] == "jd_too_short"
+
+    def test_debug_true_emits_style_d_body(self, sqlite_in_memory, monkeypatch) -> None:
+        from src.core import gazer as gazer_mod
+        from unittest.mock import MagicMock
+
+        db = sqlite_in_memory
+        cid = "cand-1061-dbg"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "G"})
+        log = MagicMock()
+        monkeypatch.setattr(gazer_mod, "get_logger", lambda _n: log)
+        html = "<p>" + ("Debug body JD characters enough. " * 3) + "</p>"
+        gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=True)
+        log.set_debug_flag.assert_called_with(True)
+        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
+        assert "found" in outcomes and "recorded" in outcomes
+
+    def test_validation_errors(self) -> None:
+        from src.core import gazer as gazer_mod
+        import pytest
+
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            gazer_mod.ingest_meteorite_jobs_from_email_html_sync("", "<p>x</p>")
+        with pytest.raises(ValueError, match="html is required"):
+            gazer_mod.ingest_meteorite_jobs_from_email_html_sync("cand", "  ")

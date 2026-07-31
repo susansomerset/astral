@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-841 archived 2026-07-22 -->
+
+## Linear archive (AST-841)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-841/inflow-discovery-failed-status-vs-batch-log-alignment-filter-execution  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-838 — Filter Execution History Log by Level  
+**Blocked by / blocks / related:** parent: AST-838
+
+### Description
+
+## What this implements
+
+Investigate Susan's attached inflow_discovery repro (~2026-07-02 22:47–22:50 UTC): ledger row **FAILED** but the **complete** exported batch log contains no findable ERROR/WARNING failure signal. Determine root cause and fix so inflow_discovery runs either succeed or fail with ledger status and log severities that align — Susan can locate the cause via Execution History (including Level filter when sibling ships).
+
+## Acceptance criteria
+
+5. Failure child: root cause documented; fix verified on staging — for inflow_discovery failures, ledger status and log severities agree, and Susan can find the failure line via Level filter when the run does not succeed.
+
+## Boundaries
+
+* Focus: inflow_discovery dispatch path, ledger finalization, and app_log emission for true failures.
+* Does not build the Level filter UI (sibling Katherine ticket).
+* Does not globally reduce debug INFO volume (AST-538).
+* Does not absorb AST-835 CSE pacing unless investigation ties repro directly to that change.
+* Does not absorb unrelated job-table UNIQUE crashes unless repro proves that path.
+
+## Notes for planning
+
+* Repro artifact is the complete log in parent **Original brief** — no separate batch_id.
+* Check dispatcher `final_status` vs `total_errors`, WARNING-only paths in `roster.run_inflow_discovery_batch`, and whether exceptions fail to reach ERROR-level app_log.
+* Parent: AST-838.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-838-filter-execution-history-log-by-level`, child `sub/AST-838/<child-id>-inflow-discovery-failed-log-alignment`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-02T23:33:21.654Z
+### Code review — AST-841
+
+**Diff:** `origin/dev...origin/sub/AST-838/AST-841-inflow-discovery-failed-log-alignment` @ `f950ac0` (product + tests); review doc @ `60ddb97`.
+
+**Plan fidelity**
+- Stage 1: `failure_reason` on TimeoutError / CancelledError / Exception; terminal `logger.error` (FAILED/INTERRUPTED) and `logger.warning` (COMPLETED + `total_errors > 0`) in `_dispatch_one` finally after successful ledger write, before `flush_log_buffer`; module `src.core.dispatcher` logger (not `_sched_log`).
+- Stage 2: non-debug roster WARNING batch summary when `errors > 0`; per-term `CSE failed` warnings unchanged.
+- Stage 0 investigation section present; staging DB not queried (see discuss).
+
+**ASTRAL_CODE_RULES**
+- §1.5 / §5f: production ERROR/WARNING triage — not debug-contract lines; correctly ungated for **AST-840** Level filter.
+- §2.4: batch claim/process/release untouched.
+- §3.3: no new cross-layer imports.
+
+**Tests / bible**
+- `TestAst841DispatchTerminalLogging`: INTERRUPTED → ERROR terminal line; COMPLETED + errors → WARNING.
+- `test_run_batch_cse_failure_continues`: per-term `CSE failed` + batch `CSE term error(s)` WARNING assertions.
+- Bible rows in `docs/test-bible/core/dispatcher.md` and `roster.md`.
+
+**fix-now:** none.
+
+**discuss:** Plan Stage 0 step 7 says stop and `@susan` if staging DB unavailable before Stage 1. Build used repro + code-trace **working hypothesis** only — repro batch ledger `status` unconfirmed. Repro ~148s elapsed vs 3600s default timeout makes timeout-as-root-cause unlikely; abrupt termination without `finally` still possible. Recommend querying repro batch (or a fresh failed run) during parent UAT before signing off; new lines won't explain the original export retroactively.
+
+**advisory:** Terminal lines emit only when `update_dispatch_ledger` succeeds (per plan). Self-Assessment `Single-Component` vs two core modules — plan table already lists both.
+
+**Verdict:** No product fix-now items. Doc: `docs/features/foundation/ast-841-inflow-discovery-failed-log-alignment.md` § Review (Radia).
+
+#### betty — 2026-07-02T23:28:23.955Z
+## QA test manifest (AST-841)
+
+**Publish:** `origin/sub/AST-838/AST-841-inflow-discovery-failed-log-alignment` @ `f950ac0` (`merge-tests(AST-841): origin/tests 6ad7c18`)
+
+**Bible shasums:**
+- `docs/test-bible/core/dispatcher.md` -> `863faef142487e065d815dd42c4dc7761df0c0a8`
+- `docs/test-bible/core/roster.md` -> `dcb87740447295ce7a071657830db05dc2868cb9`
+
+### Manifest (test-child)
+
+1. `tests/component/core/test_dispatcher.py::TestAst841DispatchTerminalLogging`
+   - `test_interrupted_dispatch_emits_terminal_error_log` — ERROR `batch finished INTERRUPTED` on `src.core.dispatcher`
+   - `test_completed_with_errors_emits_terminal_warning_log` — WARNING `batch finished COMPLETED with errors` when `total_errors > 0`
+
+2. `tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues` — `total_errors == 1` + caplog WARNING: per-term `CSE failed for term` and batch `CSE term error(s)`
+
+3. Regression: full `test_dispatcher.py`; `TestAst505InflowDiscovery` describe
+
+**Narrowed run:**
+
+```
+.venv/bin/python -m pytest tests/component/core/test_dispatcher.py::TestAst841DispatchTerminalLogging tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_cse_failure_continues -q
+```
+
+Pass criterion: narrowed manifest green + full dispatcher/roster regression on publish ref.
+
+— Betty
+
+#### hedy — 2026-07-02T23:22:02.036Z
+Plan: [ast-841-inflow-discovery-failed-log-alignment.md](https://github.com/susansomerset/astral/blob/sub/AST-838/AST-841-inflow-discovery-failed-log-alignment/docs/features/foundation/ast-841-inflow-discovery-failed-log-alignment.md) @ `bc0b412`
+
+**Scope:** `Single-Component` — `dispatcher._dispatch_one` terminal WARNING/ERROR logging plus `run_inflow_discovery_batch` non-debug WARNING summary when CSE term errors occur; no UI or API changes.
+
+**Conf:** `Medium` — repro log (INFO-only, stops at term 10/20, ~148s elapsed) points to missing terminal severities; Stage 0 DB confirmation on batch `inflow_discovery-3ea198da-6353-46fe-8b65-fff9a6057e12` before code, but staged fixes are low-risk additive logs.
+
+**Risk:** `Medium` — `_dispatch_one` finally logging applies to all dispatch tasks; additive only, no ledger status or state-machine changes.
+
+---
+
 # AST-841 — inflow_discovery FAILED status vs batch log alignment
 
 **Linear:** [AST-841 — inflow_discovery FAILED status vs batch log alignment](https://linear.app/astralcareermatch/issue/AST-841/inflow-discovery-failed-status-vs-batch-log-alignment-filter-execution)  

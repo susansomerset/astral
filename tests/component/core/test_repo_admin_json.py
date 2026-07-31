@@ -223,6 +223,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "anticipate_scan",
         "check_cover_letter",
         "check_job_resume",
+        "contact_estelle_turn",
         "contemplate_job",
         "craft_company_search_terms",
         "craft_do_rubric",
@@ -242,6 +243,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "finalize_cover_letter",
         "finalize_job_resume",
         "gaze",
+        "gaze_email",
         "grade_do",
         "grade_get",
         "grade_like",
@@ -249,19 +251,32 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_build_request",
         "intake_candidate_response",
         "intake_initiate_candidate",
+        "meteorite_like",
+        "meteorite_upshot",
         "parse_job_list",
+        "parse_meteorite_email",
+        "preamble_validate_response",
         "prefilter_company",
         "propose_application_responses",
         "qualify_job_listings",
+        "qualify_meteorite",
         "recheck_no_openings",
         "select_job_page",
+        "simple_resume_parse",
+        "topic_menu_generate",
+        "topic_menu_preamble_confirm",
         "vet_inflow_discovery",
     },
 )
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (38 rows after AST-878)."""
+    """AST-786 UAT: populated agent_task repo JSON from UAT fixture (48 rows after AST-1106 tip).
+
+    Catalog membership tracks the active tip's `data/admin/agent_task.json`.
+    Includes `contact_estelle_turn`, `preamble_validate_response`, AST-1075 topic_menu rows,
+    AST-1089 `parse_meteorite_email`, and AST-1106 `gaze_email`.
+    """
 
     def test_repo_json_matches_uat_fixture_byte_for_byte(self) -> None:
         repo = Path("data/admin/agent_task.json")
@@ -269,9 +284,9 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert repo.is_file() and fixture.is_file()
         assert repo.read_bytes() == fixture.read_bytes()
 
-    def test_repo_json_has_38_current_catalog_keys(self) -> None:
+    def test_repo_json_has_48_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 38
+        assert len(rows) == 48
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -287,7 +302,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_38_current_rows(
+    def test_startup_apply_loads_all_48_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -305,7 +320,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 38
+            assert count == 48
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -319,6 +334,59 @@ class TestAst786AgentTaskRepoJsonSeed:
         assert row["run_next"] == ""
 
 
+
+class TestAst1055MeteoriteCatalogRows:
+    """AST-1055: meteorite_like / meteorite_upshot prompt twins in repo agent_task JSON."""
+
+    def test_meteorite_like_cache_prompt_and_seq(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["meteorite_like"]
+        assert row["agent_id"] == "job_analyst_grace"
+        assert row["task_seq"] == 10
+        assert row["task_group_name"] == "Job Review"
+        cache = row["cache_prompt"]
+        assert "no employer website, culture pages, or vibe pages" in cache
+        assert "more liberally" in cache
+        assert "Meteorite — liberal X" in cache
+
+    def test_meteorite_upshot_user_prompt_context(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["meteorite_upshot"]
+        assert row["agent_id"] == "principal_recruiter_estelle"
+        assert row["task_seq"] == 11
+        prompt = row["user_prompt"]
+        assert "### Meteorite context" in prompt
+        assert "meteorite-sourced" in prompt
+        assert "culture visibility" in prompt
+        assert by["analysis_upshot"]["task_seq"] == 9
+        assert by["grade_like"]["task_seq"] == 8
+
+
+class TestAst1060QualifyMeteoriteCatalogRow:
+    """AST-1060: qualify_meteorite Ruth shell in repo agent_task JSON."""
+
+    def test_qualify_meteorite_ruth_shell_and_schema_fields(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["qualify_meteorite"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == row["task_key"] == "qualify_meteorite"
+        assert row["task_seq"] == 2.5
+        cache = row["cache_prompt"]
+        assert "METEORITE" in cache
+        assert "company_job_id" in cache
+        assert "job_title" in cache
+        assert "job_link" in cache
+        assert "jd_text" in cache
+        assert "astral_job_id" in cache
+        user = row["user_prompt"]
+        assert "meteorite" in user.lower()
+        assert "company_job_id" in user
+
+
 class TestAst878FetchCulturePagesCatalogRow:
     """AST-878: fetch_culture_pages Job Review hop in repo agent_task JSON."""
 
@@ -330,12 +398,59 @@ class TestAst878FetchCulturePagesCatalogRow:
         assert row["task_seq"] == 7
         assert row["task_group_name"] == "Job Review"
         assert row["agent_id"] == "n/a"
-        assert row["task_name"] == "Fetch Culture Pages"
+        assert row["task_name"] == row["task_key"] == "fetch_culture_pages"
         assert by["grade_get"]["task_seq"] == 6
         assert by["grade_like"]["task_seq"] == 8
         assert by["analysis_upshot"]["task_seq"] == 9
 
 
+class TestAst1015PreambleValidateCatalogRow:
+    """AST-1015: Ruth preamble_validate_response row in repo agent_task JSON."""
+
+    def test_ruth_preamble_validate_response_row(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["preamble_validate_response"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_name"] == row["task_key"] == "preamble_validate_response"
+        assert row["task_group_name"] == "Candidate Preamble"
+        assert "PREAMBLE ANSWER VALIDATION" in row["cache_prompt"]
+        assert "Valid | Try Again | Escalate" in row["cache_prompt"]
+        assert "agent_payload.outcome" in row["user_prompt"]
+
+
+class TestAst1037SimpleResumeParseCatalogRow:
+    """AST-1037: Ruth simple_resume_parse row + Judith craft_resume_base unchanged."""
+
+    def test_ruth_simple_resume_parse_row(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["simple_resume_parse"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_name"] == row["task_key"] == "simple_resume_parse"
+        assert row["task_group_name"] == "Candidate Artifacts"
+        assert row["task_group_order"] == "2000"
+        assert row["task_seq"] == 6
+        assert row["task_key_uuid"] == "046ffb1c-9708-49af-9380-56d85136066b"
+        cache = row["cache_prompt"]
+        # Paste-faithful mechanical rules (session Open HTML contract).
+        assert "__" in cache and "~~" in cache
+        assert "candidate_tagline" in cache
+        assert "**Never** use `|`" in cache
+        assert "<no bullet>" in cache
+        assert "PARSE task" in cache
+        assert row["nocache_prompt"].strip().startswith("RESUME PASTE TEXT:")
+        assert "{$STARTING_RESUME_TEXT}" in row["nocache_prompt"]
+        assert "Map the pasted resume text" in row["user_prompt"]
+
+    def test_judith_craft_resume_base_row_unchanged(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        craft = by["craft_resume_base"]
+        assert craft["agent_id"] == "content_writer_judith"
+        assert craft["task_seq"] == 5
+        assert craft["task_name"] == craft["task_key"] == "craft_resume_base"
+        assert craft["task_group_name"] == "Candidate Artifacts"
 
 
 AST787_EXPECTED_AGENT_IDS = frozenset(
@@ -500,4 +615,117 @@ class TestAst793AgentTaskRevertDivergence:
         repo_json_mod.revert_repo_admin_json_table("agent_task")
         repo_json_mod.revert_repo_admin_json_table("agent_task")
         assert repo_json_mod.get_repo_admin_json_divergence_status()["agent_task"]["diverged"] is False
+
+
+
+
+class TestAst1072ContactEstelleTurnCatalogRow:
+    """AST-1072: contact_estelle_turn Estelle CHAT seed in repo agent_task JSON."""
+
+    def test_contact_estelle_turn_envelope_prompts(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["contact_estelle_turn"]
+        assert row["agent_id"] == "principal_recruiter_estelle"
+        assert row["task_group_name"] == "Contact Estelle"
+        assert row["task_name"] == row["task_key"] == "contact_estelle_turn"
+        assert row["task_seq"] == 1
+        assert row["run_next"] == ""
+        system = row["system_prompt"]
+        assert "success" in system and "failure" in system and "concern" in system
+        assert "admin_aside" in system
+        assert "reply" in system
+        assert "skill_calls" in system
+        user = row["user_prompt"]
+        assert "{$SELECTED_AGENT}" in user
+        assert "live_content" in user.lower() or "Slack" in user or "JSON" in user
+
+
+
+class TestAst1075TopicMenuCatalogRows:
+    """AST-1075: Estelle topic_menu_preamble_confirm + topic_menu_generate catalog rows."""
+
+    def test_estelle_topic_menu_rows(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        confirm = by["topic_menu_preamble_confirm"]
+        assert confirm["agent_id"] == "principal_recruiter_estelle"
+        assert confirm["task_name"] == confirm["task_key"] == "topic_menu_preamble_confirm"
+        assert confirm["task_group_name"] == "Topic Menu"
+        assert confirm["task_seq"] == 1
+        assert "Anything here you would change?" in confirm["cache_prompt"]
+        assert "library_patches" in confirm["cache_prompt"]
+        assert "continue" in confirm["cache_prompt"] and "accepted" in confirm["cache_prompt"]
+        gen = by["topic_menu_generate"]
+        assert gen["agent_id"] == "principal_recruiter_estelle"
+        assert gen["task_name"] == gen["task_key"] == "topic_menu_generate"
+        assert gen["task_group_name"] == "Topic Menu"
+        assert gen["task_seq"] == 2
+        cache = gen["cache_prompt"]
+        assert "informs_coverage_confirmed" in cache
+        for informs in (
+            "rubrics",
+            "base_resume",
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+        ):
+            assert informs in cache
+
+
+class TestAst1089ParseMeteoriteEmailCatalogRow:
+    """AST-1089: Ruth parse_meteorite_email shell in repo agent_task JSON."""
+
+    def test_parse_meteorite_email_ruth_shell_and_modes(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        row = by["parse_meteorite_email"]
+        assert row["agent_id"] == "college_intern_ruth"
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == row["task_key"] == "parse_meteorite_email"
+        assert row["task_seq"] == 2.4
+        cache = row["cache_prompt"]
+        assert "html_links" in cache
+        assert "subject_body" in cache
+        assert "PARSE_MODE" in cache
+        # Mechanical extract — not qualify / invent URLs.
+        assert "not qualify" in cache.lower()
+        assert "invent" in cache.lower()
+        user = row["user_prompt"]
+        assert "PARSE_MODE" in user or "parse" in user.lower()
+        assert by["qualify_meteorite"]["task_seq"] == 2.5
+
+
+class TestAst1106GazeEmailCatalogRow:
+    """AST-1106: gaze_email Job Review mailbox shell in repo agent_task JSON."""
+
+    def test_gaze_email_job_review_empty_prompt_shell(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        assert "gaze_email" in by
+        row = by["gaze_email"]
+        assert row["task_group_name"] == "Job Review"
+        assert row["task_name"] == row["task_key"] == "gaze_email"
+        assert row["task_seq"] == 2.3
+        assert row["agent_id"] == "n/a"
+        assert row["user_prompt"] == ""
+        assert by["parse_meteorite_email"]["task_seq"] == 2.4
+        assert by["qualify_meteorite"]["task_seq"] == 2.5
+
+
+class TestAst1107TaskNameEqualsTaskKey:
+    """AST-1107: temporary UAT clarity — every current agent_task.task_name == task_key."""
+
+    def test_every_current_row_task_name_equals_task_key(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        current = [r for r in rows if r.get("current") == 1]
+        assert current
+        bad = [(r.get("task_key"), r.get("task_name")) for r in current if r.get("task_name") != r.get("task_key")]
+        assert not bad, bad
+
+    def test_fixture_byte_locked_after_rename(self) -> None:
+        repo = Path("data/admin/agent_task.json")
+        fixture = Path("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert repo.read_bytes() == fixture.read_bytes()
 

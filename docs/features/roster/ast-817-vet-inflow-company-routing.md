@@ -1,3 +1,110 @@
+<!-- linear-archive: AST-817 archived 2026-07-22 -->
+
+## Linear archive (AST-817)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-817/vet-inflow-discovery-company-dispatch-routing-get-vet-inflow-discovery  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-815 — get vet_inflow_discovery to work  
+**Blocked by / blocks / related:** parent: AST-815
+
+### Description
+
+## What this implements
+
+Fix **vet_inflow_discovery** dispatch execution so it uses the company vet path (read stored **inflow_discovery_blurb**, run Admin **vet_inflow_discovery** task, transition **WEBSITE_FOUND** or **VET_FAILED**) instead of incorrectly invoking the candidate **inflow_discovery** CSE batch. Restores scheduler and manual **Run** parity when **available ≥ 1**.
+
+## Acceptance criteria
+
+1. With candidate **somerset** (or equivalent UAT candidate), **vet_inflow_discovery** **batch_size = 1** / **run_count = 1**, and **available ≥ 1**, a manual **Run** or scheduler tick claims **one** **NEW** company and completes vet processing — logs show company vet activity, **not** `run_inflow_discovery_batch: no stale search terms`.
+2. A company row with a non-empty **inflow_discovery_blurb** that passes the mechanical vet ends in **WEBSITE_FOUND** with **company_website** populated; a reject ends in **VET_FAILED**.
+3. **inflow_discovery** manual **Run** still uses stale search terms and records **NEW** hits (AST-775 regression guard — no inline vet in discovery batch).
+4. **inflow_resolve_website** still processes only **NEW** rows **without** a discovery blurb (eligibility split from AST-776 unchanged).
+5. With **debug=True** on a vet dispatch run, Susan can read per-company index headers and outcomes in logs without opening the database.
+
+## Boundaries
+
+* Does **not** change **inflow_discovery** candidate CSE behavior (AST-813/814).
+* Does **not** change **inflow_resolve_website** eligibility or execution.
+* Does **not** change discovery hit recording (AST-775) or mechanical prompt text (AST-776).
+* Does **not** alter **fetch_website** / downstream roster chain beyond correct vet outcomes.
+
+## Notes for planning
+
+* **AST-776** landed **vet_inflow_discovery_company** and **run_company_task** NEW routing by **dispatch_task_key** on roster; repro indicates **consult.run_consult_task** still early-returns **vet_inflow_discovery** into **run_inflow_discovery_batch** — inspect and remove that mis-route.
+* Primary files: **src/core/consult.py**; verify **src/core/roster.py** company path unchanged.
+* Betty owns tests — document component scenarios in plan review stub.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-815-vet-inflow-discovery-routing**, child **sub/AST-815/AST-817-vet-inflow-company-routing**. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-26T02:55:28.533Z
+### Plan fidelity
+
+Product commit `f4281fd`: surgical deletion of stale `vet_inflow_discovery` early-return in `run_consult_task` company branch (`src/core/consult.py` ~2009). Zero `vet_inflow_discovery` references remain in consult; company vet falls through to `run_company_task` → `vet_inflow_discovery_company` (AST-776). Candidate `inflow_discovery` path (`run_inflow_discovery_batch`) unchanged.
+
+### Rubric (ASTRAL_CODE_RULES)
+
+- **§1.3 DRY** — routing-only; no duplicate vet logic in consult.
+- **§2.6** — state transitions stay in roster `vet_inflow_discovery_company`.
+- **§3.3** — lazy `get_candidate` import removed with deleted block; no new layer violations.
+
+### Issues
+
+None (**fix-now** / **discuss**).
+
+### Advisory
+
+Full `origin/dev...origin/sub/AST-815/AST-817-vet-inflow-company-routing` diff includes AST-815 sibling rollup while parent is unlanded — expected; this ticket's product footprint is `consult.py` only.
+
+Doc: [ast-817-vet-inflow-company-routing.md](https://github.com/susansomerset/astral/blob/135fd7eb90bf97bac0c90bbf7adff78fd2a47e83/docs/features/roster/ast-817-vet-inflow-company-routing.md) @ `135fd7e`.
+
+**Verdict:** Clean — `resolve-child` may proceed.
+
+#### betty — 2026-06-26T02:51:25.977Z
+## QA test manifest (AST-817)
+
+**Scope:** Surgical removal of stale `vet_inflow_discovery` mis-route in `consult.run_consult_task` company branch. **Manifest-only** — existing **AST-776** / **AST-775** coverage; no new tests this pass.
+
+1. `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` — consult company vet delegates to `run_company_task` with `dispatch_task_key=vet_inflow_discovery` (not `run_inflow_discovery_batch`)
+2. `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` — `vet_inflow_discovery_company` pass/fail + `run_company_task` NEW routing (**AST-776** regression)
+3. `tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors` — discovery batch unchanged; no inline vet (**AST-775** regression)
+4. `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task` — config company entity (**AST-776** regression)
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_no_stale_terms_returns_zero_errors \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Publish:** `origin/sub/AST-815/AST-817-vet-inflow-company-routing` @ `c48bbbe` (`merge-tests(AST-817): origin/tests 73142e7`)
+
+**Bible shasum:** `docs/test-bible/core/consult.md` → `767cbc70a1dbe37386f1b8253d9767d4d43c5acc0cd281d8ef9d83a5fa2b8ded`
+
+— Betty
+
+#### hedy — 2026-06-26T02:45:57.685Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-815/AST-817-vet-inflow-company-routing/docs/features/roster/ast-817-vet-inflow-company-routing.md`
+
+**Self-assessment**
+- **Scope:** minor — delete one stale `vet_inflow_discovery` branch in `consult.run_consult_task` so company vet reaches `run_company_task` / `vet_inflow_discovery_company` (AST-776).
+- **Conf:** high — repro and root cause are explicit; AST-776 already built the company vet path; `test_consult_routes_company_vet_via_run_company_task` specifies expected routing.
+- **Risk:** Medium — `run_consult_task` is dispatch-critical, but change is surgical removal only; candidate `inflow_discovery` and other company keys untouched.
+
+---
+
 # AST-817 — vet_inflow_discovery company dispatch routing
 
 - **Linear:** [AST-817](https://linear.app/astralcareermatch/issue/AST-817/vet-inflow-discovery-company-dispatch-routing-get-vet-inflow-discovery-to-work)

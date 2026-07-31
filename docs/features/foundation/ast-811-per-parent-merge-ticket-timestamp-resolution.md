@@ -1,3 +1,106 @@
+<!-- linear-archive: AST-811 archived 2026-07-22 -->
+
+## Linear archive (AST-811)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-811/per-parent-merge-ticket-timestamp-resolution-timestamps-for-issues  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-810 — timestamps for issues merged do not differentiate across branch merges  
+**Blocked by / blocks / related:** parent: AST-810
+
+### Description
+
+## What this implements
+
+Fix merge-ticket log rebuild so each parent epic in `data/merge_ticket_log.json` gets a `recorded_at` timestamp that reflects when that parent's own `ftr/*` branch merged onto `origin/dev` — not a shared timestamp from an unrelated dev commit or a bulk rebuild triggered by another parent. The rebuild CLI and prep-uat wiring must assign distinct per-parent timestamps when land times differ.
+
+## Acceptance criteria
+
+1. On a deploy built from `origin/dev` where `data/merge_ticket_log.json` lists at least two parent epics whose ftr branches merged onto dev at different times, hovering the admin env label shows **different** formatted timestamps for those parents (not all identical).
+2. For a given parent epic AST-NNN in the log, `recorded_at` corresponds to the commit timestamp of the merge that brought that parent's `ftr/*` onto `origin/dev` — verifiable by inspecting dev git history for that parent — rather than the timestamp of an unrelated commit that merely touched the log file or refreshed the list for another parent.
+3. Susan can identify the most recently landed parent in the tooltip by timestamp alone when multiple parents are listed.
+4. After a prep-uat rebuild on dev, parents that previously shared an incorrect identical timestamp receive corrected distinct values where their actual land times differ.
+5. Existing deploy-status payload shape and AST-691 tooltip behavior (empty list, non-admin, missing env) remain unchanged.
+
+## Boundaries
+
+* Does not change tooltip interaction, styling, line cap, or poll interval (AST-691 / AST-798).
+* Does not change eligibility rules for which parent ids appear in the log (AST-791 / AST-800 / AST-805).
+* Does not add ticket titles, child ids, or SHA display to the tooltip.
+* Does not add runtime Linear filtering on deploy-status poll.
+* Sibling scope: parent epic only — no unrelated foundation work.
+
+## Notes for planning
+
+* Primary touch: `scripts/rebuild_merge_ticket_log.py` timestamp resolution (`_resolve_recorded_at` and fallbacks per AST-800).
+* Existing tests: `tests/component/scripts/test_rebuild_merge_ticket_log.py`, `test_record_landed_parent.py`.
+* AST-800 established grep chain: `prep-uat(PARENT):` → `merge-parent(PARENT):` → `finish-up(PARENT):` → ftr merge fallback. Bug symptom: multiple parents share identical `recorded_at` when grep misses and fallback resolves to the same dev tip commit.
+* Utils read path (`merge_ticket_log`, `deploy_status`) should remain unchanged unless a thin helper improves testability.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-810-timestamps-for-issues-merged-do-not-differentiate-across-branch-merges`, child `sub/AST-810/<child-segment>`, standalone `ftr/<segment>`. Created at **dispatch-parent**. Engineers cherry-pick to `origin/<ftr-ref>` or `origin/<sub-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-06-26T00:51:52.516Z
+### Radia review — AST-811
+
+**Diff:** `origin/dev...origin/sub/AST-810/AST-811-per-parent-merge-ticket-timestamp-resolution` @ `0e58a27`
+**Doc:** `docs/features/foundation/ast-811-per-parent-merge-ticket-timestamp-resolution.md` (Radia review section)
+
+**What's solid**
+- `_resolve_recorded_at`: ritual grep chain preserved; ftr land greps (`merge origin/{ftr}`, remote-tracking variant) inserted before walk; dev-HEAD `git log dev ftr -1` fallback removed.
+- `_first_ftr_land_on_dev`: merge-base..dev walk with merge-first stop when ftr tip is not on first parent; non-merge fallback to first inclusion commit.
+- Plan fidelity: single-script scope; `_collect_entries` / CLI / utils read path unchanged.
+- §1.3 / §3.3: DRY helpers; no layer violations.
+- Smoke on `origin/dev`: AST-716 / AST-752 / AST-753 → three distinct ISO timestamps.
+- Betty manifest: 8/8 pytest green (`TestRebuildMergeTicketLogTimestampResolution` + AST-805 regression).
+
+**Counts:** 0 fix-now · 0 discuss · 0 advisory
+
+**Outcome:** Clean — proceed with `resolve-child`.
+
+#### betty — 2026-06-26T00:49:28.861Z
+## QA test manifest — AST-811
+
+**Publish:** `origin/sub/AST-810/AST-811-per-parent-merge-ticket-timestamp-resolution` @ `bf9e88d` (`merge-tests(AST-811): origin/tests 79120c6`)
+
+**Bible shasum:** `docs/test-bible/dev/record_landed_parent.md` → `61d98aa2f69d77a8a929eea74db75fffdeaaaa6a`
+
+### Manifest (test-child)
+
+1. **`TestRebuildMergeTicketLogTimestampResolution::test_resolve_recorded_at_prefers_prep_uat_grep`** — prep-uat grep wins; `_first_ftr_land_on_dev` not invoked.
+2. **`::test_resolve_recorded_at_ftr_land_grep_before_walk`** — empty ritual greps; ftr `merge origin/{ftr}` grep returns ISO timestamp.
+3. **`::test_collect_entries_distinct_recorded_at_when_walk_fallback`** — all greps empty; walk fallback yields distinct `recorded_at` per parent.
+4. **`::test_main_rebuild_summary_no_dev_head_timestamp_collapse`** — rebuild summary: two parents, unequal timestamps (no dev-HEAD collapse).
+
+**Regression:** AST-805 landing-parent union tests in same module remain green.
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/scripts/test_rebuild_merge_ticket_log.py \
+  -q
+```
+
+**Pass criterion:** pytest green on items 1–4 + AST-805 regression — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### hedy — 2026-06-26T00:45:01.458Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-810/AST-811-per-parent-merge-ticket-timestamp-resolution/docs/features/foundation/ast-811-per-parent-merge-ticket-timestamp-resolution.md`
+
+**Scope:** Single-Component — `scripts/rebuild_merge_ticket_log.py` timestamp resolution only; utils/core/tooltip read paths unchanged.
+
+**Conf:** high — broken fallback confirmed (`git log dev ftr -1` → identical dev HEAD for all merged ftrs); ftr land greps + merge-base walk validated on live `origin/dev`.
+
+**Risk:** Medium — git walk edge cases could still mis-order; grep chain preserved for ritual commits; Betty manifest covers mocked resolution in Stage 2.
+
+---
+
 # Per-parent merge ticket timestamp resolution
 
 **Linear:** [AST-811 — Per-parent merge ticket timestamp resolution](https://linear.app/astralcareermatch/issue/AST-811/per-parent-merge-ticket-timestamp-resolution-timestamps-for-issues-merged-do-not-differentiate-across-branch-merges)

@@ -16,7 +16,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 1,
-    "task_name": "Anticipate Scan"
+    "task_name": "anticipate_scan"
   },
   {
     "task_key_uuid": "120fe030-1f98-476b-a363-b0e24ae615b0",
@@ -35,7 +35,7 @@
     "task_group_order": "1000",
     "task_group_name": "Candidate Intake",
     "task_seq": 3,
-    "task_name": "Request Artifact Build"
+    "task_name": "intake_build_request"
   },
   {
     "task_key_uuid": "15ed451b-8e21-4e10-82ed-533b737448bd",
@@ -54,7 +54,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 1,
-    "task_name": "Gaze For Jobs"
+    "task_name": "gaze"
   },
   {
     "task_key_uuid": "19ff1048-8146-433e-87a2-8d645bec4515",
@@ -73,7 +73,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 10,
-    "task_name": "Propose Application Responses"
+    "task_name": "propose_application_responses"
   },
   {
     "task_key_uuid": "20b3eba4-97d5-47a1-8eb9-e0263da8b612",
@@ -92,7 +92,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 5,
-    "task_name": "Check Job Resume"
+    "task_name": "check_job_resume"
   },
   {
     "task_key_uuid": "29dbed0b-e6f6-4feb-a59d-72821871006c",
@@ -111,7 +111,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 13,
-    "task_name": "Craft Do Rubric"
+    "task_name": "craft_do_rubric"
   },
   {
     "task_key_uuid": "38b24896-cb8f-46bd-93b8-45dc9ed938c9",
@@ -130,7 +130,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 8,
-    "task_name": "Parse Job List"
+    "task_name": "parse_job_list"
   },
   {
     "task_key_uuid": "3baf4afa-74e3-49ae-87c2-f2aff78a6e29",
@@ -149,7 +149,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 12,
-    "task_name": "Craft Get Rubric"
+    "task_name": "craft_get_rubric"
   },
   {
     "task_key_uuid": "415015f9-9e5b-46e1-ae3d-e8868b3f4a1b",
@@ -168,7 +168,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 3,
-    "task_name": "Craft Prefilter Rubric"
+    "task_name": "craft_prefilter_rubric"
   },
   {
     "task_key_uuid": "416605b1-8d73-472d-8410-85f18bcf2040",
@@ -187,7 +187,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 2,
-    "task_name": "Vet Inflow Discovery"
+    "task_name": "vet_inflow_discovery"
   },
   {
     "task_key_uuid": "45d0920f-6b0a-4e4c-be15-07732e8ff5e9",
@@ -206,7 +206,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 3,
-    "task_name": "Fetch Job Description"
+    "task_name": "fetch_jd"
   },
   {
     "task_key_uuid": "52aa0d8f-bad7-471f-ae0f-965a1dfffbae",
@@ -225,7 +225,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 4,
-    "task_name": "Draft Job Resume"
+    "task_name": "draft_job_resume"
   },
   {
     "task_key_uuid": "5f69640f-e2c0-4c9b-b948-a1ba2923e65a",
@@ -244,7 +244,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 7,
-    "task_name": "Select Job Page"
+    "task_name": "select_job_page"
   },
   {
     "task_key_uuid": "65d22f2c-0251-4c4d-9473-b1ca41602822",
@@ -263,7 +263,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 4,
-    "task_name": "Fetch Website"
+    "task_name": "fetch_website"
   },
   {
     "task_key_uuid": "66ab6b7c-31ac-4413-80ac-4f7e48a1f36c",
@@ -282,7 +282,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 11,
-    "task_name": "Craft Jobdesc Rubric"
+    "task_name": "craft_jobdesc_rubric"
   },
   {
     "task_key_uuid": "69a1ec8f-a980-4189-ae08-8faec53f786a",
@@ -301,7 +301,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 8,
-    "task_name": "Grade Job: Like"
+    "task_name": "grade_like"
   },
   {
     "task_key_uuid": "6e5c7fa2-787f-47c7-95ea-2cece7a52fc9",
@@ -320,7 +320,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 9,
-    "task_name": "Analysis Upshot"
+    "task_name": "analysis_upshot"
   },
   {
     "task_key_uuid": "6e71fc8f-2cba-452e-bdd0-c8e2906eb6d7",
@@ -339,7 +339,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 9,
-    "task_name": "Recheck No Openings"
+    "task_name": "recheck_no_openings"
   },
   {
     "task_key_uuid": "77ac0379-1b69-4137-817e-7a2281f68b71",
@@ -358,7 +358,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 3,
-    "task_name": "Advise Job Resume"
+    "task_name": "advise_job_resume"
   },
   {
     "task_key_uuid": "78cdfa52-d898-4403-8c06-2d0a4b3c4fc8",
@@ -377,7 +377,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 5,
-    "task_name": "Prefilter Company"
+    "task_name": "prefilter_company"
   },
   {
     "task_key_uuid": "79f96ce9-408a-4a8b-8a46-bb651ff192b6",
@@ -396,7 +396,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 6,
-    "task_name": "Grade Job: Get"
+    "task_name": "grade_get"
   },
   {
     "task_key_uuid": "a8c3e1f2-4b5d-4e6a-9c0d-1f2a3b4c5d6e",
@@ -415,7 +415,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 7,
-    "task_name": "Fetch Culture Pages"
+    "task_name": "fetch_culture_pages"
   },
   {
     "task_key_uuid": "812df76b-5d41-485c-81e6-d18cbba8173f",
@@ -434,7 +434,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 7,
-    "task_name": "Draft Cover Letter"
+    "task_name": "draft_cover_letter"
   },
   {
     "task_key_uuid": "81565cba-6773-4339-b8a2-1b6b7daaba93",
@@ -453,7 +453,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 2,
-    "task_name": "Craft Company Search Terms"
+    "task_name": "craft_company_search_terms"
   },
   {
     "task_key_uuid": "81f58059-d15a-4996-906f-ab2347240fad",
@@ -472,7 +472,7 @@
     "task_group_order": "1000",
     "task_group_name": "Candidate Intake",
     "task_seq": 2,
-    "task_name": "Candidate Response"
+    "task_name": "intake_candidate_response"
   },
   {
     "task_key_uuid": "88495334-5071-4e8b-8d9f-7be43e98b04e",
@@ -491,7 +491,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 1,
-    "task_name": "Inflow Discovery"
+    "task_name": "inflow_discovery"
   },
   {
     "task_key_uuid": "8916bc65-2fb2-4c52-b7ab-84c3429fb7dc",
@@ -510,7 +510,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 10,
-    "task_name": "Craft Joblist Rubric"
+    "task_name": "craft_joblist_rubric"
   },
   {
     "task_key_uuid": "8bbae02e-19a0-4816-8a90-2d5af1a9b753",
@@ -529,7 +529,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 6,
-    "task_name": "Finalize Job Resume"
+    "task_name": "finalize_job_resume"
   },
   {
     "task_key_uuid": "9accef2a-0076-4e5f-b81b-0c58b8a45193",
@@ -548,7 +548,7 @@
     "task_group_order": "3000",
     "task_group_name": "Company Roster",
     "task_seq": 6,
-    "task_name": "Fetch Job Pages"
+    "task_name": "fetch_job_pages"
   },
   {
     "task_key_uuid": "bb6e0afa-0a6a-4b31-8dca-9b585d4c76ce",
@@ -567,7 +567,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 2,
-    "task_name": "Contemplate Job"
+    "task_name": "contemplate_job"
   },
   {
     "task_key_uuid": "c3a0ea1e-9c5d-448b-8431-97d356975257",
@@ -586,7 +586,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 14,
-    "task_name": "Craft Like Rubric"
+    "task_name": "craft_like_rubric"
   },
   {
     "task_key_uuid": "c69f12ff-2dea-4889-83e3-7b5c485dd006",
@@ -605,7 +605,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 5,
-    "task_name": "Grade Job: Do"
+    "task_name": "grade_do"
   },
   {
     "task_key_uuid": "d2a27b21-ce50-436b-bf95-4337b23f81b2",
@@ -624,7 +624,7 @@
     "task_group_order": "2000",
     "task_group_name": "Candidate Artifacts",
     "task_seq": 5,
-    "task_name": "Craft Resume Base"
+    "task_name": "craft_resume_base"
   },
   {
     "task_key_uuid": "da070eb9-52d0-4d69-9073-2acb9ec8ca1a",
@@ -643,7 +643,7 @@
     "task_group_order": "1000",
     "task_group_name": "Candidate Intake",
     "task_seq": 1,
-    "task_name": "Initiate Candidate"
+    "task_name": "intake_initiate_candidate"
   },
   {
     "task_key_uuid": "e6063761-953c-44d9-8cfa-118936601b0d",
@@ -662,7 +662,7 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 8,
-    "task_name": "Check Cover Letter"
+    "task_name": "check_cover_letter"
   },
   {
     "task_key_uuid": "ec3ab1ae-926e-476f-9f56-6cec43a00057",
@@ -681,7 +681,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 2,
-    "task_name": "Grade Job: Listing"
+    "task_name": "qualify_job_listings"
   },
   {
     "task_key_uuid": "ee6cadf7-7623-4dc7-ab93-29619e3cfc3b",
@@ -700,7 +700,7 @@
     "task_group_order": "4000",
     "task_group_name": "Job Review",
     "task_seq": 4,
-    "task_name": "Grade Job: Description"
+    "task_name": "evaluate_jd"
   },
   {
     "task_key_uuid": "f5ec8478-0aeb-4e6d-b78b-c9afd5f84bfd",
@@ -719,6 +719,196 @@
     "task_group_order": "5000",
     "task_group_name": "Job Artifacts",
     "task_seq": 9,
-    "task_name": "Finalize Cover Letter"
+    "task_name": "finalize_cover_letter"
+  },
+  {
+    "task_key_uuid": "8080f2cd-a895-4554-8b7d-1e1e0d56fdfa",
+    "task_key": "preamble_validate_response",
+    "current": 1,
+    "agent_id": "college_intern_ruth",
+    "user_prompt": "Validate the QUESTION/ANSWER pair in the CONTENT block using your PREAMBLE ANSWER VALIDATION instructions. Respond with the envelope and agent_payload.outcome only.",
+    "cache_prompt": "## PREAMBLE ANSWER VALIDATION\n\nYou judge whether a candidate ANSWER is a valid response to a QUESTION.\nThe QUESTION and ANSWER are in the live CONTENT / TASK block as:\n\nQUESTION:\n<question text>\n\nANSWER:\n<answer text>\n\n## OUTCOMES (pick exactly one)\n\n- Valid \u2014 the answer is recognizably the kind of content the question asked for (even if imperfect, informal, or short).\n- Try Again \u2014 empty, whitespace-only, off-topic, nonsense, or clearly not what the question asked; the candidate should re-enter.\n- Escalate \u2014 cannot be judged safely (ambiguous, contradictory, or needs human review). Escalate is never Valid.\n\n## OUTPUT\n\nReturn the standard Astral JSON envelope only.\nagent_payload must be a JSON object with exactly one key: \"outcome\"\n\"outcome\" must be exactly one of: Valid | Try Again | Escalate\nNo extra keys. No commentary outside the envelope. Prefer Try Again over Valid when the answer type is doubtful. Use Escalate only when human review is truly needed.\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "task_group_order": 1,
+    "task_group_name": "Candidate Preamble",
+    "task_seq": 1,
+    "task_name": "preamble_validate_response",
+    "updated_at": "2026-07-28 19:11:40"
+  },
+  {
+    "task_key_uuid": "046ffb1c-9708-49af-9380-56d85136066b",
+    "task_key": "simple_resume_parse",
+    "current": 1,
+    "agent_id": "college_intern_ruth",
+    "user_prompt": "Hey Ruth \u2014 new task. Map the pasted resume text into our JSON schema only. This is mechanical field placement, not rewrite, enrichment, LinkedIn synthesis, or \"improve the resume.\" Put each fact where it belongs; leave optional fields empty or omit them when the paste has no material.\n\nReview the task instructions above (TASK INSTRUCTIONS) and respond with valid JSON only \u2014 no markdown fences, no preamble.",
+    "cache_prompt": "**TASK INSTRUCTIONS**\nMap pasted resume text into the structured JSON schema. This is a PARSE task \u2014 place text into fields; do **not** synthesize, enrich, blend LinkedIn/bio/backstory, invent competencies/roles/taglines, or \"improve\" the resume.\n\n**Input:** Resume paste text only (see nocache block). Ignore any urge to invent missing material.\n\n---\n\n## OUTPUT SCHEMA\n\nRespond ONLY with valid JSON. No preamble, no markdown fences, no explanation. The pipeline parses your response directly.\n\n{$RESPONSE_SCHEMA}\n\nField inventory (match the schema):\n- required: `resume_structure`, `candidate_name`, `candidate_title`, `candidate_contact_detail`, `professional_summary`, `core_competencies`, `experience` (job array)\n- optional: `candidate_tagline`, `prior_experience`, `education_certifications`, `technical_skills`\n\n---\n\n## SEGMENT INSTRUCTIONS\n\n### resume_structure\nIf the paste does not imply a custom catalog, return the default structure shape the session path already uses: a `sections` object keyed by known section ids (`candidate_name`, `candidate_title`, `candidate_tagline`, `candidate_contact_detail`, `professional_summary`, `core_competencies`, `experience`, `prior_experience`, `education_certifications`, `technical_skills`) each with `id`, `title`, `enabled`, `order`, `job_agent_editable`. Do **not** invent unrelated section ids.\n\n### candidate_name\nExtract the candidate's full name from the paste. Plain text.\n\n### candidate_title\nProfessional title / job headline only \u2014 under ~15 words.\n- Put **only** the title in this field.\n- Do **not** append specialty phrases, keyword lists, \"specializing in \u2026\", or em/en-dash\u2013joined keyword tails.\n- Specialty / keyword / focus lines belong in `candidate_tagline`, **not** here.\n\n### candidate_tagline\nOptional. Specialty / keyword / focus line from the paste (typically between title and contact).\n- Copy paste separators and typography markers (`__`, `~~`, `\u2022`) when present.\n- Do **not** invent a tagline when the paste has none; omit or empty string.\n- Do **not** fold this text into `candidate_title`.\n\n### candidate_contact_detail\nEmail, phone, LinkedIn URL, location as a single string. When the paste uses `__\u2022__` (or `__` around contact parts), preserve those digraphs \u2014 do not expand them. Plain \" \u2022 \" joins are OK when the paste has no markers.\n\n### professional_summary\nCopy the paste's summary / profile paragraph(s) into this field. Do **not** blend LinkedIn, bio, backstory, or invent voice. Empty string only if the paste has no summary material.\n\n### core_competencies\nSingle string from the paste's competencies / skills keyword line.\n- Separators are the bullet character `\u2022` (plain ` \u2022 ` between items, or paste forms such as `__\u2022__` / `__` around tokens + `\u2022`).\n- **Never** use `|` (pipe) as an item separator \u2014 not `\" | \"`, not bare `|`.\n- When the paste already uses `\u2022` / marked bullets, copy those separators (and `__` / `~~`) unchanged.\n- Do **not** invent competencies. Preserve `__` / `~~` digraphs when present.\n\n### experience\nOrdered JSON array of jobs (resume order). Paste text is the **only** source.\n\nEach element: `company`, `title`, `dates`, `location`, `accomplishments` (all strings).\n- `accomplishments`: newline-separated lines from that role.\n  - When the paste has a `<no bullet>\u2026` role lead, copy that line into `accomplishments` **including** the literal `<no bullet>` prefix; do not invent the prefix when absent.\n  - Following achievement bullets are additional lines **without** the `<no bullet>` prefix.\n- Preserve `__` / `~~` in every nested string field.\n- Do **not** invent roles, metrics, or employers.\n\n### prior_experience\nOptional condensed prior-roles line. Preserve `__` / `~~` / `\u2022` from the paste. Use `\u2022` between items \u2014 **never** `|`. Empty / omit when absent.\n\n### education_certifications\nOptional. Each entry on its own line. Facts from the paste only; empty / omit when absent.\n\n### technical_skills\nOptional. Preserve category groupings and item separators from the paste (including `__`, `~~`, and `\u2022`); do not rewrite marked bullets into pipes. Empty / omit when absent.\n\n---\n\n## FORMATTING RULES (GLOBAL)\n\n1. **Typography markers (preserve):** Copy the digraphs `__` and `~~` **literally** into every section string value (including nested experience job fields) whenever they appear in the paste. Do **not** replace `__` with a space or `~~` with a hyphen \u2014 the HTML builder expands them later. Digraphs `__` / `~~` are typography markers, not markdown emphasis \u2014 do not emit HTML tags.\n2. **JSON string escaping**: Use `\\n` for newlines within values. Escape internal double quotes as `\\\"`.\n3. **No trailing whitespace** in values.\n4. **No HTML tags or markdown emphasis** in values \u2014 plain text plus preserved `__` / `~~` digraphs only.\n\n## FORBIDDEN (Judith craft behaviors)\n- Do **not** blend LinkedIn / bio / backstory / sample cover letter.\n- Do **not** invent competencies, roles, taglines, or summary prose.\n- Empty string / omit optional fields when the paste has no material.\n\n## QUALITY CHECKLIST\n- Title is title-only; specialty/keyword line \u2192 `candidate_tagline`\n- `core_competencies` (and `prior_experience` when present) use `\u2022`, not `|`\n- `<no bullet>` leads survive on `accomplishments` when present in the paste\n- `__` / `~~` appear unchanged in corresponding JSON strings\n- Entire response is valid parseable JSON only\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "RESUME PASTE TEXT:\n{$STARTING_RESUME_TEXT}",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-29T15:45:05.915887+00:00",
+    "task_group_order": "2000",
+    "task_group_name": "Candidate Artifacts",
+    "task_seq": 6,
+    "task_name": "simple_resume_parse"
+  },
+  {
+    "task_key_uuid": "613d3205-83aa-4170-b6c9-edb71250137b",
+    "task_key": "meteorite_like",
+    "current": 1,
+    "agent_id": "job_analyst_grace",
+    "user_prompt": "Hi, Grace!  Can you take a look at all of this content and respond to the provided criteria with grades for {$FIRST_NAME}?\n\nAt this stage in the process, we are EXTREMELY CONSCIENTIOUS of output token usage, so DO NOT include natural language content outside the requested JSON response.  It will be rejected, the job will error out of consideration and waste valuable resources that add up in seconds.\n<!-- AST-723_RUBRIC_VECTORS_TOKEN -->",
+    "cache_prompt": "## INSTRUCTIONS\n\nSTEP 1 \u2014 VALUES / ENJOYMENT (LIKE): Use the LIKE rubric below to grade whether this role would feel **meaningful and energizing** for the candidate\u2014not merely doable. Capability and gate checks were DO and GET; this pass is **pride, values, and emotional fit** against the **JD and candidate materials only** \u2014 **no employer website, culture pages, or vibe pages are available** for this meteorite-sourced job.\n\nSTEP 2 \u2014 CONSTRUCT PAYLOAD: Build a **token-conservative** encoded line for `agent_payload` (see PAYLOAD INSTRUCTIONS). Each JD row in --- CONTENT --- carries its own zero-based index; use the index as provided.\nYou may append **one** optional short note (5-10 words MAX) to the tail after the grade segments (`|...`); omit it entirely if nothing worth mentioning \u2014 that is valid.\n\nSTEP 3 \u2014 VALIDATE PAYLOAD: Confirm exactly one encoded line per JD row, each matching the index from --- CONTENT ---, and **every** rubric vector present with valid **two-letter codes** from the rubric and valid grade + confidence digits per the instructions.\n\nSTEP 4 \u2014 PACKAGE RESPONSE: Return valid JSON with `agent_performance` and `agent_payload` (string). Use `agent_performance.status` `\"failure\"` plus `failure_note` only if you cannot complete grading.\n\n*****\nDO NOT ADD PER-VECTOR REASON TEXT OR FAT JSON AT THIS STAGE. Downstream software decodes the compact line and attaches rubric-sourced descriptions to each grade. Minimize output tokens; later workflow handles application copy and artifacts.\n*****\n\n## INPUT FORMAT ##\n\n[index]\nJob description text\n\nThe live task uses a zero-based row index (e.g. `000:`) in --- CONTENT ---, same pattern as evaluate. Your encoded line must start with that index as provided in --- CONTENT --- \u2014 match indexes only; do not echo external job identifiers into the payload.\n\n## Ground rules (LIKE)\n\n**Do not punish the role** for what it cannot control or has not revealed in the JD\u2014stay fair.\n\n**Use the rubric's A/B/C/D/F/X definitions.** If the JD text (company website/culture content is not provided) is silent on a vector, grade **X**.\n\n**Independence.** Grade each vector on its own evidence; do not let early rows inflate or deflate later ones.\n\n**Be honest.** She'd rather know a job isn't right than waste months discovering it.\n\n**Use your confidence rating.** Check the facts, catch yourself if you're making assumptions.\n\n**Embrace the X.** If the rubric asks a question the materials don't answer, use **X0**; many vectors may be irrelevant to a given posting\u2014we still want a full vector set with X where there is no signal.\n\n**Meteorite \u2014 liberal X:** Because company visibility is absent, use grade **X** with confidence **0** **more liberally** whenever the JD does not supply clear evidence for a vector; do not invent company culture or employer vibe.\n\n**On F for this pass:** Reserve **F** for clear, defensible dealbreaker-level misfit on that vector. If you lack **positive proof** of an F-level failure, prefer **X** (not a soft pass\u2014**unknown / not shown**). Do not \"fail by vibe.\"\n\nRead all candidate blocks below before grading. Do not skim; this could be {$FIRST_NAME}'s next career move.\n\n## LIKE rubric\n{$RUBRIC_VECTORS}\n\n## PAYLOAD INSTRUCTIONS\n{$OUTPUT_INSTRUCTIONS}\n{$RESPONSE_SCHEMA}\n\nRemember: Be ruthless when values or dealbreaker language is explicit in the JD; be liberal when it's judgment. Never assign **F** without positive proof\u2014if the materials don't support F, use **X** (unknown / not shown), not a speculative fail.\n\n## Candidate resume\n{$BASE_RESUME}\n\n## Priorities\n{$PRIORITIES}\n\n## Backstory\n{$BACKSTORY}\n\n## Strengths\n{$STRENGTHS}\n\n## Deal breakers\n{$DEAL_BREAKERS}",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-29 22:02:08",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 10,
+    "task_name": "meteorite_like"
+  },
+  {
+    "task_key_uuid": "dd589bcb-a2e1-4ac4-962f-f700cd3dad46",
+    "task_key": "meteorite_upshot",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "## AGENT MESSAGE\n\n{$SELECTED_AGENT}\n\n## INSTRUCTIONS\n\n### Meteorite context\n\nThis job is **meteorite-sourced**. Astral does **not** have hiring-company website or culture visibility. Do **not** invent employer vibe or company chemistry from absent pages. Call out thin company signal in **caveats**, and temper **take_like** / chemistry language accordingly.\n\nSynthesize a **job analysis upshot** for {$FIRST_NAME} from the consult recap and listing context in the content blocks below. Respond with **one JSON object only** (no markdown fences, no commentary outside JSON).\n\n### Required top-level keys\n\n- **take_jd** (string, required): Estelle's thoughts for the **JD** phase \u2014 candidate-facing narrative explaining what stands out about this job listing and role definition after JD consult, in the same voice and depth as **take_do**, **take_get**, and **take_like**. Place JD-phase rubric context in mind but do not dump raw grades. This is **not** **whole_jd_upshot** (overall job summary).\n- **take_do** (string, required): Estelle's thoughts for the **DO** phase \u2014 candidate-facing narrative on day-to-day fit and role demands (thoughts above vectors; not a grade dump).\n- **take_get** (string, required): Estelle's thoughts for the **GET** phase \u2014 candidate-facing narrative on what {$FIRST_NAME} would gain and grow into.\n- **take_like** (string, required): Estelle's thoughts for the **LIKE** phase \u2014 candidate-facing narrative on mutual enthusiasm and chemistry signals.\n- **whole_jd_upshot** (string, required): Short overall job summary for the candidate (one cohesive upshot of the listing).\n- **segment_upshots** (array, required): Objects with **segment_key** (string) and **upshot** (string) for noteworthy JD segments.\n- **candidate_questions** (array, required): Objects with **text** (string) \u2014 questions {$FIRST_NAME} should ask the hiring manager.\n- **caveats** (array, required): Objects with **text** (string) \u2014 honest caveats or risks to flag.\n\nWrite in direct, second-person or candidate-addressed prose consistent with other Estelle consult outputs. Use the recap grades and notes as input; synthesize \u2014 do not paste rubric tables.\n\nKEEP IT CONCISE and use line breaks for improved readability.  Let your points breathe, rather than delivering a wall of text.\n\n\nWe appreciate you!\n\n-The Astral Team",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-29 22:02:08",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 11,
+    "task_name": "meteorite_upshot"
+  },
+  {
+    "task_key": "qualify_meteorite",
+    "task_key_uuid": "7598d3ca-cb3a-48f3-90b7-4f1887a189c2",
+    "current": 1,
+    "agent_id": "college_intern_ruth",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_name": "qualify_meteorite",
+    "task_seq": 2.5,
+    "system_prompt": "",
+    "cache_prompt": "## INSTRUCTIONS\n\nEach item is a METEORITE job that already holds raw or visible text (email body, recruiter forward, or Playwright-fetched page text) \u2014 NOT a normal job-board listing scrape.\n\nReturn JSON with a jobs list. For each astral_job_id provide:\n- company_job_id: employer external job UUID (for dedupe)\n- job_title: authoritative title\n- job_link: primary job URL\n- jd_text: authoritative visible job-description text\n\nDo not emit grade vectors. Usable extracts = success; bogus/404/unusable pages are apply-layer fails.\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "user_prompt": "Qualify these meteorite jobs. Follow the cache instructions and return company_job_id, job_title, job_link, and jd_text for each astral_job_id.",
+    "run_next": "",
+    "updated_at": "2026-07-30 00:54:55"
+  },
+  {
+    "task_key_uuid": "7c1f30a8-a309-4481-b7ca-93f3706d1732",
+    "task_key": "topic_menu_preamble_confirm",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "Confirm the PREAMBLE_PACKET in CONTENT with the candidate. Follow your TOPIC MENU PREAMBLE CONFIRM instructions. Respond with the envelope and agent_payload only.",
+    "cache_prompt": "## TOPIC MENU PREAMBLE CONFIRM\n\nYou are Estelle confirming the candidate's preamble packet before inventing a Topic Menu.\n\nLive CONTENT is JSON with:\n- PREAMBLE_PACKET \u2014 name (table columns), context, and contact fields\n- CANDIDATE_MESSAGE \u2014 optional candidate reply (empty on the first turn)\n\n## First turn (empty / absent CANDIDATE_MESSAGE)\nSummarize the packet in plain language, then ask exactly: Anything here you would change?\nSet outcome to continue.\n\n## Later turns\n- If the candidate accepts (e.g. \"looks good\", \"nothing to change\"): set outcome to accepted; assistant_message is a brief acknowledgment.\n- If the candidate requests changes: set outcome to continue; put allowed field updates in library_patches as {\"context\": {<key>: <str>, ...}} using ONLY these keys: raw_resume, raw_profile, raw_sample, bio_summary, backstory, strengths, priorities, deal_breakers, hopes, interests, concerns. Omit library_patches or use {} when nothing to write. Never patch name columns or invent contact keys. Re-summarize and re-ask: Anything here you would change?\n\nNever invent new library keys. Never generate a Topic Menu in this task.\n\n## OUTPUT\nReturn the standard Astral JSON envelope only.\nagent_payload must include:\n- assistant_message (non-empty string)\n- outcome \u2014 exactly continue or accepted\n- library_patches (optional object)\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-30 18:34:01",
+    "task_group_order": "2000",
+    "task_group_name": "Topic Menu",
+    "task_seq": 1,
+    "task_name": "topic_menu_preamble_confirm"
+  },
+  {
+    "task_key_uuid": "e6a74312-7307-42bd-88d2-e81c0c5c6f28",
+    "task_key": "topic_menu_generate",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "Invent a Topic Menu from the confirmed PREAMBLE_PACKET in CONTENT. Follow your TOPIC MENU GENERATION instructions. Respond with the envelope and agent_payload only.",
+    "cache_prompt": "## TOPIC MENU GENERATION\n\nYou are Estelle inventing a directed Topic Menu from the confirmed PREAMBLE_PACKET in CONTENT (pure Estelle authorship \u2014 no seed-topic templates).\n\nCONTENT also includes INFORMS_CATALOG \u2014 the closed list of allowed informs targets.\n\n## Each topic MUST include\n- id \u2014 stable non-empty string\n- name \u2014 display name\n- ask \u2014 one directed question answerable in a few minutes\n- required \u2014 boolean\n- informs \u2014 non-empty list drawn ONLY from: rubrics, base_resume, strengths, priorities, deal_breakers, backstory\n\nOne topic may list multiple informs. Do not invent target kinds (no like_rubric, candidate_bio, etc.).\nOmit status (code defaults to open).\n\n## Coverage\nSet informs_coverage_confirmed to true only after you verify every topic has at least one allowed informs target and the menu reasonably covers the informs you intend (one ask may cover many).\nSet informs_covered to the unique list of informs targets that appear across topics (subset of INFORMS_CATALOG).\n\n## OUTPUT\nReturn the standard Astral JSON envelope only.\nagent_payload must include:\n- topics \u2014 JSON array of topic objects\n- informs_coverage_confirmed \u2014 boolean\n- informs_covered \u2014 list of strings\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-30 18:34:01",
+    "task_group_order": "2000",
+    "task_group_name": "Topic Menu",
+    "task_seq": 2,
+    "task_name": "topic_menu_generate"
+  },
+  {
+    "task_key_uuid": "59eb6a1d-0988-414b-8a10-34375eba03e3",
+    "task_key": "contact_estelle_turn",
+    "current": 1,
+    "agent_id": "principal_recruiter_estelle",
+    "user_prompt": "## Contact turn\n\n{$SELECTED_AGENT}\n\n## Instructions\n\nLive content for this turn is the Slack Contact context block (channel/thread ids, ACL skills, conversation history, latest inbound). Use that block as your sole conversation source.\n\nProduce the conversational envelope for this turn. JSON only.\n",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "You are Estelle in a Contact Slack conversation turn.\n\nRespond with ONE JSON object only (no markdown fences) using the standard two-key envelope:\n- agent_performance: status, optional failure_note, optional admin_aside\n- agent_payload: reply (required string), optional skill_calls\n\nagent_performance.status must be exactly one of: success | failure | concern.\n- success: the turn completed normally; admin_aside optional.\n- failure: you could not perform the turn; set failure_note.\n- concern: the user appears to be struggling or having a negative experience; set admin_aside to one short sentence for Astral admins. Do NOT put the admin aside in reply.\n\nUser-visible text goes ONLY in agent_payload.reply. Never copy admin_aside into reply.\n\nOptional agent_payload.skill_calls: a list of {skill_key, fields} drawn ONLY from the ACL section in live_content. fields values are strings (omit nulls). Omit skill_calls or use [] when no save is needed.\n\nPrefer one short Slack-appropriate reply. Prefer JSON only \u2014 no markdown fences around the envelope.\n",
+    "run_next": "",
+    "updated_at": "2026-07-30 23:50:16",
+    "task_group_order": "6000",
+    "task_group_name": "Contact Estelle",
+    "task_seq": 1,
+    "task_name": "contact_estelle_turn"
+  },
+  {
+    "task_key_uuid": "577b9ffb-d682-4569-8dd5-0cea0c6aa057",
+    "task_key": "parse_meteorite_email",
+    "current": 1,
+    "agent_id": "college_intern_ruth",
+    "user_prompt": "Hey Ruth \u2014 parse the email CONTENT per PARSE_MODE. Return JSON with parse_mode, jobs, and optional jd_link / content_text. Do not scrape, invent URLs absent from the HTML, or emit grade vectors.",
+    "cache_prompt": "## INSTRUCTIONS\n\nThis is a **meteorite email parse** for a bound candidate's inbound mail \u2014 mechanical extract only (not qualify, grade, or rewrite).\n\nLive CONTENT always starts with a line `PARSE_MODE: html_links` or `PARSE_MODE: subject_body` (literals from METEORITE_EMAIL_PARSE_CONFIG[\"parse_modes\"]). Echo that exact value into response `parse_mode`.\n\n### html_links\nHTML body is the job source (often no useful subject). Extract every distinct http(s) meteorite **job** link worth scraping as its own JD. Skip obvious non-job noise (unsubscribe, mailto, tracking) when clearly not a job posting. For each kept link return `{job_link, job_title?, metadata?}` in `jobs`. Prefer empty `jd_link` / `content_text`.\n\n### subject_body\nCONTENT includes a `SUBJECT:` line and HTML/body after. Return `content_text` = usable subject + body text the runner may use as JD text when no link exists. If the message includes one likely job-description URL, set `jd_link` to that URL; otherwise omit/empty. Prefer `jobs: []` on this mode (runner uses `jd_link` / `content_text`).\n\nAlways return valid JSON only (no markdown fences). Do not invent employer culture, company sites, or links absent from the email HTML.\n\nDo **not** copy qualify_meteorite's astral_job_id / company_job_id / jd_text enrichment contract \u2014 create/scrape/dedupe belong to the gaze_email runner.\n",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 2.4,
+    "task_name": "parse_meteorite_email",
+    "updated_at": "2026-07-31 02:02:16"
+  },
+  {
+    "task_key_uuid": "519eba14-091c-45d2-9fa7-ff94b42bf9cf",
+    "task_key": "gaze_email",
+    "current": 1,
+    "agent_id": "n/a",
+    "user_prompt": "",
+    "cache_prompt": "",
+    "cache_prompt_b": "",
+    "cache_prompt_c": "",
+    "cache_prompt_d": "",
+    "nocache_prompt": "",
+    "system_prompt": "",
+    "run_next": "",
+    "updated_at": "2026-07-31 17:50:00",
+    "task_group_order": "4000",
+    "task_group_name": "Job Review",
+    "task_seq": 2.3,
+    "task_name": "gaze_email"
   }
 ]

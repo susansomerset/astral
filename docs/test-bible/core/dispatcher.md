@@ -176,3 +176,132 @@ Primary data/API manifest: **`docs/test-bible/data/database/dispatch_tasks.md`**
 | Full-list consult for **`parse_job_list`** | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast891_parse_job_list_full_batch_despite_batch_call_mode_zero` |
 
 Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/core/consult.md`** (**AST-891**).
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher: **`ensure_candidate_stage_dispatch_tasks`** / **`provision_candidate_stage_dispatch_tasks`**; candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** provisions stage rows. Revised **`LIVE_PROMPTS` → `ACTIVE_SEARCH`** in dispatcher fixtures; AST-875 template fixture uses **`qualify_job_listings`** (TASK_CONFIG tip).
+
+
+### AST-1022 · AST-1018
+
+**AST-1022:** Candidate stage-dispatch rows seed **AUTO off** from `CANDIDATE_STAGE_DISPATCH.auto_mode`; `ensure_candidate_stage_dispatch_tasks` reads config (insert-missing only — never rewrites existing `auto_mode`). Tick Style D helper `_debug_log_auto_off_stage_skips` logs AUTO-off + `debug` stage rows that meet `min_count` (index N/M); does not spawn. `get_due_tasks` / CLICK `run_task(..., ui_initiated=True)` unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config seed `auto_mode: False` | `src/utils/config.py` | **`TestAst1022HonorAutoOffStageDispatch`** (`test_config.py`) |
+| Ensure seed + persist; Style D skip; tick calls helper before spawn | `src/core/dispatcher.py` | **`TestAst1022HonorAutoOffStageDispatch`**; revised **`_run_one_tick`** / **`TestScheduler`** (list_dispatch_tasks stub) |
+
+**Broken / obsolete:** tick unit helpers must stub `list_dispatch_tasks` (new side path) — same DB-free contract as AST-972 `age_stale` stub.
+
+**Existing coverage (unchanged paths):** AUTO-on tick spawn — **`TestScheduler::test_tick_loop_spawns_due_auto_tasks`**; CLICK with `auto_mode=0` — **`TestDispatchOne`** / run_task paths already covering AUTO-off CLICK.
+
+**AST-1022** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  -q
+```
+
+### AST-1054 · AST-1052
+
+**Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
+
+`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. **AST-1060** adds `retired` count + surgical delete of `evaluate_jd`@`METEORITE_NEW`. Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure GDL + twin skip/insert; provision; scheduler hook | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (counts/trigger + retire revised **AST-1060**) |
+| Stage scheduler stub | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision`** (stubs meteorite provision) |
+
+**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB; insert-count / evaluate_jd@METEORITE_NEW asserts revised by **AST-1060**.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
+  -q
+```
+
+### AST-1060 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
+
+`ensure_meteorite_dispatch_tasks` retires live `evaluate_jd`@`METEORITE_NEW` after insert (`retired` in return; provision sums it). Config primary: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retire stale meteorite evaluate_jd row; insert counts | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (incl. `test_ensure_retires_stale_evaluate_jd_at_meteorite_new`) |
+
+**Broken / obsolete:** AST-1054 insert counts / trigger assert — see above.
+
+**Integration:** none.
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+`qualify_meteorite` joins `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` (same widen-claim + chunk waves as listing qualify).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chunk exhaust membership | `src/core/dispatcher.py` | **`TestAst1062QualifyMeteoriteChunkExhaust`** |
+
+**Broken / obsolete:** none — additive frozenset member.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1062QualifyMeteoriteChunkExhaust \
+  -q
+```
+
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+`ensure_gaze_email_dispatch_task` / `provision_gaze_email_dispatch_task` insert one null-`candidate_id` `gaze_email` row from `GAZE_EMAIL_CONFIG` (idempotent; `skipped_missing_config` if key absent from `TASK_CONFIG`). `start_scheduler` provisions after meteorite. Does **not** wire due-task / mailbox runner (**AST-1090**). Config / data / Gmail: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/external/gmail.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure add/skip; missing config; provision wrapper; scheduler hook | `src/core/dispatcher.py` | **`TestAst1088GazeEmailDispatchProvision`** |
+| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised **`TestAst972…::test_start_scheduler_invokes_stage_provision`**, **`TestAst1054…::test_start_scheduler_invokes_meteorite_provision`** (stub gaze provision) |
+
+**Broken / obsolete:** start_scheduler unit helpers must stub `provision_gaze_email_dispatch_task` so the new try-path does not hit live DB.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1088GazeEmailDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_invokes_meteorite_provision \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
+  -q
+```
+
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+`_dispatch_one` special-cases `gaze_email`: no candidate API key; ledger uses `dispatch_ledger_candidate_id`; awaits `run_gaze_email` (not `_run_unified`). Due path: **`docs/test-bible/data/database/dispatch_tasks.md`**. Runner: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gaze dispatch route | `src/core/dispatcher.py` | **`TestAst1090GazeEmailDispatchOne`** |
+
+**Broken / obsolete:** none — additive branch before unified loop.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  -q
+```
+

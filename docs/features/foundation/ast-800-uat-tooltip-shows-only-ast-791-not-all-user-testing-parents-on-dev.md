@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-800 archived 2026-07-22 -->
+
+## Linear archive (AST-800)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-800/uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-791 — List of UAT issues in environment tooltip is not updating  
+**Blocked by / blocks / related:** parent: AST-791
+
+### Description
+
+## What failed
+
+On staging after AST-798 fix-uat, hovering the admin deploy footer environment label tooltip shows **only AST-791**, not every parent epic that has been landed on `origin/dev` and is in Linear **User Testing**.
+
+## Expected
+
+The tooltip lists **all** parent issue ids that (a) are in Linear **User Testing** at prep-uat time and (b) have their `ftr/*` branch merged into `origin/dev`, each with the timestamp of the latest dev commit for that feature. Parents whose `ftr` has **not** been merged to `origin/dev` are omitted.
+
+## Repro
+
+1. Log in as admin on staging (deploy from current `origin/dev`).
+2. Hover the deploy footer environment label for ≥0.5s.
+3. **Observed:** tooltip shows only **AST-791** (one line).
+4. **Expected:** every User Testing parent whose feature is on `origin/dev` (e.g. other active UAT epics), not just this epic.
+
+## Parent AC (quoted inline)
+
+> 1. After deploy from current `origin/dev`, hovering the admin environment label on staging shows **no** parent ids that are **Done** in Linear (including **AST-741** and other previously logged finished epics).
+> 2. Every parent id shown in the tooltip is in Linear state **User Testing** at the time of the deploy-status request.
+> 3. A parent prep-uat'd to staging while in **User Testing** appears in the tooltip with an updated timestamp; re-prep-uat of the same parent updates timestamp only (no duplicate lines).
+
+## Boundaries
+
+* This bug does **not** change: admin nav outside deploy footer, non-admin routes, or AST-798 cursor/CSS fixes.
+* **prep-uat** rebuilds the log at land time per Susan's 2026-06-25 comment (pull log from dev → Linear User Testing parents → verify ftr merged to dev → rewrite log → commit to dev); runtime deploy-status may read the log without per-request Linear filtering if prep-uat maintains the list correctly.
+
+### Comments
+
+#### radia — 2026-06-25T02:00:03.449Z
+### Radia review — AST-800
+
+**Diff:** `origin/dev...origin/sub/AST-791/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev` @ `680a822`
+**Doc:** `docs/features/foundation/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev.md` (§ Radia review)
+
+**What's solid**
+- `fetch_user_testing_parent_ids()` (paginated, top-level only); `rebuild_merge_ticket_log.py` with ftr-on-dev gate + timestamp heuristics; `record-landed-parent.sh` rebuild wiring; core log-only `merge_tickets` (AST-792 runtime filter removed per Susan prep-uat semantics).
+- §3.3 layers correct; no frontend changes.
+- Betty manifest: Linear query, deploy_status read path, record-landed-parent shell tests.
+
+**advisory:** Tooltip refreshes on prep-uat rebuild, not every poll (documented AC 4 tradeoff). Rebuild git logic untested beyond shell stub. `ls-remote` per parent per plan.
+
+**fix-now:** none
+**discuss:** none
+
+**Post-merge:** prep-uat rebuild on dev needed so log lists all UAT parents on integration line.
+
+#### betty — 2026-06-25T01:58:12.726Z
+## QA test manifest (AST-800)
+
+**Publish:** `origin/sub/AST-791/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev` @ `3bf7ec1` (`merge-tests(AST-800): origin/tests 74d0bf2`)
+
+**Broken / revised (AST-792 → AST-800):** `tests/component/core/test_deploy_status.py` — removed runtime Linear filter / fail-closed tests; log-only read path. `tests/component/scripts/test_record_landed_parent.py` — rebuild wiring replaces append-only.
+
+### Manifest (test-child)
+
+1. **Linear UAT parent query** — `tests/component/external/test_linear.py::TestFetchUserTestingParentIds` (2 tests): sorted top-level parents + pagination.
+
+2. **Log-only deploy payload** — `tests/component/core/test_deploy_status.py::TestCoreGetDeployStatusPayload` (2 tests): `merge_tickets` from log most-recent-first; empty log → `[]`.
+
+3. **Prep-uat rebuild wiring** — `tests/component/scripts/test_record_landed_parent.py`:
+   - `TestRecordLandedParentShell::test_record_landed_parent_wires_rebuild_not_append`
+   - `TestRecordLandedParent::test_record_landed_parent_rebuilds_and_commits`
+   - `TestRecordLandedParent::test_record_landed_parent_missing_rebuild_script_blocks`
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/external/test_linear.py \
+  tests/component/core/test_deploy_status.py \
+  tests/component/scripts/test_record_landed_parent.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest (16 tests) — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (`origin/sub/...` @ `3bf7ec1`):**
+- `docs/test-bible/core/deploy_status.md`: `8acb5763ae2729914d5e13f4799707d803dcb1f1ada223256beaf1a38b5ab358`
+- `docs/test-bible/dev/record_landed_parent.md`: `90246762a116bd80f5dbfb6b1ab596c85bf2eb543a015bb4ee936b24a638c2c2`
+- `docs/test-bible/external/linear.md`: `eb3ab028c2d0442806176a17bda01f688ed7850867c15c8e93c2777527f18f5e`
+- `docs/test-bible/utils/merge_ticket_log.md`: `e25ea5819c69de46d60a271f58dd3589b14c952f0646a740316880fc41f789d9`
+
+— Betty
+
+#### chuckles — 2026-06-25T01:53:15.757Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-791/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev/docs/features/foundation/ast-800-uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev.md
+
+**Approach:** Replace prep-uat append-only `merge_ticket_log.json` with a full **rebuild** at land time — query Linear for all top-level **User Testing** parents, verify each has an `origin/ftr/*` ancestor on `origin/dev`, stamp `recorded_at` from latest prep-uat/merge-parent/finish-up commit on dev, rewrite log. Runtime `deploy_status` reads log only (drops AST-792 per-poll Linear filter per Susan 2026-06-25 boundary).
+
+**Self-assessment**
+- **Scope:** Single-Component — Linear helper, rebuild CLI + git subprocesses, record-landed-parent wiring, deploy_status simplification; no frontend.
+- **Conf:** Medium — ftr discovery and timestamp heuristics need careful subprocess wiring; prep-uat rebuild supersedes AST-792 runtime filter (documented tradeoff on AC 4).
+- **Risk:** Medium — wrong ftr/timestamp matching could omit valid UAT parents; mitigated by explicit git gates and Betty manifest tests.
+
+---
+
 # UAT: tooltip shows only AST-791 not all User Testing parents on dev
 
 **Linear:** [AST-800 — UAT: tooltip shows only AST-791 not all User Testing parents on dev](https://linear.app/astralcareermatch/issue/AST-800/uat-tooltip-shows-only-ast-791-not-all-user-testing-parents-on-dev)

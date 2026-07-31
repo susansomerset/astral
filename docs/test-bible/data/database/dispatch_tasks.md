@@ -238,3 +238,77 @@ Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless `test-child` widens.
 
+**AST-955:** **`save_dispatch_task`** passes request **`trigger_state`** into defaults; rejected wording (not "not schedulable"). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
+
+**AST-962:** **`save_dispatch_task("…", "check_cover_letter")`** fills **`CANDIDATE_REVIEW`** when trigger omitted. Primary: **`docs/test-bible/utils/config.md`** (**AST-962**).
+
+### AST-972 · AST-871
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`count_eligible_for_dispatch_task`** splits candidate stage keys vs **`inflow_discovery`**; fixtures use **`ACTIVE_SEARCH`**.
+
+### AST-1000 · AST-995
+
+Restore **`list_candidate_ids_with_dispatch_tasks`** (AST-972 contract dropped when AST-973 rewrote `database.py`). Product touch is data-layer only; dispatcher provision / `start_scheduler` callers unchanged. Empty DISTINCT result keeps boot provision as a no-op loop after template ensure.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Distinct `candidate_id` listing (empty + non-empty) | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_list_candidate_ids_with_dispatch_tasks` |
+| Provision iterates listing; scheduler invokes provision | `src/core/dispatcher.py` | `tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch` |
+
+**Out of this child's green gate:** `TestAst972CandidateStageEligibility` methods that assert REQUESTED_* stage eligibility via `count_eligible_for_dispatch_task` — on the composite tip the candidate branch still routes all candidate tasks through inflow discovery (AST-972 stage_keys split absent). Restoring that split is product scope beyond AST-1000 Files Changed; leave those asserts in the suite for a follow-on, do not weaken them here.
+
+**Broken / obsolete (this restore):** none for the listing helper — `test_list_candidate_ids_with_dispatch_tasks` (incl. empty-list AC4) + dispatcher provision class remain the contract.
+
+**AST-1000** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_list_candidate_ids_with_dispatch_tasks \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1088 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1088-gaze-email-config-null-candidate-dispatch-shell-gmail-archive-trash`.
+
+Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NULL) + partial unique index `idx_dispatch_task_null_candidate_task_key` on `task_key WHERE candidate_id IS NULL`. `save_dispatch_task` accepts `candidate_id=None` **only** for `GAZE_EMAIL_CONFIG["task_key"]`; other keys still raise `ValueError("candidate_id is required")`. Provision / config / Gmail: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`** · **`docs/test-bible/external/gmail.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Null save + unique + reject other keys + schema/index | `src/data/database.py` | **`TestAst1088NullCandidateGazeEmail`** |
+
+**Broken / obsolete:** none — additive nullable path; existing positional `save_dispatch_task(cid, task_key, …)` callers unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail \
+  -q
+```
+
+### AST-1090 · AST-1087
+
+**Parent:** [AST-1087 — Add gaze_email as a dispatch task](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1090-gaze-email-runner-bind-route-scrape-dedupe-create-mailbox`.
+
+`get_due_tasks` / `count_eligible_for_dispatch_task` special-case `gaze_email` via `_gaze_email_available_count` (freq gate; available_count=1 when due — not live inbox size). Per-candidate link helper lives on jobs cluster (**`TestAst1090JobLinkExistsForCandidate`** in `test_jobs.py`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Due signal for null-candidate shell | `src/data/database.py` | **`TestAst1090GazeEmailDue`** |
+| Per-candidate job_link | `src/data/database.py` | **`TestAst1090JobLinkExistsForCandidate`** (`test_jobs.py`) |
+
+**Broken / obsolete:** none — additive due path (null entity rows previously skipped).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  tests/component/data/database/test_jobs.py::TestAst1090JobLinkExistsForCandidate \
+  -q
+```
+

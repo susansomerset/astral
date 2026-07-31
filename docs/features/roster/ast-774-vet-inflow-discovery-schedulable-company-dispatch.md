@@ -1,3 +1,162 @@
+<!-- linear-archive: AST-774 archived 2026-07-22 -->
+
+## Linear archive (AST-774)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-774/vet-inflow-discovery-schedulable-company-dispatch-unable-to-schedule  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-762 — Unable to schedule 'vet_inflow_discovery'  
+**Blocked by / blocks / related:** parent: AST-762
+
+### Description
+
+## What this implements
+
+Make `vet_inflow_discovery` a schedulable `dispatch_task` key with **company** entity type and default **NEW** trigger state so Admin → Scheduled Actions can add, save, and run rows for roster inflow vetting. Wire dispatcher/consult so manual Run and AUTO claim **NEW** companies and execute vet work. Preserve `inflow_discovery` ingest creating companies in **NEW** and rejected-link dedupe on company records.
+
+## Acceptance criteria
+
+1. Susan can complete Add Task for `vet_inflow_discovery` without a **not schedulable** error on save.
+2. Entity type shown in Add Task and stored on the saved row is **company**; default trigger state is **NEW**.
+3. Manual Run and AUTO dispatch `vet_inflow_discovery` against **NEW** companies claim the correct pool and execute vet work.
+4. `inflow_discovery` ingest still creates new company records in **NEW** (existing behavior preserved).
+5. Rejected discovery links still land on company records for dedupe (relevant tests stay green).
+6. Regression: existing `inflow_discovery` and `inflow_resolve_website` scheduled rows still save, display, and dispatch correctly.
+
+## Boundaries
+
+* Does not change vetting prompts, LLM response schemas, or ingest dedupe rules beyond scheduling wiring.
+* Does not rework company state machine beyond **NEW** as default claim trigger for this key.
+* No debug logging changes (AST-538 / AST-557 / AST-621).
+* Admin Task Prompts agent assignment for `vet_inflow_discovery` remains out of scope.
+
+## Notes for planning
+
+* `DISPATCH_SCHEDULABLE_TASK_KEYS`, `dispatch_task_admin_defaults`, `TASK_CONFIG` entity/trigger derivation (**AST-549**).
+* Dispatcher/consult/roster inflow paths — `inflow_discovery` batch already invokes `vet_inflow_discovery` via `run_next`; this ticket adds standalone schedulable company dispatch for the same key.
+* Admin `GET /api/admin/dispatch_tasks/task_keys` and Scheduled Actions modal read schedulable defaults (`api_admin._dispatch_task_key_form_meta`).
+* Primary layers: `src/utils/config.py`, `src/core/consult.py` / `roster.py` / `dispatcher.py`, `src/ui/api/api_admin.py` if modal metadata needs adjustment.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/ast-762-vet-inflow-discovery-schedulable`, child `sub/AST-762/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### betty — 2026-06-23T21:08:38.866Z
+[check-linear]
+
+Tests updated for **[qa-handoff]** — stripped **AST-775** bleed from publish ref per Radia fix-now:
+
+- Removed **`TestAst775InflowDiscoveryRecordNew`** and **`test_vet_failed_state_and_transition`**
+- Restored **`TestAst505InflowDiscovery::test_run_batch_happy_path`** (and CSE batch tests) to inline-vet **`do_task`** mocks matching product on this ref
+- Bible: removed **AST-775** blocks; **AST-774** manifest only
+
+**Publish ref:** `origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch` @ `6964818` (`merge-tests(AST-774): origin/tests 3056526`)
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals \
+  tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_run_batch_happy_path \
+  -q
+```
+
+**Bible shasum:**
+- `docs/test-bible/utils/config.md`: `e318be1f197cf1d17425b2b248c9645bb87d063dafc014c5eb03109845dbf49e`
+- `docs/test-bible/core/roster.md`: `70522785513421226fb651e7e047c3daeeffcb5635f90b2d207f8219d7aba96e`
+
+Hedy — **`resolve-child`** can re-run manifest on epic worktree; stay **Review Posted**.
+
+#### hedy — 2026-06-23T21:06:03.809Z
+[qa-handoff]
+
+Radia **fix-now** (AST-775 test bleed on publish ref): `merge-tests` added `TestAst775InflowDiscoveryRecordNew` and rewrote `TestAst505InflowDiscovery::test_run_batch_happy_path` for `record_inflow_discovery_hit` / `inflow_discovery_blurb`, but product on this ref still inline-vets in `run_inflow_discovery_batch` (no `record_inflow_discovery_hit`).
+
+**Needed:** Strip AST-775 test delta from `origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch`; restore `TestAst505InflowDiscovery::test_run_batch_happy_path` to match inline-vet product (see `origin/dev` version). Republish manifest @ new tip.
+
+**Engineer done:** AST-750 sibling bleed reverted from product (`aef50c7`); narrowed manifest green (5 passed).
+
+@Betty White
+
+#### radia — 2026-06-23T21:04:44.352Z
+**Diff:** `origin/dev...origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch` @ `6916bcb`
+**Doc:** `docs/features/roster/ast-774-vet-inflow-discovery-schedulable-company-dispatch.md` § Radia review
+
+### fix-now
+
+- **AST-750 sibling `src/` bleed** — `DISPATCH_SCORE_FLOOR_VALUES`, `dispatch_score_floor_option_labels()`, and `GET /api/admin/dispatch_tasks/score_floor_options` in `api_admin.py` are on the publish ref but not on `origin/dev` and not in the AST-774 plan. Revert from this sub ref; land via AST-750 (same bar as AST-769).
+
+- **AST-775 test bleed without product** — `merge-tests` added `TestAst775InflowDiscoveryRecordNew` and rewrote `TestAst505InflowDiscovery::test_run_batch_happy_path` to expect record-only batch + `record_inflow_discovery_hit`, but product tip still has inline-vet `run_inflow_discovery_batch` and no `record_inflow_discovery_hit`. Manifest cannot pass against product on the same ref. Betty: strip AST-775 test delta from this publish ref (AST-774-only manifest).
+
+### discuss
+
+- Plan Self-Assessment **Scope: Single-Component** vs net diff also carrying AST-750 `src/` + AST-775 tests — confirm rollup intent vs accidental merge-tests bleed before parent UAT.
+
+### advisory
+
+- `consult.py` lazy `get_candidate` import (~1775) — matches `agent.py` grandfather; optional one-line B1 comment if touching again.
+
+### solid (AST-774 core)
+
+Stages 1–3 land as planned: schedulable `vet_inflow_discovery` company/`NEW` defaults; consult routes company dispatch to `run_inflow_discovery_batch`; `run_company_task` `NEW` guard blocks mis-route to `resolve_company_website`. `TestAst774VetInflowDiscoveryDispatch` + config admin-defaults tests match plan.
+
+#### betty — 2026-06-23T21:00:40.684Z
+## QA test manifest (AST-774)
+
+**Publish ref:** `origin/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch` @ `ffa0c93` (`merge-tests(AST-774): origin/tests 04ae683`)
+
+1. **Config — schedulable registration + admin defaults**
+   - `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task` — **`entity_type` → `company`** (revised from AST-505 candidate assertion)
+   - `::test_vet_inflow_discovery_dispatch_admin_defaults` — company / **`NEW`** / schedulable membership
+   - `::test_inflow_config_discovery_literals` — **`vet_dispatch_trigger_state` == `NEW`**
+
+2. **Consult routing — company vet dispatch → inflow batch**
+   - `tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch::test_consult_routes_company_vet_to_inflow_batch`
+
+3. **Roster guard — mis-route must not resolve website**
+   - `::TestAst774VetInflowDiscoveryDispatch::test_run_company_task_vet_key_guard_skips_resolve`
+
+4. **Regression (unchanged — run if any fail in narrowed pass)**
+   - `::TestAst505InflowDiscovery`, `::TestAst775InflowDiscoveryRecordNew`, `::TestAst506InflowResolve`
+   - `tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults`
+
+**Narrowed run (test-child):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_config_discovery_literals \
+  tests/component/core/test_roster.py::TestAst774VetInflowDiscoveryDispatch \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless you widen deliberately.
+
+**Bible shasum (`origin/sub/…` after merge-tests):**
+- `docs/test-bible/utils/config.md`: `3fed8dd34189279ba7a9a5e3850741eab6274e5633cc6933572e5d5d5d9db32c`
+- `docs/test-bible/core/roster.md`: `30cec258a426896fb2908ddf79220904e847d288bd91f74f00caf3ab1c414f20`
+
+#### hedy — 2026-06-23T20:56:07.133Z
+Plan: `docs/features/roster/ast-774-vet-inflow-discovery-schedulable-company-dispatch.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-762/AST-774-vet-inflow-discovery-schedulable-company-dispatch/docs/features/roster/ast-774-vet-inflow-discovery-schedulable-company-dispatch.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — config schedulable registration plus consult/roster routing guards; no dispatcher or UI changes.
+- **Conf:** `high` — reuses `run_inflow_discovery_batch` and AST-549 `dispatch_task_admin_defaults`; mirrors `fetch_job_pages` consult branch pattern.
+- **Risk:** `Medium` — `NEW` trigger is shared with `inflow_resolve_website`; explicit `dispatch_task_key` guards required so vet rows do not fall through to `resolve_company_website`.
+
+---
+
 # AST-774 — vet_inflow_discovery schedulable company dispatch
 
 - **Linear (this ticket):** [AST-774](https://linear.app/astralcareermatch/issue/AST-774/vet-inflow-discovery-schedulable-company-dispatch-unable-to-schedule-vet)

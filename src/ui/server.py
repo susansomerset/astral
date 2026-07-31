@@ -40,14 +40,26 @@ app.register_blueprint(intake_bp)
 from ui.api.api_admin import admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 
+from ui.api.api_inbox import inbox_bp  # noqa: E402
+app.register_blueprint(inbox_bp)
+
+from ui.api.api_contact import contact_bp  # noqa: E402
+app.register_blueprint(contact_bp)
+
 from ui.api.api_companies import companies_bp  # noqa: E402
 app.register_blueprint(companies_bp)
 
 from ui.api.api_jobs import jobs_bp  # noqa: E402
 app.register_blueprint(jobs_bp)
 
+from ui.api.api_meteorite import meteorite_bp  # noqa: E402
+app.register_blueprint(meteorite_bp)
+
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
+
+from ui.api.api_slack import slack_bp  # noqa: E402
+app.register_blueprint(slack_bp)
 
 from ui.api_errors import server_error_from_exception  # noqa: E402
 

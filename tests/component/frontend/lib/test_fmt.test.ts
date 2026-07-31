@@ -31,6 +31,13 @@ describe("fmtTime", () => {
   it("returns the raw value when parsing fails", () => {
     expect(fmtTime("not-a-date")).toBe("not-a-date")
   })
+
+  // AST-1104: invalid IANA zone must not throw (no root ErrorBoundary → blank #root)
+  it("falls back to UTC when the timezone is invalid", () => {
+    const out = fmtTime("2026-05-14T16:48:11Z", "Not/AZone")
+    expect(out).toBe(fmtTime("2026-05-14T16:48:11Z", "UTC"))
+    expect(out).toContain("5/14/26")
+  })
 })
 
 describe("formatCell", () => {

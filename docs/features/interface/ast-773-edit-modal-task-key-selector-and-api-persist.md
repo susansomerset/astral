@@ -1,3 +1,180 @@
+<!-- linear-archive: AST-773 archived 2026-07-22 -->
+
+## Linear archive (AST-773)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-773/edit-modal-task-key-selector-and-api-persist-cannot-change-task-key-in  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-763 — Cannot change task_key in the scheduled task modal  
+**Blocked by / blocks / related:** parent: AST-763
+
+### Description
+
+## What this implements
+
+Enable changing `task_key` when editing an existing scheduled action: show the Task dropdown on Edit Task (same catalog as Add Task), persist `task_key` on save, validate that the chosen key is valid for the row's Input State without resetting Score Floor or Input State, block edit when AUTO is on, and allow edit while a thread is running (changes apply to future runs only).
+
+## Acceptance criteria
+
+1. Open **Edit Task** on a non-AUTO scheduled-action row — the **Task** dropdown is visible with the current task key selected.
+2. Choose a different task key, keep or adjust **Input State** / **Score Floor** manually, and **Save** — after reload, the row shows the new task key; **Score Floor** unchanged unless Susan edited it.
+3. Save with a `task_key` invalid for the row's **Input State** — explicit validation error; no save.
+4. Attempt to save a change that would duplicate `(candidate, task_key, trigger_state)` — explicit error; modal stays open.
+5. Row with **AUTO mode** on — **Edit Task** is unavailable or blocked (cannot change task_key while AUTO is on).
+6. Row with an active running thread — **Edit Task** and save succeed; in-flight run behavior unchanged; subsequent runs use updated row values.
+7. Add Task, run/stop, AUTO/Dbg column toggles, filters, collapsible task groups, and Stop All still behave as before UAT on AST-735.
+8. Component tests cover Edit Task task-key selection, validation, AUTO-blocked edit, and successful save with an updated key.
+
+## Boundaries
+
+* Does not allow changing candidate on an existing row.
+* Does not auto-reset Input State or Score Floor when Task changes.
+* Does not change scheduler tick logic, claim/run behavior, or ledger semantics beyond future runs picking up saved values.
+* Does not bulk-migrate or clone scheduled actions.
+* Sibling scope: none — single child covers UI + admin API for this bug.
+
+## Notes for planning
+
+* Primary files: `src/ui/frontend/src/pages/AdminScheduledActions.tsx`, `src/ui/api/api_admin.py` (PUT `/dispatch_tasks/<id>` currently omits `task_key` from allowed fields; edit modal hides Task selector when `editRow` is set).
+* Preserve row values on task_key change; entity type follows selected key (read-only).
+* Regression guard for AST-735/751 Scheduled Actions layout and filters.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-763-edit-modal-task-key`, child `sub/AST-763/<child-id>-edit-modal-task-key-and-api`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-23T21:06:18.676Z
+### Review — `origin/dev`…`origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `9219d8c`
+
+**Plan fidelity (A):** PUT accepts `task_key` with `_dispatch_task_key_trigger_error`, derived `entity_type` / `sort_by` / `batch_call_mode`, AUTO guard (`auto_mode`-only when AUTO on), 409 cites attempted triple. UI: Task `<select>` on edit, `taskKeyChangePatch` preserves Input State / Score Floor, AUTO toast + row click block, `task_key` in PUT body.
+
+**Code rules (A):** §3.3 — API imports config/utils + data whitelist only; validation via `dispatch_task_admin_defaults` / state registries; no silent `except`, no `print()`.
+
+**Tests:** Betty `merge-tests` — `TestAst773UpdateDispatchTaskTaskKey` (5), frontend `AST-773 edit modal task_key` (5).
+
+**discuss — sibling bleed at merge-child:** `src/utils/config.py` adds `DISPATCH_SCORE_FLOOR_VALUES` / `dispatch_score_floor_option_labels()` (AST-750) on the three-dot diff via merge ancestry, not Katherine’s `code(AST-773)` commits. No `/dispatch_tasks/score_floor_options` on this ref; UI still hardcodes `scoreFloorOptions`. Confirm strip vs defer to AST-750 rollup on `ftr/AST-763`.
+
+**advisory:** `_dispatch_task_key_trigger_error` runs only when `"task_key" in data` — PUT with `trigger_state` alone does not re-validate against existing `task_key` (pre-PUT behavior; plan scoped to task_key changes).
+
+**advisory:** `taskKeyChangePatch` can show Score Floor when catalog `is_scored` flips but preserved `trigger_state` is non-scored; server coerces via `dispatch_claim_uses_score_floor` on save — acceptable per plan’s preserve-Input-State decision.
+
+Feature doc: `docs/features/interface/ast-773-edit-modal-task-key-selector-and-api-persist.md` (Review section).
+
+#### chuckles — 2026-06-23T21:04:01.327Z
+[check-linear]
+
+**Tests updated for [qa-handoff]** — manifest item 3 regression fixed.
+
+**Cause:** AST-751 assertions used `/D\. Job Analysis/` and `/C\. Company Roster/` — ambiguous with AST-768 Section/Group `<option>` labels (same text).
+
+**Fix:** Tightened four AST-751 cases to section-header patterns (`/D\. Job Analysis \(.*AUTO\)/`, `/C\. Company Roster \(.*AUTO\)/`) — matches AST-768 style.
+
+**Publish:** `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `d811040`
+**Tests SHA:** `origin/tests` @ `5ffe40a`
+
+**Re-run (manifest item 3):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-751|AST-768|AST-647"
+```
+
+— Betty
+
+#### katherine — 2026-06-23T21:02:24.285Z
+[qa-handoff]
+
+@Betty White — manifest items **1** and **2** green on `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `8571222`. Item **3** (regression) fails — **test/manifest**, not product.
+
+**Green:**
+```bash
+ASTRAL_PYTHON=/home/susan/astral-AST-763/.venv/bin/python ./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey -q
+# 5 passed
+
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-773"
+# 5 passed
+```
+
+**Red — manifest item 3:**
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-751|AST-768|AST-647"
+# 4 failed | 10 passed
+```
+
+Failures (all AST-751):
+- `combined AUTO and Task filters intersect`
+- `renders em dash for zero or null available count`
+- `All-candidate default sort orders same task by available count descending`
+- `floor range filter excludes non-scored rows`
+
+**Why test/manifest:** Each failure is `getByText(/D\. Job Analysis/)` or `queryByText(/C\. Company Roster/)` matching **both** the collapsible section header **and** the **Section/Group** filter `<option>` text (AST-768). Example: `getMultipleElementsFoundError` at line 649. Same failures reproduce on product-only commit `03fd877` (before `merge-tests`) — not introduced by AST-773 code.
+
+**Ask:** Tighten AST-751 regression assertions (e.g. `/D\. Job Analysis \(.*AUTO\)/` or scope queries to `.collapsible-panel-label-wrap` / exclude `.admin-filters`) or narrow manifest item 3 to tests that are selector-stable.
+
+No product commits from me — staying **Tests Ready**.
+
+#### chuckles — 2026-06-23T20:57:15.129Z
+## Tests Ready — Betty manifest (AST-773)
+
+Publish: `origin/sub/AST-763/AST-773-edit-modal-task-key-and-api` @ `8571222`
+Tests SHA: `origin/tests` @ `fb8c8c1`
+
+**Bible shasum (publish ref):**
+- `docs/test-bible/frontend/pages.md` — `185d7dd0629343b4076080b6ce23f7686d3f2c63`
+- `docs/test-bible/ui/api/api_admin.md` — `6ae53f12c5afc1e35fdc87c4c862978608e2c507`
+
+### Manifest (test-child)
+
+1. **API — PUT `task_key` validation** (required):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst773UpdateDispatchTaskTaskKey \
+  -q
+```
+
+2. **Scheduled Actions routed page — edit modal task_key** (**§6c**, required):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-773"
+```
+
+3. **Regression — existing Scheduled Actions smoke** (required):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-751|AST-768|AST-647"
+```
+
+**Pass criterion:** pytest + Vitest green on items 1–3 — not zero-arg harness / full branch-lock gate.
+
+**Coverage map:** `docs/test-bible/frontend/pages.md` (**AST-773**), `docs/test-bible/ui/api/api_admin.md` (**AST-773**).
+
+— Betty
+
+#### katherine — 2026-06-23T20:52:16.802Z
+Plan: `docs/features/interface/ast-773-edit-modal-task-key-selector-and-api-persist.md`
+GitHub: https://github.com/susansomerset/astral/blob/sub/AST-763/AST-773-edit-modal-task-key-and-api/docs/features/interface/ast-773-edit-modal-task-key-selector-and-api-persist.md
+Publish ref @ `ce2de0b`
+
+**Scope:** `Single-Component` — Scheduled Actions edit modal + `PUT /api/admin/dispatch_tasks/<id>` + dispatch_task update whitelist.
+
+**Conf:** `high` — localized gap (hidden Task select + omitted PUT field); mirrors existing Add Task / POST patterns.
+
+**Risk:** `Medium` — UNIQUE triple and AUTO guard must not block legitimate saves; explicit validation helper + UI/server AUTO symmetry.
+
+Two stages: (1) API persist/validate `task_key` with derived catalog columns; (2) UI Task dropdown on edit, preserve Input State/Score Floor on task change, block AUTO-row edit.
+
+---
+
 # Edit modal task_key selector and API persist (Cannot change task_key in the scheduled task modal)
 
 **Linear:** [AST-773](https://linear.app/astralcareermatch/issue/AST-773/edit-modal-task-key-selector-and-api-persist-cannot-change-task-key-in)  

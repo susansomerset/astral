@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-822 archived 2026-07-22 -->
+
+## Linear archive (AST-822)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-822/uat-vet-inflow-discovery-batch-new-companies-with-000001002-indices  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-815 — get vet_inflow_discovery to work  
+**Blocked by / blocks / related:** parent: AST-815
+
+### Description
+
+## What failed
+
+Susan re-tested after AST-819 fix-uat (2026-06-26 03:55). **vet_inflow_discovery** does not batch eligible **NEW** companies the way she expects — it should assemble and vet multiple discovery blurbs in one dispatch run using `000`**,** `001`**,** `002`**, …** index prefixes (same pipe-line shape as discovery hit recording), not one isolated company per LLM call when **batch_size > 1**.
+
+Susan: *"vet_inflow_discovery should be using the batching (000, 001, 002 of the NEW state companies)"*
+
+## Expected
+
+1. When **vet_inflow_discovery** **dispatch_task** **batch_size > 1**, one scheduler tick / manual **Run** claims up to **batch_size** eligible **NEW** companies and sends **one** **vet_inflow_discovery** Admin task with multi-line live content:
+
+   ```
+   Discovery hits (index|title|url|snippet)
+   000|…|…|…
+   001|…|…|…
+   002|…|…|…
+   ```
+2. Model **results** rows map back via **hit_index** (0, 1, 2, …) to the claimed companies; each pass/fail transitions the correct company row (**WEBSITE_FOUND** / **VET_FAILED**).
+3. With **batch_size = 1**, behavior remains single-company (**000** only) — no regression from AST-817/819 routing fixes.
+4. **debug=True** logs show batch index headers for the multi-company vet path.
+
+## Repro
+
+1. Candidate **somerset**, **vet_inflow_discovery** **available ≥ 3**, set **batch_size = 3** (or increase from 1 for UAT), **debug=True**.
+2. Manual **Run** or wait for AUTO tick.
+3. Observe: three separate per-slug vet calls OR live content missing **000/001/002** batch assembly — Susan sees wrong batching semantics.
+
+## Parent AC (quoted inline)
+
+> With **debug=True** on a vet dispatch run, Susan can read per-company index headers and outcomes in logs without opening the database.
+
+> A company row with a non-empty **inflow_discovery_blurb** that passes the mechanical vet ends in **WEBSITE_FOUND** with **company_website** populated; a reject ends in **VET_FAILED**.
+
+## Boundaries
+
+* Does **not** change **inflow_discovery** candidate CSE batch.
+* Does **not** change **inflow_resolve_website**.
+* Does **not** rewrite mechanical vet prompt prose unless required for multi-hit **results** envelope (prefer code-side live_content assembly only).
+
+### Comments
+
+#### betty — 2026-06-26T04:06:53.299Z
+**Bible shasums (publish tip `65af66a`):**
+- `docs/test-bible/core/roster.md` → `e1c663dfafbf09fad11dea178a930a42745f5a84712bbf569208c391452e72e5`
+- `docs/test-bible/core/consult.md` → `9e76112602ca40adc47f8dcf2501fc9d4d08c2dc74cd393dd7a4959288090281`
+
+#### betty — 2026-06-26T04:06:50.013Z
+## QA test manifest (AST-822)
+
+**Scope:** UAT bug — batch **`vet_inflow_discovery`** on claimed **NEW** companies: **`batch_call_mode=1`**, one **`do_task`** with **`000|…` / `001|…` / `002|…`** live content, **`hit_index`** decode per row. Consult routes to **`vet_inflow_discovery_company_batch`**.
+
+1. `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany` — single-company wrapper (**AST-776** regression)
+2. `tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch` — blurb renumber + two-hit **`hit_index`** decode
+3. `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` — consult → batch runner (updated from **AST-817** `run_company_task` mock)
+4. `tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults` — **`batch_call_mode == 1`**
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany \
+  tests/component/core/test_roster.py::TestAst822VetInflowDiscoveryBatch \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_vet_inflow_discovery_dispatch_admin_defaults \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Publish:** `origin/sub/AST-815/AST-822-uat-vet-inflow-batch-indices` @ `65af66a` (`merge-tests(AST-822): origin/tests a2d11da`)
+
+**Bible shasums:**
+- `docs/test-bible/core/roster.md` → (see publish tip)
+- `docs/test-bible/core/consult.md` → (see publish tip)
+
+— Betty
+
+#### hedy — 2026-06-26T04:01:38.417Z
+Plan ready @ `409b2f6` on `origin/sub/AST-815/AST-822-uat-vet-inflow-batch-indices`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-815/AST-822-uat-vet-inflow-batch-indices/docs/features/roster/ast-822-uat-vet-inflow-batch-indices.md
+
+**Approach:** Enable `batch_call_mode=1` for `vet_inflow_discovery` (config + DB migration), add `vet_inflow_discovery_company_batch` mirroring AST-702 prefilter pattern (one `do_task`, `000/001/002` blurb renumber, `hit_index` decode), consult company branch before `run_company_task` fallback, AST-822 prompt migration for multi-hit `results` envelope.
+
+**Self-assessment**
+- **Scope:** Single-Component — config, database migration, roster batch runner, consult guard.
+- **Conf:** high — prefilter batch template + existing `hit_index` schema; repro matches `batch_call_mode=0` per-entity consult.
+- **Risk:** Medium — wrong `hit_index` mapping would transition wrong company; staging needs DB migration before UAT.
+
+---
+
 # AST-822 — UAT: vet_inflow_discovery batch NEW companies with 000/001/002 indices
 
 - **Linear:** [AST-822](https://linear.app/astralcareermatch/issue/AST-822/uat-vet-inflow-discovery-batch-new-companies-with-000001002-indices)

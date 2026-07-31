@@ -31,7 +31,12 @@ from src.core.dispatcher import (
     count_dispatch_tasks_by_candidate, set_candidate_dispatch_tasks_from_template,
     run_task, drain_task, cancel_task, cancel_all_tasks, task_status_all,
 )
-from src.core.candidate import preview_task_prompt
+from src.core.candidate import (
+    build_candidate_token_view,
+    preview_task_prompt,
+    run_session_resume_parse,
+)
+from src.core.builder import build_session_base_resume, build_session_cover_letter
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
     get_repo_admin_json_divergence_status,
@@ -40,6 +45,7 @@ from src.core.repo_admin_json import (
 from src.utils.config import (
     ASTRAL_CONFIG,
     AGENT_CONFIG,
+    BUILD_CONFIG,
     DEEPSEEK_MODEL_PRICING,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
@@ -49,6 +55,7 @@ from src.utils.config import (
     admin_brain_setting_catalog,
     brain_setting_for_anthropic_agent_key,
     TASK_CONFIG,
+    TRACKER_CONFIG,
     JOB_STATES,
     COMPANY_STATES,
     CANDIDATE_STATES,
@@ -56,13 +63,14 @@ from src.utils.config import (
     dispatch_entity_state_registry,
     ADMIN_CONFIG,
     admin_hidden_dispatch_task_keys,
+    admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
-    DISPATCH_SCHEDULABLE_TASK_KEYS,
     DISPATCH_RETIRED_TASK_KEYS,
     dispatch_task_admin_defaults,
     dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
+    _dispatch_entity_type_for_task_key,
     get_task_keys,
     dispatch_claim_uses_score_floor,
     is_dispatch_chain_trigger,
@@ -157,7 +165,8 @@ def _resolve_agent_preview_candidate(candidate_id: str):
         if not candidates:
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
-    cd = candidate.get("candidate_data") or {}
+    # AST-1014: columns + contact.* live on the row, not raw candidate_data alone.
+    cd = build_candidate_token_view(candidate)
     cid = candidate.get("astral_candidate_id") or candidate_id
     return cid, cd
 
@@ -335,7 +344,8 @@ def _enrich_tasks(candidate_id: str) -> list:
     and fetches timesheet averages per task version."""
     tasks = database.list_candidate_tasks()
     candidate = database.get_candidate(candidate_id) if candidate_id else None
-    cd = (candidate.get("candidate_data") or {}) if candidate else {}
+    # AST-1014: token view merges name columns + library blobs for resolve_tokens.
+    cd = build_candidate_token_view(candidate) if candidate else {}
 
     conn = _get_connection()
     try:
@@ -869,6 +879,9 @@ def list_dtasks():
                 exc,
             )
             row["available_count"] = 0
+        row["always_visible_under_avail_gt0"] = (
+            row.get("task_key") in admin_always_visible_under_avail_gt0_dispatch_task_keys()
+        )
     hidden = admin_hidden_dispatch_task_keys()
     rows = [r for r in rows if r.get("task_key") not in hidden]
     if request.args.get("req_dict"):
@@ -889,19 +902,23 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
-    """Scheduled Actions form defaults: schedulable keys use dispatch_task_admin_defaults;
-    grouping fields from agent_task via dispatch_task_grouping_catalog_key; entity/trigger
-    keyed by dispatch task_key."""
+    """Scheduled Actions form defaults: TASK_CONFIG keys use dispatch_task_admin_defaults
+    when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
+    entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
     grouping_key = dispatch_task_grouping_catalog_key(task_key)
     cfg = TASK_CONFIG.get(catalog_key) or TASK_CONFIG.get(task_key) or {}
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
-    if task_key in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        derived = dispatch_task_admin_defaults(task_key)
-        entity_type = derived["entity_type"]
-        trigger_state = derived["trigger_state"]
+    # Prefer derived admin defaults when the key is registered and has a trigger rule.
+    if task_key in TASK_CONFIG:
+        try:
+            derived = dispatch_task_admin_defaults(task_key)
+            entity_type = derived["entity_type"]
+            trigger_state = derived["trigger_state"]
+        except KeyError:
+            pass  # mid-chain / no default trigger — keep TASK_CONFIG field values
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
@@ -915,14 +932,11 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
 def dispatch_task_keys():
     """task_key → entity_type / trigger_state for Scheduled Actions forms.
 
-    Every TASK_CONFIG key is selectable. Schedulable keys use config-built defaults;
-    other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
+    Every TASK_CONFIG key is selectable. Registered keys use config-built defaults when
+    available; other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
     seen: dict[str, dict] = {}
     for tk in get_task_keys():
         seen[tk] = _dispatch_task_key_form_meta(tk)
-    for tk in DISPATCH_SCHEDULABLE_TASK_KEYS:
-        if tk not in seen:
-            seen[tk] = _dispatch_task_key_form_meta(tk)
     for r in list_dispatch_tasks():
         k = r.get("task_key", "")
         if not k:
@@ -1032,14 +1046,15 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    try:
-        defaults = dispatch_task_admin_defaults(tk)
-    except KeyError:
-        return f"Unknown or non-schedulable task_key: {tk!r}"
+    if tk not in TASK_CONFIG:
+        return f"Unknown task_key: {tk!r}"
     ts = (trigger_state or "").strip()
     if not ts:
         return "trigger_state is required"
-    et = defaults["entity_type"]
+    try:
+        et = _dispatch_entity_type_for_task_key(tk)
+    except KeyError:
+        return f"task_key {tk!r} has unsupported entity_type"
     if et not in ENTITY_TYPES:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
     try:
@@ -1078,7 +1093,10 @@ def update_dtask(task_id):
         tk_err = _dispatch_task_key_trigger_error(data["task_key"], effective_trigger_state)
         if tk_err:
             return jsonify({"error": tk_err}), 400
-        defaults = dispatch_task_admin_defaults((data["task_key"] or "").strip())
+        defaults = dispatch_task_admin_defaults(
+            (data["task_key"] or "").strip(),
+            trigger_state=effective_trigger_state,
+        )
         updates["task_key"] = (data["task_key"] or "").strip()
         updates["entity_type"] = defaults["entity_type"]
         updates["sort_by"] = defaults["sort_by"]
@@ -1184,6 +1202,20 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
             return (
                 "JOB LISTINGS:\n" + "\n".join(f"{i:03d}: {item}" for i, item in enumerate(raw_htmls))
             ) if astral_ids else ""
+        # batch mode: qualify_meteorite — lockstep with consult.qualify_meteorite assemble
+        if task_key == "qualify_meteorite":
+            ids = entity_ids if entity_ids else ([entity_id] if entity_id else [])
+            jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+            lines = []
+            for jid in ids:
+                job = database.get_job(jid)
+                if not job:
+                    continue
+                lines.append(
+                    f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
+                    f"job_description: {(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                )
+            return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
         job = database.get_job(entity_id)
         if not job:
@@ -1279,7 +1311,8 @@ def _resolve_adhoc(body):
     if candidate_id:
         candidate = database.get_candidate(candidate_id)
         if candidate:
-            cd = candidate.get("candidate_data") or {}
+            # AST-1014: adhoc resolve needs columns + contact.* (not raw blob only).
+            cd = build_candidate_token_view(candidate)
 
     task_key = (body.get("task_key") or "adhoc").strip()
 
@@ -1438,6 +1471,69 @@ def _decode_blob_values(row: dict) -> dict:
             except (zlib.error, UnicodeDecodeError):
                 row[k] = f"<binary {len(v)} bytes>"
     return row
+
+
+@admin_bp.route("/session_resume/parse", methods=["POST"])
+@require_admin
+def session_resume_parse():
+    """AST-986/AST-1038: paste → simple_resume_parse (Ruth); response-only, no candidate bind."""
+    body = request.get_json(silent=True) or {}
+    resume_text = body.get("resume_text")
+    result_body, status = run_session_resume_parse(
+        resume_text if isinstance(resume_text, str) else "",
+        debug=ui_llm_debug(),
+    )
+    return jsonify(result_body), status
+
+
+# AST-987 session resume HTML
+@admin_bp.route("/session_resume/html", methods=["POST"])
+@require_admin
+def session_resume_html():
+    """AST-987: in-memory structure + base_resume → print HTML (no candidate bind)."""
+    body = request.get_json(silent=True) or {}
+    structure = body.get("resume_structure")
+    content = body.get("base_resume")
+    if not isinstance(structure, dict) or not isinstance(content, dict):
+        return jsonify({
+            "success": False,
+            "error": "resume_structure and base_resume objects are required",
+        }), 400
+    try:
+        html = build_session_base_resume(
+            structure,
+            content,
+            debug=ui_llm_debug(),
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    return Response(html, mimetype="text/html; charset=utf-8")
+
+
+# AST-1024 session cover letter HTML
+@admin_bp.route("/session_cover_letter/html", methods=["POST"])
+@require_admin
+def session_cover_letter_html():
+    """AST-1024: in-memory cover fields → SomersetCover HTML (optional candidate signature image)."""
+    body = request.get_json(silent=True) or {}
+    if not isinstance(body, dict):
+        return jsonify({"success": False, "error": "JSON object body is required"}), 400
+    # Field keys from config only — do not hardcode the key list here (Joan plan-discuss round=1).
+    field_defs = BUILD_CONFIG["session_cover_letter"]["fields"]
+    fields = {k: body.get(k, "") for k in field_defs}
+    raw_cid = body.get("candidate_id")
+    candidate_id = raw_cid.strip() if isinstance(raw_cid, str) else None
+    if candidate_id == "":
+        candidate_id = None
+    try:
+        html_out = build_session_cover_letter(
+            fields,
+            candidate_id=candidate_id,
+            debug=ui_llm_debug(),
+        )
+    except ValueError as exc:
+        return jsonify({"success": False, "error": str(exc)}), 400
+    return Response(html_out, mimetype="text/html; charset=utf-8")
 
 
 @admin_bp.route("/data/sql", methods=["POST"])

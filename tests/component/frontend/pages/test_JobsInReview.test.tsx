@@ -91,4 +91,91 @@ describe("JobsInReview", () => {
       expect(screen.queryByText("Alpha Role")).not.toBeInTheDocument()
     })
   })
+
+  describe("AST-1064 group-by job-carried rubric", () => {
+    it("splits Passed Job List into tables by joblist_rubric fingerprint", async () => {
+      const narrow = [{ code: "JL", label: "Job List", importance: 5, grade_descriptions: [] }]
+      const wide = [
+        { code: "JL", label: "Job List", importance: 5, grade_descriptions: [] },
+        { code: "TT", label: "Title Match", importance: 4, grade_descriptions: [] },
+      ]
+      const grouped = [
+        {
+          astral_job_id: "g1",
+          job_title: "Group Narrow",
+          company: "Acme",
+          state: "PASSED_JOBLIST",
+          state_changed_at: "2026-01-03T00:00:00Z",
+          joblist_rubric: narrow,
+          joblist_grades: [{ vector: "Job List", grade: "A", confidence: 0.8 }],
+          joblist_score: 7.1,
+          latest_score: 0.1,
+        },
+        {
+          astral_job_id: "g2",
+          job_title: "Group Wide",
+          company: "Beta",
+          state: "PASSED_JOBLIST",
+          state_changed_at: "2026-01-02T00:00:00Z",
+          joblist_rubric: wide,
+          joblist_grades: [
+            { vector: "Job List", grade: "B", confidence: 0.5 },
+            { vector: "Title Match", grade: "A", confidence: 0.9 },
+          ],
+          joblist_score: 8.2,
+          latest_score: 0.2,
+        },
+      ]
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", grouped))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      expect(document.querySelectorAll(".list-page-table").length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByRole("columnheader", { name: "TT" })).toBeInTheDocument()
+      expect(screen.getAllByRole("columnheader", { name: "JL" }).length).toBeGreaterThanOrEqual(2)
+      expect(screen.getByText("Group Narrow")).toBeInTheDocument()
+      expect(screen.getByText("Group Wide")).toBeInTheDocument()
+      expect(screen.getByText("7.10")).toBeInTheDocument()
+      expect(screen.getByText("8.20")).toBeInTheDocument()
+      expect(document.querySelectorAll(".grade-dot").length).toBeGreaterThanOrEqual(3)
+    })
+  })
+
+  describe("AST-1086 compact headers and grade-dot tooltips", () => {
+    it("grades-only Passed Job List shows compact JL header with full-name title", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [jobs[0]]))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      const th = screen.getByRole("columnheader", { name: "JL" })
+      expect(th).toHaveAttribute("title", "Job List (5)")
+      expect(th.textContent).toMatch(/^JL/)
+      expect(screen.queryByRole("columnheader", { name: /Job List \(JL\)/ })).not.toBeInTheDocument()
+    })
+
+    it("grade-dot title includes reason and confidence parenthetical", async () => {
+      const tipJob = {
+        astral_job_id: "tip-ir",
+        job_title: "Tooltip In Review",
+        company: "TipCo",
+        state: "PASSED_JOBLIST",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        joblist_grades: [{
+          vector: "Job List (JL)",
+          grade: "A",
+          confidence: 5,
+          reason: "Clear joblist fit",
+        }],
+      }
+      installBaseApiMocks(mockedApi, jobsViewHandler("in_review", [tipJob]))
+      renderWithProviders(<JobsInReview />)
+      await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+      const dot = document.querySelector(".grade-dot.dot-a")
+      expect(dot).toBeTruthy()
+      expect(dot?.getAttribute("title")).toBe(
+        "Clear joblist fit (The source explicitly states it.)",
+      )
+    })
+  })
 })

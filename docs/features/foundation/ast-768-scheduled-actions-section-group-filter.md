@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-768 archived 2026-07-22 -->
+
+## Linear archive (AST-768)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-768/scheduled-actions-sectiongroup-filter-organization-of-tasks-and  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-572 — Organization of tasks and dispatch task keys  
+**Blocked by / blocks / related:** parent: AST-572
+
+### Description
+
+## What this implements
+
+Add a **Section/Group** filter control on the Scheduled Actions admin screen so operators can narrow dispatch rows to one task group (`task_group_name`) from the same metadata Manage Tasks uses (**AST-734**). Filter combines with existing Candidate, Task, and operational filters.
+
+## Acceptance criteria
+
+1. Scheduled Actions exposes a **Section/Group** filter listing distinct `task_group_name` values (plus an All option) derived from task metadata.
+2. Selecting a section/group shows only dispatch rows whose `task_key` belongs to that group; combined with Candidate, Task, and operational filters, filters intersect correctly.
+3. With **Candidate → All**, section filter still works and task grouping/order within visible sections matches single-candidate view.
+
+## Boundaries
+
+* Does not implement consult→grade alias cutover (**AST-736**), All-candidate layout (**AST-735/751** — builds on it), or retry row behavior (**AST-741/745**).
+* Admin UI + supporting admin API only — no scheduler or dispatch claim changes.
+* No backend debug-logging requirements.
+
+## Notes for planning
+
+* Primary surfaces: `src/ui/frontend/src/pages/AdminScheduledActions.tsx`, possibly `src/ui/api/api_admin.py` if group list needs an API helper.
+* Group metadata comes from `GET /api/admin/dispatch_tasks/task_keys` (`task_group_name`, `task_group_order`) — same source as Manage Tasks (**AST-734/739**).
+* plan-child §3.5 — match existing admin filter bar patterns in **AST-751**.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-572-organization-tasks-dispatch-keys`, child `sub/AST-572/AST-573-scheduled-actions-section-group-filter`, standalone `ftr/<segment>`. Created at **dispatch-parent**. Engineers publish to `origin/sub/...` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-06-25T05:43:38.682Z
+[check-linear] Done — AST-750 bleed: strip at merge-child on AST-572, not on Katherine resolve for AST-768.
+
+#### radia — 2026-06-23T20:05:16.600Z
+### AST-768 review (`origin/dev`…`origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter`)
+
+**Product @ `4ac09c1`** · publish tip **`94ebec0`** · review doc: `docs/features/foundation/ast-768-scheduled-actions-section-group-filter.md` § Review (Radia)
+
+#### What's solid
+
+- **Plan fidelity:** Stage 1 complete — `sectionGroupFilter`, `sectionGroupOptions` from `allTaskKeys`, `filteredRows` AND after Candidate / before Task, control after Candidate filter (`AdminScheduledActions.tsx`).
+- **Scope:** Engineer commit is single-file, client-side only; composite `${task_group_order}\u0000${task_group_name}` key matches existing `sections` memo.
+- **Rules:** Frontend-only (§3.3); group metadata from existing `task_keys` payload (§2.1). No batch/dispatch core touched.
+- **Tests:** Betty `AST-768 section/group filter` — 6/6 green on narrowed Vitest run.
+
+#### fix-now
+
+_None for AST-768 product code._
+
+#### discuss
+
+- **Sibling bleed on publish tip (not in `4ac09c1`):** Three-dot diff vs `origin/dev` includes **AST-750** artifacts from `merge-tests` — `src/utils/config.py` (`DISPATCH_SCORE_FLOOR_VALUES`), `src/ui/api/api_admin.py` (`GET /dispatch_tasks/score_floor_options`), and `docs/features/interface/ast-750-*.md`. AST-768 plan explicitly out-of-scopes API/config. UI still hardcodes `scoreFloorOptions` 1.00–10.00; new endpoint is unused on this ref. **@Chuckles** — confirm at merge-child: strip from sub or defer to AST-750 sibling rollup.
+
+#### advisory
+
+- Composite section key formula duplicated in three memos; plan chose that over a helper — fine for this ticket; optional micro-DRY later.
+
+**Katherine:** `resolve-child` — no product changes required for AST-768.
+
+#### chuckles — 2026-06-23T20:01:14.516Z
+## QA test manifest (AST-768)
+
+**Publish:** `origin/sub/AST-572/AST-768-scheduled-actions-section-group-filter` @ `ce024eb` (`merge-tests(AST-768): origin/tests 95ea12e`)
+
+**Bible shasum:** `docs/test-bible/frontend/pages.md` → `c5322132f7cab9977b64d3ef7d2ce313e864e2b1`
+
+1. **Vitest — `AST-768 section/group filter` describe (required, §6c routed page):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-768"
+```
+Covers: Section/Group control (All + catalog groups from `task_keys`); group selection row filter; Section/Group + Task AND (empty when Task outside group); Section/Group + AUTO AND; Candidate All + group narrows collapsible sections + default sort (`task_seq`, then `available_count` desc); section `{autoOn} / {total} AUTO` headers on post-filter rows.
+
+2. **Regression guard (recommended after green):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Broken / obsolete:** none — extends existing `test_AdminScheduledActions.test.tsx` fixtures from **AST-751** / **AST-739**.
+
+**Existing coverage reused:** **AST-634** candidate filter, **AST-751** filter bar + AUTO summary, **AST-739** DB grouping sections.
+
+— Betty
+
+#### katherine — 2026-06-23T19:57:33.106Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-572/AST-768-scheduled-actions-section-group-filter/docs/features/foundation/ast-768-scheduled-actions-section-group-filter.md
+
+**Scope:** minor — one filter control + filteredRows branch in AdminScheduledActions.tsx; no API layer.
+
+**Conf:** high — mirrors AST-751 filter pattern; reuses existing sections composite key; prerequisites on ftr.
+
+**Risk:** low — client-side triage filter only; cannot affect dispatch execution.
+
+---
+
 # AST-768 — Scheduled Actions section/group filter (Organization of tasks and dispatch task keys)
 
 **Linear:** [AST-768 — Scheduled Actions section/group filter](https://linear.app/astralcareermatch/issue/AST-768/scheduled-actions-sectiongroup-filter-organization-of-tasks-and-dispatch)  

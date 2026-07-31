@@ -37,3 +37,18 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest green on items 1–3 + Vitest green on item 4 — not zero-arg harness / branch-lock gate.
+---
+
+### AST-1041 · AST-1034
+
+**Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
+
+`set_company_batch` **claim** (`clear=False`) appends `short_name NOT LIKE METEORITE_CONFIG["short_name_prefix"] + "%"` so roster/gazer never claim `meteorite-*` placeholders. Clear path unchanged. Ensure: **`docs/test-bible/core/meteorite.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Claim skips meteorite-* (NEW + IGNORE); normal still claimed; clear still clears | `src/data/database.py` | **`TestAst1041MeteoriteClaimExclusion`** |
+
+**Broken / obsolete:** none — additive claim filter.
+
+**Integration:** no existing scenario asserts meteorite claim exclusion — no revision.

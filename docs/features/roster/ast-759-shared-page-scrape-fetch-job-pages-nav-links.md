@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-759 archived 2026-07-22 -->
+
+## Linear archive (AST-759)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-759/shared-page-scrape-contract-and-fetch-job-pages-nav-link-parity-fetch  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-753 — fetch_job_pages does not fetch nav links  
+**Blocked by / blocks / related:** parent: AST-753
+
+### Description
+
+## What this implements
+
+Restore one shared Playwright page-scrape contract (collapsed visible text + numbered nav-link enumeration) and wire **fetch_job_pages** plus **select_job_page** at **PJL_READY** so the decomposed roster path matches the monolith’s link+text material — fixing the pattern drift Susan flagged on AST-753.
+
+## Acceptance criteria
+
+1. Homepage / **fetch_website** and **fetch_job_pages** both invoke the **same** shared page-scrape helper (not parallel one-off scrape code paths).
+2. After **fetch_job_pages** on a company with at least one **possible_joblist_links** URL, persisted PJL data includes collapsed visible text per page **and** numbered nav-link enumeration when Playwright finds links (Mitratech careers-style pages are acceptable repro).
+3. **select_job_page** at **PJL_READY** receives link material aligned with criterion 2 before the agent call when links were scraped.
+4. Stored visible text no longer shows long runs of consecutive blank lines on fresh **fetch_job_pages** runs (same normalization as homepage fetch).
+5. With `debug=True` on the same scenario, logs satisfy AST-538 per-index found/recorded trace for each URL scraped.
+
+## Boundaries
+
+* Does not refactor **select_job_page** routing, TRY_LINKS retry logic, or state transitions (AST-720 stands).
+* Does not remove monolithic **find_job_page** (AST-721 owns removal).
+* Does not change careers-list readiness gating (AST-689) beyond calling the shared helper after readiness where applicable.
+* Does not add Betty log-string tests for debug output.
+* Must not regress AST-718 **possible_joblist_links** ledger dedupe or AST-673 **job_site** non-write on fetch.
+
+## Notes for planning
+
+* Primary domain: roster PJL scrape helpers, gazer **fetch_job_pages_batch**, blank-line normalization (AST-710/715 precedent).
+* Monolith **find_job_page** remains until AST-721; decomposed chain is the target workflow.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-753-fetch-job-pages-nav-links`, child `sub/AST-753/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-23T19:29:07.441Z
+**Review:** `origin/dev...origin/sub/AST-753/AST-759-shared-page-scrape-fetch-job-pages-nav-links` @ `5776702`
+
+**Plan fidelity:** Stages 1–3 match plan — shared `extract_page_scrape_contract` + core `finalize_page_scrape_contract` / `scrape_loaded_page_contract`; homepage and `_scrape_pjl_page` single-load routing; PJL page rows + assembly carry `enumerated_nav_links`; `_build_select_job_page_live_content` wired into `run_select_job_page_dispatch`; gazer per-URL debug includes collapsed char count + nav link count. No AST-720 routing / ledger semantics changes.
+
+**Rules (§2.5, §3.3, §2.6):** Collapse/enumerate in core; external raw I/O only; batch transitions untouched. Betty manifest green (`TestAst759SharedPageScrapeContract` + extended roster/gazer cases).
+
+**fix-now:** Plan Stage 2 §1 requires preserving **non-fatal nav warning** on homepage scrape. Pre-refactor `scrape_company_homepage_content` logged `logger.warning` when `extract_site_page_list` raised; `extract_page_scrape_contract` now swallows `Exception` → `nav_urls=[]` with no signal and core no longer warns — operators lose nav-extraction failure visibility on fetch_website. Restore warning path (e.g. optional `nav_error` on raw contract surfaced in core).
+
+**discuss:** Ledger-skip debug in `fetch_job_pages_batch` emits `index=1, total=1` for each already-scraped URL — misleading §1.5.1 batch headers when multiple skips.
+
+**Advisory:** Full diff vs `origin/dev` includes sibling AST-753 ftr rollup (interface/config docs); AST-759 product commits (`c7a9be5`, `7ec374e`, `7513459`) stay within the planned three-module footprint.
+
+**Doc:** [ast-759-shared-page-scrape-fetch-job-pages-nav-links.md](https://github.com/susansomerset/astral/blob/5776702f044e9a9f708f73a35c82584155ccc487/docs/features/roster/ast-759-shared-page-scrape-fetch-job-pages-nav-links.md#review-radia) — one fix-now before resolve.
+
+#### betty — 2026-06-23T19:26:53.365Z
+## QA test manifest (AST-759)
+
+**Publish ref:** `origin/sub/AST-753/AST-759-shared-page-scrape-fetch-job-pages-nav-links` @ `3061c92` (`merge-tests(AST-759): origin/tests 26bd9ff`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/roster.md` → `79628199c99fdcb22fff669439f0a44e30f0eb2a`
+- `docs/test-bible/core/gazer.md` → `a99c46a56db750e2218f00b98e179e7e7dc95d98`
+
+1. **Shared contract helpers (required):** `tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract` — `finalize_page_scrape_contract`, `_build_select_job_page_live_content`.
+
+2. **PJL ledger nav persistence (required):** `tests/component/core/test_roster.py::TestAst719PjlRosterHelpers` — `_merge_pjl_scrape_record` stores `enumerated_nav_links`; `_assemble_pjl_content` embeds `--- NAV LINKS ---`.
+
+3. **select_job_page live content parity (required):** `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links` — agent receives `=== NAV LINKS ===` block from `pjl_nav_links`.
+
+4. **Homepage shared contract (required, revised):** `tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent` — mocks `scrape_loaded_page_contract` + browser page stubs (AST-759 single-load refactor).
+
+5. **Gazer batch persist (required):** `tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists` — `pjl_scrape_pages` / `pjl_assembled_content` carry per-page enumerated nav.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst759SharedPageScrapeContract \
+  tests/component/core/test_roster.py::TestAst719PjlRosterHelpers \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links \
+  tests/component/core/test_roster.py::TestAst701ScrapeCompanyHomepageContent \
+  tests/component/core/test_gazer.py::TestFetchJobPagesBatch::test_success_transitions_pjl_ready_and_persists \
+  -q
+```
+
+**Broken / obsolete (Betty revision):** `TestAst701ScrapeCompanyHomepageContent` — separate `get_visible_text` / `extract_site_page_list` mocks replaced by shared-contract mock path.
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### hedy — 2026-06-23T19:20:23.173Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-753/AST-759-shared-page-scrape-fetch-job-pages-nav-links/docs/features/roster/ast-759-shared-page-scrape-fetch-job-pages-nav-links.md
+
+**Scope:** `Single-Component` — shared Playwright raw extractor + core finalize wrapper in `roster.py`; refactor `scrape_company_homepage_content` and `_scrape_pjl_page` to single-load contract; enrich PJL assembly + `select_job_page` live content; gazer debug-only touch.
+
+**Conf:** `high` — consolidates known AST-753 pattern drift (blank-line collapse, nav enumeration, select prompt parity) on top of shipped AST-719/720 pipeline.
+
+**Risk:** `Medium` — homepage single-load refactor could affect redirect/nav capture; idempotent live-content builder mitigates duplicate nav blocks in select prompts.
+
+---
+
 # AST-759 — Shared page scrape contract and fetch_job_pages nav-link parity
 
 **Linear:** [AST-759 — Shared page scrape contract and fetch_job_pages nav-link parity (fetch_job_pages does not fetch nav links)](https://linear.app/astralcareermatch/issue/AST-759/shared-page-scrape-contract-and-fetch-job-pages-nav-link-parity-fetch)

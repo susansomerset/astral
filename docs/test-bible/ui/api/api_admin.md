@@ -12,7 +12,7 @@
 
 ### AST-485 · AST-461 · AST-549 · AST-721
 
-Decomposed PJL roster hops **`select_job_page`** (**`PJL_READY`**) and **`parse_job_list`** (**`JOBLIST_IDENTIFIED`**); **`find_job_page`** monolith removed from schedulable keys (**AST-721**). **`locate_job_page`** is not schedulable (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — schedulable defaults now come from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); schedulable keys merge config derivation.
+Decomposed PJL roster hops **`select_job_page`** (**`PJL_READY`**) and **`parse_job_list`** (**`JOBLIST_IDENTIFIED`**); **`find_job_page`** monolith removed (**AST-721**). **`locate_job_page`** is not a catalog key (legacy **`UPDATE`** during schema ensure). **AST-549** retired **`database._DISPATCH_TASK_SEED`** / **`config._DISPATCH_TASK_TRIGGER_SEED`** — defaults from **`dispatch_task_admin_defaults`** (**§7.13zq**). **`get_dispatch_row_or_seed_preview_meta`** supplies admin **`adhoc`** when no sample DB row exists. **`GET /api/admin/dispatch_tasks/task_keys`** lists every **`TASK_CONFIG`** key (**AST-516**); **AST-960** drops frozenset merge — gap keys appear only via existing DB rows.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -291,6 +291,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-773** (edit modal task_key + validation helper), **AST-505** (**inflow_discovery** admin defaults).
 
+**AST-970 vocab revise:** state_options / trigger cases use **`ACTIVE_SEARCH`** / **`NEW_CANDIDATE`**; candidate trigger happy-path uses **`intake_initiate_candidate`** (inflow_discovery not in TASK_CONFIG — AST-960). Full manifest: **`docs/test-bible/core/candidate.md`** § AST-970.
+
 ---
 
 ### AST-783 · AST-756
@@ -353,3 +355,109 @@ Assessment enrichment, **`/vector_feedback/rubric_lookup`**, and **`POST /vector
 | Counts + set_from_template | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst875DispatchTasksSetFromTemplate` |
 
 Primary data manifest: **`docs/test-bible/data/database/dispatch_tasks.md`** (**AST-875**).
+
+### AST-955 · AST-856
+
+**Scope:** Scheduled Actions Save accepts any registered non-retired **`TASK_CONFIG`** key (same catalog as the picker). Drops save-time **`DISPATCH_SCHEDULABLE_TASK_KEYS`** membership gate that 400'd **`check_cover_letter`**. Optional **`trigger_state`** on **`dispatch_task_admin_defaults`**; **`save_dispatch_task`** passes request trigger; retired keys still blocked. No dispatcher / Manage Tasks / frontend picker changes.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registered-key defaults + override | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults` |
+| AST-549 unknown-key wording | same | `TestAst549DispatchAdminDefaults::test_unknown_task_key_raises` (revised — junk key / `unknown task_key`) |
+| Helper + POST/PUT Save | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave` |
+| Branch-gap create paths | same | `TestDispatchTasks::test_create_dispatch_task_paths` (revised — real `grade_do` keys) |
+| DB insert + rejected wording | `src/data/database.py` | `tests/component/data/database/test_dispatch_tasks.py::TestAst955SaveDispatchTaskRegisteredKeys` |
+
+**Broken / obsolete (Betty revision this pass):**
+- `TestAst549DispatchAdminDefaults::test_unknown_task_key_raises` — `anticipate_scan` is registered (hop-derived `BUILD_ARTIFACTS`); assert unknown junk key + `unknown task_key`.
+- `TestDispatchTasks::test_create_dispatch_task_paths` — fake `custom`/`WATCH` now 400 before save; use `grade_do`/`PASSED_JD`.
+
+**AST-955** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults::test_unknown_task_key_raises \
+  tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_paths \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst955SaveDispatchTaskRegisteredKeys \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-960 · AST-957
+
+**Scope:** `GET /api/admin/dispatch_tasks/task_keys` and `_dispatch_task_key_form_meta` enrich from **`TASK_CONFIG`** + **`dispatch_task_admin_defaults`** only — no frozenset merge. Gap keys leave the picker unless a DB row exists. **AST-955** Save for **`check_cover_letter`** unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No frozenset inventory / gap absent | `src/ui/api/api_admin.py` | `TestAst960TaskKeysNoFrozensetInventory` |
+| fetch_jd gap + retired rejects | same | revised **`TestAst796FetchJdRetiredDispatchKeys`** |
+| AST-856/955 Save regression | same | `TestAst955AlignScheduledActionsSave` |
+
+**Broken / obsolete (Betty revision this pass):** `test_dispatch_task_keys_includes_fetch_jd_excludes_retired` assumed frozenset merge — replaced with gap-absent + DB-row merge cases.
+
+Narrowed run: **`docs/test-bible/core/bootstrap.md`** (**AST-960**).
+
+**AST-962 (UAT):** cover-letter mid-hop default Input State — primary manifest **`docs/test-bible/utils/config.md`** (**AST-962**).
+
+---
+
+### AST-1024 · AST-1023
+
+**AST-1024:** Admin **`POST /api/admin/session_cover_letter/html`** (`@require_admin`) — JSON field keys from **`BUILD_CONFIG["session_cover_letter"]["fields"]`**; optional `candidate_id`; success **`text/html`**; validation / builder **`ValueError`** → **`{success:false,error}`** 400. Core emit: **`docs/test-bible/core/builder.md`** (**AST-1024**). React / localStorage = sibling **AST-1025**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Auth + body object + ValueError JSON | `src/ui/api/api_admin.py` | **`TestAst1024SessionCoverLetterHtmlApi`** |
+| Fields from config keys; candidate_id strip/null/non-str | same | same class |
+| Core SomersetCover emit | `src/core/builder.py` | **`TestAst1024BuildSessionCoverLetter`** |
+| Config spine | `src/utils/config.py` | **`TestAst1024SessionCoverLetterConfig`** |
+
+**Broken / obsolete this pass:** none.
+
+**Integration:** no existing scenario asserts this Admin HTML route — no revision.
+
+**AST-1024** narrowed run: **`docs/test-bible/core/builder.md`** (**AST-1024**).
+
+### AST-1062 · AST-1058
+
+**Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+Ad Hoc `_build_adhoc_live_content("qualify_meteorite")` lockstep with consult assemble (`METEORITE JOBS:` + job_link/jd).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ad Hoc assemble | `src/ui/api/api_admin.py` | **`TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite`** |
+
+**Broken / obsolete:** none — additive branch.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite \
+  -q
+```
+
+### AST-1106 · AST-1087
+
+**Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
+
+`list_dtasks` stamps boolean `always_visible_under_avail_gt0` from config helper; does **not** fake `available_count`. Config / SA: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Stamp flag; avail gate unchanged | `src/ui/api/api_admin.py` | **`TestAst1106ListDtasksAlwaysVisibleFlag`** |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1106ListDtasksAlwaysVisibleFlag \
+  -q
+```
+

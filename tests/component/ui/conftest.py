@@ -77,7 +77,8 @@ _DB_SCHEMA_FLAGS = (
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
-    "_agent_responses_schema_ensured",
+    "_agent_responses_table_sunset_applied",
+    "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
     "_agent_task_schema_ensured",
     "_timesheets_schema_ensured",
@@ -100,7 +101,7 @@ def seeded_db(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(database, "DB_PATH", tmp_path / "astral.db")
     for flag in _DB_SCHEMA_FLAGS:
         setattr(database, flag, False)
-    database.save_candidate("cand-1", state="NEW", candidate_data={"name": "Test"})
+    database.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"name": "Test"})
     return database
 
 
@@ -118,7 +119,7 @@ def sqlite_in_memory(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 
 @pytest.fixture
 def system_client(monkeypatch: pytest.MonkeyPatch) -> Iterator[FlaskClient]:
-    monkeypatch.setattr("src.core.candidate.get_candidate", lambda candidate_id: {"state": "LIVE_PROMPTS"})
+    monkeypatch.setattr("src.core.candidate.get_candidate", lambda candidate_id: {"state": "ACTIVE_SEARCH"})
     app = Flask(__name__)
     from ui.api.api_system import system_bp
 
@@ -200,6 +201,56 @@ def admin_client() -> Iterator[FlaskClient]:
     from ui.api.api_admin import admin_bp
 
     app.register_blueprint(admin_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def inbox_client() -> Iterator[FlaskClient]:
+    """AST-1033: dedicated Read-email admin blueprint."""
+    app = Flask(__name__)
+    from ui.api.api_inbox import inbox_bp
+
+    app.register_blueprint(inbox_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+
+
+@pytest.fixture
+def meteorite_client() -> Iterator[FlaskClient]:
+    """AST-1042: meteorite job-create blueprint (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api.api_meteorite import meteorite_bp
+
+    app.register_blueprint(meteorite_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def contact_client() -> Iterator[FlaskClient]:
+    """AST-1071: Contact skills admin blueprint (@require_admin)."""
+    app = Flask(__name__)
+    from ui.api.api_contact import contact_bp
+
+    app.register_blueprint(contact_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def slack_client() -> Iterator[FlaskClient]:
+    """AST-1069: Slack Events webhook blueprint (signature auth in Contact)."""
+    app = Flask(__name__)
+    from ui.api.api_slack import slack_bp
+
+    app.register_blueprint(slack_bp)
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client

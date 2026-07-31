@@ -1,3 +1,141 @@
+<!-- linear-archive: AST-785 archived 2026-07-22 -->
+
+## Linear archive (AST-785)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-785/uat-dispatch-task-rows-missing-from-scheduled-actions-ui-vet-inflow  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-754 — vet_inflow seems to have been skipped?  
+**Blocked by / blocks / related:** parent: AST-754
+
+### Description
+
+## What failed
+
+Admin → **Scheduled Actions** shows no dispatch task rows (empty state / nothing usable on the page) while the `dispatch_task` table contains rows for the active candidate — Susan confirmed DB records exist; browser console shows no error.
+
+## Expected
+
+Configured `dispatch_task` rows appear on **Scheduled Actions** so Susan can run **vet_inflow_discovery**, **fetch_website**, and downstream inflow chain steps from the admin UI (grouped sections expandable with visible rows).
+
+## Repro
+
+1. On staging/local after AST-754 prep-uat (`origin/dev` includes vet split).
+2. Confirm `dispatch_task` rows exist in DB for candidate (e.g. `somerset`) including inflow/vet keys.
+3. Open Admin → **Scheduled Actions**.
+4. Observe empty UI / no visible rows despite DB records; no console error.
+
+## Parent AC (quoted inline)
+
+> After vet **WEBSITE_FOUND**, **fetch_website** dispatch can run and the downstream chain in the table above remains reachable via Scheduled Actions.
+
+## Boundaries
+
+* Does **not** reopen AST-775/776 vet split product behavior unless investigation proves missing rows are caused by roster/dispatch seeding (not UI/API filtering).
+* Does **not** change vet prompt text or inflow_discovery record-only semantics.
+
+### Comments
+
+#### radia — 2026-06-24T05:45:34.244Z
+### AST-785 review (FIX-UAT — product only)
+
+**Diff:** `58b0f1b` (UI) + `ac0d250` (API) on `origin/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui` @ `f24844d`. Branch tip includes Betty tests + sibling merges; product scope is the two code commits above.
+
+**Plan fidelity:** Stages 2–3 match the combined plan. Stage 1 diagnosis (AST-568 zero-expanded sections hid tables; misleading empty copy when filters exclude rows) is addressed without touching AST-775/776 seeding or `run_inflow_discovery_batch` inline vet paths.
+
+### What's solid
+
+| Area | Notes |
+|------|-------|
+| UI auto-open | `didAutoOpenSectionRef` one-shot on mount; `[sections]` effect opens first section once — collapse-all after load still works |
+| Empty states | `data.length > 0` + zero sections → filter-aware copy; true empty → "No dispatch tasks configured" |
+| Load errors | Toast on non-ok `dispatch_tasks` fetch; no `console.error` |
+| API robustness | Retired-key filter before enrichment (parity with `dispatch_task_keys`); per-row `available_count` try/except with `logger.warning` + `0` fallback |
+| Tests | Manifest covers auto-open table visibility, filter-empty copy, load-failure toast, retired row omission, enrichment failure → 200 not 500 |
+
+### ASTRAL_CODE_RULES
+
+- **§1.3 / §2.1:** Reuses `DISPATCH_RETIRED_TASK_KEYS` and existing hidden-key filter order — OK
+- **§1.5 / E1:** Module-level `get_logger(__name__)` in `api_admin.py` — OK
+- **§3.3 / B2:** `api_admin.py` ui → data/utils only; frontend unchanged layer boundaries — OK
+- **D2:** Broad `except Exception` on enrichment is plan-specified row guard with visible `logger.warning` — acceptable (not silent swallow)
+
+### fix-now
+
+None.
+
+### discuss
+
+None.
+
+### advisory
+
+- Failed initial fetch shows error toast while empty state reads "No dispatch tasks configured" (`data` stays `[]`) — matches plan; retry UX is out of scope here.
+- Auto-open selects first sorted section key, not the largest section — matches plan Stage 2 snippet.
+
+#### betty — 2026-06-24T05:42:49.443Z
+**QA test manifest (AST-785)** — republish @ `cf0f2de` / `f24844d`
+
+1. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestAst785ListDtasksRobustness -q`
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-785|groups rows into DB grouping|AST-746|AST-768 section"`
+
+**Bible shasums** (`origin/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui` @ `f24844d`):
+- `docs/test-bible/frontend/pages.md` — `ee419eeb34cb5bec1b940badcb4f9ed8a9d141f8d07f058d44f3f96d141a8554`
+- `docs/test-bible/ui/api/api_admin.md` — `0433a1755398cc61e42facb49f9e3f9e722e1b836dbf49ae44d8a977bb9515cf`
+
+`merge-tests(AST-785): origin/tests cf0f2de`
+
+— Betty
+
+#### betty — 2026-06-24T05:40:02.994Z
+**QA test manifest (AST-785)**
+
+1. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestAst785ListDtasksRobustness -q`
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-785|groups rows into DB grouping|AST-746|AST-768 section"`
+
+**Bible shasums** (`origin/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui` @ `3dc6554`):
+- `docs/test-bible/frontend/pages.md` → `ee419eeb34cb5bec1b940badcb4f9ed8a9d141f8d07f058d44f3f96d141a8554`
+- `docs/test-bible/ui/api/api_admin.md` → `0433a1755398cc61e42facb49f9e3f9e722e1b836dbf49ae44d8a977bb9515cf`
+
+**Publish:** `merge-tests(AST-785): origin/tests f05f384`
+
+#### betty — 2026-06-24T05:39:56.289Z
+1. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestAst785ListDtasksRobustness -q`
+2. `cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx --testNamePattern="AST-785|groups rows into DB grouping|AST-746|AST-768 section"`
+
+Bible on `origin/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui` @ `3dc6554`:
+- `docs/test-bible/frontend/pages.md` — shasum pending
+- `docs/test-bible/ui/api/api_admin.md` — shasum pending
+
+Publish: `merge-tests(AST-785): origin/tests f05f384`
+
+#### katherine — 2026-06-24T05:32:37.867Z
+[qa-handoff] Betty — manifest for auto-open first section on load, filter-empty vs true-empty copy, `list_dtasks` retired-key filter, enrichment guard (no 500). Plan § Review stub.
+
+`origin/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui` @ `ac0d250`
+
+#### chuckles — 2026-06-24T05:30:24.136Z
+## validate-plan — APPROVED
+
+Plan addresses Susan UAT (Scheduled Actions empty while DB has rows) with read-only Stage 1, UI auto-open + filter-aware empty copy, API list robustness. Boundaries respect AST-775/776. No scope creep.
+
+**Verdict:** APPROVED → Plan Approved.
+
+— Chuckles
+
+#### katherine — 2026-06-24T05:30:01.235Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-754/AST-785-dispatch-tasks-missing-from-scheduled-actions-ui/docs/features/roster/ast-785-dispatch-tasks-missing-from-scheduled-actions-ui.md
+
+**Self-assessment**
+- **Scope:** Single-Component — AdminScheduledActions.tsx plus narrow list_dtasks API hardening; no AST-775/776 vet split changes unless Stage 1 stop gate fires.
+- **Conf:** Medium — Stage 1 must distinguish API empty/500 vs candidate filter vs AST-568 collapsed sections (no console error on silent fetch failure) before UI/API fixes.
+- **Risk:** Medium — wrong branch wastes a UAT cycle; per-row available_count guard limits total list failure; one-shot auto-open preserves collapse-all after first load.
+
+---
+
 # AST-785 — UAT: dispatch_task rows missing from Scheduled Actions UI
 
 - **Linear (this ticket):** [AST-785](https://linear.app/astralcareermatch/issue/AST-785/uat-dispatch-task-rows-missing-from-scheduled-actions-ui-vet-inflow-seems-to)

@@ -46,6 +46,18 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 
 
+### AST-1004 · AST-915 (integration testing ADR)
+
+**Docs-only.** Engineer lands `docs/features/team-chuckles/ast-915-integration-testing-adr.md` + Linear Document on AST-1004. Function-forward map remains sibling **AST-1003** [`integration/README.md`](integration/README.md).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (ADR §§1–8 + Linear Document title `ADR — Integration testing program (AST-915)`) — no pytest. Do **not** invent `tests/integration/scenarios/`.
+
+### AST-1110 · AST-1109 (statute — run_next is chain authority)
+
+**Docs-only** (canon statute + proposed pattern + CODE_RULES pointer). Live edits on **`origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority`**: `canon/statutes/astral/dispatch/astral.dispatch.run-next-is-chain-authority.md` (active, Archie-approved) + statutes README/HARVEST register (active count **58**); `canon/patterns/dispatch/pattern.dispatch.run-next-chain-authority.md` (`status: proposed`) + patterns README/HARVEST; `docs/ASTRAL_CODE_RULES.md` §2.6.0 statute pointer + clarifying sentence. No `src/**`, no frozenset deletes, no boot SQL (siblings AST-1111–AST-1113).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute active + Archie frontmatter; pattern `proposed`; CODE_RULES §2.6.0 cites `astral.dispatch.run-next-is-chain-authority`; statutes README/HARVEST count **58**) — no pytest / zero-arg harness / branch-lock gate. Sibling anomaly remediations under parent **AST-1109** are out of scope.
+
 ### Retired monolith section map
 
 
@@ -78,6 +90,215 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component tests.** **`test-child`:** verify docs acceptance (grep / read) — no pytest manifest. Live obligations for removal work remain sibling **AST-765** / **AST-766** manifests.
 
+### AST-930 · AST-909 (datt SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/do-all-the-things/SKILL.md`** (`code(AST-930)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-930-do-all-the-things`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (retired live Joan / `git-store-*` / `JOAN_SESSION` / operator `merge-parent` vocabulary) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-931 · AST-909 (build-child SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/build-child/SKILL.md`** (`code(AST-931)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-931-build-child`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (retired Joan / `git-store-*` / `JOAN_SESSION` / self-cherry-pick / `dev-ada`/`dev-hedy` epic-checkout language) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-932 · AST-909 (dispatch-parent SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/dispatch-parent/SKILL.md`** (`code(AST-932)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-932-dispatch-parent`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (§7 Git template + §10 Engineer handoff — no live `git-store-*` / Joan / self-cherry-pick publish) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-933 · AST-909 (plan-child SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/plan-child/SKILL.md`** (`code(AST-933)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-933-plan-child`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (keep self-cherry-pick ban; epic worktree `astral-<parent-id>/` + `git push origin HEAD:<publish-ref>`; no Joan/`git-store-*`/`astral-<agent>` live publish) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-934 · AST-909 (resolve-child SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/resolve-child/SKILL.md`** (`code(AST-934)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-934-resolve-child`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (Radia mid-pipeline `docs()` via `git merge origin/<publish-ref>` — not cherry-pick/Joan; parent-close surprises named **finish-up** not merge-parent; epic `astral-<parent-id>/` + `git push origin HEAD:sub/…`) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-935 · AST-909 (review-child SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/review-child/SKILL.md`** (`code(AST-935)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-935-review-child`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (mid-pipeline Radia `docs()` push to publish ref — not deferred to finish-up; no Joan/`dev-radia`/implementer cherry-pick; finish-up only for post–PR Ready parent close) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-936 · AST-909 (qa-child SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/qa-child/SKILL.md`** (`code(AST-936)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-936-qa-child`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (operator land = **finish-up**; rollup = **merge-child** / **prep-uat** — no Joan/`merge-parent`; mid-pipeline Betty `merge-tests` publish intent unchanged) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-937 · AST-909 (test-child SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/test-child/SKILL.md`** (`code(AST-937)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-937-test-child`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (Betty delivery = `merge-tests` + merge `origin/<publish-ref>` — no Joan `store-qa-commit`; engineer publish = `git push origin HEAD:sub/…` on `astral-<parent-id>/`) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-938 · AST-909 (check-linear SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/check-linear/SKILL.md`** (`code(AST-938)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-938-check-linear`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (Gate C = **merge-child** / **prep-uat**; parent-close handoff = **finish-up** — no Susan merge-parent / Joan `git.sh rollup` / cherry-pick onto `ftr`) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-939 · AST-909 (rollcall SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/rollcall/SKILL.md`** (`code(AST-939)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-939-rollcall`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (§7 STALE refresh — `git push origin HEAD:<publish-ref>` / **merge-child**; no Joan `store-*-commit` / `git.sh rollup`) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-940 · AST-909 (audit-linear SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/audit-linear/SKILL.md`** (`code(AST-940)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-940-audit-linear`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (after-land / Done path = **finish-up** — not Susan merge-parent; optional mid-epic audit `docs()` path unchanged) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-941 · AST-909 (archive-linear SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/archive-linear/SKILL.md`** (`code(AST-941)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-941-archive-linear`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (archive publish = `git push origin HEAD:refs/heads/dev` from `$ASTRAL_MAIN`/`dev` — no Joan cherry-pick / operator merge-parent; does-not-do names **finish-up** for parent-close) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-942 · AST-909 (orientation SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/orientation/SKILL.md`** (`code(AST-942)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-942-orientation`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (Flow ends at **finish-up**; never-list keeps Joan/`git-store-*`/`JOAN_SESSION`; `merge-parent.sh` noted only as finish-up-land internal helper) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-943 · AST-909 (finish-up SKILL.md scrub)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/finish-up/SKILL.md`** (`code(AST-943)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-943-finish-up`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the skill file (sole operator parent-close skill; `merge-parent.sh` internal to finish-up-land only — do not invoke a merge-parent skill) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-944 · AST-909 (delete merge-parent skill)
+
+**Docs-only** (team-chuckles skill deletion + astral plan). Live change: delete **`~/team-chuckles/skills/merge-parent/`** (`code(AST-944)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-944-delete-merge-parent-skill`** holds the plan doc only. No product `src/` and no pytest. **`scripts/git/merge-parent.sh`** remains (finish-up-land helper). **`install.sh`** owned by sibling **AST-945**.
+
+**No new component tests.** **`test-child`:** verify skill dir absent (`~/team-chuckles/skills/merge-parent` and `~/.cursor/skills/merge-parent`); confirm `merge-parent.sh` still present — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-945 · AST-909 (install.sh stop merge-parent)
+
+**Docs-only** (team-chuckles install script + astral plan). Live edit is **`~/team-chuckles/install.sh`** (`code(AST-945)` on team-chuckles `main`); astral **`origin/sub/AST-909/AST-945-install-sh`** holds the plan doc only. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** read/`bash -n` `install.sh` — skips installing `merge-parent`, removes stale `~/.cursor/skills/merge-parent`; finish-up remains on the generic skills loop — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-946 · AST-909 (ASTRAL_GIT_WORKFLOW.md)
+
+**Docs-only** (astral law doc on publish ref). Live edit is **`docs/ASTRAL_GIT_WORKFLOW.md`** on **`origin/sub/AST-909/AST-946-astral-git-workflow`** (`code(AST-946)`); plan at `docs/features/team-chuckles/ast-946-astral-git-workflow.md`. No product `src/` and no pytest. Radia **`docs()`** commit type unchanged.
+
+**No new component tests.** **`test-child`:** grep/read `docs/ASTRAL_GIT_WORKFLOW.md` on the publish tip — operator ftr→dev = **`finish-up()`**; `merge-parent.sh` internal-only under finish-up-land — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-947 · AST-909 (ASTRAL_TEAM_WORKFLOW.md)
+
+**Docs-only** (astral law doc on publish ref). Live edit is **`docs/ASTRAL_TEAM_WORKFLOW.md`** on **`origin/sub/AST-909/AST-947-astral-team-workflow`** (`code(AST-947)`); plan at `docs/features/team-chuckles/ast-947-astral-team-workflow.md`. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** grep/read `docs/ASTRAL_TEAM_WORKFLOW.md` on the publish tip — PR Ready row + `launch.sh` merge note name **finish-up** (not merge-parent) — no pytest manifest. Sibling skill/law-doc rows under parent **AST-909** are out of scope.
+
+### AST-923 · AST-911 (state-consumer inventory + safe-change mechanics)
+
+**Docs-only** (team-chuckles tooling + astral plan). Live edits are on **`team-chuckles` `main`** @ `89b14aa` (`state_vocabulary.json` v1 + watcher `state_vocabulary_version` load gate + `docs/linear-state-consumers.md` + `docs/linear-state-migration-checklist.md`); astral **`origin/sub/AST-911/AST-923-state-consumer-inventory`** holds the plan doc only. No product `src/` and no pytest. Does **not** add **Plan Discuss** (**AST-924**).
+
+**No new component tests.** **`test-child`:** file existence + Stage 1 `_load_rule` smoke/mismatch + name-only / inventory / checklist acceptance on `~/team-chuckles` — no pytest manifest. Sibling children under parent **AST-911** are out of scope.
+
+### AST-924 · AST-911 (Plan Discuss state + transition rules)
+
+**Docs-only** (team-chuckles tooling + astral law/plan). Live edits on **`team-chuckles` `main`** @ `99534f8` (vocabulary **v2** + Plan Discuss watcher/skill/rollcall/inventory + migration live-run log; canary **AST-954**); astral **`origin/sub/AST-911/AST-924-plan-discuss-state`** holds plan + `docs/ASTRAL_TEAM_WORKFLOW.md` / §4.3. No product `src/` and no pytest.
+
+**No new component tests.** **`test-child`:** vocabulary v2 + `_load_rule` smoke/mismatch; Linear state **Plan Discuss** exists; live-run log + canary tag path (2 rounds → escalate, no round=3); workflow/§4.3 name Plan Discuss — no pytest manifest. Sibling children under parent **AST-911** are out of scope.
+
+### AST-920 · AST-912 (statute schema + authoring guide)
+
+**Docs-only** (statute harness under product `docs/statutes/`). Live edits on **`origin/sub/AST-912/AST-920-statute-schema-authoring-guide`**: `SCHEMA.md` + `AUTHORING.md` + `README.md` + five exemplars (`orchestration/` + `astral/`). No `src/`, no pytest, no hook/CI implementation. Plan forbids harvest (**AST-921**) and consumer wiring (**AST-910** / **AST-916**).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
+
+### AST-921 · AST-912 (harvest astral law docs into statute corpus)
+
+**Docs-only** (statute harvest under product `docs/statutes/`). Live edits on **`origin/sub/AST-912/AST-921-harvest-astral-law-docs`**: `HARVEST.md` crosswalk + narrative leftovers, 51 new statutes (`orchestration/` + `astral/`), README harvested corpus index, and statute citations in the three law docs. Does **not** redefine SCHEMA (**AST-920**), wire consumers (**AST-910** / **AST-916**), or implement hooks/CI. No `src/`, no pytest.
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-912** are out of scope.
+
+### AST-925 · AST-913 (pattern schema + authoring / lifecycle)
+
+**Docs-only** (pattern harness under product `canon/patterns/`). Live edits on **`origin/sub/AST-913/AST-925-pattern-schema-authoring`**: `SCHEMA.md` + `AUTHORING.md` + `README.md` + one exemplar (`batch/pattern.batch.entity-claim-process-release.md`). No `src/`, no pytest, no hook/CI implementation. Plan forbids harvest (**AST-969**) and consumer wiring (**AST-914** / rubrics).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-913** are out of scope.
+
+### AST-969 · AST-913 (initial astral pattern harvest)
+
+**Docs-only** (pattern harvest under product `canon/patterns/`). Live edits on **`origin/sub/AST-913/AST-969-pattern-harvest`**: `HARVEST.md` + README/AUTHORING pointers + five new patterns (`state/`, `batch/`, `config/`, `layers/`, `ui/`) with one propose→approve cycle on `pattern.state.entity-state-transitions`. Does **not** redefine SCHEMA (**AST-925**), wire consumers (**AST-914** / rubrics), or implement hooks/CI. No `src/`, no pytest.
+
+**No new component tests.** **`test-child`:** read/grep acceptance on the publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-913** are out of scope.
+
+### AST-919 · AST-910 (Joan persona statute validator)
+
+**Docs-only** (team-chuckles persona + skills + astral workflow). Live edits on **`team-chuckles` `main`** @ `3c26552` (Joan AGENTS/config, handoff/seed, validate-plan ownership, datt §3e Joan spawn/`MAX_JOAN_CONTEXT`, orientation/MCP/env docs); astral **`origin/sub/AST-910/AST-919-joan-persona-statute-validator`** holds plan + `docs/ASTRAL_TEAM_WORKFLOW.md` Joan rows. No product `src/`, no pytest. Does **not** own Archie (**AST-922**), Todo-grab (**AST-958**), statute authoring (**AST-912**), or plan rubrics (**AST-916** / **AST-928**).
+
+**No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
+### AST-922 · AST-910 (Archie identity table + alias sweep)
+
+**Docs-only** (team-chuckles identity table + skills/personas Category A alias sweep + astral law docs). Live edits on **`team-chuckles` `main`** @ `3d5d0b6` (`agents/identity-table.md`, orientation § Role alias resolution, scoped skills/agents Category A Archie prose; Category B Linear `@susan` / assignee Susan preserved); astral **`origin/sub/AST-910/AST-922-archie-identity-table`** holds plan + TEAM/GIT workflow Architect/owners/CALL ARCHIE + `canon/statutes/AUTHORING.md` identity-table pointer. No product `src/`, no pytest. Does **not** own Joan (**AST-919**), Todo-grab (**AST-958**), or residue-purge siblings.
+
+**No new component tests.** **`test-child`:** read/grep acceptance on `~/team-chuckles` + astral publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
+### AST-958 · AST-910 (Todo-grab requires assignee Chuckles)
+
+**Docs-only** (team-chuckles watcher/skill). Live edits on **`team-chuckles` `main`** @ `c417fc0` (`skills/rollcall/watch_linear.py` datt Todo requires Chuckles assignee — no auto-assign; WAKE cheatsheet + `linear-state-consumers` + datt skill chat gate aligned); astral **`origin/sub/AST-910/AST-958-todo-grab-assignee-chuckles`** holds the plan doc only. No product `src/`, no pytest. Does **not** own Joan (**AST-919**), Archie (**AST-922**), or wrap PR Ready auto-assign.
+
+**No new component tests.** **`test-child`:** read/grep (+ optional `py_compile`) acceptance on `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling children under parent **AST-910** are out of scope.
+
+### AST-963 · AST-961 (fix-uat diagnosis gate + bug Description template)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/fix-uat/SKILL.md`** (`code(AST-963)` on team-chuckles `main` @ `fb6cbbd`); astral **`origin/sub/AST-961/AST-963-fix-uat-diagnosis-gate-bug-description-template`** holds the plan doc only. No product `src/` and no pytest. Does **not** own plan-child UAT fitness (**AST-964**) or thin-validate wiring (**AST-965**).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on `~/team-chuckles/skills/fix-uat/SKILL.md` (+ plan on publish tip) — §2.5 Diagnosis gate, Description `## Diagnosis`, `<!-- uat-validate: stacktrace -->`, “No more stacktrace” ban, token-scope Purpose/AC/Boundaries for diagnosis, **Full** `validate-plan` epic review Do-not — no pytest manifest. Sibling thin-validate text on the same skill file (**AST-965**) is out of scope for this ticket.
+
+### AST-964 · AST-961 (plan-child UAT fitness)
+
+**Docs-only** (team-chuckles skill + astral plan). Live edit is **`~/team-chuckles/skills/plan-child/SKILL.md`** (`code(AST-964)` on team-chuckles `main` @ `8a74376`); astral **`origin/sub/AST-961/AST-964-plan-child-uat-fitness`** holds the plan doc only. No product `src/` and no pytest. Does **not** own fix-uat diagnosis (**AST-963**) or thin-validate wiring (**AST-965**).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on `~/team-chuckles/skills/plan-child/SKILL.md` (+ plan on publish tip) — §0a `## UAT fitness` (AC restored / Correct outcome / Sibling check / Not sufficient / Wrong fix rejected), “do not invent AC,” Structure placement before Files Changed for `UAT:` / `FIX-UAT MODE` — no pytest manifest. Sibling tickets out of scope.
+
+### AST-965 · AST-961 (validate-plan UAT-thin + fix-uat trigger)
+
+**Docs-only** (team-chuckles skills + astral plan). Live edits on **`team-chuckles` `main`** @ `4ddc33b` (`validate-plan/SKILL.md` UAT-thin mode + `fix-uat/SKILL.md` token-scope Exception + §5/§5.5 stacktrace gate); astral **`origin/sub/AST-961/AST-965-validate-plan-uat-thin-fix-uat-trigger`** holds the plan doc only. No product `src/` and no pytest. Marker string owned by **AST-963**; **## UAT fitness** authoring by **AST-964** (thin checklist requires it — REVISE if missing).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on both skills (+ plan on publish tip) — `UAT-thin mode` / `UAT-THIN VALIDATE` / `[validate-plan uat-thin]` / require `## UAT fitness`; fix-uat **Full** validate-plan ban + Exception thin UAT validate; `### 5.5` stacktrace gate before build; non-stacktrace skip — no pytest manifest. Sibling diagnosis template / fitness section authoring out of scope.
+
+### AST-928 · AST-916 (plan rubric — validate-plan rewrite)
+
+**Docs-only** (astral `canon/rubrics/` + statute/workflow pointers + team-chuckles skill/AGENTS). Live edits: astral **`origin/sub/AST-916/AST-928-plan-rubric-validate-plan`** (`canon/rubrics/plan/plan-rubric.v1.md` + README, SCHEMA/README pointers, `docs/ASTRAL_TEAM_WORKFLOW.md` plan-rubric gate, plan + canary stub); **`team-chuckles` `main`** @ `3bfc396` (`validate-plan` executes plan-rubric.v1; Joan AGENTS). No product `src/`, no pytest. Does **not** own code rubric (**AST-929**), test rubric (second wave), Plan Discuss state machine (**AST-924**), or UAT-thin checklist (**AST-965** — thin path must stay thin / no R1–R7).
+
+**No new component tests.** **`test-child`:** grep/read acceptance on publish tip + `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-929** out of scope.
+
+### AST-929 · AST-916 (code rubric — Radia full-statute sweep)
+
+**Docs-only** (astral `canon/rubrics/code/` + statute/workflow pointers + team-chuckles skill/AGENTS). Live edits: astral **`origin/sub/AST-916/AST-929-code-rubric-radia-sweep`** (`canon/rubrics/code/code-rubric.v1.md` + README index row, SCHEMA/README pointers, `docs/ASTRAL_TEAM_WORKFLOW.md` Tests Passed→Review Posted gate, plan + canary stub); **`team-chuckles` `main`** @ `7ec2c9e` (`review-child` executes code-rubric.v1; Radia AGENTS). No product `src/`, no pytest. Does **not** own plan rubric (**AST-928**), test rubric (second wave), or pattern catalog authoring.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on publish tip + `~/team-chuckles` (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-928** out of scope.
+
+### AST-991 · AST-989 (Betty agent — integration harness ownership)
+
+**Docs-only** (team-chuckles Betty persona + astral plan). Live edit is **`~/team-chuckles/agents/betty-AGENTS.md`** (`code(AST-991)` on team-chuckles `main` @ `8570636`); astral **`origin/sub/AST-989/AST-991-betty-agent-integration-harness-ownership`** holds the plan doc only. No product `src/`, no pytest. Opening + Standards ownership note state GHA integration-harness green + drift of **existing** integration scenarios as Betty authority parallel to the component test tree / bible — not a Foundation one-off and not new coverage. Does **not** rewrite QA skill procedure (**AST-992**), fix AST-988 harness red, or expand AST-915 / AST-927 coverage.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on `~/team-chuckles/agents/betty-AGENTS.md` (+ installed `~/.cursor/agents/betty-AGENTS.md`) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-992** out of scope.
+
+### AST-992 · AST-989 (Betty skills — integration drift duty)
+
+**Docs-only** (team-chuckles Betty skills + one engineer pointer + astral plan). Live edits on **`team-chuckles` `main`** @ `4549329` (`qa-child` Integration drift duty + bible-edit scope for `docs/test-bible/integration/**`; `check-linear` §5b no-parallel-queue harness note; `test-child` one-line `tests/integration/` → `[qa-handoff]`); astral **`origin/sub/AST-989/AST-992-betty-skills-integration-drift-duty`** holds the plan doc only. No product `src/`, no pytest, no new integration scenarios. Does **not** rewrite `betty-AGENTS.md` (**AST-991**), fix AST-988 harness red, or expand AST-915 / AST-927 coverage.
+
+**No new component tests.** **`test-child`:** grep/read acceptance on the three skills under `~/team-chuckles` (+ installed `~/.cursor/skills/…`) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-991** out of scope.
+
+### AST-1001 · AST-999 (missing-thread skill policy)
+
+**Docs-only** (team-chuckles orchestration prose + astral plan). Live edits on **`team-chuckles` `main`** @ `7e45ec4` (`do-all-the-things` §3d/§3e/§6, `orientation`, `WAKE_CHEATSHEET`, `chuckles-AGENTS`, `CHUCKLES_QUICKREF` — miss ⇒ comment look path+UUID + `missing thread` + mint + persist + continue, not laptop-block); astral **`origin/sub/AST-999/AST-1001-missing-thread-skill-policy`** holds the plan doc only. No product `src/`, no pytest, no helper/watcher edits (`thread_transcript.py` / `watch_linear.py` stay sibling **AST-1002**).
+
+**No new component tests.** **`test-child`:** grep/read docs-acceptance on the five prose files under `~/team-chuckles` (+ installed `~/.cursor/skills/…` / agents) and plan on publish tip (manifest in Linear) — no pytest / zero-arg harness / branch-lock gate. Sibling **AST-1002** out of scope.
 
 
 ## 2. Where tests live
@@ -186,7 +407,7 @@ Cherry-pick any ticket-local **`fix(<same ticket id>):`** product SHAs still mis
 
 | Symptom on ftr tip | Test-tree response (Betty) |
 | --- | --- |
-| **`DISPATCH_SCHEDULABLE_TASK_KEYS`**, **`RESUME_SECTION_CATALOG`**, AST-551/552/562 tracker helpers, etc. missing | **`pytest.mark.skipif`** on the asserting class or method (`tests/component/conftest.py` **`_SKIP_UNLESS_DISPATCH_SCHEDULABLE`**, local skips beside the test module) |
+| **`RESUME_SECTION_CATALOG`**, AST-551/552/562 tracker helpers, etc. missing on older ftr tips | **`pytest.mark.skipif`** on the asserting class or method (local skips beside the test module). **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — do not reinstate a global skip for that constant. |
 | Default **`active_provider`** is **deepseek**; mocks target **`send_to_anthropic`** only | **`tests/component/conftest.py`** env keys; **`tests/component/core/conftest.py`** + **`tests/component/ui/conftest.py`** autouse **`anthropic`** provider |
 | Strict **AST-501** envelope on **`evaluate_jd`** / encoded consult mocks | **`_strict_batch_llm_ok`** / **`_llm_failure_envelope`** in **`tests/component/core/test_agent.py`** |
 | **`LOCKED_AT_100`** files below 100% branch % on composite product | **`run_component_tests.sh`** sets **`ASTRAL_FTR_COVERAGE_INTEGRATION=1`** when **`HEAD`** is contained in **`origin/ftr/*`**; **`check_per_file_coverage.py`** logs and **does not gate** sub-100 locks (pytest + Vitest still must pass) |

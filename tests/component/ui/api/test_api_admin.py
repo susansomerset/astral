@@ -603,18 +603,37 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
-# AST-796: fetch_jd schedulable; scrape_jd / validate_title / gaze_board retired on admin paths.
+# AST-796 / AST-960: fetch_jd gazer hop; scrape_jd / validate_title / gaze_board retired on admin paths.
 class TestAst796FetchJdRetiredDispatchKeys:
-    def test_dispatch_task_keys_includes_fetch_jd_excludes_retired(
+    def test_dispatch_task_keys_omits_fetch_jd_gap_excludes_retired(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-960: gap keys (fetch_jd ∉ TASK_CONFIG) leave the picker unless a DB row exists.
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "fetch_jd" not in keys
+        assert "grade_do" in keys
+        for retired in ("scrape_jd", "validate_title", "gaze_board"):
+            assert retired not in keys
+
+    def test_dispatch_task_keys_includes_fetch_jd_from_db_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "task_key": "fetch_jd",
+                    "entity_type": "job",
+                    "trigger_state": "PASSED_JOBLIST",
+                }
+            ],
+        )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
         assert "fetch_jd" in keys
         assert keys["fetch_jd"]["entity_type"] == "job"
         assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
-        for retired in ("scrape_jd", "validate_title", "gaze_board"):
-            assert retired not in keys
 
     def test_create_dispatch_task_rejects_retired_scrape_jd(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -788,6 +807,57 @@ class TestAst785ListDtasksRobustness:
         assert by_id[2]["available_count"] == 5
 
 
+# AST-1106: list_dtasks stamps always_visible_under_avail_gt0 from ADMIN_CONFIG.
+@pytest.mark.skipif(
+    not hasattr(admin_mod, "admin_always_visible_under_avail_gt0_dispatch_task_keys"),
+    reason="AST-1106 always-visible stamp not on this publish tip",
+)
+class TestAst1106ListDtasksAlwaysVisibleFlag:
+    def test_gaze_email_flag_true_other_false_avail_unchanged(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "gaze_email",
+                    "trigger_state": None,
+                    "entity_type": None,
+                    "candidate_id": None,
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(
+            admin_mod,
+            "admin_always_visible_under_avail_gt0_dispatch_task_keys",
+            lambda: frozenset({"gaze_email"}),
+        )
+
+        def _count(row):
+            et, ts, cid = row.get("entity_type"), row.get("trigger_state"), row.get("candidate_id")
+            return 9 if (et and ts and cid) else 0
+
+        monkeypatch.setattr(admin_mod.database, "count_eligible_for_dispatch_task", _count)
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        by = {r["id"]: r for r in rows}
+        assert by[1]["available_count"] == 0
+        assert by[1]["always_visible_under_avail_gt0"] is True
+        assert by[2]["available_count"] == 9
+        assert by[2]["always_visible_under_avail_gt0"] is False
+
+
 # AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
 class TestAst773UpdateDispatchTaskTaskKey:
     def test_dispatch_task_key_trigger_error_helper(self) -> None:
@@ -889,22 +959,29 @@ class TestAst773UpdateDispatchTaskTaskKey:
 
 
 # AST-804: candidate entity_type admin validation + state_options exposure.
+# AST-970: candidate registry vocab (ACTIVE_SEARCH / NEW_CANDIDATE). inflow_discovery is
+# not in TASK_CONFIG (AST-960) so trigger validation uses intake_initiate_candidate instead.
 class TestAst804CandidateDispatchAdminValidation:
     def test_dispatch_task_key_trigger_error_candidate_paths(self) -> None:
-        assert admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "LIVE_PROMPTS") is None
-        bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "NOT_A_CANDIDATE_STATE")
-        assert bad is not None and "inflow_discovery" in bad
-        job_bad = admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "PASSED_JD")
-        assert job_bad is not None and "inflow_discovery" in job_bad
+        assert admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "ACTIVE_SEARCH") is None
+        bad = admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "NOT_A_CANDIDATE_STATE")
+        assert bad is not None and "intake_initiate_candidate" in bad
+        job_bad = admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "PASSED_JD")
+        assert job_bad is not None and "intake_initiate_candidate" in job_bad
         assert admin_mod._dispatch_task_key_trigger_error("grade_do", "PASSED_JD") is None
         assert admin_mod._dispatch_task_key_trigger_error("vet_inflow_discovery", "NEW") is None
+        # AST-960: inflow_discovery is runtime-only — helper rejects unknown TASK_CONFIG key
+        assert "Unknown task_key" in (
+            admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "ACTIVE_SEARCH") or ""
+        )
 
-    def test_state_options_includes_candidate_with_live_prompts(
+    def test_state_options_includes_candidate_with_active_search(
         self, admin_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
         states = admin_client.get("/api/admin/dispatch_tasks/state_options", headers=auth_headers).get_json()
         assert "candidate" in states
-        assert "LIVE_PROMPTS" in states["candidate"]
+        assert "ACTIVE_SEARCH" in states["candidate"]
+        assert "LIVE_PROMPTS" not in states["candidate"]
 
     def test_create_dispatch_task_rejects_invalid_candidate_trigger_state(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -914,14 +991,14 @@ class TestAst804CandidateDispatchAdminValidation:
             "/api/admin/dispatch_tasks",
             json={
                 "candidate_id": "c1",
-                "task_key": "inflow_discovery",
+                "task_key": "intake_initiate_candidate",
                 "trigger_state": "PASSED_JD",
                 "min_count": 1,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 400
-        assert "inflow_discovery" in resp.get_json()["error"]
+        assert "intake_initiate_candidate" in resp.get_json()["error"]
 
     def test_create_dispatch_task_candidate_entity_success(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -933,15 +1010,15 @@ class TestAst804CandidateDispatchAdminValidation:
             "/api/admin/dispatch_tasks",
             json={
                 "candidate_id": "c1",
-                "task_key": "inflow_discovery",
-                "trigger_state": "LIVE_PROMPTS",
+                "task_key": "intake_initiate_candidate",
+                "trigger_state": "ACTIVE_SEARCH",
                 "min_count": 1,
             },
             headers=auth_headers,
         )
         assert resp.status_code == 201
-        assert save.call_args.kwargs["task_key"] == "inflow_discovery"
-        assert save.call_args.kwargs["trigger_state"] == "LIVE_PROMPTS"
+        assert save.call_args.kwargs["task_key"] == "intake_initiate_candidate"
+        assert save.call_args.kwargs["trigger_state"] == "ACTIVE_SEARCH"
 
     def test_update_dispatch_task_trigger_state_only_candidate_row(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
@@ -950,8 +1027,8 @@ class TestAst804CandidateDispatchAdminValidation:
             admin_mod.database,
             "get_dispatch_task",
             lambda task_id: {
-                "task_key": "inflow_discovery",
-                "trigger_state": "LIVE_PROMPTS",
+                "task_key": "intake_initiate_candidate",
+                "trigger_state": "ACTIVE_SEARCH",
                 "candidate_id": "c1",
                 "auto_mode": 0,
             },
@@ -960,7 +1037,7 @@ class TestAst804CandidateDispatchAdminValidation:
         monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
         ok = admin_client.put(
             "/api/admin/dispatch_tasks/1",
-            json={"trigger_state": "NEW"},
+            json={"trigger_state": "NEW_CANDIDATE"},
             headers=auth_headers,
         )
         assert ok.status_code == 200
@@ -971,7 +1048,7 @@ class TestAst804CandidateDispatchAdminValidation:
             headers=auth_headers,
         )
         assert bad.status_code == 400
-        assert "inflow_discovery" in bad.get_json()["error"]
+        assert "intake_initiate_candidate" in bad.get_json()["error"]
 
 
 # Branches: timesheet list/export with optional req_dict filters.
@@ -1095,16 +1172,27 @@ class TestDispatchTasks:
             headers=auth_headers,
         )
         assert dup.status_code == 409
+        # AST-955: membership is TASK_CONFIG — junk keys 400 before save (no fake custom/WATCH).
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(side_effect=RuntimeError("boom")))
         assert admin_client.post(
             "/api/admin/dispatch_tasks",
-            json={"candidate_id": "c1", "task_key": "custom", "trigger_state": "WATCH", "min_count": 1},
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
             headers=auth_headers,
         ).status_code == 500
         monkeypatch.setattr(admin_mod, "save_dispatch_task", MagicMock(return_value=42))
         ok = admin_client.post(
             "/api/admin/dispatch_tasks",
-            json={"candidate_id": "c1", "task_key": "custom", "trigger_state": "WATCH", "min_count": 1},
+            json={
+                "candidate_id": "c1",
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "min_count": 1,
+            },
             headers=auth_headers,
         )
         assert ok.status_code == 201
@@ -1221,6 +1309,27 @@ class TestAdhocHelpers:
         assert "COMPANY CONTEXT" in like
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("evaluate_jd", "missing") == ""
+
+    def test_build_adhoc_live_content_qualify_meteorite(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: {"entity_type": "job"})
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "job_link": f"https://jobs.example.com/{job_id}",
+                "job_data": {jd_key: f"jd-{job_id}"},
+            },
+        )
+        batch = admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["j1", "j2"])
+        assert batch.startswith("METEORITE JOBS:")
+        assert "000: job_link:" in batch
+        assert "jd-j1" in batch and "jd-j2" in batch
+        monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
+        assert admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["missing"]) == ""
 
     def test_adhoc_entities_and_resolve(self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(admin_mod, "get_dispatch_task_by_key", lambda task_key: None)
@@ -2185,3 +2294,481 @@ class TestAst875DispatchTasksSetFromTemplate:
             headers=auth_headers,
         )
         assert ve.status_code == 400
+
+
+# AST-955: Save accepts registered TASK_CONFIG keys (picker catalog), not schedulable-only.
+class TestAst955AlignScheduledActionsSave:
+    def test_helper_accepts_check_cover_letter(self) -> None:
+        assert (
+            admin_mod._dispatch_task_key_trigger_error("check_cover_letter", "CANDIDATE_REVIEW")
+            is None
+        )
+
+    def test_helper_unknown_task_key_wording(self) -> None:
+        err = admin_mod._dispatch_task_key_trigger_error("not_a_registered_task_key", "NEW")
+        assert err is not None
+        assert "Unknown task_key" in err
+        assert "non-schedulable" not in err
+
+    def test_helper_retired_consult_still_blocked(self) -> None:
+        err = admin_mod._dispatch_task_key_trigger_error("consult_do", "PASSED_JD")
+        assert err is not None and "retired" in err
+
+    def test_create_check_cover_letter_201(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=77)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "somerset",
+                "task_key": "check_cover_letter",
+                "trigger_state": "CANDIDATE_REVIEW",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert "non-schedulable" not in (resp.get_json() or {}).get("error", "")
+        assert save.call_args.kwargs["task_key"] == "check_cover_letter"
+        assert save.call_args.kwargs["trigger_state"] == "CANDIDATE_REVIEW"
+
+    def test_create_check_job_resume_regression(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(return_value=78)
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        resp = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "somerset",
+                "task_key": "check_job_resume",
+                "trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 201
+        assert save.call_args.kwargs["task_key"] == "check_job_resume"
+
+    def test_update_task_key_to_check_cover_letter(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_dispatch_task",
+            lambda task_id: {
+                "task_key": "grade_do",
+                "trigger_state": "PASSED_JD",
+                "candidate_id": "somerset",
+                "auto_mode": 0,
+            },
+        )
+        update = MagicMock()
+        monkeypatch.setattr(admin_mod, "update_dispatch_task", update)
+        resp = admin_client.put(
+            "/api/admin/dispatch_tasks/1",
+            json={"task_key": "check_cover_letter", "trigger_state": "CANDIDATE_REVIEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        kw = update.call_args.kwargs
+        assert kw["task_key"] == "check_cover_letter"
+        assert kw["entity_type"] == "job"
+        assert kw["sort_by"] == cfg.dispatch_task_admin_defaults(
+            "check_cover_letter", trigger_state="CANDIDATE_REVIEW"
+        )["sort_by"]
+
+
+# AST-960: task_keys / form meta — TASK_CONFIG only (no frozenset merge).
+class TestAst960TaskKeysNoFrozensetInventory:
+    def test_grade_do_form_meta_still_derived(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert keys["grade_do"]["entity_type"] == "job"
+        assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
+
+    def test_check_cover_letter_form_meta_keeps_task_config_fields(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        assert "check_cover_letter" in keys
+        # Mid-chain: no default trigger rule — form meta falls through to TASK_CONFIG fields.
+        assert keys["check_cover_letter"]["entity_type"] == "job"
+
+    def test_gap_key_absent_without_db_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
+        for gap in (
+            "fetch_jd",
+            "prefilter",
+            "fetch_website",
+            "fetch_job_pages",
+            "fetch_culture_pages",
+            "inflow_discovery",
+            "inflow_resolve_website",
+            "gaze",
+            "recheck_no_openings",
+        ):
+            assert gap not in keys
+
+
+# AST-986: Admin POST /session_resume/parse — thin delegate; no candidate bind in route.
+class TestAst986SessionResumeParseApi:
+    def test_requires_admin(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_resume/parse",
+            json={"resume_text": "x"},
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_empty_body_and_non_string_resume_text_delegate_400(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[tuple[str, bool]] = []
+
+        def _fake(resume_text: str, *, debug: bool = False) -> tuple[dict[str, Any], int]:
+            calls.append((resume_text, debug))
+            return ({"success": False, "error": "resume_text is required"}, 400)
+
+        monkeypatch.setattr(admin_mod, "run_session_resume_parse", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        empty = admin_client.post("/api/admin/session_resume/parse", json={}, headers=auth_headers)
+        assert empty.status_code == 400
+        assert empty.get_json()["success"] is False
+        non_str = admin_client.post(
+            "/api/admin/session_resume/parse",
+            json={"resume_text": 99},
+            headers=auth_headers,
+        )
+        assert non_str.status_code == 400
+        assert calls == [("", False), ("", False)]
+
+    def test_no_json_body_uses_empty_dict(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        calls: list[str] = []
+
+        def _fake(resume_text: str, *, debug: bool = False) -> tuple[dict[str, Any], int]:
+            calls.append(resume_text)
+            return ({"success": False, "error": "resume_text is required"}, 400)
+
+        monkeypatch.setattr(admin_mod, "run_session_resume_parse", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_resume/parse",
+            data="not-json",
+            content_type="text/plain",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert calls == [""]
+
+    def test_success_forwards_debug_and_body(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(resume_text: str, *, debug: bool = False) -> tuple[dict[str, Any], int]:
+            captured["resume_text"] = resume_text
+            captured["debug"] = debug
+            return (
+                {
+                    "success": True,
+                    "resume_structure": {"sections": {}},
+                    "base_resume": {"experience": "x"},
+                    "parsed_response": {"experience": "x"},
+                    "batch_id": "user-session-parse-resume-1",
+                    "timesheet": {},
+                },
+                200,
+            )
+
+        monkeypatch.setattr(admin_mod, "run_session_resume_parse", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        resp = admin_client.post(
+            "/api/admin/session_resume/parse",
+            json={"resume_text": "paste block"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["base_resume"]["experience"] == "x"
+        assert captured == {"resume_text": "paste block", "debug": True}
+
+    def test_failure_status_passthrough(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "run_session_resume_parse",
+            lambda resume_text, *, debug=False: (
+                {"success": False, "error": "agent down", "batch_id": "b1"},
+                500,
+            ),
+        )
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_resume/parse",
+            json={"resume_text": "paste"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 500
+        assert resp.get_json()["success"] is False
+        assert resp.get_json()["error"] == "agent down"
+
+
+# AST-987: Admin POST /session_resume/html — in-memory structure → text/html.
+class TestAst987SessionResumeHtmlApi:
+    def test_requires_admin(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={"resume_structure": {"sections": {}}, "base_resume": {"x": "y"}},
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_400_when_structure_or_content_missing(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        bad = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert bad.get_json()["success"] is False
+        non_obj = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={"resume_structure": [], "base_resume": {}},
+            headers=auth_headers,
+        )
+        assert non_obj.status_code == 400
+
+    def test_400_on_builder_value_error(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "build_session_base_resume",
+            MagicMock(side_effect=ValueError("base_resume content is required")),
+        )
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={"resume_structure": {"sections": {}}, "base_resume": {"a": "b"}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "base_resume content is required"
+
+    def test_200_returns_html(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(structure: dict, content: dict, *, debug: bool = False) -> str:
+            captured["structure"] = structure
+            captured["content"] = content
+            captured["debug"] = debug
+            return "<html><body>session</body></html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_base_resume", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        resp = admin_client.post(
+            "/api/admin/session_resume/html",
+            json={
+                "resume_structure": {"sections": {"experience": {"id": "experience"}}},
+                "base_resume": {"experience": "Jobs"},
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/html"
+        assert b"session" in resp.data
+        assert captured["debug"] is True
+        assert captured["content"]["experience"] == "Jobs"
+
+
+# AST-1024: Admin POST /session_cover_letter/html — in-memory fields → text/html.
+class TestAst1024SessionCoverLetterHtmlApi:
+    def _payload(self, **overrides: Any) -> dict[str, Any]:
+        body: dict[str, Any] = {
+            "from_block": "Susan Somerset",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Team,\n\nThanks.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        body.update(overrides)
+        return body
+
+    def test_requires_admin(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(),
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_400_when_body_not_object(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=["not", "an", "object"],
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["success"] is False
+        assert "JSON object" in body["error"]
+
+    def test_400_on_builder_value_error(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "build_session_cover_letter",
+            MagicMock(side_effect=ValueError("from_block is required")),
+        )
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(from_block=""),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert body["success"] is False
+        assert body["error"] == "from_block is required"
+
+    def test_200_returns_html_fields_from_config_keys(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["fields"] = fields
+            captured["candidate_id"] = candidate_id
+            captured["debug"] = debug
+            return "<html><body>session-cover</body></html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        field_keys = set(cfg.BUILD_CONFIG["session_cover_letter"]["fields"])
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json={
+                **self._payload(letter="Hello cover"),
+                "candidate_id": None,
+                "noise_key": "should-not-reach-fields",
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.mimetype == "text/html"
+        assert b"session-cover" in resp.data
+        assert captured["debug"] is True
+        assert captured["candidate_id"] is None
+        assert set(captured["fields"]) == field_keys
+        assert "noise_key" not in captured["fields"]
+        assert captured["fields"]["letter"] == "Hello cover"
+
+    def test_blank_candidate_id_becomes_none(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["candidate_id"] = candidate_id
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(candidate_id="  "),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured["candidate_id"] is None
+
+    def test_forwards_candidate_id(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["candidate_id"] = candidate_id
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(candidate_id="cand-9"),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured["candidate_id"] == "cand-9"
+
+    def test_non_string_candidate_id_ignored(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        def _fake(
+            fields: dict, *, candidate_id: str | None = None, debug: bool = False
+        ) -> str:
+            captured["candidate_id"] = candidate_id
+            return "<html>ok</html>"
+
+        monkeypatch.setattr(admin_mod, "build_session_cover_letter", _fake)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: False)
+        resp = admin_client.post(
+            "/api/admin/session_cover_letter/html",
+            json=self._payload(candidate_id=123),
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert captured["candidate_id"] is None

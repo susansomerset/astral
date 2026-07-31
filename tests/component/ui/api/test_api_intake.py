@@ -165,3 +165,333 @@ class TestIntakeRoutes:
         body = resp.get_json()
         assert body["error"] == "model failed"
         assert body["batch_id"] == "intake-intake_candidate_response-x"
+
+
+class TestAst1015PreambleValidateRoute:
+    """AST-1015: POST /api/candidates/<id>/preamble/validate thin wrapper."""
+
+    def test_requires_auth(self, intake_client: FlaskClient) -> None:
+        assert (
+            intake_client.post(
+                "/api/candidates/cand-1/preamble/validate",
+                json={"question": "Q?", "answer": "A"},
+            ).status_code
+            == 401
+        )
+
+    def test_success_200_shape(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "outcome": "Valid",
+                    "error": None,
+                    "batch_id": "preamble-preamble_validate_response-x",
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/preamble/validate",
+            json={"question": "Q?", "answer": "A", "step_index": 1, "step_total": 3},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body == {
+            "success": True,
+            "outcome": "Valid",
+            "error": None,
+            "batch_id": "preamble-preamble_validate_response-x",
+        }
+
+    def test_candidate_missing_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(side_effect=ValueError("Candidate not found: missing")),
+        )
+        resp = intake_client.post(
+            "/api/candidates/missing/preamble/validate",
+            json={"question": "Q?", "answer": "A"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_question_required_400(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(side_effect=ValueError("question required")),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/preamble/validate",
+            json={"question": "", "answer": "A"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "question" in resp.get_json()["error"]
+
+    def test_structured_failure_still_200(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod,
+            "validate_preamble_answer",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "outcome": None,
+                    "error": "invalid preamble validation outcome: 'Nope'",
+                    "batch_id": "preamble-preamble_validate_response-y",
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/preamble/validate",
+            json={"question": "Q?", "answer": "A"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()["success"] is False
+        assert resp.get_json()["outcome"] is None
+
+
+
+class TestAst1075TopicMenuRoutes:
+    """AST-1075: POST topic-menu/confirm and topic-menu/generate thin wrappers."""
+
+    def test_confirm_requires_auth(self, intake_client: FlaskClient) -> None:
+        assert (
+            intake_client.post(
+                "/api/candidates/cand-1/topic-menu/confirm",
+                json={},
+            ).status_code
+            == 401
+        )
+
+    def test_confirm_success_200(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "run_topic_menu_preamble_confirm",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "outcome": "continue",
+                    "assistant_message": "Anything here you would change?",
+                    "applied_patches": [],
+                    "packet": {"context": {"raw_resume": "x"}},
+                    "batch_id": "intake-topic_menu_preamble_confirm-x",
+                    "error": None,
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/confirm",
+            json={"message": ""},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["outcome"] == "continue"
+        assert "Anything here you would change?" in body["assistant_message"]
+
+    def test_confirm_candidate_missing_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda candidate_id: None)
+        resp = intake_client.post(
+            "/api/candidates/missing/topic-menu/confirm",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_confirm_structured_failure_500(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "run_topic_menu_preamble_confirm",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "invalid confirm outcome: 'Valid'",
+                    "batch_id": "b",
+                    "outcome": None,
+                    "assistant_message": None,
+                    "applied_patches": [],
+                    "packet": {},
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/confirm",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 500
+        assert "invalid confirm outcome" in resp.get_json()["error"]
+
+    def test_generate_success_200(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "generate_topic_menu_from_preamble",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "menu": {"topics": [{"id": "t1"}], "preamble_confirmed_at": "t"},
+                    "batch_id": "intake-topic_menu_generate-x",
+                    "rejected_topic_count": 0,
+                    "informs_covered": ["backstory"],
+                    "error": None,
+                }
+            ),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/generate",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert body["menu"]["topics"][0]["id"] == "t1"
+        assert body["informs_covered"] == ["backstory"]
+
+    def test_generate_not_confirmed_400(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "generate_topic_menu_from_preamble",
+            AsyncMock(side_effect=ValueError("preamble not confirmed; run confirm accept first")),
+        )
+        resp = intake_client.post(
+            "/api/candidates/cand-1/topic-menu/generate",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "preamble not confirmed" in resp.get_json()["error"]
+
+
+class TestAst1097ArchiveActiveRoute:
+    """AST-1097: POST …/intake/sessions/active/archive — Start Over HTTP surface."""
+
+    _PATH = "/api/candidates/cand-1/intake/sessions/active/archive"
+
+    def test_requires_auth(self, intake_client: FlaskClient) -> None:
+        assert intake_client.post(self._PATH, json={}).status_code == 401
+
+    def test_missing_candidate_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(intake_mod, "get_candidate", lambda candidate_id: None)
+        resp = intake_client.post(
+            "/api/candidates/missing/intake/sessions/active/archive",
+            json={},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+        assert "not found" in resp.get_json()["error"]
+
+    def test_success_200_shape(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            lambda candidate_id: {
+                "archived_session_id": "sess-1",
+                "archived_at": "2026-07-31 12:00:00",
+                "intakes_old_count": 1,
+            },
+        )
+        resp = intake_client.post(self._PATH, json={}, headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body == {
+            "archived_session_id": "sess-1",
+            "archived_at": "2026-07-31 12:00:00",
+            "intakes_old_count": 1,
+        }
+
+    def test_no_active_session_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            MagicMock(side_effect=LookupError("no active intake session")),
+        )
+        resp = intake_client.post(self._PATH, json={}, headers=auth_headers)
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == "no active intake session"
+
+    def test_core_value_error_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Defense-in-depth: route pre-checks candidate; core ValueError still maps to 404.
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            MagicMock(side_effect=ValueError("Candidate not found: cand-1")),
+        )
+        resp = intake_client.post(self._PATH, json={}, headers=auth_headers)
+        assert resp.status_code == 404
+        assert "not found" in resp.get_json()["error"]
+
+    def test_after_archive_get_active_404(
+        self, intake_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            intake_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(
+            intake_mod,
+            "archive_active_intake_session",
+            lambda candidate_id: {
+                "archived_session_id": "sess-1",
+                "archived_at": "2026-07-31 12:00:00",
+                "intakes_old_count": 1,
+            },
+        )
+        monkeypatch.setattr(intake_mod, "fetch_active_intake_session", lambda candidate_id: None)
+        assert intake_client.post(self._PATH, json={}, headers=auth_headers).status_code == 200
+        get_resp = intake_client.get(
+            "/api/candidates/cand-1/intake/sessions/active", headers=auth_headers,
+        )
+        assert get_resp.status_code == 404
+        assert get_resp.get_json()["error"] == "no active intake session"

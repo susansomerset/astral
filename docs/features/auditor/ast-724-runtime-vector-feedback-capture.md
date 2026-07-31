@@ -1,3 +1,109 @@
+<!-- linear-archive: AST-724 archived 2026-07-29 -->
+
+## Linear archive (AST-724)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-724/runtime-vector-feedback-capture-and-lenient-parse-runtime-rubric  
+**Status at archive:** Archive  
+**Project:** Astral Auditor  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-378 — Runtime Rubric Validation  
+**Blocked by / blocks / related:** parent: AST-378
+
+### Description
+
+## What this implements
+
+Extend the agent performance envelope so every rubric-backed task requests per-vector feedback (Relevance, Clarity, Verdict codes). When `agent_performance.status=success`, always process **agent_payload** — feedback parse failures do not fail the run. Unparseable feedback → raw text in **agent_data** **FEEDBACK** block, no **vector_feedback** rows. Clean parse → one **vector_feedback** row per feedback type per vector per run, linked to **rubric_vector** UUID. Parsing stays dumb; validate codes against config. Debug logs per AST-538 when debug=True.
+
+## Acceptance criteria
+
+1. Every rubric-backed agent task returns per-vector feedback when the model complies, using config-allowed value codes.
+2. When `agent_performance.status = success` but vector feedback is missing or unparseable, the run **still succeeds** for task payload purposes; raw feedback is stored in **agent_data** **FEEDBACK**; **no** **vector_feedback** rows are created for that run.
+3. When vector feedback parses cleanly, **vector_feedback** rows are persisted with correct **rubric_vector** UUID, candidate, task run identifier, and one row per feedback type per vector.
+4. With debug enabled, rubric-backed runs log each vector feedback found and recorded, or log that raw FEEDBACK was stored due to parse failure.
+
+## Boundaries
+
+Does not build Admin UI (sibling Katherine ticket). Does not mutate rubrics from Edit/Drop verdicts. Does not change task letter-grade validation.
+
+## Notes for planning
+
+Touches [agent.py](<http://agent.py>), external providers, config prompts/envelope instructions. All rubric-backed task keys systematically — not a phased subset.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-378-runtime-rubric-validation`, child `sub/AST-378/<identifier>-runtime-vector-feedback-capture`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T04:20:15.079Z
+**Diff:** `origin/dev...origin/sub/AST-378/AST-724-runtime-vector-feedback-capture` (code `a609a04`, doc `b18ba06`)
+**Doc:** `docs/features/auditor/ast-724-runtime-vector-feedback-capture.md` § Review (Radia)
+
+*Note: three-dot diff includes sibling AST-722/723 not yet on origin/dev.*
+
+### What's solid
+- Stages 1–3: `prompt_suffix`, `rubric_feedback.py` parse, data insert/FEEDBACK store, `do_task` suffix + pre-unwrap `envelope_snapshot` + SUCCESS-only capture.
+- Lenient contract honored — parse failures → FEEDBACK only; task grading unaffected.
+- `_ensure_vector_feedback_table` on first insert (AST-722 discuss closed).
+- Betty manifest aligns.
+
+### discuss
+1. **Prefilter embedded RC:** `expected_codes` from `rubric_criteria_for_task` includes embedded RC; `list_rubric_vector_uuid_by_code` is DB-only → RC has no UUID → prefilter reviews likely always unparseable (raw FEEDBACK). Confirm: exclude embedded-only codes from expected set, or require RC in table.
+2. **Debug contract (§1.5.1):** clean parse uses one `debug_index` for N vectors; unparseable emits `debug_detail` without index header — optional polish in resolve.
+
+### advisory
+- Capture store/insert failures log at `logger.debug` only (lenient by design).
+- Diff baseline includes AST-722/723 stack until ftr → dev.
+
+**Verdict:** Approve for `resolve-child`. Resolve prefilter RC discuss before UAT sign-off on prefilter feedback.
+
+#### betty — 2026-06-18T04:18:04.516Z
+## QA test manifest (AST-724)
+
+**Publish ref:** `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture` @ `a609a04` (`merge-tests(AST-724): origin/tests e24f5b6`)
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_feedback.py \
+  tests/component/utils/test_config.py::TestAst724RubricBackedTask \
+  tests/component/data/database/test_rubric_vectors.py::TestAst724VectorFeedbackRows \
+  tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture \
+  -q
+```
+
+**Manifest:**
+
+1. `tests/component/utils/test_rubric_feedback.py` — `TestParseVectorReviewString`, `TestParseVectorReviews`, `TestFormatVectorReviewsRaw` (lenient `vector_reviews` parse; format `CODE` + `R` + rel + `C` + cla + `V` + ver, e.g. `G1RACOVK`)
+2. `tests/component/utils/test_config.py::TestAst724RubricBackedTask` — `is_rubric_backed_task`, `prompt_suffix` in `RUBRIC_FEEDBACK_CONFIG`
+3. `tests/component/data/database/test_rubric_vectors.py::TestAst724VectorFeedbackRows` — `list_rubric_vector_uuid_by_code`, `insert_vector_feedback_rows`, `store_feedback_block`
+4. `tests/component/core/test_agent.py::TestAst724VectorFeedbackCapture` — `_agent_performance_status`, owner/candidate resolution, clean parse → rows, unparseable → FEEDBACK block, non-success skip
+
+**Bible shasums (`origin/sub/AST-378/AST-724-runtime-vector-feedback-capture`):**
+
+- `docs/test-bible/utils/rubric_feedback.md`: `a69e25462bb74b5c9ae31e1d0f3efe21f2aaa23a`
+- `docs/test-bible/data/database/rubric_vectors.md`: `c1cb7ac40075be24251d281b90f220fdf3c6d83a`
+- `docs/test-bible/core/agent.md`: `a591b238b1e8b872fc3e099476b3eca5d8c790ec`
+- `docs/test-bible/utils/config.md`: `b3a4dfe112bfa2291eb8584a2960c979add78f2e`
+
+— Betty
+
+#### ada — 2026-06-18T04:11:25.794Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-378/AST-724-runtime-vector-feedback-capture/docs/features/auditor/ast-724-runtime-vector-feedback-capture.md
+
+Publish ref: `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture` @ `7392b8a`
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — new `rubric_feedback.py` parse module, `vector_feedback` insert path, and `do_task` envelope capture across all twelve rubric-backed task keys (consumer + craft).
+- **Conf:** Medium — envelope + lenient parse contract is specified in parent/AST-722; hook placement (snapshot before unwrap) is the main execution risk, mitigated in-plan.
+- **Risk:** Medium — wrong SUCCESS-hook timing could drop reviews or store FEEDBACK when rows should persist; plan pins snapshot before `_normalize_rubric_task_response` / unwrap.
+
+---
+
 # AST-724 — Runtime vector feedback capture and lenient parse (Runtime Rubric Validation)
 
 - **Linear:** [AST-724](https://linear.app/astralcareermatch/issue/AST-724/runtime-vector-feedback-capture-and-lenient-parse-runtime-rubric)

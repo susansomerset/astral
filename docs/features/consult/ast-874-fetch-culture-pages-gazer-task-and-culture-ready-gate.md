@@ -1,3 +1,126 @@
+<!-- linear-archive: AST-874 archived 2026-07-29 -->
+
+## Linear archive (AST-874)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-874/fetch-culture-pages-gazer-task-and-culture-ready-gate-fetch-culture  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-872 — Fetch culture pages task is missing?  
+**Blocked by / blocks / related:** parent: AST-872
+
+### Description
+
+## What this implements
+
+Add a dispatchable **fetch_culture_pages** gazer batch step that claims jobs in **PASSED_GET** (with a dispatch score floor), ensures company culture page content is available only via the existing roster coat-check, and lands successful jobs in **CULTURE_READY**. Scrape/coat-check failures go to **NEED_CULTURE_CONTENT**; missing culture links go to **NO_CULTURE_LINKS**. Rewire LIKE grading to claim from **CULTURE_READY** instead of **PASSED_GET**. Debug=True batches emit per-job index headers and working-detail lines for found vs recorded culture content.
+
+## Acceptance criteria
+
+1. A job in **PASSED_GET** that meets the task score floor, claimed by **fetch_culture_pages**, ends in **CULTURE_READY** when coat-check returns culture page content (fresh fetch or already stored).
+2. A job whose company culture content is already in company_data (or whose in-flight coat-check resolves successfully) still ends in **CULTURE_READY** without requiring a redundant scrape when content is already available.
+3. A job whose culture scrape / coat-check fails to produce content ends in **NEED_CULTURE_CONTENT**.
+4. A job with no culture links identified ends in **NO_CULTURE_LINKS**.
+5. LIKE grading no longer claims jobs solely because they are in **PASSED_GET**; it claims from **CULTURE_READY**.
+6. Jobs never skip **CULTURE_READY** on the happy path from GET to LIKE (every successful GET→LIKE path passes through **CULTURE_READY**).
+7. With `debug=True` on a fetch_culture_pages batch, Susan can trace each job via distinct index headers and working-detail lines showing what was found and what was recorded for culture content.
+
+## Boundaries
+
+* Does not re-select culture page links (prefilter stays upstream). Does not change LIKE rubric, prompts, or grade scoring.
+* Does not replace the coat-check handler; this task orchestrates and state-gates it. Does not invent a parallel scrape path.
+* Does not remove or repurpose **NEED_WEBSITE_CONTENT** (LIKE-prep failure path remains). Does not change **fetch_website** / **HOMEPAGE_READY** or **fetch_jd** / **JD_READY** beyond edges needed for the new states.
+* Does not strip culture coat-check from `_prep_live_content` — that path stays; this hop guarantees content availability earlier for cycle time and cache.
+
+## Notes for planning
+
+* Mirror **fetch_website** / **HOMEPAGE_READY** and **fetch_jd** / **JD_READY** patterns for gazer batch + pass/fail states.
+* Primary domains: gazer batch, job state graph, consult dispatch routing / LIKE trigger, roster coat-check call site only (no new scrape path).
+* Config is source of truth for states, task keys, score floors (§2.1).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent **ftr/AST-872-fetch-culture-pages**, child **sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate**. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-12T18:26:48.310Z
+[merge-child] blocked: missing plan(AST-874): on origin/sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate
+
+Plan landed as `docs(AST-874): plan — …` @ 1093ade. Add empty marker commit `plan(AST-874): sub-log marker — plan published as docs(AST-874) 1093ade` on the publish ref and push (same pattern as AST-843/AST-855). Then Chuckles re-runs merge-child.
+
+@Hedy Lamarr
+— Chuckles
+
+#### radia — 2026-07-12T18:24:53.299Z
+### Radia review — AST-874
+
+**Diff:** `origin/dev...origin/sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate` @ `f1d80d9` (review doc @ `7df4491`)
+**Doc:** https://github.com/susansomerset/astral/blob/7df4491c06fe688b28b9786c61d4f80f166a33d5/docs/features/consult/ast-874-fetch-culture-pages-gazer-task-and-culture-ready-gate.md
+
+**What's solid**
+- Stages 1–3 match plan: CULTURE_READY states + GAZER_CONFIG + registry; `fetch_culture_pages_batch` + consult route; dispatch seed + `grade_like` → CULTURE_READY.
+- §2.1 / §2.6 / §2.8: config-owned states; coat-check only; no LIKE from PASSED_GET.
+- §1.5.1: per-job debug index/detail when `debug=True`.
+- Migration bind shape matches qualify-retry seed; score_floor cloned.
+
+**Issues**
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| advisory | `src/core/gazer.py` imports | `get_company` imported from tracker and database; database shadows tracker (same thin-delegate behavior). Dead tracker import — tidy if touching the file. |
+
+**Recommended actions:** 0 fix-now · 0 discuss · 1 advisory — ready for `resolve-child`.
+
+**Outcome:** Clean — ship.
+
+#### betty — 2026-07-12T18:19:54.675Z
+## QA test manifest (AST-874)
+
+**Publish:** `origin/sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate` @ `f1d80d9` (`merge-tests(AST-874): origin/tests 65e23d6019858bd341179685435010048f7c7a4f`)
+
+**Broken / obsolete:** none — new hop; existing `fetch_jd` / `fetch_website` / LIKE grading tests unchanged.
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/gazer.md` — `bc9f0edcf4e86ad6405d3bd5186a6fc69ddb993798031d7aa8749b62ae74cd19`
+- `docs/test-bible/core/consult.md` — `6087316c723f1083540b3ab71b56cf27fe2ec3a0c4244158251b043dcbfd6939`
+- `docs/test-bible/utils/config.md` — `c0f002309cdbfe7271427ec6d4b4e2163ed2533c2632a81adf9d87f75b09aa1b`
+- `docs/test-bible/data/database/dispatch_tasks.md` — `0eeca3d7deeeaee39f76546e01c2426ff0cddee8144dd1012e7e350c07a89a5f`
+
+**Manifest (test-child) — narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestWebsiteContentHelpers \
+  tests/component/core/test_gazer.py::TestFetchCulturePagesBatch \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_fetch_culture_pages_batch \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst874FetchCulturePagesDispatchMigration \
+  -q
+```
+
+1. **Helpers + batch outcomes** — connectivity abort; missing company → `NEED_CULTURE_CONTENT`; cached `website_content` → `CULTURE_READY` (no coat-check); empty links → `NO_CULTURE_LINKS`; coat-check pass/fail; same-company in-memory writeback cache (`TestWebsiteContentHelpers`, `TestFetchCulturePagesBatch`)
+2. **Consult route** — `dispatch_task_key=fetch_culture_pages` → `fetch_culture_pages_batch` (`test_routes_fetch_culture_pages_batch`)
+3. **Config** — job states / LIKE priors; `GAZER_CONFIG["fetch_culture_pages"]`; schedulable defaults; `grade_like` trigger `CULTURE_READY`; score-gate + UI manifests (`TestAst874FetchCulturePagesConfig`)
+4. **Dispatch migration** — seed `fetch_culture_pages` @ `PASSED_GET` from `grade_like`; retarget `PASSED_GET` → `CULTURE_READY`; re-seed when already at `CULTURE_READY`; idempotent (`TestAst874FetchCulturePagesDispatchMigration`)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### hedy — 2026-07-12T18:13:18.768Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-872/AST-874-fetch-culture-pages-culture-ready-gate/docs/features/consult/ast-874-fetch-culture-pages-gazer-task-and-culture-ready-gate.md
+
+**Scope:** Single-Component — config state machine + one gazer batch + consult route + dispatch_task schema migration; no roster scrape rewrite and no LIKE scoring changes.
+
+**Conf:** high — mirrors fetch_jd / fetch_website registration and batch shapes; coat-check call site is the existing get_company_data(..., "website_content") path from AST-183.
+
+**Risk:** Medium — retargeting grade_like off PASSED_GET will stall LIKE until fetch_culture_pages is scheduled and green; wrong prior_states or a missed migration leaves jobs unclaimable or skips the gate.
+
+---
+
 # AST-874 — Fetch culture pages gazer task and CULTURE_READY gate
 
 **Linear:** [AST-874](https://linear.app/astralcareermatch/issue/AST-874/fetch-culture-pages-gazer-task-and-culture-ready-gate-fetch-culture)

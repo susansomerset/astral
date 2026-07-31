@@ -6,9 +6,10 @@ import JobsRecommended from "../../../../src/ui/frontend/src/pages/JobsRecommend
 import { renderWithProviders } from "../test-utils"
 import { baseCandidate, installBaseApiMocks, jobsViewHandler, jsonResponse } from "./page-mocks"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -132,9 +133,12 @@ describe("JobsRecommended", () => {
     renderWithProviders(<JobsRecommended />)
     await waitFor(() => expect(screen.getByText("Rec Role")).toBeInTheDocument())
     await userEvent.click(screen.getByText("Rec Role"))
-    await waitFor(() => expect(screen.getByText("Summary")).toBeInTheDocument())
-    const rail = document.querySelector(".side-tab-list")!
-    expect(rail).toHaveTextContent("Job Summary")
+    // AST-948: horizontal top tabs (not left side-tab rail)
+    await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeTruthy())
+    const bar = document.querySelector(".recommended-report-tabs") as HTMLElement
+    expect(within(bar).getByRole("button", { name: "Summary" })).toHaveClass("active")
+    expect(screen.getByText("Job Summary")).toBeInTheDocument()
+    expect(document.querySelector(".side-tab-list")).toBeNull()
     expect(screen.queryByText("State History")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Skip This Job" })).not.toBeInTheDocument()
   })
@@ -197,3 +201,59 @@ describe("JobsRecommended", () => {
     )
   })
 })
+
+  it("AST-1057: prepends Meteorites for meteorite- company jobs; leaves vetted sections intact", async () => {
+    const mixed = [
+      ...sectionedJobs,
+      {
+        astral_job_id: "j-met-rec",
+        job_title: "Meteorite Rec",
+        company: "meteorite-cand-1",
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-04T00:00:00Z",
+        jd_score: 8.0,
+        do_score: 8.0,
+        get_score: 8.0,
+        like_score: 8.0,
+      },
+      {
+        astral_job_id: "j-met-ready",
+        job_title: "Meteorite Ready",
+        company: "meteorite-cand-1",
+        state: "CANDIDATE_REVIEW",
+        state_changed_at: "2026-01-05T00:00:00Z",
+        jd_score: 9.0,
+        do_score: 9.0,
+        get_score: 9.0,
+        like_score: 9.0,
+      },
+    ]
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", mixed))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Meteorite Rec")).toBeInTheDocument())
+
+    expect(screen.getByRole("heading", { name: /Meteorites \(2\)/ })).toBeInTheDocument()
+    // Vetted-company Recommended / In Progress / Ready unchanged.
+    expect(screen.getByRole("heading", { name: /Recommended \(2\)/ })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /In Progress \(1\)/ })).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /Ready \(1\)/ })).toBeInTheDocument()
+
+    const met = screen.getByRole("heading", { name: /Meteorites \(2\)/ }).parentElement!
+    expect(within(met).getByText("Meteorite Rec")).toBeInTheDocument()
+    expect(within(met).getByText("Meteorite Ready")).toBeInTheDocument()
+    // Meteorites section renders first among list-page-section headings.
+    const headings = screen.getAllByRole("heading").map(h => h.textContent ?? "")
+    const metIdx = headings.findIndex(t => /Meteorites \(2\)/.test(t))
+    const recIdx = headings.findIndex(t => /Recommended \(2\)/.test(t))
+    expect(metIdx).toBeGreaterThanOrEqual(0)
+    expect(metIdx).toBeLessThan(recIdx)
+  })
+
+  it("AST-1057: omits Meteorites when no meteorite- company jobs", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", sectionedJobs))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Rec Role")).toBeInTheDocument())
+    expect(screen.queryByRole("heading", { name: /Meteorites/ })).not.toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: /Recommended \(2\)/ })).toBeInTheDocument()
+  })
+

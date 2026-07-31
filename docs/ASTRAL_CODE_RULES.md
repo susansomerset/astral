@@ -8,16 +8,25 @@ Mandate for code quality and architecture. This document defines what we build a
 
 ### 1.1 Scope and Isolation
 
+**Statute:** `astral.standards.in-scope-only`
+**Statute:** `astral.standards.database-header-inventory`
+**Statute:** `astral.standards.no-cross-contamination`
+
 - **In-scope only:** If it is not explicitly mentioned in this document or in a module's header, it is not in scope. Do not touch it.
 - **Database tables:** The data layer may use only the tables listed in the header inventory of `src/data/database.py`. Adding or changing table usage requires a design decision and an update to that header.
 - **No cross-contamination:** Do not reference, import from, or depend on any code or data outside the layered structure defined below.
 
 ### 1.2 Imports
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-1.2-imports-pointer`
+
 - All code lives in the layered structure: `src/core/`, `src/data/`, `src/external/`, `src/utils/`, and `src/ui/`.
 - Import only as allowed in section 3.3. Never import from outside this structure.
 
 ### 1.3 DRY and Function Organization
+
+**Statute:** `astral.standards.dry-and-focused-functions`
+**Statute:** `astral.standards.public-then-helpers`
 
 - **DRY:** Before adding code, consider the whole file and honor Don't Repeat Yourself. Extract shared logic.
 - **Function size:** Keep functions focused. Extract complex logic into helpers.
@@ -25,10 +34,16 @@ Mandate for code quality and architecture. This document defines what we build a
 
 ### 1.4 No Hardcoded Sets or Magic Numbers
 
+**Statute:** `astral.standards.no-hardcoded-sets`
+
 - State lists, enums, and allowed value sets live in `src/utils/config.py`. Use config as the single source of truth. Validate against config; do not define inline.
 - Magic numbers: use named constants from config or module-level constants. Document meaning and units where not obvious.
 
 ### 1.5 Logging and Error Handling
+
+**Statute:** `astral.standards.logging-via-utils`
+**Statute:** `astral.standards.data-raises-caller-logs`
+**Statute:** `astral.standards.utils-data-late-import-only`
 
 - Use `src/utils/logging.py` (backend debug contract: **§1.5.1**).
 - **`logging.py` and the data layer:** `_DatabaseLogHandler` writes to `app_log` via **`add_log_entry` imported inside `_flush_buffer` only** (late import — keeps `utils` from importing `data` at module load time; avoids cycles). This is the **only** approved runtime `utils → data` path. If buffering or DB write fails, the handler prints a single diagnostic line to **stderr** (must not raise into the caller). See **AST-388**.
@@ -37,6 +52,8 @@ Mandate for code quality and architecture. This document defines what we build a
 - UI API: return JSON error responses.
 
 #### 1.5.1 Backend debug logging (AST-538 / AST-554)
+
+**Statute:** `astral.standards.debug-contract-gated`
 
 - **Trigger:** Backend functions accept `debug: bool` (default `False`) and pass it through the call chain (including Agent Ad Hoc backend runs). Emit contract lines **only** when `debug=True` via `get_logger(..., debug_flag=debug)` and/or `logger.set_debug_flag(debug)` before calling `debug_index` / `debug_detail` / `debug_detail_block`. **No** new debug-contract lines when `debug=False`.
 - **UI/React:** No debug-logging requirement (backend only).
@@ -55,9 +72,14 @@ Mandate for code quality and architecture. This document defines what we build a
 
 ### 2.1 Config as Source of Truth
 
+**Statute:** `astral.config.config-source-of-truth`
+**Statute:** `astral.config.secrets-and-env-specific-from-environ`
+
 All behavior-driving values live in `src/utils/config.py`. Config is thoughtfully organized by concern—not a single bag of unrelated keys.
 
 **Config blocks:**
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.1-config-block-catalog`
 
 - **TASK_CONFIG**: Task definitions (prompts, response_format, context_format, response_schema). For graded tasks, also `grading_mode`, `vectors`, scoring keys (`grades_key`), and **job-consult orchestration**: pass/fail/error states, `save_prefix`, `pass_threshold`, readiness keys (`min_job_title_length`, `min_jd_chars`, `not_ready_state`), `requires_company`, and `fallback_batch_size` as the config default (`dispatch_tasks.batch_size` overrides at runtime). Single source for Anthropic task specs plus those orchestration literals.
 - **GAZER_CONFIG**: Orchestration for gazer-batch steps (`validate_title`, `scrape_jd`, `gaze`): states, JD scrape `error_states`, and fallback batch sizes. `ROSTER_CONFIG["gaze"]["error_state"]` remains the gaze hook used by roster code until gazer reads this block (`gaze.error_state` must stay the same string).
@@ -65,17 +87,19 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 - **TRACKER_CONFIG**: Job ingest config and JD processing rules. `job_state_transitions` has been removed — transitions are now validated using `prior_states` in `JOB_STATES`.
 - **`dispatch_tasks` DB table**: Sole source of truth for dispatchable batch tasks. Each row carries `entity_type`, `trigger_state`, `sort_by`, `batch_call_mode`, `batch_size`, and scheduling config. Unique constraint: **`(candidate_id, task_key, trigger_state)`** — multiple rows may share a `trigger_state` when `task_key` differs (e.g. TO_WATCH trio: `find_job_page`, `select_job_page`, `parse_job_list`). **Company roster dispatch:** `trigger_state` selects companies; **`task_key` on the row** selects the roster entry (`find_job_page` vs `select_job_page` vs `parse_job_list`), not a hardcoded default. `DISPATCH_TASKS` config block has been removed.
 - **COMPANY_STATES**: Company state list and batch criteria per state (limit, sort_by, scan_interval_hours).
-- **CANDIDATE_STATES**: Candidate state list (`NEW` → `PROFILE_READY` → `CONTEXT_READY` → `LIVE_PROMPTS`, plus `DELETED`).
+- **CANDIDATE_STATES**: Candidate state registry; each entry has `prior_states` (list or `None`), optional `stale_after_hours`/`stale_state`, optional `retry_state`/`error_state`, `progress_rank`; `DELETED` carries `reap_after_hours`. Includes `PROSPECT` (Slack create-on-miss; AST-1068).
 - **ROSTER_CONFIG**: Roster flows (prefilter, locate_job_page, parse_job_list), ats_vendor_patterns.
 - **AGENT_CONFIG**: Anthropic model catalog — model_code (alias), model_label, cpm_input, cpm_output, cpm_cache_write, cpm_cache_read, default_temperature, default_max_tokens, cache_min_tokens. Keyed by model_code alias for O(1) lookup. Use `get_model(model_code)` helper.
 - **ASTRAL_CONFIG**: Paths, company_state_transitions, gazer, tick_rate_minutes, max_auto_threads, dispatch_timeout_seconds, db_retry, html_cull, cookie_dismiss_selectors, support_email (alert recipient for monitor.py), etc.
 - **RAILWAY_CONFIG**: Gunicorn deployment settings (workers, timeout, playwright_browsers_path). Read by `scripts/start_server.py` to build the gunicorn command. Single worker required — the in-process scheduler thread runs per-worker.
 - **BLOCK_TYPES**: Content block type enum for the `agent_data` table: SYSTEM, CACHE_A-D, NO_CACHE, TASK, RESPONSE. Used by `agent.py` for storage and validation.
-- **ENTITY_TYPES**: Valid entity type strings (candidate, company, job). Single source of truth used across `agent_data`, `dispatch_ledger`, `agent_responses`, and config.
+- **ENTITY_TYPES**: Valid entity type strings (candidate, company, job). Single source of truth used across `agent_data` (including RESPONSE `entity_id` latest-per-task lookup), `dispatch_ledger`, and config. The standalone `agent_responses` **table** is retired (AST-975); entity-row JSON `agent_responses` columns are retired by AST-984 in favor of `list_entity_latest_agent_refs`.
 - **DISPATCH_TASKS**: Removed. See `dispatch_tasks` DB table above.
 - **NAV_CONFIG**: UI navigation structure — sidebar groups, labels, and route paths. Groups may declare `visible` and items may declare `enabled` as candidate state strings or `False` (permanently disabled). The `/api/nav_config` endpoint in `system.py` resolves these against the selected candidate's state before serving. The frontend renders the resolved structure with no additional visibility logic.
 
 #### pass_threshold vs dispatch_task.score_floor
+
+**Statute:** `astral.config.pass-threshold-vs-score-floor`
 
 - **`pass_threshold`** (on **TASK_CONFIG** for scored consult tasks): used by **`render_verdict`** / scoring to decide **pass vs fail** from model output after a run. Do **not** feed **`dispatch_task.score_floor`** into this path.
 - **`score_floor`** (on **`dispatch_task`** rows): read only from the DB row for **dispatch eligibility** — batch claim/count (`claim_job_batch`, `count_eligible_for_dispatch_task`, dispatcher orchestration): jobs must satisfy **`latest_score >= score_floor`** before a scored step runs (with existing **`NULL` → 1.0** normalization where applicable).
@@ -89,6 +113,8 @@ Environment variables for secrets (listed at top of `config.py`). Paths, limits,
 - **Everything else** (limits, state lists, behavior flags, default values that are the same everywhere) → plain literals in config.py. No `os.environ` lookups at all. If a value belongs in config, it lives there as a literal — not split across config and environment.
 
 ### 2.2 Core → External: Config + Delegation
+
+**Statute:** `astral.agent.do-task-delegation`
 
 All config blocks live in `src/utils/config.py`, which means any layer that imports utils has access to config values. Core reads config freely for business logic decisions (e.g., grading_mode, vectors, pass_threshold, state transitions). However, core must use external layer functions for technical execution (API calls, page navigation, scraping). Config informs decisions; external performs I/O.
 
@@ -113,21 +139,29 @@ Check `result.get("success")`. On success use `parsed_response`; on failure use 
 For JSON tasks, TASK_CONFIG defines `response_schema`. Anthropic validates; on failure returns error result (does not raise). Core receives validated shape or error and decides. Grade **confidence** bounds are also enforced in core after schema pass (defense in depth; see §2.3.2).
 
 #### 2.3.1 Grades
+
+**Statute:** `astral.agent.grade-vector-validation`
 When a TASK_CONFIG task defines `vectors`, `do_task` performs an additional grade-level validation after schema validation passes: all expected vector names must be present, no unexpected vectors, and all grade values must be in `{A, B, C, D, F, X}`. This catches AI creativity (e.g., "A+" or missing vectors) before it reaches core.
 
 #### 2.3.2 Confidence
+
+**Statute:** `astral.agent.confidence-bounds`
 Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`–`F`, and `0` with `X`. Multipliers live in `CONFIDENCE_MULTIPLIERS` in `config.py` and apply to scored consult math. At the scoring boundary, confidence `1` (including `F1`) is treated as no signal (effective `X`); `F` with confidence `2`–`5` remains a dealbreaker. Binary consult steps (`qualify_job_listings`, `evaluate_jd`) fail on `F2+`, all literal `X`, or when no row has confidence `> 1`.
 
 ### 2.4 Batch Processing Pattern
 
-All batch jobs that process entities by state use batch locking. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks, entity agent_responses, dispatch_ledger entries, and timesheets.
+**Statute:** `astral.batch.claim-process-release`
+**Statute:** `astral.batch.batch-id-format`
+**Statute:** `astral.batch.batch-id-first`
+
+All batch jobs that process entities by state use batch locking. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks (including RESPONSE `entity_id` latest-per-task refs), dispatch_ledger entries, and timesheets.
 
 **batch_id format:** `f"{task_key}-{uuid}"` — prefixed with the task_key for human readability in foreign-key references (e.g. `prefilter-3f8a2b1c-...`). For non-dispatch calls (e.g. artifact generation), the prefix is the function context.
 
 **Pattern: claim → process → release**
 
 1. **Claim:** Dispatcher generates `batch_id`, writes ledger entry, sets `log_batch_id` context var, then passes `batch_id` to the claim function to lock N unclaimed rows.
-2. **Process:** Select by batch_id, process each (AI calls store agent_data + entity agent_responses via the batch_id), update state.
+2. **Process:** Select by batch_id, process each (AI calls store agent_data blocks via the batch_id; RESPONSE rows carry `entity_id` for latest-per-task lookup), update state.
 3. **Release:** Clear `batch_id` column on entity rows when done. The row lock is temporary; the data trail (agent_data, timesheets, ledger) is permanent.
 
 **Data layer:** `claim_<entity>_batch(batch_id, state, limit, ...)`, `get_<entity>_batch(batch_id)`, `clear_<entity>_batch(batch_id)`. Parameter order: **batch_id first**.
@@ -135,6 +169,9 @@ All batch jobs that process entities by state use batch locking. The `batch_id` 
 **Core:** `get_new_<entity>_batch(state, limit?, batch_id?)` — resolve criteria from config, use provided batch_id or generate one, claim, get, return `(batch_id, entities)`.
 
 **Dispatcher flow:**
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.4-dispatcher-pseudocode`
+
 ```
 batch_id = f"{task_key}-{uuid4()}"
 save_dispatch_ledger(batch_id, ...)
@@ -149,16 +186,24 @@ finally:
 
 Do not select by state and process without batch_id. Use claim / get / clear and batch_id-first order consistently for all entity types.
 
-### 2.4.1 Entity Agent Responses
+### 2.4.1 Entity latest agent refs (via agent_data)
 
-Every entity table (company, job, candidate) has an `agent_responses` JSON array column. After each successful `do_task` call, `agent.py` upserts a lightweight reference entry by `task_key` (latest wins):
+**Statute:** `astral.batch.entity-agent-responses-latest-only`
+
+The standalone `agent_responses` **table** is retired (AST-975). Entity-row JSON `agent_responses` columns are retired (AST-984). Latest-per-`task_key` lookup uses `agent_data` RESPONSE rows tagged with `entity_id`.
+
+After each `do_task` RESPONSE write when an entity index is known, `_store_response_block` / `save_agent_data` set `agent_data.entity_id` on that RESPONSE row. Shared prompt blocks (SYSTEM / CACHE_* / TASK / NO_CACHE) stay without `entity_id` (batch-scoped).
+
+Readers that need latest-per-task refs call `list_entity_latest_agent_refs(entity_type, entity_id)`:
+
+- Select RESPONSE rows for that entity, newest `created_at` first; keep one row per `task_key`.
+- Reconstruct a lightweight ref `{task_key, batch_id, created_at, prompt_blocks}` where `prompt_blocks` = all non-RESPONSE blocks from `get_agent_data_by_batch(batch_id)` plus this RESPONSE `{type, id}` only.
 
 ```json
 {
   "batch_id": "prefilter-3f8a2b1c-...",
   "task_key": "prefilter",
   "created_at": "2026-03-19 14:32:00",
-  "entity_cost": 0.0042,
   "prompt_blocks": [
     {"type": "SYSTEM", "id": "<agent_data_id>"},
     {"type": "RESPONSE", "id": "<agent_data_id>"}
@@ -166,11 +211,11 @@ Every entity table (company, job, candidate) has an `agent_responses` JSON array
 }
 ```
 
-Historical blocks remain in `agent_data`; only the entity-row ref array is latest-only per phase.
-
-The `prompt_blocks` array contains foreign keys into the `agent_data` table. The entity row stays lightweight; full content is retrieved via `GET /api/agent_data/<batch_id>` using the block IDs.
+Historical blocks remain in `agent_data`. Full content is retrieved via `GET /api/agent_data/<batch_id>` using the block IDs. Hop hydration and `get_entity_agent_story` use `list_entity_latest_agent_refs` — not entity JSON columns.
 
 ### 2.5 Bright Line: Core vs External
+
+**Statute:** `astral.layers.core-vs-external-bright-line`
 
 **External layer** owns all I/O: page navigation, DOM extraction, HTTP, API calls. It performs operations and returns data.
 
@@ -178,15 +223,26 @@ The `prompt_blocks` array contains foreign keys into the `agent_data` table. The
 
 ### 2.6 State Machine
 
+**Statute:** `astral.state.no-daisy-chain-in-run`
+**Statute:** `astral.state.core-decides-transitions`
+
 Every company and every job has a `state`. Entities are processed in batches based on their current state (see 2.4). There is no daisy-chaining — a job does not automatically flow from one state to the next within a single run. Each dispatch cycle claims a batch of entities in a specific state, processes them, and transitions each entity to a new state. The next dispatch cycle picks them up from there in a separate invocation.
 
 #### 2.6.0 Dispatch run_next chains (AST-848)
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.0-run-next-carveout-detail`
+
+**Statute:** `astral.dispatch.run-next-is-chain-authority`
+
 Within a **single** `do_task` invocation, when `ctx` carries `dispatch_trigger_state`, successful hops may write runtime DB labels `{trigger}.{task_key}` and recurse via `run_next` until the terminal hop. Terminal graduation to a registered `JOB_STATES` key happens in the same invocation when `dispatch_chain_graduate_on_terminal` is true and the last hop's `run_next` is empty. Runtime hop labels are **not** `JOB_STATES` registry keys; batch claim may accept them (see `is_valid_job_batch_claim_state` in `config.py`). This carve-out does **not** apply to roster/consult score transitions (`render_verdict`) or company batches.
+
+Config must not define parallel hop-membership or hop-order lists that restate chains already encoded in `agent_task.run_next` — see statute `astral.dispatch.run-next-is-chain-authority`.
 
 State transitions are config-driven and managed by the core layer only. The data layer (`database.py`) and its core wrappers (`tracker.py`, `roster.py`) accept the target state as a parameter from the caller and perform the database update — they do not decide what the next state should be.
 
 #### 2.6.1 Companies
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.6.1-3-entity-examples`
 
 Company states are defined in `COMPANY_STATES` and transitions in `ASTRAL_CONFIG["company_state_transitions"]`. Roster functions (e.g., `prefilter_company`, `find_job_page`) determine the outcome and pass the target state to the data layer.
 
@@ -194,19 +250,23 @@ Example: a company in `NEW` is claimed by the prefilter dispatch task. Core eval
 
 #### 2.6.2 Jobs
 
+**Statute:** `astral.state.job-prior-states-enforced`
+
 Job states are defined in `JOB_STATES`. Each state carries `prior_states` (a list of valid predecessor states, or `None` for unrestricted entry). `tracker.transition_job_state` enforces these — it raises `ValueError` if the job's current state is not in `prior_states`. States with a `retry_state` key support per-job retry routing: when `_run_batch_consult` finds missing or invalid jobs, it transitions them to `retry_state` (rather than the error state) for a dedicated second-attempt dispatch batch. Core functions determine the outcome and call `tracker.transition_job_state` with the target state.
 
 Example: a job in `PASSED_JD` is claimed by the **`grade_do`** dispatch task. `render_verdict` grades it and transitions it to `PASSED_DO`, `FAILED_DO`, or `FAILED_TECHNICAL_DO`.
 
 #### 2.6.3 Candidates
 
-Candidate states are defined in `CANDIDATE_STATES` and transitions in `ASTRAL_CONFIG["candidate_state_transitions"]`. States follow a simple progression:
+Candidate states are defined in `CANDIDATE_STATES`. Each state carries `prior_states` (a list of valid predecessors, or `None` for unrestricted entry). `transition_candidate_state` enforces these — it raises `ValueError` if the hop is illegal. Happy path:
 
-`NEW` → `PROFILE_READY` → `CONTEXT_READY` → `LIVE_PROMPTS` (plus `DELETED` for logical deletes)
+`NEW_CANDIDATE` → `INTAKE_INITIATED` → `REQUIRED_TOPICS_READY` → `ALL_TOPICS_READY` → `REQUESTED_RESUME` → `RESUME_READY` → `REQUESTED_ARTIFACTS` → `ARTIFACTS_READY` → `ACTIVE_SEARCH`
 
-`CONTEXT_READY` is gated by `check_context_complete` — all four context lists (strengths, priorities, deal_breakers, backstory) must have at least one item. Core functions (`initiate_candidate`, `transition_candidate_state`) determine the outcome and pass the target state to the data layer. Example: a candidate in `NEW` saves their profile; core parses the resume via `parse_candidate_resume` and transitions to `PROFILE_READY`.
+Companions: waiting stages may define `stale_after_hours` / `stale_state`; `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` may define `retry_state` / `error_state`. `INACTIVE` and `DELETED` use `prior_states=None`. Entering `DELETED` starts the configured reap timer on `candidate_data.lifecycle`. `check_context_complete` may report context field completeness but does not write state. Core decides the target state and passes it to the data layer.
 
 ### 2.7 render_verdict Pattern
+
+**Statute:** `astral.patterns.render-verdict-orchestrates-consult`
 
 `render_verdict(task_type, astral_job_id)` is the standard orchestrator for per-job consult tasks in `src/core/consult.py`. It handles the full lifecycle for one job through one agent task:
 
@@ -220,11 +280,15 @@ Candidate states are defined in `CANDIDATE_STATES` and transitions in `ASTRAL_CO
 8. Transition state via tracker.
 9. Return `{"success", "to_state", "score", "grades"}` for dispatcher logging.
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.7-encoded-consult-detail`
+
 For encoded consult agent tasks (`grade_do` / `grade_get` / `grade_like`, `output_type` `grades_encoded_notes`), `render_verdict` passes `batch_entities` and `vector_labels` into `do_task`, flattens decoded `jobs[]`, hydrates `grades[].reason` from the candidate rubric, and may persist `{save_prefix}_notes` when the wire line includes an optional notes tail. See `docs/features/consult/ast-351-convert-consult-to-use-encoded-responses.md`.
 
 Technical failures (job not found, content prep failed, API error, schema validation failed) transition to the `error_state` from config, creating per-step retryable batches. The dispatcher never calls tracker directly — it just loops, calls `render_verdict`, and logs.
 
 ### 2.8 Coat-Check Pattern
+
+**Statute:** `astral.patterns.coat-check-never-store-empty`
 
 Some data fields need to be lazily populated — the value may or may not exist in the database when a caller first asks for it. The **coat-check pattern** handles this transparently: the caller asks for a value by key, and the handler either returns the cached value or fetches it on-demand, saves it, and returns it. The caller never knows which path was taken.
 
@@ -238,6 +302,8 @@ Some data fields need to be lazily populated — the value may or may not exist 
 
 **Current coat-check keys:**
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.8-coat-check-key-table`
+
 | Key | Entity | Handler | Fetch method |
 |-----|--------|---------|-------------|
 | `nav_links` | company | `roster._fetch_nav_links` | Playwright: scrape homepage link list |
@@ -250,6 +316,8 @@ Some data fields need to be lazily populated — the value may or may not exist 
 **Key rule:** Never store empty or failed results. A `None` return signals the caller that the data is unavailable. The caller decides how to handle it (e.g., skip, retry, transition to an error state).
 
 ### 2.9 Authentication Decorator
+
+**Statute:** `astral.patterns.require-auth-on-protected-endpoints`
 
 UI API endpoints use `@require_auth` to enforce authentication. The decorator checks for an `Authorization: Bearer <token>` header, validates the token, and sets `g.user` with the authenticated user's identity. Endpoints without the decorator are open (e.g., health checks).
 
@@ -268,6 +336,8 @@ UI API endpoints use `@require_auth` to enforce authentication. The decorator ch
 ## 3. Codebase Structure
 
 ### 3.1 Directory Layout
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.1-directory-tree`
 
 ```
 astral/
@@ -351,9 +421,11 @@ astral/
 
 ### 3.2 Layer Rules
 
-**External (`src/external/`):** Integration with external services (Anthropic, Playwright, Gmail). No business logic, no data persistence. API keys and behavior from config or env. External functions return results or a success/failure status — they do not log; the calling core module decides what to log. HTTP request logging for `httpcore`, `httpx`, and `anthropic` is suppressed at WARNING level in `src/external/anthropic.py` at import time. **Timesheet rows:** `send_to_anthropic` accepts an optional `record_timesheet` callback; `src/core/agent.py` passes `src.core.timesheets.record_timesheet_entry` so token/cost rows are written immediately after each API response without `external` importing `data`. All other data-layer interactions (agent_data, agent_responses, prompt resolution) are handled by `src/core/agent.py`.
+**Statute:** `astral.layers.ui-config-driven-business-logic`
 
-**Data (`src/data/`):** Database and file I/O only. No business logic, no external API calls, no UI. Exposes focused functions. Paths from config. **`agent_data.block_data` is zlib-compressed on write and decompressed on read — this is handled transparently by `save_agent_data` / `get_agent_data_by_batch`. Callers always receive plain text strings; the compression is invisible above the data layer.**
+**External (`src/external/`):** Integration with external services (Anthropic, Playwright, Gmail). No business logic, no data persistence. API keys and behavior from config or env. External functions return results or a success/failure status — they do not log; the calling core module decides what to log. HTTP request logging for `httpcore`, `httpx`, and `anthropic` is suppressed at WARNING level in `src/external/anthropic.py` at import time. **Timesheet rows:** `send_to_anthropic` accepts an optional `record_timesheet` callback; `src/core/agent.py` passes `src.core.timesheets.record_timesheet_entry` so token/cost rows are written immediately after each API response without `external` importing `data`. All other data-layer interactions (agent_data including RESPONSE `entity_id` / `list_entity_latest_agent_refs`, prompt resolution) are handled by `src/core/agent.py`.
+
+**Data (`src/data/`):** Database and file I/O only. No business logic, no external API calls, no UI. Exposes focused functions. Paths from config. **`agent_data.block_data` is zlib-compressed on write and decompressed on read — this is handled transparently by `save_agent_data` / `get_agent_data_by_batch` / `get_agent_data` / `get_agent_data_for_ids`. Writes may set nullable `ref_agent_data_id` to the earliest identical content row and omit duplicate payload on the audit row; reads follow that ref before returning plain text. Callers always receive plain text strings; compression and ref resolution are invisible above the data layer.**
 
 **Core (`src/core/`):** Domain logic and orchestration. Imports data, external, and utils. No direct file I/O — use data layer. Functions testable in isolation. The dispatcher (`dispatcher.py`) is a documented exception — it calls data-layer functions directly for batch orchestration alongside the thin wrappers it provides for API-layer compliance. `monitor.py` owns admin alerting logic — the dispatcher calls `monitor.auto_run_error()` after any AUTO task run that produces errors; monitor fetches the relevant logs from the data layer and delegates email delivery to `src/external/gmail.py`. Future monitoring features (log scanning, escalation, daily summaries) extend `monitor.py` without touching the dispatcher.
 
@@ -367,6 +439,9 @@ astral/
 
 | Task | PW | AI | DB |
 |------|----|----|-----|
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.2-dispatch-pipeline-table`
+
 | prefilter | X | X | X |
 | locate_job_page | X | X | X |
 | parse_job_list | X | X | X |
@@ -379,6 +454,9 @@ astral/
 | grade_like | / | X | X |
 
 ### 3.3 Import Rules
+
+**Statute:** `astral.layers.import-direction`
+**Statute:** `astral.layers.scripts-exempt-from-layer-rules`
 
 **Rule 1 — Allowed imports by layer:**
 
@@ -410,15 +488,23 @@ utils    ──► (nothing)
 
 ### 3.4 Playwright and HTML Culling
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.4-html-cull-config`
+
 `src/external/playwright.py` provides navigation, DOM extraction, cookie dismissal, vendor detection. Core invokes playwright, obtains content, and processes it.
 
 HTML culling is configured in `ASTRAL_CONFIG["html_cull"]`: `allowed_tags`, `banner_patterns`, `strip_attributes`, `strip_on_attrs`. ATS vendor patterns in `ROSTER_CONFIG["ats_vendor_patterns"]`.
 
 ### 3.5 UI Stack and Deployment
 
+**Statute:** `astral.ui.frontend-file-placement`
+**Statute:** `astral.ui.naming-conventions`
+**Statute:** `astral.ui.single-gunicorn-worker`
+
 **Stack:** React + TypeScript (Vite) frontend, served as static files from Flask. Single Flask process handles both API routes (`/api/`) and the built React app.
 
 **Dev workflow:** Two processes running in parallel:
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.5-dev-workflow-ports`
 - Flask API server: `cd src/ui && python server.py` (port 5001)
 - Vite dev server: `cd src/ui/frontend && npm run dev` (port 5173)
 
@@ -435,6 +521,8 @@ Vite proxies `/api/` requests to Flask during development (configured in `vite.c
 - SQLite path points to Railway's persistent volume mount (survives redeploys)
 
 **In-process dispatch scheduler:**
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.5-scheduler-endpoint-list`
 
 The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside the web server. No external cron service. All batch runner logic and dispatch orchestration live in `dispatcher.py`.
 
@@ -466,6 +554,9 @@ The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside
 
 ### 3.6 Local debug and spike output (R&D)
 
+**Statute:** `astral.debug.spikes-under-debug-dir`
+**Statute:** `astral.debug.no-repo-root-artifacts-dir`
+
 **`debug/`** at the repository root holds **worktree-local** material that must **never** be committed: Playwright dumps, spike JSON, screenshots, ad-hoc review scorecards, and other scratch output.
 
 **Spikes are R&D.** Spike deliverables do **not** belong in **`docs/features/`** (no run notes, no `a16z-*.md`, no spike schemas, no spike handoff markdown in the repo). Record spike findings on the **Linear issue** (description updates, comments) and attach files there.
@@ -484,6 +575,8 @@ The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside
 **Do not** create a top-level **`artifacts/`** directory. That name is reserved for the **Astral Artifacts** program and **`docs/features/artifacts/`** (production markdown plans only). Spike scripts must default **`--out`** / **`--out-dir`** to **`debug/spikes/<issue-id>/…`**, not `artifacts/…` or `docs/…`.
 
 ### 3.7 Sunset — Astral Boards (AST-757)
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-3.7-boards-sunset`
 
 The **Astral Boards** channel is **removed** from production. Roster cultivation via Google CSE and company/job dispatch replaced the boards ingest + gaze workflow. Epic siblings **AST-765** (product removal) and **AST-766** (schema drop) deleted board modules, API routes, tables, and board-only tests; **AST-767** retires active test-bible manifests.
 
@@ -508,6 +601,10 @@ The **Astral Boards** channel is **removed** from production. Roster cultivation
 
 ### 4.1 Branching Strategy
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-4.1-stale-branching`
+
+> **Stale:** The branching instructions in this section are superseded by `docs/ASTRAL_GIT_WORKFLOW.md` and the `orch.git.*` statutes (`orch.git.three-permanent-branches`, `orch.git.flow-direction-inviolable`, `orch.git.ftr-sub-topology`, `orch.git.commit-vocabulary`, `orch.git.merge-on-checkout`, `orch.git.no-cherry-pick-rebase-force`, `orch.git.no-dev-agent-branches`). Keep the prose below as historical narrative only.
+
 All day-to-day work happens on a single `dev` branch. Per-project feature branches are retired — no more `roster`, `gazer`, `tracker`, etc. The only exception is `artifacts`, which will get its own long-lived branch when that project begins.
 
 **Workflow:**
@@ -526,6 +623,8 @@ This keeps Linear ticket traceability in the git log and documentation without f
 
 ### 4.2 Documentation
 
+**Statute:** `astral.docs.features-single-file-per-ticket`
+
 Each project's documentation lives in `docs/features/<project>/`:
 - `project_description.md` — project overview (synced to Linear project description)
 - `<slug>.md` — single file per feature: plan, implementation notes, and review findings combined
@@ -534,9 +633,11 @@ Documentation is **not** stored in `.cursor/plans/`. The `docs/features/` direct
 
 ### 4.3 Linear Workflow States
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-4.3-state-name-list`
+
 Feature-level PRs. Sub-issues track implementation; parent features track PR lifecycle.
 
-**States:** Backlog → Todo → In Progress → Code Complete → In Review → Done
+**States (Team Chuckles pipeline names):** Backlog → Discussion → Todo → In Progress → Plan Ready → Plan Discuss → Plan Approved → Code Complete → Tests Ready → Tests Passed → Review Posted → User Testing → PR Ready → Done (plus Canceled/Cancelled, Archive, Duplicate as terminal taxonomy). Name-only — never Linear state ids.
 
 **Blocked** is a label, not a state. Use when stuck on clarification, dependency, or external blocker.
 

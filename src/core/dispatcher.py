@@ -33,6 +33,8 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     INFLOW_CONFIG,
     TASK_CONFIG,
+    METEORITE_DISPATCH_TASKS,
+    GAZE_EMAIL_CONFIG,
     dispatch_claim_uses_score_floor,
     dispatch_claim_states,
     dispatch_chain_claim_states_for_row,
@@ -40,6 +42,7 @@ from src.utils.config import (
     dispatch_task_key_is_scored,
     is_dispatch_chain_trigger,
     template_candidate_id,
+    CANDIDATE_STAGE_DISPATCH,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -156,6 +159,210 @@ def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict
     return {"candidate_id": target, "template_candidate_id": template_id, **stats}
 
 
+
+def ensure_candidate_stage_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent upsert of REQUESTED_* orchestration rows for one candidate (AST-972)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    added = 0
+    skipped = 0
+    for entry in CANDIDATE_STAGE_DISPATCH.values():
+        tk = str(entry["task_key"]).strip()
+        ts = str(entry["trigger_state"]).strip()
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=1,
+            auto_mode=bool(entry.get("auto_mode", False)),
+            trigger_state=ts,
+            batch_size=1,
+            freq_hrs=0,
+        )
+        added += 1
+    return {"candidate_id": cid, "added": added, "skipped": skipped}
+
+
+def provision_candidate_stage_dispatch_tasks() -> Dict[str, Any]:
+    """Seed template + every candidate that already has dispatch rows (AST-972)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    ensure_candidate_stage_dispatch_tasks(template_id)
+    added = 0
+    skipped = 0
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_candidate_stage_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
+    }
+
+
+def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of meteorite dispatch_task rows; retire stale evaluate_jd@METEORITE_NEW (AST-1060)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    existing = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in database.list_dispatch_tasks_for_candidate(cid)
+    }
+    added = 0
+    skipped = 0
+    skipped_missing_config = 0
+    for entry in METEORITE_DISPATCH_TASKS:
+        tk = str(entry["task_key"]).strip()
+        ts = str(entry["trigger_state"]).strip()
+        if tk not in TASK_CONFIG:
+            skipped_missing_config += 1
+            continue
+        if (tk, ts) in existing:
+            skipped += 1
+            continue
+        database.save_dispatch_task(
+            candidate_id=cid,
+            task_key=tk,
+            min_count=int(entry.get("min_count") or 1),
+            auto_mode=bool(entry.get("auto_mode", False)),
+            trigger_state=ts,
+            batch_size=entry.get("batch_size"),
+            freq_hrs=float(entry.get("freq_hrs") or 0),
+            score_floor=entry.get("score_floor"),
+        )
+        added += 1
+    # AST-1060: live claim surface — drop evaluate_jd@METEORITE_NEW (keep JD_READY).
+    retired = 0
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        tk = (row.get("task_key") or "").strip()
+        ts = (row.get("trigger_state") or "").strip()
+        if tk == "evaluate_jd" and ts == "METEORITE_NEW":
+            delete_dispatch_task(int(row["id"]))
+            retired += 1
+    return {
+        "candidate_id": cid,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+        "retired": retired,
+    }
+
+
+def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
+    """Seed template + every candidate that already has dispatch rows (AST-1054)."""
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    if database.get_candidate(template_id) is None:
+        raise LookupError(f"Template candidate not found: {template_id}")
+    tstats = ensure_meteorite_dispatch_tasks(template_id)
+    added = int(tstats.get("added") or 0)
+    skipped = int(tstats.get("skipped") or 0)
+    skipped_missing_config = int(tstats.get("skipped_missing_config") or 0)
+    retired = int(tstats.get("retired") or 0)
+    touched = 0
+    for cid in database.list_candidate_ids_with_dispatch_tasks():
+        stats = ensure_meteorite_dispatch_tasks(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
+        retired += int(stats.get("retired") or 0)
+        touched += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_touched": touched,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+        "retired": retired,
+    }
+
+
+
+def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
+    """Idempotent insert of the shared Astral inbox gaze_email row (null candidate_id).
+
+    Due eligibility + mailbox runner live on AST-1090 (`get_due_tasks` / `_dispatch_one`).
+    AST-1098: reconcile stuck AUTO-on shared row back to seed CLICK.
+    """
+    tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
+    if tk not in TASK_CONFIG:
+        return {
+            "task_key": tk,
+            "added": 0,
+            "skipped": 0,
+            "reconciled": 0,
+            "skipped_missing_config": 1,
+            "id": None,
+        }
+    existing = None
+    for row in database.list_dispatch_tasks():
+        if (row.get("task_key") or "").strip() != tk:
+            continue
+        cid = row.get("candidate_id")
+        if cid is None or str(cid).strip() == "":
+            existing = row
+            break
+    if existing is not None:
+        # Bad-seed / prior AUTO: force seed law CLICK on this shared row only.
+        if bool(existing.get("auto_mode")):
+            database.update_dispatch_task(int(existing["id"]), auto_mode=False)
+            return {
+                "task_key": tk,
+                "added": 0,
+                "skipped": 0,
+                "reconciled": 1,
+                "skipped_missing_config": 0,
+                "id": existing.get("id"),
+            }
+        return {
+            "task_key": tk,
+            "added": 0,
+            "skipped": 1,
+            "reconciled": 0,
+            "skipped_missing_config": 0,
+            "id": existing.get("id"),
+        }
+    new_id = database.save_dispatch_task(
+        candidate_id=None,
+        task_key=tk,
+        min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
+        auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
+        entity_type=GAZE_EMAIL_CONFIG["entity_type"],
+        trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
+        batch_size=GAZE_EMAIL_CONFIG["batch_size"],
+        freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+    )
+    return {
+        "task_key": tk,
+        "added": 1,
+        "skipped": 0,
+        "reconciled": 0,
+        "skipped_missing_config": 0,
+        "id": new_id,
+    }
+
+
+def provision_gaze_email_dispatch_task() -> Dict[str, Any]:
+    """Startup provision for the shared gaze_email dispatch shell (AST-1088)."""
+    return ensure_gaze_email_dispatch_task()
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # Batch runners call `database` directly (not via _db_ wrappers) because
@@ -169,10 +376,12 @@ _SUMMARY_ZERO: Dict[str, int] = {
 # batch_call_mode job consult exhaustion (AST-502): widen claim + chunk parallel waves for encoded batch consult (AST-501/503).
 _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "qualify_job_listings",
+    "qualify_meteorite",
     "evaluate_jd",
     "grade_do",
     "grade_get",
     "grade_like",
+    "meteorite_like",
 })
 
 
@@ -234,7 +443,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_cap = None
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
-        entities = [ctx] if ctx else []
+        claim_states = dispatch_claim_states(input_state, "candidate")
+        cur = (ctx.get("state") or "").strip() if ctx else ""
+        entities = [ctx] if ctx and cur in claim_states else []
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
@@ -494,6 +705,91 @@ async def _dispatch_one(task: Dict) -> None:
     debug = bool(task.get("debug")) or (ui_initiated and is_local_deploy_env())
     if debug:
         logger.set_debug_flag(True)
+
+    # AST-1090: null-candidate gaze_email mailbox — no candidate API key; one runner call.
+    if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"]:
+        # late: keep gaze_email off module-top load (peer late imports in this file)
+        from src.core.gaze_email import run_gaze_email
+
+        entity_batch_id = f"{task_key}-{uuid.uuid4()}"
+        ledger_cid = GAZE_EMAIL_CONFIG["dispatch_ledger_candidate_id"]
+        if debug:
+            logger.debug_index(
+                func="dispatcher._dispatch_one",
+                index=1,
+                total=1,
+                identifier=task_key,
+                outcome="task start",
+            )
+            logger.debug_detail(
+                f"gaze_email mailbox runner entity_batch_id={entity_batch_id} "
+                f"mode={'AUTO' if not is_click else 'CLICK'}"
+            )
+        database.save_dispatch_ledger(
+            entity_batch_id,
+            task_key,
+            ledger_cid,
+            _now_iso(),
+            "RUNNING",
+            entity_type=None,
+        )
+        log_batch_id.set(entity_batch_id)
+        dispatch_ledger_id = entity_batch_id
+        with _registry_lock:
+            entry = _task_registry.get(task_id)
+            if entry:
+                entry["asyncio_task"] = asyncio.current_task()
+        accumulated = dict(_SUMMARY_ZERO)
+        final_status = "COMPLETED"
+        try:
+            summary = await run_gaze_email(task, debug=debug)
+            for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
+                accumulated[k] = int(summary.get(k, 0) or 0)
+        except asyncio.CancelledError:
+            final_status = "INTERRUPTED"
+            failure_reason = "dispatch cancelled by admin"
+            _sched_log.warning("[%s/%s] KILLED by admin — gaze_email", task_key, entity_batch_id)
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        except Exception:
+            final_status = "FAILED"
+            failure_reason = "gaze_email runner crashed"
+            _sched_log.exception("[%s/%s] gaze_email crashed", task_key, entity_batch_id)
+            accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
+        finally:
+            if dispatch_ledger_id:
+                try:
+                    total_cost = compute_batch_cost(dispatch_ledger_id)
+                    total_processed = accumulated.get("total_processed", 0)
+                    entity_cost = total_cost / total_processed if total_processed > 0 else total_cost
+                    database.update_dispatch_ledger(
+                        dispatch_ledger_id,
+                        status=final_status,
+                        completed_at=_now_iso(),
+                        total_cost=total_cost,
+                        entity_cost=round(entity_cost, 7),
+                        **accumulated,
+                    )
+                    if final_status in ("FAILED", "INTERRUPTED"):
+                        logger.error(
+                            "[%s/%s] batch finished %s — %s | processed=%s passed=%s failed=%s errors=%s",
+                            task_key,
+                            dispatch_ledger_id,
+                            final_status,
+                            failure_reason or "see scheduler log",
+                            accumulated.get("total_processed", 0),
+                            accumulated.get("total_passed", 0),
+                            accumulated.get("total_failed", 0),
+                            accumulated.get("total_errors", 0),
+                        )
+                except Exception as e:
+                    _sched_log.error("Failed to write ledger for %s/%s: %s", task_key, dispatch_ledger_id, e)
+            flush_log_buffer()
+            log_batch_id.set(None)
+            try:
+                _db_update_dispatch_task(task_id, last_run_at=_now_iso())
+            except Exception as e:
+                _sched_log.error("Failed to update dispatch task %s: %s", task_id, e)
+        return
 
     ctx = database.get_candidate(candidate_id)
     if not ctx or not ctx.get("candidate_api_key"):
@@ -850,6 +1146,43 @@ def task_status_all() -> Dict[int, Dict[str, Any]]:
         }
 
 
+def _debug_log_auto_off_stage_skips() -> None:
+    """Style D: stage rows with AUTO off + debug on that would have met min_count (AST-1022)."""
+    stage_keys = frozenset(
+        str(entry["task_key"]).strip() for entry in CANDIDATE_STAGE_DISPATCH.values()
+    )
+    # Collect would-have-run skips first so index N/M is honest across the batch.
+    eligible: List[tuple] = []
+    for task in database.list_dispatch_tasks():
+        tk = str(task.get("task_key") or "").strip()
+        if tk not in stage_keys:
+            continue
+        if bool(task.get("auto_mode")) or not bool(task.get("debug")):
+            continue
+        if not task.get("entity_type") or not task.get("trigger_state") or not task.get("candidate_id"):
+            continue
+        avail = database.count_eligible_for_dispatch_task(task)
+        if avail < (task.get("min_count") or 1):
+            continue
+        eligible.append((task, avail))
+    total = len(eligible)
+    if not total:
+        return
+    logger.set_debug_flag(True)
+    for i, (task, avail) in enumerate(eligible, start=1):
+        logger.debug_index(
+            func="dispatcher._tick_loop",
+            index=i,
+            total=total,
+            identifier=task.get("task_key"),
+            outcome="skipped — AUTO off",
+        )
+        logger.debug_detail(
+            f"candidate_id={task.get('candidate_id')!r} task_id={task.get('id')} "
+            f"available={avail} min_count={task.get('min_count') or 1} auto_mode={task.get('auto_mode')}"
+        )
+
+
 def _tick_loop() -> None:
     """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
     # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
@@ -857,10 +1190,14 @@ def _tick_loop() -> None:
     max_auto = ASTRAL_CONFIG.get("max_auto_threads", 3)
     while True:
         try:
+            # late: avoid cycle with candidate → dispatcher (module-top import)
+            from src.core.candidate import age_stale_candidate_states
+            age_stale_candidate_states()
             due = database.get_due_tasks()  # returns auto_mode=1 tasks with available entities
             # Note: freq_hrs is an entity-level filter (applied during batch claim to exclude
             # recently-processed entities), NOT a task-level cooldown. The tick spawns any
             # auto_mode=1 task that has available entities; if none qualify, the runner exits cleanly.
+            _debug_log_auto_off_stage_skips()
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
                 running_ids = set(_task_registry.keys())
@@ -890,6 +1227,43 @@ def start_scheduler() -> None:
     n = database.mark_stale_ledger_interrupted(_now_iso())
     if n:
         _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
+    try:
+        stats = provision_candidate_stage_dispatch_tasks()
+        _sched_log.info(
+            "AST-972 stage dispatch provision template=%s touched=%s added=%s skipped=%s",
+            stats.get("template_candidate_id"),
+            stats.get("candidates_touched"),
+            stats.get("added"),
+            stats.get("skipped"),
+        )
+    except Exception:
+        _sched_log.exception("AST-972 stage dispatch provision failed")
+    try:
+        mstats = provision_meteorite_dispatch_tasks()
+        _sched_log.info(
+            "AST-1054 meteorite dispatch provision template=%s touched=%s added=%s "
+            "skipped=%s skipped_missing_config=%s",
+            mstats.get("template_candidate_id"),
+            mstats.get("candidates_touched"),
+            mstats.get("added"),
+            mstats.get("skipped"),
+            mstats.get("skipped_missing_config"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    try:
+        gstats = provision_gaze_email_dispatch_task()
+        _sched_log.info(
+            "AST-1088 gaze_email dispatch provision task_key=%s added=%s skipped=%s "
+            "skipped_missing_config=%s id=%s",
+            gstats.get("task_key"),
+            gstats.get("added"),
+            gstats.get("skipped"),
+            gstats.get("skipped_missing_config"),
+            gstats.get("id"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1088 gaze_email dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",

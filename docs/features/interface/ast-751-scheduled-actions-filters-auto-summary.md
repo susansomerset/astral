@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-751 archived 2026-07-22 -->
+
+## Linear archive (AST-751)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-751/scheduled-actions-filters-auto-summary-and-all-candidate-layout  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-735 — Scheduled Actions Screen Edits  
+**Blocked by / blocks / related:** parent: AST-735
+
+### Description
+
+## What this implements
+
+Refresh the Scheduled Actions admin screen on top of AST-734 DB task-group metadata: per-group AUTO-on summaries in collapsible headers; expanded on-page filters (Candidate, Floor range, AUTO, Debug, Freq, Min count, Batch size, Run counts); table layout with Candidate column, Available shown as **—** when zero, and Last run in the rightmost operational column group; **Candidate → All** mode that keeps task grouping/order and sorts rows per task descending by available count; AUTO-on filter working cross-candidate for audit. Supporting admin API changes only where the existing payload cannot serve All-candidate or filter needs.
+
+## Acceptance criteria
+
+2. Each section header shows AUTO-on count and total rows in that group under active filters.
+3. Filters for Candidate, Floor range, AUTO, Debug, Freq, Min count, Batch size, and Run counts each narrow the table; combined filters intersect correctly.
+4. Table shows Candidate column; Available displays **—** when zero; Last run is in the rightmost operational column group with Candidate and Available.
+5. With **Candidate → All**, tasks stay grouped and ordered as in single-candidate view; rows for the same task sort descending by available count.
+6. AUTO-on filter with **Candidate → All** lists only AUTO-enabled rows across all candidates.
+7. Existing run/stop, Stop All, Add Task, edit modal, and polling behavior unchanged; component tests updated for layout, filters, and All-candidate sort.
+
+## Boundaries
+
+* Task-first grouping from AST-734 metadata is read-only here — do not reimplement grouping source or Manage Tasks edit modal.
+* No **Apply Scheduled Actions** bulk copy modal.
+* No Candidate Actions matrix tab.
+* No scheduler/dispatch backend behavior changes beyond admin list/filter API if required.
+
+## Notes for planning
+
+* Primary file: `src/ui/frontend/src/pages/AdminScheduledActions.tsx` (and related admin API client / `api_admin.py` if All-candidate fetch needs extension).
+* AST-634 already added Candidate dropdown with All — extend filters per parent definition; align with Manage Tasks collapsible section pattern from AST-739.
+* Related: AST-743 (score floor 0.00) may touch same screen — avoid conflicting column work if merged on dev.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/AST-735-scheduled-actions-screen-edits**, child **sub/AST-735/AST-744-…** (see parent Git table after dispatch).
+
+### Comments
+
+#### radia — 2026-06-23T19:26:35.132Z
+**Review:** `origin/dev...origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `411fcf1`
+
+**Plan fidelity:** Stages 1–4 match `AdminScheduledActions.tsx` — expanded client-side AND filters, section headers `{autoOn} / {total} AUTO` on filtered rows, Candidate/Avail/Last Run rightmost (frozen Task/Entity/State), All-candidate default sort by `available_count` desc within `task_key`. No API/backend scope creep.
+
+**Rules (§1.3, §3.2/G1, B2):** Single frontend page; filter logic in one `filteredRows` memo; `formatAvailableCount` helper; no cross-layer imports.
+
+**Tests:** Betty manifest (`AST-751 filters…`, 7 cases) covers filters, AUTO header counts, column order, em dash for zero/null avail, All-candidate sort, floor range excluding non-scored rows.
+
+**fix-now:** none
+
+**Advisory:**
+- Floor min/max dropdowns stay hardcoded `1.00…10.00` per plan; test mocks for `/api/admin/dispatch_tasks/score_floor_options` are AST-750 prep — component does not call that route yet.
+- `filterOptionValues` from full `data` is correct per plan; long admin datasets could yield large option lists (acceptable today).
+
+**Doc:** [ast-751-scheduled-actions-filters-auto-summary.md](https://github.com/susansomerset/astral/blob/411fcf1964097ba95f46fc3e08592c6d721e5103/docs/features/interface/ast-751-scheduled-actions-filters-auto-summary.md#review-radia) — clean; `resolve-child` may proceed.
+
+#### betty — 2026-06-23T19:24:03.339Z
+[check-linear] Tests updated for [qa-handoff]
+
+Removed sibling **AST-750** score_floor edit case from this publish ref — product tip still hardcodes `1.00…10.00` options; that test belongs on **AST-750** `merge-tests` when sibling ships.
+
+**Publish:** `origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `56e4f9b` (`merge-tests(AST-751): origin/tests 45531b5`)
+
+**Manifest (25/25):**
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Bible shasum** (`docs/test-bible/frontend/pages.md`): `9749a7751c416de6b807e149bc8858593a45f3e4f8437da65c87241171aee1fa`
+
+Reassigned **Katherine Johnson** for `test-child`.
+
+#### katherine — 2026-06-23T19:21:55.328Z
+[qa-handoff]
+
+Manifest run (Betty AST-751 manifest @ `6baafdb`):
+```bash
+cd src/ui/frontend && npm run test:component -- ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+**25 passed, 1 failed.**
+
+All **`AST-751 filters, AUTO summary, and All-candidate layout`** cases (7/7) green.
+
+**Failure — not AST-751 product:**
+`AST-750: edit save sends score_floor 0 when 0.00 selected` — edit modal `<select>` has no `0.00` option (product still uses hardcoded `1.00..10.00` via `Array.from({ length: 19 }, (_, i) => (1 + i * 0.5))`). Test mocks `GET /api/admin/dispatch_tasks/score_floor_options` with `0.00..10.00` but product never calls that route. Even with `0.00` in options, `handleSave` uses `parseFloat(form.score_floor) || 1` which coerces `0` → `1`.
+
+**Ask:** Either narrow AST-751 manifest to exclude `AST-750` until that sibling ships, or keep `AST-750` test out of this full-file run. @Betty White
+
+#### betty — 2026-06-18T22:59:22.750Z
+## QA test manifest (AST-751)
+
+**Publish:** `origin/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary` @ `6baafdb` (`merge-tests(AST-751): origin/tests 9cba0b9`)
+
+**Prerequisites:** **AST-634** Candidate filter, **AST-739** DB grouping sections, **AST-746** phase table on expand (product on publish tip).
+
+### 1. New coverage
+1. **Vitest — Scheduled Actions routed page** (`test_AdminScheduledActions.test.tsx` **`AST-751 filters, AUTO summary, and All-candidate layout`**): section header `N / M AUTO`; AUTO filter narrows rows; combined AUTO + Task intersect; Candidate / Avail / Last Run rightmost; em dash for zero/null Avail; All-candidate default sort by `available_count` desc within task; floor min excludes non-scored rows.
+
+### 2. Revised (obsolete assertions)
+- **`groups rows into DB grouping sections…`**, **`AST-739`**, **`sorts columns…`**: section labels `({autoOnCount} / {rows.length} AUTO)`; collapse unmounts table; ∞ assertion after expand.
+
+### 3. Manifest (test-child)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx
+```
+
+**Bible shasum** (`docs/test-bible/frontend/pages.md`): `2fea817d5f47ea299c33f57f44fb8258c129aba07c218f0884f7b5ba01271c73`
+
+— Betty
+
+#### katherine — 2026-06-18T22:48:52.983Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-735/AST-751-scheduled-actions-filters-auto-summary/docs/features/interface/ast-751-scheduled-actions-filters-auto-summary.md
+
+Four build stages — (1) expanded client-side filters with AND intersection, (2) section headers `{autoOn} / {total} AUTO` from filtered rows, (3) column reorder placing Candidate/Avail/Last run rightmost plus Available zero → em dash, (4) All-candidate default sort by available_count desc within task. No API changes; Betty manifest covers Vitest updates.
+
+**Scope:** Single-Component — `AdminScheduledActions.tsx` only; no API/config/scheduler touch.
+**Conf:** high — reuses existing admin-filters, CollapsiblePanel, and full-list dispatch_tasks payload; AC is explicit.
+**Risk:** Medium — column reorder affects frozen indices and component tests; triage-only surface, no dispatch execution impact.
+
+---
+
 # Scheduled Actions filters, AUTO summary, and All-candidate layout (Scheduled Actions Screen Edits)
 
 **Linear:** [AST-751](https://linear.app/astralcareermatch/issue/AST-751/scheduled-actions-filters-auto-summary-and-all-candidate-layout-scheduled)  

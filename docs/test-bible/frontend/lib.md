@@ -84,3 +84,78 @@ npm run test:component -- \
 ```
 
 **Regression guard:** **`test_stytchRedirect.test.ts`**, **`test_Login.test.tsx`** — redirect URL wiring unchanged.
+
+---
+
+### AST-948 · AST-858
+
+**AST-858 (parent):** Recommended Job Report redesign. **AST-948** adds **`printResumeVisible`** / **`printCoverVisible`** (wrap **`artifactHasContent`**) for sticky-header Print buttons; JAR no longer wires **`materialsPreviewVisible`** / Preview Materials (helper retained for now).
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-948** | Print visibility helpers; fixture `report_top_tabs` / `report_summary_sections` | `src/ui/frontend/src/lib/recommendedJobReport.tsx`, `tests/component/frontend/fixtures/stateUiManifestFixture.ts` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-948 print helpers`** (+ retained AST-581 `materialsPreviewVisible` unit cases) |
+
+**AST-948** narrowed lib run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
+```
+
+---
+
+### AST-950 · AST-858
+
+**AST-950:** `buildPhaseSectionGradeConfidenceRow` + `gradesForHeader` for Analysis section headers / `AgentAnalysisHeader` payloads.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+
+---
+
+### AST-951 · AST-858
+
+**AST-951:** `isArtifactsBuildInProgress`, `artifactsTabPrimaryActions` (compound hop fallback), `anyReportArtifactContent`.
+
+| Child | Behavior | Sources | Manifest tests |
+| --- | --- | --- | --- |
+| **AST-951** | Artifacts action / content helpers | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-951 Artifacts helpers`** |
+
+---
+
+### AST-1086 · AST-1078
+
+**Parent:** [AST-1078 — Small bug: Headers for Job Lists](https://linear.app/astralcareermatch/issue/AST-1078/small-bug-headers-for-job-lists). **Publish:** `origin/sub/AST-1078/AST-1086-compact-vector-codes-grade-dot-tooltips`.
+
+Compact grades-only `headerCode` (`Technical (TE)` → `TE`), clean label tooltips, and grade-dot confidence parenthetical via `formatGradeDotTooltip` / `CONFIDENCE_DESCRIPTIONS` mirror. Page coverage: **`docs/test-bible/frontend/pages.md`** (**AST-1086**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Grades-only parse + grade-dot tooltip | `lib/rubricDisplay.ts` | **`test_rubricDisplay.test.ts`** — **`AST-1086 compact headers and grade-dot confidence tooltips`** (+ grades-only expectation in **`AST-1064 job-carried list helpers`**) |
+
+**Broken / obsolete:** grades-only fallback expected `headerCode === "Technical (TE)"` — revised to `"TE"` / tooltip `"Technical (5)"`.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_rubricDisplay.test.ts
+```
+
+### AST-1100 · AST-1091
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
+
+`artifactHasContent` treats non-empty pin strings as content. `printResumeVisible` / `materialsPreviewVisible` gate on `job_resume` (+ legacy `resume_content`). Fixture `report_artifact_tabs` keys remapped to pin slots.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Visibility + fixture keys | `recommendedJobReport.tsx`, `stateUiManifestFixture.ts` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-1100 pin-slot visibility`** (+ revised AST-581 / AST-951 key asserts) |
+
+**Broken / obsolete:** fixture `artifact_key` `resume_content` / `application_responses` → `job_resume` / `proposed_answers`; `anyReportArtifactContent` assert updated to `job_resume`.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
+```

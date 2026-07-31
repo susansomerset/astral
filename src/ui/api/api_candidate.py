@@ -30,6 +30,7 @@ from src.core.candidate import (
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
+    transition_candidate_state,
 )
 from src.utils.config import (
     CANDIDATE_STATES,
@@ -70,7 +71,7 @@ def _jpeg_dimensions(raw: bytes):
 
 
 def _validate_cover_letter_signature_image(value) -> None:
-    """AST-366: profile.cover_letter_signature_image must be empty or a bounded JPEG data URL."""
+    """AST-366: contact.cover_letter_signature_image must be empty or a bounded JPEG data URL."""
     if value is None or value == "":
         return
     if not isinstance(value, str):
@@ -149,9 +150,16 @@ def create_candidate():
     candidate_id = body.get("astral_candidate_id", "").strip().lower()
     if not candidate_id:
         return jsonify({"error": "astral_candidate_id is required"}), 400
-    candidate_data = body.get("candidate_data", {})
+    candidate_data = body.get("candidate_data", {}) or {}
     try:
-        initiate_candidate(candidate_id, candidate_data)
+        initiate_candidate(
+            candidate_id,
+            candidate_data,
+            first=body.get("first"),
+            last=body.get("last"),
+            full=body.get("full"),
+            pronouns=body.get("pronouns"),
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"created": candidate_id}), 201
@@ -161,7 +169,7 @@ def create_candidate():
 @require_auth
 def update_candidate_data(candidate_id):
     """Update candidate_data fields (merge=True). If 'state' is in the body,
-    applies it as a direct admin override (bypasses transition validation).
+    applies it via transition_candidate_state (fail closed on illegal hops).
     api_key handling: non-empty string = set/replace, empty string = clear to NULL."""
     body = request.get_json(silent=True) or {}
     if not body:
@@ -211,17 +219,21 @@ def update_candidate_data(candidate_id):
                     )
                     normalize_rubric_artifacts_on_save(arts)
                     apply_rubric_vectors_save(candidate_id, arts)
-            prof = body.get("profile")
-            if isinstance(prof, dict) and "cover_letter_signature_image" in prof:
-                _validate_cover_letter_signature_image(prof.get("cover_letter_signature_image"))
+            contact = body.get("contact")
+            if isinstance(contact, dict) and "cover_letter_signature_image" in contact:
+                _validate_cover_letter_signature_image(contact.get("cover_letter_signature_image"))
             if body:
-                save_candidate_data(candidate_id, body, replace=False)
+                # AST-1014 / AC8: gate library-write found/recorded lines on deploy debug.
+                save_candidate_data(candidate_id, body, replace=False, debug=ui_llm_debug())
                 # Clear pending only after persist — keys captured before apply del
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
         if state_override is not None:
-            save_candidate_admin(candidate_id, state=state_override)
+            try:
+                transition_candidate_state(candidate_id, state_override)
+            except ValueError as e:
+                return jsonify({"error": str(e)}), 400
         if api_key is not None:
             if api_key.strip():
                 save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())
@@ -292,7 +304,7 @@ def generate_artifact(candidate_id, task_key):
     cd = candidate.get("candidate_data") or {}
     live = None
     if task_key == "craft_resume_base":
-        live = (cd.get("context") or {}).get("starting_resume_text", "")
+        live = (cd.get("context") or {}).get("raw_resume", "")
 
     body, status = run_candidate_artifact_generation(
         candidate_id, task_key, live, debug=ui_llm_debug()

@@ -8,11 +8,14 @@ Authoritative git workflow for Astral. Supersedes all prior branch law in `orien
 
 ## Permanent branches
 
+**Statute:** `orch.git.three-permanent-branches`
+**Statute:** `orch.git.flow-direction-inviolable`
+
 Three permanent branches on `origin`. Nothing else is permanent.
 
 | Branch | Owner | Purpose |
 |--------|-------|---------|
-| `main` | Susan | Production |
+| `main` | Archie | Production |
 | `dev` | Chuckles | Integration |
 | `tests` | Betty | Cumulative test corpus |
 
@@ -31,6 +34,8 @@ dev   → main        (release only)
 
 ## Feature branch topology
 
+**Statute:** `orch.git.ftr-sub-topology`
+
 Every Linear parent maps to exactly one `ftr/` branch. Every child sub-issue maps to exactly one `sub/` branch. Both exist only on `origin` — not as persistent local branch names outside the active ftr worktree.
 
 | Kind | Pattern | Example |
@@ -45,11 +50,13 @@ Chuckles creates all `ftr/` and `sub/` refs at dispatch. No agent creates them i
 
 ## Worktrees
 
+**Statute:** `orch.git.one-epic-worktree-per-parent`
+
 Assume repo folder name **`<reponame>`** (today: `astral`). Siblings under the parent directory (e.g. `/Users/susan/chuckles/`):
 
 | Pattern | Example | Branch context | Owner | Lifespan |
 |---------|---------|----------------|-------|----------|
-| `<reponame>/` | `astral/` | `dev` | Chuckles / Susan | Permanent |
+| `<reponame>/` | `astral/` | `dev` | Chuckles / Archie | Permanent |
 | `<reponame>-tests/` | `astral-tests/` | `tests` | Betty | Permanent |
 | `<reponame>-<IssueID>/` | `astral-AST-593/` | active `sub/*` | child assignee | Ephemeral — per parent epic |
 
@@ -74,6 +81,8 @@ At ftr worktree creation Chuckles also installs the **pre-commit hook** for the 
 
 ### Pre-commit hooks by role
 
+**Statute:** `orch.roles.pre-commit-path-bans`
+
 Structural enforcement — not prose rules.
 
 | Role | Blocked paths |
@@ -88,11 +97,15 @@ Violations fail at commit time with a clear error.
 
 ## Child sub-issue sequencing
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-child-strict-sequential-prose`
+
 Children are strictly sequential. Child N+1 is not dispatched until Child N has `merge-child()` into `ftr/`. No simultaneous children on the same parent.
 
 ---
 
 ## Canonical commit sequence
+
+**Statute:** `orch.git.commit-vocabulary`
 
 Every sub-branch follows this sequence. Ticket ID in every subject is mandatory.
 
@@ -130,10 +143,12 @@ resolve(AST-NNN)
 | `park-wip()` | Engineer | No | Blocked only |
 | `merge-resume()` | Engineer | No | Paired with each `park-wip()` |
 | `code()` | Engineer | Yes | Implementation complete |
-| `merge-tests()` | **Betty** | Yes | Merge her `origin/tests` SHA into sub; push `origin/sub` |
-| `test()` | Engineer | Yes | Src fixes for manifest green |
+| `merge-tests()` | **Betty** | Yes\* | Merge her `origin/tests` SHA into sub; push `origin/sub` |
+| `test()` | Engineer | Yes | Src fixes for manifest green (**docs-acceptance** = no src / no scenarios) |
 | `docs()` | Radia | Yes | Always — clean or findings |
 | `resolve()` | Engineer | Yes | Always — clean or addressed |
+
+\* **`merge-tests()`** optional when the child is **docs-acceptance** (`test()` / `code()` subject contains that phrase) — no test-tree delivery. `validate-sub-log.sh` enforces this.
 
 `docs()` / `resolve()` message conventions:
 
@@ -170,6 +185,8 @@ Betty **never** uses the ftr worktree. She references `origin/sub/...` read-only
 
 ### `merge-tests()` — one SHA, one merge
 
+**Statute:** `orch.git.betty-merge-tests-one-sha`
+
 Git mechanism is **`merge` + `push`** — Betty merges her `origin/tests` SHA into the sub-branch, then pushes. **`merge-tests()`** is the canonical commit name on the sub-branch.
 
 **One delivery per ticket.** Betty declares exactly **one** SHA per child ticket and produces exactly **one** `merge-tests(AST-NNN): origin/tests <sha>` on `origin/sub/...`. If she revises tests on `origin/tests`, amend or squash on `tests` **before** merging to the sub — **never** push twice and merge twice for the same ticket (that interleaves test SHAs and duplicate merge commits on the sub log).
@@ -189,13 +206,15 @@ Betty may be ahead on `origin/tests` writing tests for the next ticket. Merging 
 | Commit | Operation |
 |--------|-----------|
 | `merge-child(AST-NNN)` | sub → ftr |
-| `merge-parent(AST-NNN)` | ftr → dev |
+| `finish-up(AST-NNN)` | ftr → dev (parent close after PR Ready) |
+
+**Internal only:** `scripts/git/merge-parent.sh` is invoked by `finish-up-land.sh` as a land helper — agents and operators run the **`finish-up`** skill, not `merge-parent` as a skill or commit name.
 
 Before `merge-child()`, Chuckles validates the sub-branch log:
 
-- `plan()` present
+- `plan()` present (alias: `docs(AST-NNN): plan — …` from plan-child)
 - `code()` present
-- `merge-tests()` present — **exactly one** per child id
+- `merge-tests()` present — **exactly one** per child id — **except docs-acceptance**
 - `test()` present
 - `docs()` with `— clean` or `— findings`
 - `resolve()` with matching state
@@ -203,7 +222,9 @@ Before `merge-child()`, Chuckles validates the sub-branch log:
 - No commits to blocked paths (hooks enforce)
 - No **`Merge remote-tracking branch`** (git pull on sub)
 
-**Script (mandatory):** `./scripts/git/validate-sub-log.sh <publish-ref> [child-id]` — called by **`merge-child.sh`**.
+**Docs-acceptance:** when `test(AST-NNN):` or `code(AST-NNN):` subject contains **`docs-acceptance`** (Betty/engineer — no test-tree delivery), **`merge-tests()` is not required**. Duplicate `merge-tests()` still fails. Do not invent a Betty delivery to satisfy the gate.
+
+**Script (mandatory):** `./scripts/git/validate-sub-log.sh <publish-ref> [child-id] [ftr-ref]` — called by **`merge-child.sh`**.
 
 Failure → Chuckles posts on the Linear ticket; no merge.
 
@@ -217,6 +238,8 @@ Failure → Chuckles posts on the Linear ticket; no merge.
 | merge on checkout | ftr into sub whenever sub is checked out |
 
 ### Merge on checkout (mandatory)
+
+**Statute:** `orch.git.merge-on-checkout`
 
 Whenever the **engineer** (or Chuckles seeding the epic worktree) checks out a **`sub/*`** branch in **`<reponame>-<parent-id>/`**:
 
@@ -232,18 +255,20 @@ No-op if ftr unchanged; mandatory every time.
 
 ## Complete commit vocabulary
 
+**Statute:** `orch.git.commit-vocabulary`
+
 | Commit type | Owner | Mandatory | Meaning |
 |-------------|-------|-----------|---------|
 | `plan()` | Engineer | Yes | Plan doc written |
 | `code()` | Engineer | Yes | Implementation complete |
 | `park-wip()` | Engineer | Conditional | Blocked — parked on origin |
 | `merge-resume()` | Engineer | Conditional | Ftr merged after unblock |
-| `merge-tests()` | **Betty** | Yes | Deliver `origin/tests` SHA to `origin/sub` |
+| `merge-tests()` | **Betty** | Yes\* | Deliver `origin/tests` SHA to `origin/sub` (\*skip when docs-acceptance) |
 | `test()` | Engineer | Yes | Src changes — tests pass |
 | `docs()` | Radia | Yes | Review — clean or findings |
 | `resolve()` | Engineer | Yes | Review loop closed |
 | `merge-child()` | Chuckles | Yes | Sub → ftr |
-| `merge-parent()` | Chuckles | Yes | Ftr → dev |
+| `finish-up()` | Chuckles | Yes | Ftr → dev (parent close; after Archie sets PR Ready (Linear: Susan)) |
 
 Ten commit types. One owner each.
 
@@ -252,6 +277,8 @@ Ten commit types. One owner each.
 ---
 
 ## Chuckles git hygiene
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-chuckles-hygiene-tmp-branches`
 
 Chuckles merge scripts (`refresh-ftr.sh`, `merge-child.sh`) use ephemeral `tmp-refresh-*` / `tmp-merge-child-*` local branch names. Those branches must be deleted when the script exits — they must **never** appear on `origin` or linger in `git log` decorations.
 
@@ -262,6 +289,11 @@ Epic worktrees check out **`origin/ftr/<parent-segment>`** (see **`agent-worktre
 Legacy `worktree/<IssueID>` refs on **origin** should be deleted. Only `sub/*`, `ftr/*`, `dev`, `tests`, and `main` should matter in day-to-day history.
 
 ## What never happens
+
+**Statute:** `orch.git.no-cherry-pick-rebase-force`
+**Statute:** `orch.git.no-dev-agent-branches`
+**Statute:** `astral.git.engineer-test-tree-ban`
+**Statute:** `astral.git.betty-no-src-or-features`
 
 - `dev-<agent>` branches (local or on origin)
 - Cherry-pick onto any branch
@@ -279,11 +311,15 @@ Legacy `worktree/<IssueID>` refs on **origin** should be deleted. Only `sub/*`, 
 
 ## Reference graph
 
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-reference-graph`
+
 See team process doc or Chuckles onboarding for the full multi-sub / UAT-bug example graph. Day-to-day work uses the commit vocabulary above.
 
 ---
 
 ## Skills map
+
+**Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `git-skills-map`
 
 Executable procedures live in global Cursor skills under `~/.cursor/skills/`. Each stage skill links here for law; it owns steps only.
 
@@ -294,6 +330,6 @@ Executable procedures live in global Cursor skills under `~/.cursor/skills/`. Ea
 | `plan-child` … `resolve-child` | Sub-branch commit sequence |
 | `qa-child` / Betty test stage | `origin/tests` workflow |
 | `merge-child` | Pre-merge validation; sub → ftr |
-| `merge-parent` / `prep-uat` | Ftr → dev; prep-uat pushes `origin/dev` |
+| `finish-up` / `prep-uat` | finish-up lands ftr → `origin/dev` (parent close); prep-uat pushes `origin/dev` for staging UAT |
 
 Joan `git-store-*` cherry-pick skills are **retired**.

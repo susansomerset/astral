@@ -2,14 +2,22 @@
 
 from __future__ import annotations
 
+import inspect
 import json
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from src.core import candidate as candidate_mod
-from src.utils.config import ASTRAL_CONFIG, BUILD_CONFIG, RESUME_STRUCTURE_CONTACT_SECTION_IDS, RESUME_STRUCTURE_KNOWN_SECTION_IDS
+from src.utils.config import (
+    ASTRAL_CONFIG,
+    BUILD_CONFIG,
+    CANDIDATE_STATES,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+)
 
 _RUBRIC_CONTENT = "body\nA = one\nB = two"
 _CI = ASTRAL_CONFIG["consult_importance"]
@@ -44,11 +52,38 @@ def _three_section_structure() -> dict[str, Any]:
     }
 
 
-def _craft_resume_base_payload(structure: dict, content: dict[str, str] | None = None) -> dict[str, Any]:
+# AST-996: craft-base Experience wire shape (shared fixture for schema-valid payloads).
+_SAMPLE_EXPERIENCE_JOBS: list[dict[str, str]] = [
+    {
+        "company": "Acme Corp",
+        "title": "Engineer",
+        "dates": "2020-2023",
+        "location": "Remote",
+        "accomplishments": "Shipped widgets",
+    },
+    {
+        "company": "Beta LLC",
+        "title": "Lead",
+        "dates": "2023",
+        "location": "",
+        "accomplishments": "Led the team",
+    },
+]
+
+
+def _craft_resume_base_payload(
+    structure: dict, content: dict[str, Any] | None = None
+) -> dict[str, Any]:
     payload: dict[str, Any] = {"resume_structure": structure}
     for sid, spec in structure["sections"].items():
-        if spec.get("enabled"):
-            payload[sid] = (content or {}).get(sid, f"content-{sid}")
+        if not spec.get("enabled"):
+            continue
+        if content is not None and sid in content:
+            payload[sid] = content[sid]
+        elif sid == "experience":
+            payload[sid] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        else:
+            payload[sid] = f"content-{sid}"
     return payload
 
 
@@ -64,7 +99,13 @@ class TestInitiateCandidate:
         saved: list[tuple] = []
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda *args, **kwargs: saved.append((args, kwargs)))
         candidate_mod.initiate_candidate("somerset", {"context": {}})
-        assert saved[0][1]["state"] == "NEW"
+        assert saved[0][1]["state"] == "NEW_CANDIDATE"
+        hist = saved[0][1]["state_history"]
+        assert len(hist) == 1
+        assert hist[0]["from_state"] == ""
+        assert hist[0]["to_state"] == "NEW_CANDIDATE"
+        assert hist[0]["batch_id"] is None
+        assert "timestamp" in hist[0]
 
 
 class TestListCandidates:
@@ -72,22 +113,34 @@ class TestListCandidates:
         monkeypatch.setattr(
             candidate_mod.database,
             "list_candidates",
-            lambda: [{"astral_candidate_id": "a", "state": "NEW"}, {"astral_candidate_id": "b", "state": "DELETED"}],
+            lambda: [
+                {"astral_candidate_id": "a", "state": "NEW_CANDIDATE"},
+                {"astral_candidate_id": "b", "state": "DELETED"},
+            ],
         )
         ids = {c["astral_candidate_id"] for c in candidate_mod.list_candidates()}
         assert ids == {"a"}
 
 
 class TestTransitionCandidateState:
-    def test_rejects_unknown_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW"})
+    def test_rejects_disallowed_hop(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
+        )
         with pytest.raises(ValueError, match="Invalid candidate state transition"):
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+
+    def test_rejects_unknown_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
+        )
+        with pytest.raises(ValueError, match="Unknown candidate state"):
             candidate_mod.transition_candidate_state("somerset", "LIVE_PROMPTS")
 
     def test_rejects_missing_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: None)
         with pytest.raises(ValueError, match="Candidate not found"):
-            candidate_mod.transition_candidate_state("missing", "PROFILE_READY")
+            candidate_mod.transition_candidate_state("missing", "INTAKE_INITIATED")
 
 
 class TestNormalizeRubricArtifactsOnSave:
@@ -101,7 +154,10 @@ class TestCheckContextComplete:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "NEW", "candidate_data": {"context": {"strengths": "x"}}},
+            lambda candidate_id: {
+                "state": "NEW_CANDIDATE",
+                "candidate_data": {"context": {"strengths": "x"}},
+            },
         )
         assert candidate_mod.check_context_complete("somerset") is False
 
@@ -109,15 +165,23 @@ class TestCheckContextComplete:
 class TestParseCandidateResume:
     @pytest.mark.asyncio
     async def test_returns_error_without_resume_text(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW", "candidate_data": {}})
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "NEW_CANDIDATE", "candidate_data": {}},
+        )
         out = await candidate_mod.parse_candidate_resume("somerset")
         assert out["success"] is False
 
     @pytest.mark.asyncio
     async def test_persists_parsed_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        store = {"candidate_data": {"context": {"starting_resume_text": "resume body"}}, "state": "NEW"}
+        store = {
+            "candidate_data": {"context": {"raw_resume": "resume body"}},
+            "state": "NEW_CANDIDATE",
+        }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
         saves: list[dict] = []
+        transition = MagicMock()
 
         def _save(candidate_id: str, **kwargs):
             if kwargs.get("candidate_data"):
@@ -127,7 +191,7 @@ class TestParseCandidateResume:
             saves.append(kwargs)
 
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", lambda *args, **kwargs: None)
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
         structure = _three_section_structure()
         parsed = _craft_resume_base_payload(structure, {"professional_summary": "ok"})
         monkeypatch.setattr(
@@ -140,6 +204,9 @@ class TestParseCandidateResume:
         artifacts = store["candidate_data"]["artifacts"]
         assert artifacts["resume_structure"]["sections"]["professional_summary"]["title"] == "Custom Summary"
         assert artifacts["base_resume"]["professional_summary"] == "ok"
+        # AST-970: parse no longer auto-hops to PROFILE_READY / any state
+        transition.assert_not_called()
+        assert store["state"] == "NEW_CANDIDATE"
 
 
 class TestSaveCandidateData:
@@ -160,7 +227,7 @@ class TestGetCandidate:
 
 class TestListCandidatesIncludeDeleted:
     def test_can_include_deleted_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        rows = [{"state": "NEW"}, {"state": "DELETED"}]
+        rows = [{"state": "NEW_CANDIDATE"}, {"state": "DELETED"}]
         monkeypatch.setattr(candidate_mod.database, "list_candidates", lambda: rows)
         assert candidate_mod.list_candidates(include_deleted=True) == rows
 
@@ -278,11 +345,11 @@ class TestPreviewTaskPrompt:
         """Manage Tasks preview path mirrors production for {$SELECTED_AGENT} tasks (AST-631 AC3)."""
         from src.core import agent as agent_mod
 
-        cd = {"profile": {"first": "Ada"}}
+        cd = {"first": "Ada", "contact": {}, "context": {}, "artifacts": {}}
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": cd},
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "first": "Ada", "candidate_data": cd},
         )
         monkeypatch.setattr(
             agent_mod,
@@ -332,19 +399,39 @@ class TestDeleteCandidate:
 
     def test_marks_candidate_deleted(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW"})
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         candidate_mod.delete_candidate("somerset")
-        save.assert_called_once_with("somerset", state="DELETED")
+        # DELETED transition (state + history) + reap timer merge
+        deleted = [c for c in save.call_args_list if c.kwargs.get("state") == "DELETED"]
+        assert len(deleted) == 1
+        assert deleted[0].kwargs["state_history"][-1]["to_state"] == "DELETED"
+        assert deleted[0].kwargs["state_history"][-1]["from_state"] == "NEW_CANDIDATE"
+        life_calls = [c for c in save.call_args_list if (c.kwargs.get("candidate_data") or {}).get("lifecycle")]
+        assert len(life_calls) == 1
+        life = life_calls[0].kwargs["candidate_data"]["lifecycle"]
+        assert life["reap_after_hours"] == 720
+        assert life["reap_started_at"]
 
 
 class TestTransitionCandidateStateSuccess:
     def test_saves_allowed_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW"})
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        candidate_mod.transition_candidate_state("somerset", "PROFILE_READY")
-        save.assert_called_once_with("somerset", state="PROFILE_READY")
+        candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED")
+        assert save.call_count == 1
+        assert save.call_args.kwargs["state"] == "INTAKE_INITIATED"
+        assert save.call_args.kwargs["state_history"][-1]["from_state"] == "NEW_CANDIDATE"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INTAKE_INITIATED"
 
 
 class TestCheckContextCompleteExtended:
@@ -352,30 +439,42 @@ class TestCheckContextCompleteExtended:
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: None)
         assert candidate_mod.check_context_complete("missing") is False
 
-    def test_returns_true_when_already_past_context_ready(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "LIVE_PROMPTS"})
+    def test_returns_true_when_already_at_or_past_all_topics_ready(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"state": "ACTIVE_SEARCH"},
+        )
         assert candidate_mod.check_context_complete("somerset") is True
 
-    def test_transitions_when_all_context_fields_present(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_returns_true_when_all_context_fields_present_without_transition(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Completeness helper no longer writes state (AST-970)
         ctx = {key: "filled" for key in candidate_mod._CONTEXT_TEXT_KEYS}
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "PROFILE_READY", "candidate_data": {"context": ctx}},
+            lambda candidate_id: {"state": "INTAKE_INITIATED", "candidate_data": {"context": ctx}},
         )
         transition = MagicMock()
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
         assert candidate_mod.check_context_complete("somerset") is True
-        transition.assert_called_once_with("somerset", "CONTEXT_READY")
+        transition.assert_not_called()
 
-    def test_returns_false_when_transition_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        ctx = {key: "filled" for key in candidate_mod._CONTEXT_TEXT_KEYS}
+    def test_returns_false_when_context_incomplete_early_state(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"state": "PROFILE_READY", "candidate_data": {"context": ctx}},
+            lambda candidate_id: {
+                "state": "INTAKE_INITIATED",
+                "candidate_data": {"context": {"strengths": "only"}},
+            },
         )
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", MagicMock(side_effect=ValueError("nope")))
         assert candidate_mod.check_context_complete("somerset") is False
 
 
@@ -391,7 +490,7 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value=None))
         out = await candidate_mod.parse_candidate_resume("somerset")
@@ -402,7 +501,7 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         monkeypatch.setattr(
             candidate_mod,
@@ -418,15 +517,18 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
-            lambda candidate_id: {"candidate_data": {"context": {"starting_resume_text": "resume"}}},
+            lambda candidate_id: {"candidate_data": {"context": {"raw_resume": "resume"}}},
         )
         monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value={"success": True}))
         out = await candidate_mod.parse_candidate_resume("somerset")
         assert out["error"] == "parse_resume returned None parsed_response"
 
     @pytest.mark.asyncio
-    async def test_skips_transition_when_not_new(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        store = {"state": "PROFILE_READY", "candidate_data": {"context": {"starting_resume_text": "resume"}}}
+    async def test_never_auto_transitions_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        store = {
+            "state": "INTAKE_INITIATED",
+            "candidate_data": {"context": {"raw_resume": "resume"}},
+        }
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: dict(store))
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda candidate_id, **kwargs: None)
         transition = MagicMock()
@@ -444,9 +546,9 @@ class TestCandidateAdminFacades:
         clear = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
         monkeypatch.setattr(candidate_mod.database, "clear_candidate_api_key", clear)
-        candidate_mod.save_candidate_admin("somerset", state="LIVE_PROMPTS")
+        candidate_mod.save_candidate_admin("somerset", state="ACTIVE_SEARCH")
         candidate_mod.clear_candidate_api_key("somerset")
-        save.assert_called_once_with("somerset", state="LIVE_PROMPTS")
+        save.assert_called_once_with("somerset", state="ACTIVE_SEARCH")
         clear.assert_called_once_with("somerset")
 
 
@@ -775,11 +877,19 @@ class TestAst517ResumeStructure:
         from src.utils.config import TASK_CONFIG
 
         structure = candidate_mod.default_resume_structure()
-        sections = {
-            sid: {**spec, "content": f"body-{sid}"}
-            for sid, spec in structure["sections"].items()
+        # Nested section.content strings for scalars; experience jobs via content dict
+        # (section.content job arrays are not promoted — top-level / content-dict heal only).
+        content = {
+            sid: f"body-{sid}"
+            for sid in structure["sections"]
+            if sid != "experience"
         }
-        parsed: dict[str, Any] = {"agent_payload": {"resume_structure": {"sections": sections}}}
+        content["experience"] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": {"sections": structure["sections"], "content": content}
+            }
+        }
         candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
         schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
         assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
@@ -796,7 +906,7 @@ class TestAst517ResumeStructure:
                 "candidate_contact_detail": "kar@example.com",
                 "professional_summary": "Summary",
                 "core_competencies": "Skills",
-                "experience": "Jobs",
+                "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             },
         }
         candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
@@ -818,7 +928,7 @@ class TestAst517ResumeStructure:
                 "candidate_contact_detail": "kar@example.com",
                 "professional_summary": "Summary",
                 "core_competencies": "Skills",
-                "experience": "Jobs",
+                "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             },
         }
         candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
@@ -856,8 +966,8 @@ class TestAst517ResumeStructure:
     @pytest.mark.asyncio
     async def test_parse_persists_custom_structure_per_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
         stores: dict[str, dict] = {
-            "cand-a": {"state": "NEW", "candidate_data": {"context": {"starting_resume_text": "a"}}},
-            "cand-b": {"state": "NEW", "candidate_data": {"context": {"starting_resume_text": "b"}}},
+            "cand-a": {"state": "NEW_CANDIDATE", "candidate_data": {"context": {"raw_resume": "a"}}},
+            "cand-b": {"state": "NEW_CANDIDATE", "candidate_data": {"context": {"raw_resume": "b"}}},
         }
         struct_a = _three_section_structure()
         struct_b = _three_section_structure()
@@ -944,16 +1054,18 @@ class TestAst519ResumeStructureUiHelpers:
         ]
 
     def test_filter_base_resume_to_structure_drops_orphans_and_accent(self) -> None:
-        section_ids = {"professional_summary", "technical_skills"}
+        section_ids = {"professional_summary", "technical_skills", "experience"}
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         raw = {
             "professional_summary": "body",
             "orphan_section": "drop",
             "accent_color": "#112233",
-            "technical_skills": 99,
+            "technical_skills": 99,  # non-str / non-job-array → drop (no str()-corrupt)
+            "experience": jobs,
         }
         assert candidate_mod.filter_base_resume_to_structure(raw, section_ids) == {
             "professional_summary": "body",
-            "technical_skills": "99",
+            "experience": jobs,
         }
 
     def test_filter_base_resume_to_structure_non_dict_returns_empty(self) -> None:
@@ -1295,3 +1407,2152 @@ class TestAst905RecoverOnlyWhenEmpty:
         assert status == 200
         assert body["source"] == "pending_stash"
         assert body["recovered"] is True
+
+
+# AST-970: prior_states enforcement, DELETED reap, stale aging helper
+class TestAst970CandidateStateMachine:
+    _HAPPY = (
+        "NEW_CANDIDATE",
+        "INTAKE_INITIATED",
+        "REQUIRED_TOPICS_READY",
+        "ALL_TOPICS_READY",
+        "REQUESTED_RESUME",
+        "RESUME_READY",
+        "REQUESTED_ARTIFACTS",
+        "ARTIFACTS_READY",
+        "ACTIVE_SEARCH",
+    )
+
+    def test_happy_path_hops_succeed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        state = {"cur": "NEW_CANDIDATE", "hist": []}
+        saves: list[str] = []
+
+        def _get(_cid):
+            return {"state": state["cur"], "state_history": list(state["hist"])}
+
+        def _save(_cid, **kwargs):
+            if "state" in kwargs:
+                state["cur"] = kwargs["state"]
+                saves.append(kwargs["state"])
+            if "state_history" in kwargs:
+                state["hist"] = list(kwargs["state_history"])
+
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", _get)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        for nxt in self._HAPPY[1:]:
+            candidate_mod.transition_candidate_state("somerset", nxt)
+        assert saves == list(self._HAPPY[1:])
+        assert state["cur"] == "ACTIVE_SEARCH"
+
+    def test_manual_topic_ready_from_intake(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "INTAKE_INITIATED", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "REQUIRED_TOPICS_READY")
+        assert save.call_args.kwargs["state"] == "REQUIRED_TOPICS_READY"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "REQUIRED_TOPICS_READY"
+
+    def test_stale_companion_may_advance_to_next(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "REQUIRED_TOPICS_READY_STALE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "ALL_TOPICS_READY")
+        assert save.call_args.kwargs["state"] == "ALL_TOPICS_READY"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "ALL_TOPICS_READY"
+
+    def test_inactive_and_deleted_from_any_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "INACTIVE")
+        assert save.call_args.kwargs["state"] == "INACTIVE"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INACTIVE"
+
+    def test_error_state_has_no_forward_happy_path(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
+        )
+        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+            candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
+
+    def test_deleted_starts_reap_timer(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "ACTIVE_SEARCH", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "DELETED")
+        deleted = [c for c in save.call_args_list if c.kwargs.get("state") == "DELETED"]
+        assert len(deleted) == 1
+        assert deleted[0].kwargs["state_history"][-1]["to_state"] == "DELETED"
+        life = next(
+            c.kwargs["candidate_data"]["lifecycle"]
+            for c in save.call_args_list
+            if (c.kwargs.get("candidate_data") or {}).get("lifecycle")
+        )
+        assert life["reap_after_hours"] == CANDIDATE_STATES["DELETED"]["reap_after_hours"]
+        assert life["reap_started_at"]
+
+    def test_reap_due_helpers(self) -> None:
+        started = datetime(2026, 1, 1, tzinfo=timezone.utc)
+        cand = {
+            "state": "DELETED",
+            "candidate_data": {
+                "lifecycle": {
+                    "reap_after_hours": 720,
+                    "reap_started_at": started.strftime("%Y-%m-%dT%H:%M:%SZ"),
+                }
+            },
+        }
+        due = candidate_mod.candidate_reap_due_at(cand)
+        assert due == started + timedelta(hours=720)
+        assert candidate_mod.is_candidate_reap_due(cand, now=started + timedelta(hours=719)) is False
+        assert candidate_mod.is_candidate_reap_due(cand, now=started + timedelta(hours=720)) is True
+        assert candidate_mod.candidate_reap_due_at({"state": "ACTIVE_SEARCH"}) is None
+
+    def test_age_stale_moves_due_waiting_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        old = (datetime.now(timezone.utc) - timedelta(hours=80)).strftime("%Y-%m-%dT%H:%M:%SZ")
+        rows = [
+            {
+                "astral_candidate_id": "due",
+                "state": "REQUIRED_TOPICS_READY",
+                "state_changed_at": old,
+            },
+            {
+                "astral_candidate_id": "fresh",
+                "state": "REQUIRED_TOPICS_READY",
+                "state_changed_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            },
+            {
+                "astral_candidate_id": "already",
+                "state": "REQUIRED_TOPICS_READY_STALE",
+                "state_changed_at": old,
+            },
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        moved: list[tuple[str, str]] = []
+
+        def _transition(cid, to_state):
+            moved.append((cid, to_state))
+
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", _transition)
+        assert candidate_mod.age_stale_candidate_states() == 1
+        assert moved == [("due", "REQUIRED_TOPICS_READY_STALE")]
+
+    def test_pause_search_round_trip(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        state = {"cur": "ACTIVE_SEARCH", "hist": []}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": state["cur"], "state_history": list(state["hist"])},
+        )
+
+        def _save(_cid, **kwargs):
+            if "state" in kwargs:
+                state["cur"] = kwargs["state"]
+            if "state_history" in kwargs:
+                state["hist"] = list(kwargs["state_history"])
+
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        candidate_mod.transition_candidate_state("somerset", "PAUSE_SEARCH")
+        candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+        assert state["cur"] == "ACTIVE_SEARCH"
+
+
+class TestAst971CandidateTransitionHistory:
+    """AST-971: company-shaped state_history on initiate + sole transition path."""
+
+    def test_helper_appends_company_shaped_entry(self) -> None:
+        out = candidate_mod._append_candidate_state_history(
+            {"state_history": [{"from_state": "", "to_state": "NEW_CANDIDATE", "timestamp": "t0", "batch_id": None}],
+             "batch_id": "b1"},
+            "NEW_CANDIDATE",
+            "INTAKE_INITIATED",
+            "t1",
+        )
+        assert len(out) == 2
+        assert out[-1] == {
+            "from_state": "NEW_CANDIDATE",
+            "to_state": "INTAKE_INITIATED",
+            "timestamp": "t1",
+            "batch_id": "b1",
+        }
+
+    def test_illegal_hop_writes_nothing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+        save.assert_not_called()
+
+    def test_delete_appends_exactly_once_via_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """delete_candidate must not double-append — history only inside transition."""
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "ACTIVE_SEARCH", "state_history": [
+                {"from_state": "", "to_state": "NEW_CANDIDATE", "timestamp": "t0", "batch_id": None},
+            ]},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.delete_candidate("somerset")
+        deleted = [c for c in save.call_args_list if c.kwargs.get("state") == "DELETED"]
+        assert len(deleted) == 1
+        hist = deleted[0].kwargs["state_history"]
+        assert hist[-1]["from_state"] == "ACTIVE_SEARCH"
+        assert hist[-1]["to_state"] == "DELETED"
+        assert sum(1 for e in hist if e["to_state"] == "DELETED") == 1
+
+    def test_same_save_writes_state_and_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED")
+        assert save.call_count == 1
+        kw = save.call_args.kwargs
+        assert kw["state"] == "INTAKE_INITIATED"
+        assert "state_history" in kw
+
+
+@pytest.mark.skipif(
+    not hasattr(__import__("src.utils.config", fromlist=["CANDIDATE_STAGE_DISPATCH"]), "CANDIDATE_STAGE_DISPATCH"),
+    reason="AST-972 product not on this publish tip",
+)
+class TestAst972RequestedStageDispatch:
+    """AST-972: REQUESTED_* claim workers → ready / retry / error."""
+
+    @pytest.mark.asyncio
+    async def test_resume_dispatch_success_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "state": "REQUESTED_RESUME",
+                "candidate_data": {"context": {"raw_resume": "hello"}},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": {"ok": 1}}),
+        )
+        persist = MagicMock()
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", persist)
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_resume_dispatch("c1")
+        assert out == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        persist.assert_called_once()
+        trans.assert_called_once_with("c1", "RESUME_READY")
+
+    @pytest.mark.asyncio
+    async def test_resume_dispatch_primary_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_RESUME", "candidate_data": {}},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "boom"}),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_resume_dispatch("c1")
+        assert out["total_failed"] == 1 and out["total_passed"] == 0
+        trans.assert_called_once_with("c1", "REQUESTED_RESUME_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_resume_dispatch_retry_failure_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "state": "REQUESTED_RESUME_RETRY",
+                "candidate_data": {},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "boom"}),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_resume_dispatch("c1")
+        assert out["total_failed"] == 1
+        trans.assert_called_once_with("c1", "REQUESTED_RESUME_ERROR")
+
+    @pytest.mark.asyncio
+    async def test_artifacts_dispatch_success_runs_all_crafts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
+        )
+        # AST-1113: succession from run_next (not craft_task_keys list).
+        craft_chain = {
+            "craft_company_search_terms": "craft_joblist_rubric",
+            "craft_joblist_rubric": "craft_jobdesc_rubric",
+            "craft_jobdesc_rubric": "craft_do_rubric",
+            "craft_do_rubric": "craft_get_rubric",
+            "craft_get_rubric": "craft_like_rubric",
+            "craft_like_rubric": "craft_prefilter_rubric",
+            "craft_prefilter_rubric": "",
+        }
+        keys = list(craft_chain.keys())
+        monkeypatch.setattr(
+            candidate_mod,
+            "_current_agent_task_run_next",
+            lambda tk: craft_chain.get(tk, ""),
+        )
+        do = AsyncMock(return_value={"success": True, "parsed_response": {}})
+        monkeypatch.setattr(candidate_mod, "do_task", do)
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_passed"] == 1
+        assert do.await_count == len(keys)
+        assert [c.kwargs["task_key"] for c in do.await_args_list] == keys
+        assert all(c.kwargs["ctx"].get("suppress_run_next") is True for c in do.await_args_list)
+        trans.assert_called_once_with("c1", "ARTIFACTS_READY")
+
+    @pytest.mark.asyncio
+    async def test_artifacts_dispatch_mid_chain_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
+        )
+        craft_chain = {
+            "craft_company_search_terms": "craft_joblist_rubric",
+            "craft_joblist_rubric": "craft_jobdesc_rubric",
+            "craft_jobdesc_rubric": "",
+        }
+        monkeypatch.setattr(
+            candidate_mod,
+            "_current_agent_task_run_next",
+            lambda tk: craft_chain.get(tk, ""),
+        )
+        calls = {"n": 0}
+
+        async def _do(**kwargs):
+            calls["n"] += 1
+            if calls["n"] == 2:
+                return {"success": False, "error": "fail"}
+            return {"success": True, "parsed_response": {}}
+
+        monkeypatch.setattr(candidate_mod, "do_task", _do)
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_failed"] == 1
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_RETRY")
+
+
+class TestAst973HardDeleteAndReapPurge:
+    """AST-973: hard_delete wrapper + purge_reap_due_candidates."""
+
+    def test_hard_delete_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        counts = {"candidate": 1, "dispatch_task": 2}
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "hard_delete_candidate",
+            lambda cid: counts if cid == "gone" else {},
+        )
+        assert candidate_mod.hard_delete_candidate("gone") == counts
+
+    def test_purge_reap_due_only_due_deleted(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            {"astral_candidate_id": "due", "state": "DELETED"},
+            {"astral_candidate_id": "fresh", "state": "DELETED"},
+            {"astral_candidate_id": "live", "state": "ACTIVE_SEARCH"},
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        monkeypatch.setattr(
+            candidate_mod,
+            "is_candidate_reap_due",
+            lambda row, now=None: row["astral_candidate_id"] == "due",
+        )
+        deleted: list[str] = []
+        monkeypatch.setattr(
+            candidate_mod,
+            "hard_delete_candidate",
+            lambda cid: deleted.append(cid) or {"candidate": 1},
+        )
+        assert candidate_mod.purge_reap_due_candidates() == 1
+        assert deleted == ["due"]
+
+
+# Branches: 400 empty/non-str; ledger session sentinel; do_task fail/exception/non-dict;
+# success split + no get/save_candidate; debug Style D on/off.
+class TestAst986SessionResumeParse:
+    def _patch_ledger(self, monkeypatch: pytest.MonkeyPatch) -> tuple[list, list]:
+        saves: list = []
+        updates: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_dispatch_ledger",
+            lambda *args, **kwargs: saves.append((args, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "update_dispatch_ledger",
+            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
+        )
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.5))
+        monkeypatch.setattr(candidate_mod, "flush_log_buffer", MagicMock())
+        return saves, updates
+
+    @pytest.mark.parametrize("bad", ["", "   ", None, 12])
+    def test_400_requires_nonempty_resume_text(self, bad: Any) -> None:
+        body, status = candidate_mod.run_session_resume_parse(bad)  # type: ignore[arg-type]
+        assert status == 400
+        assert body == {"success": False, "error": "resume_text is required"}
+
+    def test_500_on_task_exception(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves, updates = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=RuntimeError("boom")))
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste me")
+        assert status == 500
+        assert body["success"] is False
+        assert body["error"] == "boom"
+        assert body["batch_id"].startswith("user-session-parse-resume-")
+        assert saves[0][0][1] == "user-session-parse-resume"
+        assert saves[0][0][2] == "session"
+        assert saves[0][1]["entity_type"] is None
+        assert updates[-1][1]["status"] == "FAILED"
+
+    def test_500_on_task_exception_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod, "asyncio", MagicMock(run=MagicMock(side_effect=RuntimeError("x")))
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 500
+        assert body["success"] is False
+        dbg.assert_called_once()
+        assert dbg.call_args.kwargs["outcome"] == "exception"
+
+    def test_500_on_failed_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saves, updates = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": False, "error": "bad parse"})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste me")
+        assert status == 500
+        assert body["error"] == "bad parse"
+        assert body["batch_id"].startswith("user-session-parse-resume-")
+        assert updates[-1][1]["status"] == "FAILED"
+        assert updates[-1][1]["total_failed"] == 1
+        assert saves  # ledger opened before fail
+
+    def test_500_on_failed_task_default_error_and_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": False})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 500
+        assert body["error"] == "Generation failed"
+        assert dbg.call_args.kwargs["outcome"] == "failed"
+
+    def test_500_when_task_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(candidate_mod, "asyncio", MagicMock(run=MagicMock(return_value=None)))
+        body, status = candidate_mod.run_session_resume_parse("paste me")
+        assert status == 500
+        assert body["error"] == "do_task returned None"
+
+    def test_500_when_parsed_response_not_dict(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": "nope"})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 500
+        assert body["error"] == "simple_resume_parse returned non-dict parsed_response"
+        assert dbg.call_args.kwargs["outcome"] == "invalid payload"
+
+    def test_500_non_dict_parsed_without_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        _, updates = self._patch_ledger(monkeypatch)
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": ["x"]})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste")
+        assert status == 500
+        assert updates[-1][1]["status"] == "FAILED"
+        assert body["success"] is False
+
+    def test_200_success_splits_payload_no_candidate_bind_or_persist(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves, updates = self._patch_ledger(monkeypatch)
+        get_c = MagicMock()
+        save_c = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", get_c)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save_c)
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "Jobs"})
+        calls: list[dict[str, Any]] = []
+
+        async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
+            calls.append(kwargs)
+            return {"success": True, "parsed_response": parsed, "timesheet": {"tokens": 1}}
+
+        monkeypatch.setattr(candidate_mod, "do_task", _fake_do_task)
+        body, status = candidate_mod.run_session_resume_parse("  full resume text  ")
+        assert status == 200
+        assert body["success"] is True
+        assert body["parsed_response"] == parsed
+        assert body["timesheet"] == {"tokens": 1}
+        assert body["batch_id"].startswith("user-session-parse-resume-")
+        assert "resume_structure" in body
+        assert body["base_resume"]["experience"] == "Jobs"
+        assert calls[0]["task_key"] == "simple_resume_parse"
+        assert calls[0]["live_content"] == "full resume text"
+        assert calls[0]["index"] == body["batch_id"]
+        assert "astral_candidate_id" not in calls[0]["ctx"]
+        # Session synthetic ctx on this tip still uses starting_resume_text (AST-1014 raw_* not on base).
+        assert calls[0]["ctx"]["candidate_data"]["context"]["starting_resume_text"] == "full resume text"
+        assert saves[0][0][2] == "session"
+        assert updates[-1][1]["status"] == "COMPLETED"
+        get_c.assert_not_called()
+        save_c.assert_not_called()
+
+    def test_200_success_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._patch_ledger(monkeypatch)
+        dbg = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        parsed = _craft_resume_base_payload(_three_section_structure())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_session_resume_parse("paste", debug=True)
+        assert status == 200
+        assert body["success"] is True
+        assert dbg.call_args.kwargs["outcome"] == "ok"
+        detail_msgs = [c.args[0] for c in detail.call_args_list if c.args]
+        assert any(m.startswith("experience[0] company=") for m in detail_msgs)
+        assert any(m.startswith("experience[1] company=") for m in detail_msgs)
+
+
+class TestAst1038SessionResumeWire:
+    """AST-1038: session parse uses Ruth simple_resume_parse; Judith craft paths unchanged."""
+
+    def test_session_parse_wires_simple_resume_parse_not_craft_base(self) -> None:
+        src = inspect.getsource(candidate_mod.run_session_resume_parse)
+        assert 'task_key="simple_resume_parse"' in src
+        assert 'task_key="craft_resume_base"' not in src
+        assert "simple_resume_parse returned non-dict parsed_response" in src
+
+    def test_candidate_craft_paths_still_use_craft_resume_base(self) -> None:
+        parse_src = inspect.getsource(candidate_mod.parse_candidate_resume)
+        assert 'task_key="craft_resume_base"' in parse_src
+        # Artifact generation still accepts craft_resume_base as the catalog key for Judith.
+        gen_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
+        assert "craft_resume_base" in gen_src
+
+
+class TestAst996ExperienceJobArray:
+    """AST-996: craft-base Experience as ordered job array (preserve / debug / token)."""
+
+    def test_is_experience_job_array_helper(self) -> None:
+        assert candidate_mod.is_experience_job_array(_SAMPLE_EXPERIENCE_JOBS) is True
+        assert candidate_mod.is_experience_job_array([]) is True
+        assert candidate_mod.is_experience_job_array("Jobs") is False
+        assert candidate_mod.is_experience_job_array([{"a": 1}, "x"]) is False
+
+    def test_split_preserves_experience_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        _, content = candidate_mod.split_craft_resume_base_payload(parsed)
+        assert content["experience"] == jobs
+        assert content["experience"][0]["company"] == "Acme Corp"
+        assert content["experience"][1]["location"] == ""
+
+    def test_split_still_keeps_legacy_string_experience(self) -> None:
+        parsed = _craft_resume_base_payload(
+            _three_section_structure(), {"experience": "legacy prose"}
+        )
+        _, content = candidate_mod.split_craft_resume_base_payload(parsed)
+        assert content["experience"] == "legacy prose"
+
+    def test_filter_content_preserves_nonempty_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"experience": jobs, "orphan_section": "drop", "technical_skills": "  "},
+            _three_section_structure(),
+        )
+        assert out == {"experience": jobs}
+
+    def test_filter_content_drops_empty_job_array(self) -> None:
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"experience": [], "professional_summary": "ok"},
+            _three_section_structure(),
+        )
+        assert "experience" not in out
+        assert out == {"professional_summary": "ok"}
+
+    def test_flatten_promotes_job_array_from_content_dict(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        structure = candidate_mod.default_resume_structure()
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": {
+                    "sections": structure["sections"],
+                    "content": {"experience": jobs, "professional_summary": "Summary"},
+                }
+            }
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        assert parsed["agent_payload"]["experience"] == jobs
+        assert parsed["agent_payload"]["professional_summary"] == "Summary"
+
+    def test_flatten_does_not_str_coerce_existing_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        structure = candidate_mod.default_resume_structure()
+        parsed: dict[str, Any] = {
+            "agent_payload": {
+                "resume_structure": {
+                    "sections": structure["sections"],
+                    "content": {"experience": "should not overwrite"},
+                },
+                "experience": jobs,
+            }
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        assert parsed["agent_payload"]["experience"] == jobs
+
+    def test_format_base_resume_token_includes_job_array_json(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {"experience": jobs, "professional_summary": "Summary"},
+            }
+        }
+        out = candidate_mod.format_base_resume_for_token(cd)
+        parsed = json.loads(out)
+        assert parsed["experience"] == jobs
+        assert parsed["professional_summary"] == "Summary"
+
+    def test_debug_experience_jobs_emits_style_d_lines(self) -> None:
+        log = MagicMock()
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        candidate_mod._debug_experience_jobs(log, {"experience": jobs})
+        msgs = [c.args[0] for c in log.debug_detail.call_args_list]
+        assert msgs[0].startswith("experience[0] company='Acme Corp'")
+        assert any("accomplishments:" in m for m in msgs)
+        assert any(m.startswith("experience[1] company='Beta LLC'") for m in msgs)
+
+    def test_debug_experience_jobs_legacy_string_shape(self) -> None:
+        log = MagicMock()
+        candidate_mod._debug_experience_jobs(log, {"experience": "old prose"})
+        log.debug_detail.assert_called_with("experience_shape=str")
+
+    def test_session_parse_returns_job_array_in_base_resume(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list = []
+        updates: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_dispatch_ledger",
+            lambda *args, **kwargs: saves.append((args, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "update_dispatch_ledger",
+            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
+        )
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(candidate_mod, "flush_log_buffer", MagicMock())
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+
+        async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
+            return {"success": True, "parsed_response": parsed, "timesheet": {}}
+
+        monkeypatch.setattr(candidate_mod, "do_task", _fake_do_task)
+        body, status = candidate_mod.run_session_resume_parse("multi-job resume")
+        assert status == 200
+        assert body["base_resume"]["experience"] == jobs
+        assert body["base_resume"]["experience"][0]["accomplishments"] == "Shipped widgets"
+
+    def test_persist_craft_resume_base_keeps_job_array(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: list[tuple[Any, ...]] = []
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id}
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_resume_base", "resume text", debug=True
+        )
+        assert status == 200
+        artifacts = saves[0][1]["candidate_data"]["artifacts"]
+        assert artifacts["base_resume"]["experience"] == jobs
+
+    @pytest.mark.asyncio
+    async def test_parse_candidate_resume_debug_lists_jobs(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "state": "NEW_CANDIDATE",
+                "candidate_data": {"context": {"raw_resume": "paste"}},
+            },
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", lambda *a, **k: None)
+
+        async def _do_task(**kwargs: Any) -> dict[str, Any]:
+            return {
+                "success": True,
+                "parsed_response": _craft_resume_base_payload(
+                    _three_section_structure(), {"experience": jobs}
+                ),
+            }
+
+        monkeypatch.setattr(candidate_mod, "do_task", _do_task)
+        out = await candidate_mod.parse_candidate_resume("c1", debug=True)
+        assert out["success"] is True
+        msgs = [c.args[0] for c in detail.call_args_list if c.args]
+        assert any(m.startswith("experience[0] company=") for m in msgs)
+
+    def test_craft_resume_base_prompt_requires_job_array_contract(self) -> None:
+        # Repo admin JSON is the Judith prompt source (applied at bootstrap).
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        assert "Ordered JSON array of jobs" in prompt
+        assert "`accomplishments`" in prompt
+        assert "Do **not** enrich, blend, or expand accomplishments from LinkedIn" in prompt
+
+
+class TestAst1027CraftResumeBaseMarkerPreserve:
+    """AST-1027: craft_resume_base cache_prompt preserves __ / ~~ for builder expand."""
+
+    def test_cache_prompt_preserves_typography_markers(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Preserve contract (replaces prior strip-to-space/hyphen rule).
+        assert "Typography markers (preserve)" in prompt
+        assert "Do **not** replace `__` with a space or `~~` with a hyphen" in prompt
+        assert "`__` → NBSP" in prompt
+        assert (
+            "When the resume/paste contains `__` or `~~`, those digraphs appear unchanged"
+            in prompt
+        )
+        # Old strip instructions must be gone.
+        assert "Strip ANY formatting artifacts" not in prompt
+        assert "All formatting codes stripped clean" not in prompt
+        assert "`__` (replace with space)" not in prompt
+        assert "`~~` (replace with hyphen)" not in prompt
+        # Segment instructions stay paste-faithful (UAT skills / contact / prior).
+        assert "do not rewrite marked bullet separators into pipes" in prompt
+        assert "Jira__•__Confluence__•__Linear" in prompt
+        assert "When the paste uses `__•__`" in prompt
+        assert "Preserve `__` / `~~` / `•` from the paste line" in prompt
+
+
+class TestAst1028CraftResumeBaseTitleTaglineSplit:
+    """AST-1028: craft_resume_base splits title vs specialty/keyword tagline."""
+
+    def test_cache_prompt_title_only_and_candidate_tagline_segment(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Segment order: title → tagline → contact.
+        title_i = prompt.find("### candidate_title")
+        tagline_i = prompt.find("### candidate_tagline")
+        contact_i = prompt.find("### candidate_contact_detail")
+        assert title_i >= 0 and tagline_i > title_i and contact_i > tagline_i
+        # Title must stay title-only (UAT mash was title + em-dash keywords).
+        assert "Put **only** the title in this field" in prompt
+        assert 'Do **not** append specialty phrases, keyword lists, "specializing in …"' in prompt
+        assert "em/en-dash–joined keyword tails" in prompt or "em/en-dash" in prompt
+        assert "belong in `candidate_tagline`, not here" in prompt
+        # Tagline feeds ATS meta only — not header/body.
+        assert "HTML emit uses it for ATS meta only" in prompt
+        assert "Do **not** duplicate this text into `candidate_title`" in prompt
+        assert "Enterprise Implementation • Service Delivery" in prompt
+        # Quality checklist locks the split.
+        assert (
+            "Title is title-only; when the paste has a separate specialty/keyword line, "
+            "it appears in `candidate_tagline`"
+            in prompt
+        )
+
+
+class TestAst1029CraftResumeBaseCompetenciesBullets:
+    """AST-1029: craft_resume_base requires • competencies separators; forbids pipes."""
+
+    def test_cache_prompt_requires_bullet_not_pipe_separators(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        # Soft AST-1027 prefer-language must be gone.
+        assert "Prefer separators from the paste" not in prompt
+        assert 'rather than rewriting to " | "' not in prompt
+        # Hard require • / forbid |
+        assert "Item separator is the bullet character `•`" in prompt
+        assert '**Do not** use `|` (pipe) as an item separator' in prompt
+        assert 'not `" | "`, not bare `|`' in prompt
+        assert "**join with ` • `**, never `|`" in prompt
+        # Prior experience same convention.
+        assert "Use `•` between role items (same convention as core competencies)" in prompt
+        assert "**Do not** use `|` as separators" in prompt
+        # Checklist.
+        assert (
+            "`core_competencies` (and `prior_experience` when non-empty) use `•` separators, not `|`"
+            in prompt
+        )
+
+
+class TestAst1030CraftResumeBaseNoBulletPreserve:
+    """AST-1030: craft_resume_base must preserve paste `<no bullet>` on role leads."""
+
+    def test_cache_prompt_preserves_no_bullet_lead_prefix(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        row = next(r for r in rows if r.get("task_key") == "craft_resume_base")
+        prompt = row.get("cache_prompt") or ""
+        assert (
+            "copy that line into `accomplishments` **including the literal prefix** "
+            "`<no bullet>`"
+            in prompt
+        )
+        assert "Do **not** invent a `<no bullet>` lead when the paste has none." in prompt
+        assert (
+            "When the paste uses `<no bullet>` on a role lead, keep that exact prefix "
+            "on the corresponding `accomplishments` line(s)"
+            in prompt
+        )
+        assert (
+            "When the paste uses `<no bullet>` on a role lead, that prefix appears "
+            "unchanged on the corresponding `accomplishments` line(s)"
+            in prompt
+        )
+
+
+class TestAst997JobTailoredExperience:
+    """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
+
+    def _base_cd(self, jobs: list[dict[str, str]]) -> dict[str, Any]:
+        return {"artifacts": {"base_resume": {"experience": jobs}, "resume_structure": _three_section_structure()}}
+
+    def test_normalize_preserves_experience_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed: dict[str, Any] = {"agent_payload": {"experience": jobs, "professional_summary": "S"}}
+        candidate_mod.normalize_draft_job_resume_agent_payload(parsed)
+        assert parsed["agent_payload"]["experience"] == jobs
+
+    def test_validate_accepts_job_array_and_pins_metadata(self) -> None:
+        base = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        tailored = [
+            {
+                "company": "Beta LLC",
+                "title": "Lead",
+                "dates": "WRONG",
+                "location": "WRONG",
+                "accomplishments": "Tailored lead bullets",
+            },
+            {
+                "company": "Acme Corp",
+                "title": "Engineer",
+                "dates": "WRONG",
+                "location": "WRONG",
+                "accomplishments": "Tailored eng bullets",
+            },
+        ]
+        payload = {"professional_summary": "S", "experience": tailored}
+        err = candidate_mod.validate_draft_job_resume_payload(payload, self._base_cd(base))
+        assert err is None
+        # Reordered: pin by company+title, not index
+        assert payload["experience"][0]["dates"] == "2023"
+        assert payload["experience"][0]["location"] == ""
+        assert payload["experience"][0]["accomplishments"] == "Tailored lead bullets"
+        assert payload["experience"][1]["dates"] == "2020-2023"
+        assert payload["experience"][1]["location"] == "Remote"
+        assert payload["experience"][1]["accomplishments"] == "Tailored eng bullets"
+
+    def test_pin_does_not_index_fallback_on_unmatched(self) -> None:
+        base = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        tailored = [
+            {
+                "company": "Other Co",
+                "title": "Intern",
+                "dates": "kept-model",
+                "location": "kept-loc",
+                "accomplishments": "new role text",
+            }
+        ]
+        payload = {"experience": tailored}
+        candidate_mod.pin_experience_job_facts_from_base(payload, self._base_cd(base))
+        assert payload["experience"][0]["dates"] == "kept-model"
+        assert payload["experience"][0]["location"] == "kept-loc"
+
+    def test_pin_consumes_duplicate_company_title_in_base_order(self) -> None:
+        base = [
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "2018-2020",
+                "location": "SEA",
+                "accomplishments": "first tour",
+            },
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "2021-2023",
+                "location": "NYC",
+                "accomplishments": "second tour",
+            },
+        ]
+        tailored = [
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "x",
+                "location": "x",
+                "accomplishments": "tailored-1",
+            },
+            {
+                "company": "Amazon",
+                "title": "SPM",
+                "dates": "y",
+                "location": "y",
+                "accomplishments": "tailored-2",
+            },
+        ]
+        payload = {"experience": tailored}
+        candidate_mod.pin_experience_job_facts_from_base(payload, self._base_cd(base))
+        assert payload["experience"][0]["dates"] == "2018-2020"
+        assert payload["experience"][0]["location"] == "SEA"
+        assert payload["experience"][0]["accomplishments"] == "tailored-1"
+        assert payload["experience"][1]["dates"] == "2021-2023"
+        assert payload["experience"][1]["location"] == "NYC"
+
+    def test_validate_accepts_legacy_string_experience(self) -> None:
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"experience": "legacy prose"}, self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS])
+            )
+            is None
+        )
+
+    def test_validate_rejects_non_job_array_experience_object(self) -> None:
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"experience": {"company": "Acme"}},
+            self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
+        )
+        assert err is not None
+        assert "job array or prose string" in err
+
+    def test_tailor_hop_prompts_teach_job_array_and_pin_policy(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
+        draft = by_key["draft_job_resume"]["user_prompt"]
+        assert "ordered array of job objects" in draft
+        assert "**Do not** change `company`, `title`, `dates`, or `location`" in draft
+        fin = by_key["finalize_job_resume"]["user_prompt"]
+        assert "ordered array of job objects" in fin
+        assert "restore factual metadata" in fin
+        advise = by_key["advise_job_resume"]["user_prompt"]
+        assert "**forbid** rewriting company, title, dates, or location" in advise
+        check = by_key["check_job_resume"]["user_prompt"]
+        assert "Experience metadata drift" in check
+        assert "company, title, dates, or location" in check
+
+
+class TestAst1005FalseMissingCandidateName:
+    """AST-1005: promote direct resume_structure section keys before default wipe."""
+
+    _OTHER_REQUIRED = {
+        "candidate_title": "Engineer",
+        "candidate_contact_detail": "a@b.c",
+        "professional_summary": "Summary",
+        "core_competencies": "Skills",
+    }
+
+    def _jobs(self) -> list[dict[str, str]]:
+        return [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+
+    def test_promote_direct_candidate_name_with_sections_passes_schema(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        structure = candidate_mod.default_resume_structure()
+        jobs = self._jobs()
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {
+                    "sections": structure["sections"],
+                    "candidate_name": "Susan Somerset",
+                    "experience": jobs,
+                },
+                **self._OTHER_REQUIRED,
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert ap["candidate_name"] == "Susan Somerset"
+        assert ap["experience"] == jobs
+        assert isinstance(ap["experience"], list)
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_promote_direct_candidate_name_without_sections_passes_schema(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        jobs = self._jobs()
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {
+                    "candidate_name": "Susan Somerset",
+                    "experience": jobs,
+                },
+                **self._OTHER_REQUIRED,
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        ap = parsed["agent_payload"]
+        assert ap["candidate_name"] == "Susan Somerset"
+        assert ap["experience"] == jobs
+        assert "candidate_name" in ap["resume_structure"]["sections"]
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert _validate_response_schema(parsed, schema, "craft_resume_base") is None
+
+    def test_missing_candidate_name_still_fails_schema(self) -> None:
+        from src.core.agent import _validate_response_schema
+        from src.utils.config import TASK_CONFIG
+
+        jobs = self._jobs()
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success"},
+            "agent_payload": {
+                "resume_structure": {"experience": jobs},
+                **self._OTHER_REQUIRED,
+            },
+        }
+        candidate_mod.normalize_craft_resume_base_agent_payload(parsed)
+        schema = TASK_CONFIG["craft_resume_base"]["response_schema"]
+        err = _validate_response_schema(parsed, schema, "craft_resume_base")
+        assert err is not None
+        assert "Missing required field 'candidate_name'" in err
+
+
+class TestAst1014CandidateLibrary:
+    """AST-1014: contact/context library, name columns, token view, save contract."""
+
+    def test_build_candidate_token_view(self) -> None:
+        row = {
+            "astral_candidate_id": "c1",
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "pronouns": "they/them",
+            "candidate_data": {
+                "contact": {"contact_email": "ada@example.com"},
+                "context": {"raw_resume": "paste"},
+                "artifacts": {"base_resume": {}},
+            },
+        }
+        view = candidate_mod.build_candidate_token_view(row)
+        assert view["first"] == "Ada"
+        assert view["full"] == "Ada Lovelace"
+        assert view["pronouns"] == "they/them"
+        assert view["contact"]["contact_email"] == "ada@example.com"
+        assert view["context"]["raw_resume"] == "paste"
+        assert "profile" not in view
+
+    def test_recompute_full_name(self) -> None:
+        assert candidate_mod.recompute_full_name("Ada", "Lovelace") == "Ada Lovelace"
+        assert candidate_mod.recompute_full_name("Ada", "") == "Ada"
+        assert candidate_mod.recompute_full_name("", "Lovelace") == "Lovelace"
+
+    def test_normalize_contact_urls(self) -> None:
+        contact = {"linkedin_url": "ada-lovelace", "github": "ada"}
+        candidate_mod.normalize_contact_urls(contact)
+        assert contact["linkedin_url"] == "https://www.linkedin.com/in/ada-lovelace"
+        assert contact["github"] == "https://github.com/ada"
+
+    def test_save_refuses_profile_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        with pytest.raises(ValueError, match="profile was renamed to contact"):
+            candidate_mod.save_candidate_data("c1", {"profile": {"first": "Ada"}})
+
+    def test_save_columns_contact_and_full_recompute(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "first": "Grace",
+                "last": "Hopper",
+                "pronouns": "she/her",
+                "contact": {"contact_email": "grace@example.com"},
+            },
+        )
+        assert save.call_args.kwargs["first"] == "Grace"
+        assert save.call_args.kwargs["last"] == "Hopper"
+        assert save.call_args.kwargs["full"] == "Grace Hopper"
+        assert save.call_args.kwargs["pronouns"] == "she/her"
+        merged = save.call_args.kwargs["candidate_data"]
+        assert merged["contact"]["contact_email"] == "grace@example.com"
+
+    def test_save_candidate_data_debug_optional(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {})
+        candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=True)
+        assert dbg.called
+        candidate_mod.save_candidate_data("c1", {"contact": {"phone": "555"}}, debug=False)
+
+
+# AST-1047: reusable string → astral candidate id lookup (From bind).
+class TestAst1047GetCandidateIdForQuery:
+    def _cand(
+        self,
+        cid: str,
+        *,
+        contact_email: str = "",
+        reply_email: str = "",
+        first: str = "",
+        last: str = "",
+        full: str = "",
+        profile: dict | None = None,
+    ) -> dict:
+        cd: dict = {"contact": {}, "profile": dict(profile or {})}
+        if contact_email:
+            cd["contact"]["contact_email"] = contact_email
+        if reply_email:
+            cd["contact"]["reply_email"] = reply_email
+        return {
+            "astral_candidate_id": cid,
+            "first": first,
+            "last": last,
+            "full": full,
+            "state": "NEW_CANDIDATE",
+            "candidate_data": cd,
+        }
+
+    def test_unique_contact_email_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", contact_email="ada@ex.com", first="Ada"),
+            self._cand("c2", contact_email="other@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("ada@ex.com") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("ADA@EX.COM") == "c1"
+
+    def test_parseaddr_display_name_uses_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", contact_email="ada@ex.com")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Ada Lovelace <ada@ex.com>") == "c1"
+
+    def test_unique_name_column_match(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", first="Ada", last="Lovelace", full="Ada Lovelace")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Ada Lovelace") == "c1"
+
+    def test_transitional_profile_email(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", profile={"contact_email": "legacy@ex.com", "first": "Leg"}),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("legacy@ex.com") == "c1"
+
+    def test_none_and_ambiguous(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", contact_email="shared@ex.com"),
+            self._cand("c2", contact_email="shared@ex.com"),
+            self._cand("c3", contact_email="solo@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("missing@ex.com") is None
+        assert candidate_mod.get_candidate_id_for_query("shared@ex.com") is None
+        assert candidate_mod.get_candidate_id_for_query("solo@ex.com") == "c3"
+
+    def test_empty_query(self) -> None:
+        assert candidate_mod.get_candidate_id_for_query("") is None
+        assert candidate_mod.get_candidate_id_for_query("   ") is None
+
+    def test_get_candidate_id_fetch_unchanged(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        row = {"astral_candidate_id": "c1"}
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda cid: row)
+        assert candidate_mod.get_candidate("c1") is row
+
+    def test_debug_true_emits_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [self._cand("c1", contact_email="ada@ex.com")]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        assert candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=True) == "c1"
+        assert dbg.called
+        assert dbg.call_args.kwargs["outcome"] == "found|matched"
+        dbg.reset_mock()
+        candidate_mod.get_candidate_id_for_query("ada@ex.com", debug=False)
+        assert not dbg.called
+
+
+# Branches: slack_user_id path match; initiate_prospect_candidate PROSPECT (AST-1068).
+class TestAst1068CandidateSlackLookup:
+    def _cand(self, cid: str, **kwargs):
+        data = {"contact": {}, "profile": {}}
+        if "slack_user_id" in kwargs:
+            data["contact"]["slack_user_id"] = kwargs.pop("slack_user_id")
+        if "contact_email" in kwargs:
+            data["contact"]["contact_email"] = kwargs.pop("contact_email")
+        if "profile" in kwargs:
+            data["profile"] = kwargs.pop("profile")
+        return {"astral_candidate_id": cid, "candidate_data": data, **kwargs}
+
+    def test_lookup_matches_slack_user_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows = [
+            self._cand("c1", slack_user_id="Uabc"),
+            self._cand("c2", contact_email="x@ex.com"),
+        ]
+        monkeypatch.setattr(candidate_mod, "list_candidates", lambda include_deleted=False: rows)
+        assert candidate_mod.get_candidate_id_for_query("Uabc") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("UABC") == "c1"
+
+    def test_initiate_prospect_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved = {}
+
+        def _save(cid, state=None, candidate_data=None, state_history=None, merge=None, **kwargs):
+            saved["cid"] = cid
+            saved["state"] = state
+            saved["candidate_data"] = candidate_data
+            saved["state_history"] = state_history
+            saved["kwargs"] = kwargs
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
+        # AST-1014: names are columns (first=/last=); contact blob holds slack_user_id only.
+        candidate_mod.initiate_prospect_candidate(
+            "slack-u1",
+            {"contact": {"slack_user_id": "U1"}},
+            first="Ada",
+            last="",
+        )
+        assert saved["cid"] == "slack-u1"
+        assert saved["state"] == "PROSPECT"
+        assert saved["candidate_data"] == {"contact": {"slack_user_id": "U1"}}
+        assert "profile" not in saved["candidate_data"]
+        assert saved["kwargs"].get("first") == "Ada"
+        assert saved["kwargs"].get("last") == ""
+        assert saved["state_history"] is not None
+
+    def test_initiate_rejects_empty_and_existing(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        with pytest.raises(ValueError, match="required"):
+            candidate_mod.initiate_prospect_candidate("")
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: {"astral_candidate_id": cid})
+        with pytest.raises(ValueError, match="already exists"):
+            candidate_mod.initiate_prospect_candidate("slack-u1")
+
+
+
+class TestAst1074TopicMenuPersistence:
+    """AST-1074: Topic Menu validate / revise / get / save (no wipe)."""
+
+    def _topic(
+        self,
+        tid: str,
+        *,
+        name: str | None = None,
+        ask: str = "What matters?",
+        required: bool = True,
+        informs: list | None = None,
+        status: str = "open",
+    ) -> dict:
+        return {
+            "id": tid,
+            "name": name if name is not None else tid,
+            "ask": ask,
+            "required": required,
+            "informs": list(["backstory"] if informs is None else informs),
+            "status": status,
+        }
+
+    def test_validate_topic_happy_and_rejects(self) -> None:
+        row = candidate_mod.validate_topic(self._topic("t1", informs=["backstory", "rubrics", "backstory"]))
+        assert row["informs"] == ["backstory", "rubrics"]
+        assert row["status"] == "open"
+        with pytest.raises(ValueError, match="required must be a bool"):
+            candidate_mod.validate_topic(self._topic("t1", required="yes"))  # type: ignore[arg-type]
+        with pytest.raises(ValueError, match="not in TOPIC_MENU_CONFIG"):
+            candidate_mod.validate_topic(self._topic("t1", informs=["invented"]))
+        with pytest.raises(ValueError, match="non-empty list"):
+            candidate_mod.validate_topic(self._topic("t1", informs=[]))
+
+    def test_validate_topic_menu_rejects_duplicate_ids(self) -> None:
+        with pytest.raises(ValueError, match="duplicate topic id"):
+            candidate_mod.validate_topic_menu(
+                {"topics": [self._topic("dup"), self._topic("dup", name="Other")]}
+            )
+
+    def test_revise_retires_missing_ids_keeps_content(self) -> None:
+        existing = {
+            "topics": [
+                self._topic("keep", name="Keep", status="ready"),
+                self._topic("drop", name="Drop", ask="Old ask?", informs=["strengths"], status="open"),
+            ]
+        }
+        incoming = {
+            "topics": [
+                self._topic("keep", name="Keep renamed", ask="New ask?", informs=["priorities"], status="ready"),
+                self._topic("new", name="New"),
+            ]
+        }
+        out = candidate_mod.revise_topic_menu(existing, incoming)
+        by_id = {t["id"]: t for t in out["topics"]}
+        assert list(by_id) == ["keep", "new", "drop"]
+        assert by_id["keep"]["name"] == "Keep renamed"
+        assert by_id["keep"]["ask"] == "New ask?"
+        assert by_id["keep"]["informs"] == ["priorities"]
+        assert by_id["drop"]["status"] == "retired"
+        assert by_id["drop"]["name"] == "Drop"
+        assert by_id["drop"]["ask"] == "Old ask?"
+        assert by_id["drop"]["informs"] == ["strengths"]
+
+    def test_get_topic_menu_missing_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            candidate_mod.get_topic_menu("missing")
+
+    def test_get_topic_menu_normalizes_absent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        assert candidate_mod.get_topic_menu("c1") == {"topics": []}
+
+    def test_save_topic_menu_revise_default(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stored: dict = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "topic_menu": {"topics": [self._topic("old", name="Old", status="open")]}
+            },
+        }
+        saves: list = []
+
+        def _get(cid: str):
+            return dict(stored)
+
+        def _save_cd(cid: str, data: dict, replace: bool = False, debug: bool = False):
+            saves.append({"cid": cid, "data": data, "debug": debug})
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", _get)
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save_cd)
+        result = candidate_mod.save_topic_menu(
+            "c1",
+            {"topics": [self._topic("new", name="New")]},
+        )
+        assert [t["id"] for t in result["topics"]] == ["new", "old"]
+        assert result["topics"][1]["status"] == "retired"
+        assert saves[0]["data"]["topic_menu"]["topics"][1]["status"] == "retired"
+        assert saves[0]["debug"] is False
+
+    def test_save_topic_menu_revise_false_full_replace(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stored: dict = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "topic_menu": {"topics": [self._topic("old", status="open")]}
+            },
+        }
+        saves: list = []
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(
+            candidate_mod,
+            "save_candidate_data",
+            lambda cid, data, replace=False, debug=False: saves.append(data),
+        )
+        result = candidate_mod.save_topic_menu(
+            "c1",
+            {"topics": [self._topic("only")]},
+            revise=False,
+        )
+        assert [t["id"] for t in result["topics"]] == ["only"]
+        assert "old" not in {t["id"] for t in saves[0]["topic_menu"]["topics"]}
+
+    def test_save_topic_menu_debug_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg_index = MagicMock()
+        dbg_detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg_index)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", dbg_detail)
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        candidate_mod.save_topic_menu("c1", {"topics": [self._topic("t1")]}, debug=True)
+        assert dbg_index.call_count == 2
+        candidate_mod.save_topic_menu("c1", {"topics": [self._topic("t1")]}, debug=False)
+        assert dbg_index.call_count == 2
+
+
+
+class TestAst1075PreambleConfirmedAt:
+    """AST-1075: optional preamble_confirmed_at on topic_menu + mark helper."""
+
+    def _topic(self, tid: str = "t1") -> dict:
+        return {
+            "id": tid,
+            "name": tid,
+            "ask": "What matters?",
+            "required": True,
+            "informs": ["backstory"],
+            "status": "open",
+        }
+
+    def test_normalize_and_validate_preserve_stamp(self) -> None:
+        raw = {"topics": [self._topic()], "preamble_confirmed_at": " 2026-07-30 12:00:00 "}
+        norm = candidate_mod.normalize_topic_menu(raw)
+        assert norm["preamble_confirmed_at"] == "2026-07-30 12:00:00"
+        validated = candidate_mod.validate_topic_menu(raw)
+        assert validated["preamble_confirmed_at"] == "2026-07-30 12:00:00"
+        assert candidate_mod.normalize_topic_menu({"topics": []}).get("preamble_confirmed_at") is None
+        assert "preamble_confirmed_at" not in candidate_mod.normalize_topic_menu(
+            {"topics": [], "preamble_confirmed_at": "   "}
+        )
+
+    def test_revise_prefers_incoming_stamp(self) -> None:
+        existing = {
+            "topics": [self._topic("old")],
+            "preamble_confirmed_at": "2026-07-30 10:00:00",
+        }
+        incoming = {
+            "topics": [self._topic("new")],
+            "preamble_confirmed_at": "2026-07-30 11:00:00",
+        }
+        out = candidate_mod.revise_topic_menu(existing, incoming)
+        assert out["preamble_confirmed_at"] == "2026-07-30 11:00:00"
+        keep = candidate_mod.revise_topic_menu(
+            existing, {"topics": [self._topic("new")]}
+        )
+        assert keep["preamble_confirmed_at"] == "2026-07-30 10:00:00"
+
+    def test_mark_stamps_without_wiping_topics(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stored = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {"topic_menu": {"topics": [self._topic("keep")]}},
+        }
+        saves: list = []
+
+        def _save(cid, data, replace=False, debug=False):
+            saves.append({"data": data, "debug": debug})
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save)
+        out = candidate_mod.mark_topic_menu_preamble_confirmed(
+            "c1", when="2026-07-30 15:00:00"
+        )
+        assert out["preamble_confirmed_at"] == "2026-07-30 15:00:00"
+        assert [t["id"] for t in out["topics"]] == ["keep"]
+        assert saves[0]["data"]["topic_menu"]["topics"][0]["id"] == "keep"
+        assert saves[0]["data"]["topic_menu"]["preamble_confirmed_at"] == "2026-07-30 15:00:00"
+
+    def test_mark_debug_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        candidate_mod.mark_topic_menu_preamble_confirmed("c1", debug=True)
+        assert dbg.call_count == 2
+        assert dbg.call_args_list[0].kwargs["func"] == "candidate.mark_topic_menu_preamble_confirmed"
+        candidate_mod.mark_topic_menu_preamble_confirmed("c1", debug=False)
+        assert dbg.call_count == 2
+
+
+# AST-1081: empty-full recompute + contact.websites list coercion on save.
+class TestAst1081ContactShapesSaveContract:
+    """AST-1081: save_candidate_data empty/whitespace full → join; websites list coerce."""
+
+    def test_empty_full_recomputes_from_submitted_first_last(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Old", "last": "Name"},
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"first": "Ada", "last": "Lovelace", "full": "   "},
+        )
+        assert save.call_args.kwargs["full"] == "Ada Lovelace"
+        assert save.call_args.kwargs["first"] == "Ada"
+        assert save.call_args.kwargs["last"] == "Lovelace"
+
+    def test_empty_full_falls_back_to_existing_columns(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        candidate_mod.save_candidate_data("c1", {"full": ""})
+        assert save.call_args.kwargs["full"] == "Ada Lovelace"
+
+    def test_nonempty_full_override_is_stripped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"first": "Ada", "last": "Lovelace"},
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {"full": "  Countess of Lovelace  "},
+        )
+        assert save.call_args.kwargs["full"] == "Countess of Lovelace"
+
+    def test_websites_none_becomes_empty_list(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"websites": None, "phone": "555"}}
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == []
+
+    def test_websites_list_strips_and_drops_empties(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "websites": ["  https://a.example  ", "", "  ", "https://b.example"],
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == [
+            "https://a.example",
+            "https://b.example",
+        ]
+
+    def test_websites_non_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(
+            candidate_mod.database, "get_candidate", lambda candidate_id: {}
+        )
+        with pytest.raises(ValueError, match="contact.websites must be a list"):
+            candidate_mod.save_candidate_data(
+                "c1", {"contact": {"websites": "https://not-a-list.example"}}
+            )
+
+
+# Branches: within collapse; cross hard-fail; Style D; initiate wire (AST-1080).
+class TestAst1080ContactUniqueness:
+    """AST-1080: contact uniqueness gate on save / initiate via AST-1079 config."""
+
+    def _other(self, cid: str, **contact_fields: object) -> dict:
+        return {
+            "astral_candidate_id": cid,
+            "candidate_data": {"contact": dict(contact_fields)},
+        }
+
+    def test_within_dedupe_clears_duplicate_reply_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "Ada@Example.com",
+                    "reply_email": "ada@example.com",
+                }
+            },
+        )
+        contact = save.call_args.kwargs["candidate_data"]["contact"]
+        assert contact["contact_email"] == "Ada@Example.com"
+        assert contact["reply_email"] == ""
+
+    def test_within_dedupe_collapses_websites(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "websites": [
+                        "https://a.example",
+                        "HTTPS://A.EXAMPLE",
+                        "https://b.example",
+                    ]
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["websites"] == [
+            "https://a.example",
+            "https://b.example",
+        ]
+
+    def test_cross_collision_casefold_email_raises(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="Ada@Example.com")
+            ],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"This contact info is already used by another candidate \(ada@example\.com\)\.",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"contact_email": "ada@example.com"}}
+            )
+        assert save.call_count == 0
+
+    def test_same_candidate_keeps_own_email(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda *_a, **_k: self._other("c1", contact_email="ada@example.com"),
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("c1", contact_email="ada@example.com")
+            ],
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"contact_email": "ada@example.com", "phone": "555"}}
+        )
+        assert save.call_count == 1
+        assert (
+            save.call_args.kwargs["candidate_data"]["contact"]["contact_email"]
+            == "ada@example.com"
+        )
+
+    def test_initiate_candidate_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="taken@ex.com")
+            ],
+        )
+        with pytest.raises(
+            ValueError, match="already used by another candidate"
+        ):
+            candidate_mod.initiate_candidate(
+                "new-c",
+                {"contact": {"contact_email": "taken@ex.com"}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
+    def test_debug_emits_within_and_cross_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        caplog.set_level("DEBUG")
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "solo@ex.com",
+                    "reply_email": "solo@ex.com",
+                }
+            },
+            debug=True,
+        )
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "enforce_contact_uniqueness" in combined
+        assert "within_dedupe" in combined or "recorded|within_dedupe" in combined
+        assert "cross_clear" in combined or "recorded|cross_clear" in combined
+
+class TestAst1085EvaluateJdEmbeddedMerge:
+    """AST-1085: append-merge QC/GC into evaluate_jd hydrate / save / generate."""
+
+    _CANDIDATE_ROW = {
+        "code": "JD",
+        "label": "Job Description Fit",
+        "content": "Candidate JD criterion",
+        "importance": 5,
+        "grade_descriptions": [{"grade": "A", "description": "good"}],
+    }
+
+    def test_merge_helper_appends_and_dedupes_by_code(self) -> None:
+        from src.utils.config import EMBEDDED_EVALUATE_JD_CRITERIA
+
+        stale_qc = {
+            "code": "QC",
+            "label": "Stale",
+            "content": "operator edit",
+            "importance": 9,
+            "grade_descriptions": [{"grade": "A", "description": "x"}],
+        }
+        out = candidate_mod._merge_embedded_evaluate_jd_criteria(
+            [self._CANDIDATE_ROW, stale_qc],
+        )
+        assert [r["code"] for r in out] == ["JD", "QC", "GC"]
+        assert out[-2]["label"] == EMBEDDED_EVALUATE_JD_CRITERIA[0]["label"]
+        assert out[-2]["importance"] == 1
+        assert [r["code"] for r in candidate_mod._merge_embedded_evaluate_jd_criteria([])] == ["QC", "GC"]
+
+    def test_hydrate_appends_qc_gc_after_candidate_rows(self, seeded_db) -> None:
+        from src.utils.config import EMBEDDED_EVALUATE_JD_CRITERIA
+
+        db = seeded_db
+        db.save_agent_task("evaluate_jd", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", "evaluate_jd", [self._CANDIDATE_ROW],
+        )
+        rubric = candidate_mod.rubric_criteria_for_task("cand-1", "evaluate_jd")
+        assert [r["code"] for r in rubric] == ["JD", "QC", "GC"]
+        assert rubric[-2]["label"] == EMBEDDED_EVALUATE_JD_CRITERIA[0]["label"]
+        assert rubric[-1]["label"] == EMBEDDED_EVALUATE_JD_CRITERIA[1]["label"]
+
+        cd: Dict[str, Any] = {"artifacts": {}}
+        candidate_mod.hydrate_rubric_artifacts_for_response("cand-1", cd)
+        assert [r["code"] for r in cd["artifacts"]["jobdesc_rubric"]] == ["JD", "QC", "GC"]
+
+    def test_other_owners_do_not_gain_qc_gc(self, seeded_db) -> None:
+        db = seeded_db
+        db.save_agent_task("qualify_job_listings", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1", "qualify_job_listings", [self._CANDIDATE_ROW],
+        )
+        rubric = candidate_mod.rubric_criteria_for_task("cand-1", "qualify_job_listings")
+        assert [r["code"] for r in rubric] == ["JD"]
+        assert not any(r["code"] in ("QC", "GC") for r in rubric)
+
+    def test_apply_save_restores_qc_gc_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        arts: Dict[str, Any] = {"jobdesc_rubric": [self._CANDIDATE_ROW]}
+        candidate_mod.apply_rubric_vectors_save("c1085", arts)
+        assert "jobdesc_rubric" not in arts
+        assert synced[0][:2] == ("c1085", "evaluate_jd")
+        assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
+
+    def test_craft_jobdesc_generate_merges_into_response_and_stash(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
+        saves: list[tuple[Any, ...]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: dict(store) if store.get("astral_candidate_id") == candidate_id else None,
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda candidate_id, **kwargs: saves.append((candidate_id, kwargs)),
+        )
+        parsed = {"criteria": [self._CANDIDATE_ROW]}
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_jobdesc_rubric", None,
+        )
+        assert status == 200
+        assert [r["code"] for r in body["parsed_response"]["criteria"]] == ["JD", "QC", "GC"]
+        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]["craft_jobdesc_rubric"]
+        assert [r["code"] for r in pending["parsed_response"]["criteria"]] == ["JD", "QC", "GC"]
+
+    def test_persist_craft_jobdesc_merges_before_sync(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        synced: list[tuple[str, str, list]] = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "sync_rubric_vectors_from_criteria",
+            lambda cid, owner, val: synced.append((cid, owner, list(val))),
+        )
+        # _criterion content includes a trailing grade table so normalize_rubric_artifacts_on_save passes.
+        candidate_mod._persist_craft_dispatch_success(
+            "c1085",
+            "craft_jobdesc_rubric",
+            {"criteria": [_criterion(code="JD", label="Job Description Fit")]},
+        )
+        assert synced
+        assert synced[0][1] == "evaluate_jd"
+        assert [r["code"] for r in synced[0][2]] == ["JD", "QC", "GC"]
+
+
+
+# AST-1092: extra_emails coerce + bind via email_list_paths (not websites).
+class TestAst1092ExtraBindingEmails:
+    """AST-1092: save coerce extra_emails; get_candidate_id_for_query expands email_list_paths."""
+
+    def test_extra_emails_none_and_list_coerce(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1", {"contact": {"extra_emails": None, "phone": "555"}}
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["extra_emails"] == []
+        save.reset_mock()
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "extra_emails": ["  a@ex.com  ", "", "  ", "b@ex.com"],
+                }
+            },
+        )
+        assert save.call_args.kwargs["candidate_data"]["contact"]["extra_emails"] == [
+            "a@ex.com",
+            "b@ex.com",
+        ]
+
+    def test_extra_emails_non_list_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        with pytest.raises(ValueError, match="contact.extra_emails must be a list"):
+            candidate_mod.save_candidate_data(
+                "c1", {"contact": {"extra_emails": "solo@ex.com"}}
+            )
+
+    def test_lookup_binds_extra_email_not_websites(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        rows = [
+            {
+                "astral_candidate_id": "c1",
+                "first": "",
+                "last": "",
+                "full": "",
+                "candidate_data": {
+                    "contact": {
+                        "extra_emails": ["Extra@Ex.com"],
+                        "websites": ["https://not-an-email.example"],
+                    }
+                },
+            }
+        ]
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: rows
+        )
+        assert candidate_mod.get_candidate_id_for_query("extra@ex.com") == "c1"
+        assert candidate_mod.get_candidate_id_for_query("EXTRA@EX.COM") == "c1"
+        # Websites must not participate in email bind
+        assert (
+            candidate_mod.get_candidate_id_for_query("https://not-an-email.example")
+            is None
+        )
+
+# Branches: root↔extra shared email pool on uniqueness gate (AST-1095).
+class TestAst1095EmailUniqueRootAndExtra:
+    """AST-1095: root and extra_emails share casefold email pool across candidates."""
+
+    def _other(self, cid: str, **contact_fields: object) -> dict:
+        return {
+            "astral_candidate_id": cid,
+            "candidate_data": {"contact": dict(contact_fields)},
+        }
+
+    def test_cross_root_blocks_extra_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        owner = self._other("owner", contact_email="Ada@Example.com")
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [owner],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"This contact info is already used by another candidate \(ada@example\.com\)\.",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"extra_emails": ["ada@example.com"]}}
+            )
+        assert save.call_count == 0
+        assert owner["candidate_data"]["contact"]["contact_email"] == "Ada@Example.com"
+
+    def test_cross_extra_blocks_root_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        owner = self._other("owner", extra_emails=["Taken@Ex.com"])
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [owner],
+        )
+        with pytest.raises(
+            ValueError,
+            match=r"already used by another candidate \(taken@ex\.com\)",
+        ):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"contact_email": "taken@ex.com"}}
+            )
+        assert save.call_count == 0
+        assert owner["candidate_data"]["contact"]["extra_emails"] == ["Taken@Ex.com"]
+
+    def test_cross_extra_blocks_extra_add(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", extra_emails=["dup@ex.com"])
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.save_candidate_data(
+                "c2", {"contact": {"extra_emails": ["DUP@ex.com"]}}
+            )
+        assert save.call_count == 0
+
+    def test_within_root_and_extra_collapses_extra(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda *_a, **_k: {})
+        monkeypatch.setattr(
+            candidate_mod, "list_candidates", lambda include_deleted=False: []
+        )
+        candidate_mod.save_candidate_data(
+            "c1",
+            {
+                "contact": {
+                    "contact_email": "Ada@Example.com",
+                    "extra_emails": ["ada@example.com", "other@ex.com"],
+                }
+            },
+        )
+        contact = save.call_args.kwargs["candidate_data"]["contact"]
+        assert contact["contact_email"] == "Ada@Example.com"
+        assert contact["extra_emails"] == ["other@ex.com"]
+
+    def test_initiate_extra_emails_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", contact_email="taken@ex.com")
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.initiate_candidate(
+                "new-c",
+                {"contact": {"extra_emails": ["  taken@ex.com  "]}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+
+    def test_initiate_prospect_extra_emails_cross_collision(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        monkeypatch.setattr(
+            candidate_mod,
+            "list_candidates",
+            lambda include_deleted=False: [
+                self._other("owner", extra_emails=["taken@ex.com"])
+            ],
+        )
+        with pytest.raises(ValueError, match="already used by another candidate"):
+            candidate_mod.initiate_prospect_candidate(
+                "new-p",
+                {"contact": {"contact_email": "taken@ex.com"}},
+                first="N",
+                last="C",
+            )
+        assert save.call_count == 0
+

@@ -1,3 +1,98 @@
+<!-- linear-archive: AST-819 archived 2026-07-22 -->
+
+## Linear archive (AST-819)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-819/uat-vet-inflow-discovery-runs-discovery-batch-and-crashes-on-invalid  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-815 — get vet_inflow_discovery to work  
+**Blocked by / blocks / related:** parent: AST-815
+
+### Description
+
+## What failed
+
+Susan re-tested on staging/local (2026-06-26 03:00) after AST-817 prep-uat. **vet_inflow_discovery** scheduler run claimed company `4chealthin_org` (`entity_type=company`, `task_key=vet_inflow_discovery`, `batch_size=1`) but execution logged `roster.run_inflow_discovery_batch` CSE term searches (14 stale terms) instead of `vet_inflow_discovery_company` blurb vet activity.
+
+Traceback:
+
+```
+File "src/core/consult.py", line 2023, in run_consult_task
+    return await roster.run_inflow_discovery_batch(
+...
+File "src/core/roster.py", line 198, in _normalize_company_url_for_dedupe
+    parsed = urlparse(n)
+ValueError: Invalid IPv6 URL
+```
+
+Dispatch batch `vet_inflow_discovery-f5751cf4-dc15-4bb4-9df1-2382c1ff0d2c` ended `ERROR dispatch.scheduler: ... crashed`.
+
+## Expected
+
+1. Company **vet_inflow_discovery** dispatch routes to `run_company_task` **→** `vet_inflow_discovery_company` — no CSE / stale search terms in logs.
+2. One claimed **NEW** company is vetted per tick; pass → **WEBSITE_FOUND**, reject → **VET_FAILED**.
+3. URL dedupe helpers must not crash the batch on malformed blurb pipe segments — skip or sanitize invalid URLs.
+
+## Repro
+
+1. Candidate **somerset**, **vet_inflow_discovery** **available ≥ 1**, **batch_size=1**, **run_count=1**, **debug=True**.
+2. Manual **Run** or wait for AUTO tick.
+3. Observe logs: CSE `run_inflow_discovery_batch` term loop and/or `ValueError: Invalid IPv6 URL` crash instead of per-company vet index headers.
+
+## Parent AC (quoted inline)
+
+> With candidate **somerset** (or equivalent UAT candidate), **vet_inflow_discovery** **batch_size = 1** / **run_count = 1**, and **available ≥ 1**, a manual **Run** or scheduler tick claims **one** **NEW** company and completes vet processing — logs show company vet activity, **not** `run_inflow_discovery_batch: no stale search terms`.
+
+## Boundaries
+
+* Does **not** change **inflow_discovery** candidate CSE behavior (AST-813/814).
+* Does **not** change **inflow_resolve_website** eligibility.
+* Does **not** rewrite mechanical vet prompt (AST-776).
+
+### Comments
+
+#### betty — 2026-06-26T03:18:43.944Z
+**Bible shasum correction:** `docs/test-bible/core/roster.md` → `7999e02c657e4d61a48156abe5e65c55a406129702ed6756464cb9481bd54db5` on publish tip `5f3a6cc`.
+
+#### betty — 2026-06-26T03:18:32.013Z
+## QA test manifest (AST-819)
+
+**Scope:** UAT bug — harden **`_normalize_company_url_for_dedupe`** against malformed IPv6 URLs (`ValueError` → `""`); **AST-817** consult routing regression guard.
+
+1. `tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task` — company vet consult → `run_company_task` (**AST-817** regression)
+2. `tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty` — `http://[::1` and `https://[invalid-ipv6]/path` return `""` without raise
+3. `tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_strips_www` — valid URL dedupe unchanged
+
+**Narrowed run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst776VetInflowDiscoveryCompany::test_consult_routes_company_vet_via_run_company_task \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_malformed_ipv6_returns_empty \
+  tests/component/core/test_roster.py::TestAst505InflowDiscovery::test_normalize_company_url_strips_www \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Publish:** `origin/sub/AST-815/AST-819-uat-vet-inflow-routing-ipv6-dedupe` @ `5f3a6cc` (`merge-tests(AST-819): origin/tests eadcbaf`; reverted accidental AST-820 bleed)
+
+**Bible shasum:** `docs/test-bible/core/roster.md` → `9f124af29275dde34035887526084f7e4368045ab484e41ba6379701fa484e5a`
+
+— Betty
+
+#### hedy — 2026-06-26T03:12:38.412Z
+Plan: `https://github.com/susansomerset/astral/blob/sub/AST-815/AST-819-uat-vet-inflow-routing-ipv6-dedupe/docs/features/roster/ast-819-uat-vet-inflow-routing-ipv6-dedupe.md`
+
+**Self-assessment**
+- **Scope:** minor — verify AST-817 consult routing on ftr base; harden `_normalize_company_url_for_dedupe` to catch `ValueError` on malformed IPv6 URLs (return `""`, skip dedupe).
+- **Conf:** high — Susan's traceback identifies mis-route + `Invalid IPv6 URL`; AST-817 fix already on ftr; local repro confirms `urlparse` raises on `http://[::1`.
+- **Risk:** Medium — shared dedupe helper used in discovery ingest; unparseable URLs change from batch crash to skip (matches AC #3).
+
+---
+
 # AST-819 — UAT: vet_inflow routing + IPv6 URL dedupe crash
 
 - **Linear:** [AST-819](https://linear.app/astralcareermatch/issue/AST-819/uat-vet-inflow-routing-ipv6-dedupe)

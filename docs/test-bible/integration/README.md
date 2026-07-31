@@ -4,7 +4,9 @@
 
 **Component suite:** `tests/component/` remains independent. `run_component_tests.sh` does **not** run integration tests unless paths are passed explicitly.
 
-## Harness
+**Maintainer (existing scenarios):** Betty (`qa-child`) — revise when product invalidates an existing scenario; keep this map honest. Inventing new integration coverage is **not** the default deliverable of a Betty pass.
+
+## How to run
 
 ```bash
 ./scripts/testing/run_integration_tests.sh
@@ -25,14 +27,73 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 - Auth via mock token authenticator (`test-token` → admin Susan) — no API↔core mocks at blueprint boundaries.
 - `integration_app` registers `system_bp` + `candidate_bp` only (minimal v1 harness).
 
-## Growth
+## Coverage by function area
 
-- Add scenarios under `tests/integration/scenarios/test_<name>.py`.
-- Shared fixtures stay in `tests/integration/conftest.py`.
+### Candidate list + nav config (API → core → data)
 
-**Maintainer:** Betty (`qa-child`).
+**Status:** has coverage
 
-## Joan operator (AST-712)
+**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs group visibility follows candidate state (`ACTIVE_SEARCH` shows Jobs; `NEW_CANDIDATE` hides the group); unauthenticated nav returns 401.
+
+**Scenarios:**
+
+- `tests/integration/scenarios/test_candidate_nav_api.py`
+
+**Citations:** AST-711 (first scenario + harness); AST-990 (early-lifecycle seed aligned to `NEW_CANDIDATE`)
+
+### Controlled external I/O (product guard)
+
+**Status:** has coverage (infrastructure)
+
+**What it proves:** Under default harness mode, live external network calls are blocked unless an explicit opt-out is set.
+
+**Where:** `src/utils/integration_io.py` plus harness env defaults in `tests/integration/conftest.py` — exercised whenever the suite runs under stub policy.
+
+**Citations:** AST-711
+
+### Additional API blueprints beyond system + candidate
+
+**Status:** should-have
+
+**Gap:** The v1 harness registers only `system_bp` + `candidate_bp`. Other UI blueprints have no multi-layer in-process scenarios in this tier yet.
+
+**Citations:** none (gap)
+
+### Company / roster cultivation paths
+
+**Status:** should-have
+
+**Gap:** No integration scenario covers company roster multi-layer flows through API → core → data.
+
+**Citations:** none (gap)
+
+### Job pipeline (qualify / gaze / consult seams)
+
+**Status:** should-have
+
+**Gap:** No integration scenario covers job-entity multi-layer paths end-to-end in this tier.
+
+**Citations:** none (gap)
+
+### Artifact generation pipeline
+
+**Status:** should-have
+
+**Gap:** No integration scenario covers artifact generate/resume through UI → core → data (external stubs).
+
+**Citations:** none (gap)
+
+### Full-server / scheduler bootstrap
+
+**Status:** should-have
+
+**Gap:** v1 harness intentionally avoids full `ui.server` bootstrap and the in-process scheduler. Full-boot scenarios are not present yet.
+
+**Citations:** AST-711 (minimal-app decision; full-server left open)
+
+## Related: Joan Railway post-deploy operator
+
+Adjacency only — **not** an in-process `tests/integration/` scenario area, and **not** a prep-uat smoke proposal.
 
 **Trigger:** after `origin/dev` lands and Susan’s Railway **test** service deploy completes (Chuckles post-`push-dev` / `prep-uat`, or Susan manual invoke).
 
@@ -47,71 +108,14 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 **Failure triage:** non-zero exit → Joan opens Linear **Discussion** for Chuckles with repro log under `debug/integration-operator/`; Joan does not patch product or enable live external I/O.
 
+**Post-deploy gate (extends operator):** automatic Railway harness run after `origin/dev` deploy, GitHub commit status on the dev SHA (`integration/tests`), Linear **Discussion** auto-create on failure. Contract: [`docs/integration-operator/POST_DEPLOY_GATE.md`](../../integration-operator/POST_DEPLOY_GATE.md).
+
 **Operator contract:** see [`docs/integration-operator/README.md`](../../integration-operator/README.md) (controlled-vs-live table — do not duplicate here).
 
-### AST-711
+**Citations:** AST-712 (operator + Railway test host); AST-818 (post-deploy GitHub status + failure Discussion)
 
-**Harness (AST-711 gate — integration only):**
+## Growth
 
-```bash
-./scripts/testing/run_integration_tests.sh
-```
-
-**Scenarios:**
-
-- `tests/integration/scenarios/test_candidate_nav_api.py` — seeded SQLite + `GET /api/candidates` + `GET /api/nav_config` with Bearer auth; 401 without auth
-
-**Pass criterion:** integration harness green on publish ref tip.
-
-**Out of scope for this ticket:** zero-arg `./scripts/testing/run_component_tests.sh` — full component tree is red on `origin/dev` today from unrelated roster prefilter/rubric expectations (`WEBSITE_FOUND_RETRY` vs `TO_WATCH`); not caused by AST-711 product (`integration_io` + harness + CI only). Track roster component fixes separately; do not block AST-711 closure on zero-arg component gate.
-
-### AST-712
-
-**Harness sanity (required):**
-
-```bash
-./scripts/testing/run_integration_tests.sh
-```
-
-**Operator scripts — syntax check (required):**
-
-```bash
-bash -n scripts/testing/verify_integration_deploy_ref.sh
-bash -n scripts/testing/run_railway_integration_tests.sh
-```
-
-**Railway E2E (Susan/Chuckles when test host live):** run `integration-operator` skill per § Joan operator above — not required for Betty/test-child closure when Railway CLI absent.
-
-**Pass criterion:** items 1–2 exit 0 on publish ref tip.
-
-**Out of scope:** zero-arg `run_component_tests.sh`; production Railway smoke.
-
-### AST-818
-
-**Post-deploy gate (extends AST-712):** automatic Railway harness run after `origin/dev` deploy, GitHub commit status on dev SHA (`integration/tests`), Linear **Discussion** auto-create on failure. Contract: [`docs/integration-operator/POST_DEPLOY_GATE.md`](../../integration-operator/POST_DEPLOY_GATE.md).
-
-**Harness sanity (required):**
-
-```bash
-./scripts/testing/run_integration_tests.sh
-```
-
-**Gate scripts — syntax (required):**
-
-```bash
-bash -n scripts/post_github_commit_status.sh
-bash -n scripts/testing/post_deploy_integration_gate.sh
-bash -n scripts/testing/watch_post_deploy_integration.sh
-```
-
-**Linear failure script — compile (required):**
-
-```bash
-python3 -m py_compile scripts/create_integration_failure_discussion.py
-```
-
-**Pass criterion:** all items exit 0 on publish ref tip.
-
-**Railway + GitHub E2E:** Susan/Chuckles after cron/`watch_post_deploy_integration.sh` wired — not required for test-child when `gh`/`railway`/tokens absent.
-
-**Out of scope:** zero-arg `run_component_tests.sh`; new GitHub Actions workflow; empty commits to `origin/dev`.
+- Add scenarios under `tests/integration/scenarios/test_<name>.py`.
+- Shared fixtures stay in `tests/integration/conftest.py`.
+- Program positions for **new** coverage ownership, prep-uat smoke, and CI vendors are **out of scope for this README** — sibling ADR AST-1004 after Archie approval.

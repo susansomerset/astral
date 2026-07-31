@@ -52,6 +52,10 @@ import AgentPrompts from "./pages/AdminAgentPrompts"
 import TaskPrompts from "./pages/AdminTaskPrompts"
 import AnthropicAdHoc from "./pages/AdminAnthropicAdHoc"
 import DataManagement from "./pages/AdminDataManagement"
+import SessionResumePaste from "./pages/AdminSessionResumePaste"
+import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
+import AdminManageEmail from "./pages/AdminManageEmail"
+import AdminManageSlack from "./pages/AdminManageSlack"
 
 const routes: RouteObject[] = [
   { path: "authenticate", element: <Authenticate /> },
@@ -115,6 +119,10 @@ const routes: RouteObject[] = [
           { path: "admin/task_prompts", element: <AdminRoute><TaskPrompts /></AdminRoute> },
           { path: "admin/anthropic_ad_hoc", element: <AdminRoute><AnthropicAdHoc /></AdminRoute> },
           { path: "admin/data_management", element: <AdminRoute><DataManagement /></AdminRoute> },
+          { path: "admin/session_resume_paste", element: <AdminRoute><SessionResumePaste /></AdminRoute> },
+          { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
+          { path: "admin/manage_email", element: <AdminRoute><AdminManageEmail /></AdminRoute> },
+          { path: "admin/manage_slack", element: <AdminRoute><AdminManageSlack /></AdminRoute> },
 
           // Catch-all
           { path: "*", element: <Navigate to="/jobs/recommended" replace /> },

@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-855 archived 2026-07-29 -->
+
+## Linear archive (AST-855)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-855/fix-dispatch-chain-hop-debug-index-on-multi-hop-success-contemplate  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-852 — Contemplate Job fails on local dev  
+**Blocked by / blocks / related:** parent: AST-852
+
+### Description
+
+## What this implements
+
+Fix the dispatch-chain hop success path in `do_task` so multi-hop BUILD_ARTIFACTS chains (e.g. `anticipate_scan` → `contemplate_job`) no longer crash after a successful LLM response when debug is enabled. Align hop-label debug headers with the AST-538 contract when the chain hop counter advances but total hops were never set on context.
+
+## Acceptance criteria
+
+1. Reproducing Susan's local scenario (`anticipate_scan` leading into `contemplate_job` with `debug=True`) completes `contemplate_job` without crash; the batch does not abort with a hop debug index/total error.
+2. After successful `contemplate_job` in a multi-hop chain, the job's state reflects the expected BUILD_ARTIFACTS hop label for that task.
+3. Debug logs for the hop label write show a valid Style D header (index ≤ total; not e.g. index 2/1).
+4. Component tests covering dispatch-chain hop debug remain green; coverage includes a second-or-later hop success path when hop total is unset on context.
+
+## Boundaries
+
+* Does not change `contemplate_job` prompts, model selection, or artifact content.
+* Does not alter dispatcher entity batch indexing — only dispatch-chain hop debug emitted after task success.
+* Does not change dispatch claim or eligibility rules (AST-849 scope).
+* Must not relax AST-538 validation for callers that pass explicit index and total.
+
+## Notes for planning
+
+* Primary files: `src/core/agent.py` (`_write_dispatch_hop_label_on_success`, `_resume_hop_debug_index`), possibly `src/utils/logging.py`.
+* `_resume_hop_debug_index` already uses `total or hop_idx` when total unset; `_write_dispatch_hop_label_on_success` uses `total=int((ctx or {}).get("_dispatch_chain_hop_total") or 0) or 1` which causes index 2/1 when hop index is 2.
+* Related shipped work: AST-847/848/849 (User Testing).
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-852-contemplate-job-hop-debug-crash`, child `sub/AST-852/<child-id>-fix-dispatch-chain-hop-debug`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-10T02:49:41.786Z
+### Radia review — AST-855
+
+**Diff:** `origin/dev...origin/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug` @ `09475f7`  
+**Doc:** `docs/features/consult/ast-855-fix-dispatch-chain-hop-debug.md` (Radia review section)
+
+**What's solid**
+- Stage 1 plan delivered: `_dispatch_chain_hop_debug_counts` shared by `_resume_hop_debug_index` and `_write_dispatch_hop_label_on_success`; fixes `index 2/1` crash when `_dispatch_chain_hop_total` unset.
+- §1.5.1 / §5f: debug emission still gated on `debug=True`; valid Style D index/total; `debug_detail` on hop-ok preserved.
+- §2.6.0 boundary respected — hop label/graduation unchanged; no precomputed chain totals.
+- Tests + bible: `TestAst855DispatchChainHopDebug` + **AST-848** regression class per manifest.
+
+**Issues**
+
+| Severity | Location | Finding |
+|----------|----------|---------|
+| advisory | Plan Stage 2 | Manual multi-hop smoke (`anticipate_scan` → `contemplate_job`, `debug=True`) deferred to parent **AST-852** UAT — not blocking this child. |
+
+**Recommended actions:** 0 fix-now · 0 discuss · 1 advisory — ready for `resolve-child`.
+
+**Outcome:** Clean — ship.
+
+#### betty — 2026-07-10T02:46:29.811Z
+Bible shasum correction on publish ref @ `6ba63c7`: `docs/test-bible/core/agent.md` — `4e7cccc2d39c78a48275bc30ff1cf8c3478fa78e71195d8355d0bcf3847fada2`
+
+#### betty — 2026-07-10T02:46:21.943Z
+## QA test manifest (AST-855)
+
+**Publish:** `origin/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug` @ `6ba63c7` (`merge-tests(AST-855): origin/tests fc346cd`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/agent.md` — `ee621cd59f56bf5a6b3221e4a7c4ea5257b635fd8b93157ae08e76518ccef560`
+
+**Manifest (test-child) — narrowed run:**
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst855DispatchChainHopDebug \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask \
+  -q
+```
+
+1. **Hop debug index/total helper** — `TestAst855DispatchChainHopDebug::test_dispatch_chain_hop_debug_counts_expands_unset_total`, `::test_dispatch_chain_hop_debug_counts_preserves_explicit_total` (`test_agent.py`)
+2. **Second-hop success (`contemplate_job`, debug=True, unset hop total)** — `TestAst855DispatchChainHopDebug::test_contemplate_job_hop_ok_debug_valid_index_total_on_second_hop` — asserts `success=True`, hop-ok Style D `index 2/2` (not `2/1`)
+3. **Regression** — `TestAst848DispatchChainDoTask` (full class)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### ada — 2026-07-10T02:40:42.406Z
+Plan: `docs/features/consult/ast-855-fix-dispatch-chain-hop-debug.md`
+
+https://github.com/susansomerset/astral/blob/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug/docs/features/consult/ast-855-fix-dispatch-chain-hop-debug.md
+
+**Scope:** minor — `_dispatch_chain_hop_debug_counts` helper + fix `_write_dispatch_hop_label_on_success` total fallback in `src/core/agent.py` only.
+
+**Conf:** high — stack trace pinpoints `total or 1` vs entry path `total or hop_idx`; one semantic alignment.
+
+**Risk:** low — debug-only on dispatch-chain hop label success; `debug=False` unchanged.
+
+Published plan @ `99b8fa8` on `origin/sub/AST-852/AST-855-fix-dispatch-chain-hop-debug`.
+
+---
+
 # Fix dispatch chain hop debug index on multi-hop success
 
 **Linear:** [AST-855 — Fix dispatch chain hop debug index on multi-hop success (Contemplate Job fails on local dev)](https://linear.app/astralcareermatch/issue/AST-855/fix-dispatch-chain-hop-debug-index-on-multi-hop-success-contemplate)  

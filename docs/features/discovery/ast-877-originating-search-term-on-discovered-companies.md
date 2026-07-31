@@ -1,3 +1,112 @@
+<!-- linear-archive: AST-877 archived 2026-07-29 -->
+
+## Linear archive (AST-877)
+
+**Archived:** 2026-07-29  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-877/originating-search-term-on-discovered-companies-foreign-key-search  
+**Status at archive:** Archive  
+**Project:** Astral Discovery  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-864 — Foreign key search term to company  
+**Blocked by / blocks / related:** parent: AST-864
+
+### Description
+
+## What this implements
+
+When Google CSE discovery creates a company from a hit, persist the originating search-term string on that company at record time. Carry the same string through any ingest path that creates a company from a Google search hit. Keep it on the company regardless of later ignore/reject/vet-failed outcomes. Expose it on existing company-readable surfaces for UAT (no new search-term UI). When discovery/ingest runs with debug enabled, include the originating search term in per-company working detail for newly recorded companies.
+
+## Acceptance criteria
+
+1. A company newly recorded from a Google CSE discovery hit has its originating search-term string stored on the company row.
+2. A company that is later ignored/rejected/vet-failed (or otherwise discarded as a prospect) still retains that same originating search-term string.
+3. Running discovery for a known search term and inspecting a resulting company (including an ignored outcome) shows that exact term as the stored origin.
+4. With debug enabled on the discovery/ingest path, each newly recorded company's debug working detail includes the originating search term that was stored.
+5. Companies created outside Google CSE discovery are unchanged (no false originating term required).
+6. Existing discovery eligibility, CSE search, URL/slug dedupe, and vet transitions continue to behave as they do today aside from the new stored term.
+
+## Boundaries
+
+* Does not implement a true foreign key to company_search_terms (or search-term row ids) — denormalized string only.
+* Does not add search-term child-record UI, metrics dashboards, or term-quality reporting (sibling AST-865).
+* Does not change CSE query behavior, staleness/freq_hrs eligibility, dedupe rules, or company state machines except to stamp and retain the originating term.
+* Does not backfill historical company rows.
+
+## Notes for planning
+
+* Primary surface: roster inflow discovery record/ingest and company row persistence (data-layer inventory update required for any new company column — ASTRAL_CODE_RULES §1.1).
+* Backend debug contract: AST-538 / Code Rules §1.5.1 (index headers + `|` working detail when debug=True).
+* Sibling AST-865 owns UI for search terms as child records — stay out of that scope.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent ftr/AST-864-foreign-key-search-term-to-company, child sub/AST-864/<child-id>-<slug>. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-12T21:52:01.401Z
+[merge-child] blocked: validate-sub-log missing plan(AST-877): and resolve(AST-877): markers (have docs(AST-877): plan / docs(AST-877): resolution only).
+
+@Hedy Lamarr — on origin/sub/AST-864/AST-877-originating-search-term add empty marker commits matching recent epics, e.g.:
+- `plan(AST-877): sub-log marker — plan published as docs(AST-877) 5c45c1d`
+- `resolve(AST-877): — clean; no fix-now`
+then push origin HEAD:sub/AST-864/AST-877-originating-search-term. Do not git pull on sub.
+
+— Chuckles
+
+#### radia — 2026-07-12T21:37:01.066Z
+**Diff:** `origin/dev...origin/sub/AST-864/AST-877-originating-search-term` @ `189f47b` (review doc @ `a6a4756`)
+
+**What's solid:** Stages 1–3 match plan — nullable `company.originating_search_term` (CREATE+ALTER), `save_company` preserve-on-omit, excluded from `_UPDATE_COMPANY_ALLOWED`; CSE `(term, hit)` → `record_inflow_discovery_hit` / `ingest_new_companies`; §1.5.1 `debug_detail` under `if debug:`; New/Inactive/Ignored list shapes + read-only CompanyDetailModal row; §1.1 inventory; no AST-865 scope.
+
+**Issues:** none
+
+**Recommended:** none (ship) — 0 fix-now · 0 discuss · 0 advisory
+
+Review doc: https://github.com/susansomerset/astral/blob/a6a47566c08ced2f4793fb94426a44af1b9084c1/docs/features/discovery/ast-877-originating-search-term-on-discovered-companies.md
+
+#### betty — 2026-07-12T21:12:31.327Z
+## QA test manifest — AST-877
+
+**Publish:** `origin/sub/AST-864/AST-877-originating-search-term` @ `189f47b` (`merge-tests(AST-877): origin/tests 2cefda2e8c8c94455933124ad4a2385107138d59`)
+
+1. **Column store + preserve + state update leaves term + non-CSE null** — `tests/component/data/database/test_companies.py::TestAst877OriginatingSearchTerm`
+2. **Record/ingest stamp; retain after VET_FAILED; batch CSE term; debug detail** — `tests/component/core/test_roster.py::TestAst877OriginatingSearchTerm`
+3. **New/Inactive/Ignored shapes include column; watch shapes omit** — `tests/component/utils/test_config.py::TestAst877OriginatingSearchTermShapes`
+4. **Detail modal shows term / em dash; PUT excludes column** — `tests/component/frontend/components/test_CompanyDetailModal.test.tsx`
+
+**Broken / obsolete (Betty revision):** `test_CompanyDetailModal.test.tsx` api mock — rewired via `pages/page-mocks` `installBaseApiMocks` (+ auth token/unauthorized exports).
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_companies.py::TestAst877OriginatingSearchTerm \
+  tests/component/core/test_roster.py::TestAst877OriginatingSearchTerm \
+  tests/component/utils/test_config.py::TestAst877OriginatingSearchTermShapes \
+  -q
+```
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CompanyDetailModal.test.tsx
+```
+
+**Bible shasum:** `docs/test-bible/data/database/companies.md` `580848aadd5635f439d4e45b0f229c8b8de944bd`
+
+— Betty
+
+#### hedy — 2026-07-12T20:43:55.210Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-864/AST-877-originating-search-term/docs/features/discovery/ast-877-originating-search-term-on-discovered-companies.md
+
+**Self-assessment**
+- **Scope:** Single-Component — one nullable `company.originating_search_term` column, discovery/ingest stamp, debug detail, existing company list/detail surfaces.
+- **Conf:** high — migrate + `save_company` preserve pattern and `record_inflow_discovery_hit` / CSE loop are established; term is a mechanical pass-through.
+- **Risk:** Medium — `INSERT OR REPLACE` must preserve the column or later saves wipe origins; first-wins dedupe correctly owns the stored term.
+
+---
+
 # AST-877 — Originating search term on discovered companies (Foreign key search term to company)
 
 - **Linear:** [AST-877](https://linear.app/astralcareermatch/issue/AST-877/originating-search-term-on-discovered-companies-foreign-key-search)

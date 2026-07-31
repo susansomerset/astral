@@ -113,3 +113,58 @@ class TestAst877OriginatingSearchTerm:
         row = db.get_company("csv_co")
         assert row is not None
         assert row.get("originating_search_term") is None
+# Branches: claim excludes meteorite-* prefix; normal company still claimed; clear unaffected.
+class TestAst1041MeteoriteClaimExclusion:
+    """AST-1041: set_company_batch claim NEVER selects short_name LIKE meteorite-%."""
+
+    def test_claim_skips_meteorite_prefix_keeps_normal(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "c1041"
+        prefix = METEORITE_CONFIG["short_name_prefix"]
+        db.save_company("acme", state="NEW", candidate_id=cid, company_name="Acme")
+        db.save_company(
+            f"{prefix}{cid}",
+            state="NEW",
+            candidate_id=cid,
+            company_name=METEORITE_CONFIG["company_name"],
+        )
+        n = db.claim_company_batch("batch-1041", "NEW", 10, candidate_id=cid)
+        assert n == 1
+        rows = db.get_company_batch("batch-1041")
+        assert [r["short_name"] for r in rows] == ["acme"]
+
+    def test_claim_ignore_skips_meteorite_placeholders(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "c1041i"
+        prefix = METEORITE_CONFIG["short_name_prefix"]
+        db.save_company("ignored_co", state="IGNORE", candidate_id=cid, company_name="Ignored")
+        db.save_company(
+            f"{prefix}{cid}",
+            state="IGNORE",
+            candidate_id=cid,
+            company_name=METEORITE_CONFIG["company_name"],
+            company_data=dict(METEORITE_CONFIG["company_data"]),
+        )
+        n = db.claim_company_batch("batch-1041i", "IGNORE", 10, candidate_id=cid)
+        assert n == 1
+        rows = db.get_company_batch("batch-1041i")
+        assert [r["short_name"] for r in rows] == ["ignored_co"]
+
+    def test_clear_batch_still_clears_meteorite_row(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "c1041c"
+        short = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        db.save_company(short, state="IGNORE", candidate_id=cid, company_name="meteorite")
+        # Force a batch id (claim would skip); clear must still wipe it.
+        assert db.update_company(short, batch_id="batch-force", batch_created_at="t0") == 1
+        cleared = db.set_company_batch("batch-force", clear=True)
+        assert cleared == 1
+        row = db.get_company(short)
+        assert row is not None
+        assert row.get("batch_id") in (None, "")

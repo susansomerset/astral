@@ -10,7 +10,14 @@ import JobDetailModal from "../components/JobDetailModal"
 import { useCandidateJobActions } from "../hooks/useCandidateJobActions"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
-import { buildJobListRubricColumns, formatGradeDotTooltip, RUBRIC_DEFAULT_IMPORTANCE, type JobListRubricColumn } from "../lib/rubricDisplay"
+import {
+  analysisTimeScoreForJob,
+  buildJobListRubricColumnsForGroup,
+  formatGradeDotTooltip,
+  groupJobsByAlignedRubric,
+  RUBRIC_DEFAULT_IMPORTANCE,
+  type JobListRubricColumn,
+} from "../lib/rubricDisplay"
 import Time from "../components/Time"
 
 interface Job {
@@ -60,7 +67,7 @@ function gradeAndConfidenceForCol(job: Job, gradeKey: string, col: JobListRubric
     return {
       grade,
       confidence: row.confidence,
-      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason),
+      gradeTooltip: formatGradeDotTooltip(col, grade, row.reason, row.confidence),
     }
   }
   if (typeof g === "object") {
@@ -91,8 +98,8 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
     } else if (col === "latest_score") {
-      const av = a.latest_score ?? null
-      const bv = b.latest_score ?? null
+      const av = analysisTimeScoreForJob(a as Record<string, unknown>, gradeKey)
+      const bv = analysisTimeScoreForJob(b as Record<string, unknown>, gradeKey)
       if (av === null && bv === null) cmp = 0
       else if (av === null) cmp = 1
       else if (bv === null) cmp = -1
@@ -113,7 +120,7 @@ function sortJobs(jobs: Job[], col: string, asc: boolean, gradeKey: string, cols
 
 export default function Skipped() {
   const { manifest, loadState } = useStateUi()
-  const { selectedId, candidates } = useCandidate()
+  const { selectedId } = useCandidate()
   const [rows, setRows]     = useState<Job[]>([])
   const [loading, setLoading] = useState(true)
   const [viewingId, setViewingId] = useState<string | null>(null)
@@ -121,11 +128,6 @@ export default function Skipped() {
   const [sorts, setSorts]   = useState<Record<string, SortState>>({})
   const [toast, setToast]   = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
-
-  const artifacts = useMemo(() => {
-    const c = candidates.find(x => x.astral_candidate_id === selectedId)
-    return (c?.candidate_data?.artifacts as Record<string, unknown>) ?? {}
-  }, [candidates, selectedId])
 
   const load = useCallback(() => {
     if (!selectedId) return
@@ -186,31 +188,21 @@ export default function Skipped() {
   const { isExpanded, onExpandedChange, setExpandedKeys } = useSectionExpandPolicy({ sectionKeys })
   useEffect(() => { setExpandedKeys(new Set()) }, [selectedId, setExpandedKeys])
 
-  function getRubricCols(gradeKey: string, jobs: Job[]): JobListRubricColumn[] {
-    const rubricKey = manifest?.jobs.grade_rubric_by_field[gradeKey]
-    return buildJobListRubricColumns({
-      rubricArtifactKey: rubricKey || undefined,
-      artifacts,
-      gradeKey,
-      jobs: jobs as Array<Record<string, unknown>>,
-    })
-  }
-
   const toggleSelect = (id: string) => setSelected(prev => {
     const next = new Set(prev)
     if (next.has(id)) next.delete(id); else next.add(id)
     return next
   })
 
-  function handleSort(sectionState: string, col: string) {
+  function handleSort(sortKey: string, col: string) {
     setSorts(prev => {
-      const cur = prev[sectionState] ?? { col: "state_changed_at", asc: false }
-      return { ...prev, [sectionState]: { col, asc: cur.col === col ? !cur.asc : true } }
+      const cur = prev[sortKey] ?? { col: "state_changed_at", asc: false }
+      return { ...prev, [sortKey]: { col, asc: cur.col === col ? !cur.asc : true } }
     })
   }
 
-  function sortIndicator(sectionState: string, col: string) {
-    const s = sorts[sectionState]
+  function sortIndicator(sortKey: string, col: string) {
+    const s = sorts[sortKey]
     return s?.col === col ? <span style={{ fontSize: 10, marginLeft: 3 }}>{s.asc ? "▲" : "▼"}</span> : null
   }
 
@@ -249,10 +241,10 @@ export default function Skipped() {
         sections.map(sec => {
           const sectionOpen = isExpanded(sec.state)
           const isFloor = sec.state === manifest.jobs.skipped.below_dispatch_key
-          const cols = sec.gradeKey ? getRubricCols(sec.gradeKey, sec.jobs) : []
-          const sort = sorts[sec.state] ?? { col: "state_changed_at", asc: false }
-          const sorted = sortJobs(sec.jobs, sort.col, sort.asc, sec.gradeKey, cols)
-          const showScore = isFloor || sec.jobs.some(j => j.latest_score != null)
+          // Floor: single table, no rubric grouping. Grade sections: one table per aligned rubric.
+          const groups = (!isFloor && sec.gradeKey)
+            ? groupJobsByAlignedRubric(sec.jobs as Array<Record<string, unknown>>, sec.gradeKey)
+            : [{ fingerprint: sec.state, jobs: sec.jobs as Array<Record<string, unknown>>, columnSourceJob: (sec.jobs[0] ?? {}) as Record<string, unknown> }]
           return (
             <div key={sec.state} style={{ marginBottom: 24 }}>
               <button
@@ -268,27 +260,36 @@ export default function Skipped() {
                 <span style={{ transform: sectionOpen ? "rotate(0deg)" : "rotate(-90deg)", transition: "transform 0.15s", fontSize: 12 }}>&#9660;</span>
                 {sec.label} ({sec.jobs.length})
               </button>
-              {sectionOpen && (
-                <div className="list-page-table-wrap">
+              {sectionOpen && groups.map(group => {
+                const sortKey = `${sec.state}::${group.fingerprint}`
+                const cols = (!isFloor && sec.gradeKey)
+                  ? buildJobListRubricColumnsForGroup({ gradeKey: sec.gradeKey, columnSourceJob: group.columnSourceJob })
+                  : []
+                const sort = sorts[sortKey] ?? { col: "state_changed_at", asc: false }
+                const sorted = sortJobs(group.jobs as Job[], sort.col, sort.asc, sec.gradeKey, cols)
+                const showScore = isFloor
+                  || group.jobs.some(j => analysisTimeScoreForJob(j, sec.gradeKey) != null)
+                return (
+                <div key={sortKey} className="list-page-table-wrap" style={{ marginBottom: groups.length > 1 ? 12 : 0 }}>
                   <table className="list-page-table">
                     <thead>
                       <tr>
                         {!isFloor && <th style={{ width: 1, whiteSpace: "nowrap" }}>Actions</th>}
                         {!isFloor && <th style={{ width: 32 }}></th>}
                         {isFloor && <th style={{ width: 32 }} aria-hidden />}
-                        <th className="sortable" onClick={() => handleSort(sec.state, "job_title")}>
-                          Job Title{sortIndicator(sec.state, "job_title")}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "job_title")}>
+                          Job Title{sortIndicator(sortKey, "job_title")}
                         </th>
-                        <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
-                          Company{sortIndicator(sec.state, "company")}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "company")}>
+                          Company{sortIndicator(sortKey, "company")}
                         </th>
                         {isFloor && (
                           <>
-                            <th className="sortable" style={{ textAlign: "center", minWidth: 88 }} onClick={() => handleSort(sec.state, "state")}>
-                              State{sortIndicator(sec.state, "state")}
+                            <th className="sortable" style={{ textAlign: "center", minWidth: 88 }} onClick={() => handleSort(sortKey, "state")}>
+                              State{sortIndicator(sortKey, "state")}
                             </th>
-                            <th className="sortable" style={{ textAlign: "center", minWidth: 56 }} onClick={() => handleSort(sec.state, "latest_score")}>
-                              Score{sortIndicator(sec.state, "latest_score")}
+                            <th className="sortable" style={{ textAlign: "center", minWidth: 56 }} onClick={() => handleSort(sortKey, "latest_score")}>
+                              Score{sortIndicator(sortKey, "latest_score")}
                             </th>
                             <th style={{ textAlign: "center", minWidth: 56 }}>Floor</th>
                           </>
@@ -296,23 +297,25 @@ export default function Skipped() {
                         {!isFloor && cols.map(c => (
                           <th key={c.code} className="sortable" title={c.headerTooltip}
                             style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}
-                            onClick={() => handleSort(sec.state, c.code)}>
-                            {c.code}{sortIndicator(sec.state, c.code)}
+                            onClick={() => handleSort(sortKey, c.code)}>
+                            {c.headerCode}{sortIndicator(sortKey, c.code)}
                           </th>
                         ))}
                         {!isFloor && showScore && (
                           <th className="sortable" style={{ textAlign: "center", minWidth: 60 }}
-                            onClick={() => handleSort(sec.state, "latest_score")}>
-                            Score{sortIndicator(sec.state, "latest_score")}
+                            onClick={() => handleSort(sortKey, "latest_score")}>
+                            Score{sortIndicator(sortKey, "latest_score")}
                           </th>
                         )}
-                        <th className="sortable" onClick={() => handleSort(sec.state, "state_changed_at")}>
-                          {isFloor ? "Updated" : "Failed At"}{sortIndicator(sec.state, "state_changed_at")}
+                        <th className="sortable" onClick={() => handleSort(sortKey, "state_changed_at")}>
+                          {isFloor ? "Updated" : "Failed At"}{sortIndicator(sortKey, "state_changed_at")}
                         </th>
                       </tr>
                     </thead>
                     <tbody>
-                      {sorted.map(job => (
+                      {sorted.map(job => {
+                        const rowScore = analysisTimeScoreForJob(job as Record<string, unknown>, isFloor ? "" : sec.gradeKey)
+                        return (
                         <tr key={job.astral_job_id} className="clickable">
                           {!isFloor && (
                             <td>
@@ -335,7 +338,7 @@ export default function Skipped() {
                             <>
                               <td style={{ textAlign: "center", whiteSpace: "nowrap" }} onClick={() => setViewingId(job.astral_job_id)}>{job.state}</td>
                               <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
-                                {job.latest_score != null ? (job.latest_score as number).toFixed(2) : "\u2014"}
+                                {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
                               </td>
                               <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
                                 {job.dispatch_score_floor != null && job.dispatch_score_floor !== undefined
@@ -361,16 +364,18 @@ export default function Skipped() {
                           })}
                           {!isFloor && showScore && (
                             <td style={{ textAlign: "center" }} onClick={() => setViewingId(job.astral_job_id)}>
-                              {job.latest_score != null ? (job.latest_score as number).toFixed(2) : "\u2014"}
+                              {rowScore != null ? rowScore.toFixed(2) : "\u2014"}
                             </td>
                           )}
                           <td onClick={() => setViewingId(job.astral_job_id)}><Time value={job.state_changed_at} /></td>
                         </tr>
-                      ))}
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
-              )}
+                )
+              })}
             </div>
           )
         })

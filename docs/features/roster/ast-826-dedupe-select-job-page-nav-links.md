@@ -1,3 +1,113 @@
+<!-- linear-archive: AST-826 archived 2026-07-22 -->
+
+## Linear archive (AST-826)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-826/uat-select-job-page-live-content-duplicates-nav-links  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-753 — fetch_job_pages does not fetch nav links  
+**Blocked by / blocks / related:** parent: AST-753
+
+### Description
+
+## What failed
+
+After AST-759 shipped, **select_job_page** agent live content at **PJL_READY** includes navigation links **twice** — per-page `--- NAV LINKS ---` sections inside assembled PJL page text **and** a trailing global `=== NAV LINKS ===` block from merged `pjl_nav_links`. Susan UAT: "it's adding nav links TWICE."
+
+## Expected
+
+Nav links appear **once** in the material sent to **select_job_page** (token-efficient). Links must still be available for TRY_LINKS index resolution.
+
+## Repro
+
+1. Run **fetch_job_pages** on a **PREFILTER_PASSED** company with **possible_joblist_links** where Playwright finds nav links (e.g. Mitratech careers).
+2. Confirm company reaches **PJL_READY** with non-empty `pjl_nav_links` and assembled PJL content.
+3. Inspect **select_job_page** live content (Admin ad-hoc preview or debug) — nav enumeration appears twice (per-page block + global block).
+
+## Parent AC (quoted inline)
+
+> **select_job_page** at **PJL_READY** receives link material aligned with criterion 2 before the agent call when links were scraped.
+
+## Boundaries
+
+* This bug does **not** change: **select_job_page** routing, TRY_LINKS retry logic, or state transitions (AST-720).
+* Does **not** remove nav links entirely — dedupe presentation only.
+* Does **not** change **fetch_website** / homepage prefilter nav assembly unless the same double-append pattern exists there.
+
+### Comments
+
+#### radia — 2026-06-26T18:22:58.809Z
+**Review:** `origin/dev...origin/sub/AST-753/AST-826-dedupe-select-job-page-nav-links` @ `21aa550`
+
+**Plan fidelity:** Stage 1 matches plan — `_assembled_has_embedded_nav_links` guards on `--- NAV LINKS ---`; `_build_select_job_page_live_content` skips trailing `=== NAV LINKS ===` when per-page nav is already embedded; global append + exact-substring idempotency preserved when no embedded marker; `run_select_job_page_dispatch` still passes `nav_links=` separately for TRY_LINKS (unchanged wiring).
+
+**Rules (§1.3, §2.6, §3.3):** roster-only presentation fix; no scrape/persistence/routing/state changes.
+
+**Tests:** Betty manifest green — `TestAst826DedupeSelectJobPageNav` (both helper paths); `TestAst720PjlReadySelectDispatch` dispatch cases for dedupe vs global append.
+
+**fix-now:** none
+
+**Advisory:** Marker string must stay aligned with `_assemble_pjl_content` section header (both in `roster.py` today).
+
+**Doc:** [ast-826-dedupe-select-job-page-nav-links.md](https://github.com/susansomerset/astral/blob/21aa550cc1577e5c384acd7f66284f798437279c/docs/features/roster/ast-826-dedupe-select-job-page-nav-links.md#review-radia) — clean; `resolve-child` may proceed.
+
+#### betty — 2026-06-26T18:21:39.157Z
+## QA test manifest (AST-826)
+
+**Publish ref:** `origin/sub/AST-753/AST-826-dedupe-select-job-page-nav-links` @ `aabee46` (`merge-tests(AST-826): origin/tests 4dfc3b2`)
+
+**Bible shasums (publish ref):**
+- `docs/test-bible/core/roster.md` → `86a9614d3d5a70ebe963c514f1a5c06c5a9eae1b`
+
+1. **Live content dedupe helper (required):** `tests/component/core/test_roster.py::TestAst826DedupeSelectJobPageNav` — skips global `=== NAV LINKS ===` when assembled has `--- NAV LINKS ---`; retains global append when no embedded marker.
+
+2. **PJL_READY dispatch embedded path (required):** `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_dedupes_nav_when_per_page_embedded` — agent live content has nav once; `nav_links=` unchanged for TRY_LINKS.
+
+3. **PJL_READY dispatch legacy path (required):** `tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_appends_global_nav_when_no_embedded_per_page` — global block still appended when assembled lacks per-page nav marker.
+
+**Narrowed run:**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_roster.py::TestAst826DedupeSelectJobPageNav \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_dedupes_nav_when_per_page_embedded \
+  tests/component/core/test_roster.py::TestAst720PjlReadySelectDispatch::test_select_dispatch_appends_global_nav_when_no_embedded_per_page \
+  -q
+```
+
+**Broken / obsolete (Betty revision):** `TestAst720PjlReadySelectDispatch::test_select_dispatch_passes_live_content_with_nav_links` — replaced by dedupe + legacy global-append cases (AST-759 global append no longer expected when per-page nav embedded).
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+— Betty
+
+#### chuckles — 2026-06-26T18:18:17.729Z
+## validate-plan — APPROVED
+
+**Verdict:** APPROVED → Plan Approved
+
+**Definition fidelity:** Bug targets duplicate nav in select_job_page live content only; presentation dedupe matches UAT AC (nav once for tokens). Boundaries respected — no fetch_job_pages / state machine changes.
+
+**Layer compliance:** `roster.py` only — OK.
+
+**Findings:** None (fix-now).
+
+— Chuckles
+
+#### hedy — 2026-06-26T18:18:01.735Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-753/AST-826-dedupe-select-job-page-nav-links/docs/features/roster/ast-826-dedupe-select-job-page-nav-links.md
+
+**Scope:** `minor` — guard in `_build_select_job_page_live_content` skips global `=== NAV LINKS ===` when assembled PJL already has per-page `--- NAV LINKS ---`; `pjl_nav_links` unchanged for TRY_LINKS `nav_links=` arg.
+
+**Conf:** `high` — UAT root cause is AST-759 global append firing alongside per-page assembly; one-function dedupe.
+
+**Risk:** `low` — legacy rows with global-only nav still get global append when no embedded marker present.
+
+---
+
 # AST-826 — UAT: select_job_page live content duplicates nav links
 
 **Linear:** [AST-826 — UAT: select_job_page live content duplicates nav links](https://linear.app/astralcareermatch/issue/AST-826/uat-select-job-page-live-content-duplicates-nav-links)

@@ -1,3 +1,134 @@
+<!-- linear-archive: AST-831 archived 2026-07-22 -->
+
+## Linear archive (AST-831)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-831/backend-stytch-live-project-session-jwt-validation-using-google-to  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-829 — Using Google to login on production doesn't work  
+**Blocked by / blocks / related:** parent: AST-829
+
+### Description
+
+## What this implements
+
+Ensure the Flask API validates Stytch session JWTs against the same **live** project the production frontend uses (**project-live-d0218f6b-c64a-4fa1-84fe-21997a66593a**). After Google OAuth on [**https://astral.up.railway.app**](<https://astral.up.railway.app>), `GET /api/me` and protected routes must succeed with a fresh Bearer token — not log `Bearer token validation failed: session_not_found` for a newly established session.
+
+## Acceptance criteria
+
+2. Immediately after a successful Google sign-in on production, `GET /api/me` returns **200** with correct `user_id`, `name`, and `is_admin` for Susan.
+3. Protected API calls from the authenticated production session succeed without `session_not_found` errors in server logs for that fresh session.
+4. Railway production env vars and Stytch Dashboard live-project settings are documented (in the dev agent plan or ops notes) so a future host change does not silently break OAuth again.
+
+## Boundaries
+
+* Does **not** replace Stytch or redesign the auth stack (**AST-609** / **AST-610** / **AST-611**).
+* Does **not** change React login UI — sibling **Katherine** ticket owns frontend handoff.
+* Must **not** weaken Bearer validation — invalid tokens should still return **401**.
+* Does **not** change admin role resolution rules.
+
+## Notes for planning
+
+* Primary touchpoints: `src/external/stytch.py`, `src/utils/auth.py`, `AUTH_CONFIG` env contract per **AST-610** / **AST-611**.
+* Railway runtime env: `STYTCH_PROJECT_ID`, `STYTCH_SECRET` must match live project used by frontend `VITE_STYTCH_PUBLIC_TOKEN`.
+* Coordinate with Katherine's frontend ticket — no duplicate fixes; backend only where JWT validation or project mismatch causes `session_not_found`.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-829-production-google-oauth-stytch-live`, child `sub/AST-829/<child-segment>`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-27T19:41:17.823Z
+### Radia review — `origin/dev...origin/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation` @ `74cdcea`
+
+Plan doc: `docs/features/foundation/ast-831-backend-stytch-live-project-session-jwt-validation.md` (Radia review section)
+
+**fix-now:** None.
+
+**discuss:**
+- Branch diff vs `origin/dev` includes **AST-832** + **AST-830** test/bible rows outside AST-831 layer contract — likely ftr rollup on publish ref; confirm merge-child narrative.
+- Plan Stage 3 Susan Railway backend `STYTCH_*` confirmation pending — production `/api/me` **200** after Google login depends on ops alignment + **AST-830** SPA handoff.
+- `log_stytch_project_env()` in `src/external/stytch.py` bends §3.2 "external does not log" — plan **Decision** explicitly requires startup project-env visibility; approved exception, not ad hoc.
+
+**advisory:**
+- `stytch.py` uses `logging.getLogger` — peer `playwright.py` uses `get_logger`; align if touching logging again.
+- `test_local_jwt_response_fetches_user_by_session_user_id` lacks `max_token_age_seconds=0` assert (plan QA table listed both happy-path tests); happy-path test covers kwarg.
+
+**What's solid (§3.3):** `max_token_age_seconds=0` forces remote validation against configured project; startup env log via `auth_bootstrap`; `session_not_found` ops hint preserves `None` → **401** contract; Betty manifest + bible match product delta.
+
+#### betty — 2026-06-27T19:36:25.556Z
+## QA test manifest (AST-831)
+
+**Publish ref:** `origin/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation` @ `1be0852` (`merge-tests(AST-831): origin/tests 0ac6e53`)
+
+**Bible shasums on publish ref:**
+- `docs/test-bible/external/stytch.md` → `bd02c7c384c518b58fa6f3e2c676325f6731a238`
+- `docs/test-bible/utils/auth.md` → `6d477d15046d931b36a3a44a7eb86df4f72ead4a`
+- `docs/test-bible/frontend/components.md` → `7416d29bdb45067825225810a0d57c30ee2729c5`
+
+### Manifest (test-child)
+
+1. **Remote JWT validation kwarg (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_stytch.py::TestAuthenticateSessionJwt::test_happy_path_maps_user_id_email_name
+```
+
+2. **Startup project env log (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_stytch.py::TestLogStytchProjectEnv
+```
+
+3. **session_not_found ops hint (required):**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_auth.py::TestValidateBearerToken::test_session_not_found_logs_ops_hint
+```
+
+4. **Regression guard (required):** full **`TestAuthenticateSessionJwt`** + **`TestValidateBearerToken`** classes green.
+
+**Pass criterion:** items 1–4 green on publish ref after merge-on-checkout from parent ftr.
+
+**Broken test revised:** `TestAuthenticateSessionJwt::test_happy_path_maps_user_id_email_name` — now asserts `max_token_age_seconds=0` (AST-831 product change).
+
+**Out of scope:** SPA `/authenticate` handoff → **AST-830**; Susan Stage 3 Railway backend checklist is manual UAT, not pytest.
+
+#### katherine — 2026-06-27T19:31:01.554Z
+**Code Complete** @ `origin/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation` tip `b4a312a`
+
+**Shipped**
+- `max_token_age_seconds=0` on `sessions.authenticate_jwt` — forces remote session lookup against backend-configured Stytch project
+- `log_stytch_project_env()` at Flask startup (env=live/test + truncated project id)
+- `session_not_found` ops hint in `validate_bearer_token` logs
+- `env.example` AST-831 backend live-project alignment checklist
+
+**@susan — Stage 3 ops (before production UAT)**
+1. Railway **backend** service: `STYTCH_PROJECT_ID=project-live-d0218f6b-c64a-4fa1-84fe-21997a66593a`
+2. `STYTCH_SECRET` = live project Secret (not public token)
+3. Redeploy backend after any secret change
+4. Confirm startup log: `Stytch auth configured: env=live project_id=project-live-d0218f6b-c64a-4fa1-8…`
+5. After AST-830 lands: Google login → `GET /api/me` **200**
+
+**Betty:** extend `tests/component/external/test_stytch.py` per plan QA spec (`max_token_age_seconds=0`, `log_stytch_project_env`).
+
+#### katherine — 2026-06-27T19:29:09.860Z
+Plan doc: https://github.com/susansomerset/astral/blob/sub/AST-829/AST-831-backend-stytch-live-project-session-jwt-validation/docs/features/foundation/ast-831-backend-stytch-live-project-session-jwt-validation.md
+
+**Self-assessment**
+
+- **Scope:** `Single-Component` — `src/external/stytch.py`, `src/core/auth_bootstrap.py`, log hint in `src/utils/auth.py`, and `env.example` backend live-project verification; no React or Flask decorator changes.
+- **Conf:** `Medium` — `max_token_age_seconds=0` on `authenticate_jwt` is documented Stytch SDK behavior for forcing remote session lookup against the backend-configured project; Susan must confirm Railway backend `STYTCH_*` vars in Stage 3.
+- **Risk:** `HIGH` — every Bearer request hits Stytch API validation; contract unchanged (`None` → 401) but misconfiguration would block all authenticated API access.
+
+**Approach:** Force remote JWT validation (`max_token_age_seconds=0`), startup log of live/test project env, ops checklist for Railway backend `STYTCH_PROJECT_ID` + `STYTCH_SECRET` alignment with frontend `VITE_STYTCH_PUBLIC_TOKEN`. Frontend `/authenticate` handoff stays **AST-830**.
+
+---
+
 # AST-831 — Backend Stytch live-project session JWT validation
 
 - **Linear (this ticket):** [AST-831](https://linear.app/astralcareermatch/issue/AST-831/backend-stytch-live-project-session-jwt-validation-using-google-to-login-on)

@@ -1,3 +1,117 @@
+<!-- linear-archive: AST-779 archived 2026-07-22 -->
+
+## Linear archive (AST-779)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-779/error-toast-duration-click-to-copy-and-diagnostics-update-error-toast  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-770 — Update error toast  
+**Blocked by / blocks / related:** parent: AST-770
+
+### Description
+
+## What this implements
+
+Extend the shared error toast so operators have 15 seconds to read it, can click to copy a multi-line diagnostic bundle for Linear, and receive enriched error context from the API when available. Covers the Toast component, frontend diagnostic assembly (including entity context when present), and backend JSON error enrichment for UI API routes.
+
+## Acceptance criteria
+
+1. Any error toast triggered from a representative admin page and a representative candidate page remains visible for approximately **15 seconds** before dismissing.
+2. Success and info toasts still auto-dismiss on their **current** shorter schedule (unchanged).
+3. Clicking an error toast puts a multi-line string on the clipboard that includes at least the visible error message and enough request/context detail to identify where the failure occurred.
+4. When the page has a selected candidate or other entity, the copied bundle includes that identifier.
+5. When the backend returns enriched error fields (e.g. exception type, stack trace), those fields appear in the copied bundle.
+6. After click-copy, the user sees clear confirmation that copy succeeded.
+7. Error toasts are visually distinguishable as clickable before interaction.
+8. Existing toast component tests pass with updates for the new error-toast behavior.
+
+## Boundaries
+
+* Error toasts only for 15-second duration and click-to-copy; success and info unchanged.
+* Does not replace Admin Performance Monitor or add AST-538 debug-logging contract on batch paths.
+* Must not expose secrets (tokens, session values) in copied text.
+
+## Notes for planning
+
+* Primary surfaces: shared Toast component, UI API error responses, frontend error-to-toast wiring.
+* Susan approved backend enrichment when readily available plus entity identifiers in copy bundle.
+
+## Git branch (authoritative)
+
+Per `orientation` **§ Branch law**: parent `ftr/AST-770-update-error-toast`, child `sub/AST-770/AST-771-error-toast-diagnostics`. Created at **dispatch-parent**.
+
+### Comments
+
+#### radia — 2026-06-24T02:35:47.922Z
+### Plan fidelity
+
+Stages 1–4 match the combined plan: `api_errors.py` + scoped `/api/*` handler; `toastDiagnostics.ts`; Toast 15s error dismiss, click-to-copy with copied feedback (no timer reset); representative `AdminAgentPrompts` + `CandidateProfile` `readApiError` wiring. Betty manifest rows on publish ref (`test_Toast.test.tsx`, `test_api_errors.py`).
+
+### ASTRAL_CODE_RULES
+
+| Check | Result |
+|-------|--------|
+| §3.3 layer | `api_errors.py` Flask-only; frontend lib no core/data imports; `server.py` late import matches precedent |
+| §1.5 logging | Traceback in JSON 500 only — no new `app_log` / debug-contract |
+| §1.3 DRY | Shared helpers avoid duplicating format logic across pages |
+| §2.1 config | `ERROR_TOAST_DURATION_MS` named constant; success default 3000 unchanged per plan |
+| D2 silent failure | Clipboard `catch` is plan-approved no-op for blocked clipboard API |
+
+### Issues
+
+**advisory:** `server.py` `_api_uncaught_exception` — catch-all `Exception` on `/api/*` would also wrap Werkzeug `HTTPException` (404/403) as enriched 500 if a route later uses `abort()`. No `abort`/`HTTPException` in `src/ui/` today. Optional hardening when touching this file: re-raise `HTTPException` subclasses.
+
+### Doc
+
+`docs/features/foundation/ast-779-error-toast-duration-click-to-copy-and-diagnostics.md` — Radia review section @ `ae601ec` on publish ref.
+
+**Diff:** `origin/dev...origin/sub/AST-770/AST-779-error-toast-diagnostics` @ `ae601ec`
+
+#### betty — 2026-06-24T02:32:17.342Z
+**Bible shasum correction** (on publish ref @ `50ae12a` after merge-tests):
+- `docs/test-bible/frontend/components.md` — `adc57fd1183b28a11279c70aecb2525efc713b9d`
+- `docs/test-bible/ui/server.md` — `f6880aeaf1f52cd2ec7e041bd3d856dd30882360`
+
+#### betty — 2026-06-24T02:32:06.730Z
+## QA test manifest
+
+1. **Toast diagnostics (Vitest — required):**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Toast.test.tsx
+```
+Covers: 15s error dismiss default, 3s success default, click-to-copy bundle (`message:` + `route:`), copied feedback (2s restore), `.toast-error-clickable` + "Click to copy" hint.
+
+2. **API error enrichment (pytest — required):**
+```bash
+./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_errors.py -q
+```
+Covers: `error_json` / `server_error_from_exception`; `/api/*` handler returns `error`, `exception_type`, `traceback` on 500; non-`/api/` routes re-raise.
+
+**Existing coverage (no new page tests):** Representative `AdminAgentPrompts` / `CandidateProfile` error toast paths unchanged in manifest — Toast auto-context satisfies AC 3–4 for `{ text, variant: "error" }` only.
+
+**Publish:** `origin/sub/AST-770/AST-779-error-toast-diagnostics` @ `50ae12a` (`merge-tests(AST-779): origin/tests 4c2423b`)
+
+**Bible shasum on publish ref:**
+- `docs/test-bible/frontend/components.md` — `364d201adc97fc292f2bb2c432de4105a4143ad9`
+- `docs/test-bible/ui/server.md` — `3aa8385b7c1157a6b0abbd6c915c834ab769fc67`
+
+#### katherine — 2026-06-24T02:27:21.588Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-770/AST-779-error-toast-diagnostics/docs/features/foundation/ast-779-error-toast-duration-click-to-copy-and-diagnostics.md
+
+Four stages: (1) `api_errors.py` + global `/api/*` 500 enrichment, (2) `toastDiagnostics.ts` helpers + `ApiError`, (3) Toast 15s error duration + click-to-copy with route/candidate auto-context, (4) representative wiring on AdminAgentPrompts + CandidateProfile. Other pages keep `{ text, variant: "error" }` and still get longer display + clipboard route/candidate lines.
+
+**Scope:** Single-Component — shared Toast + small lib + Flask error helper; two demo pages for API diagnostics.
+
+**Conf:** high — existing Toast/api/CandidateContext patterns; backward-compatible for pages not refactored in this ticket.
+
+**Risk:** Medium — global Flask handler must stay scoped to `/api/*` and must not leak auth secrets in traceback payloads.
+
+---
+
 # AST-779 — Error toast duration, click-to-copy, and diagnostics (Update error toast)
 
 - **Linear (this ticket):** [AST-779](https://linear.app/astralcareermatch/issue/AST-779/error-toast-duration-click-to-copy-and-diagnostics-update-error-toast)

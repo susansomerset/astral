@@ -1,3 +1,141 @@
+<!-- linear-archive: AST-718 archived 2026-07-22 -->
+
+## Linear archive (AST-718)
+
+**Archived:** 2026-07-22  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-718/prefilter-routing-company-states-and-pjl-url-hydration-find-job-page  
+**Status at archive:** Archive  
+**Project:** Astral Roster  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-716 — find_job_page logic confirmation  
+**Blocked by / blocks / related:** parent: AST-716; blocks: AST-719
+
+### Description
+
+## What this implements
+
+Add company states and transitions for the decomposed PJL discovery path (including NO_PREFILTER_JOBLISTS). After homepage prefilter, route companies by dealbreaker F vs empty PJL list vs pass. Hydrate prefilter link indices into persisted possible_joblist_links as normalized URLs via normalize_link() in utils/formatting.py; use the ledger for dedupe. Ensure PREFILTER_PASSED replaces TO_WATCH on this path with job_site unset until list confirmation.
+
+## Acceptance criteria
+
+1. After prefilter on the in-scope watch path: empty PJL + no dealbreaker **F** → `NO_PREFILTER_JOBLISTS`; dealbreaker **F** → `PREFILTER_FAILED`; non-empty PJL + pass → `PREFILTER_PASSED` with `possible_joblist_links` populated as hydrated normalized URLs.
+
+## Boundaries
+
+Does not implement fetch_job_pages scrape batch, select_job_page dispatch entry changes, or parse_job_list DOM reload — sibling tickets. Does not change prefilter rubric semantics (AST-507/697). Does not regress verified job_site path (AST-673).
+
+## Notes for planning
+
+Hedy domain: [roster.py](<http://roster.py>), [config.py](<http://config.py>), utils/formatting.py. Reuse AST-507 prefilter persistence and AST-697 link decode. Plan must cite existing helpers — no parallel state modules.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/AST-716-find-job-page-logic-confirmation`, child `sub/AST-716/<slug>` at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-06-18T01:36:14.446Z
+**Diff:** `origin/dev...origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration` @ `81891fc`
+
+**Plan doc (review section):** https://github.com/susansomerset/astral/blob/sub/AST-716/prefilter-routing-and-pjl-url-hydration/docs/features/roster/ast-718-prefilter-routing-company-states-and-pjl-url-hydration.md#radia-review-2026-06-18
+
+### fix-now (§1.5.1 / AST-538)
+
+- **`roster._apply_prefilter_decoded_company_outcome` (~1153–1163)** + **`_run_batch_company_prefilter` (~1441–1455):** batch `debug=True` emits **two** `debug_index` headers per company — helper hardcodes `index=1/total=1` while the batch loop already logs correct `job_idx/total`. Plan Stage 4 asked to reuse batch position on the routing line. Thread `debug_index`/`debug_total` into the helper from the batch loop (monolithic keeps `1/1`); drop or merge the duplicate batch-loop header so one index + `debug_detail` routing line per item.
+
+### advisory
+
+- **`_has_dealbreaker_f`:** duplicates `_render_pass_fail` F/conf≥2 already covered by `verdict_state == cfg["fail_state"]` — harmless; plan-mandated explicit check.
+- **`_company_on_decomposed_pjl_path`:** monolithic `prefilter_company` always decomposed because `cfg["input_state"]` is `HOMEPAGE_READY` (post AST-702). Legacy `TO_WATCH` only via helper with cleared `input_state` — matches plan; legacy test covers it.
+
+### sign-off
+
+Stages 1–3 routing/config/hydration look correct; Betty manifest aligns. One AST-538 batch-debug fix before merge.
+
+#### betty — 2026-06-18T01:32:18.461Z
+**Bible shasum** (`origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`):
+- `docs/test-bible/core/roster.md` `3d3b630469f85c6a58a33b842c4ea8fcef0a6b4a87750c04142f4644b245f479`
+- `docs/test-bible/utils/config.md` `48e2d0e1be32dc1ecd6fc1804a55041f86b3cc19837eae7c1cf3dc49d11663fc`
+- `docs/test-bible/utils/formatting.md` `d5470c937028be34ee4fe3442c9ba270339c6d00877e8810372ce21c4f4be84d`
+
+#### betty — 2026-06-18T01:32:10.592Z
+## QA test manifest (AST-718)
+
+**Publish ref:** `origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration` @ `2736a6d` (`merge-tests(AST-718): origin/tests e8600c9`)
+
+**Existing coverage (bible-backed):** none — new routing/hydration behavior.
+
+**Broken / obsolete (revised this pass):** inflow/batch pass mocks that assumed `PREFILTER_PASSED` without PJL indices + resolvable nav (`TestAst507EncodedPrefilter`, `TestAst603ConsultParityHydration`, `TestAst702PrefilterCompanyBatch::test_batch_pass_and_fail_counts`, `TestPrefilterCompany::{test_pass_and_fail_grades_persist_data,test_redirect_and_empty_text_paths}`). Legacy `TO_WATCH` branch retained via direct `_apply_prefilter_decoded_company_outcome` test with `input_state=""`.
+
+**Gaps (new tests):**
+
+1. `tests/component/utils/test_formatting.py::TestNormalizeLink`
+2. `tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions` (extended for `NO_PREFILTER_JOBLISTS`)
+3. `tests/component/core/test_roster.py::TestAst718PrefilterPjlRouting`
+4. `tests/component/core/test_roster.py::TestAst507EncodedPrefilter::test_legacy_empty_history_maps_pass_to_to_watch`
+5. `tests/component/core/test_roster.py::TestRosterCoverageGaps::test_prefilter_notes_returns_saved_notes_with_nav_links`
+
+**Narrowed run (test-child):**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestNormalizeLink \
+  tests/component/utils/test_config.py::TestAst507EncodedPrefilterConfig::test_company_states_and_transitions \
+  tests/component/core/test_roster.py::TestAst718PrefilterPjlRouting \
+  tests/component/core/test_roster.py::TestAst507EncodedPrefilter::test_legacy_empty_history_maps_pass_to_to_watch \
+  tests/component/core/test_roster.py::TestRosterCoverageGaps::test_prefilter_notes_returns_saved_notes_with_nav_links \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasum (`origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`):**
+- `docs/test-bible/core/roster.md` — see publish tip
+- `docs/test-bible/utils/config.md` — see publish tip
+- `docs/test-bible/utils/formatting.md` — see publish tip
+
+— Betty
+
+#### chuckles — 2026-06-18T01:23:07.398Z
+## Plan validation — APPROVED
+
+**Verdict:** APPROVED → Plan Approved
+
+**Summary:** Plan matches AST-716 AC#1 and reuse mandate (AST-507 hydration, config-driven states, `normalize_link` in `formatting.py`, no duplicate modules). Layer table respects core/utils boundaries. HOMEPAGE_READY batch path called out — good.
+
+**Findings:** none blocking.
+
+— Chuckles
+
+#### hedy — 2026-06-18T01:14:42.949Z
+Plan ready on **`origin/sub/AST-716/prefilter-routing-and-pjl-url-hydration`**.
+
+**Doc:** [ast-718-prefilter-routing-company-states-and-pjl-url-hydration.md](https://github.com/susansomerset/astral/blob/sub/AST-716/prefilter-routing-and-pjl-url-hydration/docs/features/roster/ast-718-prefilter-routing-company-states-and-pjl-url-hydration.md)
+
+Four build stages:
+1. **Config** — `NO_PREFILTER_JOBLISTS` state + transitions; `ROSTER_CONFIG` routing keys
+2. **`normalize_link()`** — pure string normalizer in `formatting.py` (Susan's formatting-layer requirement)
+3. **Routing + hydration** — `_company_on_decomposed_pjl_path` (inflow **or** `HOMEPAGE_READY`), tri-state outcome in `_apply_prefilter_decoded_company_outcome`, `possible_joblist_links` ledger dedupe, `_fetch_prefilter_notes` parity
+4. **Debug** — AST-538 Style D lines on routing outcome when `debug=True`
+
+**Self-assessment**
+- **Scope:** Single-Component — config + formatting helper + prefilter outcome chain in `roster.py`
+- **Conf:** high — reuses `_render_pass_fail` / AST-697 decode; AC #1 is explicit; added `_company_on_decomposed_pjl_path` so HOMEPAGE_READY batch is covered (not inflow-only)
+- **Risk:** Medium — wrong legacy vs decomposed path detection would mis-route before PJL scrape; legacy branch preserved explicitly
+
+#### hedy — 2026-06-18T01:13:45.428Z
+Plan: `docs/features/roster/ast-718-prefilter-routing-company-states-and-pjl-url-hydration.md`
+https://github.com/susansomerset/astral/blob/sub/AST-716/prefilter-routing-and-pjl-url-hydration/docs/features/roster/ast-718-prefilter-routing-company-states-and-pjl-url-hydration.md
+
+**Scope:** Single-Component — config + `normalize_link()` in formatting + prefilter outcome routing in `roster._apply_prefilter_decoded_company_outcome`; no dispatcher or fetch_job_pages changes.
+
+**Conf:** high — reuses AST-507/697 decode, `_render_pass_fail`, and existing `parse_enumerate_array` index→URL resolution; AC maps 1:1 to explicit routing branches.
+
+**Risk:** Medium — mis-routing empty PJL vs pass would mis-classify inflow companies before scrape; dual-write of `possible_job_links` indices preserves monolithic locate until AST-719.
+
+---
+
 # AST-718 — Prefilter routing, company states, and PJL URL hydration
 
 **Linear:** [AST-718 — Prefilter routing, company states, and PJL URL hydration (find_job_page logic confirmation)](https://linear.app/astralcareermatch/issue/AST-718/prefilter-routing-company-states-and-pjl-url-hydration-find-job-page-logic-confirmation)
