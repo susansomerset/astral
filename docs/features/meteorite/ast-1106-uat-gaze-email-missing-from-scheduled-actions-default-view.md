@@ -160,3 +160,15 @@ After AST-1087 UAT, the shared null-`candidate_id` `gaze_email` dispatch row is 
 - **§3.3 imports:** ui←utils only for the helper; no new data/external imports in UI.
 - **in-scope-only:** No Gmail / Ruth / runner / fake candidate_id / removing Avail default.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`
+**Tip:** `ee05c771`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ea8c8665` | ADMIN_CONFIG always-visible under Avail gt0 |
+| 2 | `31f34265` | list_dtasks stamps `always_visible_under_avail_gt0` |
+| 3 | `7c32fd19` | SA Avail gt0 keeps API always-visible rows |
+| 4 | `ee05c771` | gaze_email agent_task catalog + AST-756 fixture |
