@@ -174,3 +174,19 @@ Four global-per-`task_key` columns on `agent_task`: `task_group_order`, `task_gr
 
 **AST-1037** narrowed run: see **`docs/test-bible/utils/config.md`** § AST-1037.
 
+### AST-1113 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
+
+Idempotent `_apply_ast1113_craft_run_next_chain_migration` (wired from `_ensure_agent_task_schema` after AST-834) confirm/corrects craft `run_next` succession; skips missing rows (no ghost inserts). Admin JSON aligned on tip.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Correct / idempotent / skip-missing | `src/data/database.py` | **`TestAst1113CraftRunNextChainMigration`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+

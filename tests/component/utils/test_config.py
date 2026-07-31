@@ -724,6 +724,16 @@ class TestAst1112ResumeHopTaskKeysShadowDeleted:
         assert cfg.legacy_build_artifacts_hop("BUILD_ARTIFACTS.not_a_task") is None
 
 
+class TestAst1113CraftTaskKeysShadowDeleted:
+    """AST-1113: craft_task_keys list gone; singular craft_task_key entry only."""
+
+    def test_requested_artifacts_entry_key_only(self) -> None:
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert "craft_task_keys" not in arts
+        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert arts["craft_task_key"] in cfg.TASK_CONFIG
+
+
 class TestAst848DispatchHopLabels:
     """AST-848: runtime dispatch hop labels + terminal graduation map."""
 
@@ -2087,8 +2097,10 @@ class TestAst972CandidateStageDispatch:
         assert "craft_resume_base" in cfg.TASK_CONFIG
         assert resume["task_key"] in cfg.TASK_CONFIG
         assert arts["task_key"] in cfg.TASK_CONFIG
-        for k in arts["craft_task_keys"]:
-            assert k in cfg.TASK_CONFIG
+        # AST-1113: singular entry key — hop order is agent_task.run_next, not craft_task_keys.
+        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert "craft_task_keys" not in arts
+        assert arts["craft_task_key"] in cfg.TASK_CONFIG
 
     def test_claim_states_include_retry_companions(self) -> None:
         assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [

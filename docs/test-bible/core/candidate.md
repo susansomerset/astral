@@ -252,6 +252,20 @@ Wire **`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`** claim workers (ready / retry
 ```
 
 
+### AST-1113 · AST-1109
+
+**Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
+
+Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/data/database/agent_tasks.md`** AST-1113. Candidate walk: `run_requested_artifacts_dispatch` uses singular `craft_task_key` + `_current_agent_task_run_next` with `suppress_run_next=True` per hop; UI generate also suppresses auto-recurse.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifacts dispatch walk / mid-fail | `src/core/candidate.py` | revised **`TestAst972RequestedStageDispatch`** |
+
+**Broken / obsolete (Betty revision):** **`test_artifacts_dispatch_success_runs_all_crafts`** reading `craft_task_keys`.
+
+
+
 ### AST-973 · AST-871
 
 Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch trigger remap; reap-due purge; consumer fixture sweep off retired four-step names.
