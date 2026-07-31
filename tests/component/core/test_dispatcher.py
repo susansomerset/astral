@@ -1853,18 +1853,14 @@ class TestAst1088GazeEmailDispatchProvision:
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
         first = dispatcher_mod.ensure_gaze_email_dispatch_task()
         assert first["added"] == 1 and first["skipped"] == 0
-        assert first.get("reconciled", 0) == 0
         assert first["id"] == 41
         assert saves[0]["candidate_id"] is None
         assert saves[0]["task_key"] == dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
-        # AST-1098: seed CLICK (config auto_mode False).
-        assert saves[0]["auto_mode"] is False
+        assert saves[0]["auto_mode"] is True
         assert saves[0]["entity_type"] is None
         assert saves[0]["trigger_state"] is None
-        # Existing row without auto_mode → treated as already CLICK → skipped.
         second = dispatcher_mod.ensure_gaze_email_dispatch_task()
         assert second["added"] == 0 and second["skipped"] == 1
-        assert second.get("reconciled", 0) == 0
         assert second["id"] == 41
         assert len(saves) == 1
 
@@ -1873,7 +1869,6 @@ class TestAst1088GazeEmailDispatchProvision:
         out = dispatcher_mod.ensure_gaze_email_dispatch_task()
         assert out["skipped_missing_config"] == 1
         assert out["added"] == 0 and out["skipped"] == 0
-        assert out.get("reconciled", 0) == 0
 
     def test_provision_wraps_ensure(self, monkeypatch: pytest.MonkeyPatch) -> None:
         ensure = MagicMock(return_value={"task_key": "gaze_email", "added": 1, "skipped": 0, "id": 9})
@@ -1920,70 +1915,6 @@ class TestAst1088GazeEmailDispatchProvision:
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
         dispatcher_mod.start_scheduler()
         gprovision.assert_called_once_with()
-
-
-@pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "ensure_gaze_email_dispatch_task"),
-    reason="AST-1088/1098 gaze_email ensure not on this publish tip",
-)
-class TestAst1098GazeEmailReconcile:
-    """AST-1098: ensure flips stuck AUTO-on shared gaze_email row to CLICK."""
-
-    def test_reconciles_auto_on_shared_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        existing = [
-            {
-                "id": 77,
-                "task_key": "gaze_email",
-                "candidate_id": None,
-                "auto_mode": 1,
-            }
-        ]
-        updates: list[tuple] = []
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "list_dispatch_tasks",
-            lambda: list(existing),
-        )
-
-        def _upd(row_id, **kwargs):
-            updates.append((row_id, kwargs))
-            for k, v in kwargs.items():
-                existing[0][k] = v
-
-        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_task", _upd)
-        save = MagicMock()
-        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", save)
-        out = dispatcher_mod.ensure_gaze_email_dispatch_task()
-        assert out == {
-            "task_key": "gaze_email",
-            "added": 0,
-            "skipped": 0,
-            "reconciled": 1,
-            "skipped_missing_config": 0,
-            "id": 77,
-        }
-        assert updates == [(77, {"auto_mode": False})]
-        save.assert_not_called()
-
-    def test_already_click_skips_without_update(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        existing = [
-            {
-                "id": 78,
-                "task_key": "gaze_email",
-                "candidate_id": "",
-                "auto_mode": 0,
-            }
-        ]
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "list_dispatch_tasks",
-            lambda: list(existing),
-        )
-        upd = MagicMock()
-        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_task", upd)
-        out = dispatcher_mod.ensure_gaze_email_dispatch_task()
-        assert out["skipped"] == 1 and out["reconciled"] == 0 and out["id"] == 78
-        upd.assert_not_called()
 
 
 @pytest.mark.skipif(

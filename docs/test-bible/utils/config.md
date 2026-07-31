@@ -1750,6 +1750,27 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+
+### AST-1101 · AST-1043 (UAT)
+
+**Parent:** [AST-1043 — Slack Bot Agent](https://linear.app/astralcareermatch/issue/AST-1043/slack-bot-agent). **Publish:** `origin/sub/AST-1043/AST-1101-uat-channel-at-estelle-no-hear-evidence`.
+
+`CONTACT_CONFIG["hear_ack_reply_text"]` — fallback Slack copy when accept succeeds but Estelle turn does not post. Core hear-ack / listen re-read: **`docs/test-bible/core/contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| hear_ack_reply_text | `src/utils/config.py` | **`TestAst1101HearAckConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG key.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1101HearAckConfig \
+  -q
+```
+
 ### AST-1098 · AST-1093
 
 **Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.

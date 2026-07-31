@@ -53,7 +53,6 @@ _context_cache: "OrderedDict[Tuple[str, str], Dict[str, Any]]" = OrderedDict()
 _context_lock = threading.Lock()
 
 _TEXT_DEBUG_MAX = 200
-_listen_hydrated = False
 
 
 def load_slack_conversation_context(
@@ -238,8 +237,11 @@ def _context_cache_put(key: Tuple[str, str], entry: Dict[str, Any]) -> None:
 
 
 def slack_listen_enabled() -> bool:
-    """Return Contact listen flag (durable override under db_dir, else CONTACT_CONFIG default)."""
-    _hydrate_listen_state()
+    """Return Contact listen flag (durable file under db_dir is SoT when present)."""
+    # Re-read every call — sticky once-hydrate left listen stuck off after Admin toggle (AST-1101).
+    loaded = load_contact_listen_enabled()
+    if loaded is not None:
+        CONTACT_CONFIG["listen_enabled"] = loaded
     return bool(CONTACT_CONFIG["listen_enabled"])
 
 
@@ -277,14 +279,12 @@ def contact_is_production_deploy() -> bool:
 
 def set_slack_listen_enabled(enabled: bool, *, debug: bool = False) -> bool:
     """Persist + apply listen flag for this deploy environment. Returns the stored bool."""
-    global _listen_hydrated
     if debug:
         logger.set_debug_flag(True)
     if not isinstance(enabled, bool):
         raise TypeError("enabled must be bool")
     save_contact_listen_enabled(enabled)
     CONTACT_CONFIG["listen_enabled"] = enabled
-    _listen_hydrated = True
     if debug:
         logger.debug_index(
             func="contact.set_slack_listen_enabled",
@@ -456,17 +456,6 @@ def run_contact_skill(
         "astral_candidate_id": cid,
         "paths_written": paths_written,
     }
-
-
-def _hydrate_listen_state() -> None:
-    """Load durable listen override into CONTACT_CONFIG once per process."""
-    global _listen_hydrated
-    if _listen_hydrated:
-        return
-    loaded = load_contact_listen_enabled()
-    if loaded is not None:
-        CONTACT_CONFIG["listen_enabled"] = loaded
-    _listen_hydrated = True
 
 
 def _nest_dotted_path(path: str, value: Any) -> Dict[str, Any]:
@@ -1005,6 +994,50 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         except Exception as exc:
             log.error("contact estelle turn failed: %s", exc, exc_info=True)
             result["estelle_turn"] = {"ok": False, "error": str(exc)}
+        # AST-1101: hear-ack when Estelle turn did not successfully post to Slack.
+        turn_out = result.get("estelle_turn")
+        slack_post = turn_out.get("slack_post") if isinstance(turn_out, dict) else None
+        posted = isinstance(slack_post, dict) and slack_post.get("ok") is True
+        if not posted:
+            try:
+                outbound = format_contact_reply_text(
+                    str(CONTACT_CONFIG["hear_ack_reply_text"])
+                )
+                reply_thread_ts = event.get("thread_ts")
+                if not reply_thread_ts and isinstance(msg_ts, str):
+                    reply_thread_ts = msg_ts
+                result["hear_ack_post"] = contact_post_message(
+                    channel=channel,
+                    text=outbound,
+                    thread_ts=reply_thread_ts,
+                    debug=debug,
+                )
+                if debug:
+                    preview = (
+                        outbound
+                        if len(outbound) <= _TEXT_DEBUG_MAX
+                        else outbound[:_TEXT_DEBUG_MAX] + "…"
+                    )
+                    log.debug_index(
+                        func="contact.handle_slack_event",
+                        index=1,
+                        total=1,
+                        identifier=event_id,
+                        outcome="hear_ack_posted",
+                    )
+                    log.debug_detail(f"hear_ack outbound={preview!r}")
+            except Exception as exc:
+                log.error("contact hear_ack post failed: %s", exc, exc_info=True)
+                result["hear_ack_post"] = {"ok": False, "error": str(exc)}
+                if debug:
+                    log.debug_index(
+                        func="contact.handle_slack_event",
+                        index=1,
+                        total=1,
+                        identifier=event_id,
+                        outcome="hear_ack_failed",
+                    )
+                    log.debug_detail(f"hear_ack error={exc!r}")
     if debug:
         preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
         log.debug_index(
@@ -1019,6 +1052,16 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
             f"channel={channel!r} text={preview!r}"
         )
     return result
+
+
+def _run_handle_slack_event_background(payload: dict, debug: bool = False) -> None:
+    """Background Events worker — log failures; never raise into the ack path."""
+    try:
+        handle_slack_event(payload, debug=debug)
+    except Exception as exc:
+        get_logger(__name__).error(
+            "contact handle_slack_event background failed: %s", exc, exc_info=True
+        )
 
 
 def receive_slack_events_http(
@@ -1085,9 +1128,8 @@ def receive_slack_events_http(
 
     # Ack immediately; process off the request thread (Slack ~3s window).
     threading.Thread(
-        target=handle_slack_event,
-        args=(payload,),
-        kwargs={"debug": debug},
+        target=_run_handle_slack_event_background,
+        args=(payload, debug),
         daemon=True,
     ).start()
     if debug:

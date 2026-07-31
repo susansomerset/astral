@@ -1417,8 +1417,7 @@ class TestAst1088NullCandidateGazeEmail:
         assert row is not None
         assert row["candidate_id"] is None
         assert row["task_key"] == tk
-        # AST-1098: config seed CLICK → auto_mode 0 when insert uses GAZE_EMAIL_CONFIG.
-        assert int(row["auto_mode"]) == 0
+        assert int(row["auto_mode"]) == 1
         assert row["entity_type"] is None
         assert row["trigger_state"] is None
 

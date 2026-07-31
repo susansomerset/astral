@@ -3324,6 +3324,16 @@ class TestAst1089ParseMeteoriteEmailConfig:
 
 
 # Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
+
+# Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).
+class TestAst1101HearAckConfig:
+    """AST-1101: CONTACT_CONFIG hear_ack_reply_text non-empty."""
+
+    def test_hear_ack_reply_text(self) -> None:
+        text = cfg.CONTACT_CONFIG["hear_ack_reply_text"]
+        assert isinstance(text, str) and text.strip()
+
+
 class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"

@@ -305,24 +305,3 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   -q
 ```
 
-### AST-1098 · AST-1093
-
-**Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
-
-`ensure_gaze_email_dispatch_task` inserts with config CLICK; if the shared null-candidate row is AUTO-on, `update_dispatch_task(..., auto_mode=False)` and return `reconciled: 1`. Config/statute: **`docs/test-bible/utils/config.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Reconcile AUTO→CLICK; insert CLICK | `src/core/dispatcher.py` | **`TestAst1098GazeEmailReconcile`**; revised **`TestAst1088GazeEmailDispatchProvision`** |
-
-**Broken / obsolete:** AST-1088 ensure assert `auto_mode is True` — seed now False; return shape gains `reconciled`.
-
-**Integration:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_dispatcher.py::TestAst1098GazeEmailReconcile \
-  tests/component/core/test_dispatcher.py::TestAst1088GazeEmailDispatchProvision \
-  -q
-```
-
