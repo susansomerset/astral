@@ -4208,6 +4208,13 @@ DATA_SHAPES = {
                 {"key": "education_certifications", "label": "Education & Certifications", "type": "str"},
                 {"key": "technical_skills", "label": "Technical Skills", "type": "str"},
             ],
+            # AST-1116: ArtifactEditor fixed tabs for JAR Cover Letter (shapes_key=cover_letter).
+            # Keys match BUILD_CONFIG["artifact_shapes"]["cover_letter"] + normalize_cover_letter_artifact.
+            "cover_letter": [
+                {"key": "Subject", "label": "Subject", "type": "str"},
+                {"key": "Letter", "label": "Letter", "type": "str"},
+                {"key": "signature", "label": "Signature", "type": "str"},
+            ],
         },
     },
     "companies": {
