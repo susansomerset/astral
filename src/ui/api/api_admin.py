@@ -944,15 +944,8 @@ def dispatch_task_keys():
         if k in DISPATCH_RETIRED_TASK_KEYS:
             continue
         if k not in seen:
-            seen[k] = {
-                "entity_type": (r.get("entity_type") or "") or "",
-                "trigger_state": (r.get("trigger_state") or "") or "",
-                "task_group_order": "",
-                "task_group_name": "",
-                "task_seq": None,
-                "task_name": "",
-                "is_scored": dispatch_claim_uses_score_floor(r.get("trigger_state")),
-            }
+            # Same grouping path as registry keys — do not wipe agent_task metadata.
+            seen[k] = _dispatch_task_key_form_meta(k)
     hidden = admin_hidden_dispatch_task_keys()
     for tk in hidden:
         seen.pop(tk, None)

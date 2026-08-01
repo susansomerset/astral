@@ -1324,7 +1324,7 @@ class TestAst955SaveDispatchTaskRegisteredKeys:
 
 
 class TestAst962SaveDispatchTaskCoverLetterDefaults:
-    """AST-962: save_dispatch_task fills CANDIDATE_REVIEW when trigger omitted."""
+    """AST-962 / AST-1108: save_dispatch_task fills BUILD_ARTIFACTS when trigger omitted."""
 
     def test_check_cover_letter_insert_without_trigger(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1332,7 +1332,7 @@ class TestAst962SaveDispatchTaskCoverLetterDefaults:
         row = db.get_dispatch_task(tid)
         assert row is not None
         assert row["task_key"] == "check_cover_letter"
-        assert row["trigger_state"] == "CANDIDATE_REVIEW"
+        assert row["trigger_state"] == "BUILD_ARTIFACTS"
         assert row["entity_type"] == "job"
 
 

@@ -1920,11 +1920,11 @@ class TestAst955RegisteredKeyDispatchAdminDefaults:
         assert d["sort_by"]
         assert d["batch_call_mode"] == 0
 
-    def test_check_cover_letter_without_override_defaults_candidate_review(self) -> None:
-        # AST-962: mid-chain cover-letter hops default Input State (was KeyError no rule).
+    def test_check_cover_letter_without_override_defaults_build_artifacts(self) -> None:
+        # AST-1108: artifact-chain claim surface is BUILD_ARTIFACTS (CANDIDATE_REVIEW is graduation output).
         d = cfg.dispatch_task_admin_defaults("check_cover_letter")
         assert d["entity_type"] == "job"
-        assert d["trigger_state"] == "CANDIDATE_REVIEW"
+        assert d["trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
         assert d["sort_by"]
         assert d["batch_call_mode"] == 0
 
@@ -1974,7 +1974,7 @@ class TestAst960DropSchedulableFrozensetInventory:
 
 
 class TestAst962CoverLetterMidHopDefaultTrigger:
-    """AST-962: cover-letter mid-hops default to CANDIDATE_REVIEW (form/Save without override)."""
+    """AST-962 / AST-1108: cover-letter hops default to BUILD_ARTIFACTS (form/Save without override)."""
 
     MID_HOPS = (
         "check_cover_letter",
@@ -1984,19 +1984,20 @@ class TestAst962CoverLetterMidHopDefaultTrigger:
 
     def test_dispatch_trigger_state_defaults(self) -> None:
         for tk in self.MID_HOPS:
-            assert cfg._dispatch_trigger_state_for_task_key(tk) == "CANDIDATE_REVIEW"
+            assert cfg._dispatch_trigger_state_for_task_key(tk) == cfg.BUILD_ARTIFACTS_BASE_STATE
 
     def test_admin_defaults_without_override(self) -> None:
         for tk in self.MID_HOPS:
             d = cfg.dispatch_task_admin_defaults(tk)
             assert d["entity_type"] == "job"
-            assert d["trigger_state"] == "CANDIDATE_REVIEW"
+            assert d["trigger_state"] == cfg.BUILD_ARTIFACTS_BASE_STATE
             assert d["sort_by"]
             assert d["batch_call_mode"] == 0
 
     def test_draft_cover_letter_and_grade_do_unchanged(self) -> None:
+        # Cover-letter half flipped to BUILD_ARTIFACTS (AST-1108); grade_do → PASSED_JD still correct.
         assert cfg.dispatch_task_admin_defaults("draft_cover_letter")["trigger_state"] == (
-            "CANDIDATE_REVIEW"
+            cfg.BUILD_ARTIFACTS_BASE_STATE
         )
         assert cfg.dispatch_task_admin_defaults("grade_do")["trigger_state"] == "PASSED_JD"
 

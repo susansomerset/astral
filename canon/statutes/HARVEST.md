@@ -30,12 +30,19 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `astral.patterns.coat-check-never-store-empty` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.coat-check-never-store-empty.md` |
 | create (AST-921) | `astral.patterns.render-verdict-orchestrates-consult` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.render-verdict-orchestrates-consult.md` |
 | create (AST-921) | `astral.patterns.require-auth-on-protected-endpoints` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.require-auth-on-protected-endpoints.md` |
+| create (AST-1108) | `astral.seed.agent-tables-in-repo-json` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.agent-tables-in-repo-json.md` |
+| create (AST-1108) | `astral.seed.archie-catalog-wins` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.archie-catalog-wins.md` |
+| create (AST-1108) | `astral.seed.boot-only-not-hot-path` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.boot-only-not-hot-path.md` |
+| create (AST-1108) | `astral.seed.define-approved` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.define-approved.md` |
+| create (AST-1108) | `astral.seed.operator-rows-stay-deleted` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.operator-rows-stay-deleted.md` |
+| create (AST-1108) | `astral.seed.other-via-coverage-join` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.other-via-coverage-join.md` |
 | create (AST-921) | `astral.standards.data-raises-caller-logs` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.data-raises-caller-logs.md` |
 | create (AST-921) | `astral.standards.database-header-inventory` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.database-header-inventory.md` |
 | create (AST-921) | `astral.standards.debug-contract-gated` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.debug-contract-gated.md` |
 | create (AST-921) | `astral.standards.dry-and-focused-functions` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.dry-and-focused-functions.md` |
 | create (AST-921) | `astral.standards.in-scope-only` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.in-scope-only.md` |
 | create (AST-921) | `astral.standards.logging-via-utils` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.logging-via-utils.md` |
+| create (AST-1108) | `astral.standards.names-not-ticket-ids` | scoped | judgment | AST-1108 / seed discussion | `astral/standards/astral.standards.names-not-ticket-ids.md` |
 | create (AST-921) | `astral.standards.no-cross-contamination` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.no-cross-contamination.md` |
 | create (AST-921) | `astral.standards.no-hardcoded-sets` | scoped | ci | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.no-hardcoded-sets.md` |
 | create (AST-921) | `astral.standards.public-then-helpers` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/standards/astral.standards.public-then-helpers.md` |
@@ -65,7 +72,7 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `orch.roles.engineer-assignee-through-resolve` | universal | judgment | docs/ASTRAL_TEAM_WORKFLOW.md | `orchestration/roles/orch.roles.engineer-assignee-through-resolve.md` |
 | create (AST-921) | `orch.roles.pre-commit-path-bans` | universal | hook | docs/ASTRAL_GIT_WORKFLOW.md | `orchestration/roles/orch.roles.pre-commit-path-bans.md` |
 
-**Counts:** 51 created by AST-921; 5 already-landed (AST-920); 1 created by AST-1098; 1 created by AST-1110; 58 total active mappings in this register.
+**Counts:** 51 created by AST-921; 5 already-landed (AST-920); 1 created by AST-1098; 7 created by AST-1108; 1 created by AST-1110; 65 total active mappings in this register.
 
 ## Narrative leftovers
 

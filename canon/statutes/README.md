@@ -61,12 +61,19 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.patterns.coat-check-never-store-empty` | scoped | judgment | `astral/patterns/astral.patterns.coat-check-never-store-empty.md` |
 | `astral.patterns.render-verdict-orchestrates-consult` | scoped | judgment | `astral/patterns/astral.patterns.render-verdict-orchestrates-consult.md` |
 | `astral.patterns.require-auth-on-protected-endpoints` | scoped | judgment | `astral/patterns/astral.patterns.require-auth-on-protected-endpoints.md` |
+| `astral.seed.agent-tables-in-repo-json` | scoped | judgment | `astral/seed/astral.seed.agent-tables-in-repo-json.md` |
+| `astral.seed.archie-catalog-wins` | scoped | judgment | `astral/seed/astral.seed.archie-catalog-wins.md` |
+| `astral.seed.boot-only-not-hot-path` | scoped | judgment | `astral/seed/astral.seed.boot-only-not-hot-path.md` |
+| `astral.seed.define-approved` | scoped | judgment | `astral/seed/astral.seed.define-approved.md` |
+| `astral.seed.operator-rows-stay-deleted` | scoped | judgment | `astral/seed/astral.seed.operator-rows-stay-deleted.md` |
+| `astral.seed.other-via-coverage-join` | scoped | judgment | `astral/seed/astral.seed.other-via-coverage-join.md` |
 | `astral.standards.data-raises-caller-logs` | scoped | judgment | `astral/standards/astral.standards.data-raises-caller-logs.md` |
 | `astral.standards.database-header-inventory` | scoped | judgment | `astral/standards/astral.standards.database-header-inventory.md` |
 | `astral.standards.debug-contract-gated` | scoped | judgment | `astral/standards/astral.standards.debug-contract-gated.md` |
 | `astral.standards.dry-and-focused-functions` | scoped | judgment | `astral/standards/astral.standards.dry-and-focused-functions.md` |
 | `astral.standards.in-scope-only` | scoped | judgment | `astral/standards/astral.standards.in-scope-only.md` |
 | `astral.standards.logging-via-utils` | scoped | judgment | `astral/standards/astral.standards.logging-via-utils.md` |
+| `astral.standards.names-not-ticket-ids` | scoped | judgment | `astral/standards/astral.standards.names-not-ticket-ids.md` |
 | `astral.standards.no-cross-contamination` | scoped | judgment | `astral/standards/astral.standards.no-cross-contamination.md` |
 | `astral.standards.no-hardcoded-sets` | scoped | ci | `astral/standards/astral.standards.no-hardcoded-sets.md` |
 | `astral.standards.public-then-helpers` | scoped | judgment | `astral/standards/astral.standards.public-then-helpers.md` |
@@ -96,4 +103,4 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `orch.roles.engineer-assignee-through-resolve` | universal | judgment | `orchestration/roles/orch.roles.engineer-assignee-through-resolve.md` |
 | `orch.roles.pre-commit-path-bans` | universal | hook | `orchestration/roles/orch.roles.pre-commit-path-bans.md` |
 
-Full harvest crosswalk and narrative leftovers: [HARVEST.md](HARVEST.md). **58** active statutes in corpus.
+Full harvest crosswalk and narrative leftovers: [HARVEST.md](HARVEST.md). **65** active statutes in corpus.

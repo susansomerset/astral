@@ -40,6 +40,7 @@ Config sections:
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
   GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
+  SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
@@ -195,7 +196,8 @@ TASK_CONFIG = {
         "requires_candidate_key": False,
         "trigger_state": None,
     },
-    # BOOTSTRAP CANDIDATE CONTEXT - Estelle 3
+    # DECOMMISSIONED (AST-1108): superseded by intake chat; keep key for legacy callers/tests.
+    # Do not re-seed into data/admin/agent_task.json.
     "bootstrap_candidate_context": {
         "response_schema": {
             "bio_summary": {"type": "str", "required": True},
@@ -2202,7 +2204,7 @@ GAZE_EMAIL_CONFIG = {
     "auto_mode": False,
     "min_count": 1,
     "batch_size": 1,
-    "freq_hrs": 0,
+    "freq_hrs": 0.1,
     # Mailbox poller — no entity claim queue on the dispatch_task row.
     "entity_type": None,
     "trigger_state": None,
@@ -2324,6 +2326,103 @@ assert all(
     for overlay in METEORITE_GDL_OUTCOME_BY_TASK.values()
     for st in overlay.values()
 )
+
+# ---------------------------------------------------------------------------
+# SEED_CONFIG: SQL-first seed register (AST-1108).
+# Keys: "<table>-<seed-purpose>". Each value is a tuple of denormalized INSERT
+# statements — one per seeded row shape, literals inlined, idempotent via
+# WHERE NOT EXISTS (no separate coverage prelude). Not executed yet; Python
+# catalogs still drive provision until a later wire-up step.
+# ---------------------------------------------------------------------------
+SEED_CONFIG = {
+    # candidate-stage intentionally omitted — intake still larval; add later when ready (AST-1108).
+    "dispatch_task-meteorite": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'qualify_meteorite', 'job', "
+        "'METEORITE_NEW', 'updated_at', 1, 0, 1, 30, 0, NULL "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'qualify_meteorite' "
+        "    AND d.trigger_state = 'METEORITE_NEW'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'evaluate_jd', 'job', "
+        "'METEORITE_QUALIFIED', 'updated_at', 1, 0, 1, 10, 0, NULL "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'evaluate_jd' "
+        "    AND d.trigger_state = 'METEORITE_QUALIFIED'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'grade_do', 'job', "
+        "'METEORITE_PASSED_JD', 'latest_score', 1, 0, 1, 10, 0, 0.0 "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'grade_do' "
+        "    AND d.trigger_state = 'METEORITE_PASSED_JD'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'grade_get', 'job', "
+        "'METEORITE_PASSED_DO', 'latest_score', 1, 0, 1, 10, 0, 0.0 "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'grade_get' "
+        "    AND d.trigger_state = 'METEORITE_PASSED_DO'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'meteorite_like', 'job', "
+        "'METEORITE_PASSED_GET', 'latest_score', 1, 0, 1, 10, 0, 0.0 "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'meteorite_like' "
+        "    AND d.trigger_state = 'METEORITE_PASSED_GET'"
+        ")",
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT c.candidate_id, 'meteorite_upshot', 'job', "
+        "'METEORITE_PASSED_LIKE', 'latest_score', 0, 0, 1, 1, 0, 0.0 "
+        "FROM candidate c "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task d "
+        "  WHERE d.candidate_id = c.candidate_id "
+        "    AND d.task_key = 'meteorite_upshot' "
+        "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
+        ")",
+    ),
+    "dispatch_task-gaze-email": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'gaze_email', NULL, NULL, NULL, "
+        "0, 0.1, 1, 1, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task "
+        "  WHERE task_key = 'gaze_email' "
+        "    AND (candidate_id IS NULL OR TRIM(candidate_id) = '')"
+        ")",
+    ),
+}
 
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
@@ -2588,11 +2687,15 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
     _tc = TASK_CONFIG.get(task_key) or {}
     if _tc.get("task_type") == "CHAIN" and _tc.get("error_state") == ERROR_BUILD_ARTIFACTS_STATE:
         return BUILD_ARTIFACTS_BASE_STATE
-    if task_key == "draft_cover_letter":
-        return "CANDIDATE_REVIEW"
-    # Mid-chain cover-letter hops: same Input State as draft (AST-962 form/Save defaults).
-    if task_key in ("check_cover_letter", "finalize_cover_letter", "propose_application_responses"):
-        return "CANDIDATE_REVIEW"
+    # Cover-letter hops share the artifact chain's claim surface. CANDIDATE_REVIEW is the
+    # graduation *output* (DISPATCH_CHAIN_TERMINAL_GRADUATION), never the input.
+    if task_key in (
+        "draft_cover_letter",
+        "check_cover_letter",
+        "finalize_cover_letter",
+        "propose_application_responses",
+    ):
+        return BUILD_ARTIFACTS_BASE_STATE
     cfg = TASK_CONFIG.get(task_key)
     if cfg and cfg.get("trigger_state") is not None:
         return str(cfg["trigger_state"])
