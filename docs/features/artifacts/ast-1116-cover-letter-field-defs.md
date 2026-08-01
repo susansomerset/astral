@@ -90,8 +90,33 @@ JAR Cover Letter tab passes `shapes_key: "cover_letter"` into `ArtifactEditor`, 
 | `astral.batch.entity-agent-responses-latest-only` | Pin remains id; body still from `agent_data` |
 | `astral.layers.ui-config-driven-business-logic` | Tab still driven by config `shapes_key` |
 
-## Review (build)
+## Review
 
-**Branch:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`  
-**Tip:** `e550a2c8`  
-**Built:** Stages 1–2 — `DATA_SHAPES.candidates.detail.cover_letter` field defs; display-hydrate normalize via `normalize_cover_letter_artifact`. Tests/bible deferred to Betty.
+**Branch:** `sub/AST-1091/AST-1116-cover-letter-field-defs`  
+**Code:** `e550a2c8`  
+**Publish tip reviewed:** `0b5724a6` (`merge-tests(AST-1116)`)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1116  
+**Overall:** CLEAN
+
+### What’s solid
+- `DATA_SHAPES.candidates.detail.cover_letter` Subject/Letter/signature matches ArtifactEditor `shapes_key` and `normalize_cover_letter_artifact`.
+- Display hydrate normalizes cover dict after pin resolve; overlay only (no save); pin id contract untouched.
+- Tab still `shapes_key: cover_letter`; wrong-fix paths (swallow shapeError / clear shapes_key) not taken.
+- Betty one-SHA merge-tests; engineer stayed off tests/bible.
+
+### Issues
+None fix-now / discuss.
+
+### Recommended actions
+- Engineer: resolve-child → User Testing (no product fixes).
+
+### Notes
+- FIX-UAT child. `no plan-rubric verdict attached` — not a block.
+- Statute applies_when + product judgment used AST-1116 commit change set. Active statutes = 65.
+
+context_tokens≈38000
+
+— Radia
