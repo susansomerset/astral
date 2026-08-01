@@ -98,3 +98,9 @@ def serve_react(path):
 | `astral.standards.in-scope-only` | Print HTML delivery path only |
 | `astral.batch.entity-agent-responses-latest-only` | Pins remain ids; bodies still from agent_data via builder |
 | `astral.patterns.coat-check-never-store-empty` | No new job_data writes |
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-1091/AST-1117-print-html-blobs`  
+**Tip:** `c2788bfd`  
+**Built:** Stages 1–2 — Vite `/candidate` proxy; Flask SPA catch-all refuses `candidate/*`. Stage 3 — builder pin resolve already present (no code). Tests/bible deferred to Betty.
