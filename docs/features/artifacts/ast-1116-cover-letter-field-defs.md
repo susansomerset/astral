@@ -89,3 +89,9 @@ JAR Cover Letter tab passes `shapes_key: "cover_letter"` into `ArtifactEditor`, 
 | `astral.standards.in-scope-only` | Cover Letter field defs + hydrate normalize only |
 | `astral.batch.entity-agent-responses-latest-only` | Pin remains id; body still from `agent_data` |
 | `astral.layers.ui-config-driven-business-logic` | Tab still driven by config `shapes_key` |
+
+## Review (build)
+
+**Branch:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`  
+**Tip:** `e550a2c8`  
+**Built:** Stages 1–2 — `DATA_SHAPES.candidates.detail.cover_letter` field defs; display-hydrate normalize via `normalize_cover_letter_artifact`. Tests/bible deferred to Betty.
