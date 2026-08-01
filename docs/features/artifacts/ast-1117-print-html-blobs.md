@@ -130,3 +130,11 @@ None fix-now / discuss.
 context_tokens≈36000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-01  
+**Publish tip before resolve:** `56841f9d` (Radia `docs(AST-1117)` on merge-tests `dcab534f` / code `c2788bfd`)
+
+- **fix-now:** none — Radia overall CLEAN.
+- **discuss / advisory:** none.
