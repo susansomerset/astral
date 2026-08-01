@@ -15,7 +15,7 @@ _repo_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_repo_root))
 sys.path.insert(0, str(_repo_root / "src"))
 
-from flask import Flask, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
 from src.core.auth_bootstrap import wire_stytch_token_authenticator
 
@@ -110,7 +110,10 @@ def _warn_stale_frontend_dist() -> None:
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
-    """Catch-all: serve React static assets (auth enforced on /api/* routes)."""
+    """Catch-all: React static assets. Never steal /candidate/* HTML routes."""
+    # Blueprint should match first; if not, do not serve SPA (would redirect to /jobs/recommended).
+    if path == "candidate" or path.startswith("candidate/"):
+        return jsonify({"error": "Not found"}), 404
     if (_DIST / path).is_file():
         return send_from_directory(_DIST, path)
     return send_from_directory(_DIST, "index.html")
