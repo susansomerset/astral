@@ -89,3 +89,48 @@ class TestWarnStaleFrontendDist:
         server_mod._DIST = dist
         server_mod._warn_stale_frontend_dist()
         assert capsys.readouterr().err == ""
+
+
+class TestAst1117CandidateSpaGuard:
+    """AST-1117: SPA catch-all must not serve index.html for /candidate/*."""
+
+    def test_candidate_prefix_returns_404_json_not_spa(
+        self, server_client: FlaskClient
+    ) -> None:
+        resp = server_client.get("/candidate/not-a-real-html-route")
+        assert resp.status_code == 404
+        assert resp.is_json
+        assert resp.get_json() == {"error": "Not found"}
+        assert b"ok" not in resp.data  # not the tmp dist index.html
+
+    def test_candidate_exact_path_returns_404_json(
+        self, server_client: FlaskClient
+    ) -> None:
+        resp = server_client.get("/candidate")
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "Not found"}
+
+    def test_non_candidate_spa_fallback_still_serves_index(
+        self, server_client: FlaskClient
+    ) -> None:
+        resp = server_client.get("/jobs/recommended")
+        assert resp.status_code == 200
+        assert b"ok" in resp.data
+
+
+class TestAst1117ViteCandidateProxy:
+    """AST-1117: Vite local UAT proxies /candidate to Flask (same as /api)."""
+
+    def test_vite_config_proxies_candidate_to_flask(self) -> None:
+        from pathlib import Path
+
+        text = (
+            Path(__file__).resolve().parents[3]
+            / "src/ui/frontend/vite.config.ts"
+        ).read_text(encoding="utf-8")
+        assert "'/candidate': 'http://localhost:5001'" in text or (
+            '"/candidate": "http://localhost:5001"' in text
+        )
+        assert "'/api': 'http://localhost:5001'" in text or (
+            '"/api": "http://localhost:5001"' in text
+        )
