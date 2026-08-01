@@ -99,8 +99,34 @@ def serve_react(path):
 | `astral.batch.entity-agent-responses-latest-only` | Pins remain ids; bodies still from agent_data via builder |
 | `astral.patterns.coat-check-never-store-empty` | No new job_data writes |
 
-## Review (build)
+## Review
 
-**Branch:** `origin/sub/AST-1091/AST-1117-print-html-blobs`  
-**Tip:** `c2788bfd`  
-**Built:** Stages 1–2 — Vite `/candidate` proxy; Flask SPA catch-all refuses `candidate/*`. Stage 3 — builder pin resolve already present (no code). Tests/bible deferred to Betty.
+**Branch:** `sub/AST-1091/AST-1117-print-html-blobs`  
+**Code:** `c2788bfd`  
+**Publish tip reviewed:** `dcab534f` (`merge-tests(AST-1117)`)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1117  
+**Overall:** CLEAN
+
+### What’s solid
+- Vite proxies `/candidate` to Flask `:5001` alongside `/api` — Print `window.open` URLs stay on existing HTML routes.
+- Flask SPA catch-all returns 404 JSON for `candidate/*` instead of `index.html` (avoids `/jobs/recommended` shell).
+- `resume_html_bp` + `@require_auth` left intact; Stage 3 no builder code (AST-1100 pin resolve already present).
+- Engineer stayed off tests/bible; Betty one-SHA merge-tests.
+
+### Issues
+None fix-now / discuss.
+
+### Recommended actions
+- Engineer: resolve-child → User Testing after Linear Review Posted lands.
+
+### Notes
+- FIX-UAT child. `no plan-rubric verdict attached` at review time — not a block.
+- **Blocker at handoff:** `linear-radia` MCP unavailable in this session — Linear comment + Review Posted not posted from this run; docs() pushed. Re-run §7 when Radia MCP is back.
+- Active statutes = 65. Ticket-scoped change set used for applies_when.
+
+context_tokens≈36000
+
+— Radia
