@@ -235,3 +235,15 @@ class TestSystemNavHelpers:
         assert nav[0]["items"][0]["enabled"] is False
         nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
         assert nav_live[0]["items"][0]["enabled"] is True
+
+
+class TestAst1116ShapesCoverLetter:
+    """AST-1116: /api/shapes/candidates exposes detail.cover_letter field defs."""
+
+    def test_shapes_candidates_detail_cover_letter(
+        self, system_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = system_client.get("/api/shapes/candidates", headers=auth_headers)
+        assert resp.status_code == 200
+        cover = resp.get_json()["detail"]["cover_letter"]
+        assert [f["key"] for f in cover] == ["Subject", "Letter", "signature"]

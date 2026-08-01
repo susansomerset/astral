@@ -1977,3 +1977,25 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
+### AST-1116 · AST-1091 (UAT)
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`.
+
+`DATA_SHAPES["candidates"]["detail"]["cover_letter"]` field defs (`Subject` / `Letter` / `signature`) for ArtifactEditor `shapes_key=cover_letter`. Hydrate normalize: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cover field defs + tab shapes_key | `src/utils/config.py` | **`TestAst1116CoverLetterDataShapes`** |
+| Shapes API detail.cover_letter | `src/ui/api` shapes route | **`TestAst1116ShapesCoverLetter`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  tests/component/ui/api/test_api_system.py::TestAst1116ShapesCoverLetter \
+  -q
+```
