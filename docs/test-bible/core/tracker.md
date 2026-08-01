@@ -201,3 +201,26 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
   tests/component/core/test_tracker.py::TestAst1100ResolveHydrateJobArtifactPins \
   -q
 ```
+
+---
+
+### AST-1116 · AST-1091 (UAT)
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`.
+
+`hydrate_job_artifacts_for_display` normalizes `cover_letter` dict values via `normalize_cover_letter_artifact` (Subject/Letter/signature) after pin resolve — overlay only. Field defs: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate cover normalize | `src/core/tracker.py` | **`TestAst1116HydrateCoverLetterNormalize`** (+ revised **`TestAst1100ResolveHydrateJobArtifactPins::test_hydrate_replaces_pin_strings_leaves_legacy_dicts`**) |
+
+**Broken / obsolete:** AST-1100 hydrate assert that a partial `{"Subject": "keep"}` stays un-normalized — superseded by AST-1116 spine normalize.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1116HydrateCoverLetterNormalize \
+  tests/component/core/test_tracker.py::TestAst1100ResolveHydrateJobArtifactPins \
+  -q
+```

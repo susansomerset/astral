@@ -3427,3 +3427,21 @@ class TestAst1106AlwaysVisibleUnderAvailGt0:
         raw = cfg.ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
         assert raw[0] is cfg.GAZE_EMAIL_CONFIG["task_key"] or raw[0] == cfg.GAZE_EMAIL_CONFIG["task_key"]
 
+
+
+class TestAst1116CoverLetterDataShapes:
+    """AST-1116: DATA_SHAPES candidates.detail.cover_letter field defs for ArtifactEditor."""
+
+    def test_cover_letter_field_defs_subject_letter_signature(self) -> None:
+        fields = cfg.DATA_SHAPES["candidates"]["detail"]["cover_letter"]
+        by_key = {f["key"]: f for f in fields}
+        assert list(by_key) == ["Subject", "Letter", "signature"]
+        assert by_key["Subject"]["label"] == "Subject"
+        assert by_key["Letter"]["label"] == "Letter"
+        assert by_key["signature"]["label"] == "Signature"
+        assert all(f["type"] == "str" for f in fields)
+
+    def test_artifact_tab_still_shapes_key_cover_letter(self) -> None:
+        cover = next(t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS if t["tab_id"] == "artifact_cover")
+        assert cover["artifact_key"] == "cover_letter"
+        assert cover["shapes_key"] == "cover_letter"
