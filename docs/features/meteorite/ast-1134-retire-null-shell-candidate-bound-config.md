@@ -150,3 +150,14 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / live inbox 
 - §3.5 naming — `provision_gaze_email_dispatch_tasks` (plural) matches meteorite provision naming.
 - Statute `astral.seed.other-via-coverage-join` — coverage from every `candidate` row.
 - Statute `astral.standards.in-scope-only` — no React / runner / live Avail / Manage Email (AST-1129).
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`
+**Tip:** `f3ee8807`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `7f17ca33` | candidate-bound GAZE_EMAIL_CONFIG; empty always-visible tuple |
+| 2 | `706fb502` | `candidate.last_email_check` + require bound `candidate_id` on save |
+| 3 | `f3ee8807` | coverage-join provision; retire null shell; bound ledger cid |
