@@ -1,3 +1,127 @@
+<!-- linear-archive: AST-902 archived 2026-08-02 -->
+
+## Linear archive (AST-902)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-902/artifact-editor-surfaces-and-recovers-generated-rubric-criteria-craft  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-900 — craft get rubric did not populate the rubric content for candidate  
+**Blocked by / blocks / related:** parent: AST-900
+
+### Description
+
+## What this implements
+
+In the shared artifact editor used by rubric pages, a successful Generate must leave the generated criteria visible for review. If the user navigates away or the wait drops, returning to the page must surface a recoverable completed generation (or a clear error). Behavior must be the same across company prefilter, job list, job description, get, do, and like rubric pages.
+
+## Acceptance criteria
+
+* Generating Get Job Criteria for a candidate with an empty rubric ends with the criteria visible in the editor, and after Save they are present in the candidate's stored artifact.
+* A generation that completes on the backend can no longer vanish without a user-visible trace: the editor shows the result or an error, or the completed result is recoverable when the user returns to the page.
+* All rubric artifact pages exhibit the same corrected behavior.
+
+## Boundaries
+
+* Does not change rubric prompts, schema, or grading.
+* Does not auto-Save without user confirmation after Generate.
+* Does not own backend generate durability / root-cause documentation (Ada sibling AST-901).
+* Does not change base resume generation persist behavior beyond shared editor contracts Ada exposes.
+
+## Notes for planning
+
+* Shared UI: ArtifactEditor + craft_*_rubric pages.
+* Keep review-then-Save gate.
+* Depend on Ada sibling for any recovery API or durable completed-generation handoff.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-16T21:53:11.532Z
+[merge-child] blocked: missing plan(AST-902): on origin/sub/AST-900/AST-902-artifact-editor-recover-rubric
+
+@Katherine Johnson — add a `plan(AST-902):` commit subject on the publish tip (empty commit OK if plan blob exists), then Chuckles will re-run merge-child. Stay User Testing.
+
+— Chuckles
+
+#### radia — 2026-07-16T21:49:54.484Z
+### Radia review — findings
+
+Diff: `origin/dev`…`origin/sub/AST-900/AST-902-artifact-editor-recover-rubric` @ `a8e2e7f`. AST-902 product delta = `src/ui/frontend/src/components/ArtifactEditor.tsx` (`9433216` + `3bdef84`); backend files in the vs-`dev` diff are AST-901 (already reviewed/resolved).
+
+Plan doc: https://github.com/susansomerset/astral/blob/a8e2e7f0ea943f3d723088b9d22184bc1b63d66c/docs/features/consult/ast-902-artifact-editor-recover-rubric.md
+
+**fix-now / discuss:** Unmount auto-save bypasses the review gate — `ArtifactEditor.tsx` ~368-373 saves `tabsRef.current` on unmount whenever `dirtyRef.current` is true, with no `inReview`/`snapshot` guard. Recovery (Stage 2) and live Generate both enter review with `setDirty(true)`, so navigating away without clicking Save silently persists recovered/generated criteria into the stored artifact — contradicting this ticket's boundary ("Does not auto-Save without user confirmation after Generate") and the Stage 2 decision that leaving must not commit an unreviewed COMPLETED. `handleChange` already skips its autosave timer while `!inReview`; the unmount handler should honor the same gate. Pre-existing for the live-Generate path, but AST-902's recovery newly lands users in dirty-review, so it's in scope — confirm intended behavior with Susan if the unmount autosave is deliberate.
+
+**Advisory:** (1) Background `/pending` check toasts an error on page open for any non-404/400 non-OK (e.g. transient 500) or network error — plan-approved but noisy for a passive probe. (2) §1.3: candidate-load effect (~233-244) still inlines the criteria→tabs mapping that `criteriaToTabs` now centralizes (intentional `v_`/`g_` id split; low priority).
+
+**Solid:** All three stages match plan (mapper + empty-criteria throw, recovery `useEffect` guards/deps, AbortController + `mountedRef`, network-interrupt toast); §3.2 UI clean (no data/external, manifest-driven Generate visibility); consumes AST-901 `/pending` shape exactly; `jobPersistence`/fixed-field modes correctly skip recovery; no page-wrapper/prompt/backend scope creep.
+
+#### betty — 2026-07-16T21:44:47.742Z
+## QA test manifest — AST-902
+
+**Publish:** `origin/sub/AST-900/AST-902-artifact-editor-recover-rubric` @ `98abb27` (`merge-tests(AST-902): origin/tests a5c44de97a565be4ddc30be92a05815539266f1d`)
+
+### Manifest (run all)
+
+1. `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — full file (includes AST-902 + revised existing rows)
+   - **AST-902: empty criteria on Generate** — error toast; no review Save
+   - **AST-902: pending recovery** — `GET …/pending` loads criteria into review-then-Save
+   - **AST-902: network interrupt** — recovery-hint toast
+   - **AST-553 job persistence** — revised `jobPersistence.artifactKey`; asserts no pending fetch
+   - Existing regenerate/save + AST-645 (mocks now return pending 404)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx
+```
+
+### Existing coverage / revisions
+
+- No page-file diff → §6c routed-page line N/A (six rubric pages inherit via shared editor)
+- Backend pending contract covered by sibling **AST-901** manifest (already on ftr)
+- Revised obsolete AST-553 mock: `jobPersistence` required `artifactKey` (test was missing it)
+
+### Bible shasum on publish ref
+
+- `docs/test-bible/frontend/components.md` `d5548990185dc038be33f351ef608054439e2f39`
+
+— Betty
+
+#### chuckles — 2026-07-16T21:22:23.068Z
+## validate-plan — APPROVED
+
+**Verdict:** APPROVED → Plan Approved (assignee Katherine)
+
+### Findings
+None blocking.
+
+**Definition fidelity:** Matches AST-900 scope (delivery hardening vs UX recovery split). Boundaries respected (no prompt/schema/consult batch changes; review-then-Save kept).
+
+**Layers / config:** Files-changed stay in allowed layers. Craft rubric task set derived from existing `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (DRY). Pending stash outside `artifacts` is correct.
+
+**Acceptable notes for build:** Prefer public core helpers over importing `_clear_*` into `api_candidate`; watch `candidate`↔`dispatcher` import direction when wiring ledger fallback.
+
+— Chuckles
+
+#### katherine — 2026-07-16T21:21:18.867Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-900/AST-902-artifact-editor-recover-rubric/docs/features/consult/ast-902-artifact-editor-recover-rubric.md
+
+**Scope:** Single-Component — only `ArtifactEditor.tsx`; six craft-rubric pages inherit via the shared component.
+
+**Conf:** high — AST-901 defines `GET …/generate/<task_key>/pending`; current Generate/review/Save paths are the surfaces to wire; no prompt or grading changes.
+
+**Risk:** Medium — shared editor also serves base resume and job persistence; mitigated by `!jobPersistence && !fixedFields` recovery guards.
+
+Build stays blocked on AST-901 product tip (pending stash + recovery endpoint) before build-child; planning complete.
+
+---
+
 # Artifact editor surfaces and recovers generated rubric criteria
 
 **Parent:** [AST-900 — craft get rubric did not populate the rubric content for candidate](https://linear.app/astralcareermatch/issue/AST-900/craft-get-rubric-did-not-populate-the-rubric-content-for-candidate)
