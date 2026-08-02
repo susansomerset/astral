@@ -131,3 +131,11 @@ Skip outcomes already defined on AST-1140 (`skipped-unbound`, `skipped-not-in-in
 - **§1.3 / `pattern.ui.admin-endpoint`:** thin Flask wrapper; no business rules invented in the route beyond empty-list / type guards.
 - **§2.1:** no new config block; selected outcome vocabulary already in `GAZE_EMAIL_CONFIG` (AST-1140).
 - **§3.3:** ui → core + utils only; no data/external imports added.
+
+---
+
+## Review
+
+| Stage | Commit | Notes |
+|-------|--------|-------|
+| 1 | _(filled at publish)_ | `POST /api/admin/inbox/land-meteorite` → `run_gaze_email_selected_ids` |
