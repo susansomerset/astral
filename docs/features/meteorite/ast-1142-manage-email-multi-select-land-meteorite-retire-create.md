@@ -198,4 +198,10 @@ No `src/core/**`, no `src/ui/api/**`, no `src/utils/config.py`, no `tests/` / bi
 
 ## Review
 
-_(pending Radia)_
+**Publish ref:** 
+**Tip:** 
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 |  | multi-select chrome + Land Meteorite enablement |
+| 2 |  | Land Meteorite POST + outcome panel; retire Create |
