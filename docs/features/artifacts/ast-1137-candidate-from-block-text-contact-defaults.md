@@ -113,3 +113,117 @@ AST-1138 / AST-1139 **must** call `resolve_cover_from_block` (or equivalent impo
 | 1 | `COVER_FROM_BLOCK_CONFIG` + `contact.cover_letter_from_block` library/UI field |
 | 2 | `resolve_cover_from_block` — custom text or `Name • City, ST` / `email • phone` defaults |
 | 3 | Profile: config-driven textarea (no `CandidateProfile.tsx` change) |
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1137
+**Publish ref:** `4917e54b1d2de7ac8bd291c66d2229b38c40afd1` (`origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`)
+**Overall:** FIX-NOW
+
+### What's solid
+
+- Stages 1–3 match the plan: `COVER_FROM_BLOCK_CONFIG`, library contact key, DATA_SHAPES profile textarea beside signature, `resolve_cover_from_block` with custom-vs-default + omit-empty segments/lines.
+- Boundaries held: no builder/HTML emit, no session golden CSS, no frontend panel invent.
+- Config drives separators, contact paths, and source labels; core imports utils only.
+- One `merge-tests(AST-1137)` pins Betty's tip; engineer commits stay off the test tree.
+
+### Issues
+
+**fix-now:** `astral.standards.debug-contract-gated` — `resolve_cover_from_block` calls `logger.debug_index` / `debug_detail` under `if debug:` but never `logger.set_debug_flag(debug)`. Module logger defaults `_debug_flag=False`, so Style D helpers early-return even when the caller passes `debug=True`. Sibling emit paths (AST-1138/1139) will get silent debug. Fix: `logger.set_debug_flag(debug)` at function entry (same pattern as `save_candidate_data` / `get_candidate_id_for_query` in this module). Location: `src/core/candidate.py` `resolve_cover_from_block`.
+
+**discuss (C4 straggler):** Joan excluded `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, and `astral.debug.spikes-under-debug-dir` at plan time; three-dot diff puts them in-scope. Sweep scores all three **conforms** (single feature file; Betty-owned test/bible; plan doc not a spike dump).
+
+**advisory:** `COVER_FROM_BLOCK_CONFIG["name_column"]` is declared but resolve hardcodes `candidate.get("full")` per plan Stage 2 literal. Behavior matches AC; consider reading `name_column` later for true config-source symmetry.
+
+### Recommended actions
+
+1. Ada: add `logger.set_debug_flag(debug)` at the top of `resolve_cover_from_block` (resolve-child).
+2. Optional: use `COVER_FROM_BLOCK_CONFIG["name_column"]` instead of literal `"full"`.
+
+### Pattern conformance
+
+Cited from ticket/plan: `pattern.config.config-block` — conforms; `pattern.ui.admin-endpoint` — conforms (existing PUT …/data; no new route); `astral.config.config-source-of-truth` / `astral.layers.ui-config-driven-business-logic` / `astral.standards.no-hardcoded-sets` / `astral.standards.in-scope-only` / `astral.layers.import-direction` — covered in statutes table.
+
+### Plan adherence
+
+Diff footprint matches Self-Assessment Single-Component (utils config + one core helper + config-driven profile field). No builder/HTML smuggle from AST-1138/1139. Plan Stage 2 debug steps followed except missing `set_debug_flag` (above).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent_task / confidence path |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task changes |
+| astral.agent.grade-vector-validation | scoped | conforms | no graded tasks |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim APIs |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id generation |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data RESPONSE writes |
+| astral.config.config-source-of-truth | scoped | conforms | COVER_FROM_BLOCK_CONFIG + library/UI field; composition from config |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no scoring floors |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env values |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths match none of ['artifacts/**', 'scripts/spikes/**'] |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | feature plan under docs/features/; not a spike dump |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | no run_next edits |
+| astral.dispatch.seed-auto-false | scoped | conforms | no dispatch_task seed rows |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single docs/features/artifacts/ast-1137-….md |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch tests/bible only; engineer owns src/features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | test-tree changes on Betty test/merge-tests SHAs only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external I/O; resolve in core |
+| astral.layers.import-direction | scoped | conforms | core→utils only; no layer inversion |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers ['scripts'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | profile textarea via DATA_SHAPES; composition in core |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.seed.agent-tables-in-repo-json | scoped | conforms | no seed JSON changes |
+| astral.seed.archie-catalog-wins | scoped | conforms | no catalog seed |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | no seed boot path |
+| astral.seed.define-approved | scoped | conforms | no seed define |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | no operator seed rows |
+| astral.seed.other-via-coverage-join | scoped | conforms | no seed coverage join |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer product changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers ['data'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.standards.debug-contract-gated | scoped | violates | resolve_cover_from_block gates with if debug but never set_debug_flag — Style D no-ops |
+| astral.standards.dry-and-focused-functions | scoped | conforms | one focused resolve helper |
+| astral.standards.in-scope-only | scoped | conforms | no builder/HTML/session emit; siblings own Print |
+| astral.standards.logging-via-utils | scoped | conforms | uses module get_logger / debug helpers |
+| astral.standards.names-not-ticket-ids | scoped | conforms | API name resolve_cover_from_block; ticket only in docstring |
+| astral.standards.no-cross-contamination | scoped | conforms | candidate field+resolve only; no resume header mix-in |
+| astral.standards.no-hardcoded-sets | scoped | conforms | separators/paths/sources from COVER_FROM_BLOCK_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | public resolve after recompute_full_name |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py add is literals only; no utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | no candidate state transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job state work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch run chaining |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.ui.naming-conventions | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.ui.single-gunicorn-worker | scoped | conforms | config touch unrelated to gunicorn workers |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | one merge-tests(AST-1137) @ 4917e54b pinning tests 494d78b2 |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1124/AST-1137-… |
+| orch.git.ftr-sub-topology | universal | conforms | child sub under parent ftr/AST-1124-… |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe in commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase/force on tip |
+| orch.git.no-dev-agent-branches | universal | conforms | sub publish-ref only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1124 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no open product decisions in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–3 match plan Files Changed |
+| orch.pipeline.project-scoped-queues | universal | conforms | Artifacts child scope only |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon/statutes edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible via Betty test+merge-tests commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada stays assignee through Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path product edits |
+
+## Notes
+
+- no plan-rubric verdict attachment missing — Joan APPROVED attached; stragglers noted above.
+- §5f applied (debug= surface); §5g N/A (no LLM external).
+- Three-dot vs `origin/dev` also includes unrelated Betty corpus from `merge-tests` (dispatcher/gazer/inbox/etc.); product surface for this ticket is `candidate.py` + `config.py` + plan/tests named above.
+
+context_tokens≈22000
