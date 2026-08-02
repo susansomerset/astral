@@ -205,4 +205,4 @@ python3 -c "from src.core.gaze_email import run_gaze_email_selected_ids; import 
 | Field | Value |
 |-------|-------|
 | Branch | `sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint` |
-| Tip | _(filled at Code Complete)_ |
+| Tip | `5c9f62043330c2be1ab3ac25d59402bb72dd08db` |
