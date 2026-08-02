@@ -201,3 +201,114 @@ Use the normalized `html` for both links mode and body mode (including `_meteori
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–3 | `3ba80bae` | Config knobs + `normalize_pasted_list_email_html` + strip/ingest wire |
+
+---
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1131
+**Publish ref tip:** `01efc3717b06be9b44cca18a3ff5e60f12ab1a1b`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3 match the three-dot diff: config knobs, pure `normalize_pasted_list_email_html`, thin strip + ingest wires.
+- Unescape gate / nested-autolink attrs / promote flag live in `METEORITE_EMAIL_INGEST_CONFIG`; late config + BeautifulSoup imports are comment-justified (cycle / B1).
+- Style D on `gazer.meteorite_email_ingest` preserved; no new ungated debug; AST-1132/1133 boundaries held.
+- Betty `test()` + one `merge-tests` SHA; engineer `code()` is src-only.
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; diff touches `docs/features/**`. Scores **conforms** (combined plan, not spike notes). No product action.
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; plan file landed. Scores **conforms**. No product action.
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; `tests/**` + bible in tip via Betty. Scores **conforms** (`code()` src-only). No product action.
+
+### Recommended actions
+
+- Engineer: ack the three C4 stragglers (no src change required for them) via `resolve-child`, then move to User Testing.
+- Trailing bare-URL punctuation stays a documented module constant (Joan plan discuss already accepted as local hygiene).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | No graded consult / confidence path |
+| `astral.agent.do-task-delegation` | scoped | conforms | No do_task / LLM path |
+| `astral.agent.grade-vector-validation` | scoped | conforms | No grade vectors |
+| `astral.batch.batch-id-first` | scoped | conforms | No batch claim helpers |
+| `astral.batch.batch-id-format` | scoped | conforms | No batch_id generation |
+| `astral.batch.claim-process-release` | scoped | conforms | No claim/process/release changes |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | No agent_data RESPONSE work |
+| `astral.config.config-source-of-truth` | scoped | conforms | Paste knobs extend METEORITE_EMAIL_INGEST_CONFIG |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | No scoring thresholds |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env values |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss diff (['artifacts/**', 'scripts/spikes/**']) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Combined plan under docs/features — not spike notes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | No dispatch/run_next changes |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | No seed/dispatch_task rows |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | One docs/features/meteorite/ast-1131-… plan file |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test/bible only; merge-tests exception ok |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | code() commit is src-only; tests from Betty |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Pure string normalize in utils; core wires only |
+| `astral.layers.import-direction` | scoped | conforms | utils←config late; core←utils; no data/external |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ∩ diff empty (['scripts']); paths miss diff (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No UI rules; config consumed by utils/core |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | No coat-check keys |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | No consult/render_verdict |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | No seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | No catalog seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | No boot seed path |
+| `astral.seed.define-approved` | scoped | conforms | No seed define work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | No operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | No coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | No data-layer edits |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | layers ∩ diff empty (['data']); paths miss diff (['src/data/**']) |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Style D preserved; no ungated debug added |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single helper; dual thin call sites |
+| `astral.standards.in-scope-only` | scoped | conforms | Normalize only; exclude/qualify untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | Helper pure; gazer/inbox loggers unchanged |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | normalize_pasted_list_email_html domain-named |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Stays on email→meteorite ingest path |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Attr/thresholds/promote in config; trail punct module const |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public helper + local regex constants colocated |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data import |
+| `astral.state.core-decides-transitions` | scoped | conforms | Still METEORITE_NEW via existing create path |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | No JOB_STATES / transition edits |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | No run_next / daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | config.py paste knobs only; no worker changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1131) SHA on sub tip |
+| `orch.git.commit-vocabulary` | universal | conforms | plan/code/docs/test/merge-tests vocabulary only |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Publish stays on origin/sub/AST-1130/AST-1131-… |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child sub under AST-1130 parent topology |
+| `orch.git.merge-on-checkout` | universal | conforms | No illegal merge-on-checkout recipe in commits |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No cherry-pick/rebase/force on publish ref |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Uses sub/AST-1130/AST-1131-… only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in astral-AST-1130 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branch invented |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | No product-decision fork; plan decisions shipped |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–3 match Files Changed and diff |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Entered at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via test()+merge-tests only |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee remains Ada |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Implementer stays assignee through review |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path product commits |
+
+### Pattern conformance
+
+- `pattern.config.config-block` — **conforms** (extend `METEORITE_EMAIL_INGEST_CONFIG`)
+- Other Linear In-scope citations are active statutes covered above
+
+### Plan adherence
+
+Diff footprint matches Self-Assessment **Single-Component** (utils config + formatting + thin inbox/gazer wires). No exclude-list / qualify / gaze_email / UI smuggle from AST-1132/1133.
+
+context_tokens≈42000
