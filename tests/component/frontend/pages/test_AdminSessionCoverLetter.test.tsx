@@ -182,3 +182,99 @@ describe("AdminSessionCoverLetter — AST-1025", () => {
     expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled()
   })
 })
+
+describe("AdminSessionCoverLetter — AST-1139", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => ({ closed: false })),
+    )
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:session-cover-html"),
+      revokeObjectURL: vi.fn(),
+    })
+  })
+
+  function mockApis(
+    extra?: (url: string, init?: RequestInit) => Promise<Response | undefined> | Response | undefined,
+  ) {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      const fromExtra = extra ? await extra(url, init) : undefined
+      if (fromExtra !== undefined) return fromExtra
+    })
+  }
+
+  function fillRequiredExceptFromBlock() {
+    fireEvent.change(screen.getByLabelText(/^Date$/), {
+      target: { value: FILLED.letter_date },
+    })
+    fireEvent.change(screen.getByLabelText(/^Letter body$/), {
+      target: { value: FILLED.letter },
+    })
+    fireEvent.change(screen.getByLabelText(/^Sign-off closing$/), {
+      target: { value: FILLED.signoff_closing },
+    })
+    fireEvent.change(screen.getByLabelText(/^Signature name$/), {
+      target: { value: FILLED.signature },
+    })
+  }
+
+  it("empty From block + selected candidate enables Open HTML (§6c)", async () => {
+    localStorage.setItem("astral_selected_candidate", "cand-9")
+    mockApis(async (url) => {
+      if (url === "/api/candidates") {
+        return {
+          ok: true,
+          json: async () => [
+            { astral_candidate_id: "cand-9", state: "ACTIVE_SEARCH", candidate_data: {} },
+          ],
+        } as Response
+      }
+    })
+    renderWithProviders(<SessionCoverLetter />)
+    expect(
+      screen.getByText(/leave From block empty to use that candidate/i),
+    ).toBeInTheDocument()
+    fillRequiredExceptFromBlock()
+    expect(screen.getByLabelText(/^From block$/)).toHaveValue("")
+    expect(screen.getByRole("button", { name: "Open HTML" })).toBeEnabled()
+  })
+
+  it("empty From block without candidate keeps Open HTML disabled", async () => {
+    mockApis()
+    renderWithProviders(<SessionCoverLetter />)
+    fillRequiredExceptFromBlock()
+    expect(screen.getByRole("button", { name: "Open HTML" })).toBeDisabled()
+    expect(screen.getByText(/Without a candidate,\s*From block is required/i)).toBeInTheDocument()
+  })
+
+  it("Open HTML posts empty from_block with candidate_id", async () => {
+    localStorage.setItem("astral_selected_candidate", "cand-9")
+    mockApis(async (url, init) => {
+      if (url === "/api/candidates") {
+        return {
+          ok: true,
+          json: async () => [
+            { astral_candidate_id: "cand-9", state: "ACTIVE_SEARCH", candidate_data: {} },
+          ],
+        } as Response
+      }
+      if (url === "/api/admin/session_cover_letter/html" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body))
+        expect(body.from_block).toBe("")
+        expect(body.candidate_id).toBe("cand-9")
+        expect(body.letter).toBe(FILLED.letter)
+        return {
+          ok: true,
+          text: async () => "<html><body>resolved</body></html>",
+        } as Response
+      }
+    })
+    renderWithProviders(<SessionCoverLetter />)
+    fillRequiredExceptFromBlock()
+    await userEvent.click(screen.getByRole("button", { name: "Open HTML" }))
+    await waitFor(() => expect(window.open).toHaveBeenCalled())
+  })
+})

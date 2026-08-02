@@ -1016,6 +1016,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`.
+
+Admin **Session Cover Letter** (§6c): empty From block does not block Open HTML when a candidate is selected (server resolves via AST-1137); without a candidate, From block stays required; help copy documents empty-from-block defaults. Core emit: **`docs/test-bible/core/builder.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty from-block gating + help + POST body (§6c) | `AdminSessionCoverLetter.tsx` | **`test_AdminSessionCoverLetter.test.tsx`** — **`AdminSessionCoverLetter — AST-1139`** describe |
+
+**Broken / obsolete:** none — additive gating; AST-1025 filled-form paths unchanged.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+---
+
 ### AST-1033 · AST-1031
 
 **Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`.

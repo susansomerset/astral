@@ -57,7 +57,7 @@ Candidate-bound `run_gaze_email`: requires row `candidate_id`; filters From→A;
 
 **Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.
 
-`run_gaze_email_selected_ids` ingests only explicit Astral inbox ids through shared `_handle_bound` (bind / route / scrape / dedupe / METEORITE_NEW / archive); skip outcomes for missing / unbound / unmatched; no `last_email_check` stamp, no Create strip/extract, no unbound Trash. Style D via `debug_func_selected` when `debug=True`. Config: **`docs/test-bible/utils/config.md`**. Admin HTTP / React = siblings **AST-1141** / **AST-1142**.
+`run_gaze_email_selected_ids` ingests only explicit Astral inbox ids through shared `_handle_bound` (bind / route / scrape / dedupe / METEORITE_NEW / archive); skip outcomes for missing / unbound / unmatched; no `last_email_check` stamp, no Create strip/extract, no unbound Trash. Style D via `debug_func_selected` when `debug=True`. Config: **`docs/test-bible/utils/config.md`**. Admin HTTP: **`docs/test-bible/ui/api/api_inbox.md`** (**AST-1141**); React = sibling **AST-1142**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
