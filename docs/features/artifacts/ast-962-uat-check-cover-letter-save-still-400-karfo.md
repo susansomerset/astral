@@ -1,3 +1,106 @@
+<!-- linear-archive: AST-962 archived 2026-08-02 -->
+
+## Linear archive (AST-962)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-962/uat-check-cover-letter-save-still-400-karfo  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-856 — check_cover_letter not recognized as a valid task_key  
+**Blocked by / blocks / related:** parent: AST-856
+
+### Description
+
+## What failed
+
+On staging after the first ship, saving a Scheduled Action with `task_key=check_cover_letter` still returns HTTP 400:
+
+```
+Astral error diagnostic
+timestamp: 2026-07-23T18:10:33.974Z
+message: Unknown or non-schedulable task_key: 'check_cover_letter'
+route: /admin/scheduled_actions
+astral_candidate_id: karfo
+api_path: /api/admin/dispatch_tasks
+http_method: POST
+http_status: 400
+response_body:
+{
+  "error": "Unknown or non-schedulable task_key: 'check_cover_letter'"
+}
+```
+
+Susan reports the original issue is still occurring (candidate `karfo`).
+
+## Expected
+
+`POST /api/admin/dispatch_tasks` accepts `check_cover_letter` for any candidate (including `karfo`) without *Unknown or non-schedulable task_key* — same as any other registered task key visible in the picker. Misapplied trigger/entity should fail at first Run, not at Save for allowlist membership.
+
+## Repro
+
+1. Open `/admin/scheduled_actions` for candidate `karfo` (or any candidate).
+2. Add/Save a dispatch row with `task_key=check_cover_letter` and a valid job trigger state from the form.
+3. Observe HTTP 400 with `Unknown or non-schedulable task_key: 'check_cover_letter'`.
+
+## Parent AC (quoted inline)
+
+> 1. Susan can create a Scheduled Action dispatch row with `task_key=check_cover_letter` for candidate `somerset` without HTTP 400 — the error from the original brief no longer occurs.
+> 2. Any other registered task key visible in the picker can be saved the same way (no *Unknown or non-schedulable task_key* for registered task keys).
+> 3. A deliberately misconfigured row (wrong trigger state for the chosen task_key) is rejected or fails at **run** time, not at Save time — observable on first Run, not blocked at Save for merely being outside a separate schedulable allowlist.
+
+## Boundaries
+
+* This bug does **not** change: Manage Tasks / run_next authoring, dispatcher claim logic, Execution History UX, or chain choreography.
+* May still block explicitly retired dispatch keys.
+
+### Comments
+
+#### radia — 2026-07-23T18:21:21.613Z
+**Radia review — clean**
+
+Diff: `origin/dev...origin/sub/AST-856/AST-962-uat-check-cover-letter-save-still-400-karfo` @ `028d7e9`
+
+**Plan fidelity:** Stage 1 exact — mid-chain cover-letter hops default to `CANDIDATE_REVIEW` beside `draft_cover_letter`. No Save membership rework; `non-schedulable` still absent from `src/`.
+
+**Rules:** §1.3 / §2.1 — one config helper branch. §2.4 / §2.6 / §5f / §5g N/A.
+
+**fix-now / discuss:** none.
+
+Review doc: https://github.com/susansomerset/astral/blob/028d7e96f4f60a526e0a345593c446bb134c40dc/docs/features/artifacts/ast-962-uat-check-cover-letter-save-still-400-karfo.md
+
+#### betty — 2026-07-23T18:19:43.395Z
+1. `./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst962CoverLetterMidHopDefaultTrigger \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst962SaveDispatchTaskCoverLetterDefaults \
+  -q`
+
+2. **Broken / obsolete revised this pass:** `TestAst955RegisteredKeyDispatchAdminDefaults::test_check_cover_letter_without_override_raises_no_rule` → now defaults to `CANDIDATE_REVIEW` (no KeyError).
+
+3. **Coverage:** mid-hop keys (`check_cover_letter` / `finalize_cover_letter` / `propose_application_responses`) default trigger + admin defaults without override; DB insert for `karfo` omits trigger and fills `CANDIDATE_REVIEW`; draft/grade_do regressions.
+
+**Publish:** `origin/sub/AST-856/AST-962-uat-check-cover-letter-save-still-400-karfo` @ `db8cfcd` (`merge-tests(AST-962): origin/tests d32e2a6`)
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/utils/config.md` `d2d70543b3b815a8eef4241ce75c55dde3bbf87d`
+- `docs/test-bible/ui/api/api_admin.md` `c84ae63751efffe4551ec8ed77b4e2f74ee45aa9`
+- `docs/test-bible/data/database/dispatch_tasks.md` `40b9c1f8e7cd36d0eeec2771113c94bc70b5d11d`
+
+— Betty
+
+#### ada — 2026-07-23T18:15:45.271Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-856/AST-962-uat-check-cover-letter-save-still-400-karfo/docs/features/artifacts/ast-962-uat-check-cover-letter-save-still-400-karfo.md
+
+**Scope:** Single-Component — default `_dispatch_trigger_state_for_task_key` for `check_cover_letter` / `finalize_cover_letter` / `propose_application_responses` → `CANDIDATE_REVIEW` so form meta + defaults resolve without override. AST-955 membership already on tip; quoted `non-schedulable` string absent from `origin/dev` `src/`.
+
+**Conf:** Medium — tip cannot emit the diagnostic wording (AST-955); verified empty default-trigger gap still blocks one-click Save; staging may also have been stale.
+
+**Risk:** low — three registered job keys get the same default Input State as `draft_cover_letter`; Save membership / dispatcher untouched.
+
+---
+
 # AST-962 — UAT: check_cover_letter Save still 400 (karfo)
 
 - **Linear:** [AST-962](https://linear.app/astralcareermatch/issue/AST-962/uat-check-cover-letter-save-still-400-karfo)
