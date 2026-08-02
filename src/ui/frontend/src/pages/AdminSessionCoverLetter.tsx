@@ -48,9 +48,13 @@ export default function SessionCoverLetter() {
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
-  const requiredComplete = SESSION_COVER_FIELDS.every(
-    f => !f.required || (fields[f.key] ?? "").trim() !== "",
-  )
+  // AST-1139: empty from_block OK when candidate selected (server resolves defaults).
+  const candidateSelected = Boolean(selectedId && selectedId.trim())
+  const requiredComplete = SESSION_COVER_FIELDS.every(f => {
+    if (!f.required) return true
+    if (f.key === "from_block" && candidateSelected) return true
+    return (fields[f.key] ?? "").trim() !== ""
+  })
 
   function setField(key: SessionCoverFieldKey, value: string) {
     setFields(prev => ({ ...prev, [key]: value }))
@@ -114,10 +118,12 @@ export default function SessionCoverLetter() {
       </h1>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
         Enter cover-letter field values, then Open HTML to Print → PDF.
-        Letter fields come from this form. If a candidate is selected and has a
-        profile signature image, the server may include it in the sign-off;
-        otherwise name-only. Render works with no candidate selected.
-        This tool does not save to the database.
+        Letter fields come from this form. When a candidate is selected, leave
+        From block empty to use that candidate’s cover from-block text or the
+        contact default (Name • City, ST / email • phone). Without a candidate,
+        From block is required. If a candidate is selected and has a profile
+        signature image, the server may include it in the sign-off; otherwise
+        name-only. This tool does not save to the database.
       </p>
 
       {SESSION_COVER_FIELDS.map(f => (

@@ -1151,6 +1151,7 @@ CANDIDATE_LIBRARY_CONFIG = {
         "contact_email", "reply_email", "phone", "location",
         "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
+        "cover_letter_from_block",
         "title_patterns", "reason_codes",
     ),
     "context_keys": (
@@ -1167,6 +1168,17 @@ CANDIDATE_LIBRARY_CONFIG = {
     "linkedin_url_base": "https://www.linkedin.com/in/",
     "github_url_base": "https://github.com/",
     "full_name_join": " ",
+}
+
+# AST-1137: candidate-owned cover from-block + default composition for siblings.
+COVER_FROM_BLOCK_CONFIG = {
+    "contact_key": "cover_letter_from_block",
+    "segment_separator": " • ",
+    "line_separator": "\n",
+    "name_column": "full",
+    "line_1_contact_paths": ("location",),
+    "line_2_contact_paths": ("contact_email", "phone"),
+    "sources": ("candidate", "default"),
 }
 
 # AST-1016: mechanical preamble script (Intro + steps). UI = AST-1017; Ruth task = AST-1015.
@@ -4210,6 +4222,11 @@ DATA_SHAPES = {
                     "label": "Cover Letter Signature",
                     "fields": [
                         {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {
+                            "key": "contact.cover_letter_from_block",
+                            "label": "Cover letter from-block",
+                            "type": "textarea",
+                        },
                     ],
                 },
                 {
@@ -4565,8 +4582,10 @@ BUILD_CONFIG = {
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
         "document_title": "SomersetCover",
+        # AST-1139: empty form from_block → resolve_cover_from_block when candidate set.
+        "from_block_sources": ("session", "candidate", "default"),
         "fields": {
-            "from_block": {"required": True},
+            "from_block": {"required": True, "empty_uses_candidate_resolve": True},
             "letter_date": {"required": True},
             "to_block": {"required": False},
             "subject": {"required": False},
@@ -4574,6 +4593,18 @@ BUILD_CONFIG = {
             "signoff_closing": {"required": True},
             "signature": {"required": True},
         },
+    },
+    # AST-1138: job Print Cover Letter → SomersetCover field map (consume session emit).
+    "job_cover_somerset": {
+        "document_title_key": "session_cover_letter",  # reuse BUILD_CONFIG[…]["document_title"]
+        # Normalized job cover keys → session_cover_letter field keys
+        "artifact_to_fields": {
+            "re_line": "subject",
+            "body": "letter",
+            "signature": "signature",
+        },
+        # Session fields job artifacts do not store — always "" for job Print Cover Letter
+        "unset_fields": ("from_block", "letter_date", "to_block", "signoff_closing"),
     },
     # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
     # Emit (AST-1126) reads this contract; resume builders must ignore it.

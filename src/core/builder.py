@@ -310,7 +310,7 @@ def build_cover_letter_from_job(
     *,
     debug: bool = False,
 ) -> str:
-    """Render cover-letter HTML only from job artifacts (no resume body sections)."""
+    """Render cover-only Print Cover Letter as SomersetCover (fromBlock + golden CSS)."""
     cd = _coerce_candidate_blob(candidate_data)
     if debug:
         _log.set_debug_flag(True)
@@ -328,35 +328,34 @@ def build_cover_letter_from_job(
             debug=debug,
         )
         raise ValueError(msg)
-    render: Dict[str, Any] = {}
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
-    markers = _apply_resume_text_markers(render)
-    style = _merge_effective_style(cd)
-    html_out = _emit_html_document(
-        markers,
-        style,
-        include_cover=True,
-        cover_letter=cover,
-        critical_keywords=None,
-        emit_prior_experience=False,
-        cover_profile=cd.get("contact") or {},
-        body_section_ids=[],
-        body_section_titles={},
+
+    # AST-1138: SomersetCover path — no resume header/contact shell for cover-only.
+    from_res = candidate_mod.resolve_cover_from_block(
+        _candidate_for_cover_from_block(cd), debug=debug
+    )
+    contact = cd.get("contact") or {}
+    cover_sig = cover.get("signature") or ""
+    token_status, sig_src, image_status = _signature_image_token_status(
+        cover_sig, {"contact": contact}
+    )
+    fields = _job_cover_somerset_fields(cover, from_res["text"])
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
+    html_out = _emit_somerset_cover_html_document(
+        fields, signature_image_src=sig_src, document_title=doc_title
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd)
-        contact = cd.get("contact") or {}
-        cover_sig = cover.get("signature") or ""
-        token_status, _safe, image_status = _signature_image_token_status(
-            cover_sig, {"contact": contact}
-        )
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
             total=1,
             identifier=identifier,
-            outcome="success — cover letter html",
+            outcome="success — somerset cover html",
         )
+        _log.debug_detail(f"from_block_source={from_res['source']}")
+        _log.debug_detail(f"from_block_chars={len(from_res['text'])}")
+        _log.debug_detail("document_path=somerset_cover")
         _log.debug_detail(f"cover_source={cover_src!r}")
         _log.debug_detail(
             f"fields re_line={bool((cover.get('re_line') or '').strip())} "
@@ -510,7 +509,7 @@ def build_session_cover_letter(
     candidate_id: Optional[str] = None,
     debug: bool = False,
 ) -> str:
-    """AST-1024: SomersetCover HTML from in-memory fields — no job load / artifact write."""
+    """AST-1024 / AST-1139: SomersetCover HTML from in-memory fields — no job load / artifact write."""
     if debug:
         _log.set_debug_flag(True)
     identifier = (
@@ -529,31 +528,8 @@ def build_session_cover_letter(
         raise ValueError(msg)
     cfg = BUILD_CONFIG["session_cover_letter"]
     field_defs = cfg["fields"]
-    normalized: Dict[str, str] = {}
-    for key, meta in field_defs.items():
-        raw = fields.get(key, "")
-        if raw is None:
-            raw = ""
-        if not isinstance(raw, str):
-            msg = f"{key} must be a string"
-            _emit_builder_failure(
-                func="builder.build_session_cover_letter",
-                identifier=identifier,
-                message=msg,
-                debug=debug,
-            )
-            raise ValueError(msg)
-        if meta.get("required") and not raw.strip():
-            msg = f"{key} is required"
-            _emit_builder_failure(
-                func="builder.build_session_cover_letter",
-                identifier=identifier,
-                message=msg,
-                debug=debug,
-            )
-            raise ValueError(msg)
-        normalized[key] = raw
 
+    # Load candidate before from_block required check (empty → resolve when configured).
     cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
     candidate_root: Dict[str, Any] = {}
     if cid:
@@ -568,11 +544,60 @@ def build_session_cover_letter(
             )
             raise ValueError(msg)
         candidate_root = _coerce_candidate_blob(row)
+
+    from_block_source: Optional[str] = None
+    normalized: Dict[str, str] = {}
+    for key, meta in field_defs.items():
+        raw = fields.get(key, "")
+        if raw is None:
+            raw = ""
+        if not isinstance(raw, str):
+            msg = f"{key} must be a string"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        if key == "from_block":
+            if raw.strip():
+                normalized[key] = raw
+                from_block_source = cfg["from_block_sources"][0]  # session
+            elif meta.get("empty_uses_candidate_resolve") and candidate_root:
+                from_res = candidate_mod.resolve_cover_from_block(
+                    _candidate_for_cover_from_block(candidate_root), debug=debug
+                )
+                normalized[key] = from_res["text"]
+                from_block_source = from_res["source"]
+            elif meta.get("required"):
+                msg = f"{key} is required"
+                _emit_builder_failure(
+                    func="builder.build_session_cover_letter",
+                    identifier=identifier,
+                    message=msg,
+                    debug=debug,
+                )
+                raise ValueError(msg)
+            else:
+                normalized[key] = raw
+            continue
+        if meta.get("required") and not raw.strip():
+            msg = f"{key} is required"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        normalized[key] = raw
+
     token_status, sig_src, image_status = _signature_image_token_status(
         normalized.get("signature") or "", candidate_root
     )
 
-    html_out = _emit_session_cover_html_document(normalized, signature_image_src=sig_src)
+    html_out = _emit_somerset_cover_html_document(normalized, signature_image_src=sig_src)
     if debug:
         _log.debug_index(
             func="builder.build_session_cover_letter",
@@ -591,6 +616,9 @@ def build_session_cover_letter(
             f"subject={'present' if normalized['subject'].strip() else 'omitted'}"
         )
         _log.debug_detail(f"candidate_id={'used' if cid else 'not_used'}")
+        _log.debug_detail(f"from_block_source={from_block_source}")
+        _log.debug_detail(f"from_block_chars={len(normalized['from_block'])}")
+        _log.debug_detail("document_path=somerset_cover")
         _log.debug_detail(f"signature_image_token={token_status}")
         _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
@@ -608,12 +636,40 @@ def _session_cover_letter_paragraphs(letter: str) -> List[str]:
     return chunks
 
 
-def _emit_session_cover_html_document(
+def _candidate_for_cover_from_block(cd: dict) -> dict:
+    """Shape coerced builder candidate blob for ``resolve_cover_from_block``."""
+    out: Dict[str, Any] = {
+        "full": cd.get("_full") or "",
+        "first": cd.get("_first") or "",
+        "last": cd.get("_last") or "",
+        "contact": cd.get("contact") or {},
+    }
+    if "astral_candidate_id" in cd:
+        out["astral_candidate_id"] = cd["astral_candidate_id"]
+    if "_astral_candidate_id" in cd:
+        out["_astral_candidate_id"] = cd["_astral_candidate_id"]
+    return out
+
+
+def _job_cover_somerset_fields(cover: dict, from_block_text: str) -> dict:
+    """Map normalized job cover + resolved from-block into session field keys."""
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    fields: Dict[str, str] = {
+        key: "" for key in BUILD_CONFIG["session_cover_letter"]["fields"]
+    }
+    for artifact_key, field_key in job_cfg["artifact_to_fields"].items():
+        fields[field_key] = str(cover.get(artifact_key) or "")
+    fields["from_block"] = from_block_text
+    return fields
+
+
+def _emit_somerset_cover_html_document(
     fields: dict,
     *,
     signature_image_src: Optional[str] = None,
+    document_title: Optional[str] = None,
 ) -> str:
-    """Standalone SomersetCover DOM/CSS (session-only; does not touch job cover emit)."""
+    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter)."""
     style = BUILD_CONFIG["default_style"]
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -628,7 +684,11 @@ def _emit_session_cover_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
-    doc_title = BUILD_CONFIG["session_cover_letter"]["document_title"]
+    doc_title = (
+        document_title
+        if document_title is not None
+        else BUILD_CONFIG["session_cover_letter"]["document_title"]
+    )
     sig_name = (fields.get("signature") or "").strip()
     meta_content = f"Cover Letter - {sig_name}" if sig_name else doc_title
     meta_tag = f'\n  <meta name="description" content="{html.escape(meta_content)}" />'
