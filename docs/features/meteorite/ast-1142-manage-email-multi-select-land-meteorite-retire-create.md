@@ -205,3 +205,18 @@ No `src/core/**`, no `src/ui/api/**`, no `src/utils/config.py`, no `tests/` / bi
 |-------|--------|---------|
 | 1 | `1756919c` | multi-select chrome + Land Meteorite enablement |
 | 2 | `2ee72f4b` | Land Meteorite POST + outcome panel; retire Create |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Overall:** DISCUSS (no fix-now on Manage Email UI; C4 dependency-merge stragglers)
+
+**What’s solid**
+- Multi-select + Select all / Clear / Land Meteorite enablement; checkbox cell stops row-open.
+- POST `/api/admin/inbox/land-meteorite` with ordered ids + leftovers; subject snapshot; results panel with raw outcomes; Create retired (handler/column/CSS gone); no `create-job` on the page.
+- AST-1142 `code()` = `AdminManageEmail.tsx` + `App.css` only.
+
+**Issues / Recommended**
+- **discuss (C4 stragglers):** Tip includes AST-1140/1141 + Betty tests/bible via dependency/`merge-tests`; Joan-excluded statutes in-scope on three-dot tip all scored **conforms** (see Linear). No product rewrite for this UI.
+- **advisory (matches Joan):** `outcomeKind` display bucketing of server outcome strings is plan-documented; not eligibility logic.
+
+Full `## Statutes checked` (65/65) lives in the Linear Review Posted comment.
