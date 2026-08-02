@@ -2081,3 +2081,26 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/utils/test_config.py::TestAst1131MeteoriteEmailIngestPasteNormalizeConfig \
   -q
 ```
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/trigger kept — mailbox poller, not claim queue). Removes `dispatch_ledger_candidate_id`. Empties `ADMIN_CONFIG["always_visible_under_avail_gt0_dispatch_task_keys"]` (helper + API/React generic stamp remain). Secrets stay environ; `unbound_retention_days` kept. Provision / schema / ledger: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/data/database/candidates.md`**. Live Avail / runner: siblings **AST-1135** / **AST-1136**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Candidate-bound shell + no ledger placeholder | `src/utils/config.py` | revised **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`** |
+| Empty always-visible carve-out | `src/utils/config.py` | revised **`TestAst1106AlwaysVisibleUnderAvailGt0`** |
+
+**Broken / obsolete (Betty revision):** null-shell wording / `dispatch_ledger_candidate_id == ""` / gaze_email membership in always-visible keys (AST-1088 / AST-1090 / AST-1106 config asserts).
+
+**Integration:** no existing scenarios assert null-shell gaze_email config — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  -q
+```
