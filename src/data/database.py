@@ -40,7 +40,7 @@ Schema checks use sqlite_master only. No other tables in the database are touche
 
 Company: save_company, get_company, update_company; batch: set_company_batch, get_company_batch, clear_company_batch (claim_company_batch wrapper).
 Job: save_job (upsert), get_job; batch: claim_job_batch, get_job_batch, clear_job_batch.
-Candidate: save_candidate (upsert), get_candidate, list_candidates.
+Candidate: save_candidate (upsert), get_candidate, list_candidates; last_email_check (nullable; AST-1134 column / AST-1136 stamp call site).
 Agent: save_agent (upsert), get_agent, list_agents, update_agent, delete_agent, count_agent_task_refs.
 Retry/log/crash on transient DB errors; domain outcomes
 via return values (duplicate -> False, no records -> False / count).
@@ -2498,7 +2498,8 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
                 candidate_api_key TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_changed_at TIMESTAMP
+                state_changed_at TIMESTAMP,
+                last_email_check TIMESTAMP
             )
         """)
         conn.commit()
@@ -2512,6 +2513,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
             ("last", "TEXT"),
             ("full", "TEXT"),
             ("pronouns", "TEXT"),
+            ("last_email_check", "TIMESTAMP"),
         ]:
             if col not in cols:
                 try:
@@ -3179,6 +3181,35 @@ def save_candidate(
                     f"UPDATE candidate SET {', '.join(sets)} WHERE astral_candidate_id = ?",
                     tuple(params),
                 )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
+
+def update_candidate_last_email_check(
+    candidate_id: str, when: Optional[str] = None
+) -> None:
+    """Set candidate.last_email_check (UTC). when=None → now. Raises if candidate missing."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    stamp = when.strip() if (when or "").strip() else _utc_now()
+    now = _utc_now()
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            cur = conn.execute(
+                "UPDATE candidate SET last_email_check = ?, updated_at = ? "
+                "WHERE astral_candidate_id = ?",
+                (stamp, now, cid),
+            )
+            if cur.rowcount == 0:
+                raise LookupError(f"Candidate not found: {cid}")
             conn.commit()
         finally:
             conn.close()
@@ -6849,16 +6880,12 @@ def save_dispatch_task(
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
-    candidate_id may be NULL only for GAZE_EMAIL_CONFIG task_key (AST-1088)."""
+    candidate_id is required for every task_key (AST-1134 retired null gaze_email shell)."""
     tk = (task_key or "").strip()
     cid_raw = None if candidate_id is None else str(candidate_id).strip()
-    cid_val: Optional[str]
-    if tk == GAZE_EMAIL_CONFIG["task_key"] and not cid_raw:
-        cid_val = None
-    elif not cid_raw:
+    if not cid_raw:
         raise ValueError("candidate_id is required")
-    else:
-        cid_val = cid_raw
+    cid_val: Optional[str] = cid_raw
     try:
         defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
