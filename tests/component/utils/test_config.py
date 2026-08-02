@@ -3396,6 +3396,24 @@ class TestAst1090GazeEmailRunnerConfig:
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
 
 
+# Branches: selected-ids Style D func + skip outcome vocabulary (AST-1140).
+@pytest.mark.skipif(
+    "debug_func_selected" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
+    reason="AST-1140 selected-ids GAZE_EMAIL_CONFIG keys not on this publish tip",
+)
+class TestAst1140GazeEmailSelectedConfig:
+    """AST-1140: Land Meteorite selected-ids literals on GAZE_EMAIL_CONFIG (no parallel block)."""
+
+    def test_selected_ids_debug_and_skip_outcomes(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert g["debug_func_selected"] == "gaze_email.selected_ids"
+        assert g["selected_outcome_skipped_unbound"] == "skipped-unbound"
+        assert g["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
+        assert g["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
+        # Dispatcher Style D func unchanged.
+        assert g["debug_func"] == "gaze_email.run"
+
+
 # Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
 @pytest.mark.skipif(
     "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
@@ -3585,3 +3603,48 @@ class TestAst1132MeteoriteEmailIngestHygieneConfig:
             "svg namespace",
         ):
             assert frag in markers
+
+
+# Branches: COVER_FROM_BLOCK_CONFIG keys; library contact_keys order; profile textarea
+# placement; packet/TOKEN_SOURCES exclusion (AST-1137).
+class TestAst1137CoverFromBlockConfig:
+    """AST-1137: COVER_FROM_BLOCK_CONFIG + profile from-block field contract."""
+
+    def test_cover_from_block_config_contract(self) -> None:
+        block = cfg.COVER_FROM_BLOCK_CONFIG
+        assert block["contact_key"] == "cover_letter_from_block"
+        assert block["segment_separator"] == " • "
+        assert block["line_separator"] == "\n"
+        assert block["name_column"] == "full"
+        assert block["line_1_contact_paths"] == ("location",)
+        assert block["line_2_contact_paths"] == ("contact_email", "phone")
+        assert block["sources"] == ("candidate", "default")
+
+    def test_library_contact_key_after_signature_image(self) -> None:
+        keys = cfg.CANDIDATE_LIBRARY_CONFIG["contact_keys"]
+        assert "cover_letter_from_block" in keys
+        assert keys.index("cover_letter_from_block") == keys.index(
+            "cover_letter_signature_image"
+        ) + 1
+
+    def test_profile_textarea_in_cover_letter_signature_group(self) -> None:
+        section = next(
+            s
+            for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+            if s["label"] == "Cover Letter Signature"
+        )
+        by_key = {f["key"]: f for f in section["fields"]}
+        field = by_key["contact.cover_letter_from_block"]
+        assert field["label"] == "Cover letter from-block"
+        assert field["type"] == "textarea"
+        assert field.get("required") in (None, False)
+        # Beside signature text; not required — empty means resolve defaults.
+        assert "contact.cover_letter_signature" in by_key
+
+    def test_not_in_packet_contact_keys_or_token_sources(self) -> None:
+        assert "cover_letter_from_block" not in cfg.TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]
+        # No new resolve_tokens surface — siblings consume resolve_cover_from_block.
+        assert "COVER_LETTER_FROM_BLOCK" not in cfg.TOKEN_SOURCES
+        assert "cover_letter_from_block" not in {
+            (v.get("path") or "").rsplit(".", 1)[-1] for v in cfg.TOKEN_SOURCES.values()
+        }

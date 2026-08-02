@@ -1461,9 +1461,11 @@ class TestAst1088NullCandidateGazeEmail:
         finally:
             conn.close()
 
-# Branches: candidate-bound gaze_email due signal (AST-1090 special-case; AST-1134 bound row).
+# Branches: data-layer gaze fake due retired (AST-1135); freq helper public.
 class TestAst1090GazeEmailDue:
-    def test_get_due_includes_gaze_email_when_freq_zero(self, sqlite_in_memory) -> None:
+    """AST-1135: get_due_tasks / count_eligible no longer special-case gaze_email."""
+
+    def test_get_due_skips_gaze_email_shell(self, sqlite_in_memory) -> None:
         from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
@@ -1472,20 +1474,15 @@ class TestAst1090GazeEmailDue:
             candidate_id="cand-due",
             task_key=tk,
             min_count=1,
-            auto_mode=True,  # due query is AUTO-only; seed CLICK is provision concern
+            auto_mode=True,
             entity_type=None,
             trigger_state=None,
             freq_hrs=0,
         )
         due = db.get_due_tasks()
-        keys = [t["task_key"] for t in due]
-        assert tk in keys
-        row = next(t for t in due if t["task_key"] == tk)
-        assert row["available_count"] == 1
-        assert row["candidate_id"] == "cand-due"
+        assert tk not in [t["task_key"] for t in due]
 
-    def test_count_eligible_respects_freq(self, sqlite_in_memory) -> None:
-        from datetime import datetime, timedelta, timezone
+    def test_count_eligible_returns_zero_for_gaze(self, sqlite_in_memory) -> None:
         from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
@@ -1495,14 +1492,26 @@ class TestAst1090GazeEmailDue:
             task_key=tk,
             min_count=1,
             auto_mode=True,
-            freq_hrs=24,
+            freq_hrs=0,
         )
-        recent = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-        db.update_dispatch_task(tid, last_run_at=recent)
         task = db.get_dispatch_task(tid)
         assert db.count_eligible_for_dispatch_task(task) == 0
+
+
+class TestAst1135DispatchTaskFreqAllows:
+    """AST-1135: public freq/cooldown gate (AUTO cadence; not Avail)."""
+
+    def test_freq_zero_and_missing_last_allow(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        assert db.dispatch_task_freq_allows({"freq_hrs": 0, "last_run_at": None}) is True
+        assert db.dispatch_task_freq_allows({"freq_hrs": 24, "last_run_at": None}) is True
+
+    def test_freq_respects_last_run_at(self, sqlite_in_memory) -> None:
+        from datetime import datetime, timedelta, timezone
+
+        db = sqlite_in_memory
+        recent = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+        assert db.dispatch_task_freq_allows({"freq_hrs": 24, "last_run_at": recent}) is False
         old = (datetime.now(timezone.utc) - timedelta(hours=25)).strftime("%Y-%m-%d %H:%M:%S")
-        db.update_dispatch_task(tid, last_run_at=old)
-        task = db.get_dispatch_task(tid)
-        assert db.count_eligible_for_dispatch_task(task) == 1
+        assert db.dispatch_task_freq_allows({"freq_hrs": 24, "last_run_at": old}) is True
 

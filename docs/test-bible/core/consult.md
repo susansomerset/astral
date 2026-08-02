@@ -827,3 +827,29 @@ RESPONSE omits `company_job_id` key + UUID in `job_link` → `_resolve_company_j
   tests/component/core/test_consult.py::TestAst1127QualifyMeteoriteOmitCompanyJobId \
   -q
 ```
+
+### AST-1133 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites`.
+
+`_bind_response_jobs_by_job_link` after AST-1076 digit bind for `qualify_meteorite` only; Create-time `job_link` fallback when Ruth link is empty/non-http; Style D `link_source=AI|input|neither`. Digit bind / content FAILED / envelope ERROR unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link claim bind helper | `src/core/consult.py` | **`TestAst1133BindResponseJobsByJobLink`** |
+| List-created qualify path | `src/core/consult.py` | **`TestAst1133QualifyMeteoriteListCreated`** |
+| Relative-link content gate | `src/core/consult.py` | revised **`TestAst1062QualifyMeteorite::test_content_gates_fail_state`** (empty Create link) |
+
+**Broken / obsolete:** AST-1062 relative `job_link` fail used Create http input — would pass under AST-1133 fallback (revised).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1133BindResponseJobsByJobLink \
+  tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestAst1076QualifyMeteoritePlaceholderId \
+  -q
+```
+

@@ -3556,3 +3556,179 @@ class TestAst1095EmailUniqueRootAndExtra:
             )
         assert save.call_count == 0
 
+
+# Branches: custom vs default source; DB-row vs token-view contact; empty segments/lines;
+# full vs recompute_full_name; non-str/whitespace custom; debug True/False (AST-1137).
+class TestAst1137ResolveCoverFromBlock:
+    """AST-1137: resolve_cover_from_block custom text vs Name • City / email • phone defaults."""
+
+    def test_custom_text_wins_and_strips_outer_whitespace(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ignored Name",
+                "candidate_data": {
+                    "contact": {
+                        "cover_letter_from_block": "  Custom Line 1\nCustom Line 2  ",
+                        "location": "Oakland, CA",
+                    }
+                },
+            }
+        )
+        assert out == {
+            "text": "Custom Line 1\nCustom Line 2",
+            "source": "candidate",
+        }
+
+    def test_whitespace_only_and_non_str_custom_use_default(self) -> None:
+        ws = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "contact": {
+                        "cover_letter_from_block": "   \n  ",
+                        "location": "London, UK",
+                        "contact_email": "ada@example.com",
+                    }
+                },
+            }
+        )
+        assert ws["source"] == "default"
+        assert ws["text"] == "Ada Lovelace • London, UK\nada@example.com"
+
+        non_str = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada Lovelace",
+                "candidate_data": {"contact": {"cover_letter_from_block": 42}},
+            }
+        )
+        assert non_str == {"text": "Ada Lovelace", "source": "default"}
+
+    def test_default_omits_empty_segments_and_lines(self) -> None:
+        # Name only — no line 2 when email/phone empty.
+        name_only = candidate_mod.resolve_cover_from_block(
+            {"full": "Ada Lovelace", "candidate_data": {"contact": {}}}
+        )
+        assert name_only == {"text": "Ada Lovelace", "source": "default"}
+
+        # Line 2 only when name/location empty.
+        contact_only = candidate_mod.resolve_cover_from_block(
+            {
+                "first": "",
+                "last": "",
+                "full": "",
+                "candidate_data": {
+                    "contact": {"contact_email": "ada@example.com", "phone": "555"}
+                },
+            }
+        )
+        assert contact_only == {
+            "text": "ada@example.com • 555",
+            "source": "default",
+        }
+
+        empty = candidate_mod.resolve_cover_from_block({"candidate_data": {}})
+        assert empty == {"text": "", "source": "default"}
+
+    def test_recompute_full_name_when_full_empty(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "  ",
+                "candidate_data": {
+                    "contact": {
+                        "location": "London, UK",
+                        "contact_email": "ada@example.com",
+                        "phone": "555-0100",
+                    }
+                },
+            }
+        )
+        assert out == {
+            "text": (
+                "Ada Lovelace • London, UK\n"
+                "ada@example.com • 555-0100"
+            ),
+            "source": "default",
+        }
+
+    def test_token_view_contact_shape(self) -> None:
+        # Sibling emit may pass build_candidate_token_view output (no candidate_data).
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada Lovelace",
+                "contact": {
+                    "cover_letter_from_block": "From token view",
+                    "location": "ignored",
+                },
+            }
+        )
+        assert out == {"text": "From token view", "source": "candidate"}
+
+    def test_candidate_data_contact_not_dict_falls_back(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada",
+                "candidate_data": {"contact": "not-a-dict"},
+                "contact": {"location": "should-not-win"},
+            }
+        )
+        # candidate_data present → contact={} (not top-level contact).
+        assert out == {"text": "Ada", "source": "default"}
+
+    def test_debug_true_custom_and_default_paths(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+
+        candidate_mod.resolve_cover_from_block(
+            {
+                "astral_candidate_id": "c-custom",
+                "candidate_data": {
+                    "contact": {"cover_letter_from_block": "Custom"}
+                },
+            },
+            debug=True,
+        )
+        assert idx.call_args.kwargs["func"] == "candidate.resolve_cover_from_block"
+        assert idx.call_args.kwargs["identifier"] == "c-custom"
+        assert "candidate" in idx.call_args.kwargs["outcome"]
+        detail_msgs = [c.args[0] for c in detail.call_args_list]
+        assert "source=candidate" in detail_msgs
+        assert "text_chars=6" in detail_msgs
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.resolve_cover_from_block(
+            {
+                "_astral_candidate_id": "c-default",
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "contact": {
+                        "location": "London, UK",
+                        "contact_email": "ada@example.com",
+                    }
+                },
+            },
+            debug=True,
+        )
+        assert idx.call_args.kwargs["identifier"] == "c-default"
+        assert "default" in idx.call_args.kwargs["outcome"]
+        detail_msgs = [c.args[0] for c in detail.call_args_list]
+        assert "source=default" in detail_msgs
+        assert "line1_segments=2" in detail_msgs
+        assert "line2_segments=1" in detail_msgs
+
+        # debug=False must not emit Style D.
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.resolve_cover_from_block(
+            {"full": "Ada", "candidate_data": {"contact": {}}},
+            debug=False,
+        )
+        assert idx.call_count == 0
+        assert detail.call_count == 0
+

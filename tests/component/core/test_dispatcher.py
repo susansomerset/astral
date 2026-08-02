@@ -2250,3 +2250,117 @@ class TestAst1090GazeEmailDispatchOne:
         await dispatcher_mod._dispatch_one(task)
         runner.assert_not_awaited()
         save_ledger.assert_not_called()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "_gaze_email_due_tasks"),
+    reason="AST-1135 gaze due merge not on this publish tip",
+)
+class TestAst1135GazeEmailDueTasks:
+    """AST-1135: AUTO gaze due from live bind Avail + freq gate."""
+
+    def test_due_when_avail_and_freq_allow(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        tk = dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        rows = [
+            {
+                "id": 1,
+                "task_key": tk,
+                "candidate_id": "A",
+                "auto_mode": 1,
+                "min_count": 1,
+                "freq_hrs": 0,
+            },
+            {
+                "id": 2,
+                "task_key": tk,
+                "candidate_id": "B",
+                "auto_mode": 1,
+                "min_count": 2,
+                "freq_hrs": 0,
+            },
+            {
+                "id": 3,
+                "task_key": tk,
+                "candidate_id": "C",
+                "auto_mode": 0,
+                "min_count": 1,
+                "freq_hrs": 0,
+            },
+            {
+                "id": 4,
+                "task_key": "evaluate_jd",
+                "candidate_id": "A",
+                "auto_mode": 1,
+                "min_count": 1,
+            },
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(
+            "src.core.inbox.count_inbox_bound_by_candidate",
+            lambda **kwargs: {"A": 3, "B": 1},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: True)
+        due = dispatcher_mod._gaze_email_due_tasks()
+        assert [t["id"] for t in due] == [1]
+        assert due[0]["available_count"] == 3
+
+    def test_freq_blocks_and_inbox_error_returns_empty(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tk = dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        rows = [
+            {
+                "id": 7,
+                "task_key": tk,
+                "candidate_id": "A",
+                "auto_mode": 1,
+                "min_count": 1,
+                "freq_hrs": 24,
+            }
+        ]
+        monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: rows)
+        monkeypatch.setattr(
+            "src.core.inbox.count_inbox_bound_by_candidate",
+            lambda **kwargs: {"A": 5},
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: False)
+        assert dispatcher_mod._gaze_email_due_tasks() == []
+
+        monkeypatch.setattr(
+            "src.core.inbox.count_inbox_bound_by_candidate",
+            MagicMock(side_effect=RuntimeError("gmail down")),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: True)
+        assert dispatcher_mod._gaze_email_due_tasks() == []
+
+    def test_run_task_enriches_gaze_available_count(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        tk = dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        task = {
+            "id": 55,
+            "task_key": tk,
+            "candidate_id": "cand-x",
+            "entity_type": None,
+            "trigger_state": None,
+            "auto_mode": 0,
+            "debug": 0,
+        }
+        monkeypatch.setattr(dispatcher_mod.database, "get_dispatch_task", lambda tid: dict(task))
+        monkeypatch.setattr(
+            "src.core.inbox.count_inbox_messages_bound_to_candidate",
+            lambda cid, **kwargs: 4 if cid == "cand-x" else 0,
+        )
+        captured: list[dict] = []
+
+        class _Thread:
+            def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
+                captured.append(args[1] if len(args) > 1 else {})
+
+            def start(self) -> None:
+                return None
+
+        monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
+        assert dispatcher_mod.run_task(55, ui_initiated=True) is True
+        assert captured[0]["available_count"] == 4
+
