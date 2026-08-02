@@ -145,8 +145,8 @@ No plan conflicts requiring `conf-!!-NONE`.
 **Publish ref:** `origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites`  
 **Plan path:** `docs/features/meteorite/ast-1133-qualify-meteorite-for-list-created-meteorites.md`
 
-**Built tip:**  ()
+**Built tip:** `f172b5376185b2842c79f06fd506a0defc148a44` (`f172b537`)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1–2 |  | job-link claim bind + Create-time job_link fallback in qualify_meteorite |
+| 1–2 | `f172b537` | job-link claim bind + Create-time job_link fallback in qualify_meteorite |
