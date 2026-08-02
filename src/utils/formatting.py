@@ -5,6 +5,7 @@ import base64
 import json
 import re
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
 
 # Compact grades_encoded row: 000|DTA5|GCA4|…
 _ENCODED_GRADE_LINE = re.compile(r"^\d{3}\|")
@@ -127,6 +128,21 @@ def normalize_link(url: str) -> str:
             url = url[: -len(suffix)].rstrip("/")
             break
     return url
+
+
+def uuid_path_segment_from_url(url: str, segment_pattern: str) -> Optional[str]:
+    """Return the rightmost path segment that fullmatches segment_pattern, else None."""
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    # Path segments only — query/fragment never contribute to the external id.
+    for segment in reversed(urlparse(raw).path.split("/")):
+        if not segment:
+            continue
+        candidate = unquote(segment).strip()
+        if re.fullmatch(segment_pattern, candidate):
+            return candidate
+    return None
 
 
 def value_to_str(val: object) -> str:
