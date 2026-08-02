@@ -139,3 +139,19 @@ Skip outcomes already defined on AST-1140 (`skipped-unbound`, `skipped-not-in-in
 | Stage | Commit | Notes |
 |-------|--------|-------|
 | 1 | `e7144d4a` | `POST /api/admin/inbox/land-meteorite` → `run_gaze_email_selected_ids` |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Publish ref tip (at review):** see Linear comment after `docs()` push  
+**Overall:** DISCUSS (no fix-now on AST-1141 API; C4 dependency-merge stragglers)
+
+**What’s solid**
+- Thin `POST /land-meteorite` with `@require_admin`; empty/non-list → 400; sole call `run_gaze_email_selected_ids` via `asyncio.run`; pass-through result JSON; 502 + warning on upstream failure.
+- Debug forwarded via `ui_llm_debug`; no Create strip/extract on the new route; no Gmail/external/data imports added.
+- AST-1141 `code()` touches only `src/ui/api/api_inbox.py` (+ plan stub).
+
+**Issues / Recommended**
+- **discuss (C4 stragglers):** Tip includes AST-1140 core/config + Betty tests/bible via dependency/`merge-tests`, so many Joan-excluded statutes are in-scope on the three-dot diff; all scored **conforms** (see Linear). No product rewrite for the admin mutator.
+- Legacy `create_meteorite_job_from_inbox_message` import remains for `/create-job` until AST-1142 — plan-allowed; not used by land-meteorite.
+
+Full `## Statutes checked` (65/65) lives in the Linear Review Posted comment.
