@@ -1797,6 +1797,9 @@ def job_link_exists_for_candidate(candidate_id: str, job_link: str) -> bool:
 
     def _do(c: sqlite3.Connection) -> bool:
         _ensure_job_schema(c)
+        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
         cursor = c.execute(
             """SELECT 1 FROM job
                WHERE job_link = ?
@@ -1828,6 +1831,9 @@ def text_matches_known_company_job_id_for_candidate(
 
     def _do(c: sqlite3.Connection) -> Optional[str]:
         _ensure_job_schema(c)
+        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
         cursor = c.execute(
             """SELECT company_job_id FROM job
                WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
