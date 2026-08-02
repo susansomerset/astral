@@ -357,16 +357,16 @@ Equivalent harness:
 
 ### AST-1024 · AST-1023
 
-**AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` reads `profile.cover_letter_signature_image` via `_safe_image_src` (name-only sign-off when absent/rejected). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).
+**AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` loads candidate contact for signature image — **AST-1126** places the image only when signature text contains `{$SIGNATURE_IMAGE}` (path `contact.cover_letter_signature_image` via AST-1125 contract; no auto-inject). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Validation + SomersetCover DOM/CSS + optional to/subject | `src/core/builder.py` | **`TestAst1024BuildSessionCoverLetter`** |
-| Optional candidate signature image / miss / skip | same | same class (image accepted / absent / rejected / blank id) |
+| Optional candidate signature image / miss / skip | same | same class — token-gated (AST-1126 revise) |
 | Paragraph split + HTML escape | same | same class |
 | Style D debug True/False (no log-string asserts) | same | success + failure debug paths |
 
-**Broken / obsolete this pass:** none — additive session path; job cover emit unchanged.
+**Broken / obsolete (superseded by AST-1126):** auto-inject image above session name without token; profile-path image lookup (now `contact.cover_letter_signature_image`).
 
 **Integration:** no existing `tests/integration/` scenario asserts session cover HTML — no revision; do not invent new integration coverage.
 
@@ -403,5 +403,30 @@ Equivalent harness:
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_builder.py::TestAst1100BuilderPinResolve \
+  -q
+```
+
+### AST-1126 · AST-1123
+
+**Parent:** [AST-1123 — Support Signature_Image as a token in the cover letter](https://linear.app/astralcareermatch/issue/AST-1123/support-signature-image-as-a-token-in-the-cover-letter). **Publish:** `origin/sub/AST-1123/AST-1126-cover-html-emit-token-replace-stop-auto-above`. **Blocked by:** AST-1125 config contract.
+
+Job + session cover HTML: replace `{$SIGNATURE_IMAGE}` at token position via `get_cover_letter_render_token` + `_safe_image_src`; stop unconditional image prepend/inject; omit when token absent or image missing/rejected; Style D `signature_image_token=` / `signature_image=` on touched cover debug paths. Resume emit must not resolve the token. Config contract: **`docs/test-bible/utils/config.md`** § AST-1125.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job signoff token placement / omit / no auto-above | `src/core/builder.py` | **`TestAst1126CoverSignatureImageToken`** + revised **`TestBuilderHelpers::test_emits_cover_signoff_and_ats_tokens`** |
+| Session token replace / no auto-inject | same | revised **`TestAst1024BuildSessionCoverLetter`** image cases |
+| Token status matrix + resume non-resolution + job debug lines | same | **`TestAst1126CoverSignatureImageToken`** |
+
+**Broken / obsolete (revised this pass):** `_emit_cover_signoff_html` image-only prepend; session `test_signature_image_from_profile` auto-inject + profile path.
+
+**Integration:** none (no existing scenario asserts cover signature image placement).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1126CoverSignatureImageToken \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_cover_signoff_and_ats_tokens \
+  tests/component/core/test_builder.py::TestBuildCoverLetterFromJobDebugPaths \
   -q
 ```
