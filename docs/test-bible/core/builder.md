@@ -357,7 +357,7 @@ Equivalent harness:
 
 ### AST-1024 · AST-1023
 
-**AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` loads candidate contact for signature image — **AST-1126** places the image only when signature text contains `{$SIGNATURE_IMAGE}` (path `contact.cover_letter_signature_image` via AST-1125 contract; no auto-inject). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).
+**AST-1024:** `build_session_cover_letter` emits SomersetCover HTML from an in-memory field payload (no job load / artifact write). Shared document helper is `_emit_somerset_cover_html_document` (renamed from session-only; job cover-only reuse = **AST-1138**). Optional `candidate_id` loads candidate contact for signature image — **AST-1126** places the image only when signature text contains `{$SIGNATURE_IMAGE}` (path `contact.cover_letter_signature_image` via AST-1125 contract; no auto-inject). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. React Session Cover Letter page = sibling **AST-1025**; job Print Cover Letter emit = **AST-1138**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -428,5 +428,33 @@ Job + session cover HTML: replace `{$SIGNATURE_IMAGE}` at token position via `ge
   tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter \
   tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_cover_signoff_and_ats_tokens \
   tests/component/core/test_builder.py::TestBuildCoverLetterFromJobDebugPaths \
+  -q
+```
+
+### AST-1138 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`. **Blocked by:** AST-1137 (`resolve_cover_from_block`).
+
+`build_cover_letter_from_job` emits SomersetCover (shared `_emit_somerset_cover_html_document`) with `fromBlock` from `resolve_cover_from_block`; maps Subject/Letter/signature via `BUILD_CONFIG["job_cover_somerset"]`; no resume `h1`/`.contact` shell on cover-only; Style D `from_block_source=` / `document_path=somerset_cover`. Resume Print / materials `include_cover` stay on legacy cover sections. Session Admin defaults = **AST-1139**. Config map: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default + custom fromBlock, golden CSS selectors, no resume chrome | `src/core/builder.py` | **`TestAst1138JobCoverSomersetFromBlock`** |
+| Subject/Letter aliases + cover-only shell | same | revised **`TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only`**, **`TestAst518BuilderResumeStructure::test_cover_letter_subject_letter_aliases_render_on_cover_route`** |
+| Field mapper + candidate shape helpers | same | **`TestAst1138JobCoverSomersetFromBlock`** mapper/shape cases |
+| Style D fromBlock source / document path | same | same class — debug True/False |
+| Resume Print unchanged | same | **`test_resume_print_unchanged_no_from_block`** (+ existing resume suites) |
+
+**Broken / obsolete (revised this pass):** cover-only asserts on `aria-label="Cover body"` (resume cover-block) — cover-only is SomersetCover after this ticket.
+
+**Integration:** none (no existing scenario asserts job Print Cover Letter DOM).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
+  tests/component/core/test_builder.py::TestAst518BuilderResumeStructure::test_cover_letter_subject_letter_aliases_render_on_cover_route \
+  tests/component/core/test_builder.py::TestAst1126CoverSignatureImageToken \
+  tests/component/utils/test_config.py::TestAst1138JobCoverSomersetConfig \
   -q
 ```

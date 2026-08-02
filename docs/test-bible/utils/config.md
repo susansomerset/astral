@@ -2146,6 +2146,27 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   -q
 ```
 
+### AST-1138 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`.
+
+`BUILD_CONFIG["job_cover_somerset"]` — `document_title_key` → session title, `artifact_to_fields` (`re_line`/`body`/`signature` → `subject`/`letter`/`signature`), `unset_fields` for layout-only session keys. Does **not** change `session_cover_letter` required flags or `artifact_shapes["cover_letter"]`. Primary emit: **`docs/test-bible/core/builder.md`** (**AST-1138**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job→Somerset field map | `src/utils/config.py` | **`TestAst1138JobCoverSomersetConfig`** |
+
+**Broken / obsolete:** none — additive `BUILD_CONFIG` block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1138JobCoverSomersetConfig \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  -q
+```
+
 ### AST-1140 · AST-1129
 
 **Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.

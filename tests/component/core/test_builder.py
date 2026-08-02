@@ -169,6 +169,7 @@ class TestAst581ResumeCoverSplit:
         assert "Cover body" in html
 
     def test_build_cover_letter_from_job_emits_cover_only(self) -> None:
+        # AST-1138: cover-only is SomersetCover (fromBlock), not resume cover-block aria.
         job = {
             "job_data": {
                 "artifacts": {
@@ -177,8 +178,10 @@ class TestAst581ResumeCoverSplit:
             }
         }
         html = builder_mod.build_cover_letter_from_job(job, _candidate_row(base_resume=_resume_blob()))
-        assert 'aria-label="Cover body"' in html
+        assert 'class="fromBlock"' in html
+        assert 'class="lettercontent"' in html
         assert "Dear team" in html
+        assert 'aria-label="Cover body"' not in html
         assert 'id="summary"' not in html
 
     def test_build_cover_letter_raises_without_content(self) -> None:
@@ -464,6 +467,7 @@ class TestAst518BuilderResumeStructure:
         assert style["colors"]["default_accent"] == accent
 
     def test_cover_letter_subject_letter_aliases_render_on_cover_route(self) -> None:
+        # AST-1138: Subject/Letter map into lettersubject / lettercontent (SomersetCover).
         job = {
             "job_data": {
                 "artifacts": {
@@ -472,9 +476,10 @@ class TestAst518BuilderResumeStructure:
             }
         }
         html = builder_mod.build_cover_letter_from_job(job, _candidate_row(base_resume=_resume_blob()))
-        assert 'aria-label="Cover body"' in html
+        assert 'class="lettersubject"' in html
         assert "Re: Role" in html
         assert "Hello there" in html
+        assert 'aria-label="Cover body"' not in html
         assert "Professional Summary" not in html
 
     def test_ats_block_skips_blank_escaped_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2654,3 +2659,152 @@ class TestAst1126CoverSignatureImageToken:
         assert self._LIT in html
         assert 'alt="Cover letter signature"' not in html
         assert 'class="signature-img"' not in html
+
+
+class TestAst1138JobCoverSomersetFromBlock:
+    """AST-1138: job Print Cover Letter → SomersetCover fromBlock + golden CSS."""
+
+    _GOLDEN_SELECTORS = (
+        ".fromBlock",
+        ".toBlock",
+        ".letterdate",
+        ".lettersubject",
+        ".lettercontent",
+        ".letterSignoff",
+        ".signature-img",
+    )
+
+    def _job(self, cover: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "astral_job_id": "job-1138",
+            "job_data": {"artifacts": {"cover_letter": cover}},
+        }
+
+    def test_default_from_block_and_somerset_shell(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["location"] = "London, UK"
+        html = builder_mod.build_cover_letter_from_job(
+            self._job({"Subject": "Re: Role", "Letter": "Dear team,\n\nThanks.", "signature": "Ada"}),
+            cd,
+        )
+        assert "<title>SomersetCover</title>" in html
+        assert 'class="fromBlock"' in html
+        # Default composition: Name • City / email (br between identity lines).
+        assert "Ada Lovelace" in html and "London, UK" in html
+        assert "ada@example.com" in html
+        assert "<br>" in html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert 'class="lettersubject"' in html and "Re: Role" in html
+        assert "Dear team," in html and "Thanks." in html
+        assert 'class="letterSignoff"' in html and "Ada" in html
+        assert 'class="letterdate"' in html  # empty date still emits selector
+        assert 'class="toBlock"' not in html
+        # No resume header/contact chrome on cover-only.
+        assert 'aria-label="Cover body"' not in html
+        assert re.search(r"<h1[^>]*>\s*Ada Lovelace\s*</h1>", html) is None
+        assert 'class="contact"' not in html
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        for sel in self._GOLDEN_SELECTORS:
+            assert sel in style
+
+    def test_candidate_from_block_text(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
+            "Custom Name • Place\ncustom@example.com"
+        )
+        html = builder_mod.build_cover_letter_from_job(
+            self._job({"Letter": "Body only", "signature": ""}),
+            cd,
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Custom Name" in from_html
+        assert "custom@example.com" in from_html
+        assert "Ada Lovelace" not in from_html
+
+    def test_resume_print_unchanged_no_from_block(self) -> None:
+        job = {
+            "job_data": {
+                "artifacts": {
+                    "resume_content": _resume_blob(professional_summary="Summary text"),
+                    "cover_letter": {"re_line": "Re", "body": "Cover body", "signature": ""},
+                }
+            }
+        }
+        html = builder_mod.build_resume_from_job(
+            job, _candidate_row(base_resume=_resume_blob()), include_cover=False
+        )
+        assert "Summary text" in html
+        assert 'class="fromBlock"' not in html
+        assert "<title>SomersetCover</title>" not in html
+
+    def test_debug_from_block_source_and_document_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        details: list[str] = []
+        outcomes: list[str] = []
+
+        def _index(**kwargs: Any) -> None:
+            outcomes.append(str(kwargs.get("outcome") or ""))
+
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_from_block"] = "Line A\nLine B"
+        html = builder_mod.build_cover_letter_from_job(
+            self._job({"Letter": "Hello", "signature": "Ada"}),
+            cd,
+            debug=True,
+        )
+        assert "Hello" in html
+        assert any("somerset cover html" in o for o in outcomes)
+        assert "from_block_source=candidate" in details
+        assert any(d.startswith("from_block_chars=") for d in details)
+        assert "document_path=somerset_cover" in details
+
+    def test_debug_false_skips_builder_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called = {"index": 0}
+
+        def _index(**_k: Any) -> None:
+            called["index"] += 1
+
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        builder_mod.build_cover_letter_from_job(
+            self._job({"Letter": "Quiet", "signature": ""}),
+            _candidate_row(base_resume=_resume_blob()),
+            debug=False,
+        )
+        assert called["index"] == 0
+
+    def test_job_cover_somerset_field_mapper(self) -> None:
+        fields = builder_mod._job_cover_somerset_fields(
+            {"re_line": "Subj", "body": "Letter body", "signature": "Sig"},
+            "From text",
+        )
+        assert fields["from_block"] == "From text"
+        assert fields["subject"] == "Subj"
+        assert fields["letter"] == "Letter body"
+        assert fields["signature"] == "Sig"
+        assert fields["letter_date"] == ""
+        assert fields["to_block"] == ""
+        assert fields["signoff_closing"] == ""
+        assert set(fields) == set(builder_mod.BUILD_CONFIG["session_cover_letter"]["fields"])
+
+    def test_candidate_shape_for_resolve(self) -> None:
+        shaped = builder_mod._candidate_for_cover_from_block(
+            {
+                "_full": "Ada Lovelace",
+                "_first": "Ada",
+                "_last": "Lovelace",
+                "contact": {"contact_email": "ada@example.com"},
+                "astral_candidate_id": "cand-1",
+            }
+        )
+        assert shaped == {
+            "full": "Ada Lovelace",
+            "first": "Ada",
+            "last": "Lovelace",
+            "contact": {"contact_email": "ada@example.com"},
+            "astral_candidate_id": "cand-1",
+        }

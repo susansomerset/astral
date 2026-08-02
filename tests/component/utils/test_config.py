@@ -3648,3 +3648,28 @@ class TestAst1137CoverFromBlockConfig:
         assert "cover_letter_from_block" not in {
             (v.get("path") or "").rsplit(".", 1)[-1] for v in cfg.TOKEN_SOURCES.values()
         }
+
+
+class TestAst1138JobCoverSomersetConfig:
+    """AST-1138: BUILD_CONFIG job_cover_somerset artifact→Somerset field map."""
+
+    def test_job_cover_somerset_map(self) -> None:
+        block = cfg.BUILD_CONFIG["job_cover_somerset"]
+        assert block["document_title_key"] == "session_cover_letter"
+        assert cfg.BUILD_CONFIG[block["document_title_key"]]["document_title"] == "SomersetCover"
+        assert block["artifact_to_fields"] == {
+            "re_line": "subject",
+            "body": "letter",
+            "signature": "signature",
+        }
+        assert block["unset_fields"] == (
+            "from_block",
+            "letter_date",
+            "to_block",
+            "signoff_closing",
+        )
+        # Session contract unchanged; job artifact shape stays Subject/Letter/signature.
+        session_keys = set(cfg.BUILD_CONFIG["session_cover_letter"]["fields"])
+        assert set(block["unset_fields"]).issubset(session_keys)
+        assert set(block["artifact_to_fields"].values()).issubset(session_keys)
+        assert "cover_letter" in cfg.BUILD_CONFIG["artifact_shapes"]
