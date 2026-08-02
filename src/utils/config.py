@@ -3133,6 +3133,11 @@ TRACKER_CONFIG = {
         "job_description": "job_description",  # coat-check: fetch via playwright if missing
     },
     "jd_min_chars": 200,  # scraped JDs shorter than this are discarded (not saved) as junk
+    # AST-1120: full path-segment match for UUID-shaped external job ids in job_link.
+    "uuid_path_segment_pattern": (
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    ),
     "jd_prune_rules": [{"prune_text":"{$JOB_TITLE}", "prune_type":"head"},
                     {"prune_text":"apply for this ", "prune_type":"tail"}, 
                     {"prune_text":"equal opportunity", "prune_type":"tail"}],
@@ -3200,6 +3205,7 @@ TRACKER_CONFIG = {
         "date_pattern_threshold": 5,   # ≥ this date-stamp matches → job board listing → missing
     },
 }
+assert TRACKER_CONFIG["uuid_path_segment_pattern"].startswith("^")
 
 # ---------------------------------------------------------------------------
 # MERGE_TICKET_LOG_CONFIG: append-only parent epic land history (AST-675/681).

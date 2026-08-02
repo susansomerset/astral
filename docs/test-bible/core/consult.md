@@ -787,3 +787,23 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
   tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
   -q
 ```
+
+### AST-1121 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1121-debug-found-recorded-company-job-id-resolve`.
+
+Style D on `qualify_meteorite` apply `debug=True`: `found source=AI` | `UUID-from-job_link` | `neither`; `fallback_job_link=` when source is not AI (fail) / when UUID (pass); recorded half unchanged. Resolve/gate outcomes stay AST-1120.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Found-source Style D detail | `src/core/consult.py` | **`TestAst1121CompanyJobIdDebugSource`** |
+
+**Broken / obsolete:** none — prior AST-1062 / AST-1120 manifests do not assert pre-label detail strings.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1121CompanyJobIdDebugSource \
+  -q
+```
