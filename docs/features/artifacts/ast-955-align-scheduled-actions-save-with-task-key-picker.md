@@ -1,3 +1,104 @@
+<!-- linear-archive: AST-955 archived 2026-08-02 -->
+
+## Linear archive (AST-955)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-955/align-scheduled-actions-save-with-task-key-picker-check-cover-letter  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-856 — check_cover_letter not recognized as a valid task_key  
+**Blocked by / blocks / related:** parent: AST-856
+
+### Description
+
+## What this implements
+
+Admin create/update on Scheduled Actions accepts every registered task key the picker already offers (except explicitly retired keys). Fixes Susan's `check_cover_letter` 400; leaves run-time validation as the place misconfigured trigger/entity pairings fail. Does not own Manage Tasks, chain choreography, or dispatcher claim changes.
+
+## Acceptance criteria
+
+1. Susan can create a Scheduled Action dispatch row with `task_key=check_cover_letter` for candidate `somerset` without HTTP 400 — the error from the original brief no longer occurs.
+2. Any other registered task key visible in the picker can be saved the same way (no *Unknown or non-schedulable task_key* for registered task keys).
+3. Saving `check_job_resume` and `finalize_job_resume` continues to work unchanged.
+4. A deliberately misconfigured row (wrong trigger state for the chosen task_key) is rejected or fails at **run** time, not at Save time — observable on first Run, not blocked at Save for merely being outside a separate schedulable allowlist.
+5. Automated coverage asserts admin create acceptance for `check_cover_letter` and at least one regression case for an already-schedulable key.
+
+## Boundaries
+
+* Does not change Manage Tasks Run Next authoring.
+* Does not remove the task registry or change prompt / run-next content.
+* Does not add pipeline step lists or chain choreography.
+* May still block explicitly retired dispatch keys.
+* Does not change dispatcher claim logic or Execution History beyond honoring saved rows.
+
+## Notes for planning
+
+* Align Save acceptance with the same registered task catalog the Scheduled Actions picker already uses (Code Rules §2.1 — single source of truth). Drop the separate save-time "schedulable" allowlist gate that rejected `check_cover_letter`.
+* Form defaults may still derive from the task registry / existing agent-task rows.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at **dispatch-parent**. Publish to `origin/<sub-ref>` only — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-07-22T23:57:10.773Z
+[merge-child] blocked: missing plan(AST-955): on origin/sub/AST-856/AST-955-align-scheduled-actions-save-with-task-key-picker
+
+@Ada Lovelace — plan landed as `docs(AST-955): plan — …`; validate-sub-log requires `plan(AST-955):`. Add a `plan(AST-955):` commit on the publish ref (empty commit OK if plan doc already present) and push. Stay User Testing.
+
+— Chuckles
+
+#### radia — 2026-07-22T23:55:22.452Z
+**Radia review — clean**
+
+Diff: `origin/dev...origin/sub/AST-856/AST-955-align-scheduled-actions-save-with-task-key-picker` @ `2646527`
+
+**Plan fidelity:** Stages 1–3 match. Save membership is registered `TASK_CONFIG` (not `DISPATCH_SCHEDULABLE_TASK_KEYS`); optional `trigger_state` flows through defaults on insert/update; schedulable frozenset left for bootstrap / form enrichment; dispatcher claim untouched.
+
+**Rules:** §1.3 / §2.1 — one Save catalog shared with picker source. §3.3 — utils import only for this change. §2.4 / §2.6 / §5f / §5g N/A.
+
+**fix-now / discuss:** none.
+
+Review doc: https://github.com/susansomerset/astral/blob/264652777ea95a11e66e16d00afb0cef287b4640/docs/features/artifacts/ast-955-align-scheduled-actions-save-with-task-key-picker.md
+
+#### betty — 2026-07-22T23:51:05.244Z
+1. `./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults \
+  tests/component/utils/test_config.py::TestAst549DispatchAdminDefaults::test_unknown_task_key_raises \
+  tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_create_dispatch_task_paths \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst955SaveDispatchTaskRegisteredKeys \
+  -q`
+
+2. **Broken / obsolete revised this pass:**
+   - `TestAst549DispatchAdminDefaults::test_unknown_task_key_raises` — `anticipate_scan` is registered (hop-derived `BUILD_ARTIFACTS`); now asserts junk key + `unknown task_key`.
+   - `TestDispatchTasks::test_create_dispatch_task_paths` — fake `custom`/`WATCH` 400 before save; uses `grade_do`/`PASSED_JD`.
+
+3. **Coverage:** `check_cover_letter` + `CANDIDATE_REVIEW` create 201; `check_job_resume` regression; unknown wording (`Unknown task_key`, not non-schedulable); DB insert + rejected wording; config defaults with optional trigger.
+
+**Publish:** `origin/sub/AST-856/AST-955-align-scheduled-actions-save-with-task-key-picker` @ `5f87d19` (`merge-tests(AST-955): origin/tests a4b8fbb`)
+
+**Bible shasum (publish tip):**
+- `docs/test-bible/ui/api/api_admin.md` `eafb1d5799becdbfb3fa48830b9f8916cfcc0804`
+- `docs/test-bible/utils/config.md` `0f1253696e20dadbabc0f1a1b1c13e629026dd6e`
+- `docs/test-bible/data/database/dispatch_tasks.md` `0337a6e35ab994d442182050bbc5682291947440`
+
+— Betty
+
+#### ada — 2026-07-22T23:42:51.585Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-856/AST-955-align-scheduled-actions-save-with-task-key-picker/docs/features/artifacts/ast-955-align-scheduled-actions-save-with-task-key-picker.md
+
+**Scope:** Single-Component — utils `dispatch_task_admin_defaults` + `save_dispatch_task` + admin `_dispatch_task_key_trigger_error` so Save accepts the same registered `TASK_CONFIG` catalog the picker already lists; retired keys still blocked; no dispatcher/frontend changes.
+
+**Conf:** high — verified `check_cover_letter` is in `TASK_CONFIG` / picker but outside `DISPATCH_SCHEDULABLE_TASK_KEYS`; Save maps that KeyError to the exact 400 Susan hit.
+
+**Risk:** Medium — admin create/update path; existing schedulable keys keep current derivation when no trigger override is needed; bad `sort_by`/`entity_type` only risk for newly accepted registered keys if override is wrong.
+
+---
+
 # AST-955 — Align Scheduled Actions Save with task_key picker (check_cover_letter not recognized as a valid task_key)
 
 - **Linear:** [AST-955](https://linear.app/astralcareermatch/issue/AST-955/align-scheduled-actions-save-with-task-key-picker-check-cover-letter)
