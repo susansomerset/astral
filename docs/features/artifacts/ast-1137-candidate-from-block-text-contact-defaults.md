@@ -103,3 +103,13 @@ AST-1138 / AST-1139 **must** call `resolve_cover_from_block` (or equivalent impo
 - §2.1 config source of truth: field key + UI label in config.
 - §3.2 / §3.3: UI stays config-driven; core imports utils only; ui does not grow business composition logic.
 - §3.2 ui-config-driven: profile textarea from `UI_CONFIG`, not a React-only field.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`
+
+| Stage | Summary |
+|-------|---------|
+| 1 | `COVER_FROM_BLOCK_CONFIG` + `contact.cover_letter_from_block` library/UI field |
+| 2 | `resolve_cover_from_block` — custom text or `Name • City, ST` / `email • phone` defaults |
+| 3 | Profile: config-driven textarea (no `CandidateProfile.tsx` change) |

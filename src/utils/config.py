@@ -1150,6 +1150,7 @@ CANDIDATE_LIBRARY_CONFIG = {
         "contact_email", "reply_email", "phone", "location",
         "github", "linkedin_url", "websites", "extra_emails", "timezone",
         "cover_letter_signature", "cover_letter_signature_image",
+        "cover_letter_from_block",
         "title_patterns", "reason_codes",
     ),
     "context_keys": (
@@ -1166,6 +1167,17 @@ CANDIDATE_LIBRARY_CONFIG = {
     "linkedin_url_base": "https://www.linkedin.com/in/",
     "github_url_base": "https://github.com/",
     "full_name_join": " ",
+}
+
+# AST-1137: candidate-owned cover from-block + default composition for siblings.
+COVER_FROM_BLOCK_CONFIG = {
+    "contact_key": "cover_letter_from_block",
+    "segment_separator": " • ",
+    "line_separator": "\n",
+    "name_column": "full",
+    "line_1_contact_paths": ("location",),
+    "line_2_contact_paths": ("contact_email", "phone"),
+    "sources": ("candidate", "default"),
 }
 
 # AST-1016: mechanical preamble script (Intro + steps). UI = AST-1017; Ruth task = AST-1015.
@@ -4171,6 +4183,11 @@ DATA_SHAPES = {
                     "label": "Cover Letter Signature",
                     "fields": [
                         {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                        {
+                            "key": "contact.cover_letter_from_block",
+                            "label": "Cover letter from-block",
+                            "type": "textarea",
+                        },
                     ],
                 },
                 {

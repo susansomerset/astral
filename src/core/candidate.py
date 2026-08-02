@@ -37,6 +37,7 @@ from src.utils.config import (
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    COVER_FROM_BLOCK_CONFIG,
     TOPIC_MENU_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
@@ -83,6 +84,91 @@ def recompute_full_name(first: str, last: str) -> str:
     join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
     parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
     return join.join(parts)
+
+
+def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
+    """Return cover from-block text + source for emit consumers (AST-1137).
+
+    Returns ``{"text": str, "source": "candidate"|"default"}``.
+    Custom wins when ``contact.cover_letter_from_block`` strips non-empty;
+    otherwise compose defaults from name + contact per COVER_FROM_BLOCK_CONFIG.
+    """
+    src_candidate, src_default = COVER_FROM_BLOCK_CONFIG["sources"]
+    seg_sep = COVER_FROM_BLOCK_CONFIG["segment_separator"]
+    line_sep = COVER_FROM_BLOCK_CONFIG["line_separator"]
+    contact_key = COVER_FROM_BLOCK_CONFIG["contact_key"]
+
+    # DB row (candidate_data.contact) or token-view (top-level contact).
+    cd = candidate.get("candidate_data")
+    if isinstance(cd, dict):
+        contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    elif isinstance(candidate.get("contact"), dict):
+        contact = candidate["contact"]
+    else:
+        contact = {}
+
+    raw = contact.get(contact_key)
+    if isinstance(raw, str) and raw.strip():
+        text = raw.strip()
+        source = src_candidate
+        if debug:
+            cid = (
+                candidate.get("astral_candidate_id")
+                or candidate.get("_astral_candidate_id")
+                or ""
+            )
+            logger.debug_index(
+                func="candidate.resolve_cover_from_block",
+                index=1,
+                total=1,
+                identifier=cid,
+                outcome=f"success — from_block {source}",
+            )
+            logger.debug_detail(f"source={source}")
+            logger.debug_detail(f"text_chars={len(text)}")
+        return {"text": text, "source": source}
+
+    # Default composition: Name • City, ST / email • phone (omit empty).
+    full = str(candidate.get("full") or "").strip()
+    if not full:
+        full = recompute_full_name(
+            str(candidate.get("first") or ""), str(candidate.get("last") or "")
+        )
+    line1_parts = [full] if full else []
+    for path in COVER_FROM_BLOCK_CONFIG["line_1_contact_paths"]:
+        seg = str(contact.get(path) or "").strip()
+        if seg:
+            line1_parts.append(seg)
+    line2_parts = []
+    for path in COVER_FROM_BLOCK_CONFIG["line_2_contact_paths"]:
+        seg = str(contact.get(path) or "").strip()
+        if seg:
+            line2_parts.append(seg)
+    lines = []
+    if line1_parts:
+        lines.append(seg_sep.join(line1_parts))
+    if line2_parts:
+        lines.append(seg_sep.join(line2_parts))
+    text = line_sep.join(lines)
+    source = src_default
+    if debug:
+        cid = (
+            candidate.get("astral_candidate_id")
+            or candidate.get("_astral_candidate_id")
+            or ""
+        )
+        logger.debug_index(
+            func="candidate.resolve_cover_from_block",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=f"success — from_block {source}",
+        )
+        logger.debug_detail(f"source={source}")
+        logger.debug_detail(f"text_chars={len(text)}")
+        logger.debug_detail(f"line1_segments={len(line1_parts)}")
+        logger.debug_detail(f"line2_segments={len(line2_parts)}")
+    return {"text": text, "source": source}
 
 
 def normalize_contact_urls(contact: dict) -> None:
