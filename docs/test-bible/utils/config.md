@@ -2061,3 +2061,23 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/utils/test_config.py::TestAst1125CoverLetterRenderTokenContract \
   -q
 ```
+
+### AST-1131 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`.
+
+`METEORITE_EMAIL_INGEST_CONFIG` paste-normalize knobs: `entity_unescape_marker` / min count / max passes, `nested_autolink_attr_names`, `promote_bare_http_urls`. Primary behavior: **`docs/test-bible/utils/formatting.md`** (**AST-1131**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Paste-normalize config | `src/utils/config.py` | **`TestAst1131MeteoriteEmailIngestPasteNormalizeConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing AST-1061 ingest config.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1131MeteoriteEmailIngestPasteNormalizeConfig \
+  -q
+```
