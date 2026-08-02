@@ -142,5 +142,5 @@ After AST-1137: Print Cover Letter (cover-only job HTML via `build_cover_letter`
 | 3 | `build_cover_letter_from_job` → resolve fromBlock + SomersetCover (no resume shell) |
 | 4 | Style D debug: fromBlock source + `document_path=somerset_cover` |
 
-**Build:** `code(AST-1138)` on `sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css` — `a2eabbc76c9783dc16582add740d7348d077def3`.
+**Build:** `code(AST-1138)` on `sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css` — `c86c8be587a10c29e1476a18e85a53bd6523f227`.
 
