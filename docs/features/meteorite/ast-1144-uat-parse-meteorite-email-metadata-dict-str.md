@@ -98,3 +98,12 @@ Betty (post Code Complete): add a regression that feeds a realistic Ruth payload
 ### Recommended actions
 
 - No fix-now on the schema/prompt fix. Restore engineer assignee for resolve if that was unintentional.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review tip:** `0abc2c8e` · **Overall:** DISCUSS (no fix-now)
+
+**discuss — assignee Radia at Tests Passed:** Closed for resolve. Linear assignee is **Katherine Johnson** (implementer) through Review Posted / this resolve; no product change. Transient Radia assignee at review handoff does not require further action.
+
+**fix-now:** none.
