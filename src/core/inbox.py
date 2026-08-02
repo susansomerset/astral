@@ -11,6 +11,7 @@ AST-1061: Create routes through gazer email ingest (Playwright + dedupe) → mul
 from __future__ import annotations
 
 import html as html_module
+from typing import Dict
 
 from src.core.candidate import get_candidate_id_for_query
 from src.core.gazer import ingest_meteorite_jobs_from_email_html_sync
@@ -65,6 +66,30 @@ def list_inbox_messages(debug: bool = False) -> list[dict]:
             if match["matched"]:
                 logger.debug_detail(f"astral_candidate_id={match['astral_candidate_id']}")
     return enriched
+
+
+def count_inbox_bound_by_candidate(*, debug: bool = False) -> Dict[str, int]:
+    """One inbox list → {astral_candidate_id: message_count} for matched From binds."""
+    counts: Dict[str, int] = {}
+    for msg in list_inbox_messages(debug=debug):
+        match = msg.get("candidate_match") or {}
+        if not match.get("matched"):
+            continue
+        cid = str(match.get("astral_candidate_id") or "").strip()
+        if not cid:
+            continue
+        counts[cid] = counts.get(cid, 0) + 1
+    return counts
+
+
+def count_inbox_messages_bound_to_candidate(
+    candidate_id: str, *, debug: bool = False
+) -> int:
+    """Live count of current inbox messages whose From binds to candidate_id."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        return 0
+    return int(count_inbox_bound_by_candidate(debug=debug).get(cid, 0))
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:

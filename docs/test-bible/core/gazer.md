@@ -297,3 +297,45 @@ Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils
   tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
   -q
 ```
+
+### AST-1131 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`.
+
+`ingest_meteorite_jobs_from_email_html` calls `normalize_pasted_list_email_html` before `_meteorite_email_candidate_links`. Primary helper: **`docs/test-bible/utils/formatting.md`** (**AST-1131**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ingest after paste normalize | `src/core/gazer.py` | **`TestAst1131NormalizePastedListEmailIngest`** (+ regression **`TestAst1061MeteoriteEmailIngest`**) |
+
+**Broken / obsolete:** none — normalize is idempotent on clean HTML; AST-1061 cases remain green.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1131NormalizePastedListEmailIngest \
+  tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
+  -q
+```
+
+### AST-1132 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1132-job-link-hygiene-non-job-create-skip`.
+
+`_meteorite_email_candidate_links` applies expanded excludes + optional allow. Links ingest: final-URL exclude (`excluded_link`), non-job visible markers (`non_job_page`), candidate-scoped dedupe. Config: **`docs/test-bible/utils/config.md`**; data helpers: **`docs/test-bible/data/database/jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hygiene + non-job skip + scoped dedupe | `src/core/gazer.py` | **`TestAst1132MeteoriteEmailIngestHygiene`**; revised **`TestAst1061MeteoriteEmailIngest`** (company `candidate_id`) |
+
+**Broken / obsolete:** AST-1061 dedupe fixtures that seeded companies without `candidate_id` — revised so candidate-scoped helpers still exercise skip paths.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1132MeteoriteEmailIngestHygiene \
+  tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
+  -q
+```

@@ -1231,7 +1231,8 @@ class TestAst1061MeteoriteEmailIngest:
         db = sqlite_in_memory
         cid = "cand-1061-dup"
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
-        db.save_company("acme", state="IMPORTED")
+        # AST-1132: candidate-scoped id match requires company.candidate_id.
+        db.save_company("acme", state="IMPORTED", candidate_id=cid)
         db.save_job("j-known", company="acme", state="NEW", company_job_id="KNOWN-EXT-77")
         html = "<p>" + ("x" * 20) + " KNOWN-EXT-77 " + ("y" * 20) + "</p>"
         out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
@@ -1251,7 +1252,8 @@ class TestAst1061MeteoriteEmailIngest:
         db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
         good = "https://jobs.example.com/role/good"
         known = "https://jobs.example.com/role/known"
-        db.save_company("acme", state="IMPORTED")
+        # AST-1132: candidate-scoped link dedupe requires company.candidate_id.
+        db.save_company("acme", state="IMPORTED", candidate_id=cid)
         db.save_job("j-link", company="acme", state="NEW", job_link=known)
 
         async def fake_fetch(url, *, debug=False):
@@ -1317,3 +1319,165 @@ class TestAst1061MeteoriteEmailIngest:
             gazer_mod.ingest_meteorite_jobs_from_email_html_sync("", "<p>x</p>")
         with pytest.raises(ValueError, match="html is required"):
             gazer_mod.ingest_meteorite_jobs_from_email_html_sync("cand", "  ")
+
+
+# Branches: paste normalize before candidate links — UAT escape + bare list (AST-1131).
+class TestAst1131NormalizePastedListEmailIngest:
+    _UID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE = f"https://www.dice.com/job-detail/{_UID}"
+
+    def test_escaped_nested_autolink_creates_clean_job_link(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1131-escape"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+
+        async def fake_fetch(url, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", url)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        html = (
+            f'&lt;div xmlns="&lt;a href="http://www.w3.org/2000/svg"&gt;'
+            f'http://www.w3.org/2000/svg&lt;/a&gt;"&gt;'
+            f'&lt;a href="&lt;a href="{self._DICE}"&gt;{self._DICE}&lt;/a&gt;"&gt;Job&lt;/a&gt;'
+            f'&lt;/div&gt;'
+        )
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "links"
+        assert len(out["created"]) == 1
+        row = db.get_job(out["created"][0]["astral_job_id"])
+        assert row["job_link"] == self._DICE
+        assert "<a" not in (row["job_link"] or "")
+        # SVG namespace must not become a created job_link candidate.
+        assert all(
+            "w3.org" not in (s.get("url") or "")
+            for s in out["skipped"]
+        )
+        assert "w3.org" not in (row["job_link"] or "")
+
+    def test_newline_bare_urls_enter_links_mode(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1131-bare"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        other = "https://jobs.example.com/role/two"
+
+        async def fake_fetch(url, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", url)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(
+            cid, f"{self._DICE}\n{other}", debug=False
+        )
+        assert out["mode"] == "links"
+        created_links = {db.get_job(c["astral_job_id"])["job_link"] for c in out["created"]}
+        assert created_links == {self._DICE, other}
+
+
+# Branches: exclude/allow, non-job visible skip, candidate-scoped dedupe (AST-1132).
+class TestAst1132MeteoriteEmailIngestHygiene:
+    def test_w3_org_href_excluded_from_candidates(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1132-ex"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "X"})
+        good = "https://jobs.example.com/role/real"
+        svg = "https://www.w3.org/2000/svg"
+
+        async def fake_fetch(url, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", url)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        html = (
+            f'<a href="{good}">Apply</a>'
+            f'<a href="{svg}">SVG</a>'
+        )
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "links"
+        assert len(out["created"]) == 1
+        row = db.get_job(out["created"][0]["astral_job_id"])
+        assert row["job_link"] == good
+        # Silent drop at candidate collection — no skipped row for excluded href.
+        assert all(s.get("url") != svg for s in out["skipped"])
+
+    def test_non_job_visible_text_skips_create(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1132-nj"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "N"})
+        url = "https://jobs.example.com/role/looks-ok"
+
+        async def fake_fetch(u, *, debug=False):
+            # Long enough for min_jd_chars but clearly an SVG/spec page.
+            body = ("SVG namespace docs. " * 5) + "www.w3.org/2000/svg"
+            return (body, u)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(
+            cid, f'<a href="{url}">x</a>', debug=False
+        )
+        assert out["mode"] == "links"
+        assert out["created"] == []
+        assert out["skipped"][0]["reason"] == "non_job_page"
+        assert out["skipped"][0]["url"] == url
+
+    def test_final_url_excluded_link_skips(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1132-redir"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "R"})
+        start = "https://jobs.example.com/role/redirect"
+        final = "https://www.w3.org/2000/svg"
+
+        async def fake_fetch(u, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", final)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(
+            cid, f'<a href="{start}">x</a>', debug=False
+        )
+        assert out["mode"] == "links"
+        assert out["created"] == []
+        assert out["skipped"][0]["reason"] == "excluded_link"
+        assert out["skipped"][0]["url"] == final
+
+    def test_cross_candidate_same_link_still_creates(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1132-mine"
+        other = "cand-1132-other"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "M"})
+        db.save_candidate(other, state="NEW_CANDIDATE", candidate_data={"name": "O"})
+        link = "https://jobs.example.com/role/shared"
+        db.save_company("other-co", state="IMPORTED", candidate_id=other)
+        db.save_job("j-other", company="other-co", state="NEW", job_link=link)
+
+        async def fake_fetch(u, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", u)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(
+            cid, f'<a href="{link}">x</a>', debug=False
+        )
+        assert out["mode"] == "links"
+        assert len(out["created"]) == 1
+        row = db.get_job(out["created"][0]["astral_job_id"])
+        assert row["job_link"] == link
