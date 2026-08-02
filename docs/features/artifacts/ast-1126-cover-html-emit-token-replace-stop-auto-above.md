@@ -246,3 +246,25 @@ Wrong omit/replace would hide signatures or leave literals in print HTML; sessio
 | Branch | `sub/AST-1123/AST-1126-cover-html-emit-token-replace-stop-auto-above` |
 | Tip | `33d143fd` |
 | Notes | Job + session cover emit: token-only `{$SIGNATURE_IMAGE}` replace via `get_cover_letter_render_token`; stop auto-prepend/inject; Style D `signature_image_token` + three-way `signature_image`. |
+
+## Radia review — code-rubric.v1
+
+`[code-rubric] revision=1`  
+**Overall:** DISCUSS (C4 stragglers only — no product fix-now)  
+**Publish tip reviewed:** `6570adbd` product/tests tip + this docs append  
+**Baseline:** `origin/dev`
+
+### What’s solid
+
+- Stages 1–2 match: shared `_lookup_dotted_path` / `_signature_image_token_status` / `_html_with_signature_image_token`; job `_emit_cover_signoff_html` uses concrete `<p>before</p>{img}<p>after</p>`; session stops auto-inject and replaces via token helper.
+- Image source via `tok["path"]` (`contact.…`); surfaces + omit-policy guards raise instead of improvising.
+- Style D: `signature_image_token` + three-way `signature_image` only under existing `debug=True` gates on job + session cover success paths.
+- Resume builders do not call cover render-token helpers. One `merge-tests(AST-1126)`.
+
+### Findings
+
+**discuss (C4 straggler):** Joan excluded several statutes at plan time (Files Changed = core only). Code-time three-dot diff includes plan docs, Betty test tree, and AST-1125 `config.py` on the tip, so those statutes score in-scope and **conform**. No product action — acknowledge and continue.
+
+### Recommended actions
+
+- Hedy: no `fix-now` product work. On resolve-child, acknowledge C4 stragglers → User Testing.
