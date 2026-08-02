@@ -59,6 +59,26 @@ Roster handoff + parse dispatch: **`docs/test-bible/core/roster.md`** (**AST-827
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
 
+### AST-1120 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
+
+`uuid_path_segment_from_url(url, segment_pattern)` — rightmost path segment that fullmatches the pattern (query/fragment ignored; case preserved). Apply surface: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UUID path extract | `src/utils/formatting.py` | **`TestUuidPathSegmentFromUrl`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestUuidPathSegmentFromUrl \
+  -q
+```
+
 **AST-713** narrowed run:
 
 ```bash
