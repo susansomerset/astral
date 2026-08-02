@@ -4480,3 +4480,71 @@ class TestAst1121CompanyJobIdDebugSource:
             (c.kwargs.get("func") == "consult.qualify_meteorite") for c in dbg_i.call_args_list
         )
         assert "found source=" not in self._detail_text(dbg_d)
+
+
+# Branches: RESPONSE omits company_job_id key → UUID fallback still records (AST-1127 UAT).
+class TestAst1127QualifyMeteoriteOmitCompanyJobId:
+    _DICE_UUID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE_URL = f"https://www.dice.com/company-profile/{_DICE_UUID}"
+
+    def _jd(self, n: int = 50) -> str:
+        return "Visible JD body text. " * ((n // 20) + 1)
+
+    @pytest.mark.asyncio
+    async def test_omitted_company_job_id_key_falls_back_to_uuid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_resolve_company_job_id"):
+            pytest.skip("AST-1120 resolve helper not on tip")
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": self._DICE_UUID,
+                    "job_title": "Senior Engineer",
+                    "job_link": self._DICE_URL,
+                    "job_data": {jd_key: self._jd(60)},
+                }
+            ),
+        )
+        # Key absent (not "") — schema optional (AST-1127); consult resolve owns fill.
+        resp = {
+            "astral_job_id": "j-omit",
+            "job_title": "Senior Engineer",
+            "job_link": self._DICE_URL,
+            "jd_text": self._jd(60),
+        }
+        assert "company_job_id" not in resp
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        job = {
+            "astral_job_id": "j-omit",
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-1127",
+            "job_link": "https://jobs.example.com/old",
+            "job_data": {jd_key: self._jd()},
+        }
+        out = await consult_mod.qualify_meteorite("batch-1127-omit", [job], {}, debug=False)
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        assert initialize.call_args.args[2]["company_job_id"] == self._DICE_UUID
+        assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]

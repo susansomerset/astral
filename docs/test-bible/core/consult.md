@@ -807,3 +807,23 @@ Style D on `qualify_meteorite` apply `debug=True`: `found source=AI` | `UUID-fro
   tests/component/core/test_consult.py::TestAst1121CompanyJobIdDebugSource \
   -q
 ```
+
+### AST-1127 · AST-1119 (UAT)
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1127-uat-qualify-meteorite-schema-company-job-id-omitted`.
+
+RESPONSE omits `company_job_id` key + UUID in `job_link` → `_resolve_company_job_id` records UUID (schema unblock is config — **`docs/test-bible/utils/config.md`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Omit-key apply after schema optional | `src/core/consult.py` | **`TestAst1127QualifyMeteoriteOmitCompanyJobId`** |
+
+**Broken / obsolete:** none on consult tree — empty-string AST-1120 cases still valid.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1127QualifyMeteoriteOmitCompanyJobId \
+  -q
+```
