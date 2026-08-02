@@ -99,8 +99,24 @@ No plan conflicts requiring `conf-!!-NONE`.
 ## Review
 
 **Publish ref:** `origin/sub/AST-1119/AST-1127-uat-qualify-meteorite-schema-company-job-id-omitted`
-**Tip:** `7bfaf610`
+**Tip (pre-review):** `e40e7386` (`merge-tests` + Betty coverage)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `7bfaf610` | `qualify_meteorite` `company_job_id` `required: False` + assert |
+| tests | `7f6aafa5` / `e40e7386` | Betty schema-optional + omit→UUID consult coverage + `merge-tests` |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Overall:** CLEAN
+
+**What's solid**
+- Single `TASK_CONFIG` flip: `company_job_id` `required: False` with `type: str` kept; module assert pins the flag.
+- Sibling fields stay required; no consult/agent/create/`job_site`/`qualify_job_listings` edits — AST-1120 resolve remains empty-id authority.
+- UAT fitness: unblocks omit/`null` into existing resolve (AC2), not symptom-only stacktrace silence.
+
+**Issues**
+- None.
+
+**Recommended actions**
+- Resolve-child can proceed; no product edits.
