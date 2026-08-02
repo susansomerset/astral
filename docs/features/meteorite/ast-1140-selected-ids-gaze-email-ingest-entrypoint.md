@@ -243,4 +243,4 @@ Full `## Statutes checked` (65/65) + Pattern / Plan adherence live in the Linear
 - Took AST-1136 dispatcher runner (requires `candidate_id`, stamps `last_email_check`) and `process_gaze_email_messages` (no stamp/Trash); callers unpack the 5th outcome from `_handle_bound`.
 - Engineer hook excludes test-tree from the merge commit — Betty tip on this sub kept AST-1140 tests only; origin/dev carries updated AST-1090 + AST-1136 + AST-1140 tests that need intake via `[qa-handoff]`.
 
-**Stay Review Posted** until Betty republishes test-tree onto this tip and Ada re-runs the manifest.
+**Betty `[qa-handoff]` return:** tip `addec765` (`test(AST-1140): return — AST-1136+1140 gaze_email tree + 5-tuple mocks`) — combined AST-1090/1136/1140 tests + bible on publish ref; `_handle_bound` mocks are 5-tuple. Manifest re-run green → User Testing.
