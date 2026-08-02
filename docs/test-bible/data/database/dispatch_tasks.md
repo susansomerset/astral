@@ -334,3 +334,25 @@ Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NU
   tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
   -q
 ```
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+Deletes `_gaze_email_available_count`; `count_eligible_for_dispatch_task` / `get_due_tasks` no longer special-case `gaze_email` (null entity/trigger → 0 / skip). Public `dispatch_task_freq_allows` for AUTO cadence. Live Avail: **`docs/test-bible/core/inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fake due retired | `src/data/database.py` | revised **`TestAst1090GazeEmailDue`** |
+| Freq helper | `src/data/database.py` | **`TestAst1135DispatchTaskFreqAllows`** |
+
+**Broken / obsolete (Betty revision):** AST-1090 due includes gaze / count_eligible fake `1`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1135DispatchTaskFreqAllows \
+  -q
+```

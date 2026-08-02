@@ -258,20 +258,19 @@ class TestAst1061MeteoriteEmailDedupeHelpers:
         assert db.job_link_exists("") is False
         assert db.job_link_exists("   ") is False
 
-# Branches: per-candidate exact job_link (AST-1090) — not global job_link_exists.
+# Branches: per-candidate exact job_link via company.candidate_id scope (AST-1090; widened AST-1132).
 class TestAst1090JobLinkExistsForCandidate:
-    def test_scoped_to_meteorite_company(self, sqlite_in_memory) -> None:
-        from src.utils.config import METEORITE_CONFIG
-
+    def test_scoped_to_candidate_companies(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         link = "https://jobs.example.com/same"
-        c1 = METEORITE_CONFIG["short_name_template"].format(candidate_id="cand-a")
-        c2 = METEORITE_CONFIG["short_name_template"].format(candidate_id="cand-b")
-        db.save_job("ja", company=c1, state="METEORITE_NEW", job_link=link, job_title="A")
+        # AST-1132: scope is any company owned by the candidate (not meteorite-name equality).
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_company("co-b", state="IMPORTED", candidate_id="cand-b")
+        db.save_job("ja", company="co-a", state="METEORITE_NEW", job_link=link, job_title="A")
         assert db.job_link_exists_for_candidate("cand-a", link) is True
-        # Same URL for another candidate is not a hit (AC5 cross-candidate OK).
+        # Same URL for another candidate is not a hit.
         assert db.job_link_exists_for_candidate("cand-b", link) is False
-        db.save_job("jb", company=c2, state="METEORITE_NEW", job_link=link, job_title="B")
+        db.save_job("jb", company="co-b", state="METEORITE_NEW", job_link=link, job_title="B")
         assert db.job_link_exists_for_candidate("cand-b", link) is True
         # Global helper still sees either.
         assert db.job_link_exists(link) is True
@@ -281,4 +280,33 @@ class TestAst1090JobLinkExistsForCandidate:
         assert db.job_link_exists_for_candidate("", "https://x") is False
         assert db.job_link_exists_for_candidate("cand-a", "") is False
         assert db.job_link_exists_for_candidate("cand-a", "   ") is False
+
+
+# Branches: candidate-scoped inverted company_job_id match (AST-1132).
+class TestAst1132TextMatchesKnownCompanyJobIdForCandidate:
+    def test_scoped_match_and_cross_candidate_miss(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_company("co-b", state="IMPORTED", candidate_id="cand-b")
+        db.save_job(
+            "ja", company="co-a", state="NEW", company_job_id="EXT-OWNED-A"
+        )
+        db.save_job(
+            "jb", company="co-b", state="NEW", company_job_id="EXT-OWNED-B"
+        )
+        assert (
+            db.text_matches_known_company_job_id_for_candidate(
+                "cand-a", "body EXT-OWNED-A more"
+            )
+            == "EXT-OWNED-A"
+        )
+        # Other candidate's id must not bounce this candidate.
+        assert (
+            db.text_matches_known_company_job_id_for_candidate(
+                "cand-a", "body EXT-OWNED-B more"
+            )
+            is None
+        )
+        assert db.text_matches_known_company_job_id_for_candidate("cand-a", "") is None
+        assert db.text_matches_known_company_job_id_for_candidate("", "x") is None
 

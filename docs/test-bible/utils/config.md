@@ -2104,3 +2104,23 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
   -q
 ```
+
+### AST-1132 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1132-job-link-hygiene-non-job-create-skip`.
+
+`METEORITE_EMAIL_INGEST_CONFIG` hygiene: expanded `link_exclude_substrings`, empty `link_allow_substrings`, `non_job_visible_substrings`. Primary ingest behavior: **`docs/test-bible/core/gazer.md`** (**AST-1132**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hygiene / non-job config | `src/utils/config.py` | **`TestAst1132MeteoriteEmailIngestHygieneConfig`** |
+
+**Broken / obsolete:** none — additive keys + expanded exclude tuple (AST-1061 exclude membership asserts still hold).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1132MeteoriteEmailIngestHygieneConfig \
+  -q
+```

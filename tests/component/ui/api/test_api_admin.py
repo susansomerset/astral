@@ -858,6 +858,68 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
         assert by[2]["always_visible_under_avail_gt0"] is False
 
 
+
+# AST-1135: list_dtasks stamps live bind-filtered available_count for gaze_email rows.
+@pytest.mark.skipif(
+    not hasattr(admin_mod, "GAZE_EMAIL_CONFIG"),
+    reason="AST-1135 gaze Avail stamp not on this publish tip",
+)
+class TestAst1135ListDtasksGazeAvail:
+    def test_stamps_bound_counts_once(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "gaze_email",
+                    "trigger_state": None,
+                    "entity_type": None,
+                    "candidate_id": "A",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "gaze_email",
+                    "trigger_state": None,
+                    "entity_type": None,
+                    "candidate_id": "B",
+                    "score_floor": None,
+                },
+                {
+                    "id": 3,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(
+            admin_mod,
+            "admin_always_visible_under_avail_gt0_dispatch_task_keys",
+            lambda: frozenset(),
+        )
+        bound = MagicMock(return_value={"A": 2, "B": 0})
+        monkeypatch.setattr(admin_mod, "count_inbox_bound_by_candidate", bound)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda row: 9,
+        )
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        by = {r["id"]: r for r in rows}
+        assert by[1]["available_count"] == 2
+        assert by[2]["available_count"] == 0
+        assert by[3]["available_count"] == 9
+        assert by[1]["always_visible_under_avail_gt0"] is False
+        bound.assert_called_once_with()
+
+
 # AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
 class TestAst773UpdateDispatchTaskTaskKey:
     def test_dispatch_task_key_trigger_error_helper(self) -> None:
