@@ -141,9 +141,26 @@ No plan conflicts requiring `conf-!!-NONE`.
 ## Review
 
 **Publish ref:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`
-**Tip:** `ba8254f2`
+**Tip (pre-review):** `bea30019` (`merge-tests` + Betty coverage)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `ab433398` | `TRACKER_CONFIG["uuid_path_segment_pattern"]` + `formatting.uuid_path_segment_from_url` |
 | 2 | `ba8254f2` | `_resolve_company_job_id` + wire before `qualify_meteorite` empty-id gate |
+| tests | `ea4716e7` / `bea30019` | Betty component coverage + `merge-tests` |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Overall:** DISCUSS (C4 stragglers only; no product fix-now)
+
+**What's solid**
+- AI-first resolve; rightmost UUID path-segment fullmatch from `TRACKER_CONFIG`; `formatting` stays config-free (pattern arg).
+- Wire only in `qualify_meteorite` `process` before empty-id gate; no create / `job_site` / `qualify_job_listings` creep.
+- Import direction and DRY match plan; Betty owns tests/bible via `test()` + one `merge-tests`.
+
+**Issues**
+- **discuss (straggler):** Joan plan-time Excluded → in-scope on tip vs `origin/dev`: `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` — all scored `conforms` (plan file + Betty test tree); no product action.
+
+**Recommended actions**
+- Resolve-child: no code changes required for stragglers; proceed unless Ada wants a `[review-handoff]` on placement wording (helper already after `qualify_meteorite` with existing privates).
+- AST-1121 still owns Style D found/recorded source labels.
