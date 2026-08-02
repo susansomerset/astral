@@ -258,3 +258,16 @@ Self-Assessment Single-Component matches session config + builder defaulting/deb
 Joan plan-rubric APPROVED attached. §5f applied; §5g N/A. Three-dot includes AST-1137/1138 lineage vs `origin/dev`.
 
 context_tokens≈24000
+
+## Resolution
+
+**Date:** 2026-08-02
+**Radia overall:** DISCUSS (`33a6a694`) — **no fix-now**.
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss — Joan C4 statute stragglers | Accepted as recorded; sweep already **conforms**; no product change |
+| discuss — AST-1138 shared helper completion on this tip | Accepted as merge hygiene; helpers match plan Stage 2 (add if missing / call SomersetCover); AST-1138 retains job emit ownership on its sub |
+| advisory — UI hardcodes from_block empty+candidate gate | Accepted — matches plan Stage 3 (no server payload for `empty_uses_candidate_resolve`) |
+
+No product or UI code changes in resolve. Publish tip after this commit.
