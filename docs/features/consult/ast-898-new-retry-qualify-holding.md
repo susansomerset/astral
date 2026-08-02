@@ -1,3 +1,98 @@
+<!-- linear-archive: AST-898 archived 2026-08-02 -->
+
+## Linear archive (AST-898)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-898/new-retry-qualify-holding-and-retire-valid-title-retry-new-jobs-are  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-895 — NEW jobs are going to VALID_TITLE_RETRY state  
+**Blocked by / blocks / related:** parent: AST-895
+
+### Description
+
+## What this implements
+
+Register **NEW_RETRY** as the qualify retry holding state for jobs that enter `qualify_job_listings` from **NEW**, route recoverable first-attempt failures to **NEW_RETRY** (not **VALID_TITLE_RETRY**), companion-claim **NEW**+**NEW_RETRY** on the primary qualify dispatch row, skip title screening on the second attempt, leave existing **VALID_TITLE_RETRY** jobs to drain, and fully retire **VALID_TITLE_RETRY** for new traffic (state + companions) per parent decisions.
+
+## Acceptance criteria
+
+1. A job that enters `qualify_job_listings` in **NEW** and suffers a recoverable first-attempt failure ends in **NEW_RETRY** (observable on the job record) — never newly transitioned to **VALID_TITLE_RETRY** by that path.
+2. A job in **NEW_RETRY** is included in Available / claim for `qualify_job_listings` when the Scheduled Action trigger is **NEW**.
+3. A recoverable failure on a job already in **NEW_RETRY** moves it to the configured terminal qualify error state — it does not remain in or re-enter **NEW_RETRY**.
+4. A second attempt from **NEW_RETRY** runs the qualify AI hop without re-running title screening.
+5. A clean second-attempt succeed/fail grade path from **NEW_RETRY** still reaches the same pass/fail outcomes as a successful first-attempt qualify (no permanent stuck state solely because the job retried).
+6. Admin/UI job state lists that surface configured job states include **NEW_RETRY** with a clear label.
+7. After cutover, new recoverable first-attempt failures from the **NEW** qualify path do not enter **VALID_TITLE_RETRY**; that holding state is retired for new traffic (existing **VALID_TITLE_RETRY** jobs may remain until they drain).
+8. With `debug=True` on the touched qualify / batch-failure routing path: per-job index headers (Style D) show identity and destination state; working detail lines use `|` and include enough context to see **NEW** → **NEW_RETRY** vs **NEW_RETRY** → terminal.
+
+## Boundaries
+
+Does not change qualify grading math or other job retry pairs. Does not migrate existing **VALID_TITLE_RETRY** jobs to **NEW_RETRY**. Does not restore a separate `validate_title` dispatch task.
+
+## Notes for planning
+
+* **JOB_STATES** / companion claim (**dispatch_claim_states**) are config source of truth (ASTRAL_CODE_RULES §2.1).
+* Prior art: **AST-797** qualify @ NEW + VALID_TITLE_RETRY companion; **AST-642** per-entity retry vs error; roster **AST-882** one-retry patterns.
+* Susan answers: leave existing VALID_TITLE_RETRY to drain; fully retire VALID_TITLE_RETRY for new traffic; NEW_RETRY second attempt = qualify AI only (no title re-screen).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-895-new-retry-qualify-holding`, child `sub/AST-895/<child-segment>`. Created at dispatch-parent.
+
+**Publish ref:** `origin/sub/AST-895/ast-898-new-retry-qualify-holding`
+
+### Comments
+
+#### radia — 2026-07-15T05:27:34.454Z
+### AST-898 review (`origin/dev`…`origin/sub/AST-895/ast-898-new-retry-qualify-holding`)
+
+**Product** @ `8d0a865` + `1663671` · publish tip **`f441c0d`** · [review doc](https://github.com/susansomerset/astral/blob/sub/AST-895/ast-898-new-retry-qualify-holding/docs/features/consult/ast-898-new-retry-qualify-holding.md) § Review
+
+#### What's solid
+
+- **Plan fidelity:** Stage 1 registry/UI + Stage 2 AI filter / fail debug match the plan: `NEW`/`VALID_TITLE` `retry_state` → `NEW_RETRY`, `VALID_TITLE_RETRY` drain-only, title screen stays `NEW`-only, AI hop keeps `VALID_TITLE_RETRY` + adds `NEW_RETRY`.
+- **§2.1 / §2.6:** Holding dest still via `_consult_batch_fail_dest` + `JOB_STATES` (no parallel qualify dest map). Verified: `VALID_TITLE`→`NEW_RETRY`, `NEW_RETRY`→`ERROR_QUALIFY_JOB_LISTINGS`, `dispatch_claim_states("NEW","job")==["NEW","NEW_RETRY"]`.
+- **§1.5.1:** `bad_grades` and short-title fail paths emit Style D `debug_index` + `|` detail only when `debug=True`.
+- **Boundaries:** No dispatcher/DB companion-row edits; no migrate of existing `VALID_TITLE_RETRY` jobs.
+
+#### Issues
+
+None — no fix-now / discuss.
+
+#### Recommended actions
+
+| Action | Owner | Notes |
+|--------|-------|-------|
+| _(none)_ | — | Clean — ready for resolve-child / merge-child rollup |
+
+#### betty — 2026-07-15T05:21:30.404Z
+1. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding tests/component/utils/test_config.py::TestAst641DispatchClaimStates tests/component/utils/test_config.py::TestAst797ConfigRuntimeCutover tests/component/utils/test_config.py::TestAst882DispatchClaimStates -q`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_consult.py::TestAst898QualifyNewRetry tests/component/core/test_consult.py::TestConsultBatchFailDest tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle tests/component/core/test_consult.py::TestAst642PerEntityBatchRetry -q`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_primary_job_trigger_passes_union_claim_states tests/component/core/test_dispatcher.py::TestRunUnified::test_ast641_retry_only_job_trigger_single_claim_state -q`
+
+**Broken / revised:** claim companions `NEW`/`VALID_TITLE` → `NEW_RETRY`; `_consult_batch_fail_dest(VALID_TITLE)` → `NEW_RETRY`; AST-642 rubric_criteria fixture (hydration hard-fail with empty criteria).
+
+`origin/sub/AST-895/ast-898-new-retry-qualify-holding` @ `01f8564` (`merge-tests(AST-898): origin/tests 5219957a5c1ae17b73e456db1feb8b95cafd7e2b`)
+
+- `docs/test-bible/utils/config.md` shasum `40e7d3ac8dc78e4017268574bbab8bc58327e6e9`
+- `docs/test-bible/core/consult.md` shasum `697c1db68bff593ff5b77571bb696e862822ba29`
+
+#### hedy — 2026-07-15T05:10:59.503Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-895/ast-898-new-retry-qualify-holding/docs/features/consult/ast-898-new-retry-qualify-holding.md
+
+**Scope:** Single-Component — `config.py` JOB_STATES/UI lists + `consult.py` qualify AI filter and fail-path debug; no dispatcher/DB migration this ticket (drain keeps AST-797 VALID_TITLE_RETRY companions).
+
+**Conf:** high — reuses AST-642 `_consult_batch_fail_dest`, AST-882 registry `retry_state` companion claim, and AST-797 inline title screen; only holding-state name + AI filter membership change.
+
+**Risk:** Medium — wrong priors or dropping VALID_TITLE_RETRY from the AI filter strands drain retries; a wrong `VALID_TITLE.retry_state` either reintroduces VALID_TITLE_RETRY traffic or terminals too early.
+
+Root fix locked in plan: after title screen the entity is VALID_TITLE, so `VALID_TITLE.retry_state` → NEW_RETRY (not a consult special-case). NEW.retry_state → NEW_RETRY for companion claim on the primary qualify row.
+
+---
+
 # AST-898 — NEW_RETRY qualify holding and retire VALID_TITLE_RETRY
 
 - **Linear (this ticket):** [AST-898](https://linear.app/astralcareermatch/issue/AST-898/new-retry-qualify-holding-and-retire-valid-title-retry-new-jobs-are)
