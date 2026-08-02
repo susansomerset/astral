@@ -767,3 +767,25 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
   -q
 ```
 
+### AST-1137 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`.
+
+`resolve_cover_from_block` returns custom `contact.cover_letter_from_block` (`source=candidate`) or default `Name • City, ST` / `email • phone` composition (`source=default`); empty segments/lines omitted; accepts DB row or token-view contact shape. Config field contract: **`docs/test-bible/utils/config.md`**. Job/session HTML emit = siblings **AST-1138** / **AST-1139**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Custom vs default resolve + omit empties + debug | `src/core/candidate.py` | **`TestAst1137ResolveCoverFromBlock`** |
+| COVER_FROM_BLOCK_CONFIG + profile textarea | `src/utils/config.py` | **`TestAst1137CoverFromBlockConfig`** |
+
+**Broken / obsolete:** none — additive helper + optional contact key.
+
+**Integration:** none — no existing integration scenario asserts from-block composition; do not invent new coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  -q
+```
+
