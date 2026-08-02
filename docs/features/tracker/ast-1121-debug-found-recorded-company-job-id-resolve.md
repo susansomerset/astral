@@ -150,3 +150,11 @@ Keep the existing `debug_index` header on the fail path (same `func` / identifie
 
 **Recommended actions**
 - Resolve-child: no code changes required for stragglers.
+
+## Resolution
+
+**2026-08-02** — `resolve(AST-1121): — clean`
+
+- Radia **fix-now:** none.
+- C4 discuss stragglers accepted as-is (all scored `conforms`; no product edits).
+- Tip before resolve: `57c850e3` (Radia `docs()` on publish-ref).
