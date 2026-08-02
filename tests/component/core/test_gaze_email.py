@@ -249,6 +249,64 @@ class TestAst1090RunGazeEmail:
         archive.assert_called_once_with("m4")
 
     @pytest.mark.asyncio
+    async def test_html_links_dict_metadata_still_creates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1144: Ruth dict metadata must not block scrape/create/archive."""
+        self._stub_stamp(monkeypatch)
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-dict", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "",
+                    "html_body": "<a href=\"https://www.dice.com/job-detail/x\">role</a>",
+                    "from_address": "a",
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            ge,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "parse_mode": "html_links",
+                        "jobs": [
+                            {
+                                "job_link": "https://www.dice.com/job-detail/x",
+                                "metadata": {"company": "Dice", "location": "Remote"},
+                            }
+                        ],
+                    },
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            ge,
+            "_meteorite_fetch_link_visible_text",
+            AsyncMock(return_value=("visible text " * 20, "https://www.dice.com/job-detail/x")),
+        )
+        monkeypatch.setattr(ge, "job_link_exists_for_candidate", MagicMock(return_value=False))
+        create = MagicMock(return_value={"astral_job_id": "j-dict"})
+        archive = MagicMock()
+        monkeypatch.setattr(ge, "create_meteorite_job", create)
+        monkeypatch.setattr(ge, "archive_message", archive)
+        out = await ge.run_gaze_email({"candidate_id": "c1"}, debug=False)
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        create.assert_called_once()
+        archive.assert_called_once_with("m-dict")
+
+    @pytest.mark.asyncio
     async def test_debug_false_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         self._stub_stamp(monkeypatch)
         monkeypatch.setattr(
@@ -309,7 +367,8 @@ class TestAst1136CandidateBoundGazeEmail:
                 ]
             ),
         )
-        handle = AsyncMock(return_value=(1, 1, 0, 0))
+        # AST-1140: _handle_bound returns (processed, passed, failed, errors, outcome).
+        handle = AsyncMock(return_value=(1, 1, 0, 0, "ignored"))
         monkeypatch.setattr(ge, "_handle_bound", handle)
         trash = MagicMock()
         monkeypatch.setattr(ge, "trash_message", trash)
@@ -338,7 +397,7 @@ class TestAst1136CandidateBoundGazeEmail:
         monkeypatch.setattr(ge, "update_candidate_last_email_check", stamp)
         trash = MagicMock()
         monkeypatch.setattr(ge, "trash_message", trash)
-        handle = AsyncMock(return_value=(1, 1, 0, 0))
+        handle = AsyncMock(return_value=(1, 1, 0, 0, "ignored"))
         monkeypatch.setattr(ge, "_handle_bound", handle)
         msgs = [
             _msg("u", matched=False),

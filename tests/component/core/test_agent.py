@@ -6356,3 +6356,63 @@ class TestAst1083StoreResponseDebugResult:
         assert "agent_data_write" in combined
         assert "block_type=RESPONSE" in combined
         assert "outcome=new_content" in combined
+
+
+@pytest.mark.skipif(
+    "parse_meteorite_email" not in TASK_CONFIG,
+    reason="AST-1089 parse_meteorite_email not on this publish tip",
+)
+class TestAst1144ParseMeteoriteEmailMetadataDict:
+    """AST-1144: realistic Ruth html_links payload with dict metadata validates."""
+
+    def _schema(self):
+        return TASK_CONFIG["parse_meteorite_email"]["response_schema"]
+
+    def test_dict_metadata_validates(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "parse_mode": "html_links",
+                "jobs": [
+                    {
+                        "job_link": "https://www.dice.com/job-detail/abc",
+                        "job_title": "Engineer",
+                        "metadata": {"company": "Acme", "location": "Remote"},
+                    }
+                ],
+            }
+        }
+        assert agent_mod._validate_response_schema(
+            parsed, self._schema(), "parse_meteorite_email"
+        ) is None
+
+    def test_str_metadata_rejected(self) -> None:
+        # Pre-AST-1144 contract — must not silently accept again.
+        parsed = {
+            "agent_payload": {
+                "parse_mode": "html_links",
+                "jobs": [
+                    {
+                        "job_link": "https://www.dice.com/job-detail/abc",
+                        "metadata": "company=Acme",
+                    }
+                ],
+            }
+        }
+        err = agent_mod._validate_response_schema(
+            parsed, self._schema(), "parse_meteorite_email"
+        )
+        assert err is not None
+        assert "metadata" in err
+        assert "must be dict" in err
+
+    def test_omitted_metadata_still_ok(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "parse_mode": "html_links",
+                "jobs": [{"job_link": "https://jobs.example.com/a"}],
+            }
+        }
+        assert agent_mod._validate_response_schema(
+            parsed, self._schema(), "parse_meteorite_email"
+        ) is None
+

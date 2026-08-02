@@ -2146,6 +2146,48 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   -q
 ```
 
+### AST-1138 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`.
+
+`BUILD_CONFIG["job_cover_somerset"]` — `document_title_key` → session title, `artifact_to_fields` (`re_line`/`body`/`signature` → `subject`/`letter`/`signature`), `unset_fields` for layout-only session keys. Does **not** change `session_cover_letter` required flags or `artifact_shapes["cover_letter"]`. Primary emit: **`docs/test-bible/core/builder.md`** (**AST-1138**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job→Somerset field map | `src/utils/config.py` | **`TestAst1138JobCoverSomersetConfig`** |
+
+**Broken / obsolete:** none — additive `BUILD_CONFIG` block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1138JobCoverSomersetConfig \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  -q
+```
+
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`.
+
+`BUILD_CONFIG["session_cover_letter"]`: `fields.from_block.empty_uses_candidate_resolve` + block-level `from_block_sources` (`session` / `candidate` / `default`). Keeps `from_block.required` True. Does **not** change other session field required flags or job `job_cover_somerset`. Primary emit + Admin page: **`docs/test-bible/core/builder.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty-resolve flag + source labels | `src/utils/config.py` | **`TestAst1139SessionCoverEmptyResolveConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing `session_cover_letter`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1139SessionCoverEmptyResolveConfig \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  -q
+```
+
 ### AST-1140 · AST-1129
 
 **Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.
@@ -2164,5 +2206,25 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1140GazeEmailSelectedConfig \
   tests/component/core/test_gaze_email.py::TestAst1140RunGazeEmailSelectedIds \
+  -q
+```
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.metadata` type `str` → `dict` (optional) so Ruth structured company/location objects validate. Prompt/fixture: **`docs/test-bible/core/repo_admin_json.md`**. Validation + runner: **`docs/test-bible/core/agent.md`** · **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema type dict | `src/utils/config.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** none — type flip; AST-1089 shell asserts still hold (did not lock `metadata` type).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
   -q
 ```
