@@ -3564,3 +3564,24 @@ class TestAst1131MeteoriteEmailIngestPasteNormalizeConfig:
             "data-url",
         )
         assert cfg_block["promote_bare_http_urls"] is True
+
+
+# Branches: METEORITE_EMAIL_INGEST_CONFIG hygiene excludes / allow / non-job markers (AST-1132).
+class TestAst1132MeteoriteEmailIngestHygieneConfig:
+    def test_hygiene_and_non_job_knobs(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        cfg_block = METEORITE_EMAIL_INGEST_CONFIG
+        excludes = {s.casefold() for s in cfg_block["link_exclude_substrings"]}
+        for frag in ("w3.org", "/2000/svg", "schemas.xmlsoap.org", "xmlns="):
+            assert frag in excludes
+        assert tuple(cfg_block["link_allow_substrings"]) == ()
+        markers = {s.casefold() for s in cfg_block["non_job_visible_substrings"]}
+        for frag in (
+            "www.w3.org/2000/svg",
+            "w3.org/2000/svg",
+            "schemas.xmlsoap.org",
+            "xml schema",
+            "svg namespace",
+        ):
+            assert frag in markers
