@@ -252,3 +252,15 @@ Self-Assessment Single-Component matches config + builder cover-only rewrite. Re
 Joan plan-rubric APPROVED attached. §5f applied; §5g N/A. Three-dot includes AST-1137 lineage + sibling plan docs vs `origin/dev`.
 
 context_tokens≈22000
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review:** Radia `[code-rubric] revision=1` — Overall **DISCUSS** (no fix-now). Publish tip at review: `ef7e0776`.
+
+| Finding | Action |
+|---------|--------|
+| discuss — C4 stragglers (`features-single-file-per-ticket`, `engineer-test-tree-ban`, `spikes-under-debug-dir`) now in-scope vs `origin/dev`; sweep **conforms** | No product change — acknowledged; tip already conforms |
+| advisory — intermediate helper-order SHA | No tip defect; no change |
+
+Merged `origin/dev` + `origin/ftr/AST-1124-cover-letter-header-is-incorrect` + `origin/<publish-ref>` before User Testing. No product edits required for this resolve pass.
