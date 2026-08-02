@@ -31,6 +31,28 @@ Null-candidate mailbox runner: From-bind → unbound age→Trash → bound shape
   -q
 ```
 
+
+### AST-1136 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1136-candidate-bound-gaze-email-runner`.
+
+Candidate-bound `run_gaze_email`: requires row `candidate_id`; filters From→A; unbound leave/Trash hygiene; stamps `update_candidate_last_email_check` after completed run (incl. zero matches); Style D `run-start` / per-message / `run-complete`. Public `process_gaze_email_messages` for AST-1129 (bound ingest only — no list/Trash/stamp). Config comment-only. Provision/Avail: siblings **AST-1134** / **AST-1135**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bound filter + stamp + process_ helper | `src/core/gaze_email.py` | **`TestAst1136CandidateBoundGazeEmail`**; revised **`TestAst1090RunGazeEmail`** |
+
+**Broken / obsolete (Betty revision):** null-shell `run_gaze_email({})` calls (now require `candidate_id`); stamp stub required on runner tests.
+
+**Integration:** none — no existing scenario asserts candidate-bound gaze runner; do not invent.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gaze_email.py::TestAst1090RunGazeEmail \
+  tests/component/core/test_gaze_email.py::TestAst1136CandidateBoundGazeEmail \
+  -q
+```
+
 ### AST-1140 · AST-1129
 
 **Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.
