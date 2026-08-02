@@ -138,4 +138,4 @@ Skip outcomes already defined on AST-1140 (`skipped-unbound`, `skipped-not-in-in
 
 | Stage | Commit | Notes |
 |-------|--------|-------|
-| 1 | _(filled at publish)_ | `POST /api/admin/inbox/land-meteorite` → `run_gaze_email_selected_ids` |
+| 1 | `e7144d4a` | `POST /api/admin/inbox/land-meteorite` → `run_gaze_email_selected_ids` |
