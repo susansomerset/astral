@@ -309,7 +309,8 @@ class TestAst1136CandidateBoundGazeEmail:
                 ]
             ),
         )
-        handle = AsyncMock(return_value=(1, 1, 0, 0))
+        # AST-1140: _handle_bound returns (processed, passed, failed, errors, outcome).
+        handle = AsyncMock(return_value=(1, 1, 0, 0, "ignored"))
         monkeypatch.setattr(ge, "_handle_bound", handle)
         trash = MagicMock()
         monkeypatch.setattr(ge, "trash_message", trash)
@@ -338,7 +339,7 @@ class TestAst1136CandidateBoundGazeEmail:
         monkeypatch.setattr(ge, "update_candidate_last_email_check", stamp)
         trash = MagicMock()
         monkeypatch.setattr(ge, "trash_message", trash)
-        handle = AsyncMock(return_value=(1, 1, 0, 0))
+        handle = AsyncMock(return_value=(1, 1, 0, 0, "ignored"))
         monkeypatch.setattr(ge, "_handle_bound", handle)
         msgs = [
             _msg("u", matched=False),
