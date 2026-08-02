@@ -4529,7 +4529,32 @@ BUILD_CONFIG = {
             "signature": {"required": True},
         },
     },
+    # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
+    # Emit (AST-1126) reads this contract; resume builders must ignore it.
+    "cover_letter_render_tokens": {
+        "SIGNATURE_IMAGE": {
+            "literal": "{$SIGNATURE_IMAGE}",
+            "surfaces": ["cover_letter"],
+            "source": "candidate",
+            "path": "contact.cover_letter_signature_image",
+            "value_kind": "safe_image_src",
+            # Parent OQ1: no token in signature content → omit image (no fallback insert).
+            "absent_token_policy": "omit",
+            "missing_or_rejected_image_policy": "omit",
+        },
+    },
 }
+
+
+def get_cover_letter_render_token(name: str) -> dict:
+    """Return BUILD_CONFIG cover render-token contract for ``name``.
+
+    Raises KeyError when ``name`` is not registered. Cover HTML emit (AST-1126)
+    must use this (or the same BUILD_CONFIG path) — do not hardcode the literal
+    or candidate path. Not part of TOKEN_SOURCES / resolve_tokens.
+    """
+    return BUILD_CONFIG["cover_letter_render_tokens"][name]
+
 
 # AST-803: BUILD_ARTIFACTS legacy compound helpers (membership via TASK_CONFIG / run_next, not hop lists).
 def resume_artifact_compound_state(task_key: str) -> str:
