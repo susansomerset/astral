@@ -37,7 +37,7 @@ Config sections:
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
-  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131)
+  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132)
   GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
@@ -2176,16 +2176,35 @@ assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 
 # AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
 # AST-1131: paste/list normalize before link discovery (entity-unescape + nested autolink unwrap).
+# AST-1132: link hygiene excludes/allow + post-fetch non-job visible markers.
 METEORITE_EMAIL_INGEST_CONFIG = {
     # Only http(s) hrefs are job-link candidates (mailto:/tel: excluded by scheme).
     "link_schemes": ("http", "https"),
-    # Lowercased path/host fragments that disqualify an href (unsubscribe, tracking, etc.).
+    # Lowercased path/host fragments that disqualify an href (unsubscribe, tracking,
+    # namespace/spec/asset URLs — AST-1132 hygiene).
     "link_exclude_substrings": (
         "unsubscribe",
         "mailto:",
         "list-manage.com",
         "/preferences",
         "/email-settings",
+        "w3.org",
+        "/2000/svg",
+        "schemas.xmlsoap.org",
+        "xmlns=",
+    ),
+    # When non-empty: after exclude check, href must contain ≥1 allow substring (casefold)
+    # to remain a Playwright candidate. Empty = no allow filter (newline pastes of any
+    # ATS URL still work — not Dice-exclusive).
+    "link_allow_substrings": (),
+    # After Playwright: if any marker appears in visible text (casefold), skip create
+    # even when len(text) >= min_jd_chars (SVG/spec docs that are "long enough").
+    "non_job_visible_substrings": (
+        "www.w3.org/2000/svg",
+        "w3.org/2000/svg",
+        "schemas.xmlsoap.org",
+        "xml schema",
+        "svg namespace",
     ),
     # Max concurrent Playwright fetches for a link list (same idea as gazer JD scrape caps).
     "playwright_concurrency": 3,
