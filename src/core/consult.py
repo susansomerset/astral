@@ -1571,13 +1571,20 @@ async def qualify_meteorite(
 
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
-        company_job_id = (response_job.get("company_job_id") or "").strip()
+        # Pre-resolve AI strip — source labels derive from this + resolved id (debug only).
+        ai_company_job_id = (response_job.get("company_job_id") or "").strip()
         job_title = (response_job.get("job_title") or "").strip()
         job_link = (response_job.get("job_link") or "").strip()
         jd_text = (response_job.get("jd_text") or "").strip()
         # AI wins; else UUID path segment from response/input job_link (never job_site).
         link_for_id = job_link or (input_job.get("job_link") or "").strip()
-        company_job_id = _resolve_company_job_id(company_job_id, link_for_id)
+        company_job_id = _resolve_company_job_id(ai_company_job_id, link_for_id)
+        if ai_company_job_id:
+            id_source = "AI"
+        elif company_job_id:
+            id_source = "UUID-from-job_link"
+        else:
+            id_source = "neither"
         min_title = int(cfg.get("min_job_title_length", 5))
         min_jd = int(cfg.get("min_jd_chars", 40))
 
@@ -1601,10 +1608,19 @@ async def qualify_meteorite(
                     identifier=_consult_job_identifier(input_job),
                     outcome=f"content fail -> {to_state}",
                 )
-                logger.debug_detail(
-                    f"gate={fail_reason} found company_job_id={company_job_id!r} "
-                    f"title={job_title!r} link={job_link!r} jd_chars={len(jd_text)}"
+                # found source + optional fallback_job_link (not used when AI won)
+                fail_bits = [f"gate={fail_reason}", f"found source={id_source}"]
+                if id_source != "AI":
+                    fail_bits.append(f"fallback_job_link={link_for_id!r}")
+                fail_bits.extend(
+                    [
+                        f"company_job_id={company_job_id!r}",
+                        f"title={job_title!r}",
+                        f"link={job_link!r}",
+                        f"jd_chars={len(jd_text)}",
+                    ]
                 )
+                logger.debug_detail(" ".join(fail_bits))
             else:
                 logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{fail_reason}]")
             _transition_job_state_for_task(task_key, [aid], to_state)
@@ -1634,9 +1650,19 @@ async def qualify_meteorite(
                 identifier=_consult_job_identifier(input_job),
                 outcome=str(to_state),
             )
+            found_bits = [f"found source={id_source}"]
+            if id_source == "UUID-from-job_link":
+                found_bits.append(f"fallback_job_link={link_for_id!r}")
+            found_bits.extend(
+                [
+                    f"company_job_id={company_job_id!r}",
+                    f"title={job_title!r}",
+                    f"link={job_link!r}",
+                    f"jd_chars={len(jd_text)}",
+                ]
+            )
             logger.debug_detail(
-                f"found company_job_id={company_job_id!r} title={job_title!r} "
-                f"link={job_link!r} jd_chars={len(jd_text)} | "
+                f"{' '.join(found_bits)} | "
                 f"recorded company_job_id={recorded.get('company_job_id')!r} "
                 f"title={recorded.get('job_title')!r} link={recorded.get('job_link')!r} "
                 f"jd_chars={rec_jd}"
