@@ -2020,6 +2020,28 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   -q
 ```
 
+### AST-1127 · AST-1119 (UAT)
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1127-uat-qualify-meteorite-schema-company-job-id-omitted`.
+
+`TASK_CONFIG["qualify_meteorite"].response_schema` `company_job_id.required` → `False` so omit/`null` reach AST-1120 consult resolve (not `Missing required field`). Sibling item fields stay required. Apply omit path: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema optional + `_validate_response_schema` omit/null/empty | `src/utils/config.py` / `src/core/agent.py` | **`TestAst1127QualifyMeteoriteCompanyJobIdOptional`**; revised **`TestAst1060QualifyMeteoriteConfig`** |
+
+**Broken / obsolete:** `TestAst1060QualifyMeteoriteConfig` asserted `company_job_id` `required is True` — revised this pass.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1127QualifyMeteoriteCompanyJobIdOptional \
+  tests/component/utils/test_config.py::TestAst1060QualifyMeteoriteConfig \
+  tests/component/core/test_consult.py::TestAst1127QualifyMeteoriteOmitCompanyJobId \
+  -q
+```
+
 ### AST-1125 · AST-1123
 
 **Parent:** [AST-1123 — Support Signature_Image as a token in the cover letter](https://linear.app/astralcareermatch/issue/AST-1123/support-signature-image-as-a-token-in-the-cover-letter). **Publish:** `origin/sub/AST-1123/AST-1125-cover-letter-signature-image-token-contract`.
