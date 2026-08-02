@@ -134,3 +134,15 @@ Against the parent Original brief `<style>` (AST-1124 Description), verify the s
 - §1.4 / §2.1: `empty_uses_candidate_resolve` + `from_block_sources` live in `BUILD_CONFIG["session_cover_letter"]`.
 - §1.5.1 debug-contract-gated: Style D only when `debug=True`.
 - §3.2 / §3.3: UI does not compose from-block defaults; composition stays in core via AST-1137 helper.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`
+
+| Stage | Summary |
+|-------|---------|
+| 1 | `empty_uses_candidate_resolve` + `from_block_sources` on `session_cover_letter` |
+| 2 | `build_session_cover_letter` empty→`resolve_cover_from_block`; Style D source + `document_path=somerset_cover`; SomersetCover helper present for call sites |
+| 3 | Admin Session: empty from-block allowed when candidate selected; help copy |
+
+Tip: `58ea65e5`
