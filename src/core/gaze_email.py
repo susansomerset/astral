@@ -1,9 +1,10 @@
-"""AST-1090: gaze_email mailbox runner for the null-candidate dispatch row.
+"""AST-1136: candidate-bound gaze_email mailbox runner.
 
-List Astral inbox → From-bind → unbound age→Trash → bound shape route →
-Ruth parse (candidate API key) / scrape / per-candidate dedupe → METEORITE_NEW
-create → archive on success or all-duplicate skip. Style D when debug=True.
-Never calls qualify/GDL or global AST-1061 job_link helpers.
+List Astral inbox → filter From→selected candidate → unbound age→Trash
+(shared hygiene) → bound shape route → Ruth parse (that candidate’s API key)
+/ scrape / per-candidate dedupe → METEORITE_NEW create → archive; stamp
+last_email_check. Style D when debug=True. Never calls qualify/GDL or global
+AST-1061 job_link helpers. process_gaze_email_messages is the AST-1129 reuse path.
 """
 
 from __future__ import annotations
@@ -268,20 +269,81 @@ async def _handle_bound(
     return (1, 1, 0, 0)
 
 
-async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
-    """AST-1090: process Astral inbox for the null-candidate gaze_email dispatch row."""
-    del task  # row identity unused — runner always uses shared Astral inbox
+async def process_gaze_email_messages(
+    candidate_id: str,
+    messages: list[dict],
+    *,
+    debug: bool = False,
+) -> dict[str, int]:
+    """Bound-ingest only for messages whose From binds to candidate_id.
+
+    Same Ruth/scrape/dedupe/create/archive outcomes as the dispatch runner.
+    Does not list Gmail, does not Trash unbound mail, does not stamp
+    last_email_check. AST-1129 Land Meteorite calls this with selected rows.
+    """
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
     if debug:
         logger.set_debug_flag(True)
 
-    messages = list_inbox_messages(debug=debug)
     n = len(messages)
+    processed = passed = failed = errors = 0
+    for i, msg in enumerate(messages, start=1):
+        mid = msg.get("id") or ""
+        try:
+            _dbg(debug, index=i, total=n, mid=mid, outcome="found")
+            _detail(debug, f"from_address={(msg.get('from_address') or '')[:120]}")
+            match = msg.get("candidate_match") or {}
+            if not match.get("matched"):
+                _dbg(debug, index=i, total=n, mid=mid, outcome="skipped-unbound")
+                _detail(debug, "process_gaze_email_messages does not mutate unbound mail")
+                processed += 1
+                passed += 1
+                continue
+            bound_cid = str(match.get("astral_candidate_id") or "").strip()
+            if bound_cid != cid:
+                _dbg(debug, index=i, total=n, mid=mid, outcome="skipped-other-candidate")
+                processed += 1
+                passed += 1
+                continue
+            _detail(debug, f"astral_candidate_id={bound_cid}")
+            p, pa, fa, er = await _handle_bound(msg, match, debug=debug, index=i, total=n)
+            processed += p
+            passed += pa
+            failed += fa
+            errors += er
+        except Exception as exc:
+            errors += 1
+            processed += 1
+            _dbg(debug, index=i, total=n, mid=mid, outcome="error")
+            _detail(debug, f"message_error={type(exc).__name__}: {exc}")
+            for line in truncate_debug_content(str(exc)):
+                _detail(debug, line)
+
+    return {
+        "total_processed": processed,
+        "total_passed": passed,
+        "total_failed": failed,
+        "total_errors": errors,
+    }
+
+
+async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
+    """AST-1136: candidate-bound mailbox run + unbound hygiene + last_email_check stamp."""
+    cid = str((task or {}).get("candidate_id") or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
     if debug:
+        logger.set_debug_flag(True)
+        _dbg(debug, index=1, total=1, mid=cid, outcome="run-start")
         env_user = (os.environ.get("GMAIL_USER") or "").casefold()
         expected = (GAZE_EMAIL_CONFIG["account_address"] or "").casefold()
         if env_user != expected:
             _detail(True, f"account_mismatch GMAIL_USER={env_user!r} expected={expected!r}")
 
+    messages = list_inbox_messages(debug=debug)
+    n = len(messages)
     processed = passed = failed = errors = 0
     now_ms = int(time.time() * 1000)
 
@@ -292,7 +354,6 @@ async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
             _detail(debug, f"from_address={(msg.get('from_address') or '')[:120]}")
             match = msg.get("candidate_match") or {}
             if not match.get("matched"):
-                # unbound path
                 if _unbound_is_stale(int(msg.get("internal_date_ms") or 0), now_ms=now_ms):
                     trash_message(mid)
                     _dbg(debug, index=i, total=n, mid=mid, outcome="trashed")
@@ -302,7 +363,14 @@ async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
                 passed += 1
                 continue
 
-            _detail(debug, f"astral_candidate_id={match.get('astral_candidate_id')}")
+            bound_cid = str(match.get("astral_candidate_id") or "").strip()
+            if bound_cid != cid:
+                _dbg(debug, index=i, total=n, mid=mid, outcome="skipped-other-candidate")
+                processed += 1
+                passed += 1
+                continue
+
+            _detail(debug, f"astral_candidate_id={bound_cid}")
             p, pa, fa, er = await _handle_bound(msg, match, debug=debug, index=i, total=n)
             processed += p
             passed += pa
