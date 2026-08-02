@@ -150,3 +150,121 @@ No plan conflicts requiring `conf-!!-NONE`.
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–2 | `f172b537` | job-link claim bind + Create-time job_link fallback in qualify_meteorite |
+
+---
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1133
+**Publish ref tip:** `3e01f3dc3bf0a7a30557c00fd5871de580995a8c`
+**Overall:** DISCUSS
+
+### What's solid
+
+- Stages 1–2 match: `_bind_response_jobs_by_job_link` (unique normalize_link map, no overwrite of claimed ids, qualify_meteorite-only) + Create http(s) `job_link` fallback with `link_source` Style D.
+- AST-1076 digit bind left intact; claim→process→release shape unchanged; QUALIFIED / FAILED_QUALIFY / ERROR_QUALIFY outcomes preserved.
+- AST-1133 `code()` product touch is `consult.py` only; Betty `test()` + one `merge-tests`.
+
+### Issues
+
+**discuss:** `orch.git.commit-vocabulary` — `59ec6ce3` / `8d01c0c7` are docs-only plan tip fills committed as `code()`. Should have been `docs()`. No rewrite required; ack for future.
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.dispatch.seed-auto-false` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.layers.ui-config-driven-business-logic` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.seed.agent-tables-in-repo-json` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.seed.archie-catalog-wins` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.seed.operator-rows-stay-deleted` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.seed.other-via-coverage-join` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.standards.database-header-inventory` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.standards.utils-data-late-import-only` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.ui.single-gunicorn-worker` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action.
+
+### Recommended actions
+
+- Engineer: ack vocabulary + C4 stragglers (no src change), then User Testing via `resolve-child`.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | No grade confidence path changes |
+| `astral.agent.do-task-delegation` | scoped | conforms | Still one do_task via _run_batch_consult |
+| `astral.agent.grade-vector-validation` | scoped | conforms | No grade vector schema changes |
+| `astral.batch.batch-id-first` | scoped | conforms | No claim helper signature changes |
+| `astral.batch.batch-id-format` | scoped | conforms | No batch_id format changes |
+| `astral.batch.claim-process-release` | scoped | conforms | Batch shape unchanged; bind + process field harden only |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | No agent_data RESPONSE inventory changes |
+| `astral.config.config-source-of-truth` | scoped | conforms | No new qualify knobs; rollup config from siblings only |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | No scoring threshold changes |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env values |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss diff (['artifacts/**', 'scripts/spikes/**']) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Combined plans under docs/features — not spike notes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | No dispatch/run_next changes |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | No seed/dispatch_task AUTO changes in this tip |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | One docs/features plan file for AST-1133 |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test/bible only; merge-tests exception ok |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Product code() is consult.py; tests from Betty |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Core-only consult harden; no new I/O |
+| `astral.layers.import-direction` | scoped | conforms | normalize_link from utils into core |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ∩ diff empty (['scripts']); paths miss diff (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No UI rules; config rollup not UI business logic |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | No coat-check keys |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | qualify_meteorite stays on _run_batch_consult path |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | No seed JSON work |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | No catalog seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | No seed/boot path |
+| `astral.seed.define-approved` | scoped | conforms | No seed define work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | No operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | No coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | No data-layer edits in AST-1133 code() |
+| `astral.standards.database-header-inventory` | scoped | conforms | Rollup uses existing job/company tables only |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Bind/link_source detail only when debug=True |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Second bind helper; AST-1076 digit rules intact |
+| `astral.standards.in-scope-only` | scoped | conforms | AST-1133 code() is consult.py only |
+| `astral.standards.logging-via-utils` | scoped | conforms | Style D via existing consult debug helpers |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | _bind_response_jobs_by_job_link product-shaped |
+| `astral.standards.no-cross-contamination` | scoped | conforms | qualify_meteorite-only call site; listings bind unchanged |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | No new host/state sets; existing http prefix gate |
+| `astral.standards.public-then-helpers` | scoped | conforms | New bind helper next to existing bind helper |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data import |
+| `astral.state.core-decides-transitions` | scoped | conforms | Core still QUALIFIED / FAILED_QUALIFY / ERROR_QUALIFY |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | No JOB_STATES registry edits |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | No run_next / daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No gunicorn/worker config changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1133) SHA on sub tip |
+| `orch.git.commit-vocabulary` | universal | needs-discussion | Two docs-only tip stubs used code() not docs() |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Publish stays on origin/sub/AST-1130/AST-1133-… |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child sub under AST-1130 parent topology |
+| `orch.git.merge-on-checkout` | universal | conforms | No illegal merge-on-checkout recipe |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No cherry-pick/rebase/force on publish ref |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Uses sub/AST-1130/AST-1133-… only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in astral-AST-1130 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branch invented |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | No product-decision fork; plan decisions shipped |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 match Files Changed and consult.py diff |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Entered at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via test()+merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee remains Katherine |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Implementer stays assignee through review |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path product commits |
+
+### Pattern conformance
+
+- `pattern.batch.entity-claim-process-release` — **conforms**
+- `pattern.state.entity-state-transitions` — **conforms**
+
+### Plan adherence
+
+Self-Assessment **Single-Component** matches (`consult.py` only for this ticket). Boundaries vs AST-1131/1132 / gaze_email / GDL held. Three-dot vs origin/dev carries sibling epic rollup — expected, not scope smuggle in AST-1133 product commits.
+
+context_tokens≈48000
