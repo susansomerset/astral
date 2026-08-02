@@ -206,3 +206,20 @@ python3 -c "from src.core.gaze_email import run_gaze_email_selected_ids; import 
 |-------|-------|
 | Branch | `sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint` |
 | Tip | `5c9f62043330c2be1ab3ac25d59402bb72dd08db` |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Publish ref tip (at review):** `288c11d028ca20f3dc7c532b00ec2f819658ea04`  
+**Overall:** DISCUSS (no fix-now on AST-1140 selected-ids path; C4 soft-merge stragglers)
+
+**What’s solid**
+- `run_gaze_email_selected_ids` matches Stages 1–2: list-once index, skip unbound/unmatched/not-in-inbox with `GAZE_EMAIL_CONFIG` vocabulary, shared `_handle_bound` + `index_dbg=_dbg_selected`, return contract for AST-1141.
+- Forbidden call sites absent in the selected-ids body (`create_meteorite_job_from_inbox_message`, `update_candidate_last_email_check`, unbound `trash_message`, qualify/GDL).
+- Style D gated: `_dbg_selected` / `_detail` only when `debug=True`; `debug_func_selected=gaze_email.selected_ids`.
+- AST-1140 `code()` commit touches only `src/core/gaze_email.py` + `src/utils/config.py` (+ plan doc).
+
+**Issues / Recommended**
+- **discuss (C4 stragglers):** Stage 2a soft-merge of `ftr/AST-1128` put `docs/features/**`, `src/data/**`, and `src/ui/api/**` on the tip, so five Joan-excluded statutes are in-scope on the three-dot diff. Each scored **conforms** (see Linear); no product rewrite required for Land Meteorite itself.
+- **advisory:** Tip carries AST-1134/1135 dispatcher/avail/database surface from that soft merge while dispatcher `run_gaze_email` on this tip remains the AST-1090 null-shell shape (AST-1136 candidate-bound `process_gaze_email_messages` is not an ancestor of this tip). Land Meteorite entrypoint is isolated and correct; candidate-bound runner coherence stays with AST-1128/AST-1136 rollup.
+
+Full `## Statutes checked` (65/65) + Pattern / Plan adherence live in the Linear Review Posted comment.
