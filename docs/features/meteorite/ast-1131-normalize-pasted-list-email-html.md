@@ -312,3 +312,20 @@ Use the normalized `html` for both links mode and body mode (including `_meteori
 Diff footprint matches Self-Assessment **Single-Component** (utils config + formatting + thin inbox/gazer wires). No exclude-list / qualify / gaze_email / UI smuggle from AST-1132/1133.
 
 context_tokens≈42000
+
+---
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Resolve tip:** see `resolve(AST-1131): — clean` on `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`
+
+| Radia item | Disposition |
+|------------|-------------|
+| fix-now | none |
+| discuss (C4 straggler) `astral.debug.spikes-under-debug-dir` | Ack — conforms; plan doc under `docs/features/`, not spike notes. No product change. |
+| discuss (C4 straggler) `astral.docs.features-single-file-per-ticket` | Ack — conforms; single combined plan file. No product change. |
+| discuss (C4 straggler) `astral.git.engineer-test-tree-ban` | Ack — conforms; `code()` was src-only; tests via Betty. No product change. |
+| Trailing bare-URL punctuation module constant | Leave as local hygiene (Joan plan discuss already accepted; Radia Notes concur). |
+
+No product or test-tree edits in resolve.
