@@ -3396,6 +3396,24 @@ class TestAst1090GazeEmailRunnerConfig:
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
 
 
+# Branches: selected-ids Style D func + skip outcome vocabulary (AST-1140).
+@pytest.mark.skipif(
+    "debug_func_selected" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
+    reason="AST-1140 selected-ids GAZE_EMAIL_CONFIG keys not on this publish tip",
+)
+class TestAst1140GazeEmailSelectedConfig:
+    """AST-1140: Land Meteorite selected-ids literals on GAZE_EMAIL_CONFIG (no parallel block)."""
+
+    def test_selected_ids_debug_and_skip_outcomes(self) -> None:
+        g = cfg.GAZE_EMAIL_CONFIG
+        assert g["debug_func_selected"] == "gaze_email.selected_ids"
+        assert g["selected_outcome_skipped_unbound"] == "skipped-unbound"
+        assert g["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
+        assert g["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
+        # Dispatcher Style D func unchanged.
+        assert g["debug_func"] == "gaze_email.run"
+
+
 # Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
 @pytest.mark.skipif(
     "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
