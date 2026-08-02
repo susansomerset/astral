@@ -526,7 +526,8 @@ TASK_CONFIG = {
                 "items_schema": {
                     "job_link": {"type": "str", "required": True},
                     "job_title": {"type": "str", "required": False},
-                    "metadata": {"type": "str", "required": False},
+                    # AST-1144: Ruth returns structured company/location objects.
+                    "metadata": {"type": "dict", "required": False},
                 },
             },
             "jd_link": {"type": "str", "required": False},

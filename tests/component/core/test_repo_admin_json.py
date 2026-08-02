@@ -729,3 +729,20 @@ class TestAst1107TaskNameEqualsTaskKey:
         fixture = Path("docs/uat-fixtures/AST-756/expected-agent_task.json")
         assert repo.read_bytes() == fixture.read_bytes()
 
+
+class TestAst1144ParseMeteoriteEmailMetadataPrompt:
+    """AST-1144: catalog prompt documents optional metadata object company/location."""
+
+    def test_html_links_prompt_documents_metadata_object(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        cache = by["parse_meteorite_email"]["cache_prompt"]
+        assert "metadata" in cache
+        assert "company" in cache
+        assert "location" in cache
+        assert "object" in cache.lower()
+        # Fixture byte-lock still holds after prompt edit.
+        expected = Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_bytes()
+        actual = Path("data/admin/agent_task.json").read_bytes()
+        assert actual == expected
+

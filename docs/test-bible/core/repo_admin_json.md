@@ -227,3 +227,23 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   -q
 ```
 
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+`parse_meteorite_email` cache_prompt documents optional `metadata` object (`company` / `location`); AST-756 fixture remains byte-identical to repo `agent_task.json`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt + fixture lock | `data/admin/agent_task.json` | **`TestAst1144ParseMeteoriteEmailMetadataPrompt`** |
+
+**Broken / obsolete:** none — additive prompt wording.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  -q
+```
