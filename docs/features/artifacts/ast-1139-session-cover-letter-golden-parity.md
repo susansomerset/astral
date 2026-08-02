@@ -146,3 +146,115 @@ Against the parent Original brief `<style>` (AST-1124 Description), verify the s
 | 3 | Admin Session: empty from-block allowed when candidate selected; help copy |
 
 Tip: `84737c54`
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1139
+**Publish ref:** `c2ffe7bad168cfcd69e3f939ad20b5c0e3aeaf8f` (`origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`)
+**Overall:** DISCUSS
+
+### What's solid
+
+- Stages 1–3 match the plan: `empty_uses_candidate_resolve` + `from_block_sources`; `build_session_cover_letter` loads candidate before from-block check, empty→`resolve_cover_from_block`, Style D `from_block_source` / `from_block_chars` / `document_path=somerset_cover` behind `set_debug_flag`; Admin Session gates Open HTML when candidate selected; help copy updated; no React-side composition.
+- SomersetCover CSS selectors for golden list present (`.fromBlock`, `.toBlock`, `.letterdate`, `.lettersubject`, `.lettercontent`, `.letterSignoff`, `.signature-img`, `@page`, `@media print`).
+- Debug contract gated correctly on the session builder path.
+- One `merge-tests(AST-1139)` pins Betty tip; engineer commits stay off the test tree.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, and `astral.debug.spikes-under-debug-dir` at plan time; three-dot vs `origin/dev` puts them in-scope. Sweep scores all three **conforms**.
+
+**discuss (cross-ticket boundary):** AST-1138 left call sites to `_emit_somerset_cover_html_document` / `_candidate_for_cover_from_block` / `_job_cover_somerset_fields` without defining the rename + job field mapper. AST-1139 `code` commit completed those helpers (plan allowed adding `_candidate_for_cover_from_block` if missing). Not a session-AC defect; resolve/merge hygiene only — confirm AST-1138 tip owns the job helper long-term.
+
+**advisory:** Frontend `requiredComplete` hardcodes `from_block` + candidate-selected exception (plan Stage 3 literal) rather than reading `empty_uses_candidate_resolve` from a server payload — acceptable per plan.
+
+### Recommended actions
+
+1. Katherine: no product fix required for AST-1139 AC; acknowledge discuss items (or no-op) via resolve-child.
+2. Optional: ensure AST-1138 publish tip already contains the helper defs so future children do not re-land job mappers.
+
+### Pattern conformance
+
+Ticket-cited: `astral.standards.dry-and-focused-functions` / `in-scope-only` / `debug-contract-gated` / `astral.config.config-source-of-truth` / `astral.layers.import-direction` / `astral.layers.ui-config-driven-business-logic` — conforms (see table). Invented pattern catalog: none.
+
+### Plan adherence
+
+Self-Assessment Single-Component matches session config + builder defaulting/debug + Admin gating. Job Print Cover Letter rewrite not introduced as new scope beyond repairing shared helpers already called from the ftr tip. CSS parity Stage 2c satisfied by existing SomersetCover helper rules.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | not touched by this ticket’s behavior |
+| astral.agent.do-task-delegation | scoped | conforms | not touched by this ticket’s behavior |
+| astral.agent.grade-vector-validation | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.batch-id-first | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.batch-id-format | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.claim-process-release | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | not touched by this ticket’s behavior |
+| astral.config.config-source-of-truth | scoped | conforms | empty_uses_candidate_resolve + from_block_sources in BUILD_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | not touched by this ticket’s behavior |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | not touched by this ticket’s behavior |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths match none of ['artifacts/**', 'scripts/spikes/**'] |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | feature plans under docs/features/; not spike dumps |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | not touched by this ticket’s behavior |
+| astral.dispatch.seed-auto-false | scoped | conforms | not touched by this ticket’s behavior |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one docs/features/artifacts/ast-1139-….md (siblings also present on tip) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | test-tree on Betty test/merge-tests SHAs only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external I/O |
+| astral.layers.import-direction | scoped | conforms | builder→candidate resolve + utils; UI no compose |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers ['scripts'] ∩ diff ['core', 'docs', 'ui', 'utils'] empty |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | UI gates Open HTML only; composition in core |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | not touched by this ticket’s behavior |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | not touched by this ticket’s behavior |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | existing auth’d session HTML endpoint; no new routes |
+| astral.seed.agent-tables-in-repo-json | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.archie-catalog-wins | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.define-approved | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.other-via-coverage-join | scoped | conforms | not touched by this ticket’s behavior |
+| astral.standards.data-raises-caller-logs | scoped | conforms | not touched by this ticket’s behavior |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers ['data'] ∩ diff ['core', 'docs', 'ui', 'utils'] empty |
+| astral.standards.debug-contract-gated | scoped | conforms | set_debug_flag + Style D details only when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses resolve_cover_from_block + single SomersetCover emit |
+| astral.standards.in-scope-only | scoped | conforms | session Admin path primary; shared emit helpers completed for ftr tip |
+| astral.standards.logging-via-utils | scoped | conforms | builder _log debug helpers |
+| astral.standards.names-not-ticket-ids | scoped | conforms | API/config names domain language; ticket only in comments/docs |
+| astral.standards.no-cross-contamination | scoped | conforms | no resume emit; job path only via shared SomersetCover helper |
+| astral.standards.no-hardcoded-sets | scoped | conforms | from_block_sources + empty_uses flag from config |
+| astral.standards.public-then-helpers | scoped | conforms | helpers near cover emit; session public entry unchanged |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config literals only; no utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | not touched by this ticket’s behavior |
+| astral.state.job-prior-states-enforced | scoped | conforms | not touched by this ticket’s behavior |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | not touched by this ticket’s behavior |
+| astral.ui.frontend-file-placement | scoped | conforms | page stays AdminSessionCoverLetter.tsx |
+| astral.ui.naming-conventions | scoped | conforms | existing PascalCase page; field keys snake_case |
+| astral.ui.single-gunicorn-worker | scoped | conforms | config touch unrelated to gunicorn |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | one merge-tests(AST-1139) @ c2ffe7ba pinning tests 7ea88470 |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1124/AST-1139-… |
+| orch.git.ftr-sub-topology | universal | conforms | child sub under parent ftr/AST-1124-… |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe in commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase/force on tip |
+| orch.git.no-dev-agent-branches | universal | conforms | sub publish-ref only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1124 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no open product decisions in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–3 match plan Files Changed |
+| orch.pipeline.project-scoped-queues | universal | conforms | Artifacts child scope only |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon/statutes edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible via Betty test+merge-tests commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine stays assignee through Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path product edits |
+
+## Notes
+
+Joan plan-rubric APPROVED attached. §5f applied; §5g N/A. Three-dot includes AST-1137/1138 lineage vs `origin/dev`.
+
+context_tokens≈24000
