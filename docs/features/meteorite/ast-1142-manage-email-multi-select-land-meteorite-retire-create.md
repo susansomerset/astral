@@ -198,10 +198,10 @@ No `src/core/**`, no `src/ui/api/**`, no `src/utils/config.py`, no `tests/` / bi
 
 ## Review
 
-**Publish ref:** 
-**Tip:** 
+**Publish ref:** `origin/sub/AST-1129/AST-1142-manage-email-multi-select-land-meteorite-retire-create`
+**Tip:** `2ee72f4b` (code); docs stub follows on publish-ref
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 |  | multi-select chrome + Land Meteorite enablement |
-| 2 |  | Land Meteorite POST + outcome panel; retire Create |
+| 1 | `1756919c` | multi-select chrome + Land Meteorite enablement |
+| 2 | `2ee72f4b` | Land Meteorite POST + outcome panel; retire Create |
