@@ -191,3 +191,12 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / unbound hyg
 ### Recommended actions
 
 - No fix-now product edits from this review. Stragglers are bookkeeping only for resolve.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review tip:** `8992aa1b` · **Overall:** DISCUSS (no fix-now)
+
+**discuss (straggler):** Noted — no action; `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` all conform on tip.
+
+**fix-now:** none.
