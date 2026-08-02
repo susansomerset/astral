@@ -268,3 +268,21 @@ Wrong omit/replace would hide signatures or leave literals in print HTML; sessio
 ### Recommended actions
 
 - Hedy: no `fix-now` product work. On resolve-child, acknowledge C4 stragglers → User Testing.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Engineer:** Hedy  
+**Publish tip:** `0364b533` → resolve commit on `origin/sub/AST-1123/AST-1126-cover-html-emit-token-replace-stop-auto-above`
+
+### Radia findings
+
+| Finding | Action |
+|---------|--------|
+| **fix-now** | None |
+| **discuss (C4 stragglers)** | Acknowledged — plan-time excludes that scored in-scope at code-time all **conform**; no product patch |
+| Joan HTML-shape discuss (plan-time) | Already implemented in `_emit_cover_signoff_html` (`<p>before</p>{img}<p>after</p>`) |
+
+### Outcome
+
+No product changes on resolve. Tip advances with this Resolution append only → **User Testing**.
