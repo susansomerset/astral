@@ -2019,3 +2019,23 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
   -q
 ```
+
+### AST-1125 · AST-1123
+
+**Parent:** [AST-1123 — Support Signature_Image as a token in the cover letter](https://linear.app/astralcareermatch/issue/AST-1123/support-signature-image-as-a-token-in-the-cover-letter). **Publish:** `origin/sub/AST-1123/AST-1125-cover-letter-signature-image-token-contract`.
+
+`BUILD_CONFIG["cover_letter_render_tokens"]["SIGNATURE_IMAGE"]` — cover-only render contract (`{$SIGNATURE_IMAGE}` → `contact.cover_letter_signature_image`, omit policies). Accessor `get_cover_letter_render_token`. **Not** in `TOKEN_SOURCES` / `resolve_tokens`. Emit placement = sibling **AST-1126**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cover render-token contract + accessor + TOKEN_SOURCES exclusion | `src/utils/config.py` | **`TestAst1125CoverLetterRenderTokenContract`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none (config-only; no existing integration scenario invalidated).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1125CoverLetterRenderTokenContract \
+  -q
+```
