@@ -138,3 +138,12 @@ Config-only. Wrong path would blank the image once emit lands (easy to spot); ac
 
 - Ada: no `fix-now` product work. On resolve-child, acknowledge the three C4 stragglers (expected docs + Betty expansion) and move to User Testing.
 - AST-1126: consume `get_cover_letter_render_token("SIGNATURE_IMAGE")` only on cover emit paths.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Ref:** Radia `[code-rubric] revision=1` Overall DISCUSS (no fix-now)
+
+- **fix-now:** none — product tip unchanged (`314f39e1` / publish through Radia docs tip).
+- **discuss (C4 stragglers):** Acknowledged. `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` were plan-time exclusions (Files Changed = utils); code-time three-dot diff correctly expands to plan doc + Betty test tree and those statutes **conform**. No product patch.
+- **advisory:** Betty `test(AST-1120)` baseline drift noted; out of AST-1125 product scope.
