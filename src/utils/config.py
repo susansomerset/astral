@@ -38,7 +38,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
-  GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
+  GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
@@ -909,7 +909,8 @@ TASK_CONFIG = {
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
-    # AST-1088: mailbox dispatch shell (no Ruth prompts — AST-1089; runner — AST-1090).
+    # AST-1134: candidate-bound mailbox dispatch shell (no claim queue; row binds via
+    # dispatch_task.candidate_id). No Ruth prompts — AST-1089; runner — AST-1136.
     "gaze_email": {
         "entity_type": None,
         "requires_candidate_key": False,
@@ -2193,11 +2194,12 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 }
 
 
-# AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id row).
+# AST-1134: candidate-bound gaze_email dispatch rows (one per candidate; no null shell).
 # Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
-# AST-1090 runner extends this block (schemes / ledger placeholder / Style D func).
+# entity_type/trigger_state stay None — mailbox poller, not an ENTITY_TYPES claim queue
+# (live bind-filtered Avail is AST-1135). Runner literals feed AST-1136.
 # Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
-# AST-1098: seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
+# Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 GAZE_EMAIL_CONFIG = {
     "task_key": "gaze_email",
     "account_address": "astral.career.match@gmail.com",
@@ -2206,13 +2208,11 @@ GAZE_EMAIL_CONFIG = {
     "min_count": 1,
     "batch_size": 1,
     "freq_hrs": 0.1,
-    # Mailbox poller — no entity claim queue on the dispatch_task row.
+    # Mailbox poller — no entity claim queue; row binds via dispatch_task.candidate_id.
     "entity_type": None,
     "trigger_state": None,
-    # AST-1090 runner — subject-is-URL detection (urlparse.scheme).
+    # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
-    # Ledger / registry placeholder when dispatch_task.candidate_id is NULL.
-    "dispatch_ledger_candidate_id": "",
     # Style D func= string for the runner.
     "debug_func": "gaze_email.run",
 }
@@ -3930,10 +3930,9 @@ ADMIN_CONFIG = {
         # Prefix for downloaded reconciliation CSV filenames.
         "export_filename_prefix": "astral",
     },
-    # AST-1106: mailbox shells kept under Scheduled Actions default Avail > 0 (zero entity avail).
-    "always_visible_under_avail_gt0_dispatch_task_keys": (
-        GAZE_EMAIL_CONFIG["task_key"],
-    ),
+    # AST-1134: gaze_email always-visible carve-out retired (Avail is real / sibling wiring).
+    # Helper + API stamp remain for empty/future keys.
+    "always_visible_under_avail_gt0_dispatch_task_keys": (),
 }
 
 
