@@ -159,3 +159,12 @@ No `tests/` / bible / React / dispatcher provision/Avail / Manage Email (AST-112
 ### Recommended actions
 
 - No fix-now product edits from this review. Stragglers are bookkeeping only for resolve.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review tip:** `78b7cbb6` · **Overall:** DISCUSS (no fix-now)
+
+**discuss (straggler):** Noted — no action; `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.patterns.require-auth-on-protected-endpoints`, `astral.standards.database-header-inventory`, and `astral.ui.naming-conventions` all conform on tip.
+
+**fix-now:** none.
