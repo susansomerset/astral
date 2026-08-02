@@ -244,5 +244,5 @@ Wrong omit/replace would hide signatures or leave literals in print HTML; sessio
 | Field | Value |
 |-------|-------|
 | Branch | `sub/AST-1123/AST-1126-cover-html-emit-token-replace-stop-auto-above` |
-| Tip | `678bc856` |
+| Tip | `33d143fd` |
 | Notes | Job + session cover emit: token-only `{$SIGNATURE_IMAGE}` replace via `get_cover_letter_render_token`; stop auto-prepend/inject; Style D `signature_image_token` + three-way `signature_image`. |
