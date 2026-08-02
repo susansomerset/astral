@@ -4245,3 +4245,238 @@ class TestAst1120CompanyJobIdFallback:
         assert out["failed"] == 1
         assert initialize.call_count == 0
         assert transition.call_args.args[2] == fail
+
+
+# Branches: debug source=AI / UUID-from-job_link / neither; fallback_job_link; debug=False (AST-1121).
+class TestAst1121CompanyJobIdDebugSource:
+    _DICE_UUID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE_URL = f"https://www.dice.com/company-profile/{_DICE_UUID}"
+
+    def _jd(self, n: int = 50) -> str:
+        return "Visible JD body text. " * ((n // 20) + 1)
+
+    def _job(self, aid: str = "job-1121") -> dict:
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        return {
+            "astral_job_id": aid,
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-1121",
+            "job_link": "https://jobs.example.com/old",
+            "job_data": {jd_key: self._jd()},
+        }
+
+    def _fields(self, aid: str, **overrides: object) -> dict:
+        base = {
+            "astral_job_id": aid,
+            "company_job_id": "AI-EXT",
+            "job_title": "Senior Engineer",
+            "job_link": "https://jobs.example.com/role/99",
+            "jd_text": self._jd(60),
+        }
+        base.update(overrides)
+        return base
+
+    def _patch_debug_loggers(self, monkeypatch: pytest.MonkeyPatch):
+        dbg_i = MagicMock()
+        dbg_d = MagicMock()
+        monkeypatch.setattr(consult_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_index", dbg_i)
+        monkeypatch.setattr(consult_mod.logger, "debug_detail", dbg_d)
+        return dbg_i, dbg_d
+
+    @staticmethod
+    def _detail_text(dbg_d: MagicMock) -> str:
+        return " ".join(str(c.args[0]) for c in dbg_d.call_args_list if c.args)
+
+    @pytest.mark.asyncio
+    async def test_debug_pass_ai_source_no_fallback_link(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": "AI-KEEP",
+                    "job_title": "Senior Engineer",
+                    "job_link": self._DICE_URL,
+                    "job_data": {jd_key: self._jd(60)},
+                }
+            ),
+        )
+        resp = self._fields("j-ai", company_job_id="AI-KEEP", job_link=self._DICE_URL)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        _, dbg_d = self._patch_debug_loggers(monkeypatch)
+        out = await consult_mod.qualify_meteorite(
+            "batch-1121-ai", [self._job("j-ai")], {}, debug=True
+        )
+        assert out["passed"] == 1
+        detail = self._detail_text(dbg_d)
+        assert "found source=AI" in detail
+        assert "fallback_job_link=" not in detail
+        assert "recorded company_job_id='AI-KEEP'" in detail
+
+    @pytest.mark.asyncio
+    async def test_debug_pass_uuid_source_includes_fallback_link(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_resolve_company_job_id"):
+            pytest.skip("AST-1120 resolve helper not on tip")
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": self._DICE_UUID,
+                    "job_title": "Senior Engineer",
+                    "job_link": self._DICE_URL,
+                    "job_data": {jd_key: self._jd(60)},
+                }
+            ),
+        )
+        resp = self._fields("j-uuid", company_job_id="", job_link=self._DICE_URL)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        _, dbg_d = self._patch_debug_loggers(monkeypatch)
+        out = await consult_mod.qualify_meteorite(
+            "batch-1121-uuid", [self._job("j-uuid")], {}, debug=True
+        )
+        assert out["passed"] == 1
+        detail = self._detail_text(dbg_d)
+        assert "found source=UUID-from-job_link" in detail
+        assert f"fallback_job_link={self._DICE_URL!r}" in detail
+        assert f"recorded company_job_id={self._DICE_UUID!r}" in detail
+
+    @pytest.mark.asyncio
+    async def test_debug_fail_ai_source_omits_fallback_link(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AI id present but another content gate fails — still source=AI, no fallback_job_link."""
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        resp = self._fields("j-ai-fail", company_job_id="AI-KEEP", job_title="ab")
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        _, dbg_d = self._patch_debug_loggers(monkeypatch)
+        out = await consult_mod.qualify_meteorite(
+            "batch-1121-ai-fail", [self._job("j-ai-fail")], {}, debug=True
+        )
+        assert out["failed"] == 1
+        detail = self._detail_text(dbg_d)
+        assert "found source=AI" in detail
+        assert "fallback_job_link=" not in detail
+        assert "company_job_id='AI-KEEP'" in detail
+
+    @pytest.mark.asyncio
+    async def test_debug_fail_neither_includes_fallback_link(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        link = "https://example.com/jobs/no-uuid-here"
+        resp = self._fields("j-neither", company_job_id="", job_link=link)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        _, dbg_d = self._patch_debug_loggers(monkeypatch)
+        out = await consult_mod.qualify_meteorite(
+            "batch-1121-neither", [self._job("j-neither")], {}, debug=True
+        )
+        assert out["failed"] == 1
+        detail = self._detail_text(dbg_d)
+        assert "gate=empty company_job_id" in detail
+        assert "found source=neither" in detail
+        assert f"fallback_job_link={link!r}" in detail
+        assert "company_job_id=''" in detail
+
+    @pytest.mark.asyncio
+    async def test_debug_false_omits_source_labels(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [self._fields("j-quiet", company_job_id="", job_link=self._DICE_URL)]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        dbg_i, dbg_d = self._patch_debug_loggers(monkeypatch)
+        await consult_mod.qualify_meteorite(
+            "batch-1121-quiet", [self._job("j-quiet")], {}, debug=False
+        )
+        assert not any(
+            (c.kwargs.get("func") == "consult.qualify_meteorite") for c in dbg_i.call_args_list
+        )
+        assert "found source=" not in self._detail_text(dbg_d)
