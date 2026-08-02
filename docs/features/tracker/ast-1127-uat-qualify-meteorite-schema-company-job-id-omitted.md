@@ -120,3 +120,11 @@ No plan conflicts requiring `conf-!!-NONE`.
 
 **Recommended actions**
 - Resolve-child can proceed; no product edits.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Radia tip:** `2d35bcca` (`docs(AST-1127): Radia review — clean`)
+
+- **fix-now / discuss / advisory:** none — Radia CLEAN; no product edits.
+- **Ship:** Stage 1 schema flag stands; AST-1120 resolve remains empty-id authority for omit/`null`/empty AI id.
