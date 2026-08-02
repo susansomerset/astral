@@ -125,3 +125,12 @@ Keep the existing `debug_index` header on the fail path (same `func` / identifie
 - [ ] Meteorite create / gazer ingest leaving `company_job_id` empty — out of Boundaries
 - [ ] `qualify_job_listings` — parent forbids expansion; no empty-id content fail gate there today
 - [ ] Company `job_site` / non-`job_link` URLs — never used for fallback or fallback debug link
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1119/AST-1121-debug-found-recorded-company-job-id-resolve`
+**Tip (pre-review):** `2fc5bbe7`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2fc5bbe7` | Style D found source + optional `fallback_job_link` on `qualify_meteorite` apply fail/pass |
