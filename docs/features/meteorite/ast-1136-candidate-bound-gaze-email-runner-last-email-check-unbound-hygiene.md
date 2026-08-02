@@ -141,4 +141,21 @@ No `tests/` / bible / React / dispatcher provision/Avail / Manage Email (AST-112
 ## Review
 
 **Publish ref:** `origin/sub/AST-1128/AST-1136-candidate-bound-gaze-email-runner`
-**Tip:** `1528be8a4e11450367e3d5c1f097a80f48e5e3c8`
+**Tip:** `d4069a010d958fabc65cacfa4639d137b2913992`
+**Overall:** DISCUSS
+
+[code-rubric] revision=1 — Radia full-set sweep vs `origin/dev...origin/sub/AST-1128/AST-1136-candidate-bound-gaze-email-runner`.
+
+### What's solid
+
+- Stages 1–2 match plan: three-way unbound / other / selected filter, `process_gaze_email_messages` reuse path (no Trash/stamp), `run_gaze_email` stamps `last_email_check` after completed loop, Style D run+per-message+footer gated on `debug=True`.
+- Bound ingest stays in `_handle_bound` (METEORITE_NEW only; no qualify/GDL). Secrets/retention stay config/environ-owned.
+- Engineer `code()` is src-only; Betty owns tests/bible.
+
+### Issues
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.patterns.require-auth-on-protected-endpoints`, `astral.standards.database-header-inventory`, `astral.ui.naming-conventions` at plan time; post-sibling/Betty three-dot brings them in-scope. All score **conforms**.
+
+### Recommended actions
+
+- No fix-now product edits from this review. Stragglers are bookkeeping only for resolve.
