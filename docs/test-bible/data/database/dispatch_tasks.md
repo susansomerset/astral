@@ -312,3 +312,25 @@ Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NU
   -q
 ```
 
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+`save_dispatch_task` requires `candidate_id` for **every** task_key including `gaze_email` (null-shell allowance removed). Schema `candidate_id` stays nullable + partial unique index for residual rows deleted at provision. Due/avail task-key special-case unchanged until **AST-1135** — tests use bound rows. Stamp column: **`docs/test-bible/data/database/candidates.md`**. Provision: **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Reject null gaze_email; bound save; schema/index | `src/data/database.py` | revised **`TestAst1088NullCandidateGazeEmail`** |
+| Due / count_eligible on bound row | `src/data/database.py` | revised **`TestAst1090GazeEmailDue`** |
+
+**Broken / obsolete (Betty revision):** `save_dispatch_task(candidate_id=None, task_key=gaze_email)` success path; null-cid due fixtures.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  -q
+```

@@ -78,3 +78,23 @@ List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_
   tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
   -q
 ```
+
+### AST-1131 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`.
+
+`strip_extract_email_html` calls `normalize_pasted_list_email_html` on the culled body before subject wrap. Primary helper: **`docs/test-bible/utils/formatting.md`** (**AST-1131**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Strip + paste normalize | `src/core/inbox.py` | **`TestAst1131StripNormalizePastedList`** |
+
+**Broken / obsolete:** none — additive call; AST-1049 strip assertions still hold.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList \
+  -q
+```

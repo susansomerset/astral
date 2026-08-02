@@ -1317,3 +1317,62 @@ class TestAst1061MeteoriteEmailIngest:
             gazer_mod.ingest_meteorite_jobs_from_email_html_sync("", "<p>x</p>")
         with pytest.raises(ValueError, match="html is required"):
             gazer_mod.ingest_meteorite_jobs_from_email_html_sync("cand", "  ")
+
+
+# Branches: paste normalize before candidate links — UAT escape + bare list (AST-1131).
+class TestAst1131NormalizePastedListEmailIngest:
+    _UID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE = f"https://www.dice.com/job-detail/{_UID}"
+
+    def test_escaped_nested_autolink_creates_clean_job_link(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1131-escape"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "E"})
+
+        async def fake_fetch(url, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", url)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        html = (
+            f'&lt;div xmlns="&lt;a href="http://www.w3.org/2000/svg"&gt;'
+            f'http://www.w3.org/2000/svg&lt;/a&gt;"&gt;'
+            f'&lt;a href="&lt;a href="{self._DICE}"&gt;{self._DICE}&lt;/a&gt;"&gt;Job&lt;/a&gt;'
+            f'&lt;/div&gt;'
+        )
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "links"
+        assert len(out["created"]) == 1
+        row = db.get_job(out["created"][0]["astral_job_id"])
+        assert row["job_link"] == self._DICE
+        assert "<a" not in (row["job_link"] or "")
+        # SVG namespace must not become a created job_link candidate.
+        assert all(
+            "w3.org" not in (s.get("url") or "")
+            for s in out["skipped"]
+        )
+        assert "w3.org" not in (row["job_link"] or "")
+
+    def test_newline_bare_urls_enter_links_mode(
+        self, sqlite_in_memory, monkeypatch
+    ) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1131-bare"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "B"})
+        other = "https://jobs.example.com/role/two"
+
+        async def fake_fetch(url, *, debug=False):
+            return ("Visible JD from playwright fetch with enough length!!", url)
+
+        monkeypatch.setattr(gazer_mod, "_meteorite_fetch_link_visible_text", fake_fetch)
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(
+            cid, f"{self._DICE}\n{other}", debug=False
+        )
+        assert out["mode"] == "links"
+        created_links = {db.get_job(c["astral_job_id"])["job_link"] for c in out["created"]}
+        assert created_links == {self._DICE, other}
