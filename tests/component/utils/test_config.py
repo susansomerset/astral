@@ -3539,3 +3539,22 @@ class TestAst1116CoverLetterDataShapes:
         cover = next(t for t in cfg.JOBS_RECOMMENDED_ARTIFACT_TABS if t["tab_id"] == "artifact_cover")
         assert cover["artifact_key"] == "cover_letter"
         assert cover["shapes_key"] == "cover_letter"
+
+
+# Branches: METEORITE_EMAIL_INGEST_CONFIG paste-normalize knobs (AST-1131).
+class TestAst1131MeteoriteEmailIngestPasteNormalizeConfig:
+    def test_paste_normalize_knobs(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        cfg_block = METEORITE_EMAIL_INGEST_CONFIG
+        assert cfg_block["entity_unescape_marker"] == "&lt;"
+        assert int(cfg_block["entity_unescape_min_marker_count"]) == 2
+        assert int(cfg_block["entity_unescape_max_passes"]) == 3
+        assert tuple(cfg_block["nested_autolink_attr_names"]) == (
+            "href",
+            "xmlns",
+            "src",
+            "cite",
+            "data-url",
+        )
+        assert cfg_block["promote_bare_http_urls"] is True

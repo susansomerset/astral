@@ -288,3 +288,29 @@ class TestAst1049CreateMeteoriteJobFromInboxMessage:
         assert len(out["skipped"]) == 1
         outcomes = [c.kwargs.get("outcome") for c in dbg.call_args_list]
         assert outcomes == ["found", "matched", "extracted", "skipped"]
+
+
+# Branches: strip_extract runs paste normalize before subject wrap (AST-1131).
+class TestAst1131StripNormalizePastedList:
+    def test_strip_unwraps_nested_autolink_job_href(self) -> None:
+        from bs4 import BeautifulSoup
+
+        uid = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+        dice = f"https://www.dice.com/job-detail/{uid}"
+        raw = (
+            f'&lt;div xmlns="&lt;a href="http://www.w3.org/2000/svg"&gt;'
+            f'http://www.w3.org/2000/svg&lt;/a&gt;"&gt;'
+            f'&lt;a href="&lt;a href="{dice}"&gt;{dice}&lt;/a&gt;"&gt;Job&lt;/a&gt;'
+            f'&lt;/div&gt;'
+        )
+        out = inbox_mod.strip_extract_email_html(
+            "Saved jobs", f"<html><body><p>{raw}</p></body></html>"
+        )
+        hrefs = [
+            a.get("href")
+            for a in BeautifulSoup(out, "html.parser").find_all("a", href=True)
+        ]
+        assert hrefs == [dice]
+        assert "w3.org/2000/svg" not in hrefs
+        assert 'class="email-subject"' in out
+        assert 'class="email-body"' in out
