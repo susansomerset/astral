@@ -95,3 +95,12 @@ Adjust the envelope keys if `_validate_response_schema` expects a different payl
 | AST-1120 pattern | Resolve helper untouched; this ticket only unblocks entry |
 
 No plan conflicts requiring `conf-!!-NONE`.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1119/AST-1127-uat-qualify-meteorite-schema-company-job-id-omitted`
+**Tip:** `7bfaf610`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `7bfaf610` | `qualify_meteorite` `company_job_id` `required: False` + assert |
