@@ -169,3 +169,9 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / unbound hyg
 - Statute `astral.standards.no-hardcoded-sets` — compare via `GAZE_EMAIL_CONFIG["task_key"]` only.
 - Statute `pattern.ui.admin-endpoint` — Avail resolved in API from core count, not React business rules.
 - Out of scope: runner / unbound hygiene / Manage Email (AST-1129) / tests tree.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`
+**Tip:** 
+**Overall:** _(pending Radia)_
