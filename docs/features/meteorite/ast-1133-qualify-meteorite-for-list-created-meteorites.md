@@ -137,3 +137,16 @@ def _bind_response_jobs_by_job_link(response_jobs: list, claimed_jobs: list) -> 
 - **§3.3 import-direction:** `normalize_link` from utils into core — already allowed.
 
 No plan conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites`  
+**Plan path:** `docs/features/meteorite/ast-1133-qualify-meteorite-for-list-created-meteorites.md`
+
+**Built tip:**  ()
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 |  | job-link claim bind + Create-time job_link fallback in qualify_meteorite |
