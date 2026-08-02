@@ -268,3 +268,19 @@ No plan conflicts requiring `conf-!!-NONE`.
 Self-Assessment **Single-Component** matches (`consult.py` only for this ticket). Boundaries vs AST-1131/1132 / gaze_email / GDL held. Three-dot vs origin/dev carries sibling epic rollup — expected, not scope smuggle in AST-1133 product commits.
 
 context_tokens≈48000
+
+---
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Commit:** `resolve(AST-1133): — clean`
+
+### Against Radia review (`a38f2a1b` / Overall DISCUSS)
+
+- **fix-now:** none — no product changes.
+- **discuss:** `orch.git.commit-vocabulary` — ack; `59ec6ce3` / `8d01c0c7` plan tip fills should have been `docs()`; no history rewrite.
+- **discuss (C4 stragglers):** ack; all scored **conforms** / no product action (epic-rollup in-scope noise).
+- **advisory:** none.
+
+Product tip remains `f172b537` (`consult.py` Stages 1–2); Betty manifest green @ `3e01f3dc`; Radia docs intake @ `a38f2a1b`.
