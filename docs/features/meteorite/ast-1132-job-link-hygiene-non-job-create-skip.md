@@ -214,3 +214,114 @@ Do not Playwright-fetch excluded or non-allowed hrefs (they do not enter `links`
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–3 | `24528f0f` | Config hygiene knobs + candidate-scoped dedupe helpers + gazer gates |
+
+---
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1132
+**Publish ref tip:** `8dcb3a577eec575b6cebe637cf6dde3d56149331`
+**Overall:** DISCUSS
+
+### What’s solid
+
+- Stages 1–3 match: config excludes/allow/markers, candidate-scoped dedupe helpers (SQL bind order + company schema ensure), gazer allow filter + Gate A/B + Style D.
+- Empty `link_allow_substrings` keeps newline ATS pastes; create still `METEORITE_NEW` via existing path.
+- AST-1131 normalize carried via resolve merge (not re-owned); AST-1133 qualify untouched.
+- Betty `test()` + one `merge-tests` SHA; engineer `code()` is src-only.
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; diff touches `docs/features/**`. Scores **conforms**. No product action.
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; plan file landed. Scores **conforms**. No product action.
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; tests/bible on tip via Betty. Scores **conforms**. No product action.
+
+### Recommended actions
+
+- Engineer: ack the three C4 stragglers (no src change) via `resolve-child`, then User Testing.
+- Note: widened `job_link_exists_for_candidate` intentionally aligns `gaze_email` callers with candidate-company AC (Joan plan discuss already accepted).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | No graded consult / confidence path |
+| `astral.agent.do-task-delegation` | scoped | conforms | No do_task; qualify left to AST-1133 |
+| `astral.agent.grade-vector-validation` | scoped | conforms | No grade vectors |
+| `astral.batch.batch-id-first` | scoped | conforms | Reuses claim_job_batch company subquery shape only |
+| `astral.batch.batch-id-format` | scoped | conforms | No batch_id generation |
+| `astral.batch.claim-process-release` | scoped | conforms | No claim/process/release changes |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | No agent_data RESPONSE work |
+| `astral.config.config-source-of-truth` | scoped | conforms | Excludes/allow/markers in METEORITE_EMAIL_INGEST_CONFIG |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | No scoring thresholds |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env values |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss diff (['artifacts/**', 'scripts/spikes/**']) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Combined plan under docs/features — not spike notes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | No dispatch/run_next changes |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | No seed/dispatch_task rows |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | One docs/features plan file for AST-1132 |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test/bible only; merge-tests exception ok |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | code() commits src-only; tests from Betty |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Reuse existing Playwright fetch; decisions in core |
+| `astral.layers.import-direction` | scoped | conforms | utils←config; data←utils; core←data/utils |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ∩ diff empty (['scripts']); paths miss diff (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No UI rules; toast already surfaces created/skipped |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | No coat-check keys |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | No consult/render_verdict |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | No seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | No catalog seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | No boot seed path |
+| `astral.seed.define-approved` | scoped | conforms | No seed define work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | No operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | No coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | Data helpers return bool/Optional; no data logging |
+| `astral.standards.database-header-inventory` | scoped | conforms | Existing job/company tables only; bind counts match |
+| `astral.standards.debug-contract-gated` | scoped | conforms | New skip paths Style D gated on debug=True |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Config fragments; shared candidate company subquery |
+| `astral.standards.in-scope-only` | scoped | conforms | Hygiene+dedupe only; qualify/gaze redesign untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | Style D via existing gazer logging helpers |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Helper/config names product-shaped |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Stays on email→meteorite ingest + scoped helpers |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Exclude/allow/marker sets live in config |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public data helpers; gates in existing ingest path |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data import |
+| `astral.state.core-decides-transitions` | scoped | conforms | Create still METEORITE_NEW via create_meteorite_job |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | No JOB_STATES / transition edits |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | No run_next / daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | config.py hygiene knobs only; no worker changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1132) SHA on sub tip |
+| `orch.git.commit-vocabulary` | universal | conforms | plan/code/docs/test/merge-tests/resolve vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Publish stays on origin/sub/AST-1130/AST-1132-… |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child sub under AST-1130 parent topology |
+| `orch.git.merge-on-checkout` | universal | conforms | No illegal merge-on-checkout recipe |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No cherry-pick/rebase/force on publish ref |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Uses sub/AST-1130/AST-1132-… only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in astral-AST-1130 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branch invented |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Empty-allow + candidate dedupe AC-aligned |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–3 match Files Changed and diff |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Entered at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via test()+merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee remains Hedy |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Implementer stays assignee through review |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path product commits |
+
+### Pattern conformance
+
+- `pattern.config.config-block` — **conforms**
+- `pattern.state.entity-state-transitions` — **conforms** (still METEORITE_NEW via `create_meteorite_job`)
+
+### Plan adherence
+
+Diff matches Self-Assessment **Single-Component**. Boundaries vs AST-1131/1133 held. Three-dot vs `origin/dev` also carries AST-1131 product + Betty AST-1134 test corpus from merge history — expected rollup, not scope smuggle in AST-1132 `code()` commits.
+
+context_tokens≈45000
