@@ -173,5 +173,21 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / unbound hyg
 ## Review
 
 **Publish ref:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`
-**Tip:** `e91381351b0d4cec17960dd4463f23553ed95cc1`
-**Overall:** _(pending Radia)_
+**Tip:** `30e4a45f1da13635ec32cde6d95812a9d182d757`
+**Overall:** DISCUSS
+
+[code-rubric] revision=1 — Radia full-set sweep vs `origin/dev...origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+### What's solid
+
+- Stages 1–3 match plan: core bind-filtered counts, data fake-avail retired (`dispatch_task_freq_allows`), admin one-snapshot Avail stamp, AUTO due merge via `_gaze_email_due_tasks`, freq kept out of Avail.
+- Layer bright line holds (Gmail external / bind count core / data out of live Avail). Carve-out tuple stays empty; no React/runner creep.
+- Engineer `code()` is src-only; Betty owns tests/bible.
+
+### Issues
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; post-Betty/docs diff brings them in-scope. All three score **conforms**.
+
+### Recommended actions
+
+- No fix-now product edits from this review. Stragglers are bookkeeping only for resolve.
