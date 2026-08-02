@@ -2208,3 +2208,23 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   tests/component/core/test_gaze_email.py::TestAst1140RunGazeEmailSelectedIds \
   -q
 ```
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.metadata` type `str` → `dict` (optional) so Ruth structured company/location objects validate. Prompt/fixture: **`docs/test-bible/core/repo_admin_json.md`**. Validation + runner: **`docs/test-bible/core/agent.md`** · **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema type dict | `src/utils/config.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** none — type flip; AST-1089 shell asserts still hold (did not lock `metadata` type).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```

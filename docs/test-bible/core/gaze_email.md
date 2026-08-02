@@ -77,3 +77,23 @@ Candidate-bound `run_gaze_email`: requires row `candidate_id`; filters From→A;
   tests/component/core/test_gaze_email.py::TestAst1136CandidateBoundGazeEmail \
   -q
 ```
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+html_links Ruth payload with dict `jobs[].metadata` still scrapes/creates/archives (runner uses `job_link` only). Schema fix: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dict metadata ingest path | `src/core/gaze_email.py` | **`TestAst1090RunGazeEmail::test_html_links_dict_metadata_still_creates`** |
+
+**Broken / obsolete:** none — additive case on existing class.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gaze_email.py::TestAst1090RunGazeEmail::test_html_links_dict_metadata_still_creates \
+  -q
+```
