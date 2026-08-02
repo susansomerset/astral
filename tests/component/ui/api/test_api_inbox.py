@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+from typing import Any
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from flask.testing import FlaskClient
@@ -295,6 +296,149 @@ class TestAst1049InboxCreateJobApi:
                 "/api/admin/inbox/messages/m1/create-job",
                 headers=non_admin_headers,
                 json={},
+            ).status_code
+            == 403
+        )
+
+
+# AST-1141: POST land-meteorite → run_gaze_email_selected_ids (no Create strip/extract).
+class TestAst1141InboxLandMeteoriteApi:
+    _CORE_OK: dict[str, Any] = {
+        "results": [
+            {
+                "message_id": "m1",
+                "outcome": "archived",
+                "astral_candidate_id": "cand-1",
+            },
+            {
+                "message_id": "m2",
+                "outcome": "skipped-unbound",
+                "astral_candidate_id": None,
+            },
+        ],
+        "total_processed": 1,
+        "total_passed": 1,
+        "total_failed": 0,
+        "total_errors": 0,
+        "total_skipped": 1,
+    }
+
+    def test_land_meteorite_200_passthrough(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        core = AsyncMock(return_value=dict(self._CORE_OK))
+        create = MagicMock()
+        monkeypatch.setattr(inbox_mod, "run_gaze_email_selected_ids", core)
+        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={"message_ids": ["m1", "  ", "m2"]},
+        )
+        assert resp.status_code == 200
+        assert resp.get_json() == self._CORE_OK
+        core.assert_awaited_once_with(["m1", "m2"], debug=False)
+        create.assert_not_called()
+
+    def test_land_meteorite_passes_debug(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        core = AsyncMock(return_value=dict(self._CORE_OK))
+        monkeypatch.setattr(inbox_mod, "run_gaze_email_selected_ids", core)
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite?debug=1",
+            headers=auth_headers,
+            json={"message_ids": ["m1"], "debug": True},
+        )
+        assert resp.status_code == 200
+        core.assert_awaited_once_with(["m1"], debug=True)
+
+    def test_land_meteorite_rejects_non_list_400(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={"message_ids": "m1"},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "message_ids must be a list"}
+
+    def test_land_meteorite_rejects_empty_400(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        # Missing key is non-list (same 400 vocabulary as wrong type).
+        missing = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={},
+        )
+        assert missing.status_code == 400
+        assert missing.get_json() == {"error": "message_ids must be a list"}
+        for body in ({"message_ids": []}, {"message_ids": ["  ", ""]}):
+            resp = inbox_client.post(
+                "/api/admin/inbox/land-meteorite",
+                headers=auth_headers,
+                json=body,
+            )
+            assert resp.status_code == 400
+            assert resp.get_json() == {"error": "message_ids is required"}
+
+    def test_land_meteorite_value_error_400(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "run_gaze_email_selected_ids",
+            AsyncMock(side_effect=ValueError("bad selection")),
+        )
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={"message_ids": ["m1"]},
+        )
+        assert resp.status_code == 400
+        assert resp.get_json() == {"error": "bad selection"}
+
+    def test_land_meteorite_upstream_502(
+        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "run_gaze_email_selected_ids",
+            AsyncMock(side_effect=RuntimeError("core boom")),
+        )
+        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
+        warn = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "warning", warn)
+        resp = inbox_client.post(
+            "/api/admin/inbox/land-meteorite",
+            headers=auth_headers,
+            json={"message_ids": ["m1"]},
+        )
+        assert resp.status_code == 502
+        assert resp.get_json() == {"error": "core boom"}
+        warn.assert_called_once()
+
+    def test_land_meteorite_requires_auth(self, inbox_client: FlaskClient) -> None:
+        assert (
+            inbox_client.post(
+                "/api/admin/inbox/land-meteorite", json={"message_ids": ["m1"]}
+            ).status_code
+            == 401
+        )
+
+    def test_land_meteorite_non_admin_forbidden(
+        self, inbox_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        assert (
+            inbox_client.post(
+                "/api/admin/inbox/land-meteorite",
+                headers=non_admin_headers,
+                json={"message_ids": ["m1"]},
             ).status_code
             == 403
         )
