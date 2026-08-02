@@ -144,3 +144,111 @@ After AST-1137: Print Cover Letter (cover-only job HTML via `build_cover_letter`
 
 **Build:** `code(AST-1138)` on `sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css` — `c86c8be587a10c29e1476a18e85a53bd6523f227`.
 
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1138
+**Publish ref:** `70b1f775a1f675c828d1fd6d493126bc6b7c6141` (`origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`)
+**Overall:** DISCUSS
+
+### What's solid
+
+- Stages 1–4 match the plan: `job_cover_somerset` config map; `_emit_somerset_cover_html_document` rename + title override; `_candidate_for_cover_from_block` / `_job_cover_somerset_fields`; `build_cover_letter_from_job` uses `resolve_cover_from_block` + SomersetCover (no resume `_emit_html_document` shell); Style D with `set_debug_flag`, `from_block_source`, `document_path=somerset_cover`.
+- Golden selectors present on shared helper; `build_resume` / `_emit_html_document` path retained for resume.
+- Session call site updated to renamed helper; no second CSS fork.
+- One `merge-tests(AST-1138)`; helpers landed in follow-up `code(AST-1138)` before tests.
+
+### Issues
+
+**discuss (C4 straggler):** Joan excluded `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, and `astral.debug.spikes-under-debug-dir` at plan time; three-dot vs `origin/dev` puts them in-scope. Sweep scores all three **conforms**.
+
+**advisory:** Intermediate commit `a2eabbc7` briefly called helpers before they were defined; tip `c86c8be5`+ completes the rename/defs before `merge-tests` — no tip defect.
+
+### Recommended actions
+
+1. Hedy: no product fix required for AST-1138 AC; acknowledge discuss via resolve-child (or no-op).
+
+### Pattern conformance
+
+Ticket-cited: `pattern.layers.import-discipline` / `in-scope-only` / `no-cross-contamination` / `debug-contract-gated` / `import-direction` / `dry-and-focused-functions` / `config-source-of-truth` — conforms (table). Invented catalog: none.
+
+### Plan adherence
+
+Self-Assessment Single-Component matches config + builder cover-only rewrite. Resume/session Admin boundaries held. CSS stays in shared helper per Joan discuss.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | not touched by this ticket’s behavior |
+| astral.agent.do-task-delegation | scoped | conforms | not touched by this ticket’s behavior |
+| astral.agent.grade-vector-validation | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.batch-id-first | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.batch-id-format | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.claim-process-release | scoped | conforms | not touched by this ticket’s behavior |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | not touched by this ticket’s behavior |
+| astral.config.config-source-of-truth | scoped | conforms | BUILD_CONFIG[job_cover_somerset] artifact→field map |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | not touched by this ticket’s behavior |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | not touched by this ticket’s behavior |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths match none of ['artifacts/**', 'scripts/spikes/**'] |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | feature plans under docs/features/; not spike dumps |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | not touched by this ticket’s behavior |
+| astral.dispatch.seed-auto-false | scoped | conforms | not touched by this ticket’s behavior |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | ast-1138 plan file present (sibling plans also on tip lineage) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | test-tree on Betty test/merge-tests SHAs only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external I/O |
+| astral.layers.import-direction | scoped | conforms | builder→candidate resolve + utils |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers ['scripts'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | config map only; no UI files |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | not touched by this ticket’s behavior |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | not touched by this ticket’s behavior |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.seed.agent-tables-in-repo-json | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.archie-catalog-wins | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.define-approved | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | not touched by this ticket’s behavior |
+| astral.seed.other-via-coverage-join | scoped | conforms | not touched by this ticket’s behavior |
+| astral.standards.data-raises-caller-logs | scoped | conforms | not touched by this ticket’s behavior |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers ['data'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.standards.debug-contract-gated | scoped | conforms | set_debug_flag + Style D only when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | shared _emit_somerset_cover_html_document; no CSS fork |
+| astral.standards.in-scope-only | scoped | conforms | cover-only job path; resume emit untouched |
+| astral.standards.logging-via-utils | scoped | conforms | builder _log debug helpers |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain helper/API names; ticket only in comments/docs |
+| astral.standards.no-cross-contamination | scoped | conforms | no resume header/contact shell on cover-only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | artifact_to_fields / unset_fields in config |
+| astral.standards.public-then-helpers | scoped | conforms | private mappers beside cover emit helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config literals only; no utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | not touched by this ticket’s behavior |
+| astral.state.job-prior-states-enforced | scoped | conforms | not touched by this ticket’s behavior |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | not touched by this ticket’s behavior |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.ui.naming-conventions | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| astral.ui.single-gunicorn-worker | scoped | conforms | config touch unrelated to gunicorn |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | one merge-tests(AST-1138) @ 70b1f775 pinning tests 5427c279 |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1124/AST-1138-… |
+| orch.git.ftr-sub-topology | universal | conforms | child sub under parent ftr/AST-1124-… |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe in commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase/force on tip |
+| orch.git.no-dev-agent-branches | universal | conforms | sub publish-ref only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1124 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no permanent-branch invention |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no open product decisions in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–4 match plan Files Changed |
+| orch.pipeline.project-scoped-queues | universal | conforms | Artifacts child scope only |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon/statutes edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible via Betty test+merge-tests commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Hedy |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy stays assignee through Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path product edits |
+
+## Notes
+
+Joan plan-rubric APPROVED attached. §5f applied; §5g N/A. Three-dot includes AST-1137 lineage + sibling plan docs vs `origin/dev`.
+
+context_tokens≈22000
