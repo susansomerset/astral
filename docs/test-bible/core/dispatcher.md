@@ -328,3 +328,23 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
   -q
 ```
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+`_gaze_email_due_tasks` merges AUTO candidate-bound gaze rows when live bind Avail ≥ `min_count` and `dispatch_task_freq_allows`; `_tick_loop` concatenates with `get_due_tasks()`. `run_task` enriches gaze `available_count` via inbox bind count. Inbox / data / admin: **`docs/test-bible/core/inbox.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AUTO due merge + click enrich | `src/core/dispatcher.py` | **`TestAst1135GazeEmailDueTasks`** |
+
+**Broken / obsolete:** none — additive due path (data fake due retired under dispatch_tasks).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1135GazeEmailDueTasks \
+  -q
+```

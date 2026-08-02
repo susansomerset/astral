@@ -461,3 +461,23 @@ Ad Hoc `_build_adhoc_live_content("qualify_meteorite")` lockstep with consult as
   -q
 ```
 
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+`list_dtasks` stamps live bind-filtered `available_count` for candidate-bound `gaze_email` rows from one `count_inbox_bound_by_candidate()` snapshot. Always-visible flag remains generic (empty after AST-1134). Inbox: **`docs/test-bible/core/inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gaze Avail stamp | `src/ui/api/api_admin.py` | **`TestAst1135ListDtasksGazeAvail`** |
+
+**Broken / obsolete:** none — additive stamp path; AST-1106 flag test still valid with mocked helper.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksGazeAvail \
+  -q
+```

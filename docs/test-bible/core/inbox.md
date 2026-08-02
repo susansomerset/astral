@@ -98,3 +98,23 @@ List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_
   tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList \
   -q
 ```
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+`count_inbox_bound_by_candidate` / `count_inbox_messages_bound_to_candidate` — one inbox list → bind-filtered counts (Avail source). Admin stamp / AUTO due: **`docs/test-bible/ui/api/api_admin.md`** · **`docs/test-bible/core/dispatcher.md`**. Fake data due retired: **`docs/test-bible/data/database/dispatch_tasks.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bind-filtered counts | `src/core/inbox.py` | **`TestAst1135InboxBoundCounts`** |
+
+**Broken / obsolete:** none — additive helpers.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1135InboxBoundCounts \
+  -q
+```
