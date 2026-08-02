@@ -154,10 +154,24 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / live inbox 
 ## Review
 
 **Publish ref:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`
-**Tip:** `f3ee8807`
+**Tip:** `89a305cb464aaf66c1f62add928ae143c36efe92`
+**Overall:** DISCUSS
 
-| Stage | Commit | Summary |
-|-------|--------|---------|
-| 1 | `7f17ca33` | candidate-bound GAZE_EMAIL_CONFIG; empty always-visible tuple |
-| 2 | `706fb502` | `candidate.last_email_check` + require bound `candidate_id` on save |
-| 3 | `f3ee8807` | coverage-join provision; retire null shell; bound ledger cid |
+[code-rubric] revision=1 — Radia full-set sweep vs `origin/dev...origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+### What's solid
+
+- Stages 1–3 landed on planned surfaces: candidate-bound `GAZE_EMAIL_CONFIG`, empty always-visible tuple, `last_email_check` + stamp helper, `save_dispatch_task` requires bound cid, coverage-join provision via `list_candidates()`, null shell retired, ledger uses row `candidate_id`.
+- Sibling boundaries held (no runner / live Avail / React).
+- Engineer `code()` commits are src-only; Betty owns tests/bible via `test()` + `merge-tests`.
+
+### Issues
+
+**discuss:** Stage 3 asked unbound `gaze_email` to "log + mark ledger failed / return"; `_dispatch_one` logs and returns without a FAILED ledger write. Residual path after null-shell retire — confirm whether silent skip is enough once bound cid is mandatory.
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` at plan time; post-Betty diff brings them in-scope. All three score **conforms** (plan doc not a spike; single features file; engineer did not edit test tree).
+
+### Recommended actions
+
+- Ada: confirm unbound early-return is intentional (no FAILED ledger without cid), or add a bounded failure stamp if resolve wants plan literalism.
+- No fix-now product edits from this review.
