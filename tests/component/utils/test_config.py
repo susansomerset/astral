@@ -2641,6 +2641,51 @@ class TestAst1062QualifyMeteoriteThresholds:
         assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
 
 
+# Branches: TRACKER uuid_path_segment_pattern present + anchored (AST-1120).
+class TestAst1120UuidPathSegmentPattern:
+    def test_pattern_anchored_fullmatch(self) -> None:
+        from src.utils import config as cfg
+
+        if "uuid_path_segment_pattern" not in cfg.TRACKER_CONFIG:
+            import pytest
+            pytest.skip("AST-1120 uuid_path_segment_pattern not on tip")
+        pat = cfg.TRACKER_CONFIG["uuid_path_segment_pattern"]
+        assert pat.startswith("^") and pat.endswith("$")
+        import re
+
+        assert re.fullmatch(pat, "9f704ad3-7a18-506a-bd5e-6a84e73b7c00")
+        assert re.fullmatch(pat, "not-a-uuid") is None
+
+
+class TestAst1125CoverLetterRenderTokenContract:
+    """AST-1125: BUILD_CONFIG cover_letter_render_tokens SIGNATURE_IMAGE (not TOKEN_SOURCES)."""
+
+    def test_signature_image_contract_fields(self) -> None:
+        block = cfg.BUILD_CONFIG["cover_letter_render_tokens"]["SIGNATURE_IMAGE"]
+        assert block["literal"] == "{$SIGNATURE_IMAGE}"
+        assert block["surfaces"] == ["cover_letter"]
+        assert block["source"] == "candidate"
+        assert block["path"] == "contact.cover_letter_signature_image"
+        assert block["value_kind"] == "safe_image_src"
+        assert block["absent_token_policy"] == "omit"
+        assert block["missing_or_rejected_image_policy"] == "omit"
+
+    def test_accessor_returns_contract_and_rejects_unknown(self) -> None:
+        tok = cfg.get_cover_letter_render_token("SIGNATURE_IMAGE")
+        assert tok is cfg.BUILD_CONFIG["cover_letter_render_tokens"]["SIGNATURE_IMAGE"]
+        with pytest.raises(KeyError):
+            cfg.get_cover_letter_render_token("NOT_A_RENDER_TOKEN")
+
+    def test_not_in_token_sources_or_prompt_resolve(self) -> None:
+        # Cover render token must not inject into LLM prompt resolution.
+        assert "SIGNATURE_IMAGE" not in cfg.TOKEN_SOURCES
+        assert "SIGNATURE_IMAGE" not in cfg.get_tokens()
+        assert (
+            cfg.resolve_tokens("{$SIGNATURE_IMAGE}", {}, "draft_cover_letter")
+            == "{$SIGNATURE_IMAGE}"
+        )
+
+
 # Branches: CONTACT_CONFIG scaffold (AST-1066) + entity-save skills ACL (AST-1071).
 class TestAst1066ContactConfig:
     """AST-1066: CONTACT_CONFIG listen/env-names + CANDIDATE_LOOKUP slack path."""
