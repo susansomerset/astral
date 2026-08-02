@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-904 archived 2026-08-02 -->
+
+## Linear archive (AST-904)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-904/uat-get-criteria-save-failed-and-content-lost-on-return  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-900 — craft get rubric did not populate the rubric content for candidate  
+**Blocked by / blocks / related:** parent: AST-900
+
+### Description
+
+## What failed
+
+On `/artifacts/get_job_criteria` for candidate `karfo`, after several Generate attempts produced a set of Get criteria on screen, clicking **Save** showed:
+
+```
+message: Save failed
+route: /artifacts/get_job_criteria
+astral_candidate_id: karfo
+```
+
+Navigating away and returning, the content was gone (not in the editor, not recovered).
+
+## Expected
+
+After criteria are visible for review, Save persists them to the candidate's stored Get rubric artifact. If Save fails, the user sees a clear error and the completed generation remains recoverable when returning to the page (pending recovery or equivalent).
+
+## Repro
+
+1. Open candidate `karfo` → Artifacts → Get Job Criteria.
+2. Generate until criteria appear on screen for review.
+3. Click Save → observe toast/diagnostic "Save failed".
+4. Navigate away from Get Job Criteria, then return → criteria are gone (not recovered).
+
+## Parent AC (quoted inline)
+
+> Generating Get Job Criteria for a candidate with an empty rubric ends with the criteria visible in the editor, and after Save they are present in the candidate's stored artifact.
+> A generation that completes on the backend can no longer vanish without a user-visible trace: the editor shows the result or an error, or the completed result is recoverable when the user returns to the page.
+
+## Boundaries
+
+* This bug does **not** change: LLM prompt wording for craft_get unless Save/recovery requires a contract change already owned by the sibling generate-parse bug.
+* Does not change base resume auto-persist behavior.
+
+### Comments
+
+#### radia — 2026-07-16T23:04:40.361Z
+### Radia review — clean
+
+Diff: `origin/dev`…`origin/sub/AST-900/AST-904-uat-get-criteria-save-lost` @ `9cea8a4` (product tip `f3a8945` + this doc commit). AST-904 product delta = `api_candidate.py` + `ArtifactEditor.tsx`; AST-903 files in the vs-`dev` diff were already reviewed clean.
+
+Plan doc: https://github.com/susansomerset/astral/blob/9cea8a4c4a8a5ae1e538c7578812b08dce41551c/docs/features/consult/ast-904-uat-get-criteria-save-lost.md
+
+No fix-now / discuss.
+
+**Solid:** Stages 1–2 match — capture `rubric_keys_to_clear` + deep-copied `submitted_rubric` before normalize/apply; clear pending only after `save_candidate_data` (fixes clear-after-`del` false-green); except path re-stashes non-empty submitted criteria for `GET …/pending`; ArtifactEditor toasts server `error` and keeps review/`snapshot` on Save failure. §3.2/§3.3 clean; no prompt/schema/AST-903 scope creep.
+
+**Advisory:** (1) Except re-stash can re-create pending after a rare combined PUT where artifact persist+clear already succeeded and a later field fails — ArtifactEditor Saves artifacts-only, so UAT path is fine. (2) Re-stash ignores stash bool return; candidate-gone mid-request still 400s but cannot recover.
+
+#### betty — 2026-07-16T23:00:46.292Z
+## QA test manifest — AST-904
+
+**Publish:** `origin/sub/AST-900/AST-904-uat-get-criteria-save-lost` @ `f3a8945` (`merge-tests(AST-904): origin/tests 3f36d74237be82e3f3f990c28b2b7c5943e5baf6`)
+
+### Manifest (run all)
+
+1. `tests/component/ui/api/test_api_candidate.py::TestAst901PendingCraftGenerationApi::test_put_artifact_clears_matching_pending` — revised: apply mock **deletes** `get_rubric` key; clear still runs after successful persist
+2. `tests/component/ui/api/test_api_candidate.py::TestAst904SavePendingRecovery` — Save 400 re-stashes submitted criteria; does not clear pending
+3. `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — **`AST-904: Save failure shows server error and keeps review mode`**
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst901PendingCraftGenerationApi::test_put_artifact_clears_matching_pending \
+  tests/component/ui/api/test_api_candidate.py::TestAst904SavePendingRecovery \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t 'AST-904'
+```
+
+### Existing / revisions
+
+- AST-901 clear-on-Save test was a false green (apply mock left keys in `arts`) — revised per plan note
+- No page-file diff → §6c N/A
+
+### Bible shasums on publish ref
+
+- `docs/test-bible/ui/api/api_candidate.md` `429c9940120d243b34dfffc53c5a866b1dae256d`
+- `docs/test-bible/frontend/components.md` `865a33cac1ef8b24b8eee0d0eb3eaa4d9146c171`
+
+— Betty
+
+#### katherine — 2026-07-16T22:57:12.941Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-900/AST-904-uat-get-criteria-save-lost/docs/features/consult/ast-904-uat-get-criteria-save-lost.md
+
+**Scope:** Single-Component — candidate Save API clear/re-stash ordering + ArtifactEditor toast; no prompt/schema/generate changes.
+
+**Conf:** high — opaque Save toast and pending clear-after-`del` are visible in code; re-stash on Save failure restores page-return recovery.
+
+**Risk:** Medium — shared rubric Save path; mitigated by capturing keys/payload before apply mutates `arts` and clearing only after successful `save_candidate_data`.
+
+---
+
 # UAT: Get criteria Save failed and content lost on return
 
 **Parent:** [AST-900 — craft get rubric did not populate the rubric content for candidate](https://linear.app/astralcareermatch/issue/AST-900/craft-get-rubric-did-not-populate-the-rubric-content-for-candidate)
