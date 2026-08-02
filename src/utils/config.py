@@ -2198,8 +2198,10 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 # Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
 # entity_type/trigger_state stay None — mailbox poller, not an ENTITY_TYPES claim queue.
 # Avail/eligible count is the live bind-filtered inbox count (core inbox helpers, AST-1135).
-# Runner literals feed AST-1136. Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
-# Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
+# Runner is candidate-bound (AST-1136): filter From→row candidate_id, stamp last_email_check,
+# unbound Trash hygiene via unbound_retention_days. Ruth parse task is AST-1089
+# (METEORITE_EMAIL_PARSE_CONFIG). Seed auto_mode CLICK (false) — parent seed law;
+# never Auto-true at provision.
 GAZE_EMAIL_CONFIG = {
     "task_key": "gaze_email",
     "account_address": "astral.career.match@gmail.com",

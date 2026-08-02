@@ -19,7 +19,10 @@ from src.core.candidate import get_candidate
 from src.core.gazer import _meteorite_fetch_link_visible_text
 from src.core.inbox import get_message_html, list_inbox_messages
 from src.core.meteorite import create_meteorite_job
-from src.data.database import job_link_exists_for_candidate
+from src.data.database import (
+    job_link_exists_for_candidate,
+    update_candidate_last_email_check,
+)
 from src.external.gmail import archive_message, trash_message
 from src.utils.config import (
     GAZE_EMAIL_CONFIG,
@@ -383,6 +386,17 @@ async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
             _detail(debug, f"message_error={type(exc).__name__}: {exc}")
             for line in truncate_debug_content(str(exc)):
                 _detail(debug, line)
+
+    # Stamp after a completed run (incl. zero bound matches / empty inbox).
+    update_candidate_last_email_check(cid)
+    if debug:
+        _dbg(debug, index=1, total=1, mid=cid, outcome="run-complete")
+        _detail(debug, "last_email_check=stamped")
+        _detail(
+            debug,
+            f"summary={{total_processed={processed}, total_passed={passed}, "
+            f"total_failed={failed}, total_errors={errors}}}",
+        )
 
     return {
         "total_processed": processed,
