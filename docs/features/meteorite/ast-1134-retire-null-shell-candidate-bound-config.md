@@ -175,3 +175,14 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / live inbox 
 
 - Ada: confirm unbound early-return is intentional (no FAILED ledger without cid), or add a bounded failure stamp if resolve wants plan literalism.
 - No fix-now product edits from this review.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review tip:** `a5c23ed0` · **Overall:** DISCUSS (no fix-now)
+
+**discuss — unbound `_dispatch_one` early-return (no FAILED ledger):** Confirmed intentional. After null-shell retire, a blank `candidate_id` is a residual/corrupt row, not a supported path. Stamping FAILED with an empty ledger cid would reintroduce the retired null-shell ledger placeholder. Behavior matches the existing no-candidate/API-key skip (log + return, no ledger) and Betty’s `TestAst1090GazeEmailDispatchOne::test_skips_unbound_candidate_id` (`save_ledger` not called). No product change.
+
+**discuss (straggler):** Noted — no action; all three statutes conform on tip.
+
+**fix-now:** none.
