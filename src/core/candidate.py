@@ -93,6 +93,7 @@ def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
     Custom wins when ``contact.cover_letter_from_block`` strips non-empty;
     otherwise compose defaults from name + contact per COVER_FROM_BLOCK_CONFIG.
     """
+    logger.set_debug_flag(debug)
     src_candidate, src_default = COVER_FROM_BLOCK_CONFIG["sources"]
     seg_sep = COVER_FROM_BLOCK_CONFIG["segment_separator"]
     line_sep = COVER_FROM_BLOCK_CONFIG["line_separator"]

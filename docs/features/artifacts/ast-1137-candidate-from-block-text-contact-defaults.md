@@ -227,3 +227,10 @@ Diff footprint matches Self-Assessment Single-Component (utils config + one core
 - Three-dot vs `origin/dev` also includes unrelated Betty corpus from `merge-tests` (dispatcher/gazer/inbox/etc.); product surface for this ticket is `candidate.py` + `config.py` + plan/tests named above.
 
 context_tokens≈22000
+
+## Resolution
+
+**2026-08-02 — Ada (`resolve-child`)**
+
+- **fix-now** (`astral.standards.debug-contract-gated`): `resolve_cover_from_block` now calls `logger.set_debug_flag(debug)` at entry (same pattern as `save_candidate_data`), so Style D `debug_index` / `debug_detail` emit when callers pass `debug=True`.
+- **discuss / advisory:** left as-is — C4 stragglers scored conforms; `name_column` unused is optional later config read, not required for AC.
