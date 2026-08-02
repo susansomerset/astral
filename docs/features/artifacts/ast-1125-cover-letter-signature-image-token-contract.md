@@ -104,3 +104,14 @@ Config-only. Wrong path would blank the image once emit lands (easy to spot); ac
 | §3.5 naming | `cover_letter_render_tokens` / `get_cover_letter_render_token` / `SIGNATURE_IMAGE` snake/SCREAMING aligned with `TOKEN_SOURCES` key style for the name, but separate registry. |
 | `astral.standards.in-scope-only` | Cover render contract only; resume/profile/emit excluded. |
 | `astral.standards.debug-contract-gated` | Not applicable this ticket (emit owns Style D). |
+
+## Review (stub — build-child)
+
+**Branch:** `sub/AST-1123/AST-1125-cover-letter-signature-image-token-contract`  
+**Code:** `314f39e1`
+
+**Shipped**
+
+- `BUILD_CONFIG["cover_letter_render_tokens"]["SIGNATURE_IMAGE"]` — literal, cover-only surfaces, `contact.cover_letter_signature_image`, omit policies.
+- `get_cover_letter_render_token(name)` accessor for emit (AST-1126).
+- `SIGNATURE_IMAGE` not in `TOKEN_SOURCES` / `get_tokens()`.
