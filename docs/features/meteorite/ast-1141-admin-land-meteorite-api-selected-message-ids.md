@@ -155,3 +155,18 @@ Skip outcomes already defined on AST-1140 (`skipped-unbound`, `skipped-not-in-in
 - Legacy `create_meteorite_job_from_inbox_message` import remains for `/create-job` until AST-1142 — plan-allowed; not used by land-meteorite.
 
 Full `## Statutes checked` (65/65) lives in the Linear Review Posted comment.
+
+---
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Radia tip:** `615d0767` (`docs(AST-1141): Radia review — findings`)  
+**Outcome:** clean — no product changes
+
+| Finding | Action |
+|---------|--------|
+| fix-now | none |
+| discuss (C4 stragglers — dependency merge in-scope statutes) | Acknowledged; all scored **conforms**. No API rewrite. Legacy Create import stays until AST-1142 per plan. |
+
+`POST /api/admin/inbox/land-meteorite` unchanged from Stage 1 tip `e7144d4a`.
