@@ -223,3 +223,24 @@ python3 -c "from src.core.gaze_email import run_gaze_email_selected_ids; import 
 - **advisory:** Tip carries AST-1134/1135 dispatcher/avail/database surface from that soft merge while dispatcher `run_gaze_email` on this tip remains the AST-1090 null-shell shape (AST-1136 candidate-bound `process_gaze_email_messages` is not an ancestor of this tip). Land Meteorite entrypoint is isolated and correct; candidate-bound runner coherence stays with AST-1128/AST-1136 rollup.
 
 Full `## Statutes checked` (65/65) + Pattern / Plan adherence live in the Linear Review Posted comment.
+
+---
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Radia tip at review:** `53a66550` (`docs(AST-1140): Radia review — findings`)  
+**Resolve publish tip:** see Linear / `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint` after this commit.
+
+| Finding | Disposition |
+|---------|-------------|
+| **fix-now** | none |
+| **discuss (C4 stragglers)** — Stage 2a soft-merge widened three-dot tip | Acknowledged; each statute already **conforms**; no product rewrite |
+| **advisory** — tip still AST-1090 null-shell while carrying AST-1134/1135 surface | Cleared on resolve: mandatory `git merge origin/dev` landed AST-1136 candidate-bound `run_gaze_email` + `process_gaze_email_messages`; kept AST-1140 `run_gaze_email_selected_ids` + `_handle_bound` 5-tuple/`index_dbg` |
+
+**Product merge notes (`origin/dev`):**
+- Kept selected-ids entrypoint + injectable Style D helper.
+- Took AST-1136 dispatcher runner (requires `candidate_id`, stamps `last_email_check`) and `process_gaze_email_messages` (no stamp/Trash); callers unpack the 5th outcome from `_handle_bound`.
+- Engineer hook excludes test-tree from the merge commit — Betty tip on this sub kept AST-1140 tests only; origin/dev carries updated AST-1090 + AST-1136 + AST-1140 tests that need intake via `[qa-handoff]`.
+
+**Stay Review Posted** until Betty republishes test-tree onto this tip and Ada re-runs the manifest.
