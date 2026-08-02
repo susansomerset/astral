@@ -2095,15 +2095,6 @@ input.side-tab-heading-editable:focus {
   padding: 12px 20px 0;
   font-size: 13px;
 }
-.manage-email-create {
-  padding: 6px 14px;
-  font-size: 13px;
-  cursor: pointer;
-}
-.manage-email-create:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
 .manage-email-toolbar {
   display: flex;
   flex-wrap: wrap;
@@ -2120,6 +2111,28 @@ input.side-tab-heading-editable:focus {
 .manage-email-toolbar button:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+}
+.manage-email-results {
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.manage-email-results-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--text-primary);
+}
+.manage-email-results ul {
+  margin: 0;
+  padding-left: 18px;
+}
+.manage-email-outcome--ok {
+  color: var(--text-primary);
+}
+.manage-email-outcome--skip {
+  color: var(--text-muted, var(--text-secondary, #888));
+}
+.manage-email-outcome--fail {
+  color: var(--danger);
 }
 
 /* SideTabPanel fills the modal-body */
