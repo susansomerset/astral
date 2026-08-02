@@ -240,52 +240,37 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
 
 
 
-def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
-    """Idempotent insert of the shared Astral inbox gaze_email row (null candidate_id).
-
-    Due eligibility + mailbox runner live on AST-1090 (`get_due_tasks` / `_dispatch_one`).
-    AST-1098: reconcile stuck AUTO-on shared row back to seed CLICK.
-    """
+def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of candidate-bound gaze_email dispatch_task (AST-1134)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
     tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
     if tk not in TASK_CONFIG:
         return {
+            "candidate_id": cid,
             "task_key": tk,
             "added": 0,
             "skipped": 0,
-            "reconciled": 0,
             "skipped_missing_config": 1,
             "id": None,
         }
     existing = None
-    for row in database.list_dispatch_tasks():
-        if (row.get("task_key") or "").strip() != tk:
-            continue
-        cid = row.get("candidate_id")
-        if cid is None or str(cid).strip() == "":
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        if (row.get("task_key") or "").strip() == tk:
             existing = row
             break
     if existing is not None:
-        # Bad-seed / prior AUTO: force seed law CLICK on this shared row only.
-        if bool(existing.get("auto_mode")):
-            database.update_dispatch_task(int(existing["id"]), auto_mode=False)
-            return {
-                "task_key": tk,
-                "added": 0,
-                "skipped": 0,
-                "reconciled": 1,
-                "skipped_missing_config": 0,
-                "id": existing.get("id"),
-            }
         return {
+            "candidate_id": cid,
             "task_key": tk,
             "added": 0,
             "skipped": 1,
-            "reconciled": 0,
             "skipped_missing_config": 0,
             "id": existing.get("id"),
         }
     new_id = database.save_dispatch_task(
-        candidate_id=None,
+        candidate_id=cid,
         task_key=tk,
         min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
         auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
@@ -295,18 +280,44 @@ def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
         freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
     )
     return {
+        "candidate_id": cid,
         "task_key": tk,
         "added": 1,
         "skipped": 0,
-        "reconciled": 0,
         "skipped_missing_config": 0,
         "id": new_id,
     }
 
 
-def provision_gaze_email_dispatch_task() -> Dict[str, Any]:
-    """Startup provision for the shared gaze_email dispatch shell (AST-1088)."""
-    return ensure_gaze_email_dispatch_task()
+def provision_gaze_email_dispatch_tasks() -> Dict[str, Any]:
+    """Retire null gaze_email shell; ensure gaze_email for every candidate (AST-1134)."""
+    tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
+    retired_null = 0
+    for row in database.list_dispatch_tasks():
+        if (row.get("task_key") or "").strip() != tk:
+            continue
+        cid = row.get("candidate_id")
+        if cid is None or str(cid).strip() == "":
+            database.delete_dispatch_task(int(row["id"]))
+            retired_null += 1
+    added = skipped = skipped_missing_config = candidates_touched = 0
+    for cand in database.list_candidates():
+        cid = str((cand or {}).get("astral_candidate_id") or "").strip()
+        if not cid:
+            continue
+        stats = ensure_gaze_email_dispatch_task(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
+        candidates_touched += 1
+    return {
+        "task_key": tk,
+        "retired_null": retired_null,
+        "candidates_touched": candidates_touched,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -652,13 +663,20 @@ async def _dispatch_one(task: Dict) -> None:
     if debug:
         logger.set_debug_flag(True)
 
-    # AST-1090: null-candidate gaze_email mailbox — no candidate API key; one runner call.
+    # AST-1134: candidate-bound gaze_email mailbox — ledger uses row candidate_id.
     if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"]:
         # late: keep gaze_email off module-top load (peer late imports in this file)
         from src.core.gaze_email import run_gaze_email
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
-        ledger_cid = GAZE_EMAIL_CONFIG["dispatch_ledger_candidate_id"]
+        ledger_cid = str(candidate_id or "").strip()
+        if not ledger_cid:
+            _sched_log.error(
+                "Skipping %s/%s — gaze_email requires bound candidate_id",
+                task_key,
+                task_id,
+            )
+            return
         if debug:
             logger.debug_index(
                 func="dispatcher._dispatch_one",
@@ -669,6 +687,7 @@ async def _dispatch_one(task: Dict) -> None:
             )
             logger.debug_detail(
                 f"gaze_email mailbox runner entity_batch_id={entity_batch_id} "
+                f"candidate_id={ledger_cid} "
                 f"mode={'AUTO' if not is_click else 'CLICK'}"
             )
         database.save_dispatch_ledger(
@@ -1187,18 +1206,19 @@ def start_scheduler() -> None:
     except Exception:
         _sched_log.exception("AST-1054 meteorite dispatch provision failed")
     try:
-        gstats = provision_gaze_email_dispatch_task()
+        gstats = provision_gaze_email_dispatch_tasks()
         _sched_log.info(
-            "AST-1088 gaze_email dispatch provision task_key=%s added=%s skipped=%s "
-            "skipped_missing_config=%s id=%s",
+            "AST-1134 gaze_email dispatch provision task_key=%s retired_null=%s "
+            "candidates_touched=%s added=%s skipped=%s skipped_missing_config=%s",
             gstats.get("task_key"),
+            gstats.get("retired_null"),
+            gstats.get("candidates_touched"),
             gstats.get("added"),
             gstats.get("skipped"),
             gstats.get("skipped_missing_config"),
-            gstats.get("id"),
         )
     except Exception:
-        _sched_log.exception("AST-1088 gaze_email dispatch provision failed")
+        _sched_log.exception("AST-1134 gaze_email dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
