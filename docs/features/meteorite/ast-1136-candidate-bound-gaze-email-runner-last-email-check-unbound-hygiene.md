@@ -137,3 +137,8 @@ No `tests/` / bible / React / dispatcher provision/Avail / Manage Email (AST-112
 - §1.5.1 debug — Style D only when `debug=True`; run header + per-message headers + run footer.
 - Statute `astral.layers.core-vs-external-bright-line` — Gmail I/O external; filter/hygiene/orchestration core.
 - Statute `astral.standards.in-scope-only` — no Avail (1135), no provision (1134), no Manage Email UI (1129), no tests tree.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1128/AST-1136-candidate-bound-gaze-email-runner`
+**Tip:** `1528be8a4e11450367e3d5c1f097a80f48e5e3c8`
