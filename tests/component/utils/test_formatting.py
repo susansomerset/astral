@@ -308,3 +308,48 @@ class TestHealAgentPayloadEnvelopeEdges:
         healed = fmt.heal_agent_payload_envelope(raw)
         assert healed is not None
         assert json.loads(healed)["agent_payload"] == "line\n"
+
+
+# Branches: entity-unescape + nested autolink unwrap; bare-URL promote; clean HTML noop (AST-1131).
+class TestNormalizePastedListEmailHtml:
+    _UID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE = f"https://www.dice.com/job-detail/{_UID}"
+
+    def _escaped_nested_autolink_paste(self) -> str:
+        # UAT shape: entity-escaped board HTML + Gmail nested auto-links in href/xmlns.
+        return (
+            f'&lt;div xmlns="&lt;a href="http://www.w3.org/2000/svg"&gt;'
+            f'http://www.w3.org/2000/svg&lt;/a&gt;"&gt;'
+            f'&lt;a href="&lt;a href="{self._DICE}"&gt;{self._DICE}&lt;/a&gt;"&gt;Job&lt;/a&gt;'
+            f'&lt;/div&gt;'
+        )
+
+    def test_unescapes_and_unwraps_nested_autolinks_clean_job_href(self) -> None:
+        from bs4 import BeautifulSoup
+
+        out = fmt.normalize_pasted_list_email_html(self._escaped_nested_autolink_paste())
+        soup = BeautifulSoup(out, "html.parser")
+        hrefs = [a.get("href") for a in soup.find_all("a", href=True)]
+        assert hrefs == [self._DICE]
+        div = soup.find("div")
+        assert div is not None
+        assert div.get("xmlns") == "http://www.w3.org/2000/svg"
+        # Nested auto-link markup must not remain inside attribute values or as job_link shape.
+        assert f'href="<a' not in out
+        assert "w3.org/2000/svg" not in hrefs
+
+    def test_promotes_newline_delimited_bare_urls(self) -> None:
+        from bs4 import BeautifulSoup
+
+        other = "https://jobs.example.com/role/two"
+        out = fmt.normalize_pasted_list_email_html(f"{self._DICE}\n{other}")
+        hrefs = [a.get("href") for a in BeautifulSoup(out, "html.parser").find_all("a", href=True)]
+        assert hrefs == [self._DICE, other]
+
+    def test_clean_anchored_html_unchanged_preserves_amp_entities(self) -> None:
+        clean = f'<p>Hello &amp; goodbye</p><a href="{self._DICE}">Job</a>'
+        assert fmt.normalize_pasted_list_email_html(clean) == clean
+
+    def test_empty_input_returns_empty(self) -> None:
+        assert fmt.normalize_pasted_list_email_html("") == ""
+        assert fmt.normalize_pasted_list_email_html(None) == ""  # type: ignore[arg-type]

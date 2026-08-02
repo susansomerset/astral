@@ -2061,3 +2061,87 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/utils/test_config.py::TestAst1125CoverLetterRenderTokenContract \
   -q
 ```
+
+### AST-1131 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`.
+
+`METEORITE_EMAIL_INGEST_CONFIG` paste-normalize knobs: `entity_unescape_marker` / min count / max passes, `nested_autolink_attr_names`, `promote_bare_http_urls`. Primary behavior: **`docs/test-bible/utils/formatting.md`** (**AST-1131**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Paste-normalize config | `src/utils/config.py` | **`TestAst1131MeteoriteEmailIngestPasteNormalizeConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing AST-1061 ingest config.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1131MeteoriteEmailIngestPasteNormalizeConfig \
+  -q
+```
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/trigger kept — mailbox poller, not claim queue). Removes `dispatch_ledger_candidate_id`. Empties `ADMIN_CONFIG["always_visible_under_avail_gt0_dispatch_task_keys"]` (helper + API/React generic stamp remain). Secrets stay environ; `unbound_retention_days` kept. Provision / schema / ledger: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/data/database/candidates.md`**. Live Avail / runner: siblings **AST-1135** / **AST-1136**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Candidate-bound shell + no ledger placeholder | `src/utils/config.py` | revised **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`** |
+| Empty always-visible carve-out | `src/utils/config.py` | revised **`TestAst1106AlwaysVisibleUnderAvailGt0`** |
+
+**Broken / obsolete (Betty revision):** null-shell wording / `dispatch_ledger_candidate_id == ""` / gaze_email membership in always-visible keys (AST-1088 / AST-1090 / AST-1106 config asserts).
+
+**Integration:** no existing scenarios assert null-shell gaze_email config — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  -q
+```
+
+### AST-1132 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1132-job-link-hygiene-non-job-create-skip`.
+
+`METEORITE_EMAIL_INGEST_CONFIG` hygiene: expanded `link_exclude_substrings`, empty `link_allow_substrings`, `non_job_visible_substrings`. Primary ingest behavior: **`docs/test-bible/core/gazer.md`** (**AST-1132**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hygiene / non-job config | `src/utils/config.py` | **`TestAst1132MeteoriteEmailIngestHygieneConfig`** |
+
+**Broken / obsolete:** none — additive keys + expanded exclude tuple (AST-1061 exclude membership asserts still hold).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1132MeteoriteEmailIngestHygieneConfig \
+  -q
+```
+
+### AST-1137 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`.
+
+`COVER_FROM_BLOCK_CONFIG` + `CANDIDATE_LIBRARY_CONFIG["contact_keys"]` entry `cover_letter_from_block` + Candidate Profile textarea under **Cover Letter Signature** (`contact.cover_letter_from_block`). Not in `TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]` / `TOKEN_SOURCES`. Primary resolve: **`docs/test-bible/core/candidate.md`** (**AST-1137**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| From-block config + profile field | `src/utils/config.py` | **`TestAst1137CoverFromBlockConfig`** |
+
+**Broken / obsolete:** none — additive optional contact field.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
+  -q
+```

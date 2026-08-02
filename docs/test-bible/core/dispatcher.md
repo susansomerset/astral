@@ -305,3 +305,46 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   -q
 ```
 
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+`ensure_gaze_email_dispatch_task(candidate_id)` inserts one bound row; `provision_gaze_email_dispatch_tasks()` retires null-`candidate_id` shells then coverage-joins every `list_candidates()` id. `_dispatch_one` ledger uses row `candidate_id` (skips unbound). Config / data: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Runner stamp / live Avail: **AST-1136** / **AST-1135**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure / provision / scheduler hook | `src/core/dispatcher.py` | **`TestAst1134GazeEmailDispatchProvision`** (replaces **`TestAst1088GazeEmailDispatchProvision`**) |
+| Bound ledger cid + unbound skip | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised stubs → **`provision_gaze_email_dispatch_tasks`** |
+
+**Broken / obsolete (Betty revision):** null-shell ensure/provision wrapper; `_dispatch_one` null-cid runner path; singular `provision_gaze_email_dispatch_task` stubs.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1134GazeEmailDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  -q
+```
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+`_gaze_email_due_tasks` merges AUTO candidate-bound gaze rows when live bind Avail ≥ `min_count` and `dispatch_task_freq_allows`; `_tick_loop` concatenates with `get_due_tasks()`. `run_task` enriches gaze `available_count` via inbox bind count. Inbox / data / admin: **`docs/test-bible/core/inbox.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AUTO due merge + click enrich | `src/core/dispatcher.py` | **`TestAst1135GazeEmailDueTasks`** |
+
+**Broken / obsolete:** none — additive due path (data fake due retired under dispatch_tasks).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1135GazeEmailDueTasks \
+  -q
+```
