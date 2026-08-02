@@ -325,3 +325,18 @@ Do not Playwright-fetch excluded or non-allowed hrefs (they do not enter `links`
 Diff matches Self-Assessment **Single-Component**. Boundaries vs AST-1131/1133 held. Three-dot vs `origin/dev` also carries AST-1131 product + Betty AST-1134 test corpus from merge history — expected rollup, not scope smuggle in AST-1132 `code()` commits.
 
 context_tokens≈45000
+
+---
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review:** [code-rubric] revision=1 @ `dc59cc77` — Overall DISCUSS; **fix-now:** none.
+
+| Finding | Action |
+|---------|--------|
+| discuss (C4) `astral.debug.spikes-under-debug-dir` — conforms, ack only | Acknowledged; no product change |
+| discuss (C4) `astral.docs.features-single-file-per-ticket` — conforms, ack only | Acknowledged; no product change |
+| discuss (C4) `astral.git.engineer-test-tree-ban` — conforms, ack only | Acknowledged; no product change |
+
+Tip after resolve commit below; product code unchanged from Tests Passed tip.
