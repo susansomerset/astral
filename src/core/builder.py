@@ -23,7 +23,11 @@ from urllib.parse import urlparse
 from src.core import candidate as candidate_mod
 from src.core import tracker as tracker_mod
 from src.data import database
-from src.utils.config import BUILD_CONFIG, RESUME_STRUCTURE_CONTACT_SECTION_IDS
+from src.utils.config import (
+    BUILD_CONFIG,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    get_cover_letter_render_token,
+)
 from src.utils.formatting import split_to_list
 from src.utils.logging import get_logger
 
@@ -342,7 +346,10 @@ def build_cover_letter_from_job(
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd)
         contact = cd.get("contact") or {}
-        safe_sig = _safe_image_src(contact.get("cover_letter_signature_image"))
+        cover_sig = cover.get("signature") or ""
+        token_status, _safe, image_status = _signature_image_token_status(
+            cover_sig, {"contact": contact}
+        )
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
@@ -356,9 +363,8 @@ def build_cover_letter_from_job(
             f"body={bool((cover.get('body') or '').strip())} "
             f"signature={bool((cover.get('signature') or '').strip())}"
         )
-        _log.debug_detail(
-            f"signature_image={'accepted' if safe_sig else 'absent_or_rejected'}"
-        )
+        _log.debug_detail(f"signature_image_token={token_status}")
+        _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
@@ -548,9 +554,8 @@ def build_session_cover_letter(
             raise ValueError(msg)
         normalized[key] = raw
 
-    sig_src: Optional[str] = None
-    sig_image_status = "skipped_no_candidate"
     cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
+    candidate_root: Dict[str, Any] = {}
     if cid:
         row = candidate_mod.get_candidate(cid)
         if not row:
@@ -562,9 +567,10 @@ def build_session_cover_letter(
                 debug=debug,
             )
             raise ValueError(msg)
-        profile = _coerce_candidate_blob(row).get("profile") or {}
-        sig_src = _safe_image_src(profile.get("cover_letter_signature_image"))
-        sig_image_status = "accepted" if sig_src else "absent_or_rejected"
+        candidate_root = _coerce_candidate_blob(row)
+    token_status, sig_src, image_status = _signature_image_token_status(
+        normalized.get("signature") or "", candidate_root
+    )
 
     html_out = _emit_session_cover_html_document(normalized, signature_image_src=sig_src)
     if debug:
@@ -585,7 +591,8 @@ def build_session_cover_letter(
             f"subject={'present' if normalized['subject'].strip() else 'omitted'}"
         )
         _log.debug_detail(f"candidate_id={'used' if cid else 'not_used'}")
-        _log.debug_detail(f"signature_image={sig_image_status}")
+        _log.debug_detail(f"signature_image_token={token_status}")
+        _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
@@ -651,14 +658,27 @@ def _emit_session_cover_html_document(
     )
     blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
 
-    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
-    if signature_image_src:
-        src_esc = html.escape(signature_image_src, quote=True)
-        signoff_parts.append(
-            f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+    # AST-1126: image only where {$SIGNATURE_IMAGE} resolves — no auto-inject above name.
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if "cover_letter" not in tok.get("surfaces", []):
+        raise ValueError(
+            "SIGNATURE_IMAGE surfaces missing cover_letter — AST-1125 contract broken"
         )
-        signoff_parts.append("<br>")
-    signoff_parts.append(html.escape(sig_name))
+    raw_sig = fields.get("signature") or ""
+    token_status = "present" if tok["literal"] in raw_sig else "absent"
+    img_html = ""
+    if signature_image_src and token_status == "present":
+        src_esc = html.escape(signature_image_src, quote=True)
+        img_html = f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+    sig_fragment = _html_with_signature_image_token(
+        raw_sig,
+        safe_src=signature_image_src if token_status == "present" else None,
+        token_status=token_status,
+        img_html=img_html,
+    )
+    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
+    if sig_fragment:
+        signoff_parts.append(sig_fragment)
     blocks.append(
         "      <div class=\"letterSignoff\">\n        "
         + "\n        ".join(signoff_parts)
@@ -1538,24 +1558,119 @@ def _safe_image_src(raw: Any) -> Optional[str]:
     return None
 
 
+def _lookup_dotted_path(root: Any, dotted: str) -> Any:
+    """Walk ``a.b.c`` on nested dicts; return ``None`` if any segment missing/non-dict."""
+    cur: Any = root
+    for part in (dotted or "").split("."):
+        if not part or not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _signature_image_token_status(
+    signature_text: str,
+    candidate_root: dict,
+) -> tuple[str, Optional[str], str]:
+    """Return ``(token_status, safe_src_or_None, image_status)``.
+
+    ``token_status``: ``present`` | ``absent``
+    ``image_status``: ``accepted`` | ``absent`` | ``rejected``
+    """
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    literal = tok["literal"]
+    token_status = "present" if literal in (signature_text or "") else "absent"
+    raw = _lookup_dotted_path(candidate_root, tok["path"])
+    if not isinstance(raw, str) or not raw.strip():
+        return token_status, None, "absent"
+    safe = _safe_image_src(raw)
+    if safe is None:
+        return token_status, None, "rejected"
+    return token_status, safe, "accepted"
+
+
+def _html_with_signature_image_token(
+    signature_text: str,
+    *,
+    safe_src: Optional[str],
+    token_status: str,
+    img_html: str,
+) -> str:
+    """Escape signature text; replace or omit ``SIGNATURE_IMAGE`` literal per contract."""
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if tok.get("absent_token_policy") != "omit" or tok.get(
+        "missing_or_rejected_image_policy"
+    ) != "omit":
+        raise ValueError(
+            "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
+        )
+    if token_status == "absent":
+        return html.escape(signature_text or "")
+    parts = (signature_text or "").split(tok["literal"])
+    sep = img_html if safe_src else ""
+    return sep.join(html.escape(part) for part in parts)
+
+
 def _emit_cover_signoff_html(cover: dict, profile: dict) -> str:
-    """Cover sign-off: optional profile image (validated ``src``) then signature text."""
-    sig = (cover.get("signature") or "").strip()
-    safe_src = _safe_image_src((profile or {}).get("cover_letter_signature_image"))
-    if not sig and not safe_src:
+    """Cover sign-off: token-position image (AST-1126) + signature text — no auto-prepend."""
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if "cover_letter" not in tok.get("surfaces", []):
+        raise ValueError(
+            "SIGNATURE_IMAGE surfaces missing cover_letter — AST-1125 contract broken"
+        )
+    if tok.get("absent_token_policy") != "omit" or tok.get(
+        "missing_or_rejected_image_policy"
+    ) != "omit":
+        raise ValueError(
+            "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
+        )
+    # Call sites pass contact dict; wrap so tok["path"] (contact.…) resolves.
+    raw_sig = cover.get("signature") or ""
+    candidate_root = {"contact": profile or {}}
+    token_status, safe_src, _image_status = _signature_image_token_status(
+        raw_sig, candidate_root
+    )
+    # Image alone (no token / no text) must not create a signoff section.
+    if not (raw_sig or "").strip() and token_status == "absent":
         return ""
-    inner_lines: List[str] = []
+
+    literal = tok["literal"]
+    if token_status == "absent":
+        body_esc = html.escape(raw_sig)
+        if not body_esc.strip():
+            return ""
+        return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+      <p>{body_esc}</p>
+    </section>"""
+
+    parts = raw_sig.split(literal)
+    img_html = ""
     if safe_src:
         src_esc = html.escape(safe_src, quote=True)
-        inner_lines.append(
-            # Non-empty alt: Radia review (a11y); static label only (src is already escaped).
-            f'      <img src="{src_esc}" alt="Cover letter signature" style="max-width:240px;height:auto;" />'
+        img_html = (
+            f'<img src="{src_esc}" alt="Cover letter signature" '
+            f'style="max-width:240px;height:auto;" />'
         )
-    if sig:
-        inner_lines.append(f'      <p>{html.escape(sig)}</p>')
-    inner = "\n".join(inner_lines)
-    return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+        # Concrete shape: <p>before</p>{img}<p>after</p> (omit empty sides).
+        inner_chunks: List[str] = []
+        for i, part in enumerate(parts):
+            if (part or "").strip():
+                inner_chunks.append(f"      <p>{html.escape(part)}</p>")
+            if i < len(parts) - 1:
+                inner_chunks.append(f"      {img_html}")
+        if not inner_chunks:
+            return ""
+        inner = "\n".join(inner_chunks)
+        return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
 {inner}
+    </section>"""
+
+    # Token present, image omitted — one <p> with literal removed.
+    joined = "".join(html.escape(p) for p in parts)
+    if not joined.strip():
+        return ""
+    return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+      <p>{joined}</p>
     </section>"""
 
 
