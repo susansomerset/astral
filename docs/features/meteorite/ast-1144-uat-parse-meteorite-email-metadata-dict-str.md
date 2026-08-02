@@ -81,4 +81,20 @@ Betty (post Code Complete): add a regression that feeds a realistic Ruth payload
 ## Review
 
 **Publish ref:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`
-**Tip:** `5fa7f62f9888d6134dabbeb26979fa60f389723a`
+**Tip:** `32434707dbab3e758d082da1fbaee4b01682a17c`
+**Overall:** DISCUSS
+
+[code-rubric] revision=1 — Radia full-set sweep vs `origin/dev...origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+### What's solid
+
+- Stage 1 matches plan: `jobs[].metadata` type `str` → `dict` on `TASK_CONFIG["parse_meteorite_email"]`; html_links prompt documents optional `{company?, location?}` object; AST-756 fixture byte-identical to `data/admin/agent_task.json`.
+- Betty added dict-metadata regression (`do_task` validates dict; rejects str). No runner/Avail/UI creep in `code(AST-1144)`.
+
+### Issues
+
+**discuss:** Linear assignee is Radia at Tests Passed (`orch.roles.engineer-assignee-through-resolve`). Implementer should usually remain assignee through Review Posted / resolve. Confirm handoff (leave Radia vs restore engineer) before resolve-child.
+
+### Recommended actions
+
+- No fix-now on the schema/prompt fix. Restore engineer assignee for resolve if that was unintentional.
