@@ -2145,3 +2145,24 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
   -q
 ```
+
+### AST-1140 · AST-1129
+
+**Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.
+
+`GAZE_EMAIL_CONFIG` selected-ids literals: `debug_func_selected`, `selected_outcome_skipped_unbound` / `_not_in_inbox` / `_unmatched`. No parallel Land-Meteorite config block. Primary runner: **`docs/test-bible/core/gaze_email.md`** (**AST-1140**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Selected-ids config vocabulary | `src/utils/config.py` | **`TestAst1140GazeEmailSelectedConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing `GAZE_EMAIL_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1140GazeEmailSelectedConfig \
+  tests/component/core/test_gaze_email.py::TestAst1140RunGazeEmailSelectedIds \
+  -q
+```

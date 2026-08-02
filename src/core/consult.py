@@ -40,7 +40,7 @@ from src.utils.config import (
     importance_multiplier,
     is_dispatch_chain_trigger,
 )
-from src.utils.formatting import enumerate_array, uuid_path_segment_from_url
+from src.utils.formatting import enumerate_array, normalize_link, uuid_path_segment_from_url
 from src.utils.logging import get_logger
 from src.utils.llm_external import is_provider_balance_refusal
 
@@ -423,6 +423,52 @@ def _bind_response_jobs_to_claimed(response_jobs: list, claimed_jobs: list) -> N
             continue
         if not aid or re.fullmatch(r"\d{1,3}", aid):
             rj["astral_job_id"] = claimed_ids[i]
+
+
+def _bind_response_jobs_by_job_link(response_jobs: list, claimed_jobs: list) -> None:
+    """Bind unmatched response rows to claimed jobs by normalized job_link (AST-1133).
+
+    Used when Ruth puts a non-digit wrong value in astral_job_id on multi-job
+    qualify_meteorite batches. Does not overwrite ids already in the claim set.
+    """
+    if not response_jobs or not claimed_jobs:
+        return
+    claimed_ids = [j["astral_job_id"] for j in claimed_jobs if j.get("astral_job_id")]
+    claimed_set = set(claimed_ids)
+    # Unique normalized link → claim id; drop keys that collide across claims.
+    claimed_by_link: Dict[str, str] = {}
+    ambiguous: set = set()
+    for j in claimed_jobs:
+        aid = j.get("astral_job_id")
+        if not aid:
+            continue
+        norm = normalize_link(j.get("job_link") or "")
+        if not norm or norm in ambiguous:
+            continue
+        if norm in claimed_by_link:
+            claimed_by_link.pop(norm, None)
+            ambiguous.add(norm)
+            continue
+        claimed_by_link[norm] = aid
+    assigned = {
+        (rj.get("astral_job_id") or "").strip()
+        for rj in response_jobs
+        if isinstance(rj, dict) and (rj.get("astral_job_id") or "").strip() in claimed_set
+    }
+    for rj in response_jobs:
+        if not isinstance(rj, dict):
+            continue
+        aid = (rj.get("astral_job_id") or "").strip()
+        if aid in claimed_set:
+            continue
+        norm = normalize_link(rj.get("job_link") or "")
+        if not norm:
+            continue
+        target = claimed_by_link.get(norm)
+        if not target or target in assigned:
+            continue
+        rj["astral_job_id"] = target
+        assigned.add(target)
 
 
 def _job_from_rubric_json(obj: dict, task_config: dict, ctx: dict) -> dict:
@@ -1221,6 +1267,15 @@ async def _run_batch_consult(
         }
 
     _bind_response_jobs_to_claimed(response_jobs, jobs)
+    if task_key == "qualify_meteorite":
+        _bind_response_jobs_by_job_link(response_jobs, jobs)
+        if debug:
+            bound_ids = [
+                (rj.get("astral_job_id") or "").strip()
+                for rj in response_jobs
+                if isinstance(rj, dict)
+            ]
+            logger.debug_detail(f"qualify_meteorite bound astral_job_ids={bound_ids}")
 
     if debug:
         ts = result.get("timesheet", {})
@@ -1574,11 +1629,20 @@ async def qualify_meteorite(
         # Pre-resolve AI strip — source labels derive from this + resolved id (debug only).
         ai_company_job_id = (response_job.get("company_job_id") or "").strip()
         job_title = (response_job.get("job_title") or "").strip()
-        job_link = (response_job.get("job_link") or "").strip()
+        ruth_link = (response_job.get("job_link") or "").strip()
+        input_link = (input_job.get("job_link") or "").strip()
         jd_text = (response_job.get("jd_text") or "").strip()
-        # AI wins; else UUID path segment from response/input job_link (never job_site).
-        link_for_id = job_link or (input_job.get("job_link") or "").strip()
-        company_job_id = _resolve_company_job_id(ai_company_job_id, link_for_id)
+        # Ruth http(s) wins; else Create-time ATS URL (list ingest) for gate + UUID resolve.
+        if ruth_link.startswith("http"):
+            job_link = ruth_link
+            link_source = "AI"
+        elif input_link.startswith("http"):
+            job_link = input_link
+            link_source = "input"
+        else:
+            job_link = ruth_link
+            link_source = "neither"
+        company_job_id = _resolve_company_job_id(ai_company_job_id, job_link)
         if ai_company_job_id:
             id_source = "AI"
         elif company_job_id:
@@ -1608,10 +1672,13 @@ async def qualify_meteorite(
                     identifier=_consult_job_identifier(input_job),
                     outcome=f"content fail -> {to_state}",
                 )
-                # found source + optional fallback_job_link (not used when AI won)
-                fail_bits = [f"gate={fail_reason}", f"found source={id_source}"]
+                fail_bits = [
+                    f"gate={fail_reason}",
+                    f"found source={id_source}",
+                    f"link_source={link_source}",
+                ]
                 if id_source != "AI":
-                    fail_bits.append(f"fallback_job_link={link_for_id!r}")
+                    fail_bits.append(f"fallback_job_link={job_link!r}")
                 fail_bits.extend(
                     [
                         f"company_job_id={company_job_id!r}",
@@ -1650,9 +1717,9 @@ async def qualify_meteorite(
                 identifier=_consult_job_identifier(input_job),
                 outcome=str(to_state),
             )
-            found_bits = [f"found source={id_source}"]
+            found_bits = [f"found source={id_source}", f"link_source={link_source}"]
             if id_source == "UUID-from-job_link":
-                found_bits.append(f"fallback_job_link={link_for_id!r}")
+                found_bits.append(f"fallback_job_link={job_link!r}")
             found_bits.extend(
                 [
                     f"company_job_id={company_job_id!r}",

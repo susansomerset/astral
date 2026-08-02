@@ -16,7 +16,7 @@ Tables used (inventory):
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id nullable for shared Astral inbox tasks (AST-1088). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
@@ -40,7 +40,7 @@ Schema checks use sqlite_master only. No other tables in the database are touche
 
 Company: save_company, get_company, update_company; batch: set_company_batch, get_company_batch, clear_company_batch (claim_company_batch wrapper).
 Job: save_job (upsert), get_job; batch: claim_job_batch, get_job_batch, clear_job_batch.
-Candidate: save_candidate (upsert), get_candidate, list_candidates.
+Candidate: save_candidate (upsert), get_candidate, list_candidates; last_email_check (nullable; AST-1134 column / AST-1136 stamp call site).
 Agent: save_agent (upsert), get_agent, list_agents, update_agent, delete_agent, count_agent_task_refs.
 Retry/log/crash on transient DB errors; domain outcomes
 via return values (duplicate -> False, no records -> False / count).
@@ -75,7 +75,6 @@ from src.utils.config import (
     remap_legacy_candidate_state,
     COMPANY_STATES,
     METEORITE_CONFIG,
-    GAZE_EMAIL_CONFIG,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -1789,23 +1788,61 @@ def job_link_exists(job_link: str) -> bool:
 
 
 def job_link_exists_for_candidate(candidate_id: str, job_link: str) -> bool:
-    """True when a job under this candidate's meteorite company has this exact job_link."""
+    """True when any job under a company owned by this candidate has this exact job_link."""
     cid = (candidate_id or "").strip()
     link = (job_link or "").strip()
     if not cid or not link:
         return False
-    company = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
 
     def _do(c: sqlite3.Connection) -> bool:
         _ensure_job_schema(c)
+        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
         cursor = c.execute(
             """SELECT 1 FROM job
-               WHERE company = ? AND job_link = ?
+               WHERE job_link = ?
                  AND job_link IS NOT NULL AND TRIM(job_link) != ''
+                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
                LIMIT 1""",
-            (company, link),
+            (link, cid),
         )
         return cursor.fetchone() is not None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
+def text_matches_known_company_job_id_for_candidate(
+    candidate_id: str, text: str
+) -> Optional[str]:
+    """Inverted company_job_id match scoped to this candidate's companies.
+
+    Returns the matched company_job_id when any non-empty company_job_id on a job
+    under the candidate's companies appears as a substring of text; else None.
+    """
+    cid = (candidate_id or "").strip()
+    if not cid or not text:
+        return None
+
+    def _do(c: sqlite3.Connection) -> Optional[str]:
+        _ensure_job_schema(c)
+        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
+        cursor = c.execute(
+            """SELECT company_job_id FROM job
+               WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND ? LIKE '%' || company_job_id || '%'
+               LIMIT 1""",
+            (cid, text),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
 
     conn = _get_connection()
     try:
@@ -2498,7 +2535,8 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
                 candidate_api_key TEXT,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_changed_at TIMESTAMP
+                state_changed_at TIMESTAMP,
+                last_email_check TIMESTAMP
             )
         """)
         conn.commit()
@@ -2512,6 +2550,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
             ("last", "TEXT"),
             ("full", "TEXT"),
             ("pronouns", "TEXT"),
+            ("last_email_check", "TIMESTAMP"),
         ]:
             if col not in cols:
                 try:
@@ -3179,6 +3218,35 @@ def save_candidate(
                     f"UPDATE candidate SET {', '.join(sets)} WHERE astral_candidate_id = ?",
                     tuple(params),
                 )
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
+
+def update_candidate_last_email_check(
+    candidate_id: str, when: Optional[str] = None
+) -> None:
+    """Set candidate.last_email_check (UTC). when=None → now. Raises if candidate missing."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    stamp = when.strip() if (when or "").strip() else _utc_now()
+    now = _utc_now()
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            cur = conn.execute(
+                "UPDATE candidate SET last_email_check = ?, updated_at = ? "
+                "WHERE astral_candidate_id = ?",
+                (stamp, now, cid),
+            )
+            if cur.rowcount == 0:
+                raise LookupError(f"Candidate not found: {cid}")
             conn.commit()
         finally:
             conn.close()
@@ -6849,16 +6917,12 @@ def save_dispatch_task(
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
-    candidate_id may be NULL only for GAZE_EMAIL_CONFIG task_key (AST-1088)."""
+    candidate_id is required for every task_key (AST-1134 retired null gaze_email shell)."""
     tk = (task_key or "").strip()
     cid_raw = None if candidate_id is None else str(candidate_id).strip()
-    cid_val: Optional[str]
-    if tk == GAZE_EMAIL_CONFIG["task_key"] and not cid_raw:
-        cid_val = None
-    elif not cid_raw:
+    if not cid_raw:
         raise ValueError("candidate_id is required")
-    else:
-        cid_val = cid_raw
+    cid_val: Optional[str] = cid_raw
     try:
         defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
@@ -7159,8 +7223,12 @@ def set_dispatch_tasks_from_template_rows(
 
 
 def get_due_tasks() -> List[Dict[str, Any]]:
-    """Return auto_mode dispatch_tasks that have enough eligible entities to process.
-    Each returned dict includes 'available_count' from count_eligible_for_dispatch_task (WATCH/gaze respects freq_hrs and last_scan_at)."""
+    """Return auto_mode claim-queue dispatch_tasks with enough eligible entities.
+
+    Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
+    (WATCH respects freq_hrs / last_scan_at). Candidate-bound gaze_email AUTO due is
+    merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
+    """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -7177,13 +7245,6 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         cid = task.get("candidate_id")
-        tk = (task.get("task_key") or "").strip()
-        if tk == GAZE_EMAIL_CONFIG["task_key"]:
-            avail = count_eligible_for_dispatch_task(task)
-            if avail >= (task.get("min_count") or 1):
-                task["available_count"] = avail
-                due.append(task)
-            continue
         if not et or not ts or not cid:
             continue
         avail = count_eligible_for_dispatch_task(task)
@@ -7314,27 +7375,26 @@ def _parse_dispatch_last_run_at(raw: Any) -> Optional[datetime]:
     return dt
 
 
-def _gaze_email_available_count(task: Dict[str, Any]) -> int:
-    """Due signal for null-candidate gaze_email: 1 when freq allows, else 0 (AST-1090)."""
+def dispatch_task_freq_allows(task: Dict[str, Any]) -> bool:
+    """True when freq_hrs is 0/absent, or last_run_at is missing/stale vs freq_hrs."""
     freq = float(task.get("freq_hrs") or 0)
-    if freq > 0:
-        last = _parse_dispatch_last_run_at(task.get("last_run_at"))
-        if last is not None:
-            age = datetime.now(timezone.utc) - last
-            if age.total_seconds() < freq * 3600:
-                return 0
-    return 1
+    if freq <= 0:
+        return True
+    last = _parse_dispatch_last_run_at(task.get("last_run_at"))
+    if last is None:
+        return True
+    age = datetime.now(timezone.utc) - last
+    return age.total_seconds() >= freq * 3600
 
 
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
-    """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH/gaze).
+    """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH).
 
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
-    Other company states and all job states use count_entities_in_state (no per-task freq filter)."""
-    tk = (task.get("task_key") or "").strip()
-    if tk == GAZE_EMAIL_CONFIG["task_key"]:
-        return _gaze_email_available_count(task)
+    Other company states and all job states use count_entities_in_state (no per-task freq filter).
+    gaze_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
+    """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
