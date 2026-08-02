@@ -115,3 +115,26 @@ Config-only. Wrong path would blank the image once emit lands (easy to spot); ac
 - `BUILD_CONFIG["cover_letter_render_tokens"]["SIGNATURE_IMAGE"]` — literal, cover-only surfaces, `contact.cover_letter_signature_image`, omit policies.
 - `get_cover_letter_render_token(name)` accessor for emit (AST-1126).
 - `SIGNATURE_IMAGE` not in `TOKEN_SOURCES` / `get_tokens()`.
+
+## Radia review — code-rubric.v1
+
+`[code-rubric] revision=1`  
+**Overall:** DISCUSS (C4 stragglers only — no product fix-now)  
+**Publish tip reviewed:** `26bfa458ac6eae4fabbd94cf22c602afe6192c0f` (`origin/sub/AST-1123/AST-1125-cover-letter-signature-image-token-contract`)  
+**Baseline:** `origin/dev`
+
+### What’s solid
+
+- Stage 1 plan matches `src/utils/config.py` literally: `cover_letter_render_tokens.SIGNATURE_IMAGE` fields + `get_cover_letter_render_token`.
+- `SIGNATURE_IMAGE` absent from `TOKEN_SOURCES` / `get_tokens()`; `resolve_tokens` leaves the literal untouched.
+- Cover-only gate encoded as `surfaces: ["cover_letter"]`; omit policies encode parent OQ1 for AST-1126.
+- Engineer product commit is utils-only; Betty owns test/bible; one `merge-tests(AST-1125)`.
+
+### Findings
+
+**discuss (C4 straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban` at plan time (Files Changed = utils only). Code-time three-dot diff includes the plan doc + Betty test tree, so those statutes score in-scope and **conform**. No product action — acknowledge and continue.
+
+### Recommended actions
+
+- Ada: no `fix-now` product work. On resolve-child, acknowledge the three C4 stragglers (expected docs + Betty expansion) and move to User Testing.
+- AST-1126: consume `get_cover_letter_render_token("SIGNATURE_IMAGE")` only on cover emit paths.
