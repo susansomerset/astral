@@ -129,8 +129,24 @@ Keep the existing `debug_index` header on the fail path (same `func` / identifie
 ## Review
 
 **Publish ref:** `origin/sub/AST-1119/AST-1121-debug-found-recorded-company-job-id-resolve`
-**Tip (pre-review):** `2fc5bbe7`
+**Tip (pre-review):** `2ea3894d` (`merge-tests` + Betty coverage)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `2fc5bbe7` | Style D found source + optional `fallback_job_link` on `qualify_meteorite` apply fail/pass |
+| tests | `9b31527c` / `2ea3894d` | Betty Style D source-label coverage + `merge-tests` |
+
+### Radia — code-rubric.v1 (`[code-rubric] revision=1`)
+
+**Overall:** DISCUSS (C4 stragglers only; no product fix-now)
+
+**What's solid**
+- Labels `AI` / `UUID-from-job_link` / `neither` from pre-resolve AI strip + resolved id; no second resolve path.
+- Enrichment only inside existing `if debug:` `debug_index` / `debug_detail` (pass keeps `|` recorded half); `debug=False` unchanged.
+- Resolve/gate outcomes untouched; no create / `job_site` / `qualify_job_listings` creep.
+
+**Issues**
+- **discuss (straggler):** Joan plan-time Excluded → in-scope on tip vs `origin/dev` (mostly sibling AST-1120 + plan/tests on tip): `astral.debug.spikes-under-debug-dir`, `astral.dispatch.seed-auto-false`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.ui-config-driven-business-logic`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `astral.seed.operator-rows-stay-deleted`, `astral.seed.other-via-coverage-join`, `astral.standards.utils-data-late-import-only`, `astral.ui.single-gunicorn-worker` — all scored `conforms`; no product action.
+
+**Recommended actions**
+- Resolve-child: no code changes required for stragglers.
