@@ -47,7 +47,11 @@ from src.data.database import (
     update_company_last_scan_at,
 )
 from src.external.playwright import create_browser_context, create_batch_browser_session, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
-from src.utils.formatting import collapse_consecutive_blank_lines, normalize_link
+from src.utils.formatting import (
+    collapse_consecutive_blank_lines,
+    normalize_link,
+    normalize_pasted_list_email_html,
+)
 from src.utils.logging import get_logger
 
 _log = get_logger(__name__)
@@ -1186,6 +1190,9 @@ async def ingest_meteorite_jobs_from_email_html(
         raise ValueError("candidate_id is required")
     if not isinstance(html, str) or not html.strip():
         raise ValueError("html is required")
+
+    # AST-1131: normalize paste/list HTML before link discovery (idempotent with inbox strip).
+    html = normalize_pasted_list_email_html(html)
 
     log = get_logger(__name__)
     log.set_debug_flag(debug)

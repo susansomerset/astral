@@ -37,7 +37,7 @@ Config sections:
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
-  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
+  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131)
   GAZE_EMAIL_CONFIG — Astral inbox gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1088) + runner literals (AST-1090)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
@@ -2175,6 +2175,7 @@ assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 
 # AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
+# AST-1131: paste/list normalize before link discovery (entity-unescape + nested autolink unwrap).
 METEORITE_EMAIL_INGEST_CONFIG = {
     # Only http(s) hrefs are job-link candidates (mailto:/tel: excluded by scheme).
     "link_schemes": ("http", "https"),
@@ -2190,6 +2191,14 @@ METEORITE_EMAIL_INGEST_CONFIG = {
     "playwright_concurrency": 3,
     # Skip create when visible/body text length is below this after strip/fetch.
     "min_jd_chars": 40,
+    # Unescape only when the body looks entity-escaped (count of marker ≥ threshold).
+    "entity_unescape_marker": "&lt;",
+    "entity_unescape_min_marker_count": 2,
+    "entity_unescape_max_passes": 3,
+    # Attribute names whose values may contain nested Gmail auto-link HTML; unwrap to bare URL.
+    "nested_autolink_attr_names": ("href", "xmlns", "src", "cite", "data-url"),
+    # When True and no http(s) <a href> remain after unwrap, wrap bare http(s) URLs as anchors.
+    "promote_bare_http_urls": True,
 }
 
 
