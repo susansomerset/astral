@@ -321,13 +321,15 @@ class TestBuilderHelpers:
 
     def test_emits_cover_signoff_and_ats_tokens(self) -> None:
         assert builder_mod._emit_cover_signoff_html({"signature": ""}, {}) == ""
+        # AST-1126: image alone (no {$SIGNATURE_IMAGE}) must not create a signoff.
         image_only = builder_mod._emit_cover_signoff_html(
             {"signature": ""},
             {"cover_letter_signature_image": "https://example.com/sig.png"},
         )
-        assert "Cover letter signature" in image_only
+        assert image_only == ""
         signoff = builder_mod._emit_cover_signoff_html({"signature": "Thanks"}, {})
         assert "Thanks" in signoff
+        assert "<img" not in signoff
         ak = builder_mod.BUILD_CONFIG["default_style"]["ats_keyword_block"]
         assert "python" in builder_mod._emit_ats_block("python, sql", ak)
         assert builder_mod._emit_ats_block(None, ak) == ""
@@ -2425,10 +2427,13 @@ class TestAst1024BuildSessionCoverLetter:
                 self._fields(), candidate_id="cand-x", debug=True
             )
 
-    def test_signature_image_from_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_image_without_token_even_with_contact_image(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1126: stop auto-inject — image only when signature contains token.
         row = {
             "candidate_data": {
-                "profile": {
+                "contact": {
                     "cover_letter_signature_image": "https://example.com/sig.png",
                 }
             }
@@ -2437,35 +2442,65 @@ class TestAst1024BuildSessionCoverLetter:
         html = builder_mod.build_session_cover_letter(
             self._fields(), candidate_id="cand-1"
         )
-        assert 'class="signature-img"' in html
-        assert 'src="https://example.com/sig.png"' in html
-        assert "Susan Somerset" in html  # typed name always present
+        assert "<img" not in html
+        assert "Susan Somerset" in html
 
-    def test_name_only_when_profile_image_absent_or_rejected(
+    def test_token_replaces_with_contact_image(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        row_absent = {"candidate_data": {"profile": {}}}
+        row = {
+            "candidate_data": {
+                "contact": {
+                    "cover_letter_signature_image": "https://example.com/sig.png",
+                }
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: row)
+        html = builder_mod.build_session_cover_letter(
+            self._fields(signature="{$SIGNATURE_IMAGE}\nSusan Somerset"),
+            candidate_id="cand-1",
+        )
+        # Signature may also appear in head meta; assert emit placement in signoff only.
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert 'src="https://example.com/sig.png"' in signoff
+        assert "{$SIGNATURE_IMAGE}" not in signoff
+        assert "Susan Somerset" in signoff
+        assert signoff.index("Best,") < signoff.index("<img") < signoff.index(
+            "Susan Somerset"
+        )
+
+    def test_name_only_when_contact_image_absent_or_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row_absent = {"candidate_data": {"contact": {}}}
         monkeypatch.setattr(
             builder_mod.candidate_mod, "get_candidate", lambda cid: row_absent
         )
         html = builder_mod.build_session_cover_letter(
-            self._fields(), candidate_id="cand-1"
+            self._fields(signature="{$SIGNATURE_IMAGE}\nSusan Somerset"),
+            candidate_id="cand-1",
         )
-        assert "<img" not in html
-        assert "Susan Somerset" in html
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff
+        assert "{$SIGNATURE_IMAGE}" not in signoff
+        assert "Susan Somerset" in signoff
 
         row_bad = {
             "candidate_data": {
-                "profile": {"cover_letter_signature_image": "javascript:alert(1)"}
+                "contact": {"cover_letter_signature_image": "javascript:alert(1)"}
             }
         }
         monkeypatch.setattr(
             builder_mod.candidate_mod, "get_candidate", lambda cid: row_bad
         )
         html2 = builder_mod.build_session_cover_letter(
-            self._fields(), candidate_id="cand-1"
+            self._fields(signature="{$SIGNATURE_IMAGE}\nSusan Somerset"),
+            candidate_id="cand-1",
         )
-        assert "<img" not in html2
+        signoff2 = html2.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff2
+        assert "{$SIGNATURE_IMAGE}" not in signoff2
 
     def test_blank_candidate_id_skips_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         get_c = MagicMock()
@@ -2525,3 +2560,97 @@ class TestAst1100BuilderPinResolve:
             {"context": {}},
         )
         assert out == {"re_line": "Re", "body": "Hello", "signature": ""}
+
+
+class TestAst1126CoverSignatureImageToken:
+    """AST-1126: token-only cover signature image; stop auto-above; Style D status lines."""
+
+    _LIT = "{$SIGNATURE_IMAGE}"
+    _SAFE = "https://example.com/sig.png"
+
+    def test_job_signoff_image_between_closing_and_name(self) -> None:
+        sig = f"Sincerely,\n\n{self._LIT}\nAda Lovelace\nEngineer"
+        html = builder_mod._emit_cover_signoff_html(
+            {"signature": sig},
+            {"cover_letter_signature_image": self._SAFE},
+        )
+        assert "Cover letter signature" in html
+        assert self._LIT not in html
+        assert html.index("Sincerely") < html.index("<img") < html.index("Ada Lovelace")
+
+    def test_job_no_image_without_token(self) -> None:
+        html = builder_mod._emit_cover_signoff_html(
+            {"signature": "Sincerely,\n\nAda Lovelace"},
+            {"cover_letter_signature_image": self._SAFE},
+        )
+        assert "Ada Lovelace" in html
+        assert "<img" not in html
+
+    def test_job_token_omits_literal_when_image_rejected(self) -> None:
+        html = builder_mod._emit_cover_signoff_html(
+            {"signature": f"Ada\n{self._LIT}\nTitle"},
+            {"cover_letter_signature_image": "javascript:alert(1)"},
+        )
+        assert "<img" not in html
+        assert self._LIT not in html
+        assert "Ada" in html and "Title" in html
+
+    def test_token_status_matrix(self) -> None:
+        root_ok = {"contact": {"cover_letter_signature_image": self._SAFE}}
+        ts, src, im = builder_mod._signature_image_token_status(self._LIT, root_ok)
+        assert (ts, src, im) == ("present", self._SAFE, "accepted")
+        ts, src, im = builder_mod._signature_image_token_status("no token", root_ok)
+        assert (ts, src, im) == ("absent", self._SAFE, "accepted")
+        ts, src, im = builder_mod._signature_image_token_status(self._LIT, {"contact": {}})
+        assert (ts, src, im) == ("present", None, "absent")
+        ts, src, im = builder_mod._signature_image_token_status(
+            self._LIT, {"contact": {"cover_letter_signature_image": "javascript:x"}}
+        )
+        assert (ts, src, im) == ("present", None, "rejected")
+        assert builder_mod._lookup_dotted_path({"a": {"b": 1}}, "a.b") == 1
+        assert builder_mod._lookup_dotted_path({"a": 1}, "a.b") is None
+
+    def test_job_debug_emits_token_and_image_status(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(
+            builder_mod._log, "debug_index", lambda **_k: None
+        )
+        job = {
+            "astral_job_id": "job-1126",
+            "job_data": {
+                "artifacts": {
+                    "cover_letter": {
+                        "Subject": "Re",
+                        "Letter": "Hello",
+                        "signature": f"Sincerely,\n{self._LIT}\nAda",
+                    },
+                }
+            },
+        }
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_signature_image"] = self._SAFE
+        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        assert "<img" in html
+        assert "signature_image_token=present" in details
+        assert "signature_image=accepted" in details
+
+    def test_resume_html_does_not_resolve_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(
+                base_resume=_resume_blob(
+                    professional_summary=f"Lead {self._LIT} line"
+                )
+            ),
+        )
+        html = builder_mod.build_base_resume("cand-1")
+        assert self._LIT in html
+        assert 'alt="Cover letter signature"' not in html
+        assert 'class="signature-img"' not in html
