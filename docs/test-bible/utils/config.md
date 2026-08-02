@@ -2167,6 +2167,27 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   -q
 ```
 
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`.
+
+`BUILD_CONFIG["session_cover_letter"]`: `fields.from_block.empty_uses_candidate_resolve` + block-level `from_block_sources` (`session` / `candidate` / `default`). Keeps `from_block.required` True. Does **not** change other session field required flags or job `job_cover_somerset`. Primary emit + Admin page: **`docs/test-bible/core/builder.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty-resolve flag + source labels | `src/utils/config.py` | **`TestAst1139SessionCoverEmptyResolveConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing `session_cover_letter`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1139SessionCoverEmptyResolveConfig \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  -q
+```
+
 ### AST-1140 · AST-1129
 
 **Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.

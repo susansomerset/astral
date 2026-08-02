@@ -357,7 +357,7 @@ Equivalent harness:
 
 ### AST-1024 · AST-1023
 
-**AST-1024:** `build_session_cover_letter` emits SomersetCover HTML from an in-memory field payload (no job load / artifact write). Shared document helper is `_emit_somerset_cover_html_document` (renamed from session-only; job cover-only reuse = **AST-1138**). Optional `candidate_id` loads candidate contact for signature image — **AST-1126** places the image only when signature text contains `{$SIGNATURE_IMAGE}` (path `contact.cover_letter_signature_image` via AST-1125 contract; no auto-inject). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. React Session Cover Letter page = sibling **AST-1025**; job Print Cover Letter emit = **AST-1138**.
+**AST-1024:** `build_session_cover_letter` emits SomersetCover HTML from an in-memory field payload (no job load / artifact write). Shared document helper is `_emit_somerset_cover_html_document` (renamed from session-only; job cover-only reuse = **AST-1138**). Optional `candidate_id` loads candidate contact for signature image — **AST-1126** places the image only when signature text contains `{$SIGNATURE_IMAGE}` (path `contact.cover_letter_signature_image` via AST-1125 contract; no auto-inject). Empty form `from_block` → `resolve_cover_from_block` when candidate selected = **AST-1139**. Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. React Session Cover Letter page = sibling **AST-1025**; job Print Cover Letter emit = **AST-1138**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -456,5 +456,29 @@ Job + session cover HTML: replace `{$SIGNATURE_IMAGE}` at token position via `ge
   tests/component/core/test_builder.py::TestAst518BuilderResumeStructure::test_cover_letter_subject_letter_aliases_render_on_cover_route \
   tests/component/core/test_builder.py::TestAst1126CoverSignatureImageToken \
   tests/component/utils/test_config.py::TestAst1138JobCoverSomersetConfig \
+  -q
+```
+
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`. **Blocked by:** AST-1137.
+
+`build_session_cover_letter`: empty form `from_block` + loaded candidate → `resolve_cover_from_block` (source `candidate`/`default`); non-empty form wins as `session`; no candidate + empty still required; Style D `from_block_source=` / `document_path=somerset_cover`; golden CSS selectors unchanged on shared SomersetCover helper. Admin UI empty-from-block gating = **`docs/test-bible/frontend/pages.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty from_block resolve + session win + Style D | `src/core/builder.py` | **`TestAst1139SessionCoverEmptyFromBlock`** |
+| No-candidate empty still required | same | same class + existing **`TestAst1024BuildSessionCoverLetter::test_rejects_missing_required`** |
+| Golden CSS selectors on session emit | same | **`test_empty_from_block_with_candidate_uses_default`** (+ **`TestAst1024BuildSessionCoverLetter`**) |
+
+**Broken / obsolete:** none — additive defaulting path; required-without-candidate preserved.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter \
+  tests/component/utils/test_config.py::TestAst1139SessionCoverEmptyResolveConfig \
   -q
 ```

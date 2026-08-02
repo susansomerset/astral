@@ -2275,6 +2275,18 @@ class TestAst1024SessionCoverLetterConfig:
         }
 
 
+class TestAst1139SessionCoverEmptyResolveConfig:
+    """AST-1139: empty form from_block may resolve from candidate; source labels."""
+
+    def test_empty_uses_candidate_resolve_and_sources(self) -> None:
+        block = cfg.BUILD_CONFIG["session_cover_letter"]
+        assert block["fields"]["from_block"]["required"] is True
+        assert block["fields"]["from_block"]["empty_uses_candidate_resolve"] is True
+        assert block["from_block_sources"] == ("session", "candidate", "default")
+        # Resolve sources stay a subset of builder labels (session is form-only).
+        assert set(cfg.COVER_FROM_BLOCK_CONFIG["sources"]).issubset(set(block["from_block_sources"]))
+
+
 class TestAst1010CandidateTaglineConfig:
     """AST-1010: optional candidate_tagline is contact-adjacent identity for ATS meta."""
 

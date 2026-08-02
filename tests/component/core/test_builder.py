@@ -2661,6 +2661,127 @@ class TestAst1126CoverSignatureImageToken:
         assert 'class="signature-img"' not in html
 
 
+class TestAst1139SessionCoverEmptyFromBlock:
+    """AST-1139: session empty from_block → resolve_cover_from_block + Style D source."""
+
+    def _fields(self, **overrides: str) -> dict[str, Any]:
+        base = {
+            "from_block": "Susan Somerset • Oakland, CA\nhire@susansomerset.com",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Hiring Team,\n\nParagraph two.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        base.update(overrides)
+        return base
+
+    def _cand_row(self, **contact: Any) -> Dict[str, Any]:
+        return {
+            "astral_candidate_id": "cand-1139",
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "candidate_data": {
+                "contact": {
+                    "contact_email": "ada@example.com",
+                    "location": "London, UK",
+                    **contact,
+                },
+                "artifacts": {},
+                "context": {},
+            },
+        }
+
+    def test_empty_from_block_with_candidate_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda _cid: self._cand_row()
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block="  "), candidate_id="cand-1139"
+        )
+        assert "<title>SomersetCover</title>" in html
+        assert 'class="fromBlock"' in html
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        assert "ada@example.com" in from_html
+        assert "Susan Somerset" not in from_html
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        for sel in (
+            ".fromBlock",
+            ".toBlock",
+            ".letterdate",
+            ".lettersubject",
+            ".lettercontent",
+            ".letterSignoff",
+            ".signature-img",
+        ):
+            assert sel in style
+
+    def test_empty_from_block_with_candidate_custom_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda _cid: self._cand_row(
+                cover_letter_from_block="Custom From\ncustom@example.com"
+            ),
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block=""), candidate_id="cand-1139"
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Custom From" in from_html
+        assert "custom@example.com" in from_html
+        assert "Ada Lovelace" not in from_html
+
+    def test_nonempty_form_from_block_wins_as_session(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        get_c = MagicMock(return_value=self._cand_row())
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_index", lambda **_k: None)
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block="Form Wins\nform@example.com"),
+            candidate_id="cand-1139",
+            debug=True,
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Form Wins" in from_html
+        assert "Ada Lovelace" not in from_html
+        assert "from_block_source=session" in details
+        assert "document_path=somerset_cover" in details
+        get_c.assert_called_once_with("cand-1139")
+
+    def test_empty_from_block_without_candidate_still_required(self) -> None:
+        with pytest.raises(ValueError, match="from_block is required"):
+            builder_mod.build_session_cover_letter(self._fields(from_block=""))
+
+    def test_debug_default_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda _cid: self._cand_row()
+        )
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_index", lambda **_k: None)
+        builder_mod.build_session_cover_letter(
+            self._fields(from_block=""), candidate_id="cand-1139", debug=True
+        )
+        assert "from_block_source=default" in details
+        assert any(d.startswith("from_block_chars=") for d in details)
+        assert "document_path=somerset_cover" in details
+
+
 class TestAst1138JobCoverSomersetFromBlock:
     """AST-1138: job Print Cover Letter → SomersetCover fromBlock + golden CSS."""
 
