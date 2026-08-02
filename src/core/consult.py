@@ -40,7 +40,7 @@ from src.utils.config import (
     importance_multiplier,
     is_dispatch_chain_trigger,
 )
-from src.utils.formatting import enumerate_array
+from src.utils.formatting import enumerate_array, uuid_path_segment_from_url
 from src.utils.logging import get_logger
 from src.utils.llm_external import is_provider_balance_refusal
 
@@ -1575,6 +1575,9 @@ async def qualify_meteorite(
         job_title = (response_job.get("job_title") or "").strip()
         job_link = (response_job.get("job_link") or "").strip()
         jd_text = (response_job.get("jd_text") or "").strip()
+        # AI wins; else UUID path segment from response/input job_link (never job_site).
+        link_for_id = job_link or (input_job.get("job_link") or "").strip()
+        company_job_id = _resolve_company_job_id(company_job_id, link_for_id)
         min_title = int(cfg.get("min_job_title_length", 5))
         min_jd = int(cfg.get("min_jd_chars", 40))
 
@@ -1645,6 +1648,18 @@ async def qualify_meteorite(
     return await _run_batch_consult(
         task_key, batch_id, jobs, assemble, process, ctx, debug, batch_chunk_index=batch_chunk_index,
     )
+
+
+def _resolve_company_job_id(ai_company_job_id: str, job_link: str) -> str:
+    """Prefer non-empty AI company_job_id; else UUID path segment from job_link; else ''."""
+    ai = (ai_company_job_id or "").strip()
+    if ai:
+        return ai
+    link = (job_link or "").strip()
+    if not link:
+        return ""
+    fallback = uuid_path_segment_from_url(link, TRACKER_CONFIG["uuid_path_segment_pattern"])
+    return fallback or ""
 
 
 def _jd_ready_for_evaluate(job: Dict[str, Any], min_chars: int) -> bool:
