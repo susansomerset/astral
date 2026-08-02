@@ -220,3 +220,18 @@ No `src/core/**`, no `src/ui/api/**`, no `src/utils/config.py`, no `tests/` / bi
 - **advisory (matches Joan):** `outcomeKind` display bucketing of server outcome strings is plan-documented; not eligibility logic.
 
 Full `## Statutes checked` (65/65) lives in the Linear Review Posted comment.
+
+---
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Review tip intake:** `e70e804e` (`docs(AST-1142): Radia review — findings`)
+
+| Finding | Disposition |
+|---------|-------------|
+| fix-now | none — no product change |
+| discuss (C4 stragglers) | accepted as scored **conforms**; no rewrite for this UI child |
+| advisory (`outcomeKind` display bucketing) | leave as plan-documented display-only CSS; not eligibility |
+
+**Commit:** `resolve(AST-1142): — clean`
