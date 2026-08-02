@@ -765,3 +765,25 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
   tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
   -q
 ```
+
+### AST-1120 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
+
+`_resolve_company_job_id` + wire immediately before `qualify_meteorite` empty-`company_job_id` gate: AI wins; else UUID path segment from response/input `job_link`; else empty-id fail. No Style D source labels (AST-1121). Pure extract: **`docs/test-bible/utils/formatting.md`**. Config pattern: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve + qualify wire (AC1–3) | `src/core/consult.py` | **`TestAst1120CompanyJobIdFallback`** |
+
+**Broken / obsolete:** none — existing `TestAst1062QualifyMeteorite::test_content_gates_fail_state` empty-id case still uses a non-UUID `job_link`.
+
+**Integration:** no existing scenarios assert qualify empty-id / company_job_id resolve — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback \
+  tests/component/utils/test_formatting.py::TestUuidPathSegmentFromUrl \
+  tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
+  -q
+```

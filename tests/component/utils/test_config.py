@@ -2641,6 +2641,22 @@ class TestAst1062QualifyMeteoriteThresholds:
         assert "min_job_title_length" in cfg.TASK_CONFIG["qualify_job_listings"]
 
 
+# Branches: TRACKER uuid_path_segment_pattern present + anchored (AST-1120).
+class TestAst1120UuidPathSegmentPattern:
+    def test_pattern_anchored_fullmatch(self) -> None:
+        from src.utils import config as cfg
+
+        if "uuid_path_segment_pattern" not in cfg.TRACKER_CONFIG:
+            import pytest
+            pytest.skip("AST-1120 uuid_path_segment_pattern not on tip")
+        pat = cfg.TRACKER_CONFIG["uuid_path_segment_pattern"]
+        assert pat.startswith("^") and pat.endswith("$")
+        import re
+
+        assert re.fullmatch(pat, "9f704ad3-7a18-506a-bd5e-6a84e73b7c00")
+        assert re.fullmatch(pat, "not-a-uuid") is None
+
+
 # Branches: CONTACT_CONFIG scaffold (AST-1066) + entity-save skills ACL (AST-1071).
 class TestAst1066ContactConfig:
     """AST-1066: CONTACT_CONFIG listen/env-names + CANDIDATE_LOOKUP slack path."""

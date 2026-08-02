@@ -1999,3 +1999,23 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/ui/api/test_api_system.py::TestAst1116ShapesCoverLetter \
   -q
 ```
+
+### AST-1120 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
+
+`TRACKER_CONFIG["uuid_path_segment_pattern"]` — anchored UUID-shaped full path-segment regex for `job_link` fallback (no host allowlist). Apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UUID path pattern | `src/utils/config.py` | **`TestAst1120UuidPathSegmentPattern`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
+  -q
+```

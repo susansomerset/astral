@@ -4068,3 +4068,180 @@ class TestAst1076QualifyMeteoritePlaceholderId:
         initialize.assert_called_once()
         assert initialize.call_args.args[0] == aid
         assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]
+
+
+# Branches: AI wins; UUID fallback; empty fail; input link_for_id composition (AST-1120).
+class TestAst1120CompanyJobIdFallback:
+    _DICE_UUID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE_URL = f"https://www.dice.com/company-profile/{_DICE_UUID}"
+
+    def _jd(self, n: int = 50) -> str:
+        return "Visible JD body text. " * ((n // 20) + 1)
+
+    def _job(self, aid: str = "job-1120", job_link: str = "https://jobs.example.com/old") -> dict:
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        return {
+            "astral_job_id": aid,
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-1120",
+            "job_link": job_link,
+            "job_data": {jd_key: self._jd()},
+        }
+
+    def _good_fields(self, aid: str, **overrides: object) -> dict:
+        base = {
+            "astral_job_id": aid,
+            "company_job_id": "AI-EXT",
+            "job_title": "Senior Engineer",
+            "job_link": "https://jobs.example.com/role/99",
+            "jd_text": self._jd(60),
+        }
+        base.update(overrides)
+        return base
+
+    def test_resolve_helper_ai_wins_and_fallbacks(self) -> None:
+        if not hasattr(consult_mod, "_resolve_company_job_id"):
+            pytest.skip("AST-1120 resolve helper not on tip")
+        other = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        assert consult_mod._resolve_company_job_id(
+            "AI-KEEP", f"https://example.com/{other}"
+        ) == "AI-KEEP"
+        assert consult_mod._resolve_company_job_id("", self._DICE_URL) == self._DICE_UUID
+        assert consult_mod._resolve_company_job_id(None, self._DICE_URL) == self._DICE_UUID  # type: ignore[arg-type]
+        assert consult_mod._resolve_company_job_id("", "https://example.com/jobs/no-uuid") == ""
+        assert consult_mod._resolve_company_job_id("", "") == ""
+        assert consult_mod._resolve_company_job_id("  ", None) == ""  # type: ignore[arg-type]
+        # process link_for_id: empty response job_link → input row link
+        link_for_id = "" or self._DICE_URL
+        assert consult_mod._resolve_company_job_id("", link_for_id) == self._DICE_UUID
+
+    @pytest.mark.asyncio
+    async def test_ai_id_unchanged_when_link_has_different_uuid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_resolve_company_job_id"):
+            pytest.skip("AST-1120 resolve helper not on tip")
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": "AI-KEEP",
+                    "job_title": "Senior Engineer",
+                    "job_link": self._DICE_URL,
+                    "job_data": {jd_key: self._jd(60)},
+                }
+            ),
+        )
+        resp = self._good_fields("j-ai", company_job_id="AI-KEEP", job_link=self._DICE_URL)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite("batch-1120-ai", [self._job("j-ai")], {}, debug=False)
+        assert out["passed"] == 1
+        assert initialize.call_args.args[2]["company_job_id"] == "AI-KEEP"
+
+    @pytest.mark.asyncio
+    async def test_empty_ai_records_uuid_from_job_link(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_resolve_company_job_id"):
+            pytest.skip("AST-1120 resolve helper not on tip")
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": self._DICE_UUID,
+                    "job_title": "Senior Engineer",
+                    "job_link": self._DICE_URL,
+                    "job_data": {jd_key: self._jd(60)},
+                }
+            ),
+        )
+        resp = self._good_fields("j-uuid", company_job_id="", job_link=self._DICE_URL)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1120-uuid", [self._job("j-uuid")], {}, debug=False
+        )
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        assert initialize.call_args.args[2]["company_job_id"] == self._DICE_UUID
+        assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]
+
+    @pytest.mark.asyncio
+    async def test_empty_ai_no_uuid_still_empty_id_fail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_resolve_company_job_id"):
+            pytest.skip("AST-1120 resolve helper not on tip")
+        fail = TASK_CONFIG["qualify_meteorite"]["fail_state"]
+        transition = MagicMock()
+        initialize = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        resp = self._good_fields(
+            "j-empty",
+            company_job_id="",
+            job_link="https://example.com/jobs/no-uuid-here",
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"jobs": [resp]},
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1120-fail", [self._job("j-empty")], {}, debug=False
+        )
+        assert out["passed"] == 0
+        assert out["failed"] == 1
+        assert initialize.call_count == 0
+        assert transition.call_args.args[2] == fail
