@@ -38,7 +38,7 @@ Config sections:
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061)
-  GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090)
+  GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
   CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
@@ -2215,6 +2215,12 @@ GAZE_EMAIL_CONFIG = {
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
     "debug_func": "gaze_email.run",
+    # AST-1140 — Style D func= for selected-ids Land Meteorite ingest.
+    "debug_func_selected": "gaze_email.selected_ids",
+    # Per-id outcome strings returned to AST-1141 / recorded in Style D.
+    "selected_outcome_skipped_unbound": "skipped-unbound",
+    "selected_outcome_skipped_not_in_inbox": "skipped-not-in-inbox",
+    "selected_outcome_skipped_unmatched": "skipped-unmatched",
 }
 
 assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
@@ -2222,6 +2228,10 @@ assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
 assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
 assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
 assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
+assert GAZE_EMAIL_CONFIG["debug_func_selected"] == "gaze_email.selected_ids"
+assert GAZE_EMAIL_CONFIG["selected_outcome_skipped_unbound"] == "skipped-unbound"
+assert GAZE_EMAIL_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
+assert GAZE_EMAIL_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
 assert GAZE_EMAIL_CONFIG["auto_mode"] is False
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(

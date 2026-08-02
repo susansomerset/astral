@@ -197,3 +197,12 @@ python3 -c "from src.core.gaze_email import run_gaze_email_selected_ids; import 
 - §1.5.1 Style D — `debug_func_selected` + `_dbg_selected` / `_detail` only when `debug=True`.
 - §2.6 / `astral.state.no-daisy-chain-in-run` — stop at **METEORITE_NEW** via existing create helper; no qualify/GDL.
 - §3.3 imports — core may use inbox / meteorite / gmail / config / logging as today; no UI imports.
+
+---
+
+## Review
+
+| Field | Value |
+|-------|-------|
+| Branch | `sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint` |
+| Tip | _(filled at Code Complete)_ |
