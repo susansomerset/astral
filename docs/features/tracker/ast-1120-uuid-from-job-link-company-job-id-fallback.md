@@ -164,3 +164,13 @@ No plan conflicts requiring `conf-!!-NONE`.
 **Recommended actions**
 - Resolve-child: no code changes required for stragglers; proceed unless Ada wants a `[review-handoff]` on placement wording (helper already after `qualify_meteorite` with existing privates).
 - AST-1121 still owns Style D found/recorded source labels.
+
+## Resolution
+
+**Date:** 2026-08-02  
+**Radia tip:** `ab463454` (`docs(AST-1120): Radia review — findings`)
+
+- **fix-now:** none — no product edits.
+- **discuss (C4 stragglers):** accepted as non-blocking; tip already conforms (`spikes-under-debug-dir`, `features-single-file-per-ticket`, `engineer-test-tree-ban`). No code or plan-path change.
+- **Helper placement:** left after `qualify_meteorite` with existing private helpers (matches Joan/Radia note).
+- **Boundaries:** AST-1121 still owns Style D found/recorded source labels.
