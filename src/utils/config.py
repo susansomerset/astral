@@ -4572,8 +4572,10 @@ BUILD_CONFIG = {
     # AST-1024: session cover field spine (Admin API + form); not job artifact_shapes.
     "session_cover_letter": {
         "document_title": "SomersetCover",
+        # AST-1139: empty form from_block → resolve_cover_from_block when candidate set.
+        "from_block_sources": ("session", "candidate", "default"),
         "fields": {
-            "from_block": {"required": True},
+            "from_block": {"required": True, "empty_uses_candidate_resolve": True},
             "letter_date": {"required": True},
             "to_block": {"required": False},
             "subject": {"required": False},
