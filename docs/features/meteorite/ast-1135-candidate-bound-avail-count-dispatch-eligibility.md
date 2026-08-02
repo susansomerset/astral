@@ -173,5 +173,5 @@ No `tests/` / bible / React / `src/core/gaze_email.py` runner body / unbound hyg
 ## Review
 
 **Publish ref:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`
-**Tip:** 
+**Tip:** `e91381351b0d4cec17960dd4463f23553ed95cc1`
 **Overall:** _(pending Radia)_
