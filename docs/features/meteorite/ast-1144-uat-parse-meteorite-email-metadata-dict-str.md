@@ -77,3 +77,8 @@ Betty (post Code Complete): add a regression that feeds a realistic Ruth payload
 - `astral.standards.in-scope-only` — schema/prompt/fixture only; no Avail/bind/Land Meteorite.
 - `astral.state.no-daisy-chain-in-run` — still METEORITE_NEW only after parse succeeds.
 - Seed/catalog: prompt edit stays on Archie-named `parse_meteorite_email`; fixture byte-lock preserved.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`
+**Tip:** `5fa7f62f9888d6134dabbeb26979fa60f389723a`
