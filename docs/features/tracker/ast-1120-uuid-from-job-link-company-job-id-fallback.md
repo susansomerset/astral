@@ -137,3 +137,13 @@ company_job_id = _resolve_company_job_id(company_job_id, link_for_id)
 | §3.6 spikes | N/A — no spike deliverables |
 
 No plan conflicts requiring `conf-!!-NONE`.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`
+**Tip:** `ba8254f2`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ab433398` | `TRACKER_CONFIG["uuid_path_segment_pattern"]` + `formatting.uuid_path_segment_from_url` |
+| 2 | `ba8254f2` | `_resolve_company_job_id` + wire before `qualify_meteorite` empty-id gate |
