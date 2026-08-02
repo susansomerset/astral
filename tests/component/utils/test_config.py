@@ -3467,6 +3467,23 @@ class TestAst1089ParseMeteoriteEmailConfig:
             cfg._dispatch_trigger_state_for_task_key("parse_meteorite_email")
 
 
+
+# Branches: parse_meteorite_email jobs[].metadata dict (AST-1144 UAT).
+@pytest.mark.skipif(
+    "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1089 parse_meteorite_email TASK_CONFIG not on this publish tip",
+)
+class TestAst1144ParseMeteoriteEmailMetadataDict:
+    """AST-1144: Ruth structured metadata objects — schema type dict, not str."""
+
+    def test_metadata_schema_is_optional_dict(self) -> None:
+        meta = cfg.TASK_CONFIG["parse_meteorite_email"]["response_schema"]["jobs"]["items_schema"][
+            "metadata"
+        ]
+        assert meta["type"] == "dict"
+        assert meta.get("required") is False
+
+
 # Branches: activity_state_filename on CONTACT_CONFIG (AST-1094).
 
 # Branches: hear-ack fallback copy on CONTACT_CONFIG (AST-1101).

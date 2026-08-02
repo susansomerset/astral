@@ -563,3 +563,23 @@ Primary config map: **`docs/test-bible/utils/config.md`** AST-1112. Agent surfac
   tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
   -q
 ```
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+Regression: `_validate_response_schema` accepts realistic `parse_meteorite_email` html_links payload with `jobs[].metadata` as dict; rejects str (pre-fix contract). Schema source: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dict metadata validates / str rejected | `src/core/agent.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** none — additive against TASK_CONFIG schema.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```

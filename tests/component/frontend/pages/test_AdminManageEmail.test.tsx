@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react"
+import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -74,17 +74,13 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     expect(unmatchedRow!.textContent).toContain("—")
   })
 
-  it("matched row has Actions Create; unmatched has none (AST-1051)", async () => {
+  it("per-row Create is retired (AST-1142); no Actions column", async () => {
     mockApis()
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
-    expect(screen.getByRole("columnheader", { name: "Actions" })).toBeInTheDocument()
-    const matchedRow = screen.getByText("Hello Astral").closest("tr")
-    const unmatchedRow = screen.getByText("other@example.com").closest("tr")
-    expect(matchedRow).toBeTruthy()
-    expect(unmatchedRow).toBeTruthy()
-    expect(matchedRow!.querySelector("button.manage-email-create")).toBeTruthy()
-    expect(unmatchedRow!.querySelector("button.manage-email-create")).toBeNull()
+    expect(screen.queryByRole("columnheader", { name: "Actions" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument()
+    expect(document.querySelector("button.manage-email-create")).toBeNull()
   })
 
   it("matched row: modal shows bind + raw HTML; no Create in modal (AST-1040/1051)", async () => {
@@ -155,97 +151,129 @@ describe("AdminManageEmail — AST-1033 / AST-1040 / AST-1048 / AST-1051 (§6c r
     await userEvent.click(screen.getByText("Hello Astral"))
     await waitFor(() => expect(screen.getByText("upstream")).toBeInTheDocument())
     expect(screen.queryByTitle("Email body")).not.toBeInTheDocument()
-    // List-row Create remains available outside the modal.
-    expect(screen.getByRole("button", { name: "Create" })).toBeEnabled()
+    // AST-1142: Create retired — Land Meteorite stays on the page chrome.
+    expect(screen.queryByRole("button", { name: "Create" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
+  })
+})
+
+describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
   })
 
-  it("list-row Create POSTs create-job without opening modal (AST-1051)", async () => {
+  function mockApis(
+    extra?: (url: string, init?: RequestInit) => Promise<Response | undefined> | Response | undefined,
+  ) {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      const fromExtra = extra ? await extra(url, init) : undefined
+      if (fromExtra !== undefined) return fromExtra
+      if (url === "/api/admin/inbox/messages") {
+        return jsonResponse({ messages: ROWS })
+      }
+    })
+  }
+
+  it("toolbar: Land Meteorite disabled until selection; select/clear without leaving page", async () => {
+    mockApis()
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    expect(screen.getByText("0 selected")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Clear selection" })).toBeDisabled()
+
+    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
+    const rowCheckbox = within(matchedRow).getByRole("checkbox")
+    await userEvent.click(rowCheckbox)
+    expect(screen.getByText("1 selected")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeEnabled()
+    // Checkbox click must not open the message modal.
+    expect(screen.queryByRole("heading", { name: "Hello Astral", level: 2 })).not.toBeInTheDocument()
+
+    await userEvent.click(screen.getByRole("button", { name: "Select all" }))
+    expect(screen.getByText("2 selected")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Clear selection" }))
+    expect(screen.getByText("0 selected")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
+  })
+
+  it("Land Meteorite POSTs selected ids and shows outcomes; never create-job", async () => {
+    let listCalls = 0
     mockApis(async (url, init) => {
-      if (
-        url === "/api/admin/inbox/messages/m1/create-job" &&
-        init?.method === "POST"
-      ) {
+      if (url === "/api/admin/inbox/messages") {
+        listCalls += 1
+        // After land, archive drops m1 from the list.
         return jsonResponse({
-          astral_job_id: "job-42",
-          company: "meteorite-cand-ada",
-          state: "METEORITE_NEW",
-          latest_score: 10,
-          company_inserted: true,
-          astral_candidate_id: "cand-ada",
-          mode: "body",
-          created: [
+          messages: listCalls === 1 ? ROWS : [ROWS[1]],
+        })
+      }
+      if (url === "/api/admin/inbox/land-meteorite" && init?.method === "POST") {
+        const body = JSON.parse(String(init.body))
+        expect(body.message_ids).toEqual(["m1", "m2"])
+        return jsonResponse({
+          results: [
             {
-              astral_job_id: "job-42",
-              company: "meteorite-cand-ada",
-              state: "METEORITE_NEW",
-              latest_score: 10,
-              company_inserted: true,
+              message_id: "m1",
+              outcome: "archived",
+              astral_candidate_id: "cand-ada",
+            },
+            {
+              message_id: "m2",
+              outcome: "skipped-unbound",
+              astral_candidate_id: null,
             },
           ],
-          skipped: [],
+          total_processed: 1,
+          total_passed: 1,
+          total_failed: 0,
+          total_errors: 0,
+          total_skipped: 1,
         })
+      }
+      if (typeof url === "string" && url.includes("create-job")) {
+        throw new Error("create-job must not be called after AST-1142")
       }
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
-    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
-    await userEvent.click(matchedRow.querySelector("button.manage-email-create")!)
-    await waitFor(() => expect(screen.getByText("Created job job-42")).toBeInTheDocument())
-    expect(screen.queryByRole("heading", { name: "Hello Astral", level: 2 })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Select all" }))
+    await userEvent.click(screen.getByRole("button", { name: "Land Meteorite" }))
+    await waitFor(() =>
+      expect(screen.getByText("Land Meteorite results")).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/Hello Astral — archived \(cand-ada\)/)).toBeInTheDocument()
+    expect(screen.getByText(/m2 — skipped-unbound/)).toBeInTheDocument()
+    expect(
+      screen.getByText(/Land Meteorite: passed 1, skipped 1, failed 0, errors 0/),
+    ).toBeInTheDocument()
+    expect(screen.getByText("0 selected")).toBeInTheDocument()
     expect(mockedApi).toHaveBeenCalledWith(
-      "/api/admin/inbox/messages/m1/create-job",
+      "/api/admin/inbox/land-meteorite",
       expect.objectContaining({ method: "POST" }),
     )
-    expect(mockedApi).not.toHaveBeenCalledWith("/api/admin/inbox/messages/m1")
+    const createCalls = mockedApi.mock.calls.filter(
+      ([u]) => typeof u === "string" && u.includes("create-job"),
+    )
+    expect(createCalls).toHaveLength(0)
+    // Reload after success drops archived subject from the table.
+    await waitFor(() => expect(screen.queryByText("Hello Astral")).not.toBeInTheDocument())
   })
 
-  it("list-row Create all-skipped toasts skip message (AST-1061)", async () => {
+  it("Land Meteorite HTTP error shows inline feedback and keeps selection", async () => {
     mockApis(async (url, init) => {
-      if (
-        url === "/api/admin/inbox/messages/m1/create-job" &&
-        init?.method === "POST"
-      ) {
-        return jsonResponse({
-          astral_job_id: null,
-          company: "meteorite-cand-ada",
-          state: null,
-          latest_score: null,
-          company_inserted: false,
-          astral_candidate_id: "cand-ada",
-          mode: "links",
-          created: [],
-          skipped: [
-            {
-              reason: "known_job_link",
-              url: "https://jobs.example.com/x",
-              matched_company_job_id: null,
-            },
-          ],
-        })
+      if (url === "/api/admin/inbox/land-meteorite" && init?.method === "POST") {
+        return jsonResponse({ error: "message_ids is required" }, false)
       }
     })
     renderWithProviders(<AdminManageEmail />)
     await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
     const matchedRow = screen.getByText("Hello Astral").closest("tr")!
-    await userEvent.click(matchedRow.querySelector("button.manage-email-create")!)
+    await userEvent.click(within(matchedRow).getByRole("checkbox"))
+    await userEvent.click(screen.getByRole("button", { name: "Land Meteorite" }))
     await waitFor(() =>
-      expect(screen.getByText("Skipped 1 (already known or empty)")).toBeInTheDocument(),
+      expect(screen.getAllByText("message_ids is required").length).toBeGreaterThan(0),
     )
-  })
-
-  it("list-row Create failure toasts error (AST-1051)", async () => {
-    mockApis(async (url, init) => {
-      if (url === "/api/admin/inbox/messages/m1/create-job" && init?.method === "POST") {
-        return jsonResponse({ error: "message is not matched to a candidate" }, false)
-      }
-    })
-    renderWithProviders(<AdminManageEmail />)
-    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
-    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
-    await userEvent.click(matchedRow.querySelector("button.manage-email-create")!)
-    await waitFor(() =>
-      expect(screen.getByText("message is not matched to a candidate")).toBeInTheDocument(),
-    )
-    expect(screen.queryByRole("heading", { name: "Hello Astral", level: 2 })).not.toBeInTheDocument()
+    expect(screen.getByText("1 selected")).toBeInTheDocument()
+    expect(screen.queryByText("Land Meteorite results")).not.toBeInTheDocument()
   })
 })

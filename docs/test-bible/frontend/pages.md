@@ -1132,13 +1132,13 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
 
-Manage Email **Create** wires `POST .../create-job` with success/error toast; matched gate from AST-1048 retained. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+Manage Email **Create** wired `POST .../create-job` with success/error toast (historical). **Retired by AST-1142** (Land Meteorite). API route may remain: **`docs/test-bible/ui/api/api_inbox.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Create POST + toast (§6c page) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** Create success/failure cases |
+| Create POST + toast (§6c page) | `AdminManageEmail.tsx` | historical — superseded by **AST-1142** Create retirement |
 
-**Broken / obsolete:** none — extends AST-1048 page suite.
+**Broken / obsolete:** Create POST cases — removed in **AST-1142** suite revision.
 
 **Integration:** none.
 
@@ -1147,13 +1147,13 @@ Manage Email **Create** wires `POST .../create-job` with success/error toast; ma
 
 **Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1051-uat-create-button-on-manage-email-list-rows`.
 
-UAT: **Create** moves from HTML-preview modal to matched list-row **Actions** column; unmatched rows omit Create; Create does not open the modal; create-job POST + toast unchanged (AST-1049).
+UAT (historical): **Create** on matched list-row **Actions** column. **AST-1142** retires Actions/Create entirely.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| List-row Create + no modal Create (§6c) | `AdminManageEmail.tsx` + `App.css` | revised **`test_AdminManageEmail.test.tsx`** |
+| List-row Create + no modal Create (§6c) | `AdminManageEmail.tsx` + `App.css` | historical — **AST-1142** asserts Create absent |
 
-**Broken / obsolete:** AST-1048/1049 cases that asserted Create inside the modal / disabled Create on unmatched modal — revised for Actions column + omit Create on unmatched.
+**Broken / obsolete:** Actions/Create column cases — superseded by **AST-1142**.
 
 **Integration:** none.
 
@@ -1182,15 +1182,34 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
 
-Manage Email Create toasts use `created`/`skipped` arrays (`Created job …` / `Created N jobs` / `Skipped N (already known or empty)`).
+Manage Email Create toasts used `created`/`skipped` arrays (historical). **AST-1142** retires Create; Land Meteorite shows server `outcome` strings instead.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Multi-result toasts | `AdminManageEmail.tsx` | revised **`test_AdminManageEmail.test.tsx`** (+ all-skipped) |
+| Multi-result toasts | `AdminManageEmail.tsx` | historical Create toasts — superseded by **AST-1142** results panel |
 
-**Broken / obsolete:** toast assumed single `astral_job_id` only — still works as fallback; mocks now include `created`/`skipped`.
+**Broken / obsolete:** Create multi-result toast cases — removed in **AST-1142**.
 
 **Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+### AST-1142 · AST-1129
+
+**Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1142-manage-email-multi-select-land-meteorite-retire-create`. **Blocked by:** AST-1141.
+
+Manage Email (§6c): row + header multi-select; toolbar Select all / Clear / **Land Meteorite** (enabled only when selection non-empty); `POST /api/admin/inbox/land-meteorite` with selected ids; on-page **Land Meteorite results** (subject snapshot + raw `outcome` + candidate id); retire per-row **Create** / Actions column / `.manage-email-create`. Never calls `/create-job`. API: **`docs/test-bible/ui/api/api_inbox.md`** (**AST-1141**). Core: **`docs/test-bible/core/gaze_email.md`** (**AST-1140**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Multi-select + enablement + Land POST + outcomes + Create retired (§6c) | `AdminManageEmail.tsx` + `App.css` | **`test_AdminManageEmail.test.tsx`** — **`AdminManageEmail — AST-1142`** (+ revised Create-absent cases in older describe) |
+
+**Broken / obsolete (revised this pass):** AST-1049/1051/1061 list-row Create POST/toast cases; Actions column assertions.
+
+**Integration:** none — no existing scenario asserts Manage Email Land Meteorite; do not invent new coverage.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
