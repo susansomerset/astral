@@ -22,6 +22,7 @@ from src.data.database import (
 )
 
 from src.core.consult import list_timesheets
+from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
@@ -66,6 +67,7 @@ from src.utils.config import (
     admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
+    GAZE_EMAIL_CONFIG,
     dispatch_task_admin_defaults,
     dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
@@ -856,6 +858,20 @@ _DISPATCH_TASK_COLUMNS = [
 def list_dtasks():
     rows = list_dispatch_tasks()
     rows = [r for r in rows if r.get("task_key") not in DISPATCH_RETIRED_TASK_KEYS]
+    gaze_tk = GAZE_EMAIL_CONFIG["task_key"]
+    # One inbox snapshot for every candidate-bound gaze_email Avail stamp (AST-1135).
+    need_gaze_counts = any(
+        (r.get("task_key") or "").strip() == gaze_tk
+        and str(r.get("candidate_id") or "").strip()
+        for r in rows
+    )
+    bound_counts: Dict[str, int] = {}
+    if need_gaze_counts:
+        try:
+            bound_counts = count_inbox_bound_by_candidate()
+        except Exception as exc:
+            logger.warning("list_dtasks: gaze_email inbox bind counts failed: %s", exc)
+            bound_counts = {}
     # Enrich each row with live available entity count
     for row in rows:
         is_scored = dispatch_claim_uses_score_floor(row.get("trigger_state"))
@@ -867,18 +883,22 @@ def list_dtasks():
         et = row.get("entity_type")
         ts = row.get("trigger_state")
         cid = row.get("candidate_id", "")
-        try:
-            row["available_count"] = (
-                database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
-            )
-        except Exception as exc:
-            logger.warning(
-                "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
-                row.get("id"),
-                row.get("task_key"),
-                exc,
-            )
-            row["available_count"] = 0
+        if (row.get("task_key") or "").strip() == gaze_tk:
+            cid_s = str(cid or "").strip()
+            row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
+        else:
+            try:
+                row["available_count"] = (
+                    database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
+                )
+            except Exception as exc:
+                logger.warning(
+                    "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
+                    row.get("id"),
+                    row.get("task_key"),
+                    exc,
+                )
+                row["available_count"] = 0
         row["always_visible_under_avail_gt0"] = (
             row.get("task_key") in admin_always_visible_under_avail_gt0_dispatch_task_keys()
         )

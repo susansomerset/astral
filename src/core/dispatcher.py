@@ -1031,7 +1031,17 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     et = task.get("entity_type")
     ts = task.get("trigger_state")
     cid = task.get("candidate_id", "")
-    task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
+    if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"] and str(cid or "").strip():
+        try:
+            from src.core.inbox import count_inbox_messages_bound_to_candidate
+            task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
+        except Exception:
+            _sched_log.warning(
+                "run_task: gaze_email available_count failed task_id=%s", task_id, exc_info=True
+            )
+            task["available_count"] = 0
+    else:
+        task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
     task["_ui_initiated"] = ui_initiated
 
     with _registry_lock:
@@ -1148,6 +1158,38 @@ def _debug_log_auto_off_stage_skips() -> None:
         )
 
 
+def _gaze_email_due_tasks() -> List[Dict[str, Any]]:
+    """AUTO candidate-bound gaze_email rows with live Avail ≥ min_count and freq allowing."""
+    # late: keep inbox/Gmail off module-top load (peer late imports in this file)
+    from src.core.inbox import count_inbox_bound_by_candidate
+
+    tk = GAZE_EMAIL_CONFIG["task_key"]
+    auto_gaze = [
+        t for t in database.list_dispatch_tasks()
+        if (t.get("task_key") or "").strip() == tk
+        and bool(t.get("auto_mode"))
+        and str(t.get("candidate_id") or "").strip()
+    ]
+    if not auto_gaze:
+        return []
+    try:
+        bound_counts = count_inbox_bound_by_candidate()
+    except Exception:
+        _sched_log.warning("gaze_email due: inbox bind counts failed", exc_info=True)
+        return []
+    due: List[Dict[str, Any]] = []
+    for task in auto_gaze:
+        cid = str(task["candidate_id"]).strip()
+        avail = int(bound_counts.get(cid, 0))
+        if avail < (task.get("min_count") or 1):
+            continue
+        if not database.dispatch_task_freq_allows(task):
+            continue
+        task["available_count"] = avail
+        due.append(task)
+    return due
+
+
 def _tick_loop() -> None:
     """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
     # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
@@ -1158,10 +1200,10 @@ def _tick_loop() -> None:
             # late: avoid cycle with candidate → dispatcher (module-top import)
             from src.core.candidate import age_stale_candidate_states
             age_stale_candidate_states()
-            due = database.get_due_tasks()  # returns auto_mode=1 tasks with available entities
-            # Note: freq_hrs is an entity-level filter (applied during batch claim to exclude
-            # recently-processed entities), NOT a task-level cooldown. The tick spawns any
-            # auto_mode=1 task that has available entities; if none qualify, the runner exits cleanly.
+            # Claim-queue AUTO rows from data; gaze_email AUTO merged via live bind Avail (AST-1135).
+            due = list(database.get_due_tasks()) + _gaze_email_due_tasks()
+            # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
+            # gaze_email has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])

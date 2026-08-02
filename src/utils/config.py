@@ -2194,11 +2194,11 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 }
 
 
-# AST-1134: candidate-bound gaze_email dispatch rows (one per candidate; no null shell).
+# AST-1134/AST-1135: candidate-bound gaze_email dispatch rows (one per candidate; no null shell).
 # Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
-# entity_type/trigger_state stay None — mailbox poller, not an ENTITY_TYPES claim queue
-# (live bind-filtered Avail is AST-1135). Runner literals feed AST-1136.
-# Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
+# entity_type/trigger_state stay None — mailbox poller, not an ENTITY_TYPES claim queue.
+# Avail/eligible count is the live bind-filtered inbox count (core inbox helpers, AST-1135).
+# Runner literals feed AST-1136. Ruth parse task is AST-1089 (METEORITE_EMAIL_PARSE_CONFIG).
 # Seed auto_mode CLICK (false) — parent seed law; never Auto-true at provision.
 GAZE_EMAIL_CONFIG = {
     "task_key": "gaze_email",
