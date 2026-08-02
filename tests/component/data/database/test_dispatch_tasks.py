@@ -1394,17 +1394,35 @@ class TestAst972CandidateStageEligibility:
         )
         assert "c972c" in db.list_candidate_ids_with_dispatch_tasks()
 
-# Branches: nullable candidate_id + gaze_email-only save gate + partial unique (AST-1088).
+# Branches: gaze_email save requires bound candidate_id (AST-1134 retires null shell).
+# Schema remains nullable + partial unique for residual rows deleted at provision.
 class TestAst1088NullCandidateGazeEmail:
-    """AST-1088: shared Astral inbox dispatch_task row may have null candidate_id."""
+    """AST-1134: save_dispatch_task rejects null candidate_id for gaze_email too."""
 
-    def test_save_null_candidate_for_gaze_email(self, sqlite_in_memory) -> None:
+    def test_save_null_candidate_rejected_for_gaze_email(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
+
+        db = sqlite_in_memory
+        tk = GAZE_EMAIL_CONFIG["task_key"]
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            db.save_dispatch_task(
+                candidate_id=None,
+                task_key=tk,
+                min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
+                auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
+                entity_type=GAZE_EMAIL_CONFIG["entity_type"],
+                trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
+                batch_size=GAZE_EMAIL_CONFIG["batch_size"],
+                freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+            )
+
+    def test_bound_gaze_email_save(self, sqlite_in_memory) -> None:
         from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
         tk = GAZE_EMAIL_CONFIG["task_key"]
         tid = db.save_dispatch_task(
-            candidate_id=None,
+            candidate_id="cand-ge",
             task_key=tk,
             min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
             auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
@@ -1415,20 +1433,11 @@ class TestAst1088NullCandidateGazeEmail:
         )
         row = db.get_dispatch_task(tid)
         assert row is not None
-        assert row["candidate_id"] is None
+        assert row["candidate_id"] == "cand-ge"
         assert row["task_key"] == tk
-        assert int(row["auto_mode"]) == 1
+        assert int(row["auto_mode"]) == 0
         assert row["entity_type"] is None
         assert row["trigger_state"] is None
-
-    def test_second_null_shell_unique(self, sqlite_in_memory) -> None:
-        from src.utils.config import GAZE_EMAIL_CONFIG
-
-        db = sqlite_in_memory
-        tk = GAZE_EMAIL_CONFIG["task_key"]
-        db.save_dispatch_task(candidate_id=None, task_key=tk, min_count=1, auto_mode=True)
-        with pytest.raises(Exception, match="UNIQUE"):
-            db.save_dispatch_task(candidate_id=None, task_key=tk, min_count=1, auto_mode=True)
 
     def test_null_candidate_rejected_for_other_keys(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1442,7 +1451,7 @@ class TestAst1088NullCandidateGazeEmail:
         try:
             db._ensure_dispatch_task_schema(conn)
             cols = {r[1]: r for r in conn.execute("PRAGMA table_info(dispatch_task)").fetchall()}
-            assert cols["candidate_id"][3] == 0  # notnull=0
+            assert cols["candidate_id"][3] == 0  # notnull=0 — residual nulls deleted at provision
             idx_sql = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='index' "
                 "AND name='idx_dispatch_task_null_candidate_task_key'"
@@ -1452,7 +1461,7 @@ class TestAst1088NullCandidateGazeEmail:
         finally:
             conn.close()
 
-# Branches: null-candidate gaze_email due signal (AST-1090).
+# Branches: candidate-bound gaze_email due signal (AST-1090 special-case; AST-1134 bound row).
 class TestAst1090GazeEmailDue:
     def test_get_due_includes_gaze_email_when_freq_zero(self, sqlite_in_memory) -> None:
         from src.utils.config import GAZE_EMAIL_CONFIG
@@ -1460,10 +1469,10 @@ class TestAst1090GazeEmailDue:
         db = sqlite_in_memory
         tk = GAZE_EMAIL_CONFIG["task_key"]
         db.save_dispatch_task(
-            candidate_id=None,
+            candidate_id="cand-due",
             task_key=tk,
             min_count=1,
-            auto_mode=True,
+            auto_mode=True,  # due query is AUTO-only; seed CLICK is provision concern
             entity_type=None,
             trigger_state=None,
             freq_hrs=0,
@@ -1473,6 +1482,7 @@ class TestAst1090GazeEmailDue:
         assert tk in keys
         row = next(t for t in due if t["task_key"] == tk)
         assert row["available_count"] == 1
+        assert row["candidate_id"] == "cand-due"
 
     def test_count_eligible_respects_freq(self, sqlite_in_memory) -> None:
         from datetime import datetime, timedelta, timezone
@@ -1481,7 +1491,7 @@ class TestAst1090GazeEmailDue:
         db = sqlite_in_memory
         tk = GAZE_EMAIL_CONFIG["task_key"]
         tid = db.save_dispatch_task(
-            candidate_id=None,
+            candidate_id="cand-freq",
             task_key=tk,
             min_count=1,
             auto_mode=True,

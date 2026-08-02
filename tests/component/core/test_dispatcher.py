@@ -1602,13 +1602,21 @@ class TestAst972CandidateStageDispatch:
             "provision_meteorite_dispatch_tasks",
             MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
         )
-        # AST-1088: gaze_email provision runs after meteorite — stub so stage test stays DB-free.
-        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
-            monkeypatch.setattr(
-                dispatcher_mod,
-                "provision_gaze_email_dispatch_task",
-                MagicMock(return_value={"task_key": "gaze_email", "added": 0, "skipped": 1}),
-            )
+        # AST-1134: gaze_email coverage provision after meteorite — stub so stage test stays DB-free.
+        _stub = MagicMock(
+            return_value={
+                "task_key": "gaze_email",
+                "retired_null": 0,
+                "candidates_touched": 0,
+                "added": 0,
+                "skipped": 0,
+                "skipped_missing_config": 0,
+            }
+        )
+        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
+            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _stub)
+        elif hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
+            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_task", _stub)
         dispatcher_mod.start_scheduler()
         provision.assert_called_once_with()
 
@@ -1802,12 +1810,20 @@ class TestAst1054MeteoriteDispatchProvision:
             }
         )
         monkeypatch.setattr(dispatcher_mod, "provision_meteorite_dispatch_tasks", mprovision)
-        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
-            monkeypatch.setattr(
-                dispatcher_mod,
-                "provision_gaze_email_dispatch_task",
-                MagicMock(return_value={"task_key": "gaze_email", "added": 0, "skipped": 1}),
-            )
+        _stub = MagicMock(
+            return_value={
+                "task_key": "gaze_email",
+                "retired_null": 0,
+                "candidates_touched": 0,
+                "added": 0,
+                "skipped": 0,
+                "skipped_missing_config": 0,
+            }
+        )
+        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
+            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _stub)
+        elif hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
+            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_task", _stub)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -1825,19 +1841,19 @@ class TestAst1054MeteoriteDispatchProvision:
 
 
 @pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "ensure_gaze_email_dispatch_task"),
-    reason="AST-1088 gaze_email dispatch provision not on this publish tip",
+    not hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"),
+    reason="AST-1134 coverage-join gaze_email provision not on this publish tip",
 )
-class TestAst1088GazeEmailDispatchProvision:
-    """AST-1088: ensure/provision null-candidate gaze_email shell; start_scheduler hook."""
+class TestAst1134GazeEmailDispatchProvision:
+    """AST-1134: per-candidate ensure; retire null shell; coverage over every candidate."""
 
     def test_ensure_adds_then_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
         existing: list[dict] = []
         saves: list[dict] = []
         monkeypatch.setattr(
             dispatcher_mod.database,
-            "list_dispatch_tasks",
-            lambda: list(existing),
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: [r for r in existing if r.get("candidate_id") == cid],
         )
 
         def _save(**kwargs):
@@ -1851,40 +1867,87 @@ class TestAst1088GazeEmailDispatchProvision:
             return 41
 
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
-        first = dispatcher_mod.ensure_gaze_email_dispatch_task()
+        first = dispatcher_mod.ensure_gaze_email_dispatch_task("cand-a")
         assert first["added"] == 1 and first["skipped"] == 0
+        assert first["candidate_id"] == "cand-a"
         assert first["id"] == 41
-        assert saves[0]["candidate_id"] is None
+        assert saves[0]["candidate_id"] == "cand-a"
         assert saves[0]["task_key"] == dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
-        assert saves[0]["auto_mode"] is True
+        assert saves[0]["auto_mode"] is False
         assert saves[0]["entity_type"] is None
         assert saves[0]["trigger_state"] is None
-        second = dispatcher_mod.ensure_gaze_email_dispatch_task()
+        second = dispatcher_mod.ensure_gaze_email_dispatch_task("cand-a")
         assert second["added"] == 0 and second["skipped"] == 1
         assert second["id"] == 41
         assert len(saves) == 1
 
+    def test_ensure_requires_candidate_id(self) -> None:
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            dispatcher_mod.ensure_gaze_email_dispatch_task("")
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            dispatcher_mod.ensure_gaze_email_dispatch_task("   ")
+
     def test_ensure_skips_missing_task_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", {})
-        out = dispatcher_mod.ensure_gaze_email_dispatch_task()
+        out = dispatcher_mod.ensure_gaze_email_dispatch_task("cand-a")
         assert out["skipped_missing_config"] == 1
         assert out["added"] == 0 and out["skipped"] == 0
+        assert out["candidate_id"] == "cand-a"
 
-    def test_provision_wraps_ensure(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        ensure = MagicMock(return_value={"task_key": "gaze_email", "added": 1, "skipped": 0, "id": 9})
-        monkeypatch.setattr(dispatcher_mod, "ensure_gaze_email_dispatch_task", ensure)
-        assert dispatcher_mod.provision_gaze_email_dispatch_task() is ensure.return_value
-        ensure.assert_called_once_with()
+    def test_provision_retires_null_and_covers_candidates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        deleted: list[int] = []
+        ensured: list[str] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks",
+            lambda: [
+                {"id": 1, "task_key": "gaze_email", "candidate_id": None},
+                {"id": 2, "task_key": "gaze_email", "candidate_id": "keep"},
+                {"id": 3, "task_key": "evaluate_jd", "candidate_id": None},
+            ],
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "delete_dispatch_task",
+            lambda tid: deleted.append(int(tid)),
+        )
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_candidates",
+            lambda: [
+                {"astral_candidate_id": "c1"},
+                {"astral_candidate_id": "c2"},
+                {"astral_candidate_id": ""},
+            ],
+        )
+
+        def _ensure(cid: str):
+            ensured.append(cid)
+            return {
+                "candidate_id": cid,
+                "task_key": "gaze_email",
+                "added": 1 if cid == "c1" else 0,
+                "skipped": 0 if cid == "c1" else 1,
+                "skipped_missing_config": 0,
+                "id": 10,
+            }
+
+        monkeypatch.setattr(dispatcher_mod, "ensure_gaze_email_dispatch_task", _ensure)
+        out = dispatcher_mod.provision_gaze_email_dispatch_tasks()
+        assert deleted == [1]
+        assert ensured == ["c1", "c2"]
+        assert out["retired_null"] == 1
+        assert out["candidates_touched"] == 2
+        assert out["added"] == 1
+        assert out["skipped"] == 1
+        assert out["skipped_missing_config"] == 0
 
     def test_start_scheduler_invokes_gaze_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
         dispatcher_mod._tick_thread = None
         monkeypatch.setattr(
             dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
-        )
-        monkeypatch.setattr(
-            dispatcher_mod,
-            "provision_candidate_stage_dispatch_tasks",
-            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
         )
         monkeypatch.setattr(
             dispatcher_mod,
@@ -1894,13 +1957,14 @@ class TestAst1088GazeEmailDispatchProvision:
         gprovision = MagicMock(
             return_value={
                 "task_key": "gaze_email",
+                "retired_null": 1,
+                "candidates_touched": 2,
                 "added": 1,
-                "skipped": 0,
+                "skipped": 1,
                 "skipped_missing_config": 0,
-                "id": 7,
             }
         )
-        monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_task", gprovision)
+        monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", gprovision)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -2118,10 +2182,12 @@ class TestAst1062QualifyMeteoriteChunkExhaust:
     reason="AST-1090 gaze_email wiring not on this publish tip",
 )
 class TestAst1090GazeEmailDispatchOne:
-    """AST-1090: _dispatch_one routes gaze_email without candidate API key."""
+    """AST-1090 / AST-1134: _dispatch_one routes gaze_email; ledger uses bound row cid."""
 
     @pytest.mark.asyncio
-    async def test_calls_runner_without_candidate_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_calls_runner_with_bound_ledger_cid(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         from src.core import gaze_email as ge_mod
 
         get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
@@ -2135,7 +2201,8 @@ class TestAst1090GazeEmailDispatchOne:
             }
         )
         monkeypatch.setattr(ge_mod, "run_gaze_email", runner)
-        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", MagicMock())
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod, "compute_batch_cost", MagicMock(return_value=0.0))
         monkeypatch.setattr(dispatcher_mod, "flush_log_buffer", MagicMock())
@@ -2146,7 +2213,7 @@ class TestAst1090GazeEmailDispatchOne:
         task = {
             "id": 90,
             "task_key": dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"],
-            "candidate_id": None,
+            "candidate_id": "cand-bound",
             "auto_mode": 1,
             "debug": 0,
         }
@@ -2157,3 +2224,29 @@ class TestAst1090GazeEmailDispatchOne:
         loop.assert_not_called()
         get_cand.assert_not_called()
         assert upd.called
+        assert save_ledger.called
+        # save_dispatch_ledger(batch_id, task_key, candidate_id, …) — bound row cid.
+        assert save_ledger.call_args.args[2] == "cand-bound"
+
+    @pytest.mark.asyncio
+    async def test_skips_unbound_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import gaze_email as ge_mod
+
+        runner = AsyncMock()
+        monkeypatch.setattr(ge_mod, "run_gaze_email", runner)
+        save_ledger = MagicMock()
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
+        monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
+        task = {
+            "id": 91,
+            "task_key": dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"],
+            "candidate_id": None,
+            "auto_mode": 0,
+            "debug": 0,
+        }
+        with dispatcher_mod._registry_lock:
+            dispatcher_mod._task_registry[91] = {"asyncio_task": None}
+        await dispatcher_mod._dispatch_one(task)
+        runner.assert_not_awaited()
+        save_ledger.assert_not_called()

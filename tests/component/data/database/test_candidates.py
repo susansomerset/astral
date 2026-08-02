@@ -72,6 +72,41 @@ class TestClearCandidateApiKey:
         assert row["candidate_api_key"] is None
 
 
+
+# Branches: candidate.last_email_check column + stamp helper (AST-1134).
+class TestAst1134LastEmailCheck:
+    """AST-1134: last_email_check schema + update_candidate_last_email_check."""
+
+    def test_fresh_schema_has_nullable_column(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db._candidate_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+            cols = {r[1]: r for r in conn.execute("PRAGMA table_info(candidate)").fetchall()}
+            assert "last_email_check" in cols
+            assert cols["last_email_check"][3] == 0  # nullable
+        finally:
+            conn.close()
+
+    def test_stamp_sets_when_and_default_now(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1134", state="NEW_CANDIDATE")
+        assert db.get_candidate("c1134").get("last_email_check") is None
+        db.update_candidate_last_email_check("c1134", when="2026-08-02 12:00:00")
+        assert db.get_candidate("c1134")["last_email_check"] == "2026-08-02 12:00:00"
+        db.update_candidate_last_email_check("c1134")
+        stamp = db.get_candidate("c1134")["last_email_check"]
+        assert stamp and stamp != "2026-08-02 12:00:00"
+
+    def test_stamp_raises_blank_and_missing(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        with pytest.raises(ValueError, match="candidate_id is required"):
+            db.update_candidate_last_email_check("")
+        with pytest.raises(LookupError, match="Candidate not found"):
+            db.update_candidate_last_email_check("missing-cand")
+
+
 class TestAst971CandidateStateHistoryColumn:
     """AST-971: state_history column — parse, persist, preserve-when-omitted."""
 

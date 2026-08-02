@@ -3300,13 +3300,14 @@ class TestAst1084EvaluateJdCriteria:
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
 
 
-# Branches: GAZE_EMAIL_CONFIG + gaze_email TASK_CONFIG shell + admin defaults (AST-1088).
+# Branches: GAZE_EMAIL_CONFIG + gaze_email TASK_CONFIG shell + admin defaults
+# (AST-1088 null shell; AST-1134 candidate-bound — no dispatch_ledger_candidate_id).
 @pytest.mark.skipif(
     not hasattr(cfg, "GAZE_EMAIL_CONFIG"),
     reason="AST-1088 GAZE_EMAIL_CONFIG not on this publish tip",
 )
 class TestAst1088GazeEmailConfig:
-    """AST-1088: shared Astral inbox gaze_email dispatch shell (null candidate_id)."""
+    """AST-1134: candidate-bound gaze_email shell (null entity/trigger; bound via row cid)."""
 
     def test_gaze_email_config_and_task_shell(self) -> None:
         g = cfg.GAZE_EMAIL_CONFIG
@@ -3317,9 +3318,11 @@ class TestAst1088GazeEmailConfig:
         assert g["auto_mode"] is False
         assert g["min_count"] == 1
         assert g["batch_size"] == 1
-        assert g["freq_hrs"] == 0
+        assert g["freq_hrs"] == 0.1
         assert g["entity_type"] is None
         assert g["trigger_state"] is None
+        # AST-1134: ledger placeholder retired — row candidate_id is authority.
+        assert "dispatch_ledger_candidate_id" not in g
 
         tc = cfg.TASK_CONFIG["gaze_email"]
         assert tc["entity_type"] is None
@@ -3385,8 +3388,9 @@ class TestAst1090GazeEmailRunnerConfig:
     def test_runner_literals(self) -> None:
         g = cfg.GAZE_EMAIL_CONFIG
         assert set(g["subject_url_schemes"]) == {"http", "https"}
-        assert g["dispatch_ledger_candidate_id"] == ""
         assert g["debug_func"] == "gaze_email.run"
+        # AST-1134: dispatch_ledger_candidate_id removed (bound row cid).
+        assert "dispatch_ledger_candidate_id" not in g
         # Shell keys from AST-1088 remain.
         assert g["task_key"] == "gaze_email"
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
@@ -3508,18 +3512,20 @@ class TestAst1100ArtifactTabPinKeys:
         assert by_id["artifact_cover"]["shapes_key"] == "cover_letter"
         assert by_id["artifact_application"]["artifact_key"] == "proposed_answers"
 
-# Branches: ADMIN_CONFIG always-visible under Avail gt0 — mailbox shells (AST-1106).
+# Branches: ADMIN_CONFIG always-visible under Avail gt0 (AST-1106 seed; AST-1134 empty).
 @pytest.mark.skipif(
     not hasattr(cfg, "admin_always_visible_under_avail_gt0_dispatch_task_keys"),
     reason="AST-1106 admin always-visible helper not on this publish tip",
 )
 class TestAst1106AlwaysVisibleUnderAvailGt0:
-    def test_helper_seeded_from_gaze_email_config(self) -> None:
+    def test_helper_empty_after_carve_out_retired(self) -> None:
+        # AST-1134: gaze_email carve-out retired — helper + API stamp remain for empty/future keys.
         keys = cfg.admin_always_visible_under_avail_gt0_dispatch_task_keys()
         assert isinstance(keys, frozenset)
-        assert cfg.GAZE_EMAIL_CONFIG["task_key"] in keys
+        assert keys == frozenset()
+        assert cfg.GAZE_EMAIL_CONFIG["task_key"] not in keys
         raw = cfg.ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
-        assert raw[0] is cfg.GAZE_EMAIL_CONFIG["task_key"] or raw[0] == cfg.GAZE_EMAIL_CONFIG["task_key"]
+        assert tuple(raw) == ()
 
 
 
@@ -3558,3 +3564,24 @@ class TestAst1131MeteoriteEmailIngestPasteNormalizeConfig:
             "data-url",
         )
         assert cfg_block["promote_bare_http_urls"] is True
+
+
+# Branches: METEORITE_EMAIL_INGEST_CONFIG hygiene excludes / allow / non-job markers (AST-1132).
+class TestAst1132MeteoriteEmailIngestHygieneConfig:
+    def test_hygiene_and_non_job_knobs(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        cfg_block = METEORITE_EMAIL_INGEST_CONFIG
+        excludes = {s.casefold() for s in cfg_block["link_exclude_substrings"]}
+        for frag in ("w3.org", "/2000/svg", "schemas.xmlsoap.org", "xmlns="):
+            assert frag in excludes
+        assert tuple(cfg_block["link_allow_substrings"]) == ()
+        markers = {s.casefold() for s in cfg_block["non_job_visible_substrings"]}
+        for frag in (
+            "www.w3.org/2000/svg",
+            "w3.org/2000/svg",
+            "schemas.xmlsoap.org",
+            "xml schema",
+            "svg namespace",
+        ):
+            assert frag in markers
