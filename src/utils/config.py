@@ -4582,6 +4582,18 @@ BUILD_CONFIG = {
             "signature": {"required": True},
         },
     },
+    # AST-1138: job Print Cover Letter → SomersetCover field map (consume session emit).
+    "job_cover_somerset": {
+        "document_title_key": "session_cover_letter",  # reuse BUILD_CONFIG[…]["document_title"]
+        # Normalized job cover keys → session_cover_letter field keys
+        "artifact_to_fields": {
+            "re_line": "subject",
+            "body": "letter",
+            "signature": "signature",
+        },
+        # Session fields job artifacts do not store — always "" for job Print Cover Letter
+        "unset_fields": ("from_block", "letter_date", "to_block", "signoff_closing"),
+    },
     # AST-1125: cover HTML render tokens (NOT TOKEN_SOURCES / resolve_tokens).
     # Emit (AST-1126) reads this contract; resume builders must ignore it.
     "cover_letter_render_tokens": {

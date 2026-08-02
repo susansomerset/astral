@@ -141,3 +141,6 @@ After AST-1137: Print Cover Letter (cover-only job HTML via `build_cover_letter`
 | 2 | Shared `_emit_somerset_cover_html_document` (session call sites updated) |
 | 3 | `build_cover_letter_from_job` → resolve fromBlock + SomersetCover (no resume shell) |
 | 4 | Style D debug: fromBlock source + `document_path=somerset_cover` |
+
+**Build:** `code(AST-1138)` on `sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css` — SHA filled after publish.
+

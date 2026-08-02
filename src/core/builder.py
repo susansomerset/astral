@@ -310,7 +310,7 @@ def build_cover_letter_from_job(
     *,
     debug: bool = False,
 ) -> str:
-    """Render cover-letter HTML only from job artifacts (no resume body sections)."""
+    """Render cover-only Print Cover Letter as SomersetCover (fromBlock + golden CSS)."""
     cd = _coerce_candidate_blob(candidate_data)
     if debug:
         _log.set_debug_flag(True)
@@ -328,35 +328,34 @@ def build_cover_letter_from_job(
             debug=debug,
         )
         raise ValueError(msg)
-    render: Dict[str, Any] = {}
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
-    markers = _apply_resume_text_markers(render)
-    style = _merge_effective_style(cd)
-    html_out = _emit_html_document(
-        markers,
-        style,
-        include_cover=True,
-        cover_letter=cover,
-        critical_keywords=None,
-        emit_prior_experience=False,
-        cover_profile=cd.get("contact") or {},
-        body_section_ids=[],
-        body_section_titles={},
+
+    # AST-1138: SomersetCover path — no resume header/contact shell for cover-only.
+    from_res = candidate_mod.resolve_cover_from_block(
+        _candidate_for_cover_from_block(cd), debug=debug
+    )
+    contact = cd.get("contact") or {}
+    cover_sig = cover.get("signature") or ""
+    token_status, sig_src, image_status = _signature_image_token_status(
+        cover_sig, {"contact": contact}
+    )
+    fields = _job_cover_somerset_fields(cover, from_res["text"])
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
+    html_out = _emit_somerset_cover_html_document(
+        fields, signature_image_src=sig_src, document_title=doc_title
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd)
-        contact = cd.get("contact") or {}
-        cover_sig = cover.get("signature") or ""
-        token_status, _safe, image_status = _signature_image_token_status(
-            cover_sig, {"contact": contact}
-        )
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
             total=1,
             identifier=identifier,
-            outcome="success — cover letter html",
+            outcome="success — somerset cover html",
         )
+        _log.debug_detail(f"from_block_source={from_res['source']}")
+        _log.debug_detail(f"from_block_chars={len(from_res['text'])}")
+        _log.debug_detail("document_path=somerset_cover")
         _log.debug_detail(f"cover_source={cover_src!r}")
         _log.debug_detail(
             f"fields re_line={bool((cover.get('re_line') or '').strip())} "
@@ -572,7 +571,7 @@ def build_session_cover_letter(
         normalized.get("signature") or "", candidate_root
     )
 
-    html_out = _emit_session_cover_html_document(normalized, signature_image_src=sig_src)
+    html_out = _emit_somerset_cover_html_document(normalized, signature_image_src=sig_src)
     if debug:
         _log.debug_index(
             func="builder.build_session_cover_letter",
