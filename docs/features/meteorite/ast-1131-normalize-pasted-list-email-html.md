@@ -189,3 +189,15 @@ Use the normalized `html` for both links mode and body mode (including `_meteori
 | §2.5 / §3.3 layers | Pure string helper in utils; core orchestrates; no external/data imports from utils beyond existing config |
 | §2.4 batch / §2.6 state | Untouched — create still lands METEORITE_NEW via existing path |
 | Boundaries | No exclude-list (AST-1132), no qualify (AST-1133), no gaze_email redesign |
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`
+**Plan path:** `docs/features/meteorite/ast-1131-normalize-pasted-list-email-html.md`
+**Built tip:** `3ba80bae7a2584e72ae6a10652137608f4f02443` (`3ba80bae`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `3ba80bae` | Config knobs + `normalize_pasted_list_email_html` + strip/ingest wire |
