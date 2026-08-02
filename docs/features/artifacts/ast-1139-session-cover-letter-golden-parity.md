@@ -145,4 +145,4 @@ Against the parent Original brief `<style>` (AST-1124 Description), verify the s
 | 2 | `build_session_cover_letter` empty→`resolve_cover_from_block`; Style D source + `document_path=somerset_cover`; SomersetCover helper present for call sites |
 | 3 | Admin Session: empty from-block allowed when candidate selected; help copy |
 
-Tip: `58ea65e5`
+Tip: `84737c54`
