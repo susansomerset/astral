@@ -2104,6 +2104,23 @@ input.side-tab-heading-editable:focus {
   opacity: 0.45;
   cursor: not-allowed;
 }
+.manage-email-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  font-size: 13px;
+}
+.manage-email-toolbar button {
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+.manage-email-toolbar button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
 
 /* SideTabPanel fills the modal-body */
 .modal-card--wide .side-tab-panel {

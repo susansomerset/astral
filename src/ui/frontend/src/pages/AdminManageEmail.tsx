@@ -28,7 +28,31 @@ export default function AdminManageEmail() {
   const [bodyError, setBodyError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [createBusyId, setCreateBusyId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [landBusy, setLandBusy] = useState(false)
   const clearToast = useCallback(() => setToast(null), [])
+
+  const selectionCount = selectedIds.size
+  const landEnabled = selectionCount > 0 && !landBusy
+  const allSelected =
+    messages.length > 0 && selectedIds.size === messages.length
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(messages.map(m => m.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
 
   useEffect(() => {
     let cancelled = false
@@ -185,53 +209,91 @@ export default function AdminManageEmail() {
         <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>
       )}
       {!loading && !error && (
-        <div className="list-page-table-wrap">
-          <table className="list-page-table">
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>From</th>
-                <th>Candidate</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {messages.map(row => (
-                <tr
-                  key={row.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => openMessage(row)}
-                >
-                  <td>{row.subject}</td>
-                  <td>{row.from_address}</td>
-                  {matchCell(row)}
-                  <td>{row.date}</td>
-                  <td>{row.unread ? "Unread" : "Read"}</td>
-                  <td onClick={e => e.stopPropagation()}>
-                    {row.candidate_match?.matched === true &&
-                    (row.candidate_match.astral_candidate_id || "").trim() ? (
-                      <button
-                        type="button"
-                        className="manage-email-create"
-                        disabled={createBusyId !== null}
-                        onClick={e => onCreateClick(row, e)}
-                      >
-                        Create
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-              {messages.length === 0 && (
+        <>
+          <div className="manage-email-toolbar">
+            <button
+              type="button"
+              disabled={messages.length === 0}
+              onClick={selectAllVisible}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              disabled={selectionCount === 0}
+              onClick={clearSelection}
+            >
+              Clear selection
+            </button>
+            <button type="button" disabled={!landEnabled} onClick={() => {}}>
+              Land Meteorite
+            </button>
+            <span>{selectionCount} selected</span>
+          </div>
+          <div className="list-page-table-wrap">
+            <table className="list-page-table">
+              <thead>
                 <tr>
-                  <td colSpan={6}>No messages in inbox.</td>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() =>
+                        allSelected ? clearSelection() : selectAllVisible()
+                      }
+                    />
+                  </th>
+                  <th>Subject</th>
+                  <th>From</th>
+                  <th>Candidate</th>
+                  <th>Date</th>
+                  <th>Status</th>
+                  <th>Actions</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {messages.map(row => (
+                  <tr
+                    key={row.id}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openMessage(row)}
+                  >
+                    <td onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(row.id)}
+                        onChange={() => toggleSelect(row.id)}
+                      />
+                    </td>
+                    <td>{row.subject}</td>
+                    <td>{row.from_address}</td>
+                    {matchCell(row)}
+                    <td>{row.date}</td>
+                    <td>{row.unread ? "Unread" : "Read"}</td>
+                    <td onClick={e => e.stopPropagation()}>
+                      {row.candidate_match?.matched === true &&
+                      (row.candidate_match.astral_candidate_id || "").trim() ? (
+                        <button
+                          type="button"
+                          className="manage-email-create"
+                          disabled={createBusyId !== null}
+                          onClick={e => onCreateClick(row, e)}
+                        >
+                          Create
+                        </button>
+                      ) : null}
+                    </td>
+                  </tr>
+                ))}
+                {messages.length === 0 && (
+                  <tr>
+                    <td colSpan={7}>No messages in inbox.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Modal
