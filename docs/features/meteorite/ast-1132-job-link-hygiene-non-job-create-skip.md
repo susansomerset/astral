@@ -202,3 +202,15 @@ Do not Playwright-fetch excluded or non-allowed hrefs (they do not enter `links`
 - §2.5 / §3.3: Playwright stays in external via existing `_meteorite_fetch_link_visible_text`; decisions stay in core; data helpers have no business branching beyond SQL scope.
 - §2.6: create still lands **METEORITE_NEW** via unchanged `create_meteorite_job`; no new job states.
 - Out of scope honored: no AST-1131 normalize edits, no AST-1133 qualify, no `tests/` / bible.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1130/AST-1132-job-link-hygiene-non-job-create-skip`  
+**Plan path:** `docs/features/meteorite/ast-1132-job-link-hygiene-non-job-create-skip.md`  
+**Built tip:** `24528f0f1d0f250441dc8c9b3efa5acce31164c5` (`24528f0f`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `24528f0f` | Config hygiene knobs + candidate-scoped dedupe helpers + gazer gates |
