@@ -3870,7 +3870,13 @@ class TestAst1062QualifyMeteorite:
             {**self._good_response("j-link"), "job_link": "/relative"},
             {**self._good_response("j-jd"), "jd_text": "short"},
         ]
-        jobs = [self._job(c["astral_job_id"]) for c in cases]
+        # AST-1133: Create http fallback would rescue /relative Ruth link — keep input empty for that gate.
+        jobs = []
+        for c in cases:
+            j = self._job(c["astral_job_id"])
+            if c["astral_job_id"] == "j-link":
+                j = {**j, "job_link": ""}
+            jobs.append(j)
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -4548,3 +4554,304 @@ class TestAst1127QualifyMeteoriteOmitCompanyJobId:
         assert out["failed"] == 0
         assert initialize.call_args.args[2]["company_job_id"] == self._DICE_UUID
         assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]
+
+
+
+# Branches: unique link bind; claimed ids untouched; ambiguous drop; empty skip (AST-1133).
+class TestAst1133BindResponseJobsByJobLink:
+    def test_binds_unmatched_rows_by_normalized_link(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_by_job_link"):
+            pytest.skip("AST-1133 link bind helper not on tip")
+        claimed = [
+            {"astral_job_id": "C0", "job_link": "https://Jobs.Example.com/role/a/"},
+            {"astral_job_id": "C1", "job_link": "https://jobs.example.com/role/b"},
+        ]
+        response = [
+            {
+                "astral_job_id": "dice-uuid-aaaa",
+                "job_link": "https://jobs.example.com/role/a",
+                "job_title": "A",
+            },
+            {
+                "astral_job_id": "dice-uuid-bbbb",
+                "job_link": "https://jobs.example.com/role/b",
+                "job_title": "B",
+            },
+        ]
+        consult_mod._bind_response_jobs_by_job_link(response, claimed)
+        assert [r["astral_job_id"] for r in response] == ["C0", "C1"]
+
+    def test_does_not_overwrite_already_claimed_ids(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_by_job_link"):
+            pytest.skip("AST-1133 link bind helper not on tip")
+        claimed = [
+            {"astral_job_id": "C0", "job_link": "https://jobs.example.com/role/a"},
+            {"astral_job_id": "C1", "job_link": "https://jobs.example.com/role/b"},
+        ]
+        response = [
+            {"astral_job_id": "C0", "job_link": "https://jobs.example.com/role/b"},
+            {"astral_job_id": "wrong", "job_link": "https://jobs.example.com/role/a"},
+        ]
+        consult_mod._bind_response_jobs_by_job_link(response, claimed)
+        assert response[0]["astral_job_id"] == "C0"
+        # C0 already assigned; unmatched row cannot steal C0 via link.
+        assert response[1]["astral_job_id"] == "wrong"
+
+    def test_ambiguous_duplicate_claim_links_not_bound(self) -> None:
+        if not hasattr(consult_mod, "_bind_response_jobs_by_job_link"):
+            pytest.skip("AST-1133 link bind helper not on tip")
+        claimed = [
+            {"astral_job_id": "C0", "job_link": "https://jobs.example.com/same"},
+            {"astral_job_id": "C1", "job_link": "https://jobs.example.com/same"},
+        ]
+        response = [
+            {"astral_job_id": "x0", "job_link": "https://jobs.example.com/same"},
+            {"astral_job_id": "x1", "job_link": "https://jobs.example.com/same"},
+        ]
+        consult_mod._bind_response_jobs_by_job_link(response, claimed)
+        assert [r["astral_job_id"] for r in response] == ["x0", "x1"]
+
+
+# Branches: multi-job link bind qualify; Create link fallback; content FAILED; Style D link_source (AST-1133).
+class TestAst1133QualifyMeteoriteListCreated:
+    _UUID0 = "11111111-1111-1111-1111-111111111111"
+    _UUID1 = "22222222-2222-2222-2222-222222222222"
+
+    def _jd(self) -> str:
+        return "Visible JD body text enough characters here. " * 2
+
+    def _claim(self, aid: str, link: str) -> dict:
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        return {
+            "astral_job_id": aid,
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-1133",
+            "job_link": link,
+            "job_data": {jd_key: self._jd()},
+        }
+
+    @pytest.mark.asyncio
+    async def test_multi_job_wrong_ids_bind_by_link_and_qualify(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        if not hasattr(consult_mod, "_bind_response_jobs_by_job_link"):
+            pytest.skip("AST-1133 link bind helper not on tip")
+        pass_state = TASK_CONFIG["qualify_meteorite"]["pass_state"]
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        link0 = f"https://www.dice.com/job-detail/{self._UUID0}"
+        link1 = f"https://www.dice.com/job-detail/{self._UUID1}"
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                side_effect=lambda aid: {
+                    "company_job_id": self._UUID0 if aid == "C0" else self._UUID1,
+                    "job_title": "Engineer",
+                    "job_link": link0 if aid == "C0" else link1,
+                    "job_data": {jd_key: self._jd()},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": self._UUID0,
+                                "company_job_id": self._UUID0,
+                                "job_title": "Engineer A",
+                                "job_link": link0,
+                                "jd_text": self._jd(),
+                            },
+                            {
+                                "astral_job_id": self._UUID1,
+                                "company_job_id": self._UUID1,
+                                "job_title": "Engineer B",
+                                "job_link": link1,
+                                "jd_text": self._jd(),
+                            },
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [self._claim("C0", link0), self._claim("C1", link1)]
+        out = await consult_mod.qualify_meteorite("batch-1133-bind", jobs, {}, debug=False)
+        assert out["passed"] == 2
+        assert out["failed"] == 0
+        assert out.get("errors", 0) == 0
+        assert initialize.call_count == 2
+        assert {c.args[0] for c in initialize.call_args_list} == {"C0", "C1"}
+        assert all(c.args[2] == pass_state for c in transition.call_args_list)
+
+    @pytest.mark.asyncio
+    async def test_empty_ruth_link_uses_create_link_and_qualifies(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        pass_state = TASK_CONFIG["qualify_meteorite"]["pass_state"]
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        create_link = f"https://www.dice.com/job-detail/{self._UUID0}"
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": self._UUID0,
+                    "job_title": "Engineer",
+                    "job_link": create_link,
+                    "job_data": {jd_key: self._jd()},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "C0",
+                                "company_job_id": "",
+                                "job_title": "Engineer Role",
+                                "job_link": "",
+                                "jd_text": self._jd(),
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1133-fallback", [self._claim("C0", create_link)], {}, debug=True
+        )
+        assert out["passed"] == 1
+        assert out["failed"] == 0
+        parsed = initialize.call_args.args[2]
+        assert parsed["job_link"] == create_link
+        assert parsed["company_job_id"] == self._UUID0
+        assert transition.call_args.args[2] == pass_state
+
+    @pytest.mark.asyncio
+    async def test_short_title_still_content_failed(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        fail = TASK_CONFIG["qualify_meteorite"]["fail_state"]
+        create_link = f"https://www.dice.com/job-detail/{self._UUID0}"
+        transition = MagicMock()
+        initialize = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "C0",
+                                "company_job_id": self._UUID0,
+                                "job_title": "ab",
+                                "job_link": "",
+                                "jd_text": self._jd(),
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1133-title", [self._claim("C0", create_link)], {}, debug=False
+        )
+        assert out["passed"] == 0
+        assert out["failed"] == 1
+        assert initialize.call_count == 0
+        assert transition.call_args.args[2] == fail
+
+    @pytest.mark.asyncio
+    async def test_debug_detail_includes_link_source_input(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG or not hasattr(consult_mod, "qualify_meteorite"):
+            pytest.skip("qualify_meteorite not on tip")
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        create_link = f"https://www.dice.com/job-detail/{self._UUID0}"
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": self._UUID0,
+                    "job_title": "Engineer",
+                    "job_link": create_link,
+                    "job_data": {jd_key: self._jd()},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "C0",
+                                "company_job_id": "",
+                                "job_title": "Engineer Role",
+                                "job_link": "",
+                                "jd_text": self._jd(),
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        dbg_d = MagicMock()
+        monkeypatch.setattr(consult_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_detail", dbg_d)
+        await consult_mod.qualify_meteorite(
+            "batch-1133-src", [self._claim("C0", create_link)], {}, debug=True
+        )
+        detail = " ".join(str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list)
+        assert "link_source=input" in detail
+        assert "found source=UUID-from-job_link" in detail

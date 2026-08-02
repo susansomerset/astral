@@ -21,6 +21,7 @@ from src.external.gmail import (
     list_inbox_messages as external_list_inbox_messages,
 )
 from src.utils.config import INBOX_CREATE_JOB_CONFIG, METEORITE_CONFIG
+from src.utils.formatting import normalize_pasted_list_email_html
 from src.utils.logging import get_logger, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -130,6 +131,9 @@ def strip_extract_email_html(subject: str, html_body: str) -> str:
         body = soup.body.decode_contents()
     else:
         body = soup.decode_contents()
+
+    # AST-1131: unescape / unwrap nested Gmail auto-links before subject wrap.
+    body = normalize_pasted_list_email_html(body)
 
     escaped_subject = html_module.escape(subject or "", quote=True)
     return INBOX_CREATE_JOB_CONFIG["subject_html_template"].format(
