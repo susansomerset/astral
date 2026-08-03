@@ -176,3 +176,36 @@ Harden model-facing instructions so every rubric grading task (Do/Get/Like, JD, 
 | §3.5 naming | Constant `_ENCODED_GRADE_SET_COMPLETENESS` + marker `AST-1154` |
 
 **Conflicts:** None.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`  
+**Product commits:**
+- `0c07b966` — Stage 1: `_ENCODED_GRADE_SET_COMPLETENESS` on four multi-vector `payload_instructions`
+- `e62fb471` — Stage 2: AST-1154 completeness marker + VALIDATE/Rules on seven graded `agent_task` cache prompts; AST-756 fixture byte-identical
+
+**Local verification:** Stage 1 import assert on marker presence/absence; Stage 2 marker coverage + `cmp` fixture identity.
+
+---
+
+## Radia review
+
+**[code-rubric] revision=1** · **Publish ref:** `5842580113fbc6f228d7cb56b073d47ed54e08e1` · **Overall:** DISCUSS
+
+Full active statute set (65) scored in-session — 0 fix-now. Stage 1 / Stage 2 diffs match the plan verbatim (constant on exactly the 4 planned keys, absent from `grades_encoded_vet_meta` / `grades_json`; all 7 planned `agent_task` rows carry the marker + tighteners; fixture byte-identical on the publish tip).
+
+**discuss — `astral.standards.names-not-ticket-ids`.** Carried from Joan's plan-rubric verdict: `GRADE SET COMPLETENESS (AST-1154)` doubles as the Stage 2 idempotency sentinel and ships in production `cache_prompt` text. Non-blocking (in-file precedent: `AST-723_RUBRIC_VECTORS_TOKEN`); engineer's call, exercised — kept the ticket-id sentinel.
+
+**Notes:** 3 statutes Joan excluded at plan time (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) score `conforms` on the diff-based sweep — the actual diff includes this plan doc and the pipeline's later test/test-bible commits, neither of which sit in the plan's Files-Changed table by convention. Both clean; not scope creep. Per-commit role separation verified: `code()` commits never touch `tests/**` / `docs/test-bible/**`; `test()` / `merge-tests()` commits never touch `src/**` / `docs/features/**`.
+
+— Radia
+
+---
+
+## Resolution
+
+**2026-08-03** — Radia **0 fix-now**. Discuss on `astral.standards.names-not-ticket-ids` (ticket-id in `GRADE SET COMPLETENESS (AST-1154)` sentinel): **kept as shipped**. Renaming would churn Betty’s marker assertions and Manage Tasks copy for a non-blocking, already-precedented pattern; no product code change this pass.
+
+**Publish tip after resolve:** see `resolve(AST-1154): — clean` commit on `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.

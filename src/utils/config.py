@@ -3331,6 +3331,16 @@ def get_repo_admin_json_table_keys() -> tuple[str, ...]:
     """Apply order: agent personas before agent_task rows that reference agent_id."""
     return ("agent", "agent_task")
 
+# AST-1154: injected into multi-vector grades_encoded* payload_instructions (not vet / grades_json).
+_ENCODED_GRADE_SET_COMPLETENESS = (
+    "GRADE SET COMPLETENESS (AST-1154) — mandatory:\n"
+    "Emit exactly one grade segment for every rubric vector code listed in the grading "
+    "instructions for this run. Omitting a code is invalid.\n"
+    "When there is no signal for a vector, emit {code}X0 — never skip that segment.\n"
+    "Do not invent extra codes beyond the rubric. Do not invent letter grades to fill gaps — "
+    "use X with confidence 0 when the source is silent."
+)
+
 # ---------------------------------------------------------------------------
 # ASTRAL_CONFIG: code-related. Paths, API, state machines, batch settings.
 # Grouped by consumer for migration clarity.
@@ -3531,7 +3541,7 @@ ASTRAL_CONFIG = {
                 "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
                 "001|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1\n"
                 "002|ERA5|MEA3|PGA3|WAA1|MWX0|KOF2|QCF2"
-            ),
+            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
         },
         # Same grade segments as grades_encoded; optional tail → job["notes"] (do/get/like), not listing meta.
         "grades_encoded_notes": {
@@ -3557,7 +3567,7 @@ ASTRAL_CONFIG = {
                 "\nExamples (value of agent_payload):\n"
                 "000|ERF1|MEF2|PGX0|WAF1|MWF1|KOF1|QCF1\n"
                 "000|ERA3|MEF2|PGA4|WAA4|MWA5|KOA3|QCA1|Short optional note for the job"
-            ),
+            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
         },
         # Compact encoded with optional metadata fields after grade segments.
         "grades_encoded_meta": {
@@ -3583,7 +3593,7 @@ ASTRAL_CONFIG = {
                 "000|ERC3|MEC4|PGA5|WAX0|MWC3|KOB5|QCB3|2983982372|Mediocre Job Title|https://www.workheredummy.com/jobs/2983982372|location:Remote|salary_range:$140-160k\n"
                 "001|ERA2|MEA4|PGF5|WAA4|MWX0|KOA5|QCA2|8398237461\n"
                 "002|ERB3|MEB4|PGB5|WAB5|MWA4|KOA5|QCB1|9823975238|Fine Job Title|https://www.workheredummy.com/jobs/9823975238|location:Remote|salary_range:$140-160k"
-            ),
+            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
         },
         # Vet inflow discovery: one LT{grade}{conf} segment + required website meta (AST-880).
         "grades_encoded_vet_meta": {
@@ -3631,7 +3641,7 @@ ASTRAL_CONFIG = {
                 "000|ERC2|MEA3|PGA2|[13]|[3,6,19]\n"
                 "000|RCA3|MPB3|USA3|[59,60]|[51,46,53]\n"
                 "000|RCA3|MPB3|USA3|JOB:59,60|CULT:51,46,53"
-            ),
+            ) + "\n\n" + _ENCODED_GRADE_SET_COMPLETENESS,
         },
     },
     # --- Consult (consult): per-vector importance (1–10); multipliers for AST-358 scoring ---
