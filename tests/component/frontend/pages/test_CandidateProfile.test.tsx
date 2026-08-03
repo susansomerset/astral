@@ -1,4 +1,4 @@
-import { screen, waitFor, within } from "@testing-library/react"
+import { fireEvent, screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
@@ -54,6 +54,18 @@ const profileSections = {
       {
         label: "Title Patterns",
         fields: [{ key: "contact.title_patterns", label: "Title Patterns (one regex per line)", type: "textarea" }],
+      },
+      {
+        label: "Cover Letter From",
+        fields: [
+          {
+            key: "contact.cover_letter_from_block",
+            label: "Cover letter From block",
+            type: "textarea",
+            placeholder: "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}",
+            help: "Allowed tokens: {$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}. Type | between segments; cover print shows •. Leave empty to use the default template (see placeholder).",
+          },
+        ],
       },
       {
         label: "Signature Image",
@@ -374,5 +386,57 @@ describe("CandidateProfile AST-1092 extra binding emails", () => {
     await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
     expect((savedBody?.contact as Record<string, unknown>)?.extra_emails).toEqual(["extra@ex.com"])
     expect(savedBody).not.toHaveProperty("profile")
+  })
+})
+
+describe("CandidateProfile — AST-1149", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+  })
+
+  it("Cover Letter From tab shows shapes help + default-template placeholder (§6c)", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      candidate: {
+        ...candidateData,
+        contact: { cover_letter_from_block: "" },
+      },
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({
+          first: "Ada",
+          last: "Lovelace",
+          full: "Ada Lovelace",
+          pronouns: "they/them",
+          candidate_data: {
+            ...candidateData,
+            contact: { cover_letter_from_block: "{$FULL_NAME} | {$LOCATION}" },
+          },
+        })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument(),
+    )
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Cover Letter From" })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Cover Letter From" }))
+    expect(screen.getByText(/Allowed tokens: \{\$FULL_NAME\}/i)).toBeInTheDocument()
+    expect(screen.getByText(/cover print shows •/i)).toBeInTheDocument()
+    // LabeledTextArea uses an h3 title — textarea has no accessible name.
+    const from = screen.getByPlaceholderText(/\{\$FULL_NAME\}/)
+    expect(from.getAttribute("placeholder")).toBe(
+      "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}",
+    )
+    // userEvent.type treats `{` as a key modifier — set value directly.
+    fireEvent.change(from, { target: { value: "{$FULL_NAME} | {$LOCATION}" } })
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect((savedBody?.contact as Record<string, unknown>)?.cover_letter_from_block).toBe(
+      "{$FULL_NAME} | {$LOCATION}",
+    )
   })
 })

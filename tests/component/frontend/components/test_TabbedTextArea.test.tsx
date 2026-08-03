@@ -67,4 +67,27 @@ describe('TabbedTextArea', () => {
     await user.click(screen.getByRole('button', { name: 'Two' }))
     expect(onChange).toHaveBeenCalledWith('two')
   })
+
+  it('renders muted help above the textarea when tab.help is set (AST-1149)', () => {
+    render(
+      <TabbedTextArea
+        tabs={[
+          {
+            key: 'contact.cover_letter_from_block',
+            label: 'Cover letter From block',
+            placeholder: '{$FULL_NAME} | {$LOCATION}',
+            help: 'Allowed tokens: {$FULL_NAME}. Type | for •.',
+          },
+        ]}
+        values={{}}
+        onChange={() => {}}
+      />,
+    )
+    expect(screen.getByText(/Allowed tokens: \{\$FULL_NAME\}/)).toBeInTheDocument()
+    expect(screen.getByRole('textbox')).toHaveAttribute(
+      'placeholder',
+      '{$FULL_NAME} | {$LOCATION}',
+    )
+  })
+
 })

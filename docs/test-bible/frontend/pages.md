@@ -1020,19 +1020,45 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`.
 
-Admin **Session Cover Letter** (§6c): empty From block does not block Open HTML when a candidate is selected (server resolves via AST-1137); without a candidate, From block stays required; help copy documents empty-from-block defaults. Core emit: **`docs/test-bible/core/builder.md`**. Config: **`docs/test-bible/utils/config.md`**.
+Admin **Session Cover Letter** (§6c): empty From block does not block Open HTML when a candidate is selected (server resolves via AST-1137); without a candidate, From block stays required; help copy documents empty-from-block defaults (fetch-failure intro fallback kept by **AST-1149**). Core emit: **`docs/test-bible/core/builder.md`**. Config: **`docs/test-bible/utils/config.md`**. Live authoring chrome = **AST-1149**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Empty from-block gating + help + POST body (§6c) | `AdminSessionCoverLetter.tsx` | **`test_AdminSessionCoverLetter.test.tsx`** — **`AdminSessionCoverLetter — AST-1139`** describe |
+| Empty from-block gating + fallback help + POST body (§6c) | `AdminSessionCoverLetter.tsx` | **`test_AdminSessionCoverLetter.test.tsx`** — **`AdminSessionCoverLetter — AST-1139`** describe |
 
-**Broken / obsolete:** none — additive gating; AST-1025 filled-form paths unchanged.
+**Broken / obsolete:** none — gating unchanged; config-driven intro = **AST-1149**.
 
 **Integration:** none.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+---
+
+
+### AST-1149 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1149-from-block-authoring-help-profile-session`.
+
+Authoring help chrome (§6c): Candidate Profile **Cover Letter From** tab renders shapes `help` + `placeholder` (= default template); Admin Session Cover Letter loads `/api/ui_config` `cover_from_block` for intro / From help / placeholder. Config + ui_config: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Profile Cover Letter From tab (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile — AST-1149`** |
+| Session config-driven help (§6c) | `AdminSessionCoverLetter.tsx` | **`test_AdminSessionCoverLetter.test.tsx`** — **`AdminSessionCoverLetter — AST-1149`** |
+| Tab help rendering | `TabbedTextArea.tsx` | **`test_TabbedTextArea.test.tsx`** (help above textarea) |
+
+**Broken / obsolete:** AST-1137 profile section placement (config) — revised; AST-1139 gating kept (fallback intro when ui_config empty).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  ../../../tests/component/frontend/components/test_TabbedTextArea.test.tsx
 ```
 
 ---

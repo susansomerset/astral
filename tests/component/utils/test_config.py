@@ -3665,19 +3665,16 @@ class TestAst1137CoverFromBlockConfig:
             "cover_letter_signature_image"
         ) + 1
 
-    def test_profile_textarea_in_cover_letter_signature_group(self) -> None:
+    def test_profile_signature_group_keeps_signature_only(self) -> None:
+        # AST-1149 moved from-block into its own "Cover Letter From" section.
         section = next(
             s
             for s in cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
             if s["label"] == "Cover Letter Signature"
         )
         by_key = {f["key"]: f for f in section["fields"]}
-        field = by_key["contact.cover_letter_from_block"]
-        assert field["label"] == "Cover letter from-block"
-        assert field["type"] == "textarea"
-        assert field.get("required") in (None, False)
-        # Beside signature text; not required — empty means resolve defaults.
         assert "contact.cover_letter_signature" in by_key
+        assert "contact.cover_letter_from_block" not in by_key
 
     def test_not_in_packet_contact_keys_or_token_sources(self) -> None:
         assert "cover_letter_from_block" not in cfg.TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]
@@ -3724,6 +3721,40 @@ class TestAst1147CoverFromBlockTokenTemplateConfig:
         # Allowlisted ids already exist in TOKEN_SOURCES (paths unchanged this ticket).
         for tid in cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]:
             assert tid in cfg.TOKEN_SOURCES
+
+
+
+
+class TestAst1149CoverFromBlockAuthoringHelpConfig:
+    """AST-1149: authoring help strings + own Cover Letter From profile section."""
+
+    def test_authoring_help_keys(self) -> None:
+        block = cfg.COVER_FROM_BLOCK_CONFIG
+        assert "{$FULL_NAME}" in block["authoring_help"]
+        assert "{$LOCATION}" in block["authoring_help"]
+        assert "{$CONTACT_EMAIL}" in block["authoring_help"]
+        assert "{$PHONE}" in block["authoring_help"]
+        assert "|" in block["authoring_help"]
+        assert "•" in block["authoring_help"]
+        assert "default template" in block["authoring_help"].lower()
+        assert "{$FULL_NAME}" in block["session_authoring_help"]
+        assert "does not save to the database" in block["session_authoring_help"]
+        assert "default token template" in block["session_authoring_help"]
+
+    def test_cover_letter_from_own_section(self) -> None:
+        profile = cfg.DATA_SHAPES["candidates"]["detail"]["profile"]
+        section = next(s for s in profile if s["label"] == "Cover Letter From")
+        assert len(section["fields"]) == 1
+        field = section["fields"][0]
+        assert field["key"] == "contact.cover_letter_from_block"
+        assert field["label"] == "Cover letter From block"
+        assert field["type"] == "textarea"
+        assert field.get("required") in (None, False)
+        assert field["placeholder"] == cfg.COVER_FROM_BLOCK_CONFIG["default_template"]
+        assert field["help"] == cfg.COVER_FROM_BLOCK_CONFIG["authoring_help"]
+        labels = [s["label"] for s in profile]
+        assert labels.index("Cover Letter Signature") < labels.index("Cover Letter From")
+        assert labels.index("Cover Letter From") < labels.index("Signature Image")
 
 
 class TestAst1138JobCoverSomersetConfig:
