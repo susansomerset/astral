@@ -100,3 +100,15 @@ Bind order: `(min_chars, cid, text)`.
 - §1.3 DRY: filter in the data helper Create already calls; no duplicate length check in gazer.
 - §2.5 / §3.3: data-only SQL change; no layer violations.
 - Boundaries: no AST-1131 / AST-1133 / gaze_email / tests tree.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1130/AST-1146-uat-create-skips-null-company-job-id-dedupe`  
+**Plan path:** `docs/features/meteorite/ast-1146-uat-create-skips-null-company-job-id-dedupe.md`  
+**Built tip:** `e98ca44fd64caeb188d5b36889d734a5579eda73` (`e98ca44f`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `e98ca44f` | Config min_company_job_id_match_chars + LENGTH filter on candidate-scoped helper |
