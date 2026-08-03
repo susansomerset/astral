@@ -143,3 +143,14 @@ Owns user-visible authoring help (and config-driven placeholder/label copy) so S
 - §3.2 / `astral.layers.ui-config-driven-business-logic` + §3.3 `import-direction`: UI renders config; no from-block expansion in the page.
 - §3.5 `frontend-file-placement` / naming: edits stay in existing page/component files under `src/ui/frontend/src/pages|components`.
 - `pattern.ui.admin-endpoint`: no new route; reuse `/api/ui_config` + existing candidate data PUT.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1145/AST-1149-from-block-authoring-help-profile-session`
+**Tip:** `e61c58b9`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2c3dc706` | `COVER_FROM_BLOCK_CONFIG` authoring help + own DATA_SHAPES section + `/api/ui_config` slice |
+| 2 | `727a1ecb` | Profile TabbedTextArea help/placeholder wiring |
+| 3 | `e61c58b9` | Session Cover Letter config-driven intro + From help/placeholder |
