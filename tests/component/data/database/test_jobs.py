@@ -310,3 +310,40 @@ class TestAst1132TextMatchesKnownCompanyJobIdForCandidate:
         assert db.text_matches_known_company_job_id_for_candidate("cand-a", "") is None
         assert db.text_matches_known_company_job_id_for_candidate("", "x") is None
 
+
+
+
+# Branches: short junk ids ignored; length>=min still matches; empty still None (AST-1146).
+class TestAst1146TextMatchesKnownCompanyJobIdMinLength:
+    def test_short_id_does_not_match(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_job("ja", company="co-a", state="NEW", company_job_id="29")
+        # UAT shape: JD / visible text containing short junk that previously false-matched.
+        hay = "Lead Systems Analyst salary band 29 years experience"
+        assert db.text_matches_known_company_job_id_for_candidate("cand-a", hay) is None
+
+    def test_min_length_id_still_matches(self, sqlite_in_memory) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        db = sqlite_in_memory
+        min_chars = int(METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"])
+        assert min_chars == 8
+        long_id = "ABCD1234"  # exactly 8
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_job("ja", company="co-a", state="NEW", company_job_id=long_id)
+        assert (
+            db.text_matches_known_company_job_id_for_candidate(
+                "cand-a", f"prefix {long_id} suffix"
+            )
+            == long_id
+        )
+
+    def test_empty_and_whitespace_ids_ignored(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_company("co-a", state="IMPORTED", candidate_id="cand-a")
+        db.save_job("ja", company="co-a", state="NEW", company_job_id="   ")
+        assert (
+            db.text_matches_known_company_job_id_for_candidate("cand-a", "anything 29 here")
+            is None
+        )

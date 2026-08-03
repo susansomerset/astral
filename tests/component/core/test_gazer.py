@@ -1481,3 +1481,42 @@ class TestAst1132MeteoriteEmailIngestHygiene:
         assert len(out["created"]) == 1
         row = db.get_job(out["created"][0]["astral_job_id"])
         assert row["job_link"] == link
+
+
+
+# Branches: short stored company_job_id must not skip Create (AST-1146 UAT).
+class TestAst1146CreateSkipShortCompanyJobId:
+    def test_body_mode_short_id_does_not_skip_create(self, sqlite_in_memory) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1146-short"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        db.save_company("acme", state="IMPORTED", candidate_id=cid)
+        # Junk short id previously false-matched JD text containing "29".
+        db.save_job("j-junk", company="acme", state="NEW", company_job_id="29")
+        html = (
+            "<p>"
+            + ("Lead Systems Analyst role description with enough chars. " * 3)
+            + " band 29 "
+            + "</p>"
+        )
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "body"
+        assert len(out["created"]) == 1
+        assert out["skipped"] == []
+
+    def test_body_mode_long_id_still_skips(self, sqlite_in_memory) -> None:
+        from src.core import gazer as gazer_mod
+
+        db = sqlite_in_memory
+        cid = "cand-1146-long"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "L"})
+        db.save_company("acme", state="IMPORTED", candidate_id=cid)
+        db.save_job("j-known", company="acme", state="NEW", company_job_id="KNOWN-EXT-77")
+        html = "<p>" + ("x" * 20) + " KNOWN-EXT-77 " + ("y" * 20) + "</p>"
+        out = gazer_mod.ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=False)
+        assert out["mode"] == "body"
+        assert out["created"] == []
+        assert out["skipped"][0]["reason"] == "known_company_job_id"
+        assert out["skipped"][0]["matched_company_job_id"] == "KNOWN-EXT-77"

@@ -339,3 +339,25 @@ Roster + claim: **`docs/test-bible/core/roster.md`** · **`docs/test-bible/utils
   tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
   -q
 ```
+
+### AST-1146 · AST-1130 (UAT)
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1146-uat-create-skips-null-company-job-id-dedupe`.
+
+Create ingest still calls `text_matches_known_company_job_id_for_candidate`; short stored ids no longer produce `known_company_job_id` skips. Helper: **`docs/test-bible/data/database/jobs.md`** (**AST-1146**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create skip vs short id | `src/core/gazer.py` (via helper) | **`TestAst1146CreateSkipShortCompanyJobId`** |
+
+**Broken / obsolete:** none — long-id AST-1061 body skip still holds.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1146CreateSkipShortCompanyJobId \
+  tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest::test_body_mode_skips_known_company_job_id \
+  -q
+```
+
