@@ -66,3 +66,12 @@ SomersetCover signoff that places a handwritten signature image above typed name
 - §2.1 config: N/A — spacing is stylesheet, not a behavior-driving config set.
 - §2.4 / §2.6 batch/state: N/A.
 - §3.3 imports / §3.5 naming: no new symbols.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1161/AST-1162-fix-signature-image-name-vertical-spacing`
+**Tip:** `ab131524`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ab131524` | `.signature-img` margin `8px 0 -25px 0` → `8px 0 8px 0` in shared SomersetCover CSS |
