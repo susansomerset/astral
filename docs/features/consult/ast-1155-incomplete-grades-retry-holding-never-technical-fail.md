@@ -309,3 +309,16 @@ Qualify (`NEW`/`JD_READY`) already have retry holdings; Do/Get/Like + meteorite 
 | §3.5 naming | `{PRIMARY}_RETRY` holdings; helpers `_grade_set_*` / `_require_complete_grade_set` |
 
 **Conflicts:** None. Sibling AST-1154 must not be required to land first for this routing fix (prompts reduce omission rate; this ticket makes omission non-technical).
+
+---
+
+## Review stub (build)
+
+**Publish ref:** `sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail`  
+**Tip:** `47974f81`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `64ce12d2` | `JOB_STATES` retry holdings for graded triggers + In Review maps |
+| 2 | `4d735e94` | Completeness gate before score + Style D incomplete debug |
+| 3 | `47974f81` | `render_verdict` + prefilter incomplete → retry holding |
