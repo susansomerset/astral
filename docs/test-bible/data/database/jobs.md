@@ -100,3 +100,25 @@ Global dedupe helpers for meteorite email ingest: `text_matches_known_company_jo
   tests/component/data/database/test_jobs.py::TestAst1132TextMatchesKnownCompanyJobIdForCandidate \
   -q
 ```
+
+### AST-1146 · AST-1130 (UAT)
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1146-uat-create-skips-null-company-job-id-dedupe`.
+
+`text_matches_known_company_job_id_for_candidate` requires `LENGTH(TRIM(company_job_id)) >= METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"]` (8) before inverted `LIKE` match. Null/empty/short junk (e.g. `29`) never match. Exact `job_link` dedupe unchanged. Config: **`docs/test-bible/utils/config.md`**; Create path: **`docs/test-bible/core/gazer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Min-length inverted id match | `src/data/database.py` | **`TestAst1146TextMatchesKnownCompanyJobIdMinLength`** (+ regression **`TestAst1132TextMatchesKnownCompanyJobIdForCandidate`**) |
+
+**Broken / obsolete:** none — AST-1132 long-id cases remain eligible (≥8).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst1146TextMatchesKnownCompanyJobIdMinLength \
+  tests/component/data/database/test_jobs.py::TestAst1132TextMatchesKnownCompanyJobIdForCandidate \
+  -q
+```
+
