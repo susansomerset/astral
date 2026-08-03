@@ -190,3 +190,18 @@ Owns expanding allowlisted contact tokens, `|`→`•`, and empty-segment drop i
 |-------|--------|---------|
 | 1 | `bc340226` | `expand_cover_from_block_text` + `resolve_cover_from_block` migrates to `default_template` expand |
 | 2 | `4e90baf6` | Session-typed From calls shared expand before SomersetCover emit |
+
+## Radia review — findings (rev 1)
+
+**Overall: CLEAN** — no fix-now, no discuss.
+
+**What's solid:**
+- `expand_cover_from_block_text` reads separators / policy / allowlist / template only from `COVER_FROM_BLOCK_CONFIG`, walks `TOKEN_SOURCES` paths for allowlisted ids only (does not call `resolve_tokens`, per plan's ⚠️ Decision — confirmed no non-allowlisted registry token could leak).
+- Single-expand invariant traced across all 3 call sites: job (`build_cover_letter_from_job` → one `resolve_cover_from_block` call), session empty+candidate (`resolve_cover_from_block`, expands once internally), session-typed non-empty (`expand_cover_from_block_text` directly, no double-expand). Grepped all `resolve_cover_from_block` / `expand_cover_from_block_text` call sites in `src/` to confirm.
+- `_candidate_for_cover_from_block` (builder.py, reused unchanged) never sets `candidate_data`, so `expand_cover_from_block_text` correctly takes the token-view branch (`contact` top-level) rather than the DB-row branch — verified the shape contract instead of assuming it.
+- Style D: two distinct `debug_index` calls (resolve's own + expand's own), each `index=1/total=1` for a single-item operation — not a batch loop, so this doesn't trip the "one header per batch item" rule; both gated strictly behind `debug=True`.
+- Raw session `from_block` text is passed un-stripped into expand (plan explicitly requires preserving internal newlines); expand normalizes `\r\n` itself.
+
+**Pattern conformance:** none cited (ticket's boundary notes reference sibling ticket ids, not canon pattern ids for this ticket's own diff).
+
+— Radia
