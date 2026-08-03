@@ -205,3 +205,9 @@ Owns expanding allowlisted contact tokens, `|`→`•`, and empty-segment drop i
 **Pattern conformance:** none cited (ticket's boundary notes reference sibling ticket ids, not canon pattern ids for this ticket's own diff).
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Radia review tip:** `95686e02` (`docs(AST-1148): Radia review — findings`)  
+**Outcome:** Clean sign-off — no fix-now, no discuss, no Frame diff adds. No product or plan-doc code changes in resolve; ship tip as reviewed after `resolve()` publish + §9a dry-runs.
