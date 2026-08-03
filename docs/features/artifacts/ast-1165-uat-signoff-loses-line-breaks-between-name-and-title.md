@@ -72,3 +72,32 @@ After AST-1162's image/name overlap fix, SomersetCover signoff still collapses a
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `75b56978` | `_html_with_signature_image_token`: escape + newline→`<br>` (token present + absent) |
+
+## Radia review
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1165
+**Publish ref:** `31ebb768a7ba3eb8d685932c058839e9f63882cd`
+**Overall:** CLEAN
+
+**Full-set sweep:** all 65 active statutes scored in-session (22 universal, 43 scoped). Zero `violates`, zero `needs-discussion`. Scoped statutes outside `src/core/**` / `docs/features/**` / test-tree paths (`ui/**`, `data/**`, `dispatcher.py`, `config.py`, seed/agent-table paths, spikes/artifacts-dir) are `not-applicable`. No Joan plan-rubric verdict attached — noted, not a block.
+
+**Pattern conformance:** none cited (description checkboxes are statute ids already covered by the full sweep, not `canon/patterns/*` ids).
+
+**Plan adherence:**
+- Diff is exactly Stage 1: local `_esc_br` helper added inside `_html_with_signature_image_token`, used on both the token-present join path and the token-absent full-text path — no img markup / omit-policy / `.signature-img` CSS changes.
+- `_esc_br` is DRY with the module's existing `\r\n`→`\n` normalization + `html.escape(...).replace(chr(10), "<br>")` pattern already used verbatim for letter-body paragraphs (`src/core/builder.py:724`) and `from_block`/`to_block` (`:703-704`, `:711-712`) — not a new hardcoded literal, it mirrors established precedent in the same file.
+- Sibling checks hold: AST-1162 `.signature-img { margin: 8px 0 8px 0 }` untouched (new test asserts `-25px` absent); AST-1126 token-absent/omit path still emits no `<img>`. Per-commit boundaries clean: `code(AST-1165)` touches only `src/core/builder.py`; `test(AST-1165)` touches only `tests/` + `docs/test-bible/`; single `merge-tests(AST-1165)` merge onto the sub.
+
+**What's solid:** Fix matches the plan's explicit "wrong fix to avoid" guardrails — no `white-space: pre`, no invented name/title fields, no CSS-only patch, no token-contract change. New test class covers session + job SomersetCover paths and the token-absent no-`<img>` case.
+
+**Notes:** Local pytest re-run blocked in this shell (no Python 3.10+ available); relying on Betty's `merge-tests(AST-1165)` SHA and the Tests Passed gate for green confirmation.
+
+## Frame diff
+
+(none)
+
+context_tokens≈12000
+— Radia
