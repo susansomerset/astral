@@ -63,3 +63,12 @@ After AST-1162's image/name overlap fix, SomersetCover signoff still collapses a
 - §1.3 DRY: reuse the same escape+`<br>` pattern already used for letter paragraphs in this file.
 - §2.1 / §2.4 / §2.6: N/A.
 - §3.3 / §3.5: no new public modules; local helper only.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title`
+**Tip:** `75b56978`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `75b56978` | `_html_with_signature_image_token`: escape + newline→`<br>` (token present + absent) |
