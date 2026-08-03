@@ -63,7 +63,9 @@ _INPUT_STATE_TO_TASK = {
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
     "PASSED_JD":          "grade_do",
+    "PASSED_JD_RETRY":    "grade_do",
     "PASSED_DO":          "grade_get",
+    "PASSED_DO_RETRY":    "grade_get",
     "PASSED_GET":         "grade_like",
     "PASSED_LIKE":        "analysis_upshot",
     "PASSED_LIKE_RETRY":  "analysis_upshot",
@@ -605,6 +607,57 @@ def _importance_for_label(rubric_criteria: list, vector_label: str) -> float:
     raise ValueError(f"_render_score: no rubric criterion matching vector {vector_label!r}")
 
 
+def _grade_set_vector_diff(
+    rubric_criteria: list,
+    grades: list,
+) -> tuple:
+    """Return (missing_labels, unexpected_labels) using _strip_code on rubric labels vs grade vectors."""
+    expected = {
+        _strip_code(str(item.get("label") or "").strip())
+        for item in (rubric_criteria or [])
+        if item.get("label")
+    }
+    actual = {
+        _strip_code(str(g.get("vector") or "").strip())
+        for g in (grades or [])
+        if isinstance(g, dict) and g.get("vector")
+    }
+    return expected - actual, actual - expected
+
+
+def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
+    """Raise ValueError when grades are not an exact match to live rubric labels (AST-1155)."""
+    missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    if missing:
+        raise ValueError(f"_render_score: missing vectors {sorted(missing)}")
+    if extra:
+        raise ValueError(f"_render_score: unknown vectors {sorted(extra)}")
+
+
+def _debug_incomplete_grade_set(
+    *,
+    func: str,
+    identifier: str,
+    rubric_criteria: list,
+    grades: list,
+    dest: Optional[str],
+    index: int = 1,
+    total: int = 1,
+) -> None:
+    missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    logger.debug_index(
+        func=func,
+        index=index,
+        total=total,
+        identifier=identifier,
+        outcome=f"incomplete grade set -> {dest or '?'}",
+    )
+    logger.debug_detail(
+        f"missing={sorted(missing)} | unexpected={sorted(extra)} | "
+        f"decoded_vectors={sorted(_strip_code(str(g.get('vector') or '')) for g in (grades or []) if isinstance(g, dict))}"
+    )
+
+
 def _render_score(
     consult_cfg: dict,
     rubric_criteria: list,
@@ -621,18 +674,7 @@ def _render_score(
     ):
         logger.debug_detail(f"branch=F2_dealbreaker scored_fail grades={grades!r}")
         return (consult_cfg["fail_state"], None)
-    expected = {
-        _strip_code(str(item.get("label") or "").strip())
-        for item in rubric_criteria
-        if item.get("label")
-    }
-    actual = {_strip_code(g["vector"]) for g in grades}
-    missing = expected - actual
-    if missing:
-        raise ValueError(f"_render_score: missing vectors {sorted(missing)}")
-    extra = actual - expected
-    if extra:
-        raise ValueError(f"_render_score: unknown vectors {sorted(extra)}")
+    _require_complete_grade_set(rubric_criteria, grades)
     counted = [g for g in grades if not _effective_no_signal_for_score(g)]
     v = len(counted)
     rubric_score = 0.0
@@ -980,6 +1022,8 @@ def _apply_render_verdict_decoded_job(
             raise ValueError(f"Candidate missing rubric artifact: {rubric_key}")
         artifacts = (ctx or {}).get("candidate_data", {}).get("artifacts", {})
         threshold = artifacts.get(f"{rubric_key}_threshold", cfg.get("pass_threshold", 6.0))
+        # Exact set match before score math — incompleteness retries via caller (AST-1155).
+        _require_complete_grade_set(rubric_criteria, grades)
         to_state, score = _render_score(cfg, rubric_criteria, grades, float(threshold))
     else:
         raise ValueError(f"Unknown grading_mode: {mode}")
@@ -1327,7 +1371,18 @@ async def _run_batch_consult(
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
             bad_grades.add(aid)
-            if debug:
+            err_s = str(e)
+            if debug and ("missing vectors" in err_s or "unknown vectors" in err_s):
+                _debug_incomplete_grade_set(
+                    func=f"consult._run_batch_consult({task_key})",
+                    identifier=_consult_job_identifier(input_job),
+                    rubric_criteria=rubric_criteria,
+                    grades=response_job.get("grades") or [],
+                    dest=_consult_batch_fail_dest(input_job.get("state"), error_state),
+                    index=job_idx,
+                    total=len(response_jobs),
+                )
+            elif debug:
                 logger.debug_index(
                     func=f"consult._run_batch_consult({task_key})",
                     index=job_idx,
@@ -1507,6 +1562,9 @@ async def qualify_job_listings(
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
         grades = response_job["grades"]
+        # Incomplete/extra sets must raise into bad_grades — do not swallow (AST-1155).
+        if rubric_list:
+            _require_complete_grade_set(rubric_list, grades)
         to_state = _render_pass_fail(task_key, grades)
 
         def _score_from_grades() -> Optional[float]:
@@ -1842,8 +1900,10 @@ async def evaluate_jd_batch(
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
         grades = response_job["grades"]
+        # Incomplete/extra before pass/fail or score — retries via _run_batch_consult (AST-1155).
+        if rubric_list:
+            _require_complete_grade_set(rubric_list, grades)
         to_state = _render_pass_fail(task_key, grades, entity_state=input_job.get("state"))
-        # Validate grades against rubric vectors; invalid/incomplete payloads retry via _run_batch_consult.
         score = None
         if rubric_list:
             _, score = _render_score(cfg, rubric_list, grades, 0.0)
