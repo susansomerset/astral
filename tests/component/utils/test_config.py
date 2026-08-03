@@ -3634,6 +3634,15 @@ class TestAst1132MeteoriteEmailIngestHygieneConfig:
             assert frag in markers
 
 
+
+# Branches: min_company_job_id_match_chars for inverted id match (AST-1146).
+class TestAst1146MeteoriteEmailIngestMinCompanyJobIdChars:
+    def test_min_company_job_id_match_chars(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+        assert int(METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"]) == 8
+
+
 # Branches: COVER_FROM_BLOCK_CONFIG keys; library contact_keys order; profile textarea
 # placement; packet/TOKEN_SOURCES exclusion (AST-1137).
 class TestAst1137CoverFromBlockConfig:

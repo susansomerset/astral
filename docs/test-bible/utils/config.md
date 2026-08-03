@@ -2250,3 +2250,24 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
   tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
   -q
 ```
+
+### AST-1146 · AST-1130 (UAT)
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1146-uat-create-skips-null-company-job-id-dedupe`.
+
+`METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"]` = `8`. Primary behavior: **`docs/test-bible/data/database/jobs.md`** (**AST-1146**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Id-match min length | `src/utils/config.py` | **`TestAst1146MeteoriteEmailIngestMinCompanyJobIdChars`** |
+
+**Broken / obsolete:** none — additive key.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1146MeteoriteEmailIngestMinCompanyJobIdChars \
+  -q
+```
+
