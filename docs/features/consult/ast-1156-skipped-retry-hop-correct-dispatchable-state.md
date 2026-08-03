@@ -249,3 +249,15 @@ Meteorite (and regular mid-pipeline) jobs that landed on Skipped after a rubric 
 - **§2.4:** No new batch claim helpers — dispatch continues to claim primary (+ AST-1155 companion holdings).
 - **§3.3 imports:** UI API already imports `transition_job_state`; no new layer violations.
 - **No conflicts** requiring `conf-!!-NONE`.
+
+---
+
+## Review stub (build)
+
+**Publish ref:** `sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`  
+**Tip:** `d04c2e5e`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `35931486` | `JOBS_SKIPPED_BULK_RETRY_TO_STATE` + prior expansions + manifest map |
+| 2 | `d04c2e5e` | `bulk_state` → `transition_job_state`; Skipped Retry groups by from-state |
