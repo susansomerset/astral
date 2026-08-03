@@ -322,3 +322,17 @@ Qualify (`NEW`/`JD_READY`) already have retry holdings; Do/Get/Like + meteorite 
 | 1 | `64ce12d2` | `JOB_STATES` retry holdings for graded triggers + In Review maps |
 | 2 | `4d735e94` | Completeness gate before score + Style D incomplete debug |
 | 3 | `47974f81` | `render_verdict` + prefilter incomplete → retry holding |
+
+---
+
+## Radia review
+
+**[code-rubric] revision=1** · **Publish ref:** `e6698dd865f900aca45831b8cd9ce82badcbfae9` · **Overall:** DISCUSS
+
+Full active statute set (65) scored in-session — 0 fix-now. Live-ran all three plan verification scripts against the actual publish tip (not just prose): Stage 1 `retry_state`/`dispatch_claim_states` pairs, Stage 2 `_require_complete_grade_set` (incl. `X`/`0` counts as present), Stage 3 `_consult_batch_fail_dest` first/second-strike routing incl. meteorite overlay. All three green. Confirmed the actual repro path (`_consult_scored_dispatch_batch_encoded` → `_apply_render_verdict_decoded_job` → raise → `_run_batch_consult` → `_consult_batch_fail_dest`) now resolves correctly now that Stage 1 supplies the missing registry entries.
+
+**discuss — `astral.dispatch.run-next-is-chain-authority`** and **discuss — `astral.standards.no-hardcoded-sets`.** Both carried from Joan's plan-rubric verdict and confirmed unchanged in the shipped diff: `_INPUT_STATE_TO_TASK` legacy-map extension (non-dispatch-routing, explicitly scoped) and `render_verdict`'s exception-message-substring routing (`"missing vectors"` / `"unknown vectors"`) for the incompleteness branch. Both non-blocking, engineer's call exercised as Joan anticipated. Neither is fix-now.
+
+**Notes:** accepted-risk carried from Joan — any `process_fn` exception on the seven graded triggers now first-strikes to retry holding, not just incomplete grades (established AST-642 behavior); infra-failure paths (missing company, prep failure) stay on `error_state`, confirmed unchanged. 3 trivially-clean C4 stragglers (plan-doc + test-tree diff inclusion vs Files-Changed-table convention) — not scope creep.
+
+— Radia
