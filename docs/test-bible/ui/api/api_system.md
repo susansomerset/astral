@@ -27,3 +27,11 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
 ### AST-1016 · AST-952
 
 `GET /api/ui_config` includes `preamble` from `PREAMBLE_CONFIG`. Primary: **`docs/test-bible/utils/config.md`** § AST-1016 — **`TestSystemAuthRoutes::test_ui_config_includes_preamble_config`**.
+
+### AST-1149 · AST-1145
+
+`GET /api/ui_config` includes `cover_from_block` (`default_template`, `authoring_help`, `session_authoring_help`) from `COVER_FROM_BLOCK_CONFIG`. Primary config: **`docs/test-bible/utils/config.md`** § AST-1149. Pages: **`docs/test-bible/frontend/pages.md`**.
+
+| Behavior | Tests |
+| --- | --- |
+| ui_config cover_from_block slice | `TestSystemAuthRoutes::test_ui_config_includes_cover_from_block` |
