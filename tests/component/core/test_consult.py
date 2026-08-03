@@ -2529,6 +2529,8 @@ class TestQualifyJobListings:
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        # Table-backed hydration needs criteria; artifacts-only ctx is not enough (AST-723).
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2559,11 +2561,10 @@ class TestQualifyJobListings:
             {"astral_job_id": "job-1", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "a"}},
             {"astral_job_id": "job-2", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "b"}},
         ]
-        rubric = [_rubric_item()]
         out = await consult_mod.qualify_job_listings(
             "batch-2",
             jobs,
-            {"candidate_data": {"artifacts": {"joblist_rubric": rubric}}},
+            {},
             debug=False,
         )
         assert out["passed"] == 1
@@ -2575,6 +2576,8 @@ class TestQualifyJobListings:
         save = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        # Table-backed hydration needs criteria; artifacts-only ctx is not enough (AST-723).
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2596,11 +2599,10 @@ class TestQualifyJobListings:
             ),
         )
         jobs = [{"astral_job_id": "job-1", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "a"}}]
-        rubric = [_rubric_item()]
         out = await consult_mod.qualify_job_listings(
             "batch-3",
             jobs,
-            {"candidate_data": {"artifacts": {"joblist_rubric": rubric}}},
+            {},
             debug=False,
         )
         assert out["failed"] == 1
@@ -2614,6 +2616,8 @@ class TestQualifyJobListings:
         transition = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        # Table-backed hydration needs criteria; artifacts-only ctx is not enough (AST-723).
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2635,11 +2639,10 @@ class TestQualifyJobListings:
             ),
         )
         jobs = [{"astral_job_id": "job-1", "state": "VALID_TITLE", "company": "co", "job_data": {"raw_job_listing": "a"}}]
-        rubric = [_rubric_item()]
         out = await consult_mod.qualify_job_listings(
             "batch-4",
             jobs,
-            {"candidate_data": {"artifacts": {"joblist_rubric": rubric}}},
+            {},
             debug=False,
         )
         assert out["failed"] == 1

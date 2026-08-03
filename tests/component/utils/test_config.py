@@ -3780,3 +3780,29 @@ class TestAst1138JobCoverSomersetConfig:
         assert set(block["unset_fields"]).issubset(session_keys)
         assert set(block["artifact_to_fields"].values()).issubset(session_keys)
         assert "cover_letter" in cfg.BUILD_CONFIG["artifact_shapes"]
+
+
+class TestAst1154EncodedGradeSetCompleteness:
+    """AST-1154: multi-vector encoded payload_instructions require full grade-set."""
+
+    _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
+    _MULTI = (
+        "grades_encoded",
+        "grades_encoded_notes",
+        "grades_encoded_meta",
+        "grades_encoded_prefilter_links",
+    )
+
+    def test_shared_clause_on_multi_vector_encoded_types(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        for key in self._MULTI:
+            text = ots[key]["payload_instructions"]
+            assert self._MARKER in text, key
+            # Silence → {code}X0; inventing letter grades to fill gaps is forbidden.
+            assert "{code}X0" in text, key
+            assert "never skip that segment" in text, key
+
+    def test_clause_absent_from_vet_meta_and_grades_json(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        assert self._MARKER not in ots["grades_encoded_vet_meta"]["payload_instructions"]
+        assert self._MARKER not in ots["grades_json"]["payload_instructions"]
