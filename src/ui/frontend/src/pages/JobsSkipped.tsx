@@ -208,17 +208,44 @@ export default function Skipped() {
 
   const handleRetry = () => {
     if (!selected.size) return
-    api("/api/jobs/bulk_state", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        astral_job_ids: [...selected],
-        to_state: manifest!.jobs.skipped.bulk_retry_to_state,
-      }),
-    })
-      .then(r => r.json())
-      .then(res => { setToast({ text: `${res.updated} jobs queued for retry`, variant: "success" }); load() })
-      .catch(() => setToast({ text: "Retry failed", variant: "error" }))
+    const retryMap = manifest!.jobs.skipped.bulk_retry_to_state_by_from_state
+    // One POST per destination so mixed-family selections stay hop-correct.
+    const byDest = new Map<string, string[]>()
+    for (const id of selected) {
+      const fromState = rows.find(r => r.astral_job_id === id)?.state
+      if (!fromState) continue
+      const toState = retryMap[fromState]
+      if (!toState) continue
+      const bucket = byDest.get(toState) ?? []
+      bucket.push(id)
+      byDest.set(toState, bucket)
+    }
+    if (byDest.size === 0) {
+      setToast({ text: "No retryable jobs in selection", variant: "error" })
+      return
+    }
+    ;(async () => {
+      try {
+        let total = 0
+        for (const [to_state, astral_job_ids] of byDest) {
+          const r = await api("/api/jobs/bulk_state", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ astral_job_ids, to_state }),
+          })
+          const res = await r.json()
+          total += Number(res.updated) || 0
+        }
+        if (total === 0) {
+          setToast({ text: "Retry failed", variant: "error" })
+        } else {
+          setToast({ text: `${total} jobs queued for retry`, variant: "success" })
+        }
+        load()
+      } catch {
+        setToast({ text: "Retry failed", variant: "error" })
+      }
+    })()
   }
 
   return (

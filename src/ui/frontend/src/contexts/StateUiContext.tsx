@@ -13,7 +13,7 @@ export interface StateUiManifest {
       below_dispatch_label: string
       section_order: string[]
       section_labels: Record<string, string>
-      bulk_retry_to_state: string
+      bulk_retry_to_state_by_from_state: Record<string, string>
     }
     detail: { already_skipped_state: string }
     recommended: {

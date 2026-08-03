@@ -95,10 +95,11 @@ def bulk_state():
     to_state = data.get("to_state", "")
     if not ids or not to_state:
         return jsonify({"error": "astral_job_ids and to_state required"}), 400
+    # AST-1156: enforce JOB_STATES priors + state_history (was save_job bypass).
     updated = 0
     for job_id in ids:
         try:
-            save_job(job_id, state=to_state)
+            transition_job_state([job_id], to_state)
             updated += 1
         except ValueError:
             pass
