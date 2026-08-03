@@ -506,3 +506,28 @@ Non-empty session `from_block` runs `expand_cover_from_block_text` before Somers
   -q
 ```
 
+### AST-1162 · AST-1161
+
+**Parent:** [AST-1161 — Signature Image now overlaps Name text in signature](https://linear.app/astralcareermatch/issue/AST-1161/signature-image-now-overlaps-name-text-in-signature). **Publish:** `origin/sub/AST-1161/AST-1162-fix-signature-image-name-vertical-spacing`.
+
+Shared SomersetCover `.signature-img` vertical margin in `_emit_somerset_cover_html_document`: supersede AST-1024 / AST-1124 golden `margin: 8px 0 -25px 0` → `margin: 8px 0 8px 0` so image stacks above name with no overlap. Session + job cover surfaces inherit via the shared helper. Token / omit / from-block / resume emit unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session CSS margin + closing→img→name order | `src/core/builder.py` | **`TestAst1162SignatureImgVerticalSpacing::test_session_signature_img_margin_non_negative`** |
+| Job SomersetCover same CSS rule | same | **`…::test_job_somerset_signature_img_margin_non_negative`** |
+| No-image signoff (no empty img) | same | **`…::test_session_no_image_keeps_closing_and_name`** |
+| Prior token placement / omit | same | existing **`TestAst1024BuildSessionCoverLetter`** image cases, **`TestAst1126CoverSignatureImageToken`** |
+
+**Broken / obsolete:** none (prior suites asserted selector presence / DOM order, not the negative bottom margin).
+
+**Integration:** none (no existing scenario asserts SomersetCover `.signature-img` CSS).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1162SignatureImgVerticalSpacing \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_token_replaces_with_contact_image \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_no_image_without_token_even_with_contact_image \
+  -q
+```
+
