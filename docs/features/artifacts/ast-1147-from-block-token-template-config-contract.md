@@ -101,3 +101,110 @@ Owns the config contract for a tokenized cover from-block default: default autho
 - §2.1 / `astral.config.config-source-of-truth` / `pattern.config.config-block`: extend the named block; do not invent a second from-block config dict.
 - §3.3 import direction: no new imports; utils-only edit.
 - No cross-contamination into resume header emit or signature-image token contract.
+
+---
+
+## Radia review (code-rubric.v1)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1147
+**Publish ref tip:** `c5fec3213c17c3c01dc2b2c00e5814ccfad0c056`
+**Overall:** DISCUSS
+
+### What's solid
+
+- Stage 1 matches: `COVER_FROM_BLOCK_CONFIG` gains `default_template`, `allowed_token_ids`, `authoring_separator`, `emit_separator`, `empty_segment_policy`; AST-1137 keys retained.
+- No resolve/emit/help chrome; brief aliases absent; Self-Assessment **minor** matches utils-only footprint.
+- Betty `test()` + one `merge-tests`; engineer `code()` is `config.py` only.
+
+### Issues
+
+**discuss (C4 straggler):** `astral.debug.no-repo-root-artifacts-dir` — Joan excluded; in-scope on three-dot vs origin/dev. Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; in-scope on three-dot vs origin/dev. Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; in-scope on three-dot vs origin/dev. Scores **conforms**. No product action.
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; in-scope on three-dot vs origin/dev. Scores **conforms**. No product action.
+
+### Recommended actions
+
+- Engineer: ack C4 stragglers (no src change) via `resolve-child`, then User Testing.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | No confidence / grade config touched |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | layers ∩ diff empty (['core']); paths miss diff (['src/core/**']) |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | layers ∩ diff empty (['core']); paths miss diff (['src/core/**']) |
+| `astral.batch.batch-id-first` | scoped | not-applicable | layers ∩ diff empty (['data', 'core']); paths miss diff (['src/data/**', 'src/core/**']) |
+| `astral.batch.batch-id-format` | scoped | not-applicable | layers ∩ diff empty (['core', 'data']); paths miss diff (['src/core/**', 'src/data/**']) |
+| `astral.batch.claim-process-release` | scoped | not-applicable | layers ∩ diff empty (['core', 'data']); paths miss diff (['src/core/**', 'src/data/**']) |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | layers ∩ diff empty (['core', 'data']); paths miss diff (['src/core/**', 'src/data/**']) |
+| `astral.config.config-source-of-truth` | scoped | conforms | Template/allowlist/rewrite/empty policy in COVER_FROM_BLOCK_CONFIG |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | No scoring thresholds |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env; plain literals |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | conforms | docs/features/artifacts plan — not repo-root artifacts/ |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Combined plan under docs/features — not spike notes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | No dispatch/run_next edits |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | No dispatch_task seed rows |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | One docs/features/artifacts plan file for AST-1147 |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test/bible only; merge-tests exception ok |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | code() is config.py only; tests from Betty |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | layers ∩ diff empty (['core', 'external']); paths miss diff (['src/core/**', 'src/external/**']) |
+| `astral.layers.import-direction` | scoped | conforms | Utils-only additive keys; no new imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ∩ diff empty (['scripts']); paths miss diff (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Config declares contract; UI/core not owning rules here |
+| `astral.patterns.coat-check-never-store-empty` | scoped | not-applicable | layers ∩ diff empty (['core']); paths miss diff (['src/core/**']) |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | not-applicable | layers ∩ diff empty (['core']); paths miss diff (['src/core/**']) |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | No agent seed table edits |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | No catalog/seed conflict |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | No seed boot path change |
+| `astral.seed.define-approved` | scoped | conforms | No seed define work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | No operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | No coverage-join seed work |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | layers ∩ diff empty (['data', 'core', 'ui']) |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | layers ∩ diff empty (['data']); paths miss diff (['src/data/**']) |
+| `astral.standards.debug-contract-gated` | scoped | conforms | No Style D here; deferred to AST-1148 |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | No new functions; declarative keys only |
+| `astral.standards.in-scope-only` | scoped | conforms | Config contract only; resolve/emit/help excluded |
+| `astral.standards.logging-via-utils` | scoped | conforms | No logging changes |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Keys semantic; ticket ids only in comments |
+| `astral.standards.no-cross-contamination` | scoped | conforms | No resume/signature/rubric pipe edits |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Token ids/separators/policy live in config |
+| `astral.standards.public-then-helpers` | scoped | conforms | No new public/helper surface |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data import |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | layers ∩ diff empty (['core', 'data']); paths miss diff (['src/core/**', 'src/data/**']) |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | JOB_STATES untouched |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | layers ∩ diff empty (['core']); paths miss diff (['src/core/**']) |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No gunicorn/worker config changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1147) SHA on sub tip |
+| `orch.git.commit-vocabulary` | universal | conforms | plan/code/docs/test/merge-tests vocabulary only |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Publish stays on origin/sub/AST-1145/AST-1147-… |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child sub under AST-1145 parent topology |
+| `orch.git.merge-on-checkout` | universal | conforms | No illegal merge-on-checkout recipe |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No cherry-pick/rebase/force on publish ref |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Uses sub/AST-1145/AST-1147-… only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in astral-AST-1145 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branch invented |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Parent OQs closed; locked template values shipped |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stage 1 keys/values match Files Changed and diff |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Artifacts child only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Entered at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via test()+merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee remains Ada |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Implementer stays assignee through review |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path product commits |
+
+### Pattern conformance
+
+- `pattern.config.config-block` — **conforms**
+
+### Plan adherence
+
+Diff matches Stage 1 exact key/value table. Boundaries vs AST-1148/1149 held. Three-dot also carries Betty corpus from origin/tests merge history — expected, not scope smuggle in AST-1147 `code()`.
+
+context_tokens≈30000
