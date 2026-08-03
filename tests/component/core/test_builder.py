@@ -3116,3 +3116,87 @@ class TestAst1162SignatureImgVerticalSpacing:
         signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
         assert "<img" not in signoff
         assert "Best," in signoff and "Susan Somerset" in signoff
+
+
+class TestAst1165SignoffNewlineToBr:
+    """AST-1165: SomersetCover signature fragment newlines → <br> after escape."""
+
+    _LIT = "{$SIGNATURE_IMAGE}"
+    _SAFE = "https://example.com/sig.png"
+
+    def test_session_name_and_title_br_after_image(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda _cid: {
+                "candidate_data": {
+                    "contact": {"cover_letter_signature_image": self._SAFE}
+                }
+            },
+        )
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,",
+                "signoff_closing": "Best,",
+                "signature": f"{self._LIT}\nSusan Somerset\nSenior Product Manager",
+            },
+            candidate_id="cand-1165",
+        )
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert "Susan Somerset<br>Senior Product Manager" in signoff
+        assert signoff.index("Best,") < signoff.index("<img") < signoff.index(
+            "Susan Somerset"
+        )
+        # AST-1162 sibling: non-negative stack margin still present.
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "margin: 8px 0 8px 0" in style
+        assert "-25px" not in style
+
+    def test_job_somerset_name_and_title_br_after_image(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        html = builder_mod.build_cover_letter_from_job(
+            {
+                "astral_job_id": "job-1165",
+                "job_data": {
+                    "artifacts": {
+                        "cover_letter": {
+                            "Subject": "Re: Role",
+                            "Letter": "Dear team,",
+                            "signature": f"{self._LIT}\nAda Lovelace\nEngineer",
+                        }
+                    }
+                },
+            },
+            cd,
+        )
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert "Ada Lovelace<br>Engineer" in signoff
+        assert signoff.index("<img") < signoff.index("Ada Lovelace")
+
+    def test_token_absent_preserves_newlines_no_img(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,",
+                "signoff_closing": "Best,",
+                "signature": "Susan Somerset\nSenior Product Manager",
+            }
+        )
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff
+        assert "Susan Somerset<br>Senior Product Manager" in signoff
+        assert "{$SIGNATURE_IMAGE}" not in signoff
