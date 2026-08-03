@@ -27,3 +27,19 @@ Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT aliases `â€
   tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi \
   -q
 ```
+
+### AST-1156 Â· AST-1150
+
+**Parent:** [AST-1150](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`.
+
+`POST /api/jobs/bulk_state` uses `transition_job_state` (priors + history) instead of `save_job` bypass; partial success on per-id `ValueError`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| bulk_state transition | `api_jobs.py` | revised **`TestJobsRoutes::test_bulk_state_updates_jobs`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_bulk_state_updates_jobs \
+  -q
+```
