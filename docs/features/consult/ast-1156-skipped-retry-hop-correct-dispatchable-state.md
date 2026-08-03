@@ -277,3 +277,16 @@ Full active statute set (65) scored in-session — 0 fix-now. Live-ran the plan'
 **Notes:** Joan's plan-time discuss 2 (`FAILED_TECHNICAL` → `NEW` needing a clarifying comment) was proactively addressed in the shipped map. Discuss 3 (client-side grouping design) was implemented as planned — engineer's call, not a deviation. Diff also carries ancestry-only content from AST-1154/AST-1155 (already reviewed, unchanged) plus one out-of-band `origin/dev`→sub merge by Susan mid-build (human git op, no conflict with this ticket's commits, not an engineer finding).
 
 — Radia
+
+---
+
+## Resolution
+
+**2026-08-03** — resolve-child after Radia **DISCUSS** (0 fix-now).
+
+| Finding | Action |
+|---------|--------|
+| **discuss** `astral.state.job-prior-states-enforced` (global prior widening) | **Accepted as shipped.** Intentional: Retry must use `transition_job_state`; exposure is backward edges from terminal fail/technical Skipped states only. No product change (Joan/Radia both non-blocking). |
+| **advisory** unused `save_job` import in `api_jobs.py` | **Removed** the dead import. |
+
+**Publish tip after resolve:** see resolve commit on `origin/sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`.
