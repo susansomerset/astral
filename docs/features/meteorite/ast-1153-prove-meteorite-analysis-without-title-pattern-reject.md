@@ -222,3 +222,24 @@ No plan conflicts requiring `conf-!!-NONE`.
 **Betty handoff:** Proof matrix P1–P5 + manifest shape in this plan; fill AST-1152 deferred gaps under `docs/test-bible/core/consult.md` / gazer as judged. Engineer test-tree ban holds.
 
 **Escalation (Joan's non-blocking note):** missing AST-1152 symbol after sync **or** product gap vs Proof matrix → comment on **AST-1153** (this ticket), not parent — builder has one stop target.
+
+---
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1` — **Publish ref tip:** `5ba04dce8d400bef3933504dacd5d61815d89b9f` — **Overall:** CLEAN
+
+**What's solid:**
+
+- Confirmed zero `src/` delta between the AST-1152 code tip (`bba9bcb6`) and this tip — `qualify_meteorite`/`validate_title_batch`/`qualify_job_listings` re-home logic is untouched, exactly as the plan's "no `src/` edits" decision requires.
+- Betty's own `test(AST-1153)` commit (`7fb2170e`) + this ticket's bible section land P1/P2/P3/P5 proof exactly against the plan's matrix (`TestAst1153MeteoriteTitleScreenProof`, `TestValidateTitleBatch::test_skips_meteorite_company_roster_still_fails`, `TestAst1062QualifyMeteorite::test_pattern_mismatch_title_still_qualifies`); P4 correctly reuses the existing unmodified content-gate rows rather than duplicating them.
+- Engineer `code(AST-1153)` commit (`dc359aa0`) touches only the plan doc — engineer test-tree ban held perfectly, matching this ticket's own explicit design.
+- `merge-tests(AST-1153)` (`dae275b0`) rides in AST-1155's roster/config test rows via the shared single `origin/tests` SHA (`orch.git.betty-merge-tests-one-sha` mechanics) — no `src/` or `docs/features/` touched by that commit, so `astral.git.betty-no-src-or-features` holds.
+
+Full active-set sweep (65 statutes: 18 universal + 47 scoped) scored in-session against this diff (core + docs layers, add/modify) — same predicate shape as the AST-1152 sweep since the `src/` payload is identical; 33 scoped statutes matched and conformed, 14 not-applicable, all 18 universal conformed (no plan-is-bible drift this time — Stage 1/2 executed literally). No Joan plan-rubric verdict attached — no straggler check possible.
+
+**Pattern conformance:** `pattern.state.entity-state-transitions` (cited in description) — conforms; proof locks `METEORITE_NEW` / `METEORITE_QUALIFIED` / `METEORITE_FAILED_QUALIFY` and forbids `INVALID_TITLE` for meteorite companies exactly as asserted.
+
+context_tokens≈9
+
+— Radia
