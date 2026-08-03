@@ -196,3 +196,16 @@ Re-homed meteorite rows are `METEORITE_NEW` after refresh and therefore drop out
 - **§3.3 import direction:** core→core (`meteorite`) and existing utils config import — allowed.
 
 No plan conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1151/AST-1152-stop-title-pattern-screening-on-meteorite-track`  
+**Plan path:** `docs/features/meteorite/ast-1152-stop-title-pattern-screening-on-meteorite-track.md`
+
+**Built tip:** `bba9bcb66b7350278b5df8e251ed132632589f7c` (`bba9bcb6`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `bba9bcb6` | `is_meteorite_company`; `validate_title_batch` skip; re-home meteorite-company NEW → METEORITE_NEW; qualify_meteorite content gate comment |
