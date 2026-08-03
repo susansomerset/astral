@@ -209,3 +209,29 @@ No plan conflicts requiring `conf-!!-NONE`.
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–3 | `bba9bcb6` | `is_meteorite_company`; `validate_title_batch` skip; re-home meteorite-company NEW → METEORITE_NEW; qualify_meteorite content gate comment |
+
+---
+
+## Review (Radia — code-rubric.v1)
+
+`[code-rubric] revision=1` — **Publish ref tip:** `4b8850e699e9c3938b21d2d587da6868cec588dc` — **Overall:** DISCUSS
+
+**What's solid:**
+
+- `is_meteorite_company` reads `METEORITE_CONFIG["short_name_prefix"]` only — no hardcoded `"meteorite-"` at call sites, matches the plan's explicit decision.
+- `validate_title_batch` skip and `qualify_job_listings` re-home both use the established per-index debug contract (`_log.set_debug_flag(True)` / `logger.set_debug_flag(True)` + `debug_index` with `func=` / universal `index N/M` / `identifier=` / `outcome=`) — matches surrounding style exactly.
+- Re-home uses `tracker.transition_job_state` (not `save_job`) into unrestricted `METEORITE_NEW`, so job-prior-states-enforced / core-decides-transitions hold.
+- `ai_jobs` filter untouched — meteorites are not widened into roster AI qualify (no-cross-contamination holds).
+- `merge-tests(AST-1152)` brings in one `origin/tests` SHA; the AST-1147 bible/test rows riding along are that shared branch's other queued content, not scope creep from this ticket — engineer's `code(AST-1152)` commit only touches `src/core/{consult,gazer,meteorite}.py`, test-tree edits stay on Betty's `test(...)` / `merge-tests(...)` commits.
+
+**Discuss:**
+
+- `orch.pipeline.plan-is-bible` — the plan's literal Stage 3 snippet hardcodes `index=1, total=1` inside the `for j in meteorite_new:` loop; the shipped code instead uses `for mi, j in enumerate(meteorite_new, start=1): ... index=mi, total=len(meteorite_new)`. This is a correct fix (the plan's literal snippet would have mis-numbered a multi-job re-home batch under `astral.standards.debug-contract-gated`'s per-index-header rule), but it's a silent drift from the plan's literal code rather than an escalated one — worth a one-line note in the Review section next time so plan-is-bible fidelity stays visible.
+
+**Full-set sweep:** all 65 active statutes (18 universal + 47 scoped) scored in-session; 33 scoped statutes matched the diff (core + docs layers, add/modify) and conformed, 14 not-applicable (ui/scripts/utils-only or seed/dispatcher-specific predicates not touched by this diff), 18 universal all conformed except the plan-is-bible discuss item above. No Joan plan-rubric verdict attached to this ticket — nothing to straggler-check against.
+
+**Pattern conformance:** `pattern.batch.entity-claim-process-release`, `pattern.state.entity-state-transitions`, `pattern.config.config-block` (all cited in description) — conforms; claim→process→release and config-sourced landing state unchanged.
+
+context_tokens≈9
+
+— Radia
