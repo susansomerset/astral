@@ -771,14 +771,14 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`.
 
-`resolve_cover_from_block` returns custom `contact.cover_letter_from_block` (`source=candidate`) or default `Name • City, ST` / `email • phone` composition (`source=default`); empty segments/lines omitted; accepts DB row or token-view contact shape. Config field contract: **`docs/test-bible/utils/config.md`**. Token default template + `|`→`•` rewrite keys = **AST-1147** (consume in sibling **AST-1148**). Job/session HTML emit = siblings **AST-1138** / **AST-1139**.
+`resolve_cover_from_block` returns custom `contact.cover_letter_from_block` (`source=candidate`) or expands `default_template` (`source=default`); empty segments/lines omitted; accepts DB row or token-view contact shape. Config: **`docs/test-bible/utils/config.md`**. Token expand / `|`→`•` = **AST-1148** (`expand_cover_from_block_text`). Job/session HTML emit = siblings **AST-1138** / **AST-1139**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Custom vs default resolve + omit empties + debug | `src/core/candidate.py` | **`TestAst1137ResolveCoverFromBlock`** |
+| Custom vs default resolve + omit empties + debug | `src/core/candidate.py` | **`TestAst1137ResolveCoverFromBlock`** (revised by **AST-1148** — template expand / Style D) |
 | COVER_FROM_BLOCK_CONFIG + profile textarea | `src/utils/config.py` | **`TestAst1137CoverFromBlockConfig`** |
 
-**Broken / obsolete:** none — additive helper + optional contact key.
+**Broken / obsolete:** path-composed default + `line*_segments` debug — revised by **AST-1148**.
 
 **Integration:** none — no existing integration scenario asserts from-block composition; do not invent new coverage.
 
@@ -786,6 +786,30 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
   tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  -q
+```
+
+
+### AST-1148 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1148-resolve-tokens-in-from-block-emit-debug`.
+
+`expand_cover_from_block_text` expands allowlisted `{$TOKEN}` via `TOKEN_SOURCES`, rewrites `|`→`emit_separator`, drops empty segments per `empty_segment_policy`. `resolve_cover_from_block` selects custom authoring or `default_template` then expands (no path-based default composition). Brief aliases left as-is. Style D on expand + resolve when `debug=True`. Session-typed From: **`docs/test-bible/core/builder.md`**. Config keys: **AST-1147**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Expand tokens / pipe / drop / aliases / Style D | `src/core/candidate.py` | **`TestAst1148ExpandCoverFromBlock`** |
+| Resolve custom+default via expand (revised) | same | **`TestAst1137ResolveCoverFromBlock`** |
+
+**Broken / obsolete:** AST-1137 path-composed default asserts + `line*_segments` debug — revised this pass.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1148ExpandCoverFromBlock \
+  tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
+  tests/component/core/test_builder.py::TestAst1148SessionTypedFromBlockExpand \
   -q
 ```
 

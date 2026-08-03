@@ -2129,13 +2129,13 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`.
 
-`COVER_FROM_BLOCK_CONFIG` + `CANDIDATE_LIBRARY_CONFIG["contact_keys"]` entry `cover_letter_from_block` + Candidate Profile textarea under **Cover Letter Signature** (`contact.cover_letter_from_block`). Not in `TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]` / `TOKEN_SOURCES`. Primary resolve: **`docs/test-bible/core/candidate.md`** (**AST-1137**).
+`COVER_FROM_BLOCK_CONFIG` + `CANDIDATE_LIBRARY_CONFIG["contact_keys"]` entry `cover_letter_from_block`. Profile field placement: own **Cover Letter From** section (**AST-1149**; originally under Cover Letter Signature). Not in `TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]` / `TOKEN_SOURCES`. Primary resolve: **`docs/test-bible/core/candidate.md`** (**AST-1137**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| From-block config + profile field | `src/utils/config.py` | **`TestAst1137CoverFromBlockConfig`** |
+| From-block config + signature-group exclusion | `src/utils/config.py` | **`TestAst1137CoverFromBlockConfig`** (profile section assert revised by **AST-1149**) |
 
-**Broken / obsolete:** none — additive optional contact field.
+**Broken / obsolete:** profile “under Cover Letter Signature” assert → revised to signature-only (**AST-1149**).
 
 **Integration:** none.
 
@@ -2165,6 +2165,30 @@ Extends `COVER_FROM_BLOCK_CONFIG` with `default_template`, `allowed_token_ids` (
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1147CoverFromBlockTokenTemplateConfig \
   tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  -q
+```
+
+
+### AST-1149 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1149-from-block-authoring-help-profile-session`.
+
+`COVER_FROM_BLOCK_CONFIG` `authoring_help` / `session_authoring_help`; `DATA_SHAPES` own **Cover Letter From** section with `placeholder`=`default_template` and `help`=`authoring_help`. UI `/api/ui_config` `cover_from_block` slice + pages: **`docs/test-bible/ui/api/api_system.md`**, **`docs/test-bible/frontend/pages.md`**. Resolve/emit = **AST-1148**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Authoring help + Cover Letter From section | `src/utils/config.py` | **`TestAst1149CoverFromBlockAuthoringHelpConfig`** |
+| Revised signature-group (from-block removed) | same | **`TestAst1137CoverFromBlockConfig`** |
+
+**Broken / obsolete:** AST-1137 profile placement under Cover Letter Signature — revised this pass.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1149CoverFromBlockAuthoringHelpConfig \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_cover_from_block \
   -q
 ```
 
@@ -2271,3 +2295,47 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
   -q
 ```
 
+### AST-1154 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
+
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
+| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+
+**Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
+
+**Integration:** none — prompt/config contract only; no existing integration scenario asserts these strings.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
+  -q
+```
+
+### AST-1155 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail`.
+
+Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_claim_states` companions; In Review UI/labels/grade-field maps. Apply/retry routing: **`docs/test-bible/core/consult.md`** (**AST-1155**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Holdings + claim companions + UI maps | `src/utils/config.py` | **`TestAst1155GradedRetryHoldings`**; revised **`TestAst874FetchCulturePagesConfig`**, **`TestAst1053MeteoriteGdlJobStates`** |
+
+**Broken / obsolete:** LIKE / meteorite GDL exact `prior_states` lists and meteorite In Review membership expanded for holdings.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
