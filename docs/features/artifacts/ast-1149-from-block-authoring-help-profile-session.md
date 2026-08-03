@@ -171,3 +171,16 @@ Owns user-visible authoring help (and config-driven placeholder/label copy) so S
 **Pattern conformance:** `pattern.ui.admin-endpoint` — conforms (no new route; reuses `/api/ui_config` + existing candidate data `PUT`).
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Review tip ingested:** `5aaa5c75` (`docs(AST-1149): Radia review — findings`)  
+**Overall:** clean — Radia **DISCUSS** with **no fix-now**; Frame diff none.
+
+| Item | Action |
+|------|--------|
+| Discuss 1 — sub↔sub merge of AST-1148 plan tip | Accepted; no product change. Confirmed tip still has empty `git diff origin/dev...HEAD -- src/core/candidate.py src/core/builder.py`. Future sibling sync via `merge-child` → `ftr`. |
+| Discuss 2 — C4 stragglers (`debug-contract-gated`, `dry-and-focused-functions`) | Accepted; already `conforms` on substance — no `debug=` / no complexity growth. No src change. |
+
+**§9a:** `origin/sub/AST-1145/AST-1149-from-block-authoring-help-profile-session` dry-runs clean into `origin/dev` and `origin/ftr/AST-1145-allow-contact-info-tokens-and-chars-in-fromblock`.
