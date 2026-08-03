@@ -853,3 +853,34 @@ RESPONSE omits `company_job_id` key + UUID in `job_link` → `_resolve_company_j
   -q
 ```
 
+### AST-1152 · AST-1151
+
+**Parent:** [AST-1151 — Do not validate titles on meteorites](https://linear.app/astralcareermatch/issue/AST-1151/do-not-validate-titles-on-meteorites). **Publish:** `origin/sub/AST-1151/AST-1152-stop-title-pattern-screening-on-meteorite-track`.
+
+Product: `is_meteorite_company` (`METEORITE_CONFIG["short_name_prefix"]`); `validate_title_batch` skips meteorite-company jobs (no `VALID_TITLE` / `INVALID_TITLE`); `qualify_job_listings` re-homes meteorite-company `NEW` → `METEORITE_CONFIG["job_create_state"]` before the roster title screen; `qualify_meteorite` short/blank title content gate unchanged. **Proof/lock** of meteorite skip + re-home + pattern-mismatch eligibility is sibling **AST-1153** — not invented here.
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Roster `NEW` still inline title-screens | `src/core/consult.py` | **`TestAst797QualifyInlineValidateTitle`** |
+| Roster pattern pass/fail → `VALID_TITLE` / `INVALID_TITLE` | `src/core/gazer.py` | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
+| Meteorite content gates (short/blank → `METEORITE_FAILED_QUALIFY`) | `src/core/consult.py` | **`TestAst1062QualifyMeteorite`** (content-gate rows) |
+| Qualify AI path still after title screen | `src/core/consult.py` | **`TestQualifyJobListings`** |
+
+**Broken / obsolete:** **`TestQualifyJobListings`** three rows used artifacts-only `joblist_rubric` without monkeypatching **`_rubric_criteria_for_cfg`** (table-backed AST-723) — revised to match **`test_runs_debug_and_passing_job_path`**. Meteorite product path unchanged; fixtures omit `meteorite-*` company.
+
+**Gaps (deferred):** meteorite-company `NEW` re-home; `validate_title_batch` skip for `meteorite-*`; pattern-mismatch title still eligible for meteorite qualify — **AST-1153**.
+
+**Integration:** no existing scenarios assert title-screen / meteorite re-home — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch \
+  tests/component/core/test_gazer.py::TestValidateTitleBatchDebugPaths \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestQualifyJobListings \
+  -q
+```
+

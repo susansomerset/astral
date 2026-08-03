@@ -771,7 +771,7 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`.
 
-`resolve_cover_from_block` returns custom `contact.cover_letter_from_block` (`source=candidate`) or default `Name • City, ST` / `email • phone` composition (`source=default`); empty segments/lines omitted; accepts DB row or token-view contact shape. Config field contract: **`docs/test-bible/utils/config.md`**. Job/session HTML emit = siblings **AST-1138** / **AST-1139**.
+`resolve_cover_from_block` returns custom `contact.cover_letter_from_block` (`source=candidate`) or default `Name • City, ST` / `email • phone` composition (`source=default`); empty segments/lines omitted; accepts DB row or token-view contact shape. Config field contract: **`docs/test-bible/utils/config.md`**. Token default template + `|`→`•` rewrite keys = **AST-1147** (consume in sibling **AST-1148**). Job/session HTML emit = siblings **AST-1138** / **AST-1139**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
