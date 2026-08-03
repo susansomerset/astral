@@ -261,3 +261,19 @@ Meteorite (and regular mid-pipeline) jobs that landed on Skipped after a rubric 
 |-------|--------|---------|
 | 1 | `35931486` | `JOBS_SKIPPED_BULK_RETRY_TO_STATE` + prior expansions + manifest map |
 | 2 | `d04c2e5e` | `bulk_state` → `transition_job_state`; Skipped Retry groups by from-state |
+
+---
+
+## Radia review
+
+**[code-rubric] revision=1** · **Publish ref:** `7b725de8796ff98028ebcf303da1fbddaf818515` · **Overall:** DISCUSS
+
+Full active statute set (65) scored in-session — 0 fix-now. Live-ran the plan's own verification scripts against the actual publish tip (manifest + `JOB_STATES` prior assertions incl. the meteorite Do → `METEORITE_PASSED_JD` example named in the parent AC; `py_compile` on both touched Python files). Both green. Map, prior expansions, and manifest key swap all match the plan verbatim — no extra targets, no missing ones. `handleRetry` groups by `job.state`, one POST per destination, matching Stage 2 exactly (and refines the plan's flexible toast wording sensibly).
+
+**discuss — `astral.state.job-prior-states-enforced`.** Carried from Joan's plan-rubric verdict, confirmed unchanged in the shipped diff: the `prior_states` expansion is a global widening of the state machine (backward edges out of terminal fail states are now legal for *any* caller of `transition_job_state`, not just this button) even though the mechanism is a net improvement over the old `save_job` bypass. Not fix-now.
+
+**advisory:** `save_job` import in `src/ui/api/api_jobs.py` is now unused after the `bulk_state` refactor — harmless dead import, cleanup whenever convenient.
+
+**Notes:** Joan's plan-time discuss 2 (`FAILED_TECHNICAL` → `NEW` needing a clarifying comment) was proactively addressed in the shipped map. Discuss 3 (client-side grouping design) was implemented as planned — engineer's call, not a deviation. Diff also carries ancestry-only content from AST-1154/AST-1155 (already reviewed, unchanged) plus one out-of-band `origin/dev`→sub merge by Susan mid-build (human git op, no conflict with this ticket's commits, not an engineer finding).
+
+— Radia
