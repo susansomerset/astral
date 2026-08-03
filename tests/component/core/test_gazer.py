@@ -138,6 +138,38 @@ class TestValidateTitleBatch:
         out = await gazer_mod.validate_title_batch("batch-1", jobs, ctx, debug=False)
         assert out["failed"] == 1
 
+    @pytest.mark.asyncio
+    async def test_skips_meteorite_company_roster_still_fails(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1153 P2: meteorite company skipped; roster peer still INVALID_TITLE.
+        try:
+            from src.core.meteorite import is_meteorite_company
+        except ImportError:
+            pytest.skip("AST-1152 is_meteorite_company not on tip")
+        if not is_meteorite_company("meteorite-cand-proof"):
+            pytest.skip("AST-1152 meteorite prefix peel not on tip")
+        transition = MagicMock()
+        monkeypatch.setattr(gazer_mod, "transition_job_state", transition)
+        ctx = {"candidate_data": {"contact": {"title_patterns": "^Engineer"}}}
+        jobs = [
+            {
+                "astral_job_id": "job-m",
+                "company": "meteorite-cand-proof",
+                "job_data": {"raw_job_listing": "Janitor Wanted"},
+            },
+            {
+                "astral_job_id": "job-r",
+                "company": "acme",
+                "job_data": {"raw_job_listing": "Janitor Wanted"},
+            },
+        ]
+        out = await gazer_mod.validate_title_batch("batch-1153-p2", jobs, ctx, debug=False)
+        assert out["passed"] == 0
+        assert out["failed"] == 1
+        assert out["total"] == 2
+        transition.assert_called_once_with(["job-r"], "INVALID_TITLE")
+
 
 def _mock_batch_browser_session(monkeypatch: pytest.MonkeyPatch) -> MagicMock:
     session = MagicMock()

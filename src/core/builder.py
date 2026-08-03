@@ -562,8 +562,15 @@ def build_session_cover_letter(
             raise ValueError(msg)
         if key == "from_block":
             if raw.strip():
-                normalized[key] = raw
+                # AST-1148: session-typed From — same token / |→• / empty-segment expand.
                 from_block_source = cfg["from_block_sources"][0]  # session
+                if candidate_root:
+                    shaped = _candidate_for_cover_from_block(candidate_root)
+                else:
+                    shaped = {"full": "", "first": "", "last": "", "contact": {}}
+                normalized[key] = candidate_mod.expand_cover_from_block_text(
+                    raw, shaped, source=from_block_source, debug=debug
+                )
             elif meta.get("empty_uses_candidate_resolve") and candidate_root:
                 from_res = candidate_mod.resolve_cover_from_block(
                     _candidate_for_cover_from_block(candidate_root), debug=debug

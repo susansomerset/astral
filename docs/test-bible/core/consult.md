@@ -870,7 +870,7 @@ Product: `is_meteorite_company` (`METEORITE_CONFIG["short_name_prefix"]`); `vali
 
 **Broken / obsolete:** **`TestQualifyJobListings`** three rows used artifacts-only `joblist_rubric` without monkeypatching **`_rubric_criteria_for_cfg`** (table-backed AST-723) — revised to match **`test_runs_debug_and_passing_job_path`**. Meteorite product path unchanged; fixtures omit `meteorite-*` company.
 
-**Gaps (deferred):** meteorite-company `NEW` re-home; `validate_title_batch` skip for `meteorite-*`; pattern-mismatch title still eligible for meteorite qualify — **AST-1153**.
+**Gaps (deferred → filled):** meteorite-company `NEW` re-home; `validate_title_batch` skip for `meteorite-*`; pattern-mismatch title still eligible for meteorite qualify — **AST-1153**.
 
 **Integration:** no existing scenarios assert title-screen / meteorite re-home — none revised; do not invent new integration coverage.
 
@@ -881,6 +881,33 @@ Product: `is_meteorite_company` (`METEORITE_CONFIG["short_name_prefix"]`); `vali
   tests/component/core/test_gazer.py::TestValidateTitleBatchDebugPaths \
   tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
   tests/component/core/test_consult.py::TestQualifyJobListings \
+  -q
+```
+
+### AST-1153 · AST-1151
+
+**Parent:** [AST-1151 — Do not validate titles on meteorites](https://linear.app/astralcareermatch/issue/AST-1151/do-not-validate-titles-on-meteorites). **Publish:** `origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject`.
+
+Proof/lock for AST-1152 peel (Archie: title-pattern forbidden on meteorite track; short/blank content gate stays). Product already on parent ftr — no new `src/` on this child. Fills AST-1152 deferred gaps (P1–P5).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| P1 meteorite `NEW` re-home (never `INVALID_TITLE`) | `src/core/consult.py` | **`TestAst1153MeteoriteTitleScreenProof`** |
+| P2 `validate_title_batch` skip + roster still fails | `src/core/gazer.py` | **`TestValidateTitleBatch::test_skips_meteorite_company_roster_still_fails`** |
+| P3 pattern-mismatch title still → `METEORITE_QUALIFIED` | `src/core/consult.py` | **`TestAst1062QualifyMeteorite::test_pattern_mismatch_title_still_qualifies`** |
+| P4 short/blank content gate unchanged | `src/core/consult.py` | **`TestAst1062QualifyMeteorite::test_content_gates_fail_state`** |
+| P5 roster `NEW` title screen unchanged | `src/core/consult.py` / `gazer.py` | **`TestAst797QualifyInlineValidateTitle`**; **`TestValidateTitleBatch`**; P1 mixed-batch roster peer |
+
+**Broken / obsolete:** none — additive proof rows; existing fixtures omit meteorite prefixes where roster behavior is asserted.
+
+**Integration:** no existing scenarios assert title-screen / meteorite re-home — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestAst1153MeteoriteTitleScreenProof \
   -q
 ```
 

@@ -37,7 +37,7 @@ from src.utils.config import (
     PLAYWRIGHT_CONFIG,
 )
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
-from src.core.meteorite import create_meteorite_job
+from src.core.meteorite import create_meteorite_job, is_meteorite_company
 from src.data.database import (
     get_company,
     job_link_exists_for_candidate,
@@ -855,6 +855,17 @@ async def validate_title_batch(
     passed = failed = 0
     for ji, job in enumerate(jobs, start=1):
         aid = job.get("astral_job_id", "")
+        # AST-1152: meteorite track never gets roster title-pattern outcomes.
+        if is_meteorite_company(job.get("company")):
+            if debug:
+                _log.debug_index(
+                    func="gazer.validate_title_batch",
+                    index=ji,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome="skipped — meteorite company (no title-pattern screen)",
+                )
+            continue
         jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
         raw_listing = (jd or {}).get("raw_job_listing") or ""
         if not isinstance(raw_listing, str):

@@ -19,8 +19,9 @@ import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core import tracker
-from src.data.database import ensure_batch_response_entity_ids
 from src.core.agent import do_task
+from src.core.meteorite import is_meteorite_company
+from src.data.database import ensure_batch_response_entity_ids
 from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
@@ -33,6 +34,7 @@ from src.utils.config import (
     RUBRIC_TOTAL,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    METEORITE_CONFIG,
     METEORITE_GDL_OUTCOME_BY_TASK,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
@@ -1528,10 +1530,28 @@ async def qualify_job_listings(
         from src.core.gazer import validate_title_batch
 
         new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
-        tr = await validate_title_batch(batch_id, new_jobs, ctx or {}, debug=debug)
-        title_screen_failed = int(tr.get("failed", 0))
+        meteorite_new = [j for j in new_jobs if is_meteorite_company(j.get("company"))]
+        roster_new = [j for j in new_jobs if not is_meteorite_company(j.get("company"))]
+        # AST-1152: candidate submission is title qualification — never pattern-screen meteorites.
+        meteorite_landing = METEORITE_CONFIG["job_create_state"]
+        if debug and meteorite_new:
+            logger.set_debug_flag(True)
+        for mi, j in enumerate(meteorite_new, start=1):
+            aid = j["astral_job_id"]
+            tracker.transition_job_state([aid], meteorite_landing)
+            if debug:
+                logger.debug_index(
+                    func="consult.qualify_job_listings",
+                    index=mi,
+                    total=len(meteorite_new),
+                    identifier=_consult_job_identifier(j),
+                    outcome=f"re-home meteorite NEW -> {meteorite_landing}",
+                )
+        if roster_new:
+            tr = await validate_title_batch(batch_id, roster_new, ctx or {}, debug=debug)
+            title_screen_failed = int(tr.get("failed", 0))
         for j in jobs:
-            if (j.get("state") or "") == "NEW":
+            if (j.get("state") or "") == "NEW" or is_meteorite_company(j.get("company")):
                 fresh = tracker.get_job(j["astral_job_id"])
                 if fresh:
                     j["state"] = fresh.get("state")
@@ -1731,6 +1751,7 @@ async def qualify_meteorite(
         fail_reason = None
         if not company_job_id:
             fail_reason = "empty company_job_id"
+        # AST-1152: length/blank content gate only — not roster title-pattern screening.
         elif len(job_title) < min_title:
             fail_reason = f"title too short len={len(job_title)} min={min_title}"
         elif not job_link.startswith("http"):
