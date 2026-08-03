@@ -204,3 +204,21 @@ Spike captures (if used) stay under gitignored `debug/spikes/AST-1153/` only —
 - **Test ownership:** Engineer ban on `tests/` / bible honored; Proof matrix is instructions for Betty, not an engineer test commit.
 
 No plan conflicts requiring `conf-!!-NONE`.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject`  
+**Plan path:** `docs/features/meteorite/ast-1153-prove-meteorite-analysis-without-title-pattern-reject.md`
+
+**Built tip (pre-stub verify):** `c2aa04a601c0c5cc1466248745ac962c00bea552` (`c2aa04a6`) — Stage 1 verified on this tip; Stage 2 commit is this Review stub only.
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | *(verify-only — no commit)* | Full `--ftr AST-1151-do-not-validate-titles-on-meteorites` sync; `is_meteorite_company` / `validate_title_batch` skip / `qualify_job_listings` re-home / `qualify_meteorite` content gate present; `py_compile` ok; `git diff --stat ftr...HEAD -- src/` empty |
+| 2 | *(this commit)* | Lock Proof matrix P1–P5 + UAT recipe for Betty; no `src/` delta |
+
+**Betty handoff:** Proof matrix P1–P5 + manifest shape in this plan; fill AST-1152 deferred gaps under `docs/test-bible/core/consult.md` / gazer as judged. Engineer test-tree ban holds.
+
+**Escalation (Joan's non-blocking note):** missing AST-1152 symbol after sync **or** product gap vs Proof matrix → comment on **AST-1153** (this ticket), not parent — builder has one stop target.
