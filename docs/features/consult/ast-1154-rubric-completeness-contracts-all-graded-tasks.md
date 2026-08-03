@@ -201,3 +201,11 @@ Full active statute set (65) scored in-session — 0 fix-now. Stage 1 / Stage 2 
 **Notes:** 3 statutes Joan excluded at plan time (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) score `conforms` on the diff-based sweep — the actual diff includes this plan doc and the pipeline's later test/test-bible commits, neither of which sit in the plan's Files-Changed table by convention. Both clean; not scope creep. Per-commit role separation verified: `code()` commits never touch `tests/**` / `docs/test-bible/**`; `test()` / `merge-tests()` commits never touch `src/**` / `docs/features/**`.
 
 — Radia
+
+---
+
+## Resolution
+
+**2026-08-03** — Radia **0 fix-now**. Discuss on `astral.standards.names-not-ticket-ids` (ticket-id in `GRADE SET COMPLETENESS (AST-1154)` sentinel): **kept as shipped**. Renaming would churn Betty’s marker assertions and Manage Tasks copy for a non-blocking, already-precedented pattern; no product code change this pass.
+
+**Publish tip after resolve:** see `resolve(AST-1154): — clean` commit on `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
