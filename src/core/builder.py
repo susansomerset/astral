@@ -1671,11 +1671,18 @@ def _html_with_signature_image_token(
         raise ValueError(
             "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
         )
+
+    # AST-1165: authored newlines → <br> after escape (same as letter body).
+    def _esc_br(segment: str) -> str:
+        return html.escape((segment or "").replace("\r\n", "\n")).replace(
+            chr(10), "<br>"
+        )
+
     if token_status == "absent":
-        return html.escape(signature_text or "")
+        return _esc_br(signature_text or "")
     parts = (signature_text or "").split(tok["literal"])
     sep = img_html if safe_src else ""
-    return sep.join(html.escape(part) for part in parts)
+    return sep.join(_esc_br(part) for part in parts)
 
 
 def _emit_cover_signoff_html(cover: dict, profile: dict) -> str:
