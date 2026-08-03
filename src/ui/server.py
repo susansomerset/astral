@@ -121,4 +121,5 @@ def serve_react(path):
 
 if __name__ == "__main__":  # pragma: no cover
     _warn_stale_frontend_dist()
-    app.run(debug=True, port=5001)
+    # use_reloader=False: avoid mid-run restarts when any .py mtime changes (e.g. git/editor).
+    app.run(debug=True, use_reloader=False, port=5001)
