@@ -2146,6 +2146,28 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   -q
 ```
 
+### AST-1147 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1147-from-block-token-template-config-contract`.
+
+Extends `COVER_FROM_BLOCK_CONFIG` with `default_template`, `allowed_token_ids` (`FULL_NAME` / `LOCATION` / `CONTACT_EMAIL` / `PHONE`), `authoring_separator` `|`, `emit_separator` ` • `, `empty_segment_policy` `drop_with_adjacent_separator`. Keeps AST-1137 path/separator keys. Brief aliases not registered. Resolve/emit = sibling **AST-1148**; help chrome = **AST-1149**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token template + rewrite + alias exclusion | `src/utils/config.py` | **`TestAst1147CoverFromBlockTokenTemplateConfig`** |
+| Prior from-block field contract | same | **`TestAst1137CoverFromBlockConfig`** (unchanged keys) |
+
+**Broken / obsolete:** none — additive keys on existing block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1147CoverFromBlockTokenTemplateConfig \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  -q
+```
+
 ### AST-1138 · AST-1124
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`.
@@ -2249,3 +2271,25 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
   -q
 ```
 
+### AST-1154 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
+
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
+| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+
+**Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
+
+**Integration:** none — prompt/config contract only; no existing integration scenario asserts these strings.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
+  -q
+```

@@ -3688,6 +3688,44 @@ class TestAst1137CoverFromBlockConfig:
         }
 
 
+class TestAst1147CoverFromBlockTokenTemplateConfig:
+    """AST-1147: COVER_FROM_BLOCK_CONFIG token template + rewrite / empty policy."""
+
+    def test_default_template_allowlist_and_rewrite(self) -> None:
+        block = cfg.COVER_FROM_BLOCK_CONFIG
+        assert block["default_template"] == (
+            "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+        )
+        assert block["allowed_token_ids"] == (
+            "FULL_NAME",
+            "LOCATION",
+            "CONTACT_EMAIL",
+            "PHONE",
+        )
+        assert block["authoring_separator"] == "|"
+        assert block["emit_separator"] == " • "
+        # Emit separator matches AST-1137 golden segment_separator.
+        assert block["emit_separator"] == block["segment_separator"]
+        assert block["empty_segment_policy"] == "drop_with_adjacent_separator"
+        # Path keys remain for current resolve until AST-1148 migrates.
+        assert block["line_1_contact_paths"] == ("location",)
+        assert block["line_2_contact_paths"] == ("contact_email", "phone")
+
+    def test_brief_aliases_not_registered(self) -> None:
+        allowed = set(cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"])
+        for alias in (
+            "RESUME_LOCATION",
+            "RESUME_EMAIL",
+            "CANDIDATE_MOBLE",
+            "CANDIDATE_MOBILE",
+        ):
+            assert alias not in allowed
+            assert alias not in cfg.TOKEN_SOURCES
+        # Allowlisted ids already exist in TOKEN_SOURCES (paths unchanged this ticket).
+        for tid in cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]:
+            assert tid in cfg.TOKEN_SOURCES
+
+
 class TestAst1138JobCoverSomersetConfig:
     """AST-1138: BUILD_CONFIG job_cover_somerset artifact→Somerset field map."""
 
@@ -3711,3 +3749,29 @@ class TestAst1138JobCoverSomersetConfig:
         assert set(block["unset_fields"]).issubset(session_keys)
         assert set(block["artifact_to_fields"].values()).issubset(session_keys)
         assert "cover_letter" in cfg.BUILD_CONFIG["artifact_shapes"]
+
+
+class TestAst1154EncodedGradeSetCompleteness:
+    """AST-1154: multi-vector encoded payload_instructions require full grade-set."""
+
+    _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
+    _MULTI = (
+        "grades_encoded",
+        "grades_encoded_notes",
+        "grades_encoded_meta",
+        "grades_encoded_prefilter_links",
+    )
+
+    def test_shared_clause_on_multi_vector_encoded_types(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        for key in self._MULTI:
+            text = ots[key]["payload_instructions"]
+            assert self._MARKER in text, key
+            # Silence → {code}X0; inventing letter grades to fill gaps is forbidden.
+            assert "{code}X0" in text, key
+            assert "never skip that segment" in text, key
+
+    def test_clause_absent_from_vet_meta_and_grades_json(self) -> None:
+        ots = cfg.ASTRAL_CONFIG["output_types"]
+        assert self._MARKER not in ots["grades_encoded_vet_meta"]["payload_instructions"]
+        assert self._MARKER not in ots["grades_json"]["payload_instructions"]

@@ -746,3 +746,43 @@ class TestAst1144ParseMeteoriteEmailMetadataPrompt:
         actual = Path("data/admin/agent_task.json").read_bytes()
         assert actual == expected
 
+
+class TestAst1154GradedTaskCompletenessPrompts:
+    """AST-1154: seven multi-vector graded agent_task cache_prompts require full grade-set."""
+
+    _MARKER = "GRADE SET COMPLETENESS (AST-1154)"
+    _KEYS = (
+        "prefilter_company",
+        "qualify_job_listings",
+        "evaluate_jd",
+        "grade_do",
+        "grade_get",
+        "grade_like",
+        "meteorite_like",
+    )
+
+    def test_marker_and_tighten_lines_on_graded_cache_prompts(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        for key in self._KEYS:
+            cache = by[key]["cache_prompt"]
+            assert self._MARKER in cache, key
+            assert "Omitting a code is invalid" in cache or (
+                "never omit a code" in cache
+            ), key
+        # Plan VALIDATE/Rules tighteners (exact phrases).
+        assert "Confirm every rubric vector code appears exactly once" in by["evaluate_jd"][
+            "cache_prompt"
+        ]
+        assert "Every rubric vector code must appear exactly once per job line" in by[
+            "qualify_job_listings"
+        ]["cache_prompt"]
+        for key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
+            assert "silent vectors must be {code}X0." in by[key]["cache_prompt"], key
+        assert "silent vectors must be X0." in by["prefilter_company"]["cache_prompt"]
+
+    def test_fixture_byte_locked_with_completeness_prompts(self) -> None:
+        repo = Path("data/admin/agent_task.json")
+        fixture = Path("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert repo.read_bytes() == fixture.read_bytes()
+
