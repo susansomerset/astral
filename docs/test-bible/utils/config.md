@@ -2271,3 +2271,25 @@ UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.met
   -q
 ```
 
+### AST-1154 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
+
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
+| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+
+**Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
+
+**Integration:** none — prompt/config contract only; no existing integration scenario asserts these strings.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
+  -q
+```
