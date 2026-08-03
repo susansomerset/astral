@@ -1474,3 +1474,21 @@ cd src/ui/frontend && npx vitest run \
   --testNamePattern="AST-1106|AST-887|AST-894"
 ```
 
+### AST-1156 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`.
+
+Skipped Retry groups selection by current `job.state`, looks up `bulk_retry_to_state_by_from_state`, and POSTs one `/api/jobs/bulk_state` per destination (meteorite Do fail → `METEORITE_PASSED_JD`; regular Get fail → `PASSED_DO`). Config map: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop-correct Retry grouping | `JobsSkipped.tsx`, `StateUiContext.tsx`, fixture | **`test_JobsSkipped.test.tsx`** — **AST-1156 hop-correct Skipped Retry**; revised fixture map; existing Retry toast row asserts `CULTURE_READY` |
+
+**Broken / obsolete:** fixture `bulk_retry_to_state: "NEW"` → map; Retry no longer assumes universal NEW.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```

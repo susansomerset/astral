@@ -2339,3 +2339,24 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
   tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
   -q
 ```
+
+### AST-1156 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`.
+
+`JOBS_SKIPPED_BULK_RETRY_TO_STATE` maps every Skipped section state (except `CANDIDATE_SKIPPED`) to a claimable **primary** trigger; manifest exposes `bulk_retry_to_state_by_from_state` (scalar `bulk_retry_to_state` removed). Target `prior_states` expanded so `transition_job_state` accepts Retry. UI/API: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/ui/api/api_jobs.md`** (or ui/api bible if present).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retry map + priors + manifest | `src/utils/config.py` | **`TestAst1156SkippedBulkRetryMap`**; revised **`TestBuildStateUiManifest`**, **`TestAst874FetchCulturePagesConfig`**, **`TestAst1053MeteoriteGdlJobStates`** |
+
+**Broken / obsolete:** scalar `bulk_retry_to_state == "NEW"`; exact prior lists on CULTURE_READY / PASSED_JD / meteorite pass targets expanded for Skipped Retry from-states.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1156SkippedBulkRetryMap \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_manifest_contains_expected_sections \
+  -q
+```

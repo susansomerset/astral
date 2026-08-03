@@ -405,7 +405,11 @@ class TestBuildStateUiManifest:
     def test_manifest_contains_expected_sections(self) -> None:
         manifest = cfg.build_state_ui_manifest()
         assert "jobs" in manifest and "candidate" in manifest and "company" in manifest
-        assert manifest["jobs"]["skipped"]["bulk_retry_to_state"] == "NEW"
+        skipped = manifest["jobs"]["skipped"]
+        assert "bulk_retry_to_state" not in skipped
+        # AST-1156: hop/family-correct Retry map (scalar NEW removed).
+        assert skipped["bulk_retry_to_state_by_from_state"]["FAILED_DO"] == "PASSED_JD"
+        assert skipped["bulk_retry_to_state_by_from_state"]["METEORITE_FAILED_DO"] == "METEORITE_PASSED_JD"
 
     def test_ast522_recommended_manifest_sections_and_phase_columns(self) -> None:
         manifest = cfg.build_state_ui_manifest()
@@ -1224,7 +1228,13 @@ class TestAst874FetchCulturePagesConfig:
     """AST-874: CULTURE_READY gate, fetch_culture_pages registry, grade_like retarget."""
 
     def test_job_states_and_like_priors(self) -> None:
-        assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == ["PASSED_GET"]
+        # AST-1156: Skipped Retry lands LIKE fails back on CULTURE_READY.
+        assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == [
+            "PASSED_GET",
+            "FAILED_LIKE",
+            "FAILED_TECHNICAL_LIKE",
+            "NEED_WEBSITE_CONTENT",
+        ]
         assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
         assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
         # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes.
@@ -2461,17 +2471,37 @@ class TestAst1053MeteoriteGdlJobStates:
         js = cfg.JOB_STATES
         assert js["METEORITE_NEW"]["prior_states"] is None
         # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
-        assert js["METEORITE_QUALIFIED"]["prior_states"] == ["METEORITE_NEW"]
+        # AST-1156: Skipped Retry from meteorite JD fail/error → METEORITE_QUALIFIED.
+        assert js["METEORITE_QUALIFIED"]["prior_states"] == [
+            "METEORITE_NEW",
+            "METEORITE_FAILED_JD",
+            "METEORITE_ERROR_EVALUATE_JD",
+        ]
         assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
         assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
         # AST-1155: graded-trigger *_RETRY holdings are also priors on hop outcomes.
-        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
+        assert js["METEORITE_PASSED_JD"]["prior_states"] == [
+            "METEORITE_QUALIFIED",
+            "METEORITE_QUALIFIED_RETRY",
+            "METEORITE_FAILED_DO",
+            "METEORITE_FAILED_TECHNICAL_DO",
+        ]
         assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
         assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
-        assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
+        assert js["METEORITE_PASSED_DO"]["prior_states"] == [
+            "METEORITE_PASSED_JD",
+            "METEORITE_PASSED_JD_RETRY",
+            "METEORITE_FAILED_GET",
+            "METEORITE_FAILED_TECHNICAL_GET",
+        ]
         assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
         assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
-        assert js["METEORITE_PASSED_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
+        assert js["METEORITE_PASSED_GET"]["prior_states"] == [
+            "METEORITE_PASSED_DO",
+            "METEORITE_PASSED_DO_RETRY",
+            "METEORITE_FAILED_LIKE",
+            "METEORITE_FAILED_TECHNICAL_LIKE",
+        ]
         assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
         assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
         assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
@@ -2550,7 +2580,13 @@ class TestAst1053MeteoriteGdlJobStates:
         rec_priors = cfg.JOB_STATES["RECOMMENDED"]["prior_states"] or []
         assert "PASSED_LIKE" in rec_priors
         assert "PASSED_LIKE_RETRY" in rec_priors
-        assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == ["JD_READY", "JD_READY_RETRY"]
+        # AST-1156: Skipped Retry from DO fail/technical → PASSED_JD.
+        assert cfg.JOB_STATES["PASSED_JD"]["prior_states"] == [
+            "JD_READY",
+            "JD_READY_RETRY",
+            "FAILED_DO",
+            "FAILED_TECHNICAL_DO",
+        ]
         # Non-meteorite qualify path untouched (AST-1060 AC7 smoke).
         # qualify_job_listings has no agent_task key — do not invent one.
         qjl = cfg.TASK_CONFIG["qualify_job_listings"]
@@ -3856,3 +3892,44 @@ class TestAst1155GradedRetryHoldings:
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_JD_RETRY"] == "jd_grades"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_DO_RETRY"] == "do_grades"
         assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_GET_RETRY"] == "get_grades"
+
+
+class TestAst1156SkippedBulkRetryMap:
+    """AST-1156: Skipped Retry from-state → claimable primary trigger map."""
+
+    def test_map_covers_skipped_sections_except_candidate_skipped(self) -> None:
+        retryable = [s for s in cfg.JOBS_SKIPPED_SECTION_ORDER if s != "CANDIDATE_SKIPPED"]
+        assert set(cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE) == set(retryable)
+        assert "CANDIDATE_SKIPPED" not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
+        for frm, to in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE.items():
+            assert frm in cfg.JOB_STATES and to in cfg.JOB_STATES
+
+    def test_ac_critical_hop_targets(self) -> None:
+        m = cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
+        assert m["METEORITE_FAILED_DO"] == "METEORITE_PASSED_JD"
+        assert m["METEORITE_FAILED_TECHNICAL_DO"] == "METEORITE_PASSED_JD"
+        assert m["FAILED_DO"] == "PASSED_JD"
+        assert m["FAILED_GET"] == "PASSED_DO"
+        assert m["FAILED_LIKE"] == "CULTURE_READY"
+        assert m["METEORITE_FAILED_LIKE"] == "METEORITE_PASSED_GET"
+        # Primaries only — not AST-1155 *_RETRY holdings.
+        assert m["FAILED_TECHNICAL_LIKE"] == "CULTURE_READY"
+        assert "RETRY" not in m["METEORITE_FAILED_DO"]
+
+    def test_manifest_exposes_map_not_scalar_new(self) -> None:
+        skipped = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert "bulk_retry_to_state" not in skipped
+        by = skipped["bulk_retry_to_state_by_from_state"]
+        assert by == dict(cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE)
+        # Claimable primary still companions with AST-1155 holding.
+        assert cfg.dispatch_claim_states("METEORITE_PASSED_JD", "job") == [
+            "METEORITE_PASSED_JD",
+            "METEORITE_PASSED_JD_RETRY",
+        ]
+
+    def test_retry_targets_accept_from_states_as_priors(self) -> None:
+        for frm, to in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE.items():
+            priors = cfg.JOB_STATES[to]["prior_states"]
+            if priors is None:
+                continue
+            assert frm in priors, (frm, to)
