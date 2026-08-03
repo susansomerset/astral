@@ -208,3 +208,17 @@ Owns the config contract for a tokenized cover from-block default: default autho
 Diff matches Stage 1 exact key/value table. Boundaries vs AST-1148/1149 held. Three-dot also carries Betty corpus from origin/tests merge history — expected, not scope smuggle in AST-1147 `code()`.
 
 context_tokens≈30000
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Review:** Radia `[code-rubric]` revision=1 — Overall **DISCUSS**, **fix-now: none**.
+
+| Finding | Action |
+|---------|--------|
+| discuss (C4) `astral.debug.no-repo-root-artifacts-dir` — conforms, ack | No product change |
+| discuss (C4) `astral.debug.spikes-under-debug-dir` — conforms, ack | No product change |
+| discuss (C4) `astral.docs.features-single-file-per-ticket` — conforms, ack | No product change |
+| discuss (C4) `astral.git.engineer-test-tree-ban` — conforms, ack | No product change |
+
+Merged `origin/dev` onto the publish sub before User Testing (integration line). Config contract keys unchanged after merge.
