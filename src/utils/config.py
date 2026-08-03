@@ -1171,7 +1171,7 @@ CANDIDATE_LIBRARY_CONFIG = {
     "full_name_join": " ",
 }
 
-# AST-1137: candidate-owned cover from-block + default composition for siblings.
+# AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
     "contact_key": "cover_letter_from_block",
     "segment_separator": " • ",
@@ -1180,6 +1180,30 @@ COVER_FROM_BLOCK_CONFIG = {
     "line_1_contact_paths": ("location",),
     "line_2_contact_paths": ("contact_email", "phone"),
     "sources": ("candidate", "default"),
+    # AST-1147: token template contract for AST-1148 resolve/emit (path keys stay until then).
+    "default_template": (
+        "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+    ),
+    # Keep authoring_help token prose in sync when this allowlist changes (AST-1149).
+    "allowed_token_ids": ("FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE"),
+    "authoring_separator": "|",
+    "emit_separator": " • ",
+    "empty_segment_policy": "drop_with_adjacent_separator",
+    # AST-1149: user-facing authoring chrome (UI renders; no resolve math).
+    "authoring_help": (
+        "Allowed tokens: {$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}. "
+        "Type | between segments; cover print shows •. "
+        "Leave empty to use the default template (see placeholder)."
+    ),
+    "session_authoring_help": (
+        "Enter cover-letter field values, then Open HTML to Print → PDF. "
+        "Letter fields come from this form. From block supports "
+        "{$FULL_NAME}, {$LOCATION}, {$CONTACT_EMAIL}, {$PHONE}; type | for • in print. "
+        "When a candidate is selected, leave From empty to use that candidate’s saved "
+        "from-block or the default token template. Without a candidate, From is required. "
+        "If a candidate is selected and has a profile signature image, the server may "
+        "include it in the sign-off; otherwise name-only. This tool does not save to the database."
+    ),
 }
 
 # AST-1016: mechanical preamble script (Intro + steps). UI = AST-1017; Ruth task = AST-1015.
@@ -4226,10 +4250,18 @@ DATA_SHAPES = {
                     "label": "Cover Letter Signature",
                     "fields": [
                         {"key": "contact.cover_letter_signature", "label": "Signature text", "type": "textarea"},
+                    ],
+                },
+                {
+                    # Own section so CandidateProfile TabbedTextArea (fields[0] only) shows it.
+                    "label": "Cover Letter From",
+                    "fields": [
                         {
                             "key": "contact.cover_letter_from_block",
-                            "label": "Cover letter from-block",
+                            "label": "Cover letter From block",
                             "type": "textarea",
+                            "placeholder": COVER_FROM_BLOCK_CONFIG["default_template"],
+                            "help": COVER_FROM_BLOCK_CONFIG["authoring_help"],
                         },
                     ],
                 },

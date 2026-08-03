@@ -17,6 +17,7 @@ from src.utils.config import (
     BUILD_CONFIG,
     PREAMBLE_CONFIG,
     TOPIC_MENU_GEN_CONFIG,
+    COVER_FROM_BLOCK_CONFIG,
     build_state_ui_manifest,
 )
 from src.utils.logging import get_logger
@@ -165,6 +166,12 @@ def ui_config():
         "topic_menu_gen": {
             "ui": TOPIC_MENU_GEN_CONFIG["ui"],
             "confirm_outcomes": list(TOPIC_MENU_GEN_CONFIG["confirm_outcomes"]),
+        },
+        # AST-1149: Session Cover Letter authoring help (profile uses DATA_SHAPES).
+        "cover_from_block": {
+            "default_template": COVER_FROM_BLOCK_CONFIG["default_template"],
+            "authoring_help": COVER_FROM_BLOCK_CONFIG["authoring_help"],
+            "session_authoring_help": COVER_FROM_BLOCK_CONFIG["session_authoring_help"],
         },
     })
 

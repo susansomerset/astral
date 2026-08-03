@@ -38,6 +38,7 @@ from src.utils.config import (
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
+    TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
@@ -54,6 +55,7 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
 )
+from src.utils.formatting import value_to_str
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -61,6 +63,8 @@ logger = get_logger(__name__)
 
 _NAME_COLUMNS = CANDIDATE_LIBRARY_CONFIG["name_columns"]
 _LIBRARY_BLOB_KEYS = ("contact", "context", "artifacts")
+# AST-1148: same shape as config._TOKEN_RE — do not import that private.
+_FROM_BLOCK_TOKEN_RE = re.compile(r"\{\$([A-Z_]+)\}")
 
 
 def build_candidate_token_view(candidate: dict) -> dict:
@@ -86,17 +90,140 @@ def recompute_full_name(first: str, last: str) -> str:
     return join.join(parts)
 
 
+def expand_cover_from_block_text(
+    text: str,
+    candidate: dict,
+    *,
+    source: str,
+    debug: bool = False,
+) -> str:
+    """Expand from-block authoring text for emit (AST-1148).
+
+    Allowlisted ``{$TOKEN}`` → candidate values; ``|`` → emit separator;
+    empty segments dropped per COVER_FROM_BLOCK_CONFIG. Unrecognized
+    ``{$…}`` left as-is. ``source`` is a debug label only (candidate/default/session).
+    """
+    logger.set_debug_flag(debug)
+    auth_sep = COVER_FROM_BLOCK_CONFIG["authoring_separator"]
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    line_sep = COVER_FROM_BLOCK_CONFIG["line_separator"]
+    policy = COVER_FROM_BLOCK_CONFIG["empty_segment_policy"]
+    allowed = COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+    if policy != "drop_with_adjacent_separator":
+        raise ValueError(
+            f"Unsupported COVER_FROM_BLOCK_CONFIG empty_segment_policy: {policy!r}"
+        )
+
+    # DB row → token view; builder/token-view shape keeps top-level contact.
+    if isinstance(candidate.get("candidate_data"), dict):
+        view = build_candidate_token_view(candidate)
+    else:
+        contact = (
+            candidate["contact"]
+            if isinstance(candidate.get("contact"), dict)
+            else {}
+        )
+        view = {
+            "first": candidate.get("first") or "",
+            "last": candidate.get("last") or "",
+            "full": candidate.get("full") or "",
+            "contact": contact,
+            "_astral_candidate_id": (
+                candidate.get("_astral_candidate_id")
+                or candidate.get("astral_candidate_id")
+                or ""
+            ),
+        }
+    if not str(view.get("full") or "").strip():
+        view["full"] = recompute_full_name(
+            str(view.get("first") or ""), str(view.get("last") or "")
+        )
+
+    def _walk_path(obj: object, path: str) -> object:
+        for segment in path.split("."):
+            if not isinstance(obj, dict):
+                return None
+            obj = obj.get(segment)
+        return obj
+
+    def _lookup_allowed(name: str) -> Optional[str]:
+        # None → leave {$name} as-is; "" → allowlisted empty (segment may drop).
+        if name not in allowed:
+            return None
+        spec = TOKEN_SOURCES.get(name)
+        if not spec or spec.get("source") != "candidate":
+            return None
+        raw = _walk_path(view, spec["path"])
+        if raw is None or raw == "" or raw == []:
+            return ""
+        return value_to_str(raw).strip()
+
+    totals = {"resolved": 0, "empty": 0, "left_as_is": 0}
+
+    def _expand_segment(segment: str) -> str:
+        def _replace(match: re.Match) -> str:
+            name = match.group(1)
+            looked = _lookup_allowed(name)
+            if looked is None:
+                totals["left_as_is"] += 1
+                return match.group(0)
+            if looked:
+                totals["resolved"] += 1
+            else:
+                totals["empty"] += 1
+            return looked
+
+        return _FROM_BLOCK_TOKEN_RE.sub(_replace, segment)
+
+    raw = (text or "").replace("\r\n", "\n")
+    tokens_found = len(_FROM_BLOCK_TOKEN_RE.findall(raw))
+    out_lines = []
+    for line in raw.split(line_sep):
+        # Split on authoring "|", expand tokens, drop empty, join with emit sep.
+        keepers = []
+        for seg in line.split(auth_sep):
+            expanded = _expand_segment(seg).strip()
+            if expanded:
+                keepers.append(expanded)
+        if keepers:
+            out_lines.append(emit_sep.join(keepers))
+    result = line_sep.join(out_lines)
+
+    if debug:
+        cid = (
+            view.get("_astral_candidate_id")
+            or candidate.get("astral_candidate_id")
+            or ""
+        )
+        logger.debug_index(
+            func="candidate.expand_cover_from_block_text",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=f"success — from_block {source}",
+        )
+        logger.debug_detail(f"source={source}")
+        logger.debug_detail(f"tokens_found={tokens_found}")
+        logger.debug_detail(f"tokens_resolved={totals['resolved']}")
+        logger.debug_detail(f"tokens_empty={totals['empty']}")
+        logger.debug_detail(f"tokens_left_as_is={totals['left_as_is']}")
+        logger.debug_detail(
+            f"separator_rewrite={'yes' if auth_sep in raw else 'no'}"
+        )
+        logger.debug_detail(f"text_chars={len(result)}")
+    return result
+
+
 def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
-    """Return cover from-block text + source for emit consumers (AST-1137).
+    """Return cover from-block text + source for emit consumers (AST-1137 / AST-1148).
 
     Returns ``{"text": str, "source": "candidate"|"default"}``.
     Custom wins when ``contact.cover_letter_from_block`` strips non-empty;
-    otherwise compose defaults from name + contact per COVER_FROM_BLOCK_CONFIG.
+    otherwise expand ``default_template``. Both paths run token / ``|``→``•`` /
+    empty-segment expand.
     """
     logger.set_debug_flag(debug)
     src_candidate, src_default = COVER_FROM_BLOCK_CONFIG["sources"]
-    seg_sep = COVER_FROM_BLOCK_CONFIG["segment_separator"]
-    line_sep = COVER_FROM_BLOCK_CONFIG["line_separator"]
     contact_key = COVER_FROM_BLOCK_CONFIG["contact_key"]
 
     # DB row (candidate_data.contact) or token-view (top-level contact).
@@ -110,48 +237,15 @@ def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
 
     raw = contact.get(contact_key)
     if isinstance(raw, str) and raw.strip():
-        text = raw.strip()
+        authoring = raw.strip()
         source = src_candidate
-        if debug:
-            cid = (
-                candidate.get("astral_candidate_id")
-                or candidate.get("_astral_candidate_id")
-                or ""
-            )
-            logger.debug_index(
-                func="candidate.resolve_cover_from_block",
-                index=1,
-                total=1,
-                identifier=cid,
-                outcome=f"success — from_block {source}",
-            )
-            logger.debug_detail(f"source={source}")
-            logger.debug_detail(f"text_chars={len(text)}")
-        return {"text": text, "source": source}
+    else:
+        authoring = COVER_FROM_BLOCK_CONFIG["default_template"]
+        source = src_default
 
-    # Default composition: Name • City, ST / email • phone (omit empty).
-    full = str(candidate.get("full") or "").strip()
-    if not full:
-        full = recompute_full_name(
-            str(candidate.get("first") or ""), str(candidate.get("last") or "")
-        )
-    line1_parts = [full] if full else []
-    for path in COVER_FROM_BLOCK_CONFIG["line_1_contact_paths"]:
-        seg = str(contact.get(path) or "").strip()
-        if seg:
-            line1_parts.append(seg)
-    line2_parts = []
-    for path in COVER_FROM_BLOCK_CONFIG["line_2_contact_paths"]:
-        seg = str(contact.get(path) or "").strip()
-        if seg:
-            line2_parts.append(seg)
-    lines = []
-    if line1_parts:
-        lines.append(seg_sep.join(line1_parts))
-    if line2_parts:
-        lines.append(seg_sep.join(line2_parts))
-    text = line_sep.join(lines)
-    source = src_default
+    text = expand_cover_from_block_text(
+        authoring, candidate, source=source, debug=debug
+    )
     if debug:
         cid = (
             candidate.get("astral_candidate_id")
@@ -167,8 +261,6 @@ def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
         )
         logger.debug_detail(f"source={source}")
         logger.debug_detail(f"text_chars={len(text)}")
-        logger.debug_detail(f"line1_segments={len(line1_parts)}")
-        logger.debug_detail(f"line2_segments={len(line2_parts)}")
     return {"text": text, "source": source}
 
 
