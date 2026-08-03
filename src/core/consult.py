@@ -1156,6 +1156,21 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         es = str(e)
         if es.startswith("Unknown grading_mode:"):
             raise
+        # Incomplete/extra grade sets → retry holding, never first-touch technical (AST-1155).
+        if "missing vectors" in es or "unknown vectors" in es:
+            dest = _consult_batch_fail_dest(job.get("state"), error_state)
+            if debug:
+                grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
+                _debug_incomplete_grade_set(
+                    func="consult.render_verdict",
+                    identifier=astral_job_id,
+                    rubric_criteria=rubric_criteria,
+                    grades=grades_dbg,
+                    dest=dest,
+                )
+            if dest:
+                _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+            return {"success": False, "to_state": dest, "error": es}
         return _fail(es)
 
     if debug:

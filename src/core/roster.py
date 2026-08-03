@@ -1839,6 +1839,8 @@ def _apply_prefilter_decoded_company_outcome(
         _render_pass_fail,
         _render_score,
         _hydrate_grade_reasons_from_rubric,
+        _require_complete_grade_set,
+        _debug_incomplete_grade_set,
     )
     from src.core.candidate import rubric_criteria_for_task
 
@@ -1847,6 +1849,21 @@ def _apply_prefilter_decoded_company_outcome(
     rubric_list = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
     if grades and rubric_list:
         _hydrate_grade_reasons_from_rubric(grades, rubric_list)
+        # Incomplete/extra → re-raise for caller `_prefilter_fail` retry path (AST-1155).
+        try:
+            _require_complete_grade_set(rubric_list, grades)
+        except ValueError:
+            if debug:
+                _debug_incomplete_grade_set(
+                    func="roster._apply_prefilter_decoded_company_outcome",
+                    identifier=short_name,
+                    rubric_criteria=rubric_list,
+                    grades=grades,
+                    dest=cfg.get("retry_state") or cfg.get("error_state"),
+                    index=debug_index,
+                    total=debug_total,
+                )
+            raise
     verdict_state = _render_pass_fail("prefilter_company", grades)
     link_indices = flat.get("possible_job_links") or []
     on_decomposed = _company_on_decomposed_pjl_path(
