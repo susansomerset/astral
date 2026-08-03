@@ -154,3 +154,20 @@ Owns user-visible authoring help (and config-driven placeholder/label copy) so S
 | 1 | `2c3dc706` | `COVER_FROM_BLOCK_CONFIG` authoring help + own DATA_SHAPES section + `/api/ui_config` slice |
 | 2 | `727a1ecb` | Profile TabbedTextArea help/placeholder wiring |
 | 3 | `e61c58b9` | Session Cover Letter config-driven intro + From help/placeholder |
+
+## Radia review — findings (rev 1)
+
+**Overall: DISCUSS** — no fix-now. Diff matches the plan almost line-for-line: help/placeholder stay in `COVER_FROM_BLOCK_CONFIG`, no token/`|`/`•` literals invented in TSX, no new routes, no resolve/emit touched.
+
+**What's solid:**
+- `COVER_FROM_BLOCK_CONFIG["authoring_help"]` / `["session_authoring_help"]` are the only source of the token/`|`→`•` prose; `CandidateProfile.tsx` / `TabbedTextArea.tsx` render `f.help` / `f.placeholder` without re-deriving it.
+- `AdminSessionCoverLetter.tsx` keeps `SESSION_INTRO_FALLBACK` as a fetch-failure-only fallback (matches plan §3.1) — does not compose config in React.
+- New "Cover Letter From" `DATA_SHAPES` section fixes the real `sec.fields[0]`-only bug (from-block was `fields[1]`, invisible) exactly per the plan's ⚠️ Decision.
+
+**Discuss:**
+1. **Git topology** — `sub/AST-1145/AST-1149-...` merged `origin/sub/AST-1145/AST-1148-...` directly (`2f56ef35`) in addition to `origin/ftr/AST-1145-...` (`38caf363`). Traced the merge parent: it landed only AST-1148's plan-stage commit (`d2d39504`), before AST-1148's own code commits existed, so no AST-1148 production code (`candidate.py` / `builder.py`) crossed into this diff — verified via `git diff origin/dev...<tip> -- src/core/candidate.py src/core/builder.py` (empty). No functional impact; flagging only so future siblings sync via `merge-child` → `ftr` rather than a direct sub-to-sub merge (`orch.git.merge-on-checkout` describes merging `ftr`, not a sibling's sub).
+2. **Straggler (C4)** — plan-time Considered-but-excluded lists `astral.standards.debug-contract-gated` and `astral.standards.dry-and-focused-functions` (deferred to AST-1148). Full-set sweep's `applies_when` (ui/utils layer, `src/**`) technically matches this diff too, so both score `conforms` rather than `not-applicable` — no `debug=` surface and no function-complexity growth in the touched lines, so substance-wise there's nothing to fix; noting per rubric C4 belt-and-suspenders, not blocking.
+
+**Pattern conformance:** `pattern.ui.admin-endpoint` — conforms (no new route; reuses `/api/ui_config` + existing candidate data `PUT`).
+
+— Radia
