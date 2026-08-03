@@ -2782,6 +2782,96 @@ class TestAst1139SessionCoverEmptyFromBlock:
         assert "document_path=somerset_cover" in details
 
 
+
+class TestAst1148SessionTypedFromBlockExpand:
+    """AST-1148: non-empty session from_block expands tokens / | → • before emit."""
+
+    def _fields(self, **overrides: str) -> dict[str, Any]:
+        base = {
+            "from_block": "",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Hiring Team,\n\nParagraph two.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        base.update(overrides)
+        return base
+
+    def _cand_row(self, **contact: Any) -> Dict[str, Any]:
+        return {
+            "astral_candidate_id": "cand-1148",
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "candidate_data": {
+                "contact": {
+                    "contact_email": "ada@example.com",
+                    "location": "London, UK",
+                    "phone": "555-0100",
+                    **contact,
+                },
+                "artifacts": {},
+                "context": {},
+            },
+        }
+
+    def test_session_typed_tokens_and_pipe_expand(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda _cid: self._cand_row()
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(
+                from_block="{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+            ),
+            candidate_id="cand-1148",
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        assert "ada@example.com" in from_html and "555-0100" in from_html
+        assert "{$FULL_NAME}" not in from_html
+        assert "|" not in from_html.replace("&", "")  # authoring | rewritten
+        assert "•" in from_html or "&#8226;" in from_html or "&bull;" in from_html
+
+    def test_session_typed_without_candidate_drops_empty_tokens(self) -> None:
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block="{$FULL_NAME} | Hello\nWorld")
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        # FULL_NAME empty without candidate → segment dropped; literal Hello/World remain.
+        assert "Hello" in from_html and "World" in from_html
+        assert "{$FULL_NAME}" not in from_html
+
+    def test_job_custom_tokens_expand(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["location"] = "London, UK"
+        cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
+            "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL}"
+        )
+        html = builder_mod.build_cover_letter_from_job(
+            {
+                "astral_job_id": "job-1148",
+                "job_data": {
+                    "artifacts": {
+                        "cover_letter": {
+                            "Subject": "Re: Role",
+                            "Letter": "Dear team,",
+                            "signature": "Ada",
+                        }
+                    }
+                },
+            },
+            cd,
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        assert "ada@example.com" in from_html
+        assert "{$FULL_NAME}" not in from_html
+
+
 class TestAst1138JobCoverSomersetFromBlock:
     """AST-1138: job Print Cover Letter → SomersetCover fromBlock + golden CSS."""
 
