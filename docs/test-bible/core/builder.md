@@ -531,3 +531,28 @@ Shared SomersetCover `.signature-img` vertical margin in `_emit_somerset_cover_h
   -q
 ```
 
+### AST-1165 · AST-1161
+
+**Parent:** [AST-1161 — Signature Image now overlaps Name text in signature](https://linear.app/astralcareermatch/issue/AST-1161/signature-image-now-overlaps-name-text-in-signature). **Publish:** `origin/sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title`.
+
+UAT: `_html_with_signature_image_token` escapes SomersetCover signature segments then converts authored newlines to `<br>` (token-present and token-absent paths). Session + job share the helper. Does not touch resume `_emit_cover_signoff_html`, AST-1162 `.signature-img` margin, or AST-1126 omit policies.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session name/title `<br>` after image + margin lock | `src/core/builder.py` | **`TestAst1165SignoffNewlineToBr::test_session_name_and_title_br_after_image`** |
+| Job SomersetCover same fragment | same | **`…::test_job_somerset_name_and_title_br_after_image`** |
+| Token-absent newlines, no empty img | same | **`…::test_token_absent_preserves_newlines_no_img`** |
+| Prior overlap / token placement | same | **`TestAst1162SignatureImgVerticalSpacing`**, **`TestAst1024BuildSessionCoverLetter`** image cases |
+
+**Broken / obsolete:** none (prior asserts used single-line names after the token; `<br>` after leading `\n` does not break order checks).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1165SignoffNewlineToBr \
+  tests/component/core/test_builder.py::TestAst1162SignatureImgVerticalSpacing \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_token_replaces_with_contact_image \
+  -q
+```
+
