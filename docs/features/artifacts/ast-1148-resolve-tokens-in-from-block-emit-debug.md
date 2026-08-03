@@ -180,3 +180,13 @@ Owns expanding allowlisted contact tokens, `|`→`•`, and empty-segment drop i
 - §2.1 / config source of truth: no new config block; consume AST-1147 keys.
 - §3.3 import direction: core → utils only; UI unchanged.
 - No cross-contamination into consult/rubric `|` parsers or resume HTML.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1145/AST-1148-resolve-tokens-in-from-block-emit-debug`
+**Tip:** `4e90baf6`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `bc340226` | `expand_cover_from_block_text` + `resolve_cover_from_block` migrates to `default_template` expand |
+| 2 | `4e90baf6` | Session-typed From calls shared expand before SomersetCover emit |
