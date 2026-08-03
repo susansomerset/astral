@@ -101,3 +101,11 @@ After AST-1162's image/name overlap fix, SomersetCover signoff still collapses a
 
 context_tokens≈12000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Review tip:** `7603bdcb` (`docs(AST-1165): Radia review — clean; full sweep zero findings`)  
+**Outcome:** clean — no fix-now / discuss / advisory product changes.
+
+Radia Overall CLEAN; Frame diff none. Product remains Stage 1 `_esc_br` in `_html_with_signature_image_token` (`75b56978`); Betty tests + bible via `merge-tests(AST-1165)` @ `31ebb768`. No code or test-tree edits this resolve pass.
