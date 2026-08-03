@@ -38,6 +38,7 @@ export interface TextTab {
   key: string
   disabled?: boolean
   placeholder?: string
+  help?: string
 }
 
 interface TabbedTextAreaProps {
@@ -53,9 +54,17 @@ export default function TabbedTextArea({ tabs, values, onChange, customPanels }:
   const barTabs = tabs.map((t, i) => ({ key: String(i), label: t.label }))
   const custom = customPanels?.[tab.key]
 
+  const help =
+    typeof tab.help === "string" && tab.help.trim() ? tab.help.trim() : null
+
   return (
     <div>
       <TabBar tabs={barTabs} active={String(active)} onChange={k => setActive(Number(k))} />
+      {help ? (
+        <p style={{ color: "#8b949e", marginBottom: 8, fontSize: 13, lineHeight: 1.5 }}>
+          {help}
+        </p>
+      ) : null}
       {custom ?? (
         <LabeledTextArea
           label={tab.label}

@@ -3,6 +3,8 @@ export interface Field {
   label: string
   type: "text" | "textarea" | "select" | "toggle" | "string_list"
   options?: (string | { value: string; label: string })[]
+  placeholder?: string
+  help?: string
 }
 
 export interface Section {
