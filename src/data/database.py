@@ -75,6 +75,7 @@ from src.utils.config import (
     remap_legacy_candidate_state,
     COMPANY_STATES,
     METEORITE_CONFIG,
+    METEORITE_EMAIL_INGEST_CONFIG,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -1821,8 +1822,10 @@ def text_matches_known_company_job_id_for_candidate(
 ) -> Optional[str]:
     """Inverted company_job_id match scoped to this candidate's companies.
 
-    Returns the matched company_job_id when any non-empty company_job_id on a job
-    under the candidate's companies appears as a substring of text; else None.
+    Returns the matched company_job_id when a non-empty id with
+    LENGTH(TRIM(...)) >= METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"]
+    (AST-1146) on a job under the candidate's companies appears as a substring of text;
+    else None.
     """
     cid = (candidate_id or "").strip()
     if not cid or not text:
@@ -1833,13 +1836,15 @@ def text_matches_known_company_job_id_for_candidate(
         # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
         _ensure_company_schema(c)
         _ensure_company_candidate_fk(c)
+        min_chars = int(METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"])
         cursor = c.execute(
             """SELECT company_job_id FROM job
                WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+                 AND LENGTH(TRIM(company_job_id)) >= ?
                  AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
                  AND ? LIKE '%' || company_job_id || '%'
                LIMIT 1""",
-            (cid, text),
+            (min_chars, cid, text),
         )
         row = cursor.fetchone()
         return row[0] if row else None
