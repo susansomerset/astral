@@ -336,3 +336,17 @@ Full active statute set (65) scored in-session — 0 fix-now. Live-ran all three
 **Notes:** accepted-risk carried from Joan — any `process_fn` exception on the seven graded triggers now first-strikes to retry holding, not just incomplete grades (established AST-642 behavior); infra-failure paths (missing company, prep failure) stay on `error_state`, confirmed unchanged. 3 trivially-clean C4 stragglers (plan-doc + test-tree diff inclusion vs Files-Changed-table convention) — not scope creep.
 
 — Radia
+
+---
+
+## Resolution
+
+**2026-08-03** · resolve-child after Radia DISCUSS (`a220ab12` docs tip; code tip was `e6698dd8`).
+
+| Finding | Disposition |
+|---------|-------------|
+| discuss `astral.standards.no-hardcoded-sets` (substring routing) | **Addressed in product** — `_require_complete_grade_set` raises `IncompleteGradeSetError` (subclass of `ValueError`); `render_verdict` and batch debug catch by type. Message text kept for logs/tests. |
+| discuss `astral.dispatch.run-next-is-chain-authority` (`_INPUT_STATE_TO_TASK`) | **Accepted as-is** — legacy non-dispatch map; only the two planned companions; meteorite stays on explicit `task_key`. |
+| Joan/Radia note: any `process_fn` failure first-strikes to retry | **Documented** — intentional AST-642 behavior once `retry_state` exists; infra paths outside `process_fn` still use `error_state`. |
+
+No fix-now items. No test-tree edits.

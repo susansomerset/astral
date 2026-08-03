@@ -607,6 +607,10 @@ def _importance_for_label(rubric_criteria: list, vector_label: str) -> float:
     raise ValueError(f"_render_score: no rubric criterion matching vector {vector_label!r}")
 
 
+class IncompleteGradeSetError(ValueError):
+    """Decoded grades are not an exact match to live rubric labels (AST-1155)."""
+
+
 def _grade_set_vector_diff(
     rubric_criteria: list,
     grades: list,
@@ -626,12 +630,12 @@ def _grade_set_vector_diff(
 
 
 def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
-    """Raise ValueError when grades are not an exact match to live rubric labels (AST-1155)."""
+    """Raise IncompleteGradeSetError when grades are not an exact match to live rubric labels."""
     missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
     if missing:
-        raise ValueError(f"_render_score: missing vectors {sorted(missing)}")
+        raise IncompleteGradeSetError(f"_render_score: missing vectors {sorted(missing)}")
     if extra:
-        raise ValueError(f"_render_score: unknown vectors {sorted(extra)}")
+        raise IncompleteGradeSetError(f"_render_score: unknown vectors {sorted(extra)}")
 
 
 def _debug_incomplete_grade_set(
@@ -1151,26 +1155,26 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         to_state, score, grades_out = _apply_render_verdict_decoded_job(
             task_type, astral_job_id, row_for_apply, cfg, ctx, debug=debug,
         )
+    except IncompleteGradeSetError as e:
+        # Incomplete/extra → retry holding, never first-touch technical (AST-1155).
+        dest = _consult_batch_fail_dest(job.get("state"), error_state)
+        if debug:
+            grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
+            _debug_incomplete_grade_set(
+                func="consult.render_verdict",
+                identifier=astral_job_id,
+                rubric_criteria=rubric_criteria,
+                grades=grades_dbg,
+                dest=dest,
+            )
+        if dest:
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+        return {"success": False, "to_state": dest, "error": str(e)}
     except ValueError as e:
         # Config defect (TASK_CONFIG typo) — not a runtime job failure — matches legacy raise contract.
         es = str(e)
         if es.startswith("Unknown grading_mode:"):
             raise
-        # Incomplete/extra grade sets → retry holding, never first-touch technical (AST-1155).
-        if "missing vectors" in es or "unknown vectors" in es:
-            dest = _consult_batch_fail_dest(job.get("state"), error_state)
-            if debug:
-                grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
-                _debug_incomplete_grade_set(
-                    func="consult.render_verdict",
-                    identifier=astral_job_id,
-                    rubric_criteria=rubric_criteria,
-                    grades=grades_dbg,
-                    dest=dest,
-                )
-            if dest:
-                _transition_job_state_for_task(agent_task, [astral_job_id], dest)
-            return {"success": False, "to_state": dest, "error": es}
         return _fail(es)
 
     if debug:
@@ -1386,8 +1390,7 @@ async def _run_batch_consult(
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
             bad_grades.add(aid)
-            err_s = str(e)
-            if debug and ("missing vectors" in err_s or "unknown vectors" in err_s):
+            if debug and isinstance(e, IncompleteGradeSetError):
                 _debug_incomplete_grade_set(
                     func=f"consult._run_batch_consult({task_key})",
                     identifier=_consult_job_identifier(input_job),
