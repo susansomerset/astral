@@ -3019,3 +3019,100 @@ class TestAst1138JobCoverSomersetFromBlock:
             "contact": {"contact_email": "ada@example.com"},
             "astral_candidate_id": "cand-1",
         }
+
+
+class TestAst1162SignatureImgVerticalSpacing:
+    """AST-1162: SomersetCover `.signature-img` non-negative bottom margin (no overlap)."""
+
+    _LIT = "{$SIGNATURE_IMAGE}"
+    _SAFE = "https://example.com/sig.png"
+    # Supersedes AST-1024 / AST-1124 golden `margin: 8px 0 -25px 0`.
+    _MARGIN = "margin: 8px 0 8px 0"
+
+    @staticmethod
+    def _signature_img_rule(html: str) -> str:
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        m = re.search(r"\.signature-img\s*\{([^}]+)\}", style)
+        assert m is not None, "missing .signature-img rule"
+        return m.group(1)
+
+    def _assert_positive_stack_margin(self, html: str) -> None:
+        rule = self._signature_img_rule(html)
+        assert "display: block" in rule
+        assert "height: 61px" in rule
+        assert self._MARGIN in rule
+        assert "-25px" not in rule
+
+    def test_session_signature_img_margin_non_negative(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda _cid: {
+                "candidate_data": {
+                    "contact": {"cover_letter_signature_image": self._SAFE}
+                }
+            },
+        )
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,\n\nThanks.",
+                "signoff_closing": "Best,",
+                "signature": f"{self._LIT}\nSusan Somerset",
+            },
+            candidate_id="cand-1162",
+        )
+        self._assert_positive_stack_margin(html)
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert signoff.index("Best,") < signoff.index("<img") < signoff.index(
+            "Susan Somerset"
+        )
+
+    def test_job_somerset_signature_img_margin_non_negative(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        html = builder_mod.build_cover_letter_from_job(
+            {
+                "astral_job_id": "job-1162",
+                "job_data": {
+                    "artifacts": {
+                        "cover_letter": {
+                            "Subject": "Re: Role",
+                            "Letter": "Dear team,",
+                            "signature": f"{self._LIT}\nAda Lovelace",
+                        }
+                    }
+                },
+            },
+            cd,
+        )
+        self._assert_positive_stack_margin(html)
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert signoff.index("<img") < signoff.index("Ada Lovelace")
+
+    def test_session_no_image_keeps_closing_and_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Token absent → no empty <img> / no image box from this CSS-only change.
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,",
+                "signoff_closing": "Best,",
+                "signature": "Susan Somerset",
+            }
+        )
+        self._assert_positive_stack_margin(html)  # rule still present in stylesheet
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff
+        assert "Best," in signoff and "Susan Somerset" in signoff
