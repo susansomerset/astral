@@ -235,3 +235,16 @@ No plan conflicts requiring `conf-!!-NONE`.
 context_tokens≈9
 
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Radia tip:** `4b8850e6` · **Overall:** DISCUSS (no fix-now)
+
+| Item | Disposition |
+|------|-------------|
+| Discuss — `orch.pipeline.plan-is-bible` Stage 3 debug `index=1, total=1` vs shipped `enumerate` / `index=mi, total=len(meteorite_new)` | **Keep shipped code.** Enumerate matches §1.5.1 Style D and Joan’s earlier non-blocking plan note; plan literal would mis-number multi-job re-homes. Drift recorded here for plan-is-bible fidelity — no product change. |
+
+No product or test-tree edits this resolve pass.
