@@ -187,3 +187,17 @@ Harden model-facing instructions so every rubric grading task (Do/Get/Like, JD, 
 - `e62fb471` — Stage 2: AST-1154 completeness marker + VALIDATE/Rules on seven graded `agent_task` cache prompts; AST-756 fixture byte-identical
 
 **Local verification:** Stage 1 import assert on marker presence/absence; Stage 2 marker coverage + `cmp` fixture identity.
+
+---
+
+## Radia review
+
+**[code-rubric] revision=1** · **Publish ref:** `5842580113fbc6f228d7cb56b073d47ed54e08e1` · **Overall:** DISCUSS
+
+Full active statute set (65) scored in-session — 0 fix-now. Stage 1 / Stage 2 diffs match the plan verbatim (constant on exactly the 4 planned keys, absent from `grades_encoded_vet_meta` / `grades_json`; all 7 planned `agent_task` rows carry the marker + tighteners; fixture byte-identical on the publish tip).
+
+**discuss — `astral.standards.names-not-ticket-ids`.** Carried from Joan's plan-rubric verdict: `GRADE SET COMPLETENESS (AST-1154)` doubles as the Stage 2 idempotency sentinel and ships in production `cache_prompt` text. Non-blocking (in-file precedent: `AST-723_RUBRIC_VECTORS_TOKEN`); engineer's call, exercised — kept the ticket-id sentinel.
+
+**Notes:** 3 statutes Joan excluded at plan time (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`) score `conforms` on the diff-based sweep — the actual diff includes this plan doc and the pipeline's later test/test-bible commits, neither of which sit in the plan's Files-Changed table by convention. Both clean; not scope creep. Per-commit role separation verified: `code()` commits never touch `tests/**` / `docs/test-bible/**`; `test()` / `merge-tests()` commits never touch `src/**` / `docs/features/**`.
+
+— Radia
