@@ -176,3 +176,14 @@ Harden model-facing instructions so every rubric grading task (Do/Get/Like, JD, 
 | §3.5 naming | Constant `_ENCODED_GRADE_SET_COMPLETENESS` + marker `AST-1154` |
 
 **Conflicts:** None.
+
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`  
+**Product commits:**
+- `0c07b966` — Stage 1: `_ENCODED_GRADE_SET_COMPLETENESS` on four multi-vector `payload_instructions`
+- `e62fb471` — Stage 2: AST-1154 completeness marker + VALIDATE/Rules on seven graded `agent_task` cache prompts; AST-756 fixture byte-identical
+
+**Local verification:** Stage 1 import assert on marker presence/absence; Stage 2 marker coverage + `cmp` fixture identity.
