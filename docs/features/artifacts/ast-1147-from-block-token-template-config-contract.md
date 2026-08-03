@@ -85,6 +85,15 @@ Owns the config contract for a tokenized cover from-block default: default autho
 
 **Risk:** `low` — additive keys; existing resolve ignores unknown keys; no alias registration; siblings own consumption.
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1145/AST-1147-from-block-token-template-config-contract`
+**Tip:** `bcc95f9a`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `bcc95f9a` | Extend `COVER_FROM_BLOCK_CONFIG` with `default_template`, `allowed_token_ids`, `authoring_separator`, `emit_separator`, `empty_segment_policy`; keep AST-1137 keys |
+
 ## Code Rules check
 
 - §1.1 / `in-scope-only`: config only; no resolve/emit/help chrome.
