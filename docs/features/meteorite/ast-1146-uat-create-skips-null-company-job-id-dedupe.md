@@ -221,3 +221,12 @@ Diff matches plan Stages 1–2 and UAT Correct outcome (short junk ids out of in
 no plan-rubric verdict attached
 
 context_tokens≈28000
+
+---
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Review:** [code-rubric] revision=1 @ `4df82ddd` — Overall CLEAN; **fix-now / discuss:** none.
+
+No product changes after review. Tip after resolve commit below.
