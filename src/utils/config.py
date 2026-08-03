@@ -1171,7 +1171,7 @@ CANDIDATE_LIBRARY_CONFIG = {
     "full_name_join": " ",
 }
 
-# AST-1137: candidate-owned cover from-block + default composition for siblings.
+# AST-1137 / AST-1147: candidate from-block field + token default template / rewrite policy.
 COVER_FROM_BLOCK_CONFIG = {
     "contact_key": "cover_letter_from_block",
     "segment_separator": " • ",
@@ -1180,6 +1180,14 @@ COVER_FROM_BLOCK_CONFIG = {
     "line_1_contact_paths": ("location",),
     "line_2_contact_paths": ("contact_email", "phone"),
     "sources": ("candidate", "default"),
+    # AST-1147: token template contract for AST-1148 resolve/emit (path keys stay until then).
+    "default_template": (
+        "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+    ),
+    "allowed_token_ids": ("FULL_NAME", "LOCATION", "CONTACT_EMAIL", "PHONE"),
+    "authoring_separator": "|",
+    "emit_separator": " • ",
+    "empty_segment_policy": "drop_with_adjacent_separator",
 }
 
 # AST-1016: mechanical preamble script (Intro + steps). UI = AST-1017; Ruth task = AST-1015.
