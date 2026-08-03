@@ -838,7 +838,7 @@ body {{
 .signature-img {{
   display: block;
   height: 61px;
-  margin: 8px 0 -25px 0;
+  margin: 8px 0 8px 0;
 }}
 @page {{
   margin-top: 1in;
