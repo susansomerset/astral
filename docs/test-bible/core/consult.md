@@ -884,3 +884,27 @@ Product: `is_meteorite_company` (`METEORITE_CONFIG["short_name_prefix"]`); `vali
   -q
 ```
 
+### AST-1155 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail`.
+
+Shared consult apply gate: incomplete/extra live-rubric grade sets raise before `_render_score` / binary persist; first strike → trigger `*_RETRY` holding via `_consult_batch_fail_dest` (including `render_verdict`); second strike → technical/error. Intentional `X`/`0` rows count as present. Prefilter incompleteness uses existing `_prefilter_fail` → `WEBSITE_FOUND_RETRY`. Config holdings + claim companions: **`docs/test-bible/utils/config.md`** (**AST-1155**). Prompt completeness copy remains **AST-1154**; Skipped Retry **AST-1156**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Completeness helper + fail-dest + `render_verdict` / batch | `src/core/consult.py` | **`TestAst1155IncompleteGradeRetry`**; existing **`TestRenderScore::test_x_excluded_from_v`**, **`TestConsultBatchFailDest`** |
+| Prefilter incomplete → company retry | `src/core/roster.py` | **`TestAst1155PrefilterIncompleteRetry`** |
+
+**Broken / obsolete:** **`TestAst874FetchCulturePagesConfig`** / **`TestAst1053MeteoriteGdlJobStates`** exact prior lists (and meteorite In Review `_PASS`) revised for new `*_RETRY` holdings — see **`docs/test-bible/utils/config.md`**.
+
+**Integration:** none — no existing scenario asserts incomplete→technical vs retry routing.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry \
+  tests/component/core/test_roster.py::TestAst1155PrefilterIncompleteRetry \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```

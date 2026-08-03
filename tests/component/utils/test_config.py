@@ -1227,9 +1227,10 @@ class TestAst874FetchCulturePagesConfig:
         assert cfg.JOB_STATES["CULTURE_READY"]["prior_states"] == ["PASSED_GET"]
         assert cfg.JOB_STATES["NEED_CULTURE_CONTENT"]["prior_states"] == ["PASSED_GET"]
         assert cfg.JOB_STATES["NO_CULTURE_LINKS"]["prior_states"] == ["PASSED_GET"]
-        assert cfg.JOB_STATES["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
-        assert cfg.JOB_STATES["FAILED_LIKE"]["prior_states"] == ["CULTURE_READY"]
-        assert cfg.JOB_STATES["FAILED_TECHNICAL_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        # AST-1155: CULTURE_READY_RETRY is also a prior for LIKE outcomes.
+        assert cfg.JOB_STATES["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
+        assert cfg.JOB_STATES["FAILED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
+        assert cfg.JOB_STATES["FAILED_TECHNICAL_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
         assert "CULTURE_READY" in cfg.JOB_STATES["NEED_WEBSITE_CONTENT"]["prior_states"]
 
     def test_gazer_and_dispatch_registry(self) -> None:
@@ -2433,9 +2434,13 @@ class TestAst1053MeteoriteGdlJobStates:
     _PASS = (
         "METEORITE_NEW",
         "METEORITE_QUALIFIED",  # AST-1060: pre-AI → Ruth qualify → GDL entry
+        "METEORITE_QUALIFIED_RETRY",  # AST-1155 incomplete-grade holding
         "METEORITE_PASSED_JD",
+        "METEORITE_PASSED_JD_RETRY",
         "METEORITE_PASSED_DO",
+        "METEORITE_PASSED_DO_RETRY",
         "METEORITE_PASSED_GET",
+        "METEORITE_PASSED_GET_RETRY",
         "METEORITE_PASSED_LIKE",
         "METEORITE_PASSED_LIKE_RETRY",
     )
@@ -2459,22 +2464,23 @@ class TestAst1053MeteoriteGdlJobStates:
         assert js["METEORITE_QUALIFIED"]["prior_states"] == ["METEORITE_NEW"]
         assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
         assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
-        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
-        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
-        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED"]
-        assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
-        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
-        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD"]
-        assert js["METEORITE_PASSED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
-        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
-        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO"]
-        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
-        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
-        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET"]
+        # AST-1155: graded-trigger *_RETRY holdings are also priors on hop outcomes.
+        assert js["METEORITE_PASSED_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
+        assert js["METEORITE_FAILED_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
+        assert js["METEORITE_ERROR_EVALUATE_JD"]["prior_states"] == ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]
+        assert js["METEORITE_PASSED_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
+        assert js["METEORITE_FAILED_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
+        assert js["METEORITE_FAILED_TECHNICAL_DO"]["prior_states"] == ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]
+        assert js["METEORITE_PASSED_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
+        assert js["METEORITE_FAILED_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
+        assert js["METEORITE_FAILED_TECHNICAL_GET"]["prior_states"] == ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]
+        assert js["METEORITE_PASSED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
+        assert js["METEORITE_FAILED_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
+        assert js["METEORITE_FAILED_TECHNICAL_LIKE"]["prior_states"] == ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]
         assert js["METEORITE_PASSED_LIKE_RETRY"]["prior_states"] == ["METEORITE_PASSED_LIKE"]
         # No CULTURE_READY hop on meteorite LIKE; no extra meteorite culture/need keys.
         assert "METEORITE_CULTURE_READY" not in js
-        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY"]
+        assert js["PASSED_LIKE"]["prior_states"] == ["CULTURE_READY", "CULTURE_READY_RETRY"]
 
     def test_in_review_and_skipped_membership(self) -> None:
         for state in self._PASS:
@@ -3806,3 +3812,47 @@ class TestAst1154EncodedGradeSetCompleteness:
         ots = cfg.ASTRAL_CONFIG["output_types"]
         assert self._MARKER not in ots["grades_encoded_vet_meta"]["payload_instructions"]
         assert self._MARKER not in ots["grades_json"]["payload_instructions"]
+
+
+class TestAst1155GradedRetryHoldings:
+    """AST-1155: graded-trigger *_RETRY holdings + dispatch claim companions."""
+
+    _PAIRS = (
+        ("PASSED_JD", "PASSED_JD_RETRY"),
+        ("PASSED_DO", "PASSED_DO_RETRY"),
+        ("CULTURE_READY", "CULTURE_READY_RETRY"),
+        ("METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"),
+        ("METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"),
+        ("METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"),
+        ("METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"),
+    )
+
+    def test_retry_state_and_dispatch_claim_companions(self) -> None:
+        for primary, holding in self._PAIRS:
+            assert cfg.JOB_STATES[primary]["retry_state"] == holding, primary
+            assert holding in cfg.JOB_STATES
+            assert "retry_state" not in cfg.JOB_STATES[holding], holding
+            assert cfg.dispatch_claim_states(primary, "job") == [primary, holding], primary
+            assert cfg.dispatch_claim_states(holding, "job") == [holding], holding
+
+    def test_in_review_ui_labels_and_grade_fields(self) -> None:
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
+        for primary, holding in self._PAIRS:
+            assert holding in cfg.IN_REVIEW_STATES, holding
+            assert holding in review, holding
+            assert review.index(primary) < review.index(holding), (primary, holding)
+        assert labels["PASSED_JD_RETRY"] == "Passed JD (retry)"
+        assert labels["PASSED_DO_RETRY"] == "Passed DO (retry)"
+        assert labels["CULTURE_READY_RETRY"] == "Culture Ready (retry)"
+        assert labels["METEORITE_QUALIFIED_RETRY"] == "Meteorite Qualified (retry)"
+        assert labels["METEORITE_PASSED_JD_RETRY"] == "Meteorite Passed JD (retry)"
+        assert labels["METEORITE_PASSED_DO_RETRY"] == "Meteorite Passed DO (retry)"
+        assert labels["METEORITE_PASSED_GET_RETRY"] == "Meteorite Passed GET (retry)"
+        # Grade-field maps match primary incoming blobs; CULTURE_READY has no map → omit.
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["PASSED_JD_RETRY"] == "jd_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["PASSED_DO_RETRY"] == "do_grades"
+        assert "CULTURE_READY_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_JD_RETRY"] == "jd_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_DO_RETRY"] == "do_grades"
+        assert cfg.JOBS_IN_REVIEW_GRADE_FIELD["METEORITE_PASSED_GET_RETRY"] == "get_grades"

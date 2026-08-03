@@ -2317,3 +2317,25 @@ Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload
   tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
   -q
 ```
+
+### AST-1155 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail`.
+
+Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_claim_states` companions; In Review UI/labels/grade-field maps. Apply/retry routing: **`docs/test-bible/core/consult.md`** (**AST-1155**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Holdings + claim companions + UI maps | `src/utils/config.py` | **`TestAst1155GradedRetryHoldings`**; revised **`TestAst874FetchCulturePagesConfig`**, **`TestAst1053MeteoriteGdlJobStates`** |
+
+**Broken / obsolete:** LIKE / meteorite GDL exact `prior_states` lists and meteorite In Review membership expanded for holdings.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```

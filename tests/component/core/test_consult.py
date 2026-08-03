@@ -4858,3 +4858,223 @@ class TestAst1133QualifyMeteoriteListCreated:
         detail = " ".join(str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list)
         assert "link_source=input" in detail
         assert "found source=UUID-from-job_link" in detail
+
+
+class TestAst1155IncompleteGradeRetry:
+    """AST-1155: incomplete/extra grade sets → retry holding, never first-touch technical."""
+
+    def test_require_complete_grade_set_x0_counts_as_present(self) -> None:
+        rubric = [
+            {"label": "Healthcare Domain Expertise"},
+            {"label": "Remote-First Requirement"},
+        ]
+        incomplete = [{"vector": "Remote-First Requirement", "grade": "A", "confidence": 5}]
+        missing, extra = consult_mod._grade_set_vector_diff(rubric, incomplete)
+        assert missing == {"Healthcare Domain Expertise"}
+        assert not extra
+        with pytest.raises(ValueError, match="missing vectors"):
+            consult_mod._require_complete_grade_set(rubric, incomplete)
+        complete = incomplete + [
+            {"vector": "Healthcare Domain Expertise", "grade": "X", "confidence": 0}
+        ]
+        consult_mod._require_complete_grade_set(rubric, complete)
+
+    def test_consult_batch_fail_dest_graded_triggers(self) -> None:
+        do_err = TASK_CONFIG["grade_do"]["error_state"]
+        get_err = TASK_CONFIG["grade_get"]["error_state"]
+        like_err = TASK_CONFIG["grade_like"]["error_state"]
+        jd_err = TASK_CONFIG["evaluate_jd"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("PASSED_JD", do_err) == "PASSED_JD_RETRY"
+        assert consult_mod._consult_batch_fail_dest("PASSED_JD_RETRY", do_err) == do_err
+        assert consult_mod._consult_batch_fail_dest("PASSED_DO", get_err) == "PASSED_DO_RETRY"
+        assert consult_mod._consult_batch_fail_dest("CULTURE_READY", like_err) == "CULTURE_READY_RETRY"
+        assert consult_mod._consult_batch_fail_dest(
+            "METEORITE_PASSED_JD", do_err
+        ) == "METEORITE_PASSED_JD_RETRY"
+        assert consult_mod._consult_batch_fail_dest(
+            "METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_TECHNICAL_DO"
+        ) == "METEORITE_FAILED_TECHNICAL_DO"
+        assert consult_mod._consult_batch_fail_dest(
+            "METEORITE_QUALIFIED", jd_err
+        ) == "METEORITE_QUALIFIED_RETRY"
+        # Legacy map companions for holdings already in the map.
+        assert consult_mod._INPUT_STATE_TO_TASK["PASSED_JD_RETRY"] == "grade_do"
+        assert consult_mod._INPUT_STATE_TO_TASK["PASSED_DO_RETRY"] == "grade_get"
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_incomplete_first_strike_to_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {"astral_job_id": "job-1", "company": "co", "state": "PASSED_JD", "job_data": {}}
+        rubric = [_rubric_item("Fit"), _rubric_item("Other", code="OT")]
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    # Omit Other — incomplete vs live rubric.
+                    "parsed_response": {
+                        "grades": [{"grade": "A", "confidence": 2, "vector": "Fit"}]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "_rubric_criteria_for_cfg",
+            lambda _cid, _cfg: rubric,
+        )
+        out = await consult_mod.render_verdict(
+            "grade_do",
+            "job-1",
+            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+        )
+        assert out["success"] is False
+        assert out["to_state"] == "PASSED_JD_RETRY"
+        assert "missing vectors" in out["error"]
+        transition.assert_called_once_with("grade_do", ["job-1"], "PASSED_JD_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_incomplete_second_strike_to_technical(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "state": "PASSED_JD_RETRY",
+            "job_data": {},
+        }
+        rubric = [_rubric_item("Fit"), _rubric_item("Other", code="OT")]
+        transition = MagicMock()
+        err = TASK_CONFIG["grade_do"]["error_state"]
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "grades": [{"grade": "A", "confidence": 2, "vector": "Fit"}]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "_rubric_criteria_for_cfg",
+            lambda _cid, _cfg: rubric,
+        )
+        out = await consult_mod.render_verdict(
+            "grade_do",
+            "job-1",
+            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+        )
+        assert out["success"] is False
+        assert out["to_state"] == err
+        transition.assert_called_once_with("grade_do", ["job-1"], err)
+
+    @pytest.mark.asyncio
+    async def test_render_verdict_meteorite_incomplete_to_holding(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        job = {
+            "astral_job_id": "job-m",
+            "company": "meteorite-co",
+            "state": "METEORITE_PASSED_JD",
+            "job_data": {},
+        }
+        rubric = [_rubric_item("Fit"), _rubric_item("Other", code="OT")]
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
+        monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "grades": [{"grade": "A", "confidence": 2, "vector": "Fit"}]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "_rubric_criteria_for_cfg",
+            lambda _cid, _cfg: rubric,
+        )
+        out = await consult_mod.render_verdict(
+            "grade_do",
+            "job-m",
+            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+        )
+        assert out["success"] is False
+        assert out["to_state"] == "METEORITE_PASSED_JD_RETRY"
+        transition.assert_called_once_with(
+            "grade_do", ["job-m"], "METEORITE_PASSED_JD_RETRY"
+        )
+
+    @pytest.mark.asyncio
+    async def test_batch_incomplete_grades_route_primary_to_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod,
+            "_rubric_criteria_for_cfg",
+            lambda _cid, _cfg: [_rubric_item("Fit"), _rubric_item("Other", code="OT")],
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-p",
+                                "grades": [{"grade": "A", "confidence": 2, "vector": "Fit"}],
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+
+        def process(input_job, response_job, cfg):
+            consult_mod._require_complete_grade_set(
+                [_rubric_item("Fit"), _rubric_item("Other", code="OT")],
+                response_job["grades"],
+            )
+            return cfg["pass_state"]
+
+        jobs = [{"astral_job_id": "job-p", "state": "PASSED_JD", "job_title": "Primary"}]
+        out = await consult_mod._run_batch_consult(
+            "grade_do",
+            "batch-1155-incomplete",
+            jobs,
+            lambda rows: "content",
+            process,
+            {"candidate_data": {"artifacts": {"do_rubric": [_rubric_item("Fit")]}}},
+            False,
+        )
+        assert out["bad_grades"] == ["job-p"]
+        assert sorted(
+            (c.args[0], tuple(sorted(c.args[1])), c.args[2]) for c in transition.call_args_list
+        ) == [("grade_do", ("job-p",), "PASSED_JD_RETRY")]
