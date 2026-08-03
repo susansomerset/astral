@@ -2105,22 +2105,25 @@ JOB_STATES = {
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
     "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
-    "PASSED_JD":              {"prior_states": ["JD_READY", "JD_READY_RETRY"]},
+    "PASSED_JD":              {"prior_states": ["JD_READY", "JD_READY_RETRY"], "retry_state": "PASSED_JD_RETRY"},
+    "PASSED_JD_RETRY":        {"prior_states": ["PASSED_JD"]},                                   # grade_do incomplete-grade holding (AST-1155)
     "FAILED_JD":              {"prior_states": ["JD_READY", "JD_READY_RETRY"]},
-    "PASSED_DO":              {"prior_states": ["PASSED_JD"]},
-    "FAILED_DO":              {"prior_states": ["PASSED_JD"]},
-    "FAILED_TECHNICAL_DO":    {"prior_states": ["PASSED_JD"]},
-    "PASSED_GET":             {"prior_states": ["PASSED_DO"]},
-    "FAILED_GET":             {"prior_states": ["PASSED_DO"]},
-    "FAILED_TECHNICAL_GET":   {"prior_states": ["PASSED_DO"]},
+    "PASSED_DO":              {"prior_states": ["PASSED_JD", "PASSED_JD_RETRY"], "retry_state": "PASSED_DO_RETRY"},
+    "PASSED_DO_RETRY":        {"prior_states": ["PASSED_DO"]},                                   # grade_get incomplete-grade holding (AST-1155)
+    "FAILED_DO":              {"prior_states": ["PASSED_JD", "PASSED_JD_RETRY"]},
+    "FAILED_TECHNICAL_DO":    {"prior_states": ["PASSED_JD", "PASSED_JD_RETRY"]},
+    "PASSED_GET":             {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY"]},
+    "FAILED_GET":             {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY"]},
+    "FAILED_TECHNICAL_GET":   {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY"]},
     # AST-874: culture fetch gate between GET and LIKE.
-    "CULTURE_READY":          {"prior_states": ["PASSED_GET"]},
+    "CULTURE_READY":          {"prior_states": ["PASSED_GET"], "retry_state": "CULTURE_READY_RETRY"},
+    "CULTURE_READY_RETRY":    {"prior_states": ["CULTURE_READY"]},                               # grade_like incomplete-grade holding (AST-1155)
     "NEED_CULTURE_CONTENT":   {"prior_states": ["PASSED_GET"]},
     "NO_CULTURE_LINKS":       {"prior_states": ["PASSED_GET"]},
     # LIKE needs company website; scrape can fail after GET / CULTURE_READY (not only from DO).
-    "NEED_WEBSITE_CONTENT":   {"prior_states": ["PASSED_DO", "PASSED_GET", "CULTURE_READY"]},
+    "NEED_WEBSITE_CONTENT":   {"prior_states": ["PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY", "CULTURE_READY_RETRY"]},
     # AST-479: consult_like success queues here for analysis_upshot (sibling); not auto-promoted to BUILD_ARTIFACTS.
-    "PASSED_LIKE":            {"prior_states": ["CULTURE_READY"]},
+    "PASSED_LIKE":            {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
     # Holding state after a post-LIKE synthesis technical failure (sibling batch); consult_like API errors stay FAILED_TECHNICAL_LIKE.
     "PASSED_LIKE_RETRY":      {"prior_states": ["PASSED_LIKE"]},
     # Upshot succeeded — candidate-facing "recommended" until UI moves job into artifact build (separate epic).
@@ -2134,28 +2137,32 @@ JOB_STATES = {
     "CANDIDATE_INTERVIEW":    {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_REJECTED":     {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
     "CANDIDATE_GHOSTED":      {"prior_states": ["CANDIDATE_REVIEW", "CANDIDATE_APPLIED", "CANDIDATE_INTERVIEW", "CANDIDATE_REJECTED", "CANDIDATE_GHOSTED"]},
-    "FAILED_LIKE":            {"prior_states": ["CULTURE_READY"]},
-    "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY"]},
+    "FAILED_LIKE":            {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
+    "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
     # METEORITE_QUALIFIED (GDL entry). evaluate_jd claims METEORITE_QUALIFIED only (AST-1060).
     "METEORITE_NEW":                  {"prior_states": None},
-    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
+    "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_jd incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
     "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
-    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED"]},
-    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_QUALIFIED"]},
-    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
-    "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD"]},
-    "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD"]},
-    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
-    "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO"]},
-    "METEORITE_FAILED_TECHNICAL_GET": {"prior_states": ["METEORITE_PASSED_DO"]},
+    "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"], "retry_state": "METEORITE_PASSED_JD_RETRY"},
+    "METEORITE_PASSED_JD_RETRY":      {"prior_states": ["METEORITE_PASSED_JD"]},                 # meteorite grade_do incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
+    "METEORITE_ERROR_EVALUATE_JD":    {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
+    "METEORITE_PASSED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"], "retry_state": "METEORITE_PASSED_DO_RETRY"},
+    "METEORITE_PASSED_DO_RETRY":      {"prior_states": ["METEORITE_PASSED_DO"]},                 # meteorite grade_get incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_DO":            {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]},
+    "METEORITE_FAILED_TECHNICAL_DO":  {"prior_states": ["METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY"]},
+    "METEORITE_PASSED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"], "retry_state": "METEORITE_PASSED_GET_RETRY"},
+    "METEORITE_PASSED_GET_RETRY":     {"prior_states": ["METEORITE_PASSED_GET"]},                # meteorite_like incomplete-grade holding (AST-1155)
+    "METEORITE_FAILED_GET":           {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]},
+    "METEORITE_FAILED_TECHNICAL_GET": {"prior_states": ["METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY"]},
     # LIKE claimed from METEORITE_PASSED_GET (no CULTURE_READY) — sibling AST-1054/1055.
-    "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
-    "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET"]},
-    "METEORITE_FAILED_TECHNICAL_LIKE":{"prior_states": ["METEORITE_PASSED_GET"]},
+    "METEORITE_PASSED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]},
+    "METEORITE_FAILED_LIKE":          {"prior_states": ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]},
+    "METEORITE_FAILED_TECHNICAL_LIKE":{"prior_states": ["METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY"]},
     # Upshot technical-hold after meteorite LIKE (mirrors PASSED_LIKE_RETRY) — sibling AST-1055.
     "METEORITE_PASSED_LIKE_RETRY":    {"prior_states": ["METEORITE_PASSED_LIKE"]},
     "ERROR_QUALIFY_JOB_LISTINGS": {"prior_states": None},
@@ -2581,8 +2588,11 @@ JOBS_RECOMMENDED_ARTIFACT_TABS = [
 # Ordered state lists for Jobs UI views (single source of truth for API, nav counts, frontend).
 IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
-    "PASSED_JD", "PASSED_DO", "PASSED_GET", "CULTURE_READY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
-    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_PASSED_JD", "METEORITE_PASSED_DO", "METEORITE_PASSED_GET",
+    "PASSED_JD", "PASSED_JD_RETRY", "PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY",
+    "CULTURE_READY_RETRY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
+    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
+    "METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY", "METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY",
+    "METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY",
     "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
 ]
 # Consult PASSED_* / CULTURE_READY set for claim-sort (_dispatch_sort_by_for) and related helpers.
@@ -2968,16 +2978,23 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "JD_READY", "label": "JD Ready"},
     {"state": "JD_READY_RETRY", "label": "JD Ready (retry)"},
     {"state": "PASSED_JD", "label": "Passed Job Description"},
+    {"state": "PASSED_JD_RETRY", "label": "Passed JD (retry)"},
     {"state": "PASSED_DO", "label": "Passed DO"},
+    {"state": "PASSED_DO_RETRY", "label": "Passed DO (retry)"},
     {"state": "PASSED_GET", "label": "Passed GET"},
     {"state": "CULTURE_READY", "label": "Culture Ready"},
+    {"state": "CULTURE_READY_RETRY", "label": "Culture Ready (retry)"},
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
     {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
     {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
+    {"state": "METEORITE_QUALIFIED_RETRY", "label": "Meteorite Qualified (retry)"},
     {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
+    {"state": "METEORITE_PASSED_JD_RETRY", "label": "Meteorite Passed JD (retry)"},
     {"state": "METEORITE_PASSED_DO", "label": "Meteorite Passed DO"},
+    {"state": "METEORITE_PASSED_DO_RETRY", "label": "Meteorite Passed DO (retry)"},
     {"state": "METEORITE_PASSED_GET", "label": "Meteorite Passed GET"},
+    {"state": "METEORITE_PASSED_GET_RETRY", "label": "Meteorite Passed GET (retry)"},
     {"state": "METEORITE_PASSED_LIKE", "label": "Meteorite Passed LIKE"},
     {"state": "METEORITE_PASSED_LIKE_RETRY", "label": "Meteorite LIKE upshot (retry)"},
 ]
@@ -3079,13 +3096,18 @@ JOBS_IN_REVIEW_GRADE_FIELD = {
     "JD_READY": "jd_grades",
     "JD_READY_RETRY": "jd_grades",
     "PASSED_JD": "jd_grades",
+    "PASSED_JD_RETRY": "jd_grades",
     "PASSED_DO": "do_grades",
+    "PASSED_DO_RETRY": "do_grades",
     "PASSED_GET": "get_grades",
     "PASSED_LIKE": "like_grades",
     "PASSED_LIKE_RETRY": "like_grades",
     "METEORITE_PASSED_JD": "jd_grades",
+    "METEORITE_PASSED_JD_RETRY": "jd_grades",
     "METEORITE_PASSED_DO": "do_grades",
+    "METEORITE_PASSED_DO_RETRY": "do_grades",
     "METEORITE_PASSED_GET": "get_grades",
+    "METEORITE_PASSED_GET_RETRY": "get_grades",
     "METEORITE_PASSED_LIKE": "like_grades",
     "METEORITE_PASSED_LIKE_RETRY": "like_grades",
 }
