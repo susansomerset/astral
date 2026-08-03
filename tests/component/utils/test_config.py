@@ -3679,6 +3679,44 @@ class TestAst1137CoverFromBlockConfig:
         }
 
 
+class TestAst1147CoverFromBlockTokenTemplateConfig:
+    """AST-1147: COVER_FROM_BLOCK_CONFIG token template + rewrite / empty policy."""
+
+    def test_default_template_allowlist_and_rewrite(self) -> None:
+        block = cfg.COVER_FROM_BLOCK_CONFIG
+        assert block["default_template"] == (
+            "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+        )
+        assert block["allowed_token_ids"] == (
+            "FULL_NAME",
+            "LOCATION",
+            "CONTACT_EMAIL",
+            "PHONE",
+        )
+        assert block["authoring_separator"] == "|"
+        assert block["emit_separator"] == " • "
+        # Emit separator matches AST-1137 golden segment_separator.
+        assert block["emit_separator"] == block["segment_separator"]
+        assert block["empty_segment_policy"] == "drop_with_adjacent_separator"
+        # Path keys remain for current resolve until AST-1148 migrates.
+        assert block["line_1_contact_paths"] == ("location",)
+        assert block["line_2_contact_paths"] == ("contact_email", "phone")
+
+    def test_brief_aliases_not_registered(self) -> None:
+        allowed = set(cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"])
+        for alias in (
+            "RESUME_LOCATION",
+            "RESUME_EMAIL",
+            "CANDIDATE_MOBLE",
+            "CANDIDATE_MOBILE",
+        ):
+            assert alias not in allowed
+            assert alias not in cfg.TOKEN_SOURCES
+        # Allowlisted ids already exist in TOKEN_SOURCES (paths unchanged this ticket).
+        for tid in cfg.COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]:
+            assert tid in cfg.TOKEN_SOURCES
+
+
 class TestAst1138JobCoverSomersetConfig:
     """AST-1138: BUILD_CONFIG job_cover_somerset artifact→Somerset field map."""
 

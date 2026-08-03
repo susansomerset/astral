@@ -2146,6 +2146,28 @@ Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/t
   -q
 ```
 
+### AST-1147 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1147-from-block-token-template-config-contract`.
+
+Extends `COVER_FROM_BLOCK_CONFIG` with `default_template`, `allowed_token_ids` (`FULL_NAME` / `LOCATION` / `CONTACT_EMAIL` / `PHONE`), `authoring_separator` `|`, `emit_separator` ` • `, `empty_segment_policy` `drop_with_adjacent_separator`. Keeps AST-1137 path/separator keys. Brief aliases not registered. Resolve/emit = sibling **AST-1148**; help chrome = **AST-1149**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token template + rewrite + alias exclusion | `src/utils/config.py` | **`TestAst1147CoverFromBlockTokenTemplateConfig`** |
+| Prior from-block field contract | same | **`TestAst1137CoverFromBlockConfig`** (unchanged keys) |
+
+**Broken / obsolete:** none — additive keys on existing block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1147CoverFromBlockTokenTemplateConfig \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  -q
+```
+
 ### AST-1138 · AST-1124
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`.
