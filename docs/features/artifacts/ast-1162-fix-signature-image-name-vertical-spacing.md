@@ -104,3 +104,11 @@ SomersetCover signoff that places a handwritten signature image above typed name
 
 context_tokens≈14000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-03  
+**Review tip:** `732f01c2` (`docs(AST-1162): Radia review — clean; full sweep zero findings`)  
+**Outcome:** clean — no fix-now / discuss / advisory product changes.
+
+Radia Overall CLEAN; Frame diff none. Product remains Stage 1 margin supersede (`ab131524`); Betty tests + bible via `merge-tests(AST-1162)` @ `581f39b8`. No code or test-tree edits this resolve pass.
