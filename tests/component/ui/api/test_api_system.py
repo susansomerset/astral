@@ -75,6 +75,17 @@ class TestSystemAuthRoutes:
         assert len(preamble["steps"]) == len(PREAMBLE_CONFIG["steps"])
         assert [s["id"] for s in preamble["steps"]] == [s["id"] for s in PREAMBLE_CONFIG["steps"]]
 
+    def test_ui_config_includes_cover_from_block(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1149: Session Cover Letter reads authoring chrome from ui_config.
+        from src.utils.config import COVER_FROM_BLOCK_CONFIG
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        block = payload.get("cover_from_block")
+        assert isinstance(block, dict)
+        assert block["default_template"] == COVER_FROM_BLOCK_CONFIG["default_template"]
+        assert block["authoring_help"] == COVER_FROM_BLOCK_CONFIG["authoring_help"]
+        assert block["session_authoring_help"] == COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200

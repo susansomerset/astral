@@ -3558,9 +3558,10 @@ class TestAst1095EmailUniqueRootAndExtra:
 
 
 # Branches: custom vs default source; DB-row vs token-view contact; empty segments/lines;
-# full vs recompute_full_name; non-str/whitespace custom; debug True/False (AST-1137).
+# full vs recompute_full_name; non-str/whitespace custom; debug True/False.
+# AST-1148: default path expands default_template (not path composition); custom expands too.
 class TestAst1137ResolveCoverFromBlock:
-    """AST-1137: resolve_cover_from_block custom text vs Name • City / email • phone defaults."""
+    """AST-1137/1148: resolve_cover_from_block custom vs default_template expand."""
 
     def test_custom_text_wins_and_strips_outer_whitespace(self) -> None:
         out = candidate_mod.resolve_cover_from_block(
@@ -3593,6 +3594,7 @@ class TestAst1137ResolveCoverFromBlock:
             }
         )
         assert ws["source"] == "default"
+        # Template expand: empty PHONE segment dropped on line 2.
         assert ws["text"] == "Ada Lovelace • London, UK\nada@example.com"
 
         non_str = candidate_mod.resolve_cover_from_block(
@@ -3604,13 +3606,11 @@ class TestAst1137ResolveCoverFromBlock:
         assert non_str == {"text": "Ada Lovelace", "source": "default"}
 
     def test_default_omits_empty_segments_and_lines(self) -> None:
-        # Name only — no line 2 when email/phone empty.
         name_only = candidate_mod.resolve_cover_from_block(
             {"full": "Ada Lovelace", "candidate_data": {"contact": {}}}
         )
         assert name_only == {"text": "Ada Lovelace", "source": "default"}
 
-        # Line 2 only when name/location empty.
         contact_only = candidate_mod.resolve_cover_from_block(
             {
                 "first": "",
@@ -3653,7 +3653,6 @@ class TestAst1137ResolveCoverFromBlock:
         }
 
     def test_token_view_contact_shape(self) -> None:
-        # Sibling emit may pass build_candidate_token_view output (no candidate_data).
         out = candidate_mod.resolve_cover_from_block(
             {
                 "full": "Ada Lovelace",
@@ -3673,7 +3672,6 @@ class TestAst1137ResolveCoverFromBlock:
                 "contact": {"location": "should-not-win"},
             }
         )
-        # candidate_data present → contact={} (not top-level contact).
         assert out == {"text": "Ada", "source": "default"}
 
     def test_debug_true_custom_and_default_paths(
@@ -3693,6 +3691,7 @@ class TestAst1137ResolveCoverFromBlock:
             },
             debug=True,
         )
+        # Last index is resolve; expand also indexes when debug=True (AST-1148).
         assert idx.call_args.kwargs["func"] == "candidate.resolve_cover_from_block"
         assert idx.call_args.kwargs["identifier"] == "c-custom"
         assert "candidate" in idx.call_args.kwargs["outcome"]
@@ -3719,15 +3718,106 @@ class TestAst1137ResolveCoverFromBlock:
         assert "default" in idx.call_args.kwargs["outcome"]
         detail_msgs = [c.args[0] for c in detail.call_args_list]
         assert "source=default" in detail_msgs
-        assert "line1_segments=2" in detail_msgs
-        assert "line2_segments=1" in detail_msgs
+        # AST-1148 expand details replace AST-1137 line*_segments composition logs.
+        assert "tokens_found=4" in detail_msgs
+        assert "separator_rewrite=yes" in detail_msgs
 
-        # debug=False must not emit Style D.
         idx.reset_mock()
         detail.reset_mock()
         candidate_mod.resolve_cover_from_block(
             {"full": "Ada", "candidate_data": {"contact": {}}},
             debug=False,
+        )
+        assert idx.call_count == 0
+        assert detail.call_count == 0
+
+
+class TestAst1148ExpandCoverFromBlock:
+    """AST-1148: expand_cover_from_block_text + resolve token/| rewrite + aliases left as-is."""
+
+    def _cand(self, **contact: object) -> dict:
+        return {
+            "astral_candidate_id": "c-1148",
+            "full": "Ada Lovelace",
+            "first": "Ada",
+            "last": "Lovelace",
+            "candidate_data": {
+                "contact": {
+                    "location": "London, UK",
+                    "contact_email": "ada@example.com",
+                    "phone": "555-0100",
+                    **contact,
+                }
+            },
+        }
+
+    def test_expand_tokens_pipe_and_drop_empty(self) -> None:
+        text = candidate_mod.expand_cover_from_block_text(
+            "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}",
+            self._cand(phone=""),
+            source="default",
+        )
+        assert text == "Ada Lovelace • London, UK\nada@example.com"
+
+    def test_expand_leaves_unknown_and_brief_aliases(self) -> None:
+        text = candidate_mod.expand_cover_from_block_text(
+            "{$FULL_NAME} | {$RESUME_LOCATION} | {$GITHUB}",
+            self._cand(),
+            source="session",
+        )
+        # RESUME_LOCATION / GITHUB not allowlisted → left as-is; empty segments not applicable.
+        assert text == "Ada Lovelace • {$RESUME_LOCATION} • {$GITHUB}"
+
+    def test_resolve_custom_tokens_and_pipe(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            self._cand(
+                cover_letter_from_block=(
+                    "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+                )
+            )
+        )
+        assert out["source"] == "candidate"
+        assert out["text"] == (
+            "Ada Lovelace • London, UK\n"
+            "ada@example.com • 555-0100"
+        )
+
+    def test_resolve_clearing_custom_returns_default_template(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            self._cand(cover_letter_from_block="   \n\t  ")
+        )
+        assert out["source"] == "default"
+        assert out["text"] == (
+            "Ada Lovelace • London, UK\n"
+            "ada@example.com • 555-0100"
+        )
+
+    def test_expand_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        candidate_mod.expand_cover_from_block_text(
+            "{$FULL_NAME} | {$LOCATION}\n{$BOGUS}",
+            self._cand(),
+            source="session",
+            debug=True,
+        )
+        assert idx.call_args.kwargs["func"] == "candidate.expand_cover_from_block_text"
+        assert idx.call_args.kwargs["identifier"] == "c-1148"
+        assert "session" in idx.call_args.kwargs["outcome"]
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert "source=session" in msgs
+        assert "tokens_found=3" in msgs
+        assert "tokens_resolved=2" in msgs
+        assert "tokens_left_as_is=1" in msgs
+        assert "separator_rewrite=yes" in msgs
+        assert any(m.startswith("text_chars=") for m in msgs)
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.expand_cover_from_block_text(
+            "plain", self._cand(), source="candidate", debug=False
         )
         assert idx.call_count == 0
         assert detail.call_count == 0

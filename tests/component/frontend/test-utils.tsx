@@ -53,7 +53,10 @@ export function installBaseApiMocks(
     if (url === '/api/me') {
       return jsonResponse({ user_id: 'u1', name: 'Test User', is_admin: true })
     }
-    if (url === "/api/system/ui_config") return jsonResponse({ column_types: {} })
+    // AST-1149 Session Cover Letter uses /api/ui_config; empty slice → page intro fallback.
+    if (url === "/api/ui_config" || url === "/api/system/ui_config") {
+      return jsonResponse({ column_types: {} })
+    }
     if (url === "/api/candidates") return jsonResponse([])
     throw new Error(`Unhandled api ${url} ${init?.method ?? "GET"}`)
   })

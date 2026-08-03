@@ -5856,3 +5856,106 @@ class TestAst897HoldStateOnBalanceRefusal:
         out = await roster_mod.run_company_task("JOBS_FOUND", ent, "b897-fc")
         assert out["total_errors"] == 1
         transition.assert_not_called()
+
+
+class TestAst1155PrefilterIncompleteRetry:
+    """AST-1155: incomplete prefilter grades raise into `_prefilter_fail` retry path."""
+
+    def test_apply_outcome_raises_on_incomplete_set(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import ROSTER_CONFIG
+
+        criteria = [
+            {
+                "label": "fit",
+                "content": "body",
+                "importance": 5,
+                "code": "fit",
+                "grade_descriptions": [{"grade": "A", "description": "one"}],
+            },
+            {
+                "label": "culture",
+                "content": "body",
+                "importance": 3,
+                "code": "culture",
+                "grade_descriptions": [{"grade": "A", "description": "one"}],
+            },
+        ]
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            lambda *_a, **_k: criteria,
+        )
+        monkeypatch.setattr(roster_mod, "get_company", MagicMock(return_value=_company(state="HOMEPAGE_READY")))
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(roster_mod, "transition_company_state", MagicMock())
+        cfg = {**ROSTER_CONFIG["prefilter"], "input_state": "HOMEPAGE_READY"}
+        flat = {
+            "grades": [{"grade": "A", "vector": "fit", "confidence": 5}],
+            "possible_job_links": [],
+        }
+        with pytest.raises(ValueError, match="missing vectors"):
+            roster_mod._apply_prefilter_decoded_company_outcome(
+                "acme",
+                flat,
+                cfg,
+                {
+                    "astral_candidate_id": "c1155",
+                    "candidate_data": {"artifacts": {"company_prefilter": criteria}},
+                },
+                nav_links_from_data="",
+            )
+
+    @pytest.mark.asyncio
+    async def test_prefilter_company_incomplete_routes_to_website_found_retry(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(roster_mod, "transition_company_state", transition)
+        monkeypatch.setattr(roster_mod, "save_company_data", MagicMock())
+        monkeypatch.setattr(
+            roster_mod,
+            "get_company",
+            MagicMock(
+                return_value=_company(
+                    state="HOMEPAGE_READY",
+                    state_history=[{"from_state": "NEW", "to_state": "WEBSITE_FOUND"}],
+                )
+            ),
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "scrape_company_homepage_content",
+            AsyncMock(
+                return_value={
+                    "company_website": "https://acme.com",
+                    "visible_text": "hello",
+                    "enumerated_nav_links": "1: https://acme.com/careers",
+                }
+            ),
+        )
+        criteria = _prefilter_rubric_ctx(multi_vector=True)["candidate_data"]["artifacts"][
+            "company_prefilter"
+        ]
+        # Gate uses live rubric list (fit+culture); omit culture from decoded grades.
+        monkeypatch.setattr(
+            "src.core.candidate.rubric_criteria_for_task",
+            lambda *_a, **_k: criteria,
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": _encoded_prefilter_response(
+                        [{"grade": "A", "vector": "fit", "confidence": 5}],
+                    ),
+                }
+            ),
+        )
+        out = await roster_mod.prefilter_company(
+            "acme",
+            "https://acme.com",
+            ctx={**_prefilter_rubric_ctx(multi_vector=True), "astral_candidate_id": "c1155"},
+        )
+        assert out["state"] == "WEBSITE_FOUND_RETRY"
+        transition.assert_called_with("acme", "WEBSITE_FOUND_RETRY")

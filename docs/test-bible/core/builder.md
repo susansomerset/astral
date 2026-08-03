@@ -463,7 +463,7 @@ Job + session cover HTML: replace `{$SIGNATURE_IMAGE}` at token position via `ge
 
 **Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`. **Blocked by:** AST-1137.
 
-`build_session_cover_letter`: empty form `from_block` + loaded candidate → `resolve_cover_from_block` (source `candidate`/`default`); non-empty form wins as `session`; no candidate + empty still required; Style D `from_block_source=` / `document_path=somerset_cover`; golden CSS selectors unchanged on shared SomersetCover helper. Admin UI empty-from-block gating = **`docs/test-bible/frontend/pages.md`**. Config: **`docs/test-bible/utils/config.md`**.
+`build_session_cover_letter`: empty form `from_block` + loaded candidate → `resolve_cover_from_block` (source `candidate`/`default`); non-empty form wins as `session` and is expanded by **AST-1148** `expand_cover_from_block_text`; no candidate + empty still required; Style D `from_block_source=` / `document_path=somerset_cover`; golden CSS selectors unchanged. Admin UI = **`docs/test-bible/frontend/pages.md`**. Config: **`docs/test-bible/utils/config.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -482,3 +482,27 @@ Job + session cover HTML: replace `{$SIGNATURE_IMAGE}` at token position via `ge
   tests/component/utils/test_config.py::TestAst1139SessionCoverEmptyResolveConfig \
   -q
 ```
+
+### AST-1148 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1148-resolve-tokens-in-from-block-emit-debug`.
+
+Non-empty session `from_block` runs `expand_cover_from_block_text` before SomersetCover emit; empty→resolve already expands via **AST-1148** candidate helper; job Print Cover Letter consumes expanded resolve text (no second expand). Primary expand/resolve: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session-typed token/`|` expand + job custom tokens | `src/core/builder.py` | **`TestAst1148SessionTypedFromBlockExpand`** |
+| Empty→resolve golden shape (template expand) | same | **`TestAst1139SessionCoverEmptyFromBlock`**, **`TestAst1138JobCoverSomersetFromBlock`** |
+
+**Broken / obsolete:** none for builder HTML asserts (golden Name/City/email still holds via template).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1148SessionTypedFromBlockExpand \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  -q
+```
+
