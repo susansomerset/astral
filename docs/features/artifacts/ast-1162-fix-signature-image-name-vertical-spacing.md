@@ -75,3 +75,32 @@ SomersetCover signoff that places a handwritten signature image above typed name
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `ab131524` | `.signature-img` margin `8px 0 -25px 0` → `8px 0 8px 0` in shared SomersetCover CSS |
+
+## Radia review
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1162
+**Publish ref:** `581f39b8a99e1e960827d8c8126c1dd3e7c1b574`
+**Overall:** CLEAN
+
+**Full-set sweep:** all 64 active statutes scored in-session (22 universal, 42 scoped). Zero `violates`, zero `needs-discussion`. Scoped statutes outside `src/core/**` / `docs/features/**` / test-tree paths (`ui/**`, `data/**`, `dispatcher.py`, `config.py`, seed/agent-table paths, spikes/artifacts-dir) are `not-applicable`. No Joan plan-rubric verdict attached — noted, not a block.
+
+**Pattern conformance:** none cited (description checkboxes are statute ids already covered by the full sweep, not `canon/patterns/*` ids).
+
+**Plan adherence:**
+- Diff is exactly Stage 1: one `.signature-img` margin literal changed (`8px 0 -25px 0` → `8px 0 8px 0`) in `_emit_somerset_cover_html_document`; no markup/token/from-block/resume drift.
+- Self-Assessment (Single-Component / high / low) holds — shared helper edit covers both session and job SomersetCover surfaces with one line.
+- Per-commit boundaries clean: `code(AST-1162)` touches only `src/core/builder.py`; `test(AST-1162)` touches only `tests/` + `docs/test-bible/`; `merge-tests(AST-1162)` is the sole test-corpus merge onto the sub. No engineer→test-tree or Betty→src/features crossover (orch.roles.pre-commit-path-bans, orch.roles.betty-owns-test-tree conform).
+
+**What's solid:** New margin value keeps the same literal-px convention already used throughout this embedded stylesheet (`.letterdate`, `.lettersubject`, etc.) — not a new hardcoded-set pattern. New test class asserts non-negative margin, DOM stacking order, and the no-image path stays unaffected.
+
+**Notes:** Local pytest re-run blocked in this shell (no Python 3.10+ available); relying on Betty's `merge-tests(AST-1162)` SHA and the Tests Passed gate for green confirmation.
+
+## Frame diff
+
+(none)
+
+context_tokens≈14000
+— Radia
