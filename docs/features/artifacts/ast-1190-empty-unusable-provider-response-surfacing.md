@@ -185,3 +185,14 @@ Do not add state transitions, batch release, or hop topology changes (AST-1191 /
 - **§1.4:** No new hardcoded token budgets or timeout seconds (Ada).  
 - **§2.4 / §2.6:** Untouched — Katherine owns release/hold.  
 - **§3.3 imports:** utils ← config; external ← utils; core ← utils; no upward imports.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1164/AST-1190-empty-unusable-provider-response`
+**Tip:** `597a41d9`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `c3a39ddf` | `PROVIDER_EMPTY_RESPONSE` + `llm_external` helpers; `log_llm_batch_summary` empty-`error` ERROR path |
+| 2 | `968a3a7c` | DeepSeek/Anthropic hollow fail-closed + blank exception/parse normalize |
+| 3 | `597a41d9` | `do_task` non-empty `error=` coerce + empty-response debug detail |
