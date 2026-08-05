@@ -224,3 +224,15 @@ Do not add state transitions, batch release, or hop topology changes (AST-1191 /
 context_tokens≈9
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-05  
+**Review tip ingested:** `2311dbca` (`docs(AST-1190): Radia review — findings`)  
+**Overall:** DISCUSS — **no fix-now**; Frame diff none.
+
+| Item | Action |
+|------|--------|
+| discuss — `0f4469e1` used `test(AST-1190):` for a pure product import fixup | Accepted; no rewrite (rebase/force-push banned). Future post-merge-tests product fixups on this lineage use `code(...)`. No product change this pass. |
+
+**§9a:** dry-run `origin/sub/AST-1164/AST-1190-empty-unusable-provider-response` → `origin/dev` (ftr parent not on origin yet — skipped).
