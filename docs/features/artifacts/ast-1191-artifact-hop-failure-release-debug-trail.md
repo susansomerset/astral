@@ -20,11 +20,17 @@ After AST-1189 (timeout `failure_class`) and AST-1190 (hollow/blank-error surfac
 
 ## Stage 1: Provider failure → error_state + batch claim release
 
-**Done when:** On a dispatch-chain job hop (`ctx.dispatch_trigger_state` set, graduation target exists) whose provider call returns `success=False`, the job (1) transitions to `task_config["error_state"]` when that state is configured (for artifact hops: `ERROR_BUILD_ARTIFACTS`), (2) has its `batch_id` lock cleared, and (3) still emits the existing `do_task(...) provider call failed batch_id=… error=…` ERROR line with the non-empty error from AST-1190. Provider balance refusal (`failure_class=provider_balance_refusal`) still **holds** state (no error_state transition) but **does** release the claim. Non-provider hop failures keep today’s hard-string gate (`Job not found` / `Missing candidate_data` only).
+**Done when:** On a dispatch-chain job hop (`ctx.dispatch_trigger_state` set, graduation target exists) whose provider call returns `success=False`, the job (1) transitions to `task_config["error_state"]` when that state is configured (for artifact hops: `ERROR_BUILD_ARTIFACTS`), (2) has its `batch_id` lock cleared, and (3) still emits the existing `do_task(...) provider call failed batch_id=… error=…` ERROR line with the non-empty error from AST-1190. Provider balance refusal (`failure_class=provider_balance_refusal`) still **holds** state (no error_state transition) but **does** release the claim. Non-provider hop failures keep today’s hard-string gate (`Job not found` / `Missing candidate_data` only). Both `_apply_dispatch_chain_hop_failure` and `_close_hop_ledger` return the outcome dict `{"apply_error_state": bool, "error_state": str, "batch_released": bool}` (Stage 2 consumes it — no signature rewrite later).
 
-1. In `src/core/agent.py`, extend `_apply_dispatch_chain_hop_failure` signature to:
+1. In `src/core/agent.py`, add a module-level no-op outcome constant (near the hop-failure helper) and extend `_apply_dispatch_chain_hop_failure` to return that outcome dict from **every** exit:
 
 ```python
+_HOP_FAILURE_NOOP = {
+    "apply_error_state": False,
+    "error_state": "",
+    "batch_released": False,
+}
+
 def _apply_dispatch_chain_hop_failure(
     *,
     entity_type: str,
@@ -35,14 +41,14 @@ def _apply_dispatch_chain_hop_failure(
     debug: bool,
     provider_failed: bool = False,
     failure_class: Optional[str] = None,
-) -> None:
+) -> Dict[str, Any]:
 ```
 
-2. Keep the existing early return when `_should_write_dispatch_hop_label(...)` is false (not a dispatch-chain job hop — no state/claim side effects).
+2. When `_should_write_dispatch_hop_label(...)` is false (not a dispatch-chain job hop — no state/claim side effects): `return dict(_HOP_FAILURE_NOOP)`.
 
 3. Replace the hard-fail gate so error_state applies when `err_state` is non-empty **and** any of:
    - existing hard strings: `"Job not found" in error` or `"Missing candidate_data" in error`
-   - `provider_failed is True` **and** `failure_class != PROVIDER_BALANCE_REFUSAL["failure_class"]` (import `PROVIDER_BALANCE_REFUSAL` from `src.utils.config`, or reuse `is_provider_balance_refusal` by building a one-key dict — prefer calling the existing `is_provider_balance_refusal({"failure_class": failure_class})` already imported in this module)
+   - `provider_failed is True` **and** not balance refusal — call the existing `is_provider_balance_refusal({"failure_class": failure_class})` already imported in this module
 
    Concrete:
 
@@ -56,15 +62,34 @@ hard = bool(err_state) and (
     or "Missing candidate_data" in error
     or (provider_failed and not balance_hold)
 )
+apply_error_state = False
+batch_released = False
 ```
 
 4. When `hard and err_state and index`:
    - `tracker_mod.transition_job_state([index], err_state)` inside the existing `try/except ValueError` (warning log unchanged).
+   - On successful transition (no `ValueError`): set `apply_error_state = True`.
    - **Order:** transition **before** claim release so `state_history[].batch_id` still captures the in-flight claim (`transition_job_state` reads `job.get("batch_id")`).
 
-5. When `provider_failed and index` (including balance_hold): call `tracker_mod.release_job_dispatch_claim(index)` after the transition attempt (or immediately when not hard). Idempotent with `_run_dispatch_chain_job_batch`’s existing `release_job_dispatch_claim` on `!success` — leave that consult release in place; do not remove it.
+5. When `provider_failed and index` (including balance_hold): call `tracker_mod.release_job_dispatch_claim(index)` after the transition attempt (or immediately when not hard); set `batch_released = True`. Idempotent with `_run_dispatch_chain_job_batch`’s existing `release_job_dispatch_claim` on `!success` — leave that consult release in place; do not remove it.
 
-6. Update `_close_hop_ledger` to accept and forward:
+6. Before returning, when `debug=True`, emit (replace the current single `chain_hop_failed retryable=…` line):
+
+```text
+chain_hop_failed apply_error_state=<bool> error_state=<err_state or ''> batch_released=<bool> failure_class=<…> error=<…>
+```
+
+   Then always:
+
+```python
+return {
+    "apply_error_state": apply_error_state,
+    "error_state": err_state if apply_error_state else "",
+    "batch_released": batch_released,
+}
+```
+
+7. Update `_close_hop_ledger` to accept the new kwargs **and return the same outcome dict**:
 
 ```python
 def _close_hop_ledger(
@@ -74,17 +99,21 @@ def _close_hop_ledger(
     failure_error: Optional[str] = None,
     provider_failed: bool = False,
     failure_class: Optional[str] = None,
-) -> None:
+) -> Dict[str, Any]:
 ```
 
-   Pass `provider_failed` / `failure_class` into `_apply_dispatch_chain_hop_failure` only when `not success and failure_error`.
+   - When `not success and failure_error`: `outcome = _apply_dispatch_chain_hop_failure(..., provider_failed=provider_failed, failure_class=failure_class)`.
+   - Else: `outcome = dict(_HOP_FAILURE_NOOP)`.
+   - Then run the existing hop-ledger finalize / `clear_log` logic unchanged.
+   - `return outcome`.
+   - Other call sites that ignore the return value stay valid (Python allows discarding returns).
 
-7. On the existing provider-failure return path in `do_task` (the block after `send_to_*` where `batch_id and not result.get("success")` already normalizes `error`, and the later `if not result.get("success"):` that calls `_close_hop_ledger`):
+8. On the existing provider-failure return path in `do_task` (the block after `send_to_*` where `batch_id and not result.get("success")` already normalizes `error`, and the later `if not result.get("success"):` that calls `_close_hop_ledger`):
 
-   - Change the `_close_hop_ledger` call to:
+   - Change the `_close_hop_ledger` call to capture the outcome (Stage 2 recorded line uses it):
 
 ```python
-_close_hop_ledger(
+hop_fail_outcome = _close_hop_ledger(
     success=False,
     clear_log=True,
     failure_error=str(result.get("error") or "provider_failed"),
@@ -99,57 +128,53 @@ _close_hop_ledger(
 
    - Do **not** set `provider_failed=True` on other `_close_hop_ledger(success=False, …)` call sites (envelope / validation / decode failures keep the hard-string-only behavior).
 
-8. Debug detail on this helper when `debug=True` (replace the current single `chain_hop_failed retryable=…` line):
-
-```text
-chain_hop_failed apply_error_state=<bool> error_state=<err_state or ''> batch_released=<bool> failure_class=<…> error=<…>
-```
-
 ⚠️ **Decision:** Apply configured `error_state` for **all** non-balance provider failures on dispatch-chain hops (timeout, empty response, max_tokens, generic provider error), not only AST-1189/1190 classes — AC3 names “such a failure” after the provider path; balance refusal keeps the existing hold semantics used elsewhere in consult.  
-⚠️ **Decision:** Claim release lives in `_apply_dispatch_chain_hop_failure` (defense in depth) **and** remains in `_run_dispatch_chain_job_batch` — dual clear is idempotent via `clear_job_batch_lock`.  
-⚠️ **Decision:** No consult.py / dispatcher.py edits — topology and claim/get/clear finally block stay as-is (`astral.dispatch.run-next-is-chain-authority`).
+⚠️ **Decision:** Claim release lives in `_apply_dispatch_chain_hop_failure` (defense in depth for `do_task` callers outside `_run_dispatch_chain_job_batch`) **and** remains in that consult batch runner — dual clear is idempotent via `clear_job_batch_lock` (Joan #3: recorded, not accidental).  
+⚠️ **Decision:** No consult.py / dispatcher.py edits — topology and claim/get/clear finally block stay as-is (`astral.dispatch.run-next-is-chain-authority`).  
+⚠️ **Decision:** Outcome-dict return lands in Stage 1 for both helpers so Stage 2 does not amend signatures (`orch.pipeline.plan-is-bible`).
 
 ---
 
 ## Stage 2: Debug found/recorded trail on provider failure
 
-**Done when:** With `debug=True`, a provider-failed `do_task` on an artifact hop emits Style D index detail under the existing hop/provider-failed path with **found** (duration, stop, token counts, failure_class) and **recorded** (non-empty error string, error_state applied or held, batch_released) lines. With `debug=False`, no new contract lines. No changes to external `send_to_*` beyond consuming fields already on `result`.
+**Done when:** With `debug=True`, a provider-failed `do_task` on an artifact hop emits Style D index detail under the existing hop/provider-failed path with **found** (duration, stop, token counts from real timesheet keys, failure_class) and **recorded** (non-empty error string, error_state applied or held, batch_released) lines. With `debug=False`, no new contract lines. No changes to external `send_to_*` beyond consuming fields already on `result`. Silent `tokens_*=0` fallbacks are forbidden when keys are missing.
 
-1. In the same `if not result.get("success"):` provider-failure block in `do_task`, **after** `_store_response_block` (best-effort) and **before** `_close_hop_ledger`, when `debug` is True, emit found/recorded via `_do_task_debug_logger(debug)`:
+1. In the same `if not result.get("success"):` provider-failure block in `do_task`, **after** `_store_response_block` (best-effort), when `debug` is True:
 
    - Read timesheet: `ts = result.get("timesheet") if isinstance(result.get("timesheet"), dict) else {}`
-   - `duration = ts.get("duration")` (format `duration={float:.1f}s` when numeric, else `duration=n/a`)
-   - Stop: `api = result.get("api_response")`; `stop = getattr(api, "stop_reason", None) if api is not None else None`; display `stop` if non-empty else `"?"`
-   - Tokens: prefer timesheet keys already used by externals (`input_tokens` / `output_tokens` / cache fields if present on `ts`); if absent, use `0`. Do not call the provider again.
-   - `fc = result.get("failure_class")` (display `n/a` when missing)
-
-   Found line (exact shape):
-
-```text
-found duration=<…> stop=<…> tokens_in=<int> tokens_out=<int> failure_class=<…>
-```
-
-   Recorded line **after** `_close_hop_ledger` returns (so it can reflect the actual apply/release outcome). To do that without probing the DB twice awkwardly: have Stage 1’s `_apply_dispatch_chain_hop_failure` return a small dict:
+   - Duration: if `ts.get("duration")` is `int` or `float`, format `duration={float(ts["duration"]):.1f}s`; else `duration=n/a`.
+   - Stop: `api = result.get("api_response")`; `stop = getattr(api, "stop_reason", None) if api is not None else None`; display `stop` if it is a non-empty string after strip, else `"?"`.
+   - Tokens — use the **actual** external timesheet keys (both DeepSeek and Anthropic): `inputtotal`, `inputcached`, `outputtotal`, `cache_creation_tokens`. Helper for display (inline or small local lambda is fine):
 
 ```python
-{"apply_error_state": bool, "error_state": str, "batch_released": bool}
+def _ts_num(key: str) -> str:
+    v = ts.get(key)
+    return str(int(v)) if isinstance(v, (int, float)) else "n/a"
 ```
 
-   (return `{"apply_error_state": False, "error_state": "", "batch_released": False}` on the early no-op return). Thread that return value through `_close_hop_ledger` → local variable on the provider-failure path only.
+     Do **not** invent `input_tokens` / `output_tokens`. Do **not** default missing keys to `0` — missing → `n/a` (timeout `_empty_timesheet` still supplies real zeros as ints, which print as `0` honestly).
+   - `fc = result.get("failure_class")`; display `str(fc)` if non-empty after strip, else `n/a`.
+   - Emit **found** line before `_close_hop_ledger`, matching `emit_llm_call_debug` vocabulary (`llm_external.py` token line: fresh / cache_read / cache_write / output):
 
-   Recorded line:
+```text
+found duration=<…> stop=<…> tokens fresh=<inputtotal> cache_read=<inputcached> cache_write=<cache_creation_tokens> output=<outputtotal> failure_class=<…>
+```
+
+2. Call `_close_hop_ledger` as in Stage 1 step 8 (`hop_fail_outcome = …`). Then when `debug` is True, emit **recorded** from `hop_fail_outcome`:
 
 ```text
 recorded error=<non-empty error> error_state=<applied state or 'held'> batch_released=<true|false>
 ```
 
-   Use `error_state='held'` when `apply_error_state` is False (balance hold or non-chain hop).
+   - `error_state` display: `hop_fail_outcome["error_state"]` when `hop_fail_outcome["apply_error_state"]` else `'held'`.
+   - `batch_released`: lowercase `true` / `false` from the bool.
 
-2. Keep the existing debug_detail lines (`exit provider_failed…`, balance/empty class lines from AST-1190). Add found/recorded; do not delete sibling lines.
+3. Keep the existing debug_detail lines (`exit provider_failed…`, balance/empty class lines from AST-1190). Add found/recorded; do not delete sibling lines.
 
-3. Do **not** edit `emit_llm_call_debug` in `llm_external.py` or either external client — ticket boundary is consume structured failures in core.
+4. Do **not** edit `emit_llm_call_debug` in `llm_external.py` or either external client — ticket boundary is consume structured failures in core.
 
-⚠️ **Decision:** Found/recorded lives in `do_task` (core), not a second pass through external debug helpers — honors “does not redesign LLM adapters” and still satisfies §1.5.1 (gated, `debug_detail`, found + recorded).
+⚠️ **Decision:** Found/recorded lives in `do_task` (core), not a second pass through external debug helpers — honors “does not redesign LLM adapters” and still satisfies §1.5.1 (gated, `debug_detail`, found + recorded).  
+⚠️ **Decision:** Token field names and `n/a`-not-silent-zero match Joan round=1 fix-now — operators see the same fresh/cache_read/cache_write/output vocabulary as `emit_llm_call_debug`, and max_tokens / hollow paths keep real counts.
 
 ---
 
@@ -184,3 +209,13 @@ recorded error=<non-empty error> error_state=<applied state or 'held'> batch_rel
 | §2.6 / run-next-is-chain-authority | No hop topology / graduation map edits |
 | §3.3 imports | Core ← utils (`is_provider_balance_refusal` already present); no new upward imports |
 | in-scope-only | No AST-1189 budget, AST-1190 hollow predicate, AST-1163 tokens, UI, data layer |
+
+---
+
+## Revisions
+
+Revision 1 — 2026-08-05  
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE) — Stage 2 timesheet keys wrong (`input_tokens`/`output_tokens` never emitted; silent `0` fallback reprints the parent symptom); Stage 1 `_close_hop_ledger` → `None` vs Stage 2 return-dict threading contradiction.  
+Changes:
+- Stage 1: both helpers return `{"apply_error_state", "error_state", "batch_released"}` from the start (including early no-op); Done-when + Decision document that Stage 2 does not amend signatures; dual claim-release recorded as intentional defense-in-depth.
+- Stage 2: read real keys `inputtotal` / `inputcached` / `outputtotal` / `cache_creation_tokens`; missing → `n/a` (never silent `0`); found line mirrors `emit_llm_call_debug` token vocabulary (`fresh` / `cache_read` / `cache_write` / `output`); recorded line consumes Stage 1 `hop_fail_outcome`.
