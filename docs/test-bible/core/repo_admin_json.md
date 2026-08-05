@@ -247,3 +247,30 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
   -q
 ```
+
+### AST-1196 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1196-agent-task-synthesize-email-link-subject`.
+
+`qualify_meteorite` `cache_prompt` / `user_prompt`: synthesize `email-<originalsender>-<timestamp>` when no ATS link; subject as title; empty-string fails (never JSON null); positional `astral_job_id` (`000`/`001`/…); never drop a row. Surgical AST-756 fixture lockstep on that row’s three fields only. Catalog tip lock **53** current keys (includes `evaluate_meteorite` / `craft_evaluate_meteorite_rubric` / candidate-requested / `find_company_website`). Full catalog↔fixture byte-identity deferred to parent re-baseline (fixture still 51 rows).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt contract + surgical fixture | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1196QualifyMeteoritePromptContract`** |
+| Catalog frozenset / startup apply | same | revised **`TestAst786AgentTaskRepoJsonSeed`** (53; byte-for-byte retired) |
+| Ruth shell fields still present | same | **`TestAst1060QualifyMeteoriteCatalogRow`** (unchanged asserts still green) |
+
+**Broken / obsolete:** AST-786 **48**-row + whole-file byte-identity asserts — tip catalog is **53**; inherited fixture drift (missing two meteorite rows) is out of scope for this child. Also revised **`TestAst1107TaskNameEqualsTaskKey::test_fixture_byte_locked_after_rename`**, **`TestAst1144…`** fixture byte tail, **`TestAst1154…::test_fixture_byte_locked_with_completeness_prompts`** → per-key / surgical checks.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1196QualifyMeteoritePromptContract \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1107TaskNameEqualsTaskKey \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  -q
+```
