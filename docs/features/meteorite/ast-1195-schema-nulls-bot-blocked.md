@@ -134,3 +134,16 @@ Matches the plan's two-file Files Changed table exactly: `config.py` (`qualify_m
 context_tokens≈95000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-05
+**Review:** Radia `[code-rubric] revision=1` — **Overall: CLEAN** @ `0049210f` (`origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`).
+
+| Item | Action |
+|------|--------|
+| fix-now | none |
+| discuss | none |
+| advisory — `pattern.*` citation slip in Linear description | Corrected description In scope / Considered but excluded to active `astral.*` ids (`astral.config.config-source-of-truth` already listed; `pattern.batch…` → `astral.batch.claim-process-release` as excluded sibling statute). No product code change. |
+
+No product or plan-stage rewrites required. Ship as built.
