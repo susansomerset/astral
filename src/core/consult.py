@@ -780,8 +780,15 @@ async def _prep_live_content(
 
 
 def _format_analysis_phase_text(phase_token: str, job_data: dict, candidate_data: dict) -> str:
-    """Human-readable consult recap for one ANALYSIS_* token (AST-513)."""
-    phase_cfg = (JOB_TOKEN_CONFIG.get("analysis_phases") or {}).get(phase_token)
+    """Human-readable consult recap for one ANALYSIS_* token (AST-513).
+
+    Meteorite-sourced jobs score ANALYSIS_JD against evaluate_meteorite's own rubric, not
+    evaluate_jd's — analysis_phases_meteorite_override supplies the swapped owner/artifact.
+    """
+    phases = dict(JOB_TOKEN_CONFIG.get("analysis_phases") or {})
+    if _entity_state_is_meteorite((job_data or {}).get("state")):
+        phases.update(JOB_TOKEN_CONFIG.get("analysis_phases_meteorite_override") or {})
+    phase_cfg = phases.get(phase_token)
     if not phase_cfg:
         return ""
     grades = job_data.get(phase_cfg.get("grades_key") or "")
@@ -1863,13 +1870,17 @@ async def evaluate_jd_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    task_key: str = "evaluate_jd",
 ) -> Dict[str, Any]:
     """Batch JD dealbreaker screen (Pattern A, ast-326). Thin wrapper over _run_batch_consult.
 
     Jobs short on JD are transitioned separately; JD-ready remainder run together in one `_run_batch_consult`
     / one `do_task` when dispatcher ``batch_call_mode=1`` (AST-501). Expects scraped JD in ``job_data``.
+
+    ``task_key`` defaults to "evaluate_jd" (regular gazer-discovered jobs); pass "evaluate_meteorite"
+    for candidate-submitted jobs, which score against their own meteorite_jobdesc_rubric and land on
+    METEORITE_* pass/fail/error states — see evaluate_meteorite_batch.
     """
-    task_key = "evaluate_jd"
     cfg = _consult_orchestration(task_key)
     min_chars = cfg.get("min_jd_chars", 80)
     not_ready_state = cfg.get("not_ready_state", "PASSED_JOBLIST")
@@ -1885,7 +1896,7 @@ async def evaluate_jd_batch(
     if debug:
         logger.set_debug_flag(True)
         logger.debug_detail(
-            f"evaluate_jd batch_id={batch_id} ready={len(ready_jobs)} "
+            f"{task_key} batch_id={batch_id} ready={len(ready_jobs)} "
             f"not_ready={len(not_ready_jobs)} min_chars={min_chars}"
         )
 
@@ -1902,7 +1913,7 @@ async def evaluate_jd_batch(
         _transition_job_state_for_task(task_key, [aid], not_ready_state, score=None)
         if debug:
             logger.debug_index(
-                func="consult.evaluate_jd_batch",
+                func=f"consult.evaluate_jd_batch[{task_key}]",
                 index=ni,
                 total=len(not_ready_jobs),
                 identifier=_consult_job_identifier(job),
@@ -1916,7 +1927,7 @@ async def evaluate_jd_batch(
     if not ready_jobs:
         if debug:
             logger.debug_detail(
-                f"evaluate_jd batch_id={batch_id} all jobs not JD-ready skipped={len(not_ready_jobs)}"
+                f"{task_key} batch_id={batch_id} all jobs not JD-ready skipped={len(not_ready_jobs)}"
             )
         return {
             "success": True,
@@ -1977,6 +1988,24 @@ async def evaluate_jd_batch(
     if not_ready_jobs:
         result = {**result, "skipped": len(not_ready_jobs), "total": len(jobs)}
     return result
+
+
+async def evaluate_meteorite_batch(
+    batch_id: str,
+    jobs: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_chunk_index: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Meteorite JD dealbreaker screen — candidate-submitted jobs, own rubric.
+
+    Standalone twin of evaluate_jd_batch (own TASK_CONFIG pass/fail/error states, no
+    METEORITE_GDL_OUTCOME_BY_TASK overlay needed), same pattern as meteorite_like_batch.
+    """
+    return await evaluate_jd_batch(
+        batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        task_key="evaluate_meteorite",
+    )
 
 
 async def _consult_scored_dispatch_batch_encoded(
@@ -2351,6 +2380,10 @@ async def run_consult_task(
         )
     elif task_key == "evaluate_jd":
         r = await evaluate_jd_batch(
+            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        )
+    elif task_key == "evaluate_meteorite":
+        r = await evaluate_meteorite_batch(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
     elif task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):

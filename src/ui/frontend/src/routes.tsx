@@ -28,6 +28,7 @@ import CompanyWatchCriteria from "./pages/ArtifactsCompanyWatchCriteria"
 import CompanySearchTerms from "./pages/ArtifactsCompanySearchTerms"
 import JobListCriteria from "./pages/ArtifactsJobListCriteria"
 import JobDescCriteria from "./pages/ArtifactsJobDescCriteria"
+import MeteoriteCriteria from "./pages/ArtifactsMeteoriteCriteria"
 import GetJobCriteria from "./pages/ArtifactsGetJobCriteria"
 import DoJobCriteria from "./pages/ArtifactsDoJobCriteria"
 import LikeJobCriteria from "./pages/ArtifactsLikeJobCriteria"
@@ -95,6 +96,7 @@ const routes: RouteObject[] = [
           { path: "artifacts/company_search_terms", element: <CompanySearchTerms /> },
           { path: "artifacts/job_list_criteria", element: <JobListCriteria /> },
           { path: "artifacts/job_description_criteria", element: <JobDescCriteria /> },
+          { path: "artifacts/meteorite_criteria", element: <MeteoriteCriteria /> },
           { path: "artifacts/get_job_criteria", element: <GetJobCriteria /> },
           { path: "artifacts/do_job_criteria", element: <DoJobCriteria /> },
           { path: "artifacts/like_job_criteria", element: <LikeJobCriteria /> },
