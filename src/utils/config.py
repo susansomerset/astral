@@ -503,8 +503,8 @@ TASK_CONFIG = {
                 "items_schema": {
                     "astral_job_id":   {"type": "str", "required": True},
                     "company_job_id":  {"type": "str", "required": False},  # AST-1127: omit/null → consult UUID fallback
-                    "job_title":       {"type": "str", "required": True},
-                    "job_link":        {"type": "str", "required": True},
+                    "job_title":       {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
+                    "job_link":        {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
                     "jd_text":         {"type": "str", "required": True},  # visible JD content
                 },
             },
@@ -971,6 +971,8 @@ TASK_CONFIG = {
     },
 }
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_job_id"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]["required"] is False
 
 def is_conversational_task(task_key: str) -> bool:
     """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
