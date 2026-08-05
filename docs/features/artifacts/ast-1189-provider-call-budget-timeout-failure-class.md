@@ -254,3 +254,39 @@ Changes:
 | 1 | `d41b16c7` | `PROVIDER_CALL_BUDGET` (600s / 10s grace / `max_retries: 0`) |
 | 2 | `6d650feb` | wall-budget helpers + cause-chain classify + never-empty error |
 | 3 | `663f6a07` | DeepSeek + Anthropic client budget, `await_provider_call_with_budget`, timeout `failure_class` |
+
+---
+
+## Radia review — code-rubric.v1 revision=1
+
+**Publish ref tip:** `683bcb1f`
+
+**Overall:** FIX-NOW
+
+### Plan adherence
+
+Stages 1–3 (`d41b16c7`, `6d650feb`, `663f6a07`) match the plan's code blocks essentially verbatim — `PROVIDER_CALL_BUDGET` shape, the four `llm_external` helpers, `await_provider_call_with_budget`'s `asyncio.wait(FIRST_COMPLETED)`-and-abandon design, and the mirrored DeepSeek/Anthropic wiring (client `max_retries`, timeout-vs-balance tagging, never-empty `error`) all land as specified. `src/core/agent.py` is untouched, honoring the stated boundary.
+
+### Findings
+
+**fix-now — cross-ticket test/doc contamination breaks this publish ref's own test tree.** The `merge-tests(AST-1189): origin/tests 886b1033` commit pulls in `748a5725 test(AST-1190): hollow provider response + blank error= coverage` as an ancestor on the shared `origin/tests` branch, plus `docs/features/artifacts/ast-1190-empty-unusable-provider-response-surfacing.md` (added earlier in this branch's own history, survives a `347bf506` attempt to drop the "sibling" file). Confirmed by running the touched test files against this tip in a fresh venv: **9 failing tests** (`TestAst1190DoTaskEmptyProviderError` x2, `TestAst1190EmptyUnusableProviderResponse` in both `test_anthropic.py`/`test_deepseek.py`, `TestAst1190ProviderEmptyResponseConfig`, `TestAst1190EmptyResponseHelpers` x5) — all `ImportError`/`AttributeError` on `PROVIDER_EMPTY_RESPONSE`, `normalize_provider_error`, `is_unusable_provider_response`, none of which exist on this tip (`src/core/agent.py` and `src/utils/config.py` carry no AST-1190 product surface here — that work lives on AST-1190's own branch). The plan's own boundary line ("Not in scope: ... AST-1190 empty-response surfacing") is correct in intent but not honored by the merged test/doc state. Fix: re-cut the `merge-tests` merge (or have Betty publish an AST-1189-only `origin/tests` SHA that does not stack on the AST-1190 test commit) and drop the leftover `ast-1190-*.md` plan file from this branch before re-requesting review.
+
+**advisory — `astral.standards.debug-contract-gated` mechanically in-scope but content is benign.** The plan's Considered-but-excluded table marks debug/found-recorded trail as AST-1191, but the diff does touch `emit_llm_call_debug(..., error=err, ...)` call sites in both externals. No new debug capability or ungating was added (only the `error=` value changed from `str(e)` to the classified/never-empty string) — not a straggler in substance, noting for completeness.
+
+### Pattern conformance
+
+None cited (plan lists statute ids under In-scope / Considered-but-excluded, not `canon/patterns/*`; those ids are covered by the full-set sweep).
+
+### What's solid
+
+- `PROVIDER_CALL_BUDGET` config shape, the wall-budget release-without-awaiting-the-orphan design, and the mirrored DeepSeek/Anthropic wiring are clean, DRY, and layer-correct (external → utils only, no cross-external import).
+- Never-empty `error` guarantee is enforced consistently on every touched failure path in both externals.
+
+### Recommended actions
+
+1. Re-publish `origin/sub/AST-1164/AST-1189-provider-call-budget-timeout` with a `merge-tests` SHA scoped to AST-1189 only (or coordinate ordering with Betty so AST-1190's test commit isn't an ancestor).
+2. Drop `docs/features/artifacts/ast-1190-empty-unusable-provider-response-surfacing.md` from this branch — it belongs on AST-1190's own publish ref only.
+3. Re-run the full touched-file test set on the corrected tip before re-requesting Review Posted.
+
+`context_tokens≈45000`
+— Radia
