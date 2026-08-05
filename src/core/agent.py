@@ -351,6 +351,8 @@ def _job_context_for_call(
     ctx: Optional[Dict[str, Any]],
     index: Optional[str],
     cd: dict,
+    *,
+    debug: bool = False,
 ) -> Optional[Dict[str, str]]:
     if not _single_job_in_scope(ctx, index):
         return None
@@ -364,7 +366,9 @@ def _job_context_for_call(
     cid = str((ctx or {}).get("astral_candidate_id") or "")
     if cid:
         cd_copy["_astral_candidate_id"] = cid
-    return builder(_job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid)
+    return builder(
+        _job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid, debug=debug
+    )
 
 
 def resolved_task_system(
@@ -1912,7 +1916,7 @@ async def do_task(
         for k in CALLER_HOP_TOKEN_NAMES
         if k in (effective_chain_context or {})
     }
-    _jc = _job_context_for_call(ctx, index, cd)
+    _jc = _job_context_for_call(ctx, index, cd, debug=debug)
     _cc = _chain_context(
         agent_row,
         cd,

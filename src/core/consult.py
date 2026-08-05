@@ -779,31 +779,74 @@ async def _prep_live_content(
     return f"{content}\n\n=== COMPANY CONTEXT ===\n{vibes}" if vibes else content
 
 
-def _format_analysis_phase_text(phase_token: str, job_data: dict, candidate_data: dict) -> str:
-    """Human-readable consult recap for one ANALYSIS_* token (AST-513).
+def _analysis_phase_rubric_snapshot_key(grades_key: str) -> str:
+    """Job-carried snapshot key for a grades_key (AST-1063 write: ``{save_prefix}_rubric``).
+
+    Couples to ``grades_key == f\"{save_prefix}_grades\"`` — same stem both sides today.
+    """
+    if not isinstance(grades_key, str) or not grades_key.endswith("_grades"):
+        return ""
+    return grades_key[:-7] + "_rubric"
+
+
+def _format_analysis_phase_text(
+    phase_token: str,
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    debug: bool = False,
+    job_id: str = "",
+    phase_index: int = 1,
+    phase_total: int = 1,
+) -> str:
+    """Human-readable consult recap for one ANALYSIS_* token (AST-513 / AST-1193).
 
     Meteorite-sourced jobs score ANALYSIS_JD against evaluate_meteorite's own rubric, not
     evaluate_jd's — analysis_phases_meteorite_override supplies the swapped owner/artifact.
+    Live label-or-code first; on miss, job-carried ``*_rubric`` snapshot identity + live content-by-code.
     """
+    log = get_logger(__name__, debug_flag=debug)
     phases = dict(JOB_TOKEN_CONFIG.get("analysis_phases") or {})
     if _entity_state_is_meteorite((job_data or {}).get("state")):
         phases.update(JOB_TOKEN_CONFIG.get("analysis_phases_meteorite_override") or {})
     phase_cfg = phases.get(phase_token)
+    live_criteria: list = []
+    snapshot: list = []
+    found = 0
+    recorded = 0
+
+    def _emit_debug(text: str) -> None:
+        if not debug:
+            return
+        log.debug_index(
+            func="_format_analysis_phase_text",
+            index=phase_index,
+            total=phase_total,
+            identifier=f"{job_id}:{phase_token}",
+            outcome="formatted" if text else "empty",
+        )
+        log.debug_detail(
+            f"found_grades={found} recorded_vectors={recorded} "
+            f"live_criteria={len(live_criteria)} snapshot_criteria={len(snapshot)}"
+        )
+
     if not phase_cfg:
+        _emit_debug("")
         return ""
-    grades = job_data.get(phase_cfg.get("grades_key") or "")
+    grades_key = phase_cfg.get("grades_key") or ""
+    grades = job_data.get(grades_key)
     if not isinstance(grades, list) or not grades:
+        _emit_debug("")
         return ""
+    snap_key = _analysis_phase_rubric_snapshot_key(str(grades_key))
+    raw_snap = job_data.get(snap_key) if snap_key else None
+    snapshot = raw_snap if isinstance(raw_snap, list) else []
     owner = phase_cfg.get("rubric_owner_task_key")
     cid = str((candidate_data or {}).get("_astral_candidate_id") or "")
     if owner and cid:
         from src.core.candidate import rubric_criteria_for_task
 
-        rubric_criteria = rubric_criteria_for_task(cid, owner)
-    else:
-        rubric_criteria = []
-    if not rubric_criteria:
-        return ""
+        live_criteria = rubric_criteria_for_task(cid, owner)
     blocks: List[str] = []
     for g in grades:
         if not isinstance(g, dict):
@@ -811,36 +854,47 @@ def _format_analysis_phase_text(phase_token: str, job_data: dict, candidate_data
         vector_label = str(g.get("vector") or "").strip()
         if not vector_label:
             continue
-        criterion = None
-        target = _strip_code(vector_label)
-        for item in rubric_criteria:
-            if not isinstance(item, dict):
-                continue
-            if _strip_code(str(item.get("label") or "").strip()) == target:
-                criterion = item
-                break
-        if criterion is None:
+        found += 1
+        criterion = _find_rubric_criterion(live_criteria, vector_label)
+        title = ""
+        rubric_blob = ""
+        snapshot_hit = False
+        if criterion is not None:
+            title = str(criterion.get("label") or vector_label).strip()
+            rubric_blob = str(criterion.get("content") or "").strip()
+        else:
+            snap_row = _find_rubric_criterion(snapshot, vector_label) if snapshot else None
+            if snap_row is not None:
+                snapshot_hit = True
+                title = str(snap_row.get("label") or vector_label).strip()
+                code = str(snap_row.get("code") or "").strip()
+                live_by_code = _find_rubric_criterion(live_criteria, code) if code else None
+                if live_by_code is not None:
+                    title = str(live_by_code.get("label") or title).strip()
+                    rubric_blob = str(live_by_code.get("content") or "").strip()
+        if criterion is None and not snapshot_hit:
             logger.warning(
                 "_format_analysis_phase_text: no rubric criterion for vector %r (phase=%s)",
                 vector_label,
                 phase_token,
             )
             continue
-        title = str(criterion.get("label") or vector_label).strip()
-        rubric_blob = str(criterion.get("content") or "").strip()
         letter = str(g.get("grade") or "").strip().upper()
         conf = g.get("confidence")
         conf_s = f"{int(conf)}/5" if isinstance(conf, (int, float)) else "0/5"
         blocks.append(
             f"CONSIDER: {title}\n{rubric_blob}\nANALYSIS RESULT: {letter} ({conf_s} confidence)"
         )
-    return "\n\n".join(blocks)
+        recorded += 1
+    text = "\n\n".join(blocks)
+    _emit_debug(text)
+    return text
 
 
 def build_job_token_context(
-    job: Dict[str, Any], candidate_data: dict, *, candidate_id: str = ""
+    job: Dict[str, Any], candidate_data: dict, *, candidate_id: str = "", debug: bool = False
 ) -> Dict[str, str]:
-    """Precomputed job-scoped prompt tokens for artifact single-job calls (AST-513)."""
+    """Precomputed job-scoped prompt tokens for artifact single-job calls (AST-513 / AST-1193)."""
     from src.core.candidate import enabled_resume_structure_sections, resolve_resume_structure
 
     cd = dict(candidate_data or {})
@@ -850,8 +904,13 @@ def build_job_token_context(
     jd_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     visible = (jd_data.get("job_description") or "").strip()
     out: Dict[str, str] = {"VISIBLE_JD": visible}
-    for key in ("ANALYSIS_JD", "ANALYSIS_DO", "ANALYSIS_GET", "ANALYSIS_LIKE"):
-        out[key] = _format_analysis_phase_text(key, jd_data, cd)
+    phase_tokens = tuple((JOB_TOKEN_CONFIG.get("analysis_phases") or {}).keys())
+    job_id = str(job.get("astral_job_id") or "")
+    total = len(phase_tokens)
+    for i, key in enumerate(phase_tokens, start=1):
+        out[key] = _format_analysis_phase_text(
+            key, jd_data, cd, debug=debug, job_id=job_id, phase_index=i, phase_total=total
+        )
     structure = resolve_resume_structure(cd)
     catalog_lines: List[str] = []
     sections = (structure.get("sections") or {}) if isinstance(structure.get("sections"), dict) else {}
