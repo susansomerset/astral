@@ -84,6 +84,20 @@ def build_candidate_token_view(candidate: dict) -> dict:
     }
 
 
+def is_candidate_token_view(obj: object) -> bool:
+    """True when obj matches build_candidate_token_view output (not a DB row/raft)."""
+    if not isinstance(obj, dict) or "candidate_data" in obj:
+        return False
+    return "first" in obj or "last" in obj or "full" in obj or "contact" in obj
+
+
+def is_candidate_row_with_name_columns(obj: object) -> bool:
+    """True when obj is a DB row/raft with nested candidate_data and name columns."""
+    if not isinstance(obj, dict) or not isinstance(obj.get("candidate_data"), dict):
+        return False
+    return "first" in obj or "last" in obj or "full" in obj
+
+
 def recompute_full_name(first: str, last: str) -> str:
     join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
     parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
@@ -1389,7 +1403,8 @@ def preview_task_prompt(
         if not candidates:
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
-    cd = candidate.get("candidate_data") or {}
+    # AST-1192: walkable view (name columns + library blobs) for resolve_tokens.
+    cd = build_candidate_token_view(candidate)
     cid = candidate.get("astral_candidate_id") or candidate_id
     jc: Optional[Dict[str, str]] = None
     if astral_job_id and str(astral_job_id).strip():

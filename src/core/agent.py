@@ -356,6 +356,8 @@ def _job_context_for_call(
     ctx: Optional[Dict[str, Any]],
     index: Optional[str],
     cd: dict,
+    *,
+    debug: bool = False,
 ) -> Optional[Dict[str, str]]:
     if not _single_job_in_scope(ctx, index):
         return None
@@ -369,7 +371,58 @@ def _job_context_for_call(
     cid = str((ctx or {}).get("astral_candidate_id") or "")
     if cid:
         cd_copy["_astral_candidate_id"] = cid
-    return builder(_job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid)
+    return builder(
+        _job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid, debug=debug
+    )
+
+
+# Last branch label from _token_view_for_do_task (Style D found line; AST-1192 resolve).
+_token_view_branch_last: str = "fallback"
+
+
+def _token_view_for_do_task(
+    ctx: Optional[Dict[str, Any]],
+    candidate_data: Optional[Dict[str, Any]],
+) -> dict:
+    """Walkable resolve_tokens dict: name columns + library blobs (AST-1192 / AST-1014)."""
+    global _token_view_branch_last
+    # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
+    from src.core.candidate import (
+        build_candidate_token_view,
+        get_candidate,
+        is_candidate_row_with_name_columns,
+        is_candidate_token_view,
+    )
+
+    cid = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    if cid:
+        row = get_candidate(cid)
+        if row:
+            _token_view_branch_last = "load_by_id"
+            return build_candidate_token_view(row)
+    if is_candidate_row_with_name_columns(ctx):
+        _token_view_branch_last = "full_row_ctx"
+        return build_candidate_token_view(ctx)  # type: ignore[arg-type]
+    if is_candidate_token_view(candidate_data):
+        _token_view_branch_last = "already_view"
+        return dict(candidate_data)  # type: ignore[arg-type]
+    _token_view_branch_last = "raw_blob"
+    return dict(candidate_data or (ctx or {}).get("candidate_data") or {})
+
+
+def _candidate_identity_material_present(cd: dict) -> bool:
+    """True when first/last/full or contact/context hold non-empty identity material."""
+    if str(cd.get("first") or "").strip() or str(cd.get("last") or "").strip():
+        return True
+    if str(cd.get("full") or "").strip():
+        return True
+    for key in ("contact", "context"):
+        blob = cd.get(key)
+        if not isinstance(blob, dict):
+            continue
+        if any(isinstance(v, str) and v.strip() for v in blob.values()):
+            return True
+    return False
 
 
 def resolved_task_system(
@@ -1858,9 +1911,10 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
-    cd = (ctx.get("candidate_data") or {}) if ctx else (candidate_data or {})
+    cd = _token_view_for_do_task(ctx, candidate_data)
 
-    if task_config.get("requires_candidate_key") and not cd:
+    # Dict truthiness is always true for the 8-key view; check identity material (AST-1192 resolve).
+    if task_config.get("requires_candidate_key") and not _candidate_identity_material_present(cd):
         logger.warning("do_task(%s): requires_candidate_key is True but no candidate_data provided", task_key)
 
     api_key_override = None
@@ -1917,7 +1971,7 @@ async def do_task(
         for k in CALLER_HOP_TOKEN_NAMES
         if k in (effective_chain_context or {})
     }
-    _jc = _job_context_for_call(ctx, index, cd)
+    _jc = _job_context_for_call(ctx, index, cd, debug=debug)
     _cc = _chain_context(
         agent_row,
         cd,
@@ -2102,6 +2156,34 @@ async def do_task(
         if _jc:
             populated = [k for k, v in _jc.items() if (v or "").strip()]
             dbg.debug_detail(f"job_context tokens={','.join(populated) if populated else 'none'}")
+        # AST-1192: name-token found/recorded on the walkable candidate view.
+        first_s = str(cd.get("first") or "").strip()
+        last_s = str(cd.get("last") or "").strip()
+        full_s = str(cd.get("full") or "").strip()
+        if first_s and last_s:
+            name_outcome = "success — name tokens"
+        elif first_s or last_s:
+            name_outcome = "partial — name tokens"
+        else:
+            name_outcome = "empty — name tokens"
+        dbg.debug_index(
+            func="do_task.candidate_token_view",
+            index=1,
+            total=1,
+            identifier=str(candidate_id or cd.get("_astral_candidate_id") or ""),
+            outcome=name_outcome,
+        )
+        dbg.debug_detail(
+            f"found first={'nonempty' if first_s else 'empty'} "
+            f"last={'nonempty' if last_s else 'empty'} "
+            f"full={'nonempty' if full_s else 'empty'} "
+            f"branch={_token_view_branch_last}"
+        )
+        dbg.debug_detail(
+            f"recorded FIRST_NAME={(cd.get('first') or '')!r} "
+            f"LAST_NAME={(cd.get('last') or '')!r} "
+            f"FULL_NAME={(cd.get('full') or '')!r}"
+        )
 
     def _close_hop_ledger(
         *,
