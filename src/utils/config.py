@@ -1955,7 +1955,7 @@ GAZER_CONFIG = {
         "fail_state": "JD_SCRAPE_FAIL",
         "error_states": [
             "JD_SCRAPE_FAIL_COOKIE",
-            "JD_SCRAPE_FAIL_BOT",
+            "BOT_BLOCKED",
             "JD_SCRAPE_FAIL_MISSING",
             "JD_SCRAPE_FAIL_CLOSED",
         ],
@@ -2176,13 +2176,13 @@ JOB_STATES = {
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
     "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # drain-only; no new writes from NEW qualify path
     "NEW_RETRY":              {"prior_states": ["NEW", "VALID_TITLE"]},                          # qualify_job_listings retry holding (post-AST-898)
-    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "JD_READY", "JD_READY_RETRY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "JD_SCRAPE_FAIL_BOT", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
+    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "JD_READY", "JD_READY_RETRY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": "JD_READY_RETRY"},
     "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_SCRAPE_FAIL_BOT":     {"prior_states": ["PASSED_JOBLIST"]},
+    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]},  # AST-1195: universal bot/challenge
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
     "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
@@ -3028,7 +3028,7 @@ def trigger_state_used_by_scored_dispatch_task(trigger_state: Optional[str]) -> 
 SKIPPED_STATES = [
     "INVALID_TITLE",
     "FAILED_JOBLIST", "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE", "JD_SCRAPE_FAIL_BOT", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
+    "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
     "FAILED_JD", "FAILED_TECHNICAL",
     "FAILED_DO", "FAILED_TECHNICAL_DO",
     "FAILED_GET", "FAILED_TECHNICAL_GET",
@@ -3137,7 +3137,7 @@ JOBS_SKIPPED_SECTION_ORDER = [
     "INVALID_TITLE",
     "JD_SCRAPE_FAIL",
     "JD_SCRAPE_FAIL_COOKIE",
-    "JD_SCRAPE_FAIL_BOT",
+    "BOT_BLOCKED",
     "JD_SCRAPE_FAIL_MISSING",
     "JD_SCRAPE_FAIL_CLOSED",
     "ERROR_QUALIFY_JOB_LISTINGS",
@@ -3269,7 +3269,7 @@ JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
     # Non-rubric hop re-entry (replace hard-coded NEW; not AC-critical but map-complete)
     "JD_SCRAPE_FAIL": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_COOKIE": "PASSED_JOBLIST",
-    "JD_SCRAPE_FAIL_BOT": "PASSED_JOBLIST",
+    "BOT_BLOCKED": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_MISSING": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_CLOSED": "PASSED_JOBLIST",
     "NEED_CULTURE_CONTENT": "PASSED_GET",
