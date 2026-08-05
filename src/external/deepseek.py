@@ -248,29 +248,6 @@ async def send_to_deepseek(
             output_total = counts["output"]
             cache_creation_tokens = counts["cache_write"]
 
-            log_llm_batch_summary(
-                logger, "deepseek", prompt_label, duration, response=response
-            )
-
-            if debug:
-                raw_text = extract_api_response_text(response) if response.content else ""
-                stop_reason = getattr(response, "stop_reason", "?")
-                emit_llm_call_debug(
-                    logger_name=__name__,
-                    func_name="send_to_deepseek",
-                    prompt_label=prompt_label,
-                    model=vendor_model,
-                    duration=duration,
-                    stop_reason=stop_reason,
-                    input_total=input_total,
-                    input_cached=input_cached,
-                    cache_creation_tokens=cache_creation_tokens,
-                    output_total=output_total,
-                    raw_text=raw_text,
-                    provider="deepseek",
-                    vendor_detail=f"vendor={vendor_model}",
-                )
-
             try:
                 cost_parts = calculate_cost_components_deepseek_from_counts(
                     counts["cache_read"],
@@ -306,6 +283,71 @@ async def send_to_deepseek(
                 "inputtotal": input_total, "inputcached": input_cached,
                 "outputtotal": output_total, "cache_creation_tokens": cache_creation_tokens,
             }
+
+            # Hollow response: fail before healthy INFO summary (AST-1190).
+            if is_unusable_provider_response(
+                response,
+                input_tokens=input_total + input_cached,
+                output_tokens=output_total,
+            ):
+                err = PROVIDER_EMPTY_RESPONSE["error"]
+                log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=err)
+                if debug:
+                    emit_llm_call_debug(
+                        logger_name=__name__,
+                        func_name="send_to_deepseek",
+                        prompt_label=prompt_label,
+                        model=vendor_model,
+                        duration=duration,
+                        stop_reason=getattr(response, "stop_reason", None) or "?",
+                        input_total=input_total,
+                        input_cached=input_cached,
+                        cache_creation_tokens=cache_creation_tokens,
+                        output_total=output_total,
+                        error=err,
+                        provider="deepseek",
+                        vendor_detail=f"vendor={vendor_model}",
+                    )
+                if _timesheet_kwargs is not None and record_timesheet is not None:
+                    try:
+                        record_timesheet(
+                            **_timesheet_kwargs,
+                            agent_performance="failure",
+                            failure_note=err,
+                        )
+                    except Exception:
+                        pass
+                return {
+                    "success": False,
+                    "api_response": response,
+                    "parsed_response": None,
+                    "timesheet": timesheet,
+                    "error": err,
+                    "failure_class": PROVIDER_EMPTY_RESPONSE["failure_class"],
+                }
+
+            log_llm_batch_summary(
+                logger, "deepseek", prompt_label, duration, response=response
+            )
+
+            if debug:
+                raw_text = extract_api_response_text(response) if response.content else ""
+                stop_reason = getattr(response, "stop_reason", "?")
+                emit_llm_call_debug(
+                    logger_name=__name__,
+                    func_name="send_to_deepseek",
+                    prompt_label=prompt_label,
+                    model=vendor_model,
+                    duration=duration,
+                    stop_reason=stop_reason,
+                    input_total=input_total,
+                    input_cached=input_cached,
+                    cache_creation_tokens=cache_creation_tokens,
+                    output_total=output_total,
+                    raw_text=raw_text,
+                    provider="deepseek",
+                    vendor_detail=f"vendor={vendor_model}",
+                )
 
             # JSON cut mid-string when output hits max_tokens — fail closed, do not heal (AST-903).
             stop_reason = getattr(response, "stop_reason", None)
@@ -345,15 +387,26 @@ async def send_to_deepseek(
                     elif response_format == "python":
                         parsed_response = _parse_python_code_response(await _parse_api_response(response_dict))
                 except Exception as parse_err:
+                    parse_err_msg = normalize_provider_error(parse_err)
                     log_llm_batch_summary(
-                        logger, "deepseek", prompt_label, duration, error=str(parse_err)
+                        logger, "deepseek", prompt_label, duration, error=parse_err_msg
                     )
                     if _timesheet_kwargs is not None and record_timesheet is not None:
                         try:
-                            record_timesheet(**_timesheet_kwargs, agent_performance="failure", failure_note=str(parse_err))
+                            record_timesheet(
+                                **_timesheet_kwargs,
+                                agent_performance="failure",
+                                failure_note=parse_err_msg,
+                            )
                         except Exception:
                             pass
-                    return {"success": False, "api_response": response, "parsed_response": None, "timesheet": timesheet, "error": str(parse_err)}
+                    return {
+                        "success": False,
+                        "api_response": response,
+                        "parsed_response": None,
+                        "timesheet": timesheet,
+                        "error": parse_err_msg,
+                    }
 
             _ap_status = "success"
             _ap_note = None
@@ -373,7 +426,8 @@ async def send_to_deepseek(
 
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
-            log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=str(e))
+            err = normalize_provider_error(e)
+            log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=err)
             if debug:
                 emit_llm_call_debug(
                     logger_name=__name__,
@@ -386,18 +440,19 @@ async def send_to_deepseek(
                     input_cached=0,
                     cache_creation_tokens=0,
                     output_total=0,
-                    error=str(e),
+                    error=err,
                     provider="deepseek",
                     vendor_detail=f"vendor={vendor_model}",
                 )
-            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err}
             fc = classify_provider_balance_refusal(e)
             if fc:
                 out["failure_class"] = fc
             return out
     except Exception as e:
         duration = (datetime.now() - start_time).total_seconds()
-        log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=str(e))
+        err = normalize_provider_error(e)
+        log_llm_batch_summary(logger, "deepseek", prompt_label, duration, error=err)
         if debug:
             emit_llm_call_debug(
                 logger_name=__name__,
@@ -410,11 +465,11 @@ async def send_to_deepseek(
                 input_cached=0,
                 cache_creation_tokens=0,
                 output_total=0,
-                error=str(e),
+                error=err,
                 provider="deepseek",
                 vendor_detail=f"vendor={vendor_model}",
             )
-        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
+        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err}
         fc = classify_provider_balance_refusal(e)
         if fc:
             out["failure_class"] = fc
