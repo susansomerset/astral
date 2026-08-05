@@ -104,4 +104,4 @@ Changes: Expanded bulk-retry Decision with `startswith("METEORITE_")` identity l
 | 1 | `1986578e` | `qualify_meteorite` schema: `job_link` / `job_title` `required: False` + asserts |
 | 2 | `1db73b8b` | `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` in config registry/UI + gazer map |
 
-**Tip:** `1db73b8bb8d6c5d5d0a8c16789517ad3643e5a72` on `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`
+**Tip:** `e01bafce9a74cdf3d7226800070de09db8084140` on `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`
