@@ -363,6 +363,46 @@ class TestPreviewTaskPrompt:
         assert "helping Ada find" in out["system"]
         assert "{$FIRST_NAME}" not in out["system"]
 
+    def test_preview_resolves_names_from_columns_not_blob(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1192: preview uses build_candidate_token_view — columns win when blob lacks names."""
+        from src.core import agent as agent_mod
+
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "Ada Lovelace",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "agent"},
+                {
+                    "system_prompt": "",
+                    "user_prompt": "Scan for {$FIRST_NAME} {$LAST_NAME}",
+                    "cache_prompt": "",
+                    "nocache_prompt": "",
+                },
+            ),
+        )
+        out = candidate_mod.preview_task_prompt("anticipate_scan", candidate_id="cand-1192")
+        assert "Scan for Ada Lovelace" in out["user"]
+        assert "{$FIRST_NAME}" not in out["user"]
+        assert "{$LAST_NAME}" not in out["user"]
+
     def test_chain_sim_parent_only_merges_simulated_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod.database,

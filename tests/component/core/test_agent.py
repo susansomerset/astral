@@ -6501,3 +6501,202 @@ class TestAst1144ParseMeteoriteEmailMetadataDict:
             parsed, self._schema(), "parse_meteorite_email"
         ) is None
 
+
+
+class TestAst1192TokenViewForDoTask:
+    """AST-1192: do_task feeds walkable candidate token view + name-token debug."""
+
+    def _row(self, *, first: str = "Ada", last: str = "Lovelace", full: str = "Ada Lovelace") -> dict:
+        return {
+            "astral_candidate_id": "cand-1192",
+            "first": first,
+            "last": last,
+            "full": full,
+            "pronouns": "she/her",
+            # Blob has no top-level first/last — pre-fix resolve path saw empty names.
+            "candidate_data": {
+                "contact": {"contact_email": "ada@example.com"},
+                "context": {},
+                "artifacts": {},
+            },
+        }
+
+    def test_loads_row_by_astral_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == "cand-1192" else None,
+        )
+        view = agent_mod._token_view_for_do_task(
+            {
+                "astral_candidate_id": "cand-1192",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+            },
+            None,
+        )
+        assert view["first"] == "Ada"
+        assert view["last"] == "Lovelace"
+        assert view["full"] == "Ada Lovelace"
+        assert view["contact"]["contact_email"] == "ada@example.com"
+
+    def test_full_row_ctx_without_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        ctx = self._row()
+        view = agent_mod._token_view_for_do_task(ctx, None)
+        assert view["first"] == "Ada"
+        assert view["last"] == "Lovelace"
+
+    def test_already_token_view_candidate_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        existing = {
+            "first": "Grace",
+            "last": "Hopper",
+            "full": "Grace Hopper",
+            "contact": {},
+            "context": {},
+            "artifacts": {},
+        }
+        view = agent_mod._token_view_for_do_task({}, existing)
+        assert view["first"] == "Grace"
+        assert view is not existing  # dict copy
+
+    def test_fallback_raw_blob_when_no_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        blob = {"contact": {"contact_email": "x@y.z"}, "context": {}, "artifacts": {}}
+        view = agent_mod._token_view_for_do_task(
+            {"astral_candidate_id": "missing", "candidate_data": blob},
+            None,
+        )
+        assert view == blob
+        assert "first" not in view
+
+    @pytest.mark.asyncio
+    async def test_do_task_dispatch_raft_resolves_name_tokens(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        """Raft blob lacks name columns; load-by-id view fills {$FIRST_NAME}/{$LAST_NAME}."""
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == "cand-1192" else None,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.write_job_dispatch_hop_label",
+            MagicMock(return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"),
+        )
+        agent_row, task_row = _agent_rows(run_next="")
+        task_row = dict(task_row)
+        task_row["user_prompt"] = "Hello {$FIRST_NAME} {$LAST_NAME}"
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: (agent_row, task_row))
+        _patch_strict_batch_anthropic(monkeypatch)
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"title": "Role", "company": "Co"},
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1192",
+            ctx={
+                "astral_candidate_id": "cand-1192",
+                "candidate_data": {
+                    "contact": {},
+                    "context": {},
+                    "artifacts": {},
+                },
+                "batch_entities": _batch_entities("job-1192"),
+                "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "dispatch_chain_graduate_on_terminal": False,
+            },
+            debug=False,
+        )
+        assert out["success"] is True
+        # user_blocks arg position 0 — flatten text for token assert
+        user_blocks = send.await_args.args[0]
+        user_text = " ".join(
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in (user_blocks or [])
+        )
+        assert "Hello Ada Lovelace" in user_text
+        assert "{$FIRST_NAME}" not in user_text
+        assert "{$LAST_NAME}" not in user_text
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_name_token_found_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == "cand-1192" else None,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.write_job_dispatch_hop_label",
+            MagicMock(return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"),
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"title": "Role", "company": "Co"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1192",
+            ctx={
+                "astral_candidate_id": "cand-1192",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+                "batch_entities": _batch_entities("job-1192"),
+                "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "dispatch_chain_graduate_on_terminal": False,
+            },
+            debug=True,
+        )
+        assert out["success"] is True
+        index_calls = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert any(
+            c.get("func") == "do_task.candidate_token_view"
+            and c.get("outcome") == "success — name tokens"
+            and c.get("identifier") == "cand-1192"
+            for c in index_calls
+        )
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any(
+            "found first=nonempty last=nonempty full=nonempty" in str(m) for m in detail_msgs
+        )
+        assert any(
+            "recorded FIRST_NAME='Ada' LAST_NAME='Lovelace' FULL_NAME='Ada Lovelace'" in str(m)
+            for m in detail_msgs
+        )
