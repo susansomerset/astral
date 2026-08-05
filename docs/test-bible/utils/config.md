@@ -755,6 +755,23 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 
 Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 
+
+### AST-1189 · AST-1164
+
+**`PROVIDER_CALL_BUDGET`** — 600s timeout + 10s grace, `max_retries=0`, `failure_class=provider_call_timeout`. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1189.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block | `src/utils/config.py` | **`TestAst1189ProviderCallBudgetConfig`** |
+
+### AST-1190 · AST-1164
+
+**`PROVIDER_EMPTY_RESPONSE`** — `failure_class` + canonical error string for hollow / unusable LLM responses. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block | `src/utils/config.py` | **`TestAst1190ProviderEmptyResponseConfig`** |
+
 ### AST-903 · AST-900 (UAT fix)
 
 **`CRAFT_RUBRIC_MAX_TOKENS = 32000`** floor for craft rubric UI generate. Primary manifest: **`docs/test-bible/core/agent.md`** § AST-903.
