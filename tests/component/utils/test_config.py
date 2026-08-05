@@ -1863,6 +1863,21 @@ class TestAst897ProviderBalanceRefusalConfig:
         assert "insufficient balance" in block["message_substrings"]
 
 
+
+class TestAst1189ProviderCallBudgetConfig:
+    """AST-1189: PROVIDER_CALL_BUDGET owns 10m wall + timeout failure class."""
+
+    def test_block_shape(self) -> None:
+        block = cfg.PROVIDER_CALL_BUDGET
+        assert block["timeout_seconds"] == 600
+        assert block["grace_seconds"] == 10
+        assert block["max_retries"] == 0
+        assert block["failure_class"] == "provider_call_timeout"
+        assert "{timeout_seconds}" in block["error_template"]
+        assert "TimeoutError" in block["exception_type_names"]
+        assert "ReadTimeout" in block["exception_type_names"]
+
+
 class TestAst901CraftRubricUiTaskKeys:
     """AST-901: CRAFT_RUBRIC_UI_TASK_KEYS derived from artifact-key map (no drift)."""
 

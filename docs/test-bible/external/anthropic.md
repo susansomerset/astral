@@ -38,12 +38,12 @@ JSON **`stop_reason == max_tokens`** hard-fail (no heal). Primary manifest: **`d
 | --- | --- | --- |
 | Fail-closed truncation | `src/external/anthropic.py` | **`TestAst903JsonMaxTokensHardFail`** |
 
-**Manifest focus (existing coverage — no new tests):**
 
-| Touched path | Existing tests |
-| --- | --- |
-| `send_to_anthropic` success + `debug=True` (formats, web search) | **`TestSendToAnthropic::test_text_json_and_python_success`** |
-| `send_to_anthropic` API failure / invalid format | **`test_api_failure_returns_error_payload`**, **`test_invalid_response_format_raises`** |
-| `send_to_deepseek` success + timesheet buckets | **`TestSendToDeepseekTimesheetMapping::test_record_timesheet_kwargs_match_deepseek_buckets`** |
-| `_parse_api_response` (unchanged) | **`TestDeepseekParseApiResponse`** |
-| `do_task` → DeepSeek provider wiring | **`TestAst492BrainSettingDoTask::test_send_to_deepseek_receives_vendor_model_and_tier_meta`** (**§7.13zd**) |
+### AST-1189 · AST-1164
+
+Per-call wall budget + `provider_call_timeout` tagging. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1189.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Timeout tagging | `src/external/anthropic.py` | **`TestAst1189ProviderCallBudgetTimeout`** |
+
