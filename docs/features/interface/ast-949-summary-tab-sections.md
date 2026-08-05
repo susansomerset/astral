@@ -1,3 +1,297 @@
+<!-- linear-archive: AST-949 archived 2026-08-05 -->
+
+## Linear archive (AST-949)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-949/summary-tab-sections-redesign-recommended-job-modal  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-858 — Redesign Recommended Job Modal  
+**Blocked by / blocks / related:** parent: AST-858
+
+### Description
+
+## What this implements
+
+Summary tab collapsible sections: **Job Summary** (`whole_jd_upshot`, default expanded), **Company Upshot** (`prefilter_company_notes`, expanded unless empty), **Noteworthy Caveats** and **Questions to Ask** from `analysis_upshot`, **Raw Job Description** (default collapsed). Graceful empty states.
+
+## Acceptance criteria
+
+2. Summary tab shows **Job Summary** (`whole_jd_upshot`), **Company Upshot** (`prefilter_company_notes`), **Noteworthy Caveats**, **Questions to Ask**, and **Raw Job Description** (collapsed by default) as independent collapsible sections with clear empty states when data is missing.
+3. Jobs without `analysis_upshot` or partial data render graceful empty states — no crash.
+
+## Boundaries
+
+* Does **not** own Analysis phase sections or Artifacts tab (AST-950, AST-951).
+* Does **not** own modal shell/header (AST-948).
+
+## Notes for planning
+
+Blocked by AST-948 shell. Company notes come from company record API already used for website.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-858-redesign-recommended-job-modal`, child `sub/AST-858/AST-949-summary-tab-sections`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-23T23:27:07.565Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-949
+**Publish ref:** `3c4e3879711286fc5bd8375920fc00b3637b241d` (`origin/sub/AST-858/AST-949-summary-tab-sections`)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | config.py on tip is AST-948 manifest only; no confidence math |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers/paths (core) miss diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers/paths (core) miss diff |
+| astral.batch.batch-id-first | scoped | not-applicable | layers/paths (core/data) miss diff |
+| astral.batch.batch-id-format | scoped | not-applicable | layers/paths (core/data) miss diff |
+| astral.batch.claim-process-release | scoped | not-applicable | layers/paths (core/data) miss diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers/paths (core/data) miss diff |
+| astral.config.config-source-of-truth | scoped | conforms | section ids/labels stay AST-948 manifest; content-aware expand is data-dependent per plan Decision |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no pass_threshold / score_floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths (artifacts/spikes) miss diff |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | features plans only; not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one AST-949 features file (+ AST-948 inherited on tip) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests stay off src/features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code/docs/plan only; tests via Betty |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers/paths (core/external) miss diff |
+| astral.layers.import-direction | scoped | conforms | frontend + inherited utils; notes via existing UI API |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths (scripts) miss diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | chrome from manifest; expand overrides match parent “unless empty” |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | layers/paths (core) miss diff |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | layers/paths (core) miss diff |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | no new endpoints |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer logging |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths (data) miss diff |
+| astral.standards.debug-contract-gated | scoped | conforms | React-only; no debug-contract work |
+| astral.standards.dry-and-focused-functions | scoped | conforms | one `renderSummarySection`; reuses `parseAnalysisUpshot` |
+| astral.standards.in-scope-only | scoped | conforms | Summary bodies only; Analysis/Artifacts stay empty |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging |
+| astral.standards.no-cross-contamination | scoped | conforms | ui frontend for AST-949 delta |
+| astral.standards.no-hardcoded-sets | scoped | conforms | no new state enums; empty copy is UI strings |
+| astral.standards.public-then-helpers | scoped | conforms | render switch kept in modal at readable size |
+| astral.standards.utils-data-late-import-only | scoped | conforms | no utils→data import on tip |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers/paths (core/data) miss diff |
+| astral.state.job-prior-states-enforced | scoped | conforms | no JOB_STATES / prior_states edits |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers/paths (core) miss diff |
+| astral.ui.frontend-file-placement | scoped | conforms | edits in existing modal; no new nested dirs |
+| astral.ui.naming-conventions | scoped | conforms | reuses existing upshot/JD/empty class names |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no worker/deploy changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | one `merge-tests(AST-949)` onto sub |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests/plan vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | child sub under parent ftr |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-858/AST-949-summary-tab-sections` |
+| orch.git.merge-on-checkout | universal | conforms | tip includes merge of ftr + AST-948 lineage |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no rewrite/force on tip |
+| orch.git.no-dev-agent-branches | universal | conforms | authoritative publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-858` |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | empty-copy Decision explicit; no product ambiguity |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 implemented as written |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Interface; Tests Passed gate |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no canon/statutes amendments |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/bible via Betty |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | role path bans respected |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+AST-949 delta (`4881b86`) fills Summary `renderSection` per Stage 2 table, lifts `prefilter_company_notes` on the existing company GET (Stage 1), and overrides Summary `default_expanded` content-aware (Stage 3). Self-Assessment Single-Component matches. Analysis/Artifacts/`JobsRecommended` untouched. AST-948 shell prerequisite present on tip.
+
+## Findings
+
+### discuss
+
+**C4 stragglers** — Joan excluded these at plan time (plan Files Changed UI-only); three-dot `origin/dev...` tip includes AST-948 utils/docs/tests so they are in-scope. All score **conforms** (no product defect):
+
+1. `astral.agent.confidence-bounds`
+2. `astral.config.pass-threshold-vs-score-floor`
+3. `astral.debug.spikes-under-debug-dir`
+4. `astral.docs.features-single-file-per-ticket`
+5. `astral.git.engineer-test-tree-ban`
+6. `astral.standards.utils-data-late-import-only`
+7. `astral.state.job-prior-states-enforced`
+
+### fix-now
+
+none
+
+### What’s solid
+
+Company notes from API (not `job_data`); five Summary bodies + empty states; content-aware expand; graceful null upshot; sibling boundaries held.
+
+### Notes
+
+Plan-rubric verdict attached (Joan APPROVED). Docs append: `docs(AST-949): Radia review — findings`.
+
+context_tokens≈42000
+
+#### betty — 2026-07-23T23:17:20.326Z
+## QA test manifest — AST-949
+
+**Publish:** `origin/sub/AST-858/AST-949-summary-tab-sections` @ `2329d10`
+**Betty commit:** `origin/tests` `e9a6bdc` → `merge-tests(AST-949): origin/tests e9a6bdc9255fcdea60d3796aae218ea5edd1e9d6`
+
+### Coverage
+
+1. **Summary bodies** — `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` (`JobAnalysisReportModal — AST-949 Summary tab sections`)
+   - Job Summary / company notes / caveats / questions / Raw JD (expand to reveal)
+   - Content-aware expand (4 open + Raw JD collapsed when populated)
+   - Empty-state copy for all five sections
+   - Company notes from `/api/companies` (not `job_data`)
+2. **Shell regression** — same file (`AST-948 horizontal shell`) — empty-upshot case updated for AST-949 empty copy; chrome/tabs/header/Generate/Print still covered.
+
+### Narrowed run
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+### Bible shasum (`origin/sub/...`)
+
+- `docs/test-bible/frontend/components.md` → `9e13767088b71cea624993218b3209d3982100adf5d45ad7984a762bf249dd4a`
+
+— Betty
+
+#### joan — 2026-07-23T22:44:16.946Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-949
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1. Horizontal top tabs; Summary default | N/A — boundary (AST-948 shell) |
+| 2. Summary tab five collapsible sections + empty states | Stages 1–3 |
+| 3. Analysis JD/DO/GET/LIKE sections | N/A — boundary (AST-950) |
+| 4. Grade-icon + confidence header rows | N/A — boundary (AST-950) |
+| 5. Phase upshot above rubric | N/A — boundary (AST-950) |
+| 6. Artifacts empty → Generate | N/A — boundary (AST-951) |
+| 7. Generating… + Cancel | N/A — boundary (AST-951) |
+| 8. Editable artifact sections | N/A — boundary (AST-951) |
+| 9. Sticky header deeplinks / copy / print | N/A — boundary (AST-948) |
+| 10. Missing/partial `analysis_upshot` graceful empty — no crash | Stage 2 (null upshot → empty copy; chrome stays) |
+| 11. List row-click + Skip unchanged | N/A — out of scope (no `JobsRecommended` edits) |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| Prerequisite gate | Dependencies / blockedBy AST-948 shell APIs |
+| 1 Company notes on existing company GET | Functional scope Company Upshot from `prefilter_company_notes`; child notes |
+| 2 Summary `renderSection` bodies + empty states | Parent AC2 + AC10; Purpose Summary sections |
+| 3 Content-aware initial expand | Parent Functional scope “expanded unless empty” for company/caveats/questions; Raw JD collapsed; Job Summary expanded |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No engineer test merge work |
+| orch.git.commit-vocabulary | conforms | No contrary commit guidance |
+| orch.git.flow-direction-inviolable | conforms | Child sub under parent ftr |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Prerequisite merges origin/dev + ftr + AST-948 |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite/force guidance |
+| orch.git.no-dev-agent-branches | conforms | Authoritative sub publish ref |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic AST-858 worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | No product ambiguity; empty-copy Decision explicit |
+| orch.pipeline.plan-is-bible | conforms | Concrete section_id → body table; stop gate if shell missing |
+| orch.pipeline.project-scoped-queues | conforms | Interface child only |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready + Joan assignee |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | Betty QA note; engineer skips tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Return to Katherine |
+| orch.roles.engineer-assignee-through-resolve | conforms | Katherine implementer |
+| orch.roles.pre-commit-path-bans | conforms | No banned-path instructions |
+| astral.config.config-source-of-truth | conforms | Section ids/labels remain AST-948 manifest; no new behavior constants in modules |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env introduced |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src; plan already on sub |
+| astral.layers.import-direction | conforms | Frontend-only; company notes via existing UI API |
+| astral.layers.ui-config-driven-business-logic | conforms | Section chrome from manifest; content-aware expand is data-dependent per parent “unless empty” |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | No new endpoints |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer changes |
+| astral.standards.debug-contract-gated | conforms | React-only |
+| astral.standards.dry-and-focused-functions | conforms | Reuses `parseAnalysisUpshot` + existing CSS classes |
+| astral.standards.in-scope-only | conforms | Summary bodies only; stops if shell symbols missing |
+| astral.standards.logging-via-utils | conforms | No new logging |
+| astral.standards.no-cross-contamination | conforms | ui frontend only |
+| astral.standards.no-hardcoded-sets | conforms | No new state/enum sets; empty copy is UI strings |
+| astral.standards.public-then-helpers | conforms | Render switch stays in modal unless size forces extract |
+| astral.ui.frontend-file-placement | conforms | No new nested dirs; optional CSS in App.css |
+| astral.ui.naming-conventions | conforms | Reuses existing class names |
+| astral.ui.single-gunicorn-worker | conforms | No deploy/worker changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.config.config-source-of-truth, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.agent.confidence-bounds — layers/paths (core/utils) miss
+- astral.agent.do-task-delegation — layers/paths (core) miss
+- astral.agent.grade-vector-validation — layers/paths (core) miss
+- astral.batch.batch-id-first — layers/paths (core/data) miss
+- astral.batch.batch-id-format — layers/paths (core/data) miss
+- astral.batch.claim-process-release — layers/paths (core/data) miss
+- astral.batch.entity-agent-responses-latest-only — layers/paths (core/data) miss
+- astral.config.pass-threshold-vs-score-floor — layers/paths miss
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths (docs) miss
+- astral.git.engineer-test-tree-ban — paths (tests/bible) miss
+- astral.layers.core-vs-external-bright-line — layers/paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.patterns.coat-check-never-store-empty — layers/paths miss
+- astral.patterns.render-verdict-orchestrates-consult — layers/paths miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.standards.utils-data-late-import-only — layers/paths miss
+- astral.state.core-decides-transitions — layers/paths miss
+- astral.state.job-prior-states-enforced — layers/paths miss
+- astral.state.no-daisy-chain-in-run — layers/paths miss
+
+## Findings
+
+### acceptable
+1. Fixed English empty-state copy (Stage 2 Decision) matches existing `recommended-report-empty` tone; not a config/enum set.
+2. Content-aware `default_expanded` overrides in the modal (Stage 3) correctly implement parent “expanded unless empty” without encoding live emptiness into config — depends on AST-948 `ReportSectionList` reseeding when overridden defs change.
+
+**Self-assessment:** Scope Single-Component / Conf high / Risk Medium — honest; prerequisite stop-gate is specific. No `!!-NONE`. No fix-now.
+
+— Joan
+context_tokens≈56000
+
+#### katherine — 2026-07-23T22:36:20.851Z
+Plan: [`docs/features/interface/ast-949-summary-tab-sections.md`](https://github.com/susansomerset/astral/blob/sub/AST-858/AST-949-summary-tab-sections/docs/features/interface/ast-949-summary-tab-sections.md) on **`origin/sub/AST-858/AST-949-summary-tab-sections`** @ `29fb587`.
+
+**Scope — Single-Component:** Summary tab bodies in `JobAnalysisReportModal` (company notes on existing company GET + content-aware expand); depends on AST-948 shell, does not re-own it.
+
+**Conf — high:** Reuses `parseAnalysisUpshot`, existing upshot/JD CSS, and lifted `prefilter_company_notes` from `/api/companies`; section ids fixed by AST-948.
+
+**Risk — Medium:** Missing AST-948 merge or wrong empty/expand wiring leaves Summary blank or brittle on partial upshot; notes must come from company API lift, not `job_data`.
+
+---
+
 # Summary tab sections (Redesign Recommended Job Modal)
 
 **Linear:** [AST-949](https://linear.app/astralcareermatch/issue/AST-949/summary-tab-sections-redesign-recommended-job-modal)  
