@@ -1,3 +1,453 @@
+<!-- linear-archive: AST-997 archived 2026-08-05 -->
+
+## Linear archive (AST-997)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-997/job-tailored-experience-on-job-array-shape-parse-resume-json-output-is  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-994 — Parse resume json output is incomplete  
+**Blocked by / blocks / related:** parent: AST-994
+
+### Description
+
+## What this implements
+
+Job-tailored resume hop(s) use the same experience job-array contract; may tailor accomplishments/highlights for the target job while preserving company, title, dates, location. Does **not** own craft-base parse or HTML emit.
+
+## Acceptance criteria
+
+6. Job-tailored resume hops accept and emit the same experience job-array shape; tailored output may change accomplishments/highlights for the target job while leaving company, title, dates, and location unchanged from the base facts.
+7. When `debug=True` on touched parse/tailor hops, debug output shows what was found/recorded for the experience jobs (Style D index + detail), not only a pass/fail summary.
+
+## Boundaries
+
+* Does **not** own craft-base parse JSON shape — sibling **Judith craft-base: experience job array** (AST-996).
+* Does **not** own HTML emit — sibling **Base + session + job builders: experience job render**.
+* Does **not** invent new experience fields beyond the shared job-array contract from AST-996.
+
+## Notes for planning
+
+* Depends on AST-996 Experience job-array contract.
+* Tailor highlights only — never rewrite factual metadata for the posting.
+
+## Git branch (authoritative)
+
+Per **orientation** § Branch law: parent **ftr/<parent-segment>**, child **sub/<parent-id>/<child-segment>**. Created at dispatch-parent. Publish to **origin/<sub-ref>** only.
+
+### Comments
+
+#### ada — 2026-07-28T02:36:01.861Z
+[merge-child] publish-ref hygiene: rebuilt linear stack from `origin/ftr` (no `Merge remote-tracking` subjects; `plan(AST-997):` present).
+
+`origin/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape` @ `18801985`
+
+#### chuckles — 2026-07-28T02:34:30.388Z
+[merge-child] blocked: validate-sub-log — git pull merge on sub (`Merge remote-tracking branch` subjects in ftr..sub range: ftr merge + AST-996 sibling merges). Also plan landed as `docs(AST-997): plan` — need canonical `plan(AST-997):`.
+
+@Ada Lovelace — republish `origin/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape` from clean `origin/ftr/ast-994-parse-resume-json-output-is-incomplete` with linear plan|code|merge-tests|test|docs|resolve only (no `Merge remote-tracking branch`). Then Chuckles re-runs merge-child.
+
+— Chuckles
+
+#### radia — 2026-07-28T02:28:42.599Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-997
+**Publish ref:** `7f2720d6` on `origin/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape` (baseline `origin/dev`)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| --- | --- | --- | --- |
+| astral.agent.confidence-bounds | scoped | conforms | core/utils touched; no graded confidence changes |
+| astral.agent.do-task-delegation | scoped | conforms | pin + debug beside existing draft/finalize `do_task` validate |
+| astral.agent.grade-vector-validation | scoped | conforms | no graded vectors |
+| astral.batch.batch-id-first | scoped | conforms | no new batch-id APIs |
+| astral.batch.batch-id-format | scoped | conforms | untouched |
+| astral.batch.claim-process-release | scoped | conforms | no new claim pattern |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | untouched |
+| astral.config.config-source-of-truth | scoped | conforms | finalize reuses AST-996 `_EXPERIENCE_JOB_*` objects |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | thresholds untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | conforms | no repo-root `artifacts/` dump |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under `docs/features/**` |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one combined plan/review file for AST-997 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty `test`/`merge-tests` touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code(AST-997)` has no tests/ |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | pin/persist/debug in core; no external LLM edits |
+| astral.layers.import-direction | scoped | conforms | utils/core (+ merged UI from 996); no ui→data in 997 code |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss (no `scripts/**`) |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | tip includes 996 ArtifactEditor; 997 code has no UI |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check changes |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult/render-verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | no new endpoints |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer logging |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths miss (`src/data/**`) |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D detail only when `debug=True` on tailor hops |
+| astral.standards.dry-and-focused-functions | scoped | conforms | shared schema + one pin helper for draft/finalize |
+| astral.standards.in-scope-only | scoped | conforms | no craft-base rewrite / no builder HTML |
+| astral.standards.logging-via-utils | scoped | conforms | Style D via utils logger helpers |
+| astral.standards.no-cross-contamination | scoped | conforms | layer boundaries held |
+| astral.standards.no-hardcoded-sets | scoped | conforms | wire shape from config; pin fields match plan contract |
+| astral.standards.public-then-helpers | scoped | conforms | public `is_experience_job_array` for tracker; pin public |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config-only utils; no utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | no state machine |
+| astral.state.job-prior-states-enforced | scoped | conforms | untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | untouched |
+| astral.ui.frontend-file-placement | scoped | conforms | tip UI from 996 only; existing ArtifactEditor |
+| astral.ui.naming-conventions | scoped | conforms | no new UI files/routes in 997 |
+| astral.ui.single-gunicorn-worker | scoped | conforms | untouched |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip includes `merge-tests(AST-997)` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests`/`resolve` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish to child `sub/*` only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-994/AST-997-…` matches branch law |
+| orch.git.merge-on-checkout | universal | conforms | tip merges AST-996 sub as precondition |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no rewrite ops |
+| orch.git.no-dev-agent-branches | universal | conforms | work on ticket sub |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-994` |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no new `highlights` field; AC6 pin policy followed |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–5 match tip; siblings excluded |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Artifacts child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | review from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/bible via Betty |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Chuckles not assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Ada through resolve; assignee left untouched |
+| orch.roles.pre-commit-path-bans | universal | conforms | role path bans respected |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stages 1–5 match: optional finalize job-array schema (shared `items_schema`), draft normalize/validate + `(company, title)` pin (no index fallback), tracker persist/body gates, four hop prompts, Style D on draft/finalize under `debug=True`. Self-Assessment Single-Component still fits. AST-996 merge precondition satisfied. Joan plan-rubric APPROVED (rev 1).
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **C4 straggler** — Joan excluded `astral.debug.no-repo-root-artifacts-dir`; tip in-scope — **conforms**.
+2. **C4 straggler** — Joan excluded `astral.debug.spikes-under-debug-dir`; tip has `docs/features/**` — **conforms**.
+3. **C4 straggler** — Joan excluded `astral.docs.features-single-file-per-ticket`; tip adds AST-997 plan — **conforms**.
+4. **C4 straggler** — Joan excluded `astral.git.engineer-test-tree-ban`; tip includes Betty tests — **conforms**.
+5. **C4 straggler** — Joan excluded `astral.patterns.require-auth-on-protected-endpoints`; tip has UI via 996 merge — **conforms** (no new endpoints).
+6. **C4 straggler** — Joan excluded `astral.ui.frontend-file-placement`; tip UI from 996 — **conforms**.
+7. **C4 straggler** — Joan excluded `astral.ui.naming-conventions`; tip UI from 996 — **conforms**.
+
+### advisory
+1. `agent.py` late-imports private `_debug_experience_jobs` (tracker correctly uses public `is_experience_job_array`).
+
+## What’s solid
+
+Pin-by-identity metadata lock; persist path keeps arrays; hop prompts aligned; debug gated; no builder/craft-base ownership creep.
+
+## Notes
+
+Plan-rubric verdict attached (Joan APPROVED). Three-dot vs `origin/dev` includes merged AST-996; stragglers are process notes only — no product fix-now.
+
+context_tokens≈42000
+
+#### betty — 2026-07-28T02:02:00.363Z
+## QA test manifest — AST-997
+
+**Publish:** `origin/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape` @ `fb33bcbc` (`merge-tests(AST-997): origin/tests 0b9bd01c`)
+
+### Classification
+1. **Existing coverage:** `TestAst594DraftJobResumePayload` (legacy string experience still accepted)
+2. **Broken / obsolete:** none
+3. **Gaps (new):** `TestAst997JobTailoredExperience` (normalize/validate/pin by company+title, prompts); `TestAst997FinalizeExperienceJobArray`; `TestAst997ExperienceJobArrayPersist`
+
+### Manifest (test-child)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst997JobTailoredExperience tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload tests/component/core/test_tracker.py::TestAst997ExperienceJobArrayPersist tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray -q`
+
+**Pass criterion:** pytest green on the line above — not zero-arg harness / branch-lock gate.
+
+### Bible shasums (on publish tip)
+- `cef07cfff844e4b6a14620eff1426b0477a3a5335b7f49dd99b6329643f28315` `docs/test-bible/core/candidate.md`
+- `a10a0a8d94566db83766ed696196aff719f0ac1389d6da41ac958cd78e61f550` `docs/test-bible/core/tracker.md`
+- `2b0a632fa0cd2cc467fb9aa63fea43848041e69a7e2e25396a8de366a97d3df8` `docs/test-bible/utils/config.md`
+
+— Betty
+
+#### joan — 2026-07-28T01:44:11.633Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-997
+**Overall:** APPROVED
+
+**Notes:** Plan Discuss round=1 completed (concern + reply). Files Changed layer `repo admin JSON` mapped to `docs`. Tip `d51ab862`. Prior fix-now (index-first pin match) addressed in Revision 1 — `(company, title)` only, no index fallback.
+**Implementer:** Ada (parent Team table).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1–5 craft-base parse / session-base HTML | N/A — boundary: AST-996 / AST-998 |
+| 6 Job-tailored hops same job-array shape; tailor accomplishments; pin factual metadata | Stages 1–4 |
+| 7 Job-tailored HTML recognition | N/A — boundary: AST-998 |
+| 8 Dates freeform | Inherited via AST-996 contract + pin preserves `dates` |
+| 9 `debug=True` Style D on touched parse/tailor hops | Stage 5 covers draft/finalize; craft-base parse N/A — AST-996 |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 6 accept/emit job-array; tailor accomplishments; leave company/title/dates/location from base | 1–4 |
+| 7 Style D experience detail when `debug=True` on tailor hops | 5 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 finalize schema reuses shared job array | Functional scope job-tailored same shape |
+| 2 draft normalize/validate + pin base facts | AC6 metadata lock + accept job-array |
+| 3 tracker persist keeps arrays | Contract alignment; persist job-array |
+| 4 four hop prompts tailor-accomplishments-only | AC6 policy |
+| 5 Style D on draft/finalize | Child AC7 / parent AC9 tailor portion |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Plan `docs(AST-997):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | 996/ftr merge precondition correct |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-994` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | No new `highlights` field |
+| orch.pipeline.plan-is-bible | conforms | Stages binding; siblings excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Artifacts |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready re-check after discuss |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Ada on approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | Untouched |
+| astral.agent.do-task-delegation | conforms | Pin beside existing draft validate |
+| astral.agent.grade-vector-validation | conforms | Untouched |
+| astral.batch.batch-id-first | conforms | Untouched |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | Reuses AST-996 schema objects |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned src |
+| astral.layers.core-vs-external-bright-line | conforms | Pin/persist/debug in core |
+| astral.layers.import-direction | conforms | utils/core/repo JSON |
+| astral.layers.ui-config-driven-business-logic | conforms | No UI changes |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Untouched |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer logging |
+| astral.standards.debug-contract-gated | conforms | Style D only when `debug=True` |
+| astral.standards.dry-and-focused-functions | conforms | Shared schema/helpers; one pin |
+| astral.standards.in-scope-only | conforms | Excludes craft-base/builder/UI |
+| astral.standards.logging-via-utils | conforms | Style D helpers |
+| astral.standards.no-cross-contamination | conforms | Layered structure |
+| astral.standards.no-hardcoded-sets | conforms | Field keys from config |
+| astral.standards.public-then-helpers | conforms | Public alias option for tracker |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.state.core-decides-transitions | conforms | No state machine |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | conforms | Untouched |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.patterns.require-auth-on-protected-endpoints — layers `ui` / paths miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.ui.frontend-file-placement — layers/paths miss
+- astral.ui.naming-conventions — layers/paths miss
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### acceptable
+1. No new `highlights` field — parent wording = single accomplishments block.
+2. Legacy string pass-through until re-craft — transitional.
+3. Unmatched pin left for Grace — safer than wrong-base overwrite.
+4. Self-assessment Single-Component / high / Medium — honest.
+5. Build precondition merge AST-996 — correct dependency.
+
+— Joan
+context_tokens≈68000
+
+#### ada — 2026-07-28T01:42:17.473Z
+[plan-discuss] round=1 reply
+
+**Delta:** Stage 2 `pin_experience_job_facts_from_base` no longer prefers same-index when lengths match. Match is **only** `(company.strip().lower(), title.strip().lower())`, consuming the first unused base job with that key (handles duplicate company+title stints in base order). **No index fallback** — unmatched/garbled identity jobs stay unpinned for Grace rather than a wrong-base metadata overwrite after reorder.
+
+Plan tip: `d51ab862` — https://github.com/susansomerset/astral/blob/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape/docs/features/artifacts/ast-997-job-tailored-experience-on-job-array-shape.md
+
+**Scope:** Single-Component — pin-match fix only.
+**Conf:** high — Joan’s corruption case is removed by dropping index-first.
+**Risk:** Medium — same coerce/persist destroyers; pin now safe under reorder.
+
+#### joan — 2026-07-28T01:40:30.056Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-997
+**Overall:** REVISE
+
+**Notes:** Files Changed layer `repo admin JSON` mapped to `docs`. Tip `7ccfea69`. Blocked-by AST-996 Plan Approved acknowledged; build precondition to merge 996 contract is sound.
+**Implementer:** Ada (parent Team table / plan author).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1–5 craft-base parse / session-base HTML | N/A — boundary: AST-996 / AST-998 |
+| 6 Job-tailored hops same job-array shape; tailor accomplishments; pin factual metadata | Stages 1–4 (schema, validate/pin, persist, prompts) — **pin match order blocked** (see fix-now) |
+| 7 Job-tailored HTML recognition | N/A — boundary: AST-998 |
+| 8 Dates freeform | Inherited via AST-996 contract + pin preserves `dates` string |
+| 9 `debug=True` Style D on touched parse/tailor hops | Stage 5 covers draft/finalize tailor hops; craft-base parse N/A — AST-996 |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 6 accept/emit job-array; tailor accomplishments; leave company/title/dates/location from base | 1–4 |
+| 7 Style D experience detail when `debug=True` on tailor hops | 5 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 finalize schema reuses shared job array | Functional scope job-tailored same shape; Contract alignment |
+| 2 draft normalize/validate + pin base facts | AC6 metadata lock + accept job-array |
+| 3 tracker persist keeps arrays | Contract alignment; emit/persist job-array |
+| 4 four hop prompts tailor-accomplishments-only | AC6 policy in advise/draft/finalize/check |
+| 5 Style D on draft/finalize | Child AC7 / parent AC9 tailor portion |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Plan-only `docs(AST-997):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Precondition merge of 996/ftr is correct direction |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-994` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | No `highlights` field — explicit decision matches child boundary |
+| orch.pipeline.plan-is-bible | conforms | Stages binding; craft-base/HTML excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Artifacts |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Ada after this pass |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded confidence |
+| astral.agent.do-task-delegation | conforms | Keeps do_task hops; pin hooked beside existing draft validate |
+| astral.agent.grade-vector-validation | conforms | Untouched |
+| astral.batch.batch-id-first | conforms | No new batch APIs |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | Reuses AST-996 schema objects; only `required` differs |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned src |
+| astral.layers.core-vs-external-bright-line | conforms | Pin/persist/debug stay in core |
+| astral.layers.import-direction | conforms | utils/core/repo JSON; tracker already imports candidate |
+| astral.layers.ui-config-driven-business-logic | conforms | No UI changes |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Untouched |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer logging |
+| astral.standards.debug-contract-gated | conforms | Tailor Style D only when `debug=True` |
+| astral.standards.dry-and-focused-functions | conforms | Reuse schema/helpers; one pin for draft+finalize |
+| astral.standards.in-scope-only | conforms | Explicitly excludes craft-base, builder, ArtifactEditor, contemplate |
+| astral.standards.logging-via-utils | conforms | Style D helpers |
+| astral.standards.no-cross-contamination | conforms | Layered structure |
+| astral.standards.no-hardcoded-sets | conforms | Field keys from config items_schema |
+| astral.standards.public-then-helpers | conforms | Public alias decision if tracker needs it |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.state.core-decides-transitions | conforms | No state machine |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | conforms | Untouched |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.patterns.require-auth-on-protected-endpoints — layers `ui` / paths `src/ui/**` miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.ui.frontend-file-placement — layers/paths miss
+- astral.ui.naming-conventions — layers/paths miss
+
+## Findings
+
+### fix-now
+1. **Location:** Stage 2 step 3 — `pin_experience_job_facts_from_base` match order
+   **Finding:** Plan prefers **same index when `len(tailored) == len(base)`**, else `(company, title)`. AC6 requires company/title/dates/location unchanged **from the base facts for that role**. If Judith reorders roles but keeps the same count (allowed by “reframe/reorder/emphasize accomplishments”), index-first pinning copies base[i] metadata onto tailored[i] accomplishments that belong to a different employer/title — silently corrupting role identity while looking like a successful pin.
+   **Recommendation:** Match **primarily** on `(company.strip().lower(), title.strip().lower())`. Use index only as a last-resort fallback when no unique (company, title) match exists (e.g. model already garbled both). Document that behavior in Stage 2. Optionally: if index fallback fires, leave metadata unpinned and rely on Grace rather than wrong-base overwrite.
+
+### discuss
+(none blocking)
+
+### acceptable
+1. No new `highlights` field — parent “accomplishments/highlights” = single accomplishments block — matches child boundary.
+2. Legacy string experience pass-through until re-craft — transitional given AST-996; happy path after 996 is job-array emit.
+3. Build precondition merge of AST-996 before product commits — correct dependency handling.
+4. Self-assessment Single-Component / high / Medium — honest about coerce/persist destroyers.
+5. tracker already imports `candidate` — public alias decision is fine, not a layer violation.
+
+— Joan
+context_tokens≈62000
+
+#### ada — 2026-07-28T01:35:00.456Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-994/AST-997-job-tailored-experience-on-job-array-shape/docs/features/artifacts/ast-997-job-tailored-experience-on-job-array-shape.md
+
+**Scope:** Single-Component — finalize schema reuse of AST-996 job-array + draft validate/pin + tracker persist + four hop prompts + Style D tailor debug; craft-base and HTML stay with siblings.
+
+**Conf:** high — Plan Approved AST-996 contract is the spine; known destroyers are draft list→string coerce and tracker str-only `_resume_payload_body`; pin-from-base enforces AC6 metadata lock.
+
+**Risk:** Medium — a missed coerce/persist path would flatten or drop job-array experience from `job_data.artifacts.resume_content` before AST-998 can render.
+
+---
+
 # Job-tailored experience on job-array shape (Parse resume json output is incomplete)
 
 **Linear:** [AST-997](https://linear.app/astralcareermatch/issue/AST-997/job-tailored-experience-on-job-array-shape-parse-resume-json-output-is)
