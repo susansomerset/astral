@@ -1,3 +1,356 @@
+<!-- linear-archive: AST-1000 archived 2026-08-05 -->
+
+## Linear archive (AST-1000)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1000/restore-stage-dispatch-provision-helper-getting-a-stack-trace-on  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** Urgent / —  
+**Parent:** AST-995 — getting a stack trace on localhost boot  
+**Blocked by / blocks / related:** parent: AST-995
+
+### Description
+
+## What this implements
+
+Reintroduce the missing data-layer candidate-id listing used by boot-time stage-dispatch provision; confirm localhost boot no longer AttributeErrors on that path. Does **not** own candidate state vocabulary or AST-973 migration logic beyond not regressing it.
+
+## Acceptance criteria
+
+1. Fresh localhost boot no longer prints `AttributeError: module 'src.data.database' has no attribute 'list_candidate_ids_with_dispatch_tasks'` (or equivalent) during scheduler start.
+2. Boot no longer prints `AST-972 stage dispatch provision failed` caused by that missing helper.
+3. With at least one candidate that already has a dispatch_task row, boot-time provision can enumerate that candidate and run without the AttributeError.
+4. With no such candidates, boot still starts the scheduler without a traceback from this path.
+5. Existing component coverage that asserts the listing helper / provision path remains meaningful (green for this contract).
+
+## Boundaries
+
+Does **not** redesign the candidate state machine (AST-871) or reopen AST-972 / AST-973 product scope. Does **not** change craft prompts or REQUESTED_* claim/resolve beyond making provision callable again. Does **not** change Stytch, Vite, or unrelated boot messages.
+
+## Notes for planning
+
+Helper was introduced under AST-972 and dropped on the AST-973 land into the composite tree; restore the listing contract the dispatcher already calls. Data layer raises; dispatcher logs. Keep AST-973 migration behavior intact.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-995-localhost-boot-stack-trace`, child `sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-28T15:04:24.980Z
+[check-linear] User Testing — already on ftr
+
+#### ada — 2026-07-28T14:46:07.091Z
+Tip rebuilt for `[merge-child]` validate-sub-log.
+
+`origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `9fff225c` — stacked on `origin/ftr/AST-995-localhost-boot-stack-trace` (`f18aded5`).
+
+```
+plan(AST-1000) → code(AST-1000) → merge-tests(AST-1000): origin/tests 11509597 → test(AST-1000): — green (no product fixes) → docs(AST-1000) → resolve(AST-1000)
+```
+
+Removed `Merge remote-tracking branch 'origin/dev'…` and foreign AST-996/997/998 history from the scoped log. Product/bible/test blobs unchanged vs prior tip. Single `merge-tests` re-applied from Betty’s `origin/tests` `11509597` (no second Betty pass needed unless she wants to re-verify).
+
+`./scripts/git/validate-sub-log.sh sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper AST-1000 ftr/AST-995-localhost-boot-stack-trace` → **ok**. Dry-run clean vs `origin/dev` and `origin/ftr`.
+
+@Chuckles Cursor — ready for merge-child.
+
+#### betty — 2026-07-28T14:41:02.862Z
+Duplicate `merge-tests(AST-1000)` collapsed to one.
+
+- `origin/tests` squashed → `11509597` (`test(AST-1000): listing helper coverage + narrowed manifest bible`)
+- `origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `cc7e9115` — single `merge-tests(AST-1000): origin/tests 11509597…`, then Radia `docs` + Ada `resolve` replayed; bible/tests tip content unchanged.
+
+Chuckles can re-run `merge-child`.
+
+— Betty
+
+#### chuckles — 2026-07-28T14:38:46.355Z
+[merge-child] blocked: duplicate merge-tests(AST-1000) on sub — count=2 (amend on tests, one merge-tests only)
+
+```
+ffe47510 merge-tests(AST-1000): origin/tests b9dd9e35…
+0425993e merge-tests(AST-1000): origin/tests 4c9d0dcf…
+```
+
+@Betty White — tests hygiene: collapse to a single `merge-tests(AST-1000)` on `origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper`, then Chuckles can re-run merge-child.
+
+— Chuckles
+
+#### radia — 2026-07-28T14:36:56.840Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1000
+**Publish ref:** `8178edbd3d82c915d7d18c67f64eefa55207e56e` (`origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper`)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper`
+**Change set:** layers=`data,docs`; paths=`src/data/database.py` (M), `docs/features/foundation/ast-1000-restore-stage-dispatch-provision-helper.md` (A), `docs/test-bible/data/database/dispatch_tasks.md` (M), `tests/component/data/database/test_dispatch_tasks.py` (M); change_types=`add,modify`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | layers/paths miss data+docs change set |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers/paths miss core |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers/paths miss core |
+| astral.batch.batch-id-first | scoped | conforms | listing helper only; no claim/get/clear batch API |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id generation or format change |
+| astral.batch.claim-process-release | scoped | conforms | no select-and-process without claim; DISTINCT list only |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data / latest-refs surface |
+| astral.config.config-source-of-truth | scoped | conforms | no new config keys or state vocab |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no scoring/dispatch floor changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers miss data |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / spikes |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan doc under docs/features; not a debug spike (C4 straggler vs Joan exclude) |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `ast-1000-…` features file (C4 straggler vs Joan exclude) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty merge-tests touched bible/tests only; src/features via engineer/plan |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code()` is src-only; tests/bible via Betty merge-tests (C4 straggler) |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers/paths miss core/external |
+| astral.layers.import-direction | scoped | conforms | additive data helper; no new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers/paths miss ui/config |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | layers/paths miss core |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | layers/paths miss core |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers/paths miss ui |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no logging in restored helper; dispatcher already logs provision failures |
+| astral.standards.database-header-inventory | scoped | conforms | queries existing inventoried `dispatch_task`; header unchanged |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers miss data |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses `_ensure_dispatch_task_schema` / `_get_connection` / `_run_with_retry` |
+| astral.standards.in-scope-only | scoped | conforms | exact AST-972 restore; no AST-973/871/Stytch/Vite scope creep |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers miss data |
+| astral.standards.no-cross-contamination | scoped | conforms | stays in data-layer dispatch_task helpers |
+| astral.standards.no-hardcoded-sets | scoped | conforms | no new hardcoded state/magic sets |
+| astral.standards.public-then-helpers | scoped | conforms | public API between peer public list helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers/paths miss utils |
+| astral.state.core-decides-transitions | scoped | conforms | no state transitions; listing only |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state / hop changes |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers/paths miss core |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers/paths miss ui frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | layers/paths miss ui |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers/paths miss ui/scripts/config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHAs on publish-ref for bible/tests |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `docs` / `merge-tests` vocabulary used |
+| orch.git.flow-direction-inviolable | universal | conforms | child publish on `sub/AST-995/…` only |
+| orch.git.ftr-sub-topology | universal | conforms | sub under parent AST-995 ftr topology |
+| orch.git.merge-on-checkout | universal | conforms | `origin/dev` merge present on tip history |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | normal commits; no cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | universal | conforms | authoritative sub ref; not Linear agent branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-995/` |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | restore-not-redesign; no product fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stage 1 body restored byte-exact to plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Foundation child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | entered at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible via Betty merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada stays assignee through Review Posted |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer product commit src-only |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Self-Assessment Scope **minor** matches footprint: one public data-layer listing function. Plan Stage 1 SQL/`_run_with_retry` body matches tip exactly; placement between `list_dispatch_tasks_for_candidate` and `count_dispatch_tasks_by_candidate`; dispatcher / AST-973 paths untouched. Conf high / Risk low still honest. Cross-ticket: no AST-871/973/Stytch/Vite smuggling.
+
+## Findings
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded (plan Files Changed = data only); three-dot includes `docs/features/**`. Re-score **conforms** (not a spike).
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; plan file in diff. Re-score **conforms** (single ticket features file).
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded (plan: engineer does not touch tests); three-dot includes tests/bible from Betty `merge-tests`. Re-score **conforms** (engineer `code()` src-only).
+
+No fix-now. No product code change expected for these stragglers.
+
+## Notes
+
+Joan plan-rubric verdict attached (APPROVED). C4 stragglers above are pipeline docs/tests paths vs plan-time product Files Changed — not product defects.
+
+### What’s solid
+
+Exact AST-972 restore; data raises / caller logs preserved; header inventory already lists `dispatch_task`.
+
+### Recommended actions
+
+`resolve-child`: acknowledge C4 stragglers; proceed without product edits unless Archie asks to refine plan-time exclusions.
+
+context_tokens≈48000
+
+#### betty — 2026-07-28T04:56:07.164Z
+[check-linear]
+
+Cleared Ada `[qa-handoff]`: narrowed AST-1000 green gate to listing + dispatcher provision (eligibility stage_keys asserts stay in suite, out of this child — product restore beyond Files Changed).
+
+**Updated manifest (test-child):**
+1. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_list_candidate_ids_with_dispatch_tasks -q`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch -q`
+
+**Publish:** `origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `ffe47510` (`merge-tests(AST-1000): origin/tests b9dd9e35`)
+**Bible:** `docs/test-bible/data/database/dispatch_tasks.md` shasum `8fb36bc488b31eef1f4d7cccf9f545abaf748af8`
+
+Assignee → Ada for `test-child`.
+
+— Betty
+
+#### ada — 2026-07-28T04:54:36.364Z
+[qa-handoff]
+
+@Betty White
+
+**Commands (manifest as posted):**
+1. `ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility -q` → **2 failed / 2 passed**
+2. same runner `…/test_dispatcher.py::TestAst972CandidateStageDispatch -q` → **6 passed**
+
+**Failures (not listing helper):**
+- `test_stage_resume_eligible_when_state_matches` — `count_eligible_for_dispatch_task` returns `0` for `candidate_requested_resume` / `REQUESTED_RESUME`
+- `test_stage_artifacts_eligible_includes_retry` — same for `candidate_requested_artifacts` / `REQUESTED_ARTIFACTS_RETRY`
+
+**Listing contract (this ticket) is green on the same class:** `test_list_candidate_ids_with_dispatch_tasks` (incl. your empty-list AC4 assert) and `test_unknown_candidate_task_key_returns_zero` passed; dispatcher provision/scheduler class is green.
+
+**Why test/manifest, not product fix here:** AST-1000 plan Files Changed is only restore of `list_candidate_ids_with_dispatch_tasks`. Current `count_eligible_for_dispatch_task` candidate branch routes *all* candidate tasks through inflow discovery (`return count_candidate_inflow_discovery_eligible(...)`) — the AST-972 stage_keys split is gone (same composite drop pattern as the listing helper). Fixing eligibility would expand beyond the plan bible without a new stage / Files Changed row.
+
+**Please:** narrow manifest line 1 to the listing node(s) for AST-1000 (e.g. `…::TestAst972CandidateStageEligibility::test_list_candidate_ids_with_dispatch_tasks`), **or** open/expand product scope if Chuckles wants the stage eligibility branch restored on this child. Reassign Ada when the manifest matches plan scope.
+
+`origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `0425993e`
+
+#### betty — 2026-07-28T04:51:53.927Z
+## QA test manifest — AST-1000
+
+**Publish:** `origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `0425993e` (`merge-tests(AST-1000): origin/tests 4c9d0dcf6ca6ebdc79e06e9eb75288a469b3d92b`)
+
+### Classification
+
+1. **Existing coverage (bible-backed):** AST-972 listing + provision/scheduler paths remain the contract for the restored helper.
+2. **Broken / obsolete:** none — attribute restore; no scenario weakened.
+3. **Gaps closed this pass:** empty DISTINCT assert on `test_list_candidate_ids_with_dispatch_tasks` (AC4).
+
+### Manifest (test-child)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility -q`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch -q`
+
+**Pass criterion:** pytest green on both lines — not zero-arg harness / branch-lock gate.
+
+**Bible (publish tip):**
+`docs/test-bible/data/database/dispatch_tasks.md` shasum `e4038bf2f9a8a712a2fd08f0458dda191eecdfc2`
+
+— Betty
+
+#### joan — 2026-07-28T04:42:40.668Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1000
+**Overall:** APPROVED
+
+## Traceability
+
+| Parent AC | Plan stage(s) |
+|-----------|---------------|
+| 1. No AttributeError for `list_candidate_ids_with_dispatch_tasks` on boot | Stage 1 — restore public attribute |
+| 2. No `AST-972 stage dispatch provision failed` from missing helper | Stage 1 — provision call succeeds / empty loop; dispatcher try/except unchanged |
+| 3. With ≥1 candidate owning dispatch_task, provision enumerates without AttributeError | Stage 1 — DISTINCT listing returns those ids; existing `ensure_*` iterates |
+| 4. Empty candidate set: scheduler starts, no traceback from this path | Stage 1 — empty list → empty for-loop; no dispatcher edits |
+| 5. Existing component coverage for listing/provision remains meaningful | Stage 1 — restores contract named by existing tests; Betty/test-child own green |
+
+| Plan stage | Parent Purpose / Functional scope / AC |
+|------------|----------------------------------------|
+| Stage 1: Restore listing helper | Purpose: clean boot without AttributeError; Functional: listing contract restored + provision without AttributeError + scheduler continues; AC 1–5 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | Plan leaves `tests/`/bible to Betty; no engineer merge-tests invent |
+| orch.git.commit-vocabulary | conforms | Planned commit `code(AST-1000): …` matches vocabulary |
+| orch.git.flow-direction-inviolable | conforms | Child publish-ref only; no reverse-flow proposed |
+| orch.git.ftr-sub-topology | conforms | Work on `sub/AST-995/AST-1000-…` under parent ftr |
+| orch.git.merge-on-checkout | conforms | Plan assumes normal sub checkout/merge workflow; no bypass |
+| orch.git.no-cherry-pick-rebase-force | conforms | Exact restore via normal commit; no cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | conforms | Uses authoritative sub ref, not Linear agent branch |
+| orch.git.one-epic-worktree-per-parent | conforms | Scoped to epic worktree `astral-AST-995/` |
+| orch.git.three-permanent-branches | conforms | No new permanent branch proposed |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Restore-not-redesign; no product fork open |
+| orch.pipeline.plan-is-bible | conforms | Single stage + exact SQL/body; actionable as bible |
+| orch.pipeline.project-scoped-queues | conforms | Astral Foundation child; no cross-project queue abuse |
+| orch.pipeline.status-gates-skill-entry | conforms | Presented at Plan Ready for validate-plan |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | Explicitly out of scope for engineer; existing coverage cited |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer remains Ada through build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign to Ada on Plan Approved |
+| orch.roles.pre-commit-path-bans | conforms | Touches only `src/data/database.py` (allowed for engineer) |
+| astral.batch.batch-id-first | conforms | No new claim/get/clear API; listing helper only |
+| astral.batch.batch-id-format | conforms | No batch_id generation/format change |
+| astral.batch.claim-process-release | conforms | Does not select-and-process without claim; listing only |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data / latest-refs surface |
+| astral.config.config-source-of-truth | conforms | No new config keys/state sets |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring/dispatch floor changes |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns this `src/` restore; Betty not directed to edit src/features |
+| astral.layers.import-direction | conforms | Data-layer-only edit; no new cross-layer imports |
+| astral.standards.data-raises-caller-logs | conforms | Explicit no logging in data; dispatcher already logs |
+| astral.standards.database-header-inventory | conforms | Uses existing `dispatch_task` (already inventoried); header unchanged |
+| astral.standards.dry-and-focused-functions | conforms | Reuses `_ensure_dispatch_task_schema` / `_get_connection` / `_run_with_retry` |
+| astral.standards.in-scope-only | conforms | Single helper restore; AST-973/871/Stytch/Vite excluded |
+| astral.standards.no-cross-contamination | conforms | Stays inside data layer patterns |
+| astral.standards.no-hardcoded-sets | conforms | No new state/magic sets |
+| astral.standards.public-then-helpers | conforms | Public API placed between peer public list helpers |
+| astral.state.core-decides-transitions | conforms | No state transitions introduced |
+| astral.state.job-prior-states-enforced | conforms | No job state hop changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.git.betty-no-src-or-features, astral.layers.import-direction, astral.standards.data-raises-caller-logs, astral.standards.database-header-inventory, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced
+
+**Excluded:**
+- astral.agent.confidence-bounds — layers/paths miss data/`src/data/database.py`
+- astral.agent.do-task-delegation — layers/paths miss data/`src/data/database.py`
+- astral.agent.grade-vector-validation — layers/paths miss data/`src/data/database.py`
+- astral.config.secrets-and-env-specific-from-environ — layers miss data
+- astral.debug.no-repo-root-artifacts-dir — paths miss `src/data/database.py`
+- astral.debug.spikes-under-debug-dir — paths miss `src/data/database.py`
+- astral.docs.features-single-file-per-ticket — layers/paths miss data/`src/data/database.py`
+- astral.git.engineer-test-tree-ban — paths miss test-tree (plan correctly does not touch tests)
+- astral.layers.core-vs-external-bright-line — layers/paths miss data/`src/data/database.py`
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss scripts
+- astral.layers.ui-config-driven-business-logic — layers/paths miss ui
+- astral.patterns.coat-check-never-store-empty — layers/paths miss core
+- astral.patterns.render-verdict-orchestrates-consult — layers/paths miss core
+- astral.patterns.require-auth-on-protected-endpoints — layers/paths miss ui
+- astral.standards.debug-contract-gated — layers miss data
+- astral.standards.logging-via-utils — layers miss data
+- astral.standards.utils-data-late-import-only — layers/paths miss utils
+- astral.state.no-daisy-chain-in-run — layers/paths miss core
+- astral.ui.frontend-file-placement — layers/paths miss ui
+- astral.ui.naming-conventions — layers/paths miss ui
+- astral.ui.single-gunicorn-worker — layers/paths miss ui/scripts/config
+
+## Findings
+
+None (fix-now / discuss / acceptable).
+
+Self-assessment honest: Scope minor · Conf high · Risk low — matches single additive data-layer restore of known AST-972 body between `list_dispatch_tasks_for_candidate` and `count_dispatch_tasks_by_candidate` (helper currently absent on publish-ref).
+
+— Joan
+context_tokens≈45000
+
+#### ada — 2026-07-28T03:10:36.072Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper/docs/features/foundation/ast-1000-restore-stage-dispatch-provision-helper.md
+
+`origin/sub/AST-995/AST-1000-restore-stage-dispatch-provision-helper` @ `da6f591d`
+
+**Scope:** minor — restore one public data-layer listing helper next to existing `dispatch_task` list APIs; dispatcher/config/AST-973 migration untouched.
+
+**Conf:** high — AST-972 caller + SQL contract still present; git history (`2ce7a744`) has the exact body dropped by AST-973’s `database.py` rewrite.
+
+**Risk:** low — additive attribute restore; empty DISTINCT result keeps boot scheduler start safe; wrong listing would only affect which scheduled candidates get REQUESTED_* upsert at boot.
+
+---
+
 # AST-1000: Restore stage-dispatch provision helper (getting a stack trace on localhost boot)
 
 **Linear:** [AST-1000](https://linear.app/astralcareermatch/issue/AST-1000/restore-stage-dispatch-provision-helper-getting-a-stack-trace-on)
