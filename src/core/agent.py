@@ -367,6 +367,34 @@ def _job_context_for_call(
     return builder(_job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid)
 
 
+def _token_view_for_do_task(
+    ctx: Optional[Dict[str, Any]],
+    candidate_data: Optional[Dict[str, Any]],
+) -> dict:
+    """Walkable resolve_tokens dict: name columns + library blobs (AST-1192 / AST-1014)."""
+    # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
+    from src.core.candidate import build_candidate_token_view, get_candidate
+
+    cid = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    if cid:
+        row = get_candidate(cid)
+        if row:
+            return build_candidate_token_view(row)
+    if (
+        isinstance(ctx, dict)
+        and isinstance(ctx.get("candidate_data"), dict)
+        and ("first" in ctx or "last" in ctx or "full" in ctx)
+    ):
+        return build_candidate_token_view(ctx)
+    if (
+        isinstance(candidate_data, dict)
+        and ("first" in candidate_data or "contact" in candidate_data)
+        and "candidate_data" not in candidate_data
+    ):
+        return dict(candidate_data)
+    return dict(candidate_data or (ctx or {}).get("candidate_data") or {})
+
+
 def resolved_task_system(
     agent_row: Dict[str, Any],
     agent_task_row: Dict[str, Any],
@@ -1853,7 +1881,7 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
-    cd = (ctx.get("candidate_data") or {}) if ctx else (candidate_data or {})
+    cd = _token_view_for_do_task(ctx, candidate_data)
 
     if task_config.get("requires_candidate_key") and not cd:
         logger.warning("do_task(%s): requires_candidate_key is True but no candidate_data provided", task_key)
@@ -2097,6 +2125,33 @@ async def do_task(
         if _jc:
             populated = [k for k, v in _jc.items() if (v or "").strip()]
             dbg.debug_detail(f"job_context tokens={','.join(populated) if populated else 'none'}")
+        # AST-1192: name-token found/recorded on the walkable candidate view.
+        first_s = str(cd.get("first") or "").strip()
+        last_s = str(cd.get("last") or "").strip()
+        full_s = str(cd.get("full") or "").strip()
+        if first_s and last_s:
+            name_outcome = "success — name tokens"
+        elif first_s or last_s:
+            name_outcome = "partial — name tokens"
+        else:
+            name_outcome = "empty — name tokens"
+        dbg.debug_index(
+            func="do_task.candidate_token_view",
+            index=1,
+            total=1,
+            identifier=str(candidate_id or cd.get("_astral_candidate_id") or ""),
+            outcome=name_outcome,
+        )
+        dbg.debug_detail(
+            f"found first={'nonempty' if first_s else 'empty'} "
+            f"last={'nonempty' if last_s else 'empty'} "
+            f"full={'nonempty' if full_s else 'empty'}"
+        )
+        dbg.debug_detail(
+            f"recorded FIRST_NAME={(cd.get('first') or '')!r} "
+            f"LAST_NAME={(cd.get('last') or '')!r} "
+            f"FULL_NAME={(cd.get('full') or '')!r}"
+        )
 
     def _close_hop_ledger(
         *,
