@@ -10,7 +10,7 @@ Allow null/omit `job_link` / `job_title` on the `qualify_meteorite` response sch
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/utils/config.py` | `qualify_meteorite` schema: `job_link` / `job_title` → `required: False`; rename `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` in `JOB_STATES`, `GAZER_CONFIG`, `SKIPPED_STATES`, skipped UI order/labels/bulk-retry; expand `BOT_BLOCKED` priors for meteorite entry | utils |
+| `src/utils/config.py` | `qualify_meteorite` schema: `job_link` / `job_title` → `required: False`; rename `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` in `JOB_STATES`, `GAZER_CONFIG`, `SKIPPED_STATES`, skipped UI order/bulk-retry; expand `BOT_BLOCKED` priors for meteorite entry | utils |
 | `src/core/gazer.py` | `_JD_ERROR_STATES["bot"]` → `"BOT_BLOCKED"` | core |
 
 No `consult.py` apply, no `agent_task` / `data/admin` prompt edits, no frontend TS (manifest is config-driven), no `tests/` / bible (Betty after Code Complete).
@@ -39,7 +39,7 @@ assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema
 
 ## Stage 2: Universal `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED`
 
-**Done when:** `rg JD_SCRAPE_FAIL_BOT src/` returns no matches; `BOT_BLOCKED` is a `JOB_STATES` key enterable from `PASSED_JOBLIST` and `METEORITE_NEW`; gazer bot classification targets `BOT_BLOCKED`; Jobs Skipped manifest includes `BOT_BLOCKED` (order, label, bulk-retry) and not `JD_SCRAPE_FAIL_BOT`; `build_state_ui_manifest()` still asserts cleanly on import.
+**Done when:** `rg JD_SCRAPE_FAIL_BOT src/` returns no matches; `BOT_BLOCKED` is a `JOB_STATES` key enterable from `PASSED_JOBLIST` and `METEORITE_NEW`; gazer bot classification targets `BOT_BLOCKED`; Jobs Skipped section order + bulk-retry map include `BOT_BLOCKED` and not `JD_SCRAPE_FAIL_BOT`. (Do **not** treat `build_state_ui_manifest()` import asserts as a rename guard — those asserts do not cover skipped-order / bulk-retry completeness, and `skipped_order` filters with `if s in JOB_STATES`, so a half-finished rename silently drops the section.)
 
 1. In `src/utils/config.py` `JOB_STATES`:
 
@@ -55,29 +55,27 @@ assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema
 
 4. In `JOBS_SKIPPED_SECTION_ORDER`, replace `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"` (same position in the scrape-fail cluster).
 
-5. In `JOBS_SKIPPED_SECTION_LABELS`, add an explicit label (other scrape-fail siblings rely on title-case fallback; give the new universal name a clear human string):
+5. In `JOBS_SKIPPED_BULK_RETRY_TO_STATE`, replace the key `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"`, value still `"PASSED_JOBLIST"`.
 
-```python
-"BOT_BLOCKED": "Bot Blocked",
-```
+⚠️ **Decision — bulk-retry target stays `PASSED_JOBLIST` (and state-prefix identity is lost):** Preserves existing roster scrape retry. A single static map cannot dual-target `METEORITE_NEW` for meteorite-origin rows; context-aware skipped retry is out of scope for this child (parent AC is rename + registry/UI, not dual-origin retry). Additionally, `consult._entity_state_is_meteorite` keys on `state.startswith("METEORITE_")` — once a meteorite job lands on `BOT_BLOCKED`, that prefix test is false by design (universal id, not a meteorite-only bot state). Automated exit from Jobs Skipped is then bulk-retry → `PASSED_JOBLIST` (roster track), not meteorite re-qualify; company-based `is_meteorite_company` can still recover identity for a future return path, but that path is a new ticket if Archie wants it at UAT — not a widening of this child.
 
-Place it with the other skipped-section label entries (near the meteorite / scrape cluster is fine — exact dict key order is not semantic).
+6. In `src/core/gazer.py` `_JD_ERROR_STATES`, set `"bot": "BOT_BLOCKED"`. Update the adjacent comment so it no longer implies every value is still named `JD_SCRAPE_FAIL_*` (bot is now `BOT_BLOCKED`; cookie/missing/closed stay `JD_SCRAPE_FAIL_*`).
 
-6. In `JOBS_SKIPPED_BULK_RETRY_TO_STATE`, replace the key `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"`, value still `"PASSED_JOBLIST"`.
+7. Verify with a workspace search that **no** remaining `JD_SCRAPE_FAIL_BOT` string exists under `src/`. Do **not** edit `tests/`, `docs/test-bible/**`, or historical plan docs under `docs/features/**` that mention the old id (Betty / history). Do **not** add a DB row rewrite for jobs already stored as `JD_SCRAPE_FAIL_BOT`. Do **not** add an explicit `JOBS_SKIPPED_SECTION_LABELS["BOT_BLOCKED"]` entry — `build_state_ui_manifest` already falls back to `s.replace("_", " ").title()` → `"Bot Blocked"`, matching scrape-fail siblings that omit the label dict.
 
-⚠️ **Decision — bulk-retry target stays `PASSED_JOBLIST`:** Preserves existing roster scrape retry. A single static map cannot dual-target `METEORITE_NEW` for meteorite-origin rows; context-aware skipped retry is out of scope for this child (parent AC is rename + registry/UI, not dual-origin retry). Meteorite jobs on `BOT_BLOCKED` that use bulk-retry will land on `PASSED_JOBLIST` (same class of cross-track quirk as mapping any dual-entry state to one target).
-
-7. In `src/core/gazer.py` `_JD_ERROR_STATES`, set `"bot": "BOT_BLOCKED"`. Update the adjacent comment so it no longer implies every value is still named `JD_SCRAPE_FAIL_*` (bot is now `BOT_BLOCKED`; cookie/missing/closed stay `JD_SCRAPE_FAIL_*`).
-
-8. Verify with a workspace search that **no** remaining `JD_SCRAPE_FAIL_BOT` string exists under `src/`. Do **not** edit `tests/`, `docs/test-bible/**`, or historical plan docs under `docs/features/**` that mention the old id (Betty / history). Do **not** add a DB row rewrite for jobs already stored as `JD_SCRAPE_FAIL_BOT`.
-
-⚠️ **Decision — no live-row migration:** Product stores job `state` as a free string. This child renames the registry and all `src/` consumers; it does not ship an `UPDATE jobs SET state=…` migration. If staging still has rows on the old id, they fall out of `SKIPPED_STATES` until manually/ops-remapped — call out on Linear if that appears during UAT.
+⚠️ **Decision — no live-row migration:** Product stores job `state` as a free string. This child renames the registry and all `src/` consumers; it does not ship an `UPDATE jobs SET state=…` migration. If staging still has rows on the old id, they fall out of `SKIPPED_STATES` (invisible in Jobs Skipped, not mislabeled) until manually/ops-remapped — call out on Linear if that appears during UAT.
 
 ## Execution contract
 
 - Execute stages in order; one commit per stage on the epic worktree; publish each to `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
 - Do not edit `consult.py` apply, `data/admin/agent_task.json`, frontend TS, or `tests/`.
 - If a step is ambiguous or the codebase has drifted — stop and comment on **parent** AST-1188 with the standard blocked format.
+
+## Revisions
+
+Revision 1 — 2026-08-05
+Driven by: Joan `[plan-rubric] revision=1` discuss findings 1–3 (APPROVED tip `c7d40ad5`)
+Changes: Expanded bulk-retry Decision with `startswith("METEORITE_")` identity loss; dropped no-op `JOBS_SKIPPED_SECTION_LABELS` step; Done-when leans on `rg` gate, not import asserts.
 
 ## Self-Assessment
 
