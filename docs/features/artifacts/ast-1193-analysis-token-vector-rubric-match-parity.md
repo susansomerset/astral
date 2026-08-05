@@ -172,3 +172,13 @@ The plan is binding. The agent:
 Revision 1 — 2026-08-05  
 Driven by: Joan `[plan-discuss] round=1 concern` (fix-now: label-or-code alone is a no-op for full-label parent-log vectors / AC4; discuss: `set_debug_flag(False)` clobber; discuss: hardcoded phase tuple + `total=4`).  
 Changes: Added Diagnosis + AC4 Decision (live first, job-carried `*_rubric` snapshot identity fallback, live content-by-code). Stage 1 scoped as DRY only. Stage 2 uses local debug logger handle (never lower shared flag) and phase keys from `JOB_TOKEN_CONFIG`. New Stage 3 implements snapshot fallback. Conf `high` → `Medium`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`
+**Tip:** `29c1af56`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `5a7b1f39` | Shared `_find_rubric_criterion`; scoring helpers refactored |
+| 2–3 | `29c1af56` | ANALYSIS live-first + `*_rubric` snapshot fallback; Style D found/recorded; `do_task` debug thread |
