@@ -65,27 +65,34 @@ class TestRenderPassFail:
     reason="AST-1054 meteorite GDL overlay not on this publish tip",
 )
 class TestAst1054MeteoriteGdlOutcomeOverlay:
-    """AST-1054: shared GDL keys overlay meteorite pass/fail when entity state is METEORITE_*."""
+    """AST-1054: shared GDL keys (grade_do/grade_get) overlay meteorite pass/fail when entity
+    state is METEORITE_*. The JD stage no longer uses this overlay — evaluate_meteorite is a
+    standalone twin task (own TASK_CONFIG pass/fail/error states), same pattern as
+    meteorite_like. See TestEvaluateMeteoriteStandaloneTwin below.
+    """
+
+    def test_evaluate_jd_has_no_meteorite_overlay(self) -> None:
+        assert "evaluate_jd" not in cfg.METEORITE_GDL_OUTCOME_BY_TASK
 
     def test_overlay_for_meteorite_entity_states(self) -> None:
-        overlay = cfg.METEORITE_GDL_OUTCOME_BY_TASK["evaluate_jd"]
-        cfg_m = consult_mod._consult_orchestration_for_entity("evaluate_jd", "METEORITE_NEW")
+        overlay = cfg.METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]
+        cfg_m = consult_mod._consult_orchestration_for_entity("grade_do", "METEORITE_PASSED_JD")
         assert cfg_m["pass_state"] == overlay["pass_state"]
         assert cfg_m["fail_state"] == overlay["fail_state"]
         assert cfg_m["error_state"] == overlay["error_state"]
-        cfg_v = consult_mod._consult_orchestration_for_entity("evaluate_jd", "JD_READY")
-        assert cfg_v["pass_state"] == TASK_CONFIG["evaluate_jd"]["pass_state"]
-        assert cfg_v["fail_state"] == TASK_CONFIG["evaluate_jd"]["fail_state"]
+        cfg_v = consult_mod._consult_orchestration_for_entity("grade_do", "PASSED_JD")
+        assert cfg_v["pass_state"] == TASK_CONFIG["grade_do"]["pass_state"]
+        assert cfg_v["fail_state"] == TASK_CONFIG["grade_do"]["fail_state"]
 
     def test_render_pass_fail_uses_meteorite_overlay(self) -> None:
         grades = [_pass_grade()]
         assert (
-            consult_mod._render_pass_fail("evaluate_jd", grades, entity_state="METEORITE_NEW")
-            == "METEORITE_PASSED_JD"
+            consult_mod._render_pass_fail("grade_do", grades, entity_state="METEORITE_PASSED_JD")
+            == "METEORITE_PASSED_DO"
         )
         assert (
-            consult_mod._render_pass_fail("evaluate_jd", grades, entity_state="JD_READY")
-            == TASK_CONFIG["evaluate_jd"]["pass_state"]
+            consult_mod._render_pass_fail("grade_do", grades, entity_state="PASSED_JD")
+            == TASK_CONFIG["grade_do"]["pass_state"]
         )
         assert (
             consult_mod._render_pass_fail(
@@ -95,6 +102,39 @@ class TestAst1054MeteoriteGdlOutcomeOverlay:
             )
             == "METEORITE_FAILED_DO"
         )
+
+
+class TestEvaluateMeteoriteStandaloneTwin:
+    """AST-1054/1060 rewire: evaluate_meteorite owns its pass/fail/error states directly —
+    no overlay lookup, correct regardless of entity_state (unlike the old shared-task pattern).
+    """
+
+    def test_own_states_independent_of_entity_state(self) -> None:
+        for entity_state in (None, "METEORITE_QUALIFIED", "JD_READY", "PASSED_JD"):
+            cfg_m = consult_mod._consult_orchestration_for_entity("evaluate_meteorite", entity_state)
+            assert cfg_m["pass_state"] == "METEORITE_PASSED_JD"
+            assert cfg_m["fail_state"] == "METEORITE_FAILED_JD"
+            assert cfg_m["error_state"] == "METEORITE_ERROR_EVALUATE_JD"
+
+    def test_render_pass_fail_uses_own_states(self) -> None:
+        assert (
+            consult_mod._render_pass_fail(
+                "evaluate_meteorite", [_pass_grade()], entity_state="METEORITE_QUALIFIED",
+            )
+            == "METEORITE_PASSED_JD"
+        )
+        assert (
+            consult_mod._render_pass_fail(
+                "evaluate_meteorite",
+                [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                entity_state="METEORITE_QUALIFIED",
+            )
+            == "METEORITE_FAILED_JD"
+        )
+
+    def test_rubric_artifact_is_separate_from_jobdesc_rubric(self) -> None:
+        assert TASK_CONFIG["evaluate_meteorite"]["rubric_artifact"] == "meteorite_jobdesc_rubric"
+        assert TASK_CONFIG["evaluate_jd"]["rubric_artifact"] == "jobdesc_rubric"
 
 
 class TestRubricHelpers:

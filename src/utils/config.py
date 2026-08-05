@@ -309,6 +309,15 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # Meteorite-sourced jobs are candidate-submitted, not gazer-discovered — genuinely
+    # separate dealbreaker rubric from jobdesc_rubric, not a reuse/twin (own artifact key).
+    "craft_evaluate_meteorite_rubric": {
+        "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
+        "response_format": "json",
+        "entity_type": None,
+        "requires_candidate_key": True,
+        "trigger_state": None,
+    },
     "craft_get_rubric": {
         "response_schema": _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA,
         "response_format": "json",
@@ -570,6 +579,49 @@ TASK_CONFIG = {
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
+    },
+    # Meteorite dealbreaker screen — candidate-submitted jobs, own rubric (not a shared-task
+    # overlay like the old evaluate_jd/METEORITE_GDL_OUTCOME_BY_TASK pattern). Own pass/fail/
+    # error states baked in directly, same as meteorite_like's twin pattern.
+    "evaluate_meteorite": {
+        "response_format": "json",
+        "output_type": "grades_encoded",
+        "scored": True,
+        "grades_key": "jd_grades",
+        "rubric_artifact": "meteorite_jobdesc_rubric",
+        "response_schema": {
+            "jobs": {
+                "type": "list", "required": True,
+                "items_schema": {
+                    "astral_job_id": {"type": "str", "required": True},
+                    "grades":        {"type": "list", "required": True,
+                                      "items_schema": {
+                                          "vector": {"type": "str", "required": True},
+                                          "grade":  {"type": "str", "required": True},
+                                          "confidence": {"type": "int", "required": True},
+                                      }},
+                },
+            },
+        },
+        "fallback_batch_size": 10,
+        "pass_state": "METEORITE_PASSED_JD",
+        "fail_state": "METEORITE_FAILED_JD",
+        "error_state": "METEORITE_ERROR_EVALUATE_JD",
+        # Matches qualify_meteorite's own min_jd_chars (40) — that task is the authoritative
+        # usability gate for meteorite content, so this pre-filter is structurally a no-op by
+        # the time a job reaches METEORITE_QUALIFIED. Deliberately no not_ready_state: unlike
+        # evaluate_jd (whose not-ready jobs bounce to PASSED_JOBLIST for another fetch_jd
+        # attempt), there's no earlier meteorite hop to retry against, and a scored task's
+        # not_ready_state gets read into _TRANSITION_STATES_USED_BY_SCORED_TASKS — pointing it
+        # back at this task's own trigger_state (METEORITE_QUALIFIED) would flip
+        # dispatch_claim_uses_score_floor for that state and risk the score_floor backfill
+        # migration in database.py gating out fresh, unscored meteorite jobs from ever claiming.
+        "min_jd_chars": 40,
+        "context_format": "evaluate_meteorite_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": None,
+        "agent_task": "evaluate_meteorite",
     },
     # RUNTIME JOB ANALYSIS PROMPTS
     # DO ANALYSIS - Grace 2
@@ -1945,7 +1997,7 @@ RUBRIC_ARTIFACT_KEYS = frozenset(
 )
 
 # Rubric criteria lists (importance + grade tables) — consult rubrics plus company_prefilter (AST-359).
-RUBRIC_CRITERIA_ARTIFACT_KEYS = RUBRIC_ARTIFACT_KEYS | frozenset({"company_prefilter"})
+RUBRIC_CRITERIA_ARTIFACT_KEYS = RUBRIC_ARTIFACT_KEYS | frozenset({"company_prefilter", "meteorite_jobdesc_rubric"})
 
 # AST-723: artifact UI keys → rubric_vector owner task_key (consumer tasks, not craft_*).
 RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY: Dict[str, str] = {
@@ -1955,6 +2007,8 @@ RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY: Dict[str, str] = {
     "do_rubric": "grade_do",
     "get_rubric": "grade_get",
     "like_rubric": "grade_like",
+    # Meteorite dealbreaker screen — genuinely separate rubric, not a reuse of jobdesc_rubric.
+    "meteorite_jobdesc_rubric": "evaluate_meteorite",
 }
 CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY: Dict[str, str] = {
     "craft_prefilter_rubric": "company_prefilter",
@@ -1963,6 +2017,7 @@ CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY: Dict[str, str] = {
     "craft_get_rubric": "get_rubric",
     "craft_do_rubric": "do_rubric",
     "craft_like_rubric": "like_rubric",
+    "craft_evaluate_meteorite_rubric": "meteorite_jobdesc_rubric",
 }
 CRAFT_RUBRIC_UI_TASK_KEYS: frozenset[str] = frozenset(CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.keys())
 # Output budget floor for craft_*_rubric UI generate (long per-criterion content).
@@ -2165,10 +2220,10 @@ JOB_STATES = {
     "FAILED_TECHNICAL_LIKE":  {"prior_states": ["CULTURE_READY", "CULTURE_READY_RETRY"]},
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
-    # METEORITE_QUALIFIED (GDL entry). evaluate_jd claims METEORITE_QUALIFIED only (AST-1060).
+    # METEORITE_QUALIFIED (GDL entry). evaluate_meteorite claims METEORITE_QUALIFIED only (AST-1060).
     "METEORITE_NEW":                  {"prior_states": None},
     "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
-    "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_jd incomplete-grade holding (AST-1155)
+    "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
     "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
     "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"], "retry_state": "METEORITE_PASSED_JD_RETRY"},
@@ -2341,7 +2396,7 @@ METEORITE_DISPATCH_TASKS = (
         "freq_hrs": 0,
     },
     {
-        "task_key": "evaluate_jd",
+        "task_key": "evaluate_meteorite",
         "trigger_state": "METEORITE_QUALIFIED",
         "score_floor": None,  # ungated GDL entry (AST-1060 — was METEORITE_NEW)
         "auto_mode": False,
@@ -2390,12 +2445,11 @@ METEORITE_DISPATCH_TASKS = (
 assert all(not bool(e.get("auto_mode")) for e in METEORITE_DISPATCH_TASKS)
 
 # Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
+# NOTE: the JD stage no longer uses this overlay — evaluate_meteorite is a standalone twin
+# task with its own TASK_CONFIG pass/fail/error states (same pattern as meteorite_like).
+# DO/GET stay genuinely shared tasks between regular and meteorite jobs, so they still need
+# the overlay to swap outcome states.
 METEORITE_GDL_OUTCOME_BY_TASK = {
-    "evaluate_jd": {
-        "pass_state": "METEORITE_PASSED_JD",
-        "fail_state": "METEORITE_FAILED_JD",
-        "error_state": "METEORITE_ERROR_EVALUATE_JD",
-    },
     "grade_do": {
         "pass_state": "METEORITE_PASSED_DO",
         "fail_state": "METEORITE_FAILED_DO",
@@ -2440,13 +2494,13 @@ SEED_CONFIG = {
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT c.candidate_id, 'evaluate_jd', 'job', "
+        ") SELECT c.candidate_id, 'evaluate_meteorite', 'job', "
         "'METEORITE_QUALIFIED', 'updated_at', 1, 0, 1, 10, 0, NULL "
         "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
         "  WHERE d.candidate_id = c.candidate_id "
-        "    AND d.task_key = 'evaluate_jd' "
+        "    AND d.task_key = 'evaluate_meteorite' "
         "    AND d.trigger_state = 'METEORITE_QUALIFIED'"
         ")",
         "INSERT INTO dispatch_task ("
@@ -2705,8 +2759,8 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
-    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "grade_do", "grade_get",
-    "grade_like", "meteorite_like", "vet_inflow_discovery",
+    "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
+    "grade_do", "grade_get", "grade_like", "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
@@ -2763,6 +2817,8 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WEBSITE_FOUND"
     if task_key == "evaluate_jd":
         return "JD_READY"
+    if task_key == "evaluate_meteorite":
+        return "METEORITE_QUALIFIED"
     if task_key == "grade_do":
         return "PASSED_JD"
     if task_key == "grade_get":
@@ -3153,6 +3209,28 @@ JOBS_UI_GRADE_RUBRIC = {
     "get_grades": "get_rubric",
     "like_grades": "like_rubric",
 }
+# Meteorite JD stage shares the "jd_grades" storage field with the regular pipeline but is
+# scored against meteorite_jobdesc_rubric, not jobdesc_rubric — override by state since the
+# grades_key alone can't disambiguate which rubric produced a given job's grades.
+JOBS_UI_STATE_RUBRIC_OVERRIDE = {
+    "METEORITE_PASSED_JD": "meteorite_jobdesc_rubric",
+    "METEORITE_PASSED_JD_RETRY": "meteorite_jobdesc_rubric",
+    "METEORITE_FAILED_JD": "meteorite_jobdesc_rubric",
+}
+
+
+def jobs_ui_rubric_for_state(state: str, grades_key: Optional[str] = None) -> Optional[str]:
+    """Rubric artifact key for a job's grade table, given its current/skip state.
+
+    Prefer the state-level override (meteorite JD stage); fall back to the shared
+    grades_key -> rubric_artifact mapping used by every other stage.
+    """
+    override = JOBS_UI_STATE_RUBRIC_OVERRIDE.get(state)
+    if override:
+        return override
+    gk = grades_key or JOBS_IN_REVIEW_GRADE_FIELD.get(state) or JOBS_SKIPPED_GRADE_FIELD.get(state)
+    return JOBS_UI_GRADE_RUBRIC.get(gk) if gk else None
+
 
 for _row in JOBS_RECOMMENDED_REPORT_PHASE_TABS:
     assert _row["grades_field"] in JOBS_UI_GRADE_RUBRIC
@@ -4199,6 +4277,7 @@ NAV_CONFIG = [
             {"label": "Company Search Terms", "path": "/artifacts/company_search_terms"},
             {"label": "Job List Criteria", "path": "/artifacts/job_list_criteria"},
             {"label": "Job Description Criteria", "path": "/artifacts/job_description_criteria"},
+            {"label": "Meteorite Criteria", "path": "/artifacts/meteorite_criteria"},
             {"label": "Get Job Criteria", "path": "/artifacts/get_job_criteria"},
             {"label": "Do Job Criteria", "path": "/artifacts/do_job_criteria"},
             {"label": "Like Job Criteria", "path": "/artifacts/like_job_criteria"},
@@ -5092,6 +5171,12 @@ JOB_TOKEN_CONFIG = {
         "ANALYSIS_DO":   {"grades_key": "do_grades",   "rubric_artifact": "do_rubric", "rubric_owner_task_key": "grade_do"},
         "ANALYSIS_GET":  {"grades_key": "get_grades",  "rubric_artifact": "get_rubric", "rubric_owner_task_key": "grade_get"},
         "ANALYSIS_LIKE": {"grades_key": "like_grades", "rubric_artifact": "like_rubric", "rubric_owner_task_key": "grade_like"},
+    },
+    # Meteorite-sourced jobs score ANALYSIS_JD against evaluate_meteorite's own rubric —
+    # DO/GET/LIKE stay shared with the regular pipeline, only the JD stage forks.
+    # consult._format_analysis_phase_text merges this in when the job is meteorite-sourced.
+    "analysis_phases_meteorite_override": {
+        "ANALYSIS_JD": {"grades_key": "jd_grades", "rubric_artifact": "meteorite_jobdesc_rubric", "rubric_owner_task_key": "evaluate_meteorite"},
     },
 }
 

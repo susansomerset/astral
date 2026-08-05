@@ -1120,7 +1120,7 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
-    if owner_task_key == "evaluate_jd":
+    if owner_task_key in ("evaluate_jd", "evaluate_meteorite"):
         return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
@@ -1148,7 +1148,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
         # AST-1085: restore QC/GC on save (append; embedded wins on code).
-        if owner == "evaluate_jd":
+        # QC/GC are source-agnostic dealbreaker safety-net vectors — also apply to the
+        # meteorite JD screen, not just the regular gazer-discovered evaluate_jd.
+        if owner in ("evaluate_jd", "evaluate_meteorite"):
             val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
@@ -2236,7 +2238,8 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         if not isinstance(criteria, list) or len(criteria) == 0:
             raise ValueError(f"{task_key} returned no criteria")
         # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
-        if artifact_key == "jobdesc_rubric":
+        # QC/GC are source-agnostic — also restore for the meteorite dealbreaker screen.
+        if artifact_key in ("jobdesc_rubric", "meteorite_jobdesc_rubric"):
             criteria = _merge_embedded_evaluate_jd_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
@@ -2638,7 +2641,8 @@ def run_candidate_artifact_generation(
                     500,
                 )
             # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
-            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+            # QC/GC are source-agnostic — also apply to the meteorite dealbreaker rubric.
+            if task_key in ("craft_jobdesc_rubric", "craft_evaluate_meteorite_rubric") and isinstance(parsed_response, dict):
                 crit = parsed_response.get("criteria")
                 if isinstance(crit, list):
                     parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)

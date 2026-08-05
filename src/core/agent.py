@@ -81,6 +81,7 @@ _PB_SLOT_OMIT = object()
 _STRICT_ENCODED_BATCH_CONSULT_KEYS = frozenset({
     "qualify_job_listings",
     "evaluate_jd",
+    "evaluate_meteorite",
     "grade_do",
     "grade_get",
     "grade_like",

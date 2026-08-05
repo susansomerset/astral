@@ -1869,7 +1869,11 @@ class TestAst901CraftRubricUiTaskKeys:
     def test_ui_task_keys_match_artifact_map(self) -> None:
         assert cfg.CRAFT_RUBRIC_UI_TASK_KEYS == frozenset(cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.keys())
         assert "craft_get_rubric" in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
-        assert len(cfg.CRAFT_RUBRIC_UI_TASK_KEYS) == 6
+        # 6 regular rubrics + craft_evaluate_meteorite_rubric (genuinely separate meteorite
+        # dealbreaker rubric, not a reuse of jobdesc_rubric — candidate-submitted jobs need
+        # more rigorous screening than gazer-discovered ones).
+        assert len(cfg.CRAFT_RUBRIC_UI_TASK_KEYS) == 7
+        assert "craft_evaluate_meteorite_rubric" in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
         assert "craft_resume_base" not in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
 
 
@@ -2617,9 +2621,11 @@ class TestAst1054MeteoriteGdlDispatch:
 
     def test_dispatch_row_specs_and_job_states(self) -> None:
         rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
-        # AST-1060: evaluate_jd claims METEORITE_QUALIFIED (not METEORITE_NEW).
-        assert ("evaluate_jd", "METEORITE_NEW") not in rows
-        assert rows[("evaluate_jd", "METEORITE_QUALIFIED")]["score_floor"] is None
+        # evaluate_meteorite claims METEORITE_QUALIFIED (not METEORITE_NEW) — standalone twin
+        # task, no longer the shared evaluate_jd + METEORITE_GDL_OUTCOME_BY_TASK overlay.
+        assert ("evaluate_meteorite", "METEORITE_NEW") not in rows
+        assert ("evaluate_jd", "METEORITE_QUALIFIED") not in rows
+        assert rows[("evaluate_meteorite", "METEORITE_QUALIFIED")]["score_floor"] is None
         assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
         assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
         assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
@@ -2633,6 +2639,9 @@ class TestAst1054MeteoriteGdlDispatch:
 
     def test_score_floor_gating_and_trigger_defaults(self) -> None:
         assert cfg.dispatch_claim_uses_score_floor("METEORITE_NEW") is False
+        # evaluate_meteorite deliberately has no not_ready_state (see config.py comment) so
+        # its own trigger_state, METEORITE_QUALIFIED, never lands in
+        # _TRANSITION_STATES_USED_BY_SCORED_TASKS — fresh unscored jobs must stay claimable.
         assert cfg.dispatch_claim_uses_score_floor("METEORITE_QUALIFIED") is False
         for state in (
             "METEORITE_PASSED_JD",
@@ -2645,6 +2654,7 @@ class TestAst1054MeteoriteGdlDispatch:
         assert cfg._dispatch_trigger_state_for_task_key("meteorite_like") == "METEORITE_PASSED_GET"
         assert cfg._dispatch_trigger_state_for_task_key("meteorite_upshot") == "METEORITE_PASSED_LIKE"
         assert cfg._dispatch_trigger_state_for_task_key("evaluate_jd") == "JD_READY"
+        assert cfg._dispatch_trigger_state_for_task_key("evaluate_meteorite") == "METEORITE_QUALIFIED"
         assert cfg._dispatch_trigger_state_for_task_key("grade_do") == "PASSED_JD"
         assert cfg._dispatch_trigger_state_for_task_key("grade_get") == "PASSED_DO"
 
