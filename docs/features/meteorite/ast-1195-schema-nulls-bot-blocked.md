@@ -105,3 +105,32 @@ Changes: Expanded bulk-retry Decision with `startswith("METEORITE_")` identity l
 | 2 | `1db73b8b` | `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` in config registry/UI + gazer map |
 
 **Tip:** `e01bafce9a74cdf3d7226800070de09db8084140` on `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`
+
+### code-rubric.v1 verdict
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1195
+**Publish ref:** `1e2e0539` (`origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`)
+**Overall:** CLEAN
+
+Full active corpus (65 leaves — 18 universal + 47 scoped) swept in-session against this ticket's own footprint: `git diff origin/ftr/AST-1188-errors-for-qualify-meteorite-dispatch-task...origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked` (diff layers `{core, utils, docs}`; paths `src/core/gazer.py`, `src/utils/config.py`, `docs/features/meteorite/ast-1195-schema-nulls-bot-blocked.md`, `docs/test-bible/{core/gazer.md, frontend/pages.md, utils/config.md}`, `tests/component/{core/test_gazer.py, frontend/fixtures/stateUiManifestFixture.ts, utils/test_config.py}`; change_types `{add, modify}`). 6 scoped statutes score `not-applicable` on this footprint (no `src/ui/**`, `src/data/**`, `scripts/**`, or `artifacts/**` paths touched — `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.patterns.require-auth-on-protected-endpoints`, `astral.standards.database-header-inventory`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.debug.no-repo-root-artifacts-dir`); the remaining 41 scoped + all 18 universal score `conforms`. No violations, no stragglers.
+
+## Plan adherence
+
+Matches the plan's two-file Files Changed table exactly: `config.py` (`qualify_meteorite` schema `job_link`/`job_title` → `required: False` + asserts; universal `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` across `JOB_STATES`, `GAZER_CONFIG`, `SKIPPED_STATES`, skipped section order + bulk-retry) and `gazer.py` (`_JD_ERROR_STATES["bot"]`). `rg JD_SCRAPE_FAIL_BOT src/` returns zero hits at the sub tip — Stage 2's real Done-when gate (not the import-assert language Joan flagged as a false safety net) passes. `BOT_BLOCKED` priors are exactly `[PASSED_JOBLIST, METEORITE_NEW]`, matching the meteorite claim state Joan verified against. Her three plan-time `discuss` findings — bulk-retry prefix-loss disclosure, the no-op `JOBS_SKIPPED_SECTION_LABELS` step, and the overstated import-assert safety net — are all visibly resolved in the plan's Revision 1, not just claimed as resolved.
+
+**Pattern conformance:** `astral.config.config-source-of-truth`, `astral.state.job-prior-states-enforced`, `astral.standards.no-hardcoded-sets`, `astral.agent.do-task-delegation` (cited In scope) all `conforms` via the full sweep. `astral.standards.debug-contract-gated` / `astral.state.core-decides-transitions` (cited Considered but excluded) also score `conforms` here — untouched by this diff, correctly deferred to AST-1197 / AST-1196. **Advisory (not fix-now/discuss):** the ticket description's `pattern.config.config-block` and `pattern.batch.entity-claim-process-release` aren't ids in the active corpus — there is no `pattern.*` namespace, only `astral.*` / `orch.*`; likely meant `astral.config.config-source-of-truth` and `astral.batch.claim-process-release`. Citation slip only, not a code issue.
+
+**Cross-ticket note (not a finding):** this branch inherited `test(AST-1189)` / `test(AST-1190)` / `test(AST-1192)` / `test(AST-1193)` via `merge-tests` — none of those siblings' `src/` changes land here, only their test-bible/test-tree lineage (same stacked-sibling pattern already disclosed on AST-1193's own review).
+
+**What's solid:** coverage lands exactly on the schema + registry surface — `TestAst1195SchemaNullsAndBotBlocked` exercises the omit/null path through `_validate_response_schema` directly (not just the schema flags) and pins the manifest's title-case fallback label (`"Bot Blocked"`) byte-for-byte, closing the loop Joan's discuss #2 raised at plan time.
+
+## Frame diff
+
+(none) — implementation matches the plan doc's Files Changed / Stage 1 / Stage 2 as written; no adds or moves applied to this description.
+
+context_tokens≈95000
+
+— Radia
