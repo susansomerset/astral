@@ -34,7 +34,12 @@ from src.data.database import (
 )
 from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
-from src.utils.llm_external import extract_api_response_text, is_provider_balance_refusal
+from src.utils.llm_external import (
+    extract_api_response_text,
+    is_provider_balance_refusal,
+    is_provider_empty_response,
+    normalize_provider_error,
+)
 from src.external.deepseek import send_to_deepseek
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
@@ -2201,11 +2206,16 @@ async def do_task(
     result["runtime_prompt"] = runtime_prompt
 
     if batch_id and not result.get("success"):
+        err = normalize_provider_error(
+            result.get("error"), fallback=result.get("failure_class")
+        )
+        if not (isinstance(result.get("error"), str) and result.get("error").strip()):
+            result["error"] = err
         logger.error(
             "do_task(%s) provider call failed batch_id=%s error=%s",
             task_key,
             batch_id,
-            result.get("error"),
+            err,
         )
 
     # Store prompt blocks in agent_data (non-blocking; best-effort)
@@ -2255,6 +2265,11 @@ async def do_task(
             if is_provider_balance_refusal(result):
                 _do_task_debug_logger(debug).debug_detail(
                     f"provider_balance_refusal failure_class={result.get('failure_class')!r} "
+                    f"error={result.get('error')!r}"
+                )
+            if is_provider_empty_response(result):
+                _do_task_debug_logger(debug).debug_detail(
+                    f"provider_empty_response failure_class={result.get('failure_class')!r} "
                     f"error={result.get('error')!r}"
                 )
         _close_hop_ledger(
