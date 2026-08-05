@@ -126,3 +126,8 @@ After AST-1014, `TOKEN_SOURCES` name tokens (`{$FIRST_NAME}`, `{$LAST_NAME}`, `{
 | §2.6 state machine | Unchanged |
 | §3.3 imports | Lazy `candidate` import inside helper / existing `do_task` cycle break; `candidate.py` Stage 2 needs no new cross-layer import |
 | §3.5 naming | `_token_view_for_do_task` private helper; public APIs unchanged |
+
+## Review
+
+**Publish ref:** `sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`  
+**Build tip:** `08d9a966fb4db7dd013eb419cb0912588b3575e0`
