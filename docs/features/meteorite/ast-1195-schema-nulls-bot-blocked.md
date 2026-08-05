@@ -93,3 +93,15 @@ Changes: Expanded bulk-retry Decision with `startswith("METEORITE_")` identity l
 - §2.6 / `astral.state.job-prior-states-enforced`: `BOT_BLOCKED` priors list both legal entry states; `PASSED_JOBLIST` re-entry list updated.
 - §3.3 imports: no new cross-layer imports.
 - Out of scope here: `astral.standards.debug-contract-gated` (AST-1197), agent_task authoring (AST-1196).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`
+**Plan path:** `docs/features/meteorite/ast-1195-schema-nulls-bot-blocked.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `1986578e` | `qualify_meteorite` schema: `job_link` / `job_title` `required: False` + asserts |
+| 2 | `1db73b8b` | `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` in config registry/UI + gazer map |
+
+**Tip:** `1db73b8bb8d6c5d5d0a8c16789517ad3643e5a72` on `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`
