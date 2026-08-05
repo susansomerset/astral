@@ -354,6 +354,14 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 .venv/bin/python -m pytest tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode -q
 ```
 
+### AST-1190 · AST-1164
+
+**`do_task`:** coerce blank provider `error=` to a non-empty string on the `provider call failed` log/return; **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blank-error coerce + empty-response debug | `src/core/agent.py` | **`TestAst1190DoTaskEmptyProviderError`** |
+
 ### AST-903 · AST-900 (UAT fix)
 
 **AST-903:** Craft rubric JSON truncation (`Unterminated string` mid-`criteria[].content`) — `do_task` floors **`max_tokens`** to **`CRAFT_RUBRIC_MAX_TOKENS`** (32000) for **`CRAFT_RUBRIC_UI_TASK_KEYS`**; DeepSeek/Anthropic hard-fail JSON when **`stop_reason == max_tokens`** (no heal-into-partial-success). UI/prompts/consult batches out of scope.
@@ -581,5 +589,27 @@ Regression: `_validate_response_schema` accepts realistic `parse_meteorite_email
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
+
+### AST-1192 · AST-1163
+
+**Parent:** [AST-1163 — Issues while running anticipate_scan](https://linear.app/astralcareermatch/issue/AST-1163/issues-while-running-anticipate-scan). **Publish:** `origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`.
+
+Artifact hop `do_task` + Manage Tasks `preview_task_prompt` feed `build_candidate_token_view` (name columns + library blobs) so `{$FIRST_NAME}` / `{$LAST_NAME}` resolve on `anticipate_scan` / shared hops. Dispatch rafts load the full candidate row by `astral_candidate_id`. Style D found/recorded for name-token outcomes when `debug=True`. Boundaries: ANALYSIS match parity (**AST-1193**); provider blank/timeout (**AST-1164**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_token_view_for_do_task` branches + `do_task` name resolve + Style D | `src/core/agent.py` | **`TestAst1192TokenViewForDoTask`** |
+| `preview_task_prompt` columns → name tokens | `src/core/candidate.py` | **`TestPreviewTaskPrompt::test_preview_resolves_names_from_columns_not_blob`** |
+
+**Broken / obsolete:** none — additive cutover at resolve boundary; `_candidate_data_for_job` blob consumers unchanged.
+
+**Integration:** no existing scenario asserts artifact-hop name-token wiring — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1192TokenViewForDoTask \
+  tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_names_from_columns_not_blob \
   -q
 ```
