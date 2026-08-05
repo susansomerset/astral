@@ -6700,3 +6700,35 @@ class TestAst1192TokenViewForDoTask:
             "recorded FIRST_NAME='Ada' LAST_NAME='Lovelace' FULL_NAME='Ada Lovelace'" in str(m)
             for m in detail_msgs
         )
+
+class TestAst1193DebugJobContext:
+    """AST-1193: do_task threads debug into build_job_token_context."""
+
+    def test_job_context_for_call_passes_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: Dict[str, Any] = {}
+
+        def _builder(job, cd, *, candidate_id="", debug=False):
+            captured["debug"] = debug
+            captured["job_id"] = job.get("astral_job_id")
+            return {"VISIBLE_JD": "x"}
+
+        monkeypatch.setattr(
+            "src.core.consult.build_job_token_context",
+            _builder,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_job_row_from_ctx",
+            lambda ctx, index: {"astral_job_id": index, "job_data": {}},
+        )
+        monkeypatch.setattr(agent_mod, "_single_job_in_scope", lambda ctx, index: True)
+        out = agent_mod._job_context_for_call(
+            {"astral_candidate_id": "c1", "batch_entities": _batch_entities("job-1193")},
+            "job-1193",
+            {},
+            debug=True,
+        )
+        assert out == {"VISIBLE_JD": "x"}
+        assert captured["debug"] is True
+        assert captured["job_id"] == "job-1193"
+
