@@ -5586,6 +5586,91 @@ class TestAst897DoTaskBalanceDebug:
         assert any("provider_balance_refusal" in str(m) for m in detail_msgs)
 
 
+class TestAst1190DoTaskEmptyProviderError:
+    """AST-1190: do_task coerces blank provider error= and debug-details empty_response."""
+
+    @pytest.mark.asyncio
+    async def test_blank_error_coerced_non_empty_on_provider_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "",
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        with caplog.at_level(logging.ERROR):
+            out = await agent_mod.do_task(
+                "evaluate_jd",
+                index="job-1",
+                ctx=_draft_job_resume_ctx(),
+                debug=False,
+            )
+        assert out["success"] is False
+        assert isinstance(out.get("error"), str) and out["error"].strip()
+        assert any(
+            "provider call failed" in r.message and "error=" in r.message
+            for r in caplog.records
+        )
+        failed_line = next(
+            r.message for r in caplog.records if "provider call failed" in r.message
+        )
+        # Must not end with a blank error= value
+        assert not failed_line.rstrip().endswith("error=")
+
+    @pytest.mark.asyncio
+    async def test_debug_detail_on_provider_empty_response(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        from src.utils.config import PROVIDER_EMPTY_RESPONSE
+
+        fc = PROVIDER_EMPTY_RESPONSE["failure_class"]
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": PROVIDER_EMPTY_RESPONSE["error"],
+                    "failure_class": fc,
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx=_draft_job_resume_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        assert out.get("failure_class") == fc
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any("provider_empty_response" in str(m) for m in detail_msgs)
+
+
 class TestAst903CraftRubricMaxTokensFloor:
     """AST-903: do_task floors max_tokens for craft_*_rubric UI tasks."""
 

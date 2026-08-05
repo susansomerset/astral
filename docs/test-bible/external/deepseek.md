@@ -25,3 +25,11 @@ JSON **`stop_reason == max_tokens`** hard-fail (no heal). Primary manifest: **`d
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Fail-closed truncation | `src/external/deepseek.py` | **`TestAst903JsonMaxTokensHardFail`** |
+
+### AST-1190 · AST-1164
+
+Hollow / unusable response fail-closed + blank exception `error=` normalize. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hollow + blank TimeoutError | `src/external/deepseek.py` | **`TestAst1190EmptyUnusableProviderResponse`** |
