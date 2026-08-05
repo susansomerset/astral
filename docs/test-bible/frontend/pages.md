@@ -1492,3 +1492,23 @@ Skipped Retry groups selection by current `job.state`, looks up `bulk_retry_to_s
 cd src/ui/frontend && npx vitest run \
   ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
 ```
+
+### AST-1195 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+
+Shared `stateUiManifestFixture.ts` skipped `section_order` + `bulk_retry_to_state_by_from_state`: `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** (aligned with config rename). Primary config/schema: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fixture rename | `tests/component/frontend/fixtures/stateUiManifestFixture.ts` | Consumers via **`page-mocks.ts`** / StateUiContext (no new page cases) |
+
+**Broken / obsolete:** fixture pinned old bot scrape-fail id — revised this pass.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```

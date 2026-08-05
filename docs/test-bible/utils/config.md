@@ -2360,3 +2360,28 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
   tests/component/utils/test_config.py::TestBuildStateUiManifest::test_manifest_contains_expected_sections \
   -q
 ```
+
+### AST-1195 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+
+`qualify_meteorite` schema: `job_link` / `job_title` → `required: False` so omit/`null` do not abort `do_task`. Universal rename `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** in `JOB_STATES` (priors `PASSED_JOBLIST` + `METEORITE_NEW`), `GAZER_CONFIG` fetch_jd error_states, `SKIPPED_STATES`, skipped section order + bulk-retry map (retry → `PASSED_JOBLIST`). Gazer map: **`docs/test-bible/core/gazer.md`**. Fixture: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema optional + `_validate_response_schema` omit/null | `src/utils/config.py` / `src/core/agent.py` | **`TestAst1195SchemaNullsAndBotBlocked`**; revised **`TestAst1127QualifyMeteoriteCompanyJobIdOptional`**, **`TestAst1060QualifyMeteoriteConfig`** |
+| `BOT_BLOCKED` registry + skipped UI + gazer error_states | `src/utils/config.py` | **`TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui`**; **`TestAst1156SkippedBulkRetryMap`** (covers map completeness / priors) |
+
+**Broken / obsolete:** AST-1060 / AST-1127 asserts that `job_title` / `job_link` stay `required: True`; AST-1127 sibling-missing check on `job_title` → `jd_text`. Frontend fixture `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` (see pages bible).
+
+**Integration:** none revised (no existing scenarios pin `JD_SCRAPE_FAIL_BOT` / qualify schema required flags).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked \
+  tests/component/utils/test_config.py::TestAst1127QualifyMeteoriteCompanyJobIdOptional \
+  tests/component/utils/test_config.py::TestAst1060QualifyMeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1156SkippedBulkRetryMap \
+  tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
+  -q
+```
