@@ -38,6 +38,23 @@ JSON **`stop_reason == max_tokens`** hard-fail (no heal). Primary manifest: **`d
 | --- | --- | --- |
 | Fail-closed truncation | `src/external/anthropic.py` | **`TestAst903JsonMaxTokensHardFail`** |
 
+
+### AST-1189 · AST-1164
+
+Per-call wall budget + `provider_call_timeout` tagging. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1189.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Timeout tagging | `src/external/anthropic.py` | **`TestAst1189ProviderCallBudgetTimeout`** |
+
+### AST-1190 · AST-1164
+
+Hollow / unusable response fail-closed + blank exception `error=` normalize. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hollow + blank TimeoutError | `src/external/anthropic.py` | **`TestAst1190EmptyUnusableProviderResponse`** |
+
 **Manifest focus (existing coverage — no new tests):**
 
 | Touched path | Existing tests |
