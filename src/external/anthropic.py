@@ -8,7 +8,6 @@ Sends assembled content blocks to Anthropic; optional `record_timesheet` callbac
 Public API: send_to_anthropic, getTimestampPrefix
 """
 
-import asyncio
 import json
 import os
 import re
@@ -26,9 +25,16 @@ from src.utils.formatting import (
     clean_encoded_agent_payload,
 )
 from src.utils.llm_external import (
+    await_provider_call_with_budget,
     classify_provider_balance_refusal,
+    classify_provider_call_timeout,
     extract_api_response_text,
     emit_llm_call_debug,
+    non_empty_provider_error,
+    provider_call_http_timeout_seconds,
+    provider_call_max_retries,
+    provider_call_timeout_error_message,
+    provider_call_wait_timeout_seconds,
 )
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
@@ -48,15 +54,17 @@ except ImportError:  # pragma: no cover
     logger.error("Anthropic SDK not installed. Run: pip install anthropic")
     sys.exit(1)
 
-_API_CALL_TIMEOUT = 5 * 60  # 5 minutes per call
-
 
 def _get_client() -> Anthropic:  # pragma: no cover
     """Get initialized Anthropic client with API key from environment."""
     apiKey = os.environ.get("ANTHROPIC_API_KEY")
     if not apiKey:
         raise ValueError("ANTHROPIC_API_KEY not found in environment")
-    return Anthropic(api_key=apiKey, timeout=_httpx.Timeout(_API_CALL_TIMEOUT))
+    return Anthropic(
+        api_key=apiKey,
+        timeout=_httpx.Timeout(provider_call_http_timeout_seconds()),
+        max_retries=provider_call_max_retries(),
+    )
 
 
 def getTimestampPrefix() -> str:
@@ -235,7 +243,15 @@ async def send_to_anthropic(
         logger.set_debug_flag(True)
 
     try:
-        client = Anthropic(api_key=api_key_override, timeout=_httpx.Timeout(_API_CALL_TIMEOUT)) if api_key_override else _get_client()
+        client = (
+            Anthropic(
+                api_key=api_key_override,
+                timeout=_httpx.Timeout(provider_call_http_timeout_seconds()),
+                max_retries=provider_call_max_retries(),
+            )
+            if api_key_override
+            else _get_client()
+        )
 
         api_kwargs: Dict[str, Any] = {
             "model": model_code,
@@ -257,9 +273,9 @@ async def send_to_anthropic(
             return client.messages.create(**api_kwargs)
 
         try:
-            response = await asyncio.wait_for(
-                asyncio.to_thread(_make_api_call),
-                timeout=_API_CALL_TIMEOUT + 10,
+            response = await await_provider_call_with_budget(
+                _make_api_call,
+                timeout_seconds=provider_call_wait_timeout_seconds(),
             )
             duration = (datetime.now() - start_time).total_seconds()
 
@@ -387,7 +403,12 @@ async def send_to_anthropic(
 
         except Exception as e:
             duration = (datetime.now() - start_time).total_seconds()
-            log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=str(e))
+            fc_timeout = classify_provider_call_timeout(e)
+            if fc_timeout:
+                err = provider_call_timeout_error_message()
+            else:
+                err = non_empty_provider_error(e, fallback=type(e).__name__)
+            log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=err)
             if debug:
                 emit_llm_call_debug(
                     logger_name=__name__,
@@ -400,17 +421,25 @@ async def send_to_anthropic(
                     input_cached=0,
                     cache_creation_tokens=0,
                     output_total=0,
-                    error=str(e),
+                    error=err,
                     provider="anthropic",
                 )
-            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
-            fc = classify_provider_balance_refusal(e)
-            if fc:
-                out["failure_class"] = fc
+            out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err}
+            if fc_timeout:
+                out["failure_class"] = fc_timeout
+            else:
+                fc = classify_provider_balance_refusal(e)
+                if fc:
+                    out["failure_class"] = fc
             return out
     except Exception as e:  # pragma: no cover
         duration = (datetime.now() - start_time).total_seconds()
-        log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=str(e))
+        fc_timeout = classify_provider_call_timeout(e)
+        if fc_timeout:
+            err = provider_call_timeout_error_message()
+        else:
+            err = non_empty_provider_error(e, fallback=type(e).__name__)
+        log_llm_batch_summary(logger, "anthropic", prompt_label, duration, error=err)
         if debug:
             emit_llm_call_debug(
                 logger_name=__name__,
@@ -423,11 +452,14 @@ async def send_to_anthropic(
                 input_cached=0,
                 cache_creation_tokens=0,
                 output_total=0,
-                error=str(e),
+                error=err,
                 provider="anthropic",
             )
-        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": str(e)}
-        fc = classify_provider_balance_refusal(e)
-        if fc:
-            out["failure_class"] = fc
+        out = {"success": False, "api_response": None, "timesheet": _empty_timesheet(), "error": err}
+        if fc_timeout:
+            out["failure_class"] = fc_timeout
+        else:
+            fc = classify_provider_balance_refusal(e)
+            if fc:
+                out["failure_class"] = fc
         return out
