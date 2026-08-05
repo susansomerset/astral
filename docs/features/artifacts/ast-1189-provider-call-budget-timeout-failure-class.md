@@ -290,3 +290,18 @@ None cited (plan lists statute ids under In-scope / Considered-but-excluded, not
 
 `context_tokens≈45000`
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-08-05  
+**Driven by:** Radia `[code-rubric] revision=1` FIX-NOW — cross-ticket AST-1190 test/doc contamination on this publish ref.
+
+| Finding | Action |
+|---------|--------|
+| leftover `docs/features/artifacts/ast-1190-empty-unusable-provider-response-surfacing.md` on this branch | **Done (engineer):** removed from `origin/sub/AST-1164/AST-1189-provider-call-budget-timeout` |
+| `merge-tests(AST-1189)` stacks on `748a5725 test(AST-1190)` → 9 failing AST-1190 tests without product surface | **Handed to Betty** via `[qa-handoff]` — stay Review Posted; engineer cannot re-cut `origin/tests` / test-tree |
+| advisory debug-contract touch (`error=` value only) | Accepted — no product change |
+
+**Next:** Betty re-publishes AST-1189-scoped `merge-tests`, reassigns Ada; Ada re-runs touched-file suite, then finishes resolve → User Testing.
