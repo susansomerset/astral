@@ -241,3 +241,16 @@ Changes:
 - Stage 2: delete the `BaseException` typing-import step; add cause/context walk on classifier; add `non_empty_provider_error`; add `await_provider_call_with_budget` (FIRST_COMPLETED / abandon pending — replaces wait_for).
 - Stage 3: wire both externals to the wall-budget await + `max_retries`; never-empty `error` on all touched failure returns; Done-when asserts logged `duration` ≈ budget+grace.
 - Conf softened `high` → `Medium`. Summary + Decisions updated to match Joan’s wait_for/to_thread analysis.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1164/AST-1189-provider-call-budget-timeout`  
+**Tip:** `663f6a07`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `d41b16c7` | `PROVIDER_CALL_BUDGET` (600s / 10s grace / `max_retries: 0`) |
+| 2 | `6d650feb` | wall-budget helpers + cause-chain classify + never-empty error |
+| 3 | `663f6a07` | DeepSeek + Anthropic client budget, `await_provider_call_with_budget`, timeout `failure_class` |
