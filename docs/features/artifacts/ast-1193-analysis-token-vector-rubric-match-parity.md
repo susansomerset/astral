@@ -212,3 +212,10 @@ Full active corpus (63 leaves — 18 universal + 45 scoped) swept in-session aga
 context_tokens≈62000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-05  
+**Radia:** `[code-rubric] revision=1` — **Overall: CLEAN** (no fix-now / discuss / advisory to land).  
+**Action:** No product changes. Resolution commit records intake of Radia’s doc-only review tip and §9a clean before User Testing.  
+**Publish tip after resolve:** see commit SHA on `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`.
