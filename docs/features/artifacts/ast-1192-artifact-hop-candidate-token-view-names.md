@@ -162,3 +162,11 @@ Full active corpus (63 leaves — 18 universal + 45 scoped) swept in-session aga
 context_tokens≈58000
 
 — Radia
+
+## Resolution
+
+**2026-08-05** — resolve-child vs `[code-rubric] revision=1` (DISCUSS)
+
+1. **discuss / requires_candidate_key** — Guard now uses `_candidate_identity_material_present(cd)` (non-empty `first`/`last`/`full`, or non-empty string values under `contact`/`context`) instead of dict truthiness, so an all-empty 8-key view still warns.
+2. **discuss / branch tag** — Style D `found` detail appends `branch=<load_by_id|full_row_ctx|already_view|raw_blob>` from `_token_view_branch_last` set in `_token_view_for_do_task`.
+3. **discuss / shape probes** — `is_candidate_token_view` + `is_candidate_row_with_name_columns` live beside `build_candidate_token_view` in `candidate.py`; helper branches (d)/(e) use those predicates.
