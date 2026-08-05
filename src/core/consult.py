@@ -128,6 +128,21 @@ def _strip_code(name: str) -> str:
     return _CODE_SUFFIX.sub('', name).strip()
 
 
+def _find_rubric_criterion(rubric_criteria: list, vector_label: str):
+    """Return the criterion dict matching vector by stripped label or code (AST-707 / AST-1193)."""
+    target = _strip_code((vector_label or "").strip())
+    t_upper = target.upper()
+    for item in rubric_criteria or []:
+        if not isinstance(item, dict):
+            continue
+        lab = _strip_code(str(item.get("label") or "").strip())
+        code = str(item.get("code") or "").strip().upper()
+        if lab != target and code != t_upper:
+            continue
+        return item
+    return None
+
+
 def _candidate_id_from_ctx(ctx: Optional[Dict[str, Any]]) -> str:
     return str((ctx or {}).get("astral_candidate_id") or "")
 
@@ -149,33 +164,25 @@ def _vector_labels_map(rubric_criteria: list) -> Dict[str, str]:
 
 def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, letter: str) -> str:
     """Rubric line description for this vector + grade letter (AST-351). Raises ValueError if missing."""
-    target = _strip_code((vector_label or "").strip())
+    item = _find_rubric_criterion(rubric_criteria, vector_label)
+    if item is None:
+        raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
     lt = (letter or "").upper()
-    for item in rubric_criteria:
-        if not isinstance(item, dict):
-            continue
-        lab = _strip_code(str(item.get("label") or "").strip())
-        code = str(item.get("code") or "").strip().upper()
-        t_upper = target.upper()
-        if lab != target and code != t_upper:
-            continue
-        gd = item.get("grade_descriptions")
-        if isinstance(gd, list):
-            for row in gd:
-                if str(row.get("grade", "")).upper() == lt:
-                    desc = row.get("description")
-                    if desc is not None and str(desc).strip():
-                        return str(desc).strip()
-        try:
-            rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
-        except ValueError:
-            rows = []
-        for row in rows:
-            if row["grade"].upper() == lt:
-                return row["description"]
-        raise ValueError(f"No rubric description for vector {vector_label!r} grade {letter}")
-    raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
-
+    gd = item.get("grade_descriptions")
+    if isinstance(gd, list):
+        for row in gd:
+            if str(row.get("grade", "")).upper() == lt:
+                desc = row.get("description")
+                if desc is not None and str(desc).strip():
+                    return str(desc).strip()
+    try:
+        rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
+    except ValueError:
+        rows = []
+    for row in rows:
+        if row["grade"].upper() == lt:
+            return row["description"]
+    raise ValueError(f"No rubric description for vector {vector_label!r} grade {letter}")
 
 def _hydrate_grade_reasons_from_rubric(grades: list, rubric_criteria: list) -> None:
     if not rubric_criteria:
@@ -592,21 +599,14 @@ def _effective_no_signal_for_score(g: dict) -> bool:
 
 
 def _importance_for_label(rubric_criteria: list, vector_label: str) -> float:
-    target = _strip_code((vector_label or "").strip())
     default = ASTRAL_CONFIG["consult_importance"]["default_vector_importance"]
-    for item in rubric_criteria:
-        if not isinstance(item, dict):
-            continue
-        lab = _strip_code(str(item.get("label") or "").strip())
-        code = str(item.get("code") or "").strip().upper()
-        t_upper = target.upper()
-        if lab != target and code != t_upper:
-            continue
-        imp = item.get("importance")
-        if imp is None:
-            return importance_multiplier(int(default))
-        return importance_multiplier(int(imp))
-    raise ValueError(f"_render_score: no rubric criterion matching vector {vector_label!r}")
+    item = _find_rubric_criterion(rubric_criteria, vector_label)
+    if item is None:
+        raise ValueError(f"_render_score: no rubric criterion matching vector {vector_label!r}")
+    imp = item.get("importance")
+    if imp is None:
+        return importance_multiplier(int(default))
+    return importance_multiplier(int(imp))
 
 
 class IncompleteGradeSetError(ValueError):
