@@ -36,6 +36,7 @@ Config sections:
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
+  PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146)
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
@@ -4037,6 +4038,16 @@ PROVIDER_BALANCE_REFUSAL = {
         "credit exhausted",
         "out of credit",
         "payment required",
+    ),
+}
+
+# PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190).
+# Used by utils.llm_external classifiers and external send_to_* failure returns.
+PROVIDER_EMPTY_RESPONSE = {
+    "failure_class": "provider_empty_response",
+    "error": (
+        "Provider returned unusable response "
+        "(missing stop reason, zero tokens, no content)"
     ),
 }
 
