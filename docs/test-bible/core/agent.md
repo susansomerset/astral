@@ -354,6 +354,14 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 .venv/bin/python -m pytest tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode -q
 ```
 
+### AST-1190 · AST-1164
+
+**`do_task`:** coerce blank provider `error=` to a non-empty string on the `provider call failed` log/return; **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blank-error coerce + empty-response debug | `src/core/agent.py` | **`TestAst1190DoTaskEmptyProviderError`** |
+
 ### AST-903 · AST-900 (UAT fix)
 
 **AST-903:** Craft rubric JSON truncation (`Unterminated string` mid-`criteria[].content`) — `do_task` floors **`max_tokens`** to **`CRAFT_RUBRIC_MAX_TOKENS`** (32000) for **`CRAFT_RUBRIC_UI_TASK_KEYS`**; DeepSeek/Anthropic hard-fail JSON when **`stop_reason == max_tokens`** (no heal-into-partial-success). UI/prompts/consult batches out of scope.

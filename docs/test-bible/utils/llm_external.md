@@ -2,7 +2,7 @@
 
 **Test module:** `tests/component/utils/test_llm_external.py`
 
-**Source:** `src/utils/llm_external.py` — shared **`extract_api_response_text`** and **`emit_llm_call_debug`** for Anthropic- and DeepSeek-compatible external clients (**AST-687**); **`logger_name`** pins AST-538 debug lines to the caller external module; **`classify_provider_balance_refusal`** / **`is_provider_balance_refusal`** (**AST-897**).
+**Source:** `src/utils/llm_external.py` — shared **`extract_api_response_text`** and **`emit_llm_call_debug`** for Anthropic- and DeepSeek-compatible external clients (**AST-687**); **`logger_name`** pins AST-538 debug lines to the caller external module; **`classify_provider_balance_refusal`** / **`is_provider_balance_refusal`** (**AST-897**); **`normalize_provider_error`** / **`is_unusable_provider_response`** / **`is_provider_empty_response`** (**AST-1190**).
 
 ---
 
@@ -55,6 +55,40 @@
   tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
   tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
   tests/component/core/test_roster.py::test_run_company_task_jobs_found_error_moves_locate_error_state \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1190 · AST-1164
+
+**Scope:** Hollow / unusable provider response (`stop=?` + zero tokens + no content) fail-closed with **`PROVIDER_EMPTY_RESPONSE`**; blank `error=` never fakes a healthy LLM INFO summary; **`do_task`** coerces non-empty `error=` on provider failure. Timeout **budget** / `provider_call_timeout` remain sibling **AST-1189**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst1190ProviderEmptyResponseConfig` |
+| Normalize / hollow / predicate | `src/utils/llm_external.py` | `tests/component/utils/test_llm_external.py::TestAst1190EmptyResponseHelpers` |
+| Summary blank-`error` ERROR path | `src/utils/logging.py` | `tests/component/utils/test_logging_batch.py` (`test_empty_error_string_uses_error_path_not_healthy_summary`, `test_omitted_error_still_logs_healthy_summary`) |
+| DeepSeek hollow + blank TimeoutError | `src/external/deepseek.py` | `tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse` |
+| Anthropic hollow + blank TimeoutError | `src/external/anthropic.py` | `tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse` |
+| `do_task` coerce + debug detail | `src/core/agent.py` | `tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError` |
+
+**Broken / obsolete:** none — existing balance-refusal / max_tokens / healthy summary cases remain; empty-error path is additive (`error is not None`).
+
+**Integration:** no existing `tests/integration/` scenario asserts hollow / blank-`error=` LLM summary shapes — no integration revision this pass.
+
+**AST-1190** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1190ProviderEmptyResponseConfig \
+  tests/component/utils/test_llm_external.py::TestAst1190EmptyResponseHelpers \
+  tests/component/utils/test_logging_batch.py \
+  tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse \
+  tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
   -q
 ```
 

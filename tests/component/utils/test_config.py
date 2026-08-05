@@ -1863,6 +1863,16 @@ class TestAst897ProviderBalanceRefusalConfig:
         assert "insufficient balance" in block["message_substrings"]
 
 
+class TestAst1190ProviderEmptyResponseConfig:
+    """AST-1190: PROVIDER_EMPTY_RESPONSE owns failure_class + canonical error string."""
+
+    def test_block_shape(self) -> None:
+        block = cfg.PROVIDER_EMPTY_RESPONSE
+        assert block["failure_class"] == "provider_empty_response"
+        assert isinstance(block["error"], str) and block["error"].strip()
+        assert "unusable" in block["error"].lower()
+
+
 class TestAst901CraftRubricUiTaskKeys:
     """AST-901: CRAFT_RUBRIC_UI_TASK_KEYS derived from artifact-key map (no drift)."""
 
