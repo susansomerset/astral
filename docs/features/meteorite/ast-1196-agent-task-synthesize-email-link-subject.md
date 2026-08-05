@@ -180,3 +180,16 @@ Changes: Fail/title rules + user_prompt require empty strings and forbid JSON nu
 Revision 2 — 2026-08-05
 Driven by: Joan `[plan-discuss] round=2 concern` (plan-rubric REVISE) — fix-now enumerate required `astral_job_id`; fix-now one-row-per-input / never-drop for bind; discuss fixture pre/post gate; discuss `company_job_id` gate note for AST-1197; discuss timestamp fallback shape.
 Changes: Prompt adds Row contract + `astral_job_id` always-include with positional `000`/`001`/…; fail path must still return the row; fallback timestamp `00000000T000000Z`; fixture snapshot gate mirrors catalog; Note for AST-1197 on empty-`company_job_id` before http; Done-when/user_prompt/Risk updated for binding abort risk.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1188/AST-1196-agent-task-synthesize-email-link-subject`
+**Plan path:** `docs/features/meteorite/ast-1196-agent-task-synthesize-email-link-subject.md`
+
+**Built tip:** `925178e6b1bf3da7fbb7447ca7da14358ae3a254` (`925178e6`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `925178e6` | qualify_meteorite cache/user prompts: email-link synthesize, subject title, empty-string fails, positional astral_job_id; surgical fixture lockstep |
+
+---
