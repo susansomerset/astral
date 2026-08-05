@@ -1389,7 +1389,8 @@ def preview_task_prompt(
         if not candidates:
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
-    cd = candidate.get("candidate_data") or {}
+    # AST-1192: walkable view (name columns + library blobs) for resolve_tokens.
+    cd = build_candidate_token_view(candidate)
     cid = candidate.get("astral_candidate_id") or candidate_id
     jc: Optional[Dict[str, str]] = None
     if astral_job_id and str(astral_job_id).strip():
