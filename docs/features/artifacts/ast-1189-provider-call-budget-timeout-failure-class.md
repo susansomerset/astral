@@ -305,3 +305,5 @@ None cited (plan lists statute ids under In-scope / Considered-but-excluded, not
 | advisory debug-contract touch (`error=` value only) | Accepted — no product change |
 
 **Verify (Ada):** Betty’s narrowed AST-1189 node IDs — **12 passed** on tip after re-cut. Publish ref green standalone.
+
+<!-- merge-child: plan tip present on sub -->
