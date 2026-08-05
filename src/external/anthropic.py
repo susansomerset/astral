@@ -17,7 +17,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional
 
 from src.utils.cost_calculator import calculate_cost_with_cache, calculate_cost_components
-from src.utils.config import ASTRAL_CONFIG, get_model, CHARS_PER_TOKEN
+from src.utils.config import ASTRAL_CONFIG, get_model, CHARS_PER_TOKEN, PROVIDER_EMPTY_RESPONSE
 from src.utils.formatting import (
     coerce_grades_encoded_json_parse,
     heal_agent_payload_envelope,
@@ -29,6 +29,8 @@ from src.utils.llm_external import (
     classify_provider_balance_refusal,
     extract_api_response_text,
     emit_llm_call_debug,
+    is_unusable_provider_response,
+    normalize_provider_error,
 )
 from src.utils.integration_io import require_controlled_external_io
 from src.utils.logging import get_logger, log_batch_id, log_llm_batch_summary
