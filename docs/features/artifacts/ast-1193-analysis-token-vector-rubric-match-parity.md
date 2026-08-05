@@ -182,3 +182,33 @@ Changes: Added Diagnosis + AC4 Decision (live first, job-carried `*_rubric` snap
 |-------|--------|---------|
 | 1 | `5a7b1f39` | Shared `_find_rubric_criterion`; scoring helpers refactored |
 | 2–3 | `29c1af56` | ANALYSIS live-first + `*_rubric` snapshot fallback; Style D found/recorded; `do_task` debug thread |
+
+### code-rubric.v1 verdict
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1193
+**Publish ref:** `64ea1d86` (`origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`)
+**Overall:** CLEAN
+
+Full active corpus (63 leaves — 18 universal + 45 scoped) swept in-session against `git diff origin/dev...origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity` (diff layers `{core, docs}`; paths `src/core/agent.py`, `src/core/consult.py`, `docs/features/**`, `docs/test-bible/**`, `tests/**`; change_types `{add, modify}`). No violations, no stragglers. `src/` footprint is exactly the two planned files (`consult.py` +112/-49 net, `agent.py` +6/-2); role boundaries clean per commit (`code()` → `src/` only, `test()` → `tests/`+`docs/test-bible/` only, `docs()` → `docs/features/` only).
+
+**Plan adherence:** Implementation matches Stage 1–3 literally — `_find_rubric_criterion` placed immediately after `_strip_code`, both scoring helpers refactored onto it with behavior byte-for-byte preserved (first-match-then-decide, unchanged `ValueError` messages), `_format_analysis_phase_text` live-first / snapshot-identity-fallback / live-content-by-code / blob-less-but-nonempty exactly per Stage 3 step 3's four emit rules, `phase_tokens` sourced from `JOB_TOKEN_CONFIG["analysis_phases"]` (no second hardcoded tuple, no `total=4`), debug via a **local** `get_logger(__name__, debug_flag=debug)` handle only (grepped the diff for `set_debug_flag` — zero hits; the shared module logger is never clobbered). Joan's `plan-rubric.v1` r1 verdict (APPROVED) is attached with 2 open `discuss` items from her final pass — both are closed by the shipped code, not carried forward:
+
+- Her snapshot-key-derivation-coupling discuss is answered directly: `_analysis_phase_rubric_snapshot_key`'s docstring states "Couples to `grades_key == f\"{save_prefix}_grades\"` — same stem both sides today" — exactly the comment she suggested "so the next person's life [is] easier."
+- Her residual-AC4-precondition discuss (snapshot absent on pre-AST-1063 jobs) isn't a code gap — it's a UAT-time question already instrumented via the `snapshot_criteria=` debug count Stage 2 emits, per her own escalate-path framing.
+
+**Pattern conformance:** all cited ids (`astral.agent.grade-vector-validation`, `astral.config.config-source-of-truth`, `astral.standards.dry-and-focused-functions`, `astral.standards.debug-contract-gated`, `astral.patterns.coat-check-never-store-empty`, `astral.standards.logging-via-utils`, `astral.standards.in-scope-only`) score `conforms` via the full sweep. `grade-vector-validation`'s literal statement (do_task schema/grade-value validation) isn't touched by this diff — the citation covers the plan's extended reading (grade-vector *matching* for rendering), which Joan's traceability already accepted at Plan Approved; noting the stretch for the record, not as a finding.
+
+**Cross-ticket note (not a finding):** this branch inherited `test(AST-1192)` / `test(AST-1189)` / `test(AST-1190)` commits via `merge-tests` (stacked-sibling test lineage in this epic worktree) but none of AST-1192's `src/` changes — `tests/component/core/test_agent.py::TestAst1192TokenViewForDoTask` would fail standalone on this branch's `agent.py` (no `_token_view_for_do_task` here). Expected/by-design until `merge-child` lands both siblings on `ftr/AST-1163` in order; not something AST-1193's own diff introduced or can fix.
+
+**What's solid:** Debug contract textbook — `index`/`total` from the config-authority phase map, `found_grades`/`recorded_vectors`/`live_criteria`/`snapshot_criteria` counts only (no blob spam), early-return paths still emit when `debug=True`. Snapshot-fallback emit shape is byte-identical to the existing block string with `rubric_blob == ""`, so the "blob-less but non-empty" path shares one code path rather than forking — exactly what Joan flagged as load-bearing for AC4.
+
+## Frame diff
+
+(none) — implementation matches the plan doc's Files Changed / Stage 1 / Stage 2 / Stage 3 as written; no adds or moves applied to this description.
+
+context_tokens≈62000
+
+— Radia
