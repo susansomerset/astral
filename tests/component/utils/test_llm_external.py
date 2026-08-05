@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.utils import llm_external as llm_ext_mod
-from src.utils.config import PROVIDER_BALANCE_REFUSAL, PROVIDER_EMPTY_RESPONSE
+from src.utils.config import PROVIDER_BALANCE_REFUSAL
 
 
 class TestExtractApiResponseText:
@@ -150,9 +150,74 @@ class TestAst1190EmptyResponseHelpers:
         )
 
     def test_is_provider_empty_response_predicate(self) -> None:
+        # Lazy import — module must collect on sibling product tips without PROVIDER_EMPTY_RESPONSE
+        from src.utils.config import PROVIDER_EMPTY_RESPONSE
+
         fc = PROVIDER_EMPTY_RESPONSE["failure_class"]
         assert llm_ext_mod.is_provider_empty_response({"failure_class": fc}) is True
         assert llm_ext_mod.is_provider_empty_response({"failure_class": "other"}) is False
         assert llm_ext_mod.is_provider_empty_response({"success": False}) is False
         assert llm_ext_mod.is_provider_empty_response(None) is False
         assert llm_ext_mod.is_provider_empty_response("nope") is False  # type: ignore[arg-type]
+
+
+class TestAst1189ProviderCallBudgetHelpers:
+    """AST-1189: budget readers, timeout classify, never-empty error, wall release."""
+
+    def test_budget_readers(self) -> None:
+        from src.utils.config import PROVIDER_CALL_BUDGET
+
+        assert llm_ext_mod.provider_call_http_timeout_seconds() == float(
+            PROVIDER_CALL_BUDGET["timeout_seconds"]
+        )
+        assert llm_ext_mod.provider_call_wait_timeout_seconds() == float(
+            PROVIDER_CALL_BUDGET["timeout_seconds"]
+        ) + float(PROVIDER_CALL_BUDGET["grace_seconds"])
+        assert llm_ext_mod.provider_call_max_retries() == int(
+            PROVIDER_CALL_BUDGET["max_retries"]
+        )
+        msg = llm_ext_mod.provider_call_timeout_error_message()
+        assert msg.strip()
+        assert "600" in msg
+
+    def test_classify_timeout_and_cause_chain(self) -> None:
+        fc = "provider_call_timeout"
+        assert llm_ext_mod.classify_provider_call_timeout(TimeoutError()) == fc
+        assert llm_ext_mod.classify_provider_call_timeout(TimeoutError("budget")) == fc
+        # Name match for httpx-style timeouts
+        read_timeout = type("ReadTimeout", (Exception,), {})("read timed out")
+        assert llm_ext_mod.classify_provider_call_timeout(read_timeout) == fc
+        # Cause-chain: wrapper → ReadTimeout
+        wrapper = RuntimeError("api connection")
+        wrapper.__cause__ = read_timeout
+        assert llm_ext_mod.classify_provider_call_timeout(wrapper) == fc
+        # Ordinary errors are not timeouts (AST-897 balance path stays distinct)
+        assert llm_ext_mod.classify_provider_call_timeout(RuntimeError("timeout")) is None
+        assert llm_ext_mod.classify_provider_call_timeout(RuntimeError("boom")) is None
+
+    def test_non_empty_provider_error(self) -> None:
+        assert llm_ext_mod.non_empty_provider_error(RuntimeError("boom"), fallback="fb") == "boom"
+        assert llm_ext_mod.non_empty_provider_error(TimeoutError(), fallback="fb") == "fb"
+
+    @pytest.mark.asyncio
+    async def test_await_budget_releases_caller_without_waiting_worker(self) -> None:
+        import time
+
+        started = time.monotonic()
+
+        def _slow() -> str:
+            time.sleep(2.0)
+            return "late"
+
+        with pytest.raises(TimeoutError, match="per-call time budget"):
+            await llm_ext_mod.await_provider_call_with_budget(_slow, timeout_seconds=0.15)
+        elapsed = time.monotonic() - started
+        # Caller released near the deadline — not after the 2s worker finishes
+        assert elapsed < 1.0
+
+    @pytest.mark.asyncio
+    async def test_await_budget_returns_when_worker_finishes(self) -> None:
+        out = await llm_ext_mod.await_provider_call_with_budget(
+            lambda: "ok", timeout_seconds=2.0
+        )
+        assert out == "ok"

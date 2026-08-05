@@ -33,3 +33,10 @@ Hollow / unusable response fail-closed + blank exception `error=` normalize. Pri
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Hollow + blank TimeoutError | `src/external/deepseek.py` | **`TestAst1190EmptyUnusableProviderResponse`** |
+### AST-1189 · AST-1164
+
+Per-call wall budget + `provider_call_timeout` tagging. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1189.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Timeout tagging | `src/external/deepseek.py` | **`TestAst1189ProviderCallBudgetTimeout`** |

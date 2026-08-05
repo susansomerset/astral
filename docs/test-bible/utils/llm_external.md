@@ -2,7 +2,7 @@
 
 **Test module:** `tests/component/utils/test_llm_external.py`
 
-**Source:** `src/utils/llm_external.py` — shared **`extract_api_response_text`** and **`emit_llm_call_debug`** for Anthropic- and DeepSeek-compatible external clients (**AST-687**); **`logger_name`** pins AST-538 debug lines to the caller external module; **`classify_provider_balance_refusal`** / **`is_provider_balance_refusal`** (**AST-897**); **`normalize_provider_error`** / **`is_unusable_provider_response`** / **`is_provider_empty_response`** (**AST-1190**).
+**Source:** `src/utils/llm_external.py` — shared **`extract_api_response_text`** and **`emit_llm_call_debug`** for Anthropic- and DeepSeek-compatible external clients (**AST-687**); **`logger_name`** pins AST-538 debug lines to the caller external module; **`classify_provider_balance_refusal`** / **`is_provider_balance_refusal`** (**AST-897**); **`PROVIDER_CALL_BUDGET`** helpers / **`await_provider_call_with_budget`** (**AST-1189**); **`normalize_provider_error`** / **`is_unusable_provider_response`** / **`is_provider_empty_response`** (**AST-1190**).
 
 ---
 
@@ -55,6 +55,36 @@
   tests/component/core/test_consult.py::TestAst897HoldStateOnBalanceRefusal \
   tests/component/core/test_roster.py::TestAst897HoldStateOnBalanceRefusal \
   tests/component/core/test_roster.py::test_run_company_task_jobs_found_error_moves_locate_error_state \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1189 · AST-1164
+
+**Scope:** Per-call LLM wall budget (**600s + 10s grace**), `max_retries=0`, wall-time release via **`await_provider_call_with_budget`** (caller not stuck awaiting the orphan thread), and **`failure_class=provider_call_timeout`** with a non-empty budget error. Hollow / blank-response surfacing remains sibling **AST-1190**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block | `src/utils/config.py` | `tests/component/utils/test_config.py::TestAst1189ProviderCallBudgetConfig` |
+| Budget readers / classify / wall await | `src/utils/llm_external.py` | `tests/component/utils/test_llm_external.py::TestAst1189ProviderCallBudgetHelpers` |
+| DeepSeek timeout tagging | `src/external/deepseek.py` | `tests/component/external/test_deepseek.py::TestAst1189ProviderCallBudgetTimeout` |
+| Anthropic timeout tagging | `src/external/anthropic.py` | `tests/component/external/test_anthropic.py::TestAst1189ProviderCallBudgetTimeout` |
+
+**Broken / obsolete (revised this pass):** AST-1190 blank-`TimeoutError` asserts that required `failure_class` absent — coexist with **AST-1189** tagging (`provider_call_timeout` allowed). Module-level **`PROVIDER_EMPTY_RESPONSE`** import in `test_llm_external.py` made lazy so the file collects on sibling tips without that config block.
+
+**Integration:** no existing `tests/integration/` scenario asserts per-call wall budget / `provider_call_timeout` — no integration revision this pass.
+
+**AST-1189** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1189ProviderCallBudgetConfig \
+  tests/component/utils/test_llm_external.py::TestAst1189ProviderCallBudgetHelpers \
+  tests/component/external/test_deepseek.py::TestAst1189ProviderCallBudgetTimeout \
+  tests/component/external/test_anthropic.py::TestAst1189ProviderCallBudgetTimeout \
   -q
 ```
 
