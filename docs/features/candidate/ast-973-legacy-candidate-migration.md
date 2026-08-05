@@ -1,3 +1,456 @@
+<!-- linear-archive: AST-973 archived 2026-08-05 -->
+
+## Linear archive (AST-973)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-973/legacy-candidate-migration-consumers-and-dispatchtask-config-keys  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-871 — Candidate state machine  
+**Blocked by / blocks / related:** parent: AST-871
+
+### Description
+
+## What this implements
+
+Migrate LIVE_PROMPTS → ACTIVE_SEARCH; hard-delete existing DELETED rows; map remaining legacy states → NEW_CANDIDATE; remap dispatch-table foreign keys and task-config entries off retired candidate states; update nav/gates and other consumers so retired names are gone.
+
+## Acceptance criteria
+
+ 8. Migration: LIVE_PROMPTS → ACTIVE_SEARCH; existing DELETED rows hard-deleted; all other legacy states → NEW_CANDIDATE; no silent data loss for remapped live rows.
+ 9. Dispatch-table foreign keys and task-config entries that referenced retired candidate states are remapped (or rewritten) so they resolve correctly under the new vocabulary — no orphaned LIVE_PROMPTS (or other legacy) dispatch/task-config keys left behind.
+10. Nav and other state-gated candidate UI still resolve correctly for candidates on the new states.
+
+## Boundaries
+
+Does **not** invent new product flows. Does **not** own the state registry (AST-970) or history storage (sibling: Candidate transition history).
+
+## Notes for planning
+
+Depends on AST-970 vocabulary. Include dispatch_tasks / task_config state-key remaps per parent Functional scope.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-871-candidate-state-machine`, child `sub/AST-871/<this-id>-legacy-candidate-migration`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-07-24T00:59:49.877Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch` in ftr..sub (91ab821, b05c75c). Rewrite tip onto `origin/ftr/AST-871-candidate-state-machine`, cherry-pick only AST-973 labeled commits, force-with-lease push `origin/sub/AST-871/AST-973-legacy-candidate-migration`. @Ada Lovelace
+
+— Chuckles
+
+#### radia — 2026-07-24T00:25:50.510Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-973
+**Publish ref:** `origin/sub/AST-871/AST-973-legacy-candidate-migration` @ `ab4671e5e0042cfd3c25968bcdc1f13b28d6b910`
+**Overall:** DISCUSS
+
+Diff: `origin/dev...origin/sub/AST-871/AST-973-legacy-candidate-migration` — layers `core`/`data`/`utils`/`ui`/`docs`/`scripts` (+ Betty tests/bible; blockedBy AST-970).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-973)` of `890f8e0` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` / merge blockedBy |
+| orch.git.flow-direction-inviolable | universal | conforms | Child publish on `sub/AST-871/…` |
+| orch.git.ftr-sub-topology | universal | conforms | Under parent AST-871 |
+| orch.git.merge-on-checkout | universal | conforms | `origin/dev` + blockedBy 970 merges on tip |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent long-lived branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree `astral-AST-871` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Phase A CLI-only after Susan OK; ensure = B/C |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–4 match plan bible |
+| orch.pipeline.project-scoped-queues | universal | conforms | Untouched |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty `test`/`merge-tests` own bible+tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Path ownership respected across commits |
+| astral.agent.confidence-bounds | scoped | conforms | No graded/confidence surface |
+| astral.agent.do-task-delegation | scoped | conforms | No `do_task` path change |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | No new claim APIs |
+| astral.batch.batch-id-format | scoped | conforms | Untouched |
+| astral.batch.claim-process-release | scoped | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Cascade only; no latest-only rewrite |
+| astral.config.config-source-of-truth | scoped | conforms | Legacy map + remap helper in config |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env splits |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature/data-model docs under `docs/features/**` |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | AST-973 plan in `docs/features/candidate/` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits are test-tree only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code`/`docs` leave tests/bible to Betty |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No external I/O |
+| astral.layers.import-direction | scoped | conforms | CLI → data/core; layers respected |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Migration CLI under `scripts/` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Manage Candidates logical-delete copy; states from API |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult orchestration |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | No new open endpoints |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Data owns migrate/hard-delete; core wraps |
+| astral.standards.database-header-inventory | scoped | conforms | Inventoried tables only; no new undeclared tables |
+| astral.standards.debug-contract-gated | scoped | conforms | No new debug-contract emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single map + one migrate writer |
+| astral.standards.in-scope-only | scoped | conforms | Registry/history/claim left to siblings |
+| astral.standards.logging-via-utils | scoped | conforms | Product paths clean; CLI prints OK |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered files only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Remap table in config |
+| astral.standards.public-then-helpers | scoped | conforms | Core wrappers + data migrate |
+| astral.standards.utils-data-late-import-only | scoped | conforms | Config-only utils |
+| astral.state.core-decides-transitions | scoped | conforms | Remap is cutover; hard-delete ≠ state hop |
+| astral.state.job-prior-states-enforced | scoped | conforms | Job/company `NEW` not remapped |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No multi-state dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | Existing pages; no new frontend files required |
+| astral.ui.naming-conventions | scoped | conforms | No new files/routes |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Untouched |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stages 1–4 match: legacy map; Phase A CLI-only pre-cutover DELETED; ensure=`phases="BC"`; hard-delete/purge; bootstrap + grep-clean product paths; data-model cutover note. CREATE default is `NEW_CANDIDATE`. AdminManageCandidates already states logical delete → DELETED. Self-Assessment MAJOR-CHANGE / high / HIGH matches. Joan APPROVED @ `935226a`.
+
+## Findings
+
+### discuss
+1. **C4 straggler** — Joan Excluded `astral.git.engineer-test-tree-ban`; tip includes Betty `tests/**` + `docs/test-bible/**`. Scored **conforms**. Acknowledge on resolve.
+
+### advisory
+1. `CANDIDATE_DATA_MODEL.md` context section still says four fields “gate the `CONTEXT_READY` state transition” while State machine + Legacy cutover sections are updated.
+
+### fix-now
+None.
+
+## What’s solid
+
+- AC#8–#10: LIVE_PROMPTS→ACTIVE_SEARCH, pre-cutover DELETED hard-delete (CLI only), other legacy→NEW_CANDIDATE with audit list, dispatch trigger remap with candidate-only NEW, consumer/bootstrap sweep, reap-due purge entrypoint.
+
+## Notes
+
+Joan Excluded `astral.debug.no-repo-root-artifacts-dir` remains `not-applicable`.
+
+— Radia
+context_tokens≈110000
+
+#### betty — 2026-07-24T00:00:25.981Z
+1. **Publish:** `origin/sub/AST-871/AST-973-legacy-candidate-migration` @ `fd94a82` (`merge-tests(AST-973): origin/tests 890f8e0`)
+2. **Tests SHA:** `890f8e0` — `test(AST-973): legacy candidate migrate, hard-delete, and vocab sweep`
+3. **Coverage**
+   - Config: `CANDIDATE_LEGACY_STATE_MAP` / `remap_legacy_candidate_state`
+   - Data: hard_delete satellites; Phase A pre-cutover DELETED only; Phase B remap + preserve `state_changed_at`; Phase C trigger remap (company NEW untouched); ensure = BC only
+   - Core: `hard_delete_candidate` / `purge_reap_due_candidates`
+   - Fixture sweep: roster/integration `LIVE_PROMPTS`→`ACTIVE_SEARCH`; frontend `CONTEXT_READY`→`ACTIVE_SEARCH`
+4. **Note:** AST-972 TestAst* classes skip when `CANDIDATE_STAGE_DISPATCH` absent on this tip
+5. **Manifest**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst973LegacyCandidateRemap \
+  tests/component/core/test_candidate.py::TestAst973HardDeleteAndReapPurge \
+  tests/component/data/database/test_candidates.py::TestAst973LegacyCandidateMigration \
+  -q
+```
+6. **Bible shasums** (on publish tip)
+   - `c0aff3b6290e188e0a812e2d5050d2208678d9fd777df73902d42b12630597d7` `docs/test-bible/core/candidate.md`
+   - `5ec82e1a0db20697f20f5ccde4f93df558397b057007fcec53a2e85c4e7284f4` `docs/test-bible/utils/config.md`
+   - `7221aa79d3952e3d4f512aa80d406eb383fe253648521eb24b04191997a46522` `docs/test-bible/data/database/candidates.md`
+
+— Betty
+
+#### joan — 2026-07-23T23:20:47.020Z
+[validate-plan] no-op — already past gate
+
+Spawn asked for Plan Ready re-validate after Plan Discuss r1, but AST-973 is already **Plan Approved** (assignee Ada; verdict attachment `Plan rubric verdict (rev 1)` present @ `935226a`).
+
+No second rubric pass. Status stays Plan Approved.
+
+— Joan
+context_tokens≈86000
+
+#### joan — 2026-07-23T23:19:54.553Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-973
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-871/AST-973-legacy-candidate-migration` @ `935226a`
+**Implementer:** Ada Lovelace
+**Plan Discuss:** round 1 completed (concern + reply); fix-now closed
+
+## Traceability
+
+### Parent / child AC → plan stages
+
+| AC | Coverage |
+| -- | -- |
+| **#8** LIVE_PROMPTS→ACTIVE_SEARCH; hard-delete existing (pre-cutover) DELETED; other legacy→NEW_CANDIDATE; auditable unknown remaps | Stage 1 Phase A (CLI) + B/C; Stage 4 doc |
+| **#9** dispatch_task / task-config keys off retired states | Stage 1 Phase C + Stage 3 grep / INFLOW confirm |
+| **#10** Nav and state-gated UI on new states | Stage 3 consumer sweep + AST-970 config gates |
+| Parent AC 1–7 | N/A — Boundaries |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 Config map + migrate (A CLI / BC ensure) | Legacy migration + dispatch trigger remaps |
+| 2 Reap-due hard delete | Post-cutover DELETED + AST-970 timer |
+| 3 Consumer sweep + grep | Retired names gone from product paths |
+| 4 Data-model doc | Cutover contract |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge SHA |
+| orch.git.commit-vocabulary | conforms | Plan-only |
+| orch.git.flow-direction-inviolable | conforms | Child sub publish ref |
+| orch.git.ftr-sub-topology | conforms | Under ftr AST-871 |
+| orch.git.merge-on-checkout | conforms | Merge AST-970 prerequisite |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrites |
+| orch.git.no-dev-agent-branches | conforms | No agent branches |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Phase A only on CLI after Susan OK; ensure = B/C only |
+| orch.pipeline.plan-is-bible | conforms | Feature plan on publish ref |
+| orch.pipeline.project-scoped-queues | conforms | Untouched |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready re-validate after discuss |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Returns to Ada on APPROVED |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | N/A |
+| astral.agent.do-task-delegation | conforms | N/A |
+| astral.agent.grade-vector-validation | conforms | N/A |
+| astral.batch.batch-id-first | conforms | No new claim APIs |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | conforms | Cascade only |
+| astral.config.config-source-of-truth | conforms | Legacy map in config |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets |
+| astral.debug.spikes-under-debug-dir | conforms | Production data-model doc |
+| astral.docs.features-single-file-per-ticket | conforms | docs/features/candidate/ |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned |
+| astral.layers.core-vs-external-bright-line | conforms | No external I/O |
+| astral.layers.import-direction | conforms | CLI → data/core |
+| astral.layers.scripts-exempt-from-layer-rules | conforms | Migration CLI under scripts/ |
+| astral.layers.ui-config-driven-business-logic | conforms | UI copy only; states from API |
+| astral.patterns.coat-check-never-store-empty | conforms | N/A |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | N/A |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | No new endpoints |
+| astral.standards.data-raises-caller-logs | conforms | Data owns migrate/hard-delete |
+| astral.standards.database-header-inventory | conforms | Inventoried tables only |
+| astral.standards.debug-contract-gated | conforms | No new debug contract |
+| astral.standards.dry-and-focused-functions | conforms | Single map + one migrate writer |
+| astral.standards.in-scope-only | conforms | Sibling boundaries respected |
+| astral.standards.logging-via-utils | conforms | CLI prints OK |
+| astral.standards.no-cross-contamination | conforms | Layered files |
+| astral.standards.no-hardcoded-sets | conforms | Remap table in config |
+| astral.standards.public-then-helpers | conforms | Core wrappers + data migrate |
+| astral.standards.utils-data-late-import-only | conforms | Config-only utils |
+| astral.state.core-decides-transitions | conforms | Remap is cutover; hard-delete ≠ state hop |
+| astral.state.job-prior-states-enforced | conforms | Job/company NEW not remapped |
+| astral.state.no-daisy-chain-in-run | conforms | No multi-state dispatch chain |
+| astral.ui.frontend-file-placement | conforms | Existing flat page |
+| astral.ui.naming-conventions | conforms | No new files/routes |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** all rows above (54).
+
+**Excluded:**
+- `astral.debug.no-repo-root-artifacts-dir` — paths miss
+- `astral.git.engineer-test-tree-ban` — paths miss
+
+## Findings
+
+### fix-now
+None. Round-1 fix-now closed: Phase A = pre-cutover DELETED only (missing `lifecycle.reap_started_at`), CLI `--execute` only; schema-ensure = `phases="BC"` only.
+
+### discuss (resolved in plan Decisions — non-blocking)
+1. `agent_data` orphans left intentionally (no `entity_id`).
+2. Company/job orphan FK posture accepted for UAT.
+3. Unknown→NEW_CANDIDATE audited via `states_unknown_to_new_candidate`.
+
+### acceptable
+- Candidate-only NEW trigger remap; preserve `state_changed_at`; grep gate; HIGH risk honest with CLI gates.
+
+**Self-assessment:** MAJOR-CHANGE / high / HIGH — honest.
+
+— Joan
+context_tokens≈82000
+
+#### ada — 2026-07-23T23:16:26.343Z
+[plan-discuss] round=1 reply
+
+**fix-now:** Split cutover from steady-state.
+- Phase A hard-deletes only **pre-cutover** `DELETED` (missing `lifecycle.reap_started_at`); never all `DELETED`.
+- Schema-ensure calls `migrate_legacy_candidate_states(phases="BC")` only — remaps, no hard-delete.
+- Irreversible Phase A stays on CLI `--execute` (phases `ABC`) after Susan OK / dry-run; Stage 2 handles reap-due post-cutover soft deletes.
+
+**Discuss resolutions (in plan Decisions):**
+1. **`agent_data`:** leave orphans (no `entity_id`); cascade `agent_responses` via `(entity_type, entity_id)`.
+2. **Company/job `candidate_id`:** orphan FK posture confirmed acceptable for UAT (no tenant wipe).
+3. **Unknown states → `NEW_CANDIDATE`:** count + list `astral_candidate_id`/old state in migrate return (`states_unknown_to_new_candidate`) for auditability.
+
+Published @ `935226a` on `origin/sub/AST-871/AST-973-legacy-candidate-migration`. Returning to **Plan Ready** for Joan re-validate.
+
+— Ada
+
+#### joan — 2026-07-23T23:10:15.786Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-973
+**Overall:** REVISE
+**Publish ref:** `origin/sub/AST-871/AST-973-legacy-candidate-migration`
+**Implementer:** Ada Lovelace
+
+## Traceability
+
+### Parent / child AC → plan stages
+
+| AC | Coverage |
+| -- | -- |
+| **#8** LIVE_PROMPTS→ACTIVE_SEARCH; hard-delete existing DELETED; other legacy→NEW_CANDIDATE; no silent loss for remapped live rows | Stage 1 map + Phase A/B; Stage 4 doc |
+| **#9** dispatch_task / task-config keys off retired states; no orphaned LIVE_PROMPTS | Stage 1 Phase C + Stage 3 grep / INFLOW confirm |
+| **#10** Nav and state-gated UI resolve on new states | Stage 3 consumer sweep + AST-970 config gates; Manage Candidates copy |
+| Parent AC 1–7 | N/A — registry/history/dispatch claim Boundaries |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 Config map + DB migrate | Legacy migration + dispatch trigger remaps |
+| 2 Reap-due hard delete | DELETED reap completion (AST-970 timer) |
+| 3 Consumer sweep + grep | State consumers coherent; retired names gone |
+| 4 Data-model doc | Cutover contract for operators/AST-869 readers |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge SHA |
+| orch.git.commit-vocabulary | conforms | Plan-only |
+| orch.git.flow-direction-inviolable | conforms | Child sub publish ref |
+| orch.git.ftr-sub-topology | conforms | Under ftr AST-871 |
+| orch.git.merge-on-checkout | conforms | Merge AST-970 prerequisite |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrites |
+| orch.git.no-dev-agent-branches | conforms | No agent branches |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | needs-discussion | CLI says Susan OK before `--execute`; ensure-path auto live migrate undercuts that |
+| orch.pipeline.plan-is-bible | conforms | Feature plan on publish ref |
+| orch.pipeline.project-scoped-queues | conforms | Untouched |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | Explicitly no tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Returns to Ada on REVISE |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | N/A |
+| astral.agent.do-task-delegation | conforms | N/A |
+| astral.agent.grade-vector-validation | conforms | N/A |
+| astral.batch.batch-id-first | conforms | No new claim APIs |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | conforms | Cascade only; no latest-only rewrite |
+| astral.config.config-source-of-truth | conforms | Legacy map in config |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets |
+| astral.debug.spikes-under-debug-dir | conforms | Production data-model doc, not spike output |
+| astral.docs.features-single-file-per-ticket | conforms | Docs under docs/features/candidate/ |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned |
+| astral.layers.core-vs-external-bright-line | conforms | No external I/O |
+| astral.layers.import-direction | conforms | CLI → data/core; layers respected |
+| astral.layers.scripts-exempt-from-layer-rules | conforms | Migration CLI under scripts/ |
+| astral.layers.ui-config-driven-business-logic | conforms | UI copy only; states from API |
+| astral.patterns.coat-check-never-store-empty | conforms | N/A |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | N/A |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | No new endpoints |
+| astral.standards.data-raises-caller-logs | conforms | Data owns migrate/hard-delete |
+| astral.standards.database-header-inventory | conforms | Uses inventoried tables; no new undeclared tables |
+| astral.standards.debug-contract-gated | conforms | No new debug contract |
+| astral.standards.dry-and-focused-functions | conforms | Single map + one migrate writer |
+| astral.standards.in-scope-only | conforms | Registry/history/claim wiring left to siblings |
+| astral.standards.logging-via-utils | conforms | No print in product paths (CLI prints OK) |
+| astral.standards.no-cross-contamination | conforms | Layered files |
+| astral.standards.no-hardcoded-sets | conforms | Remap table in config |
+| astral.standards.public-then-helpers | conforms | Core wrappers + data migrate |
+| astral.standards.utils-data-late-import-only | conforms | Config-only utils |
+| astral.state.core-decides-transitions | conforms | Remap is cutover, not runtime transition policy; hard-delete ≠ state hop |
+| astral.state.job-prior-states-enforced | conforms | Job/company `NEW` not remapped |
+| astral.state.no-daisy-chain-in-run | conforms | No multi-state dispatch chain |
+| astral.ui.frontend-file-placement | conforms | Existing flat page edit |
+| astral.ui.naming-conventions | conforms | No new files/routes |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** all rows above (54).
+
+**Excluded:**
+- `astral.debug.no-repo-root-artifacts-dir` — paths (`artifacts/**`, `scripts/spikes/**`) miss plan paths
+- `astral.git.engineer-test-tree-ban` — paths (`tests/**`, test-bible, …) miss plan paths
+
+## Findings
+
+### fix-now
+1. **Location:** Stage 1 Phase A + step 4 (schema-ensure auto-run)
+   **Finding:** Phase A is `WHERE state = 'DELETED'` → hard-delete. After AST-970, `DELETED` remains a **live** registry state for soft-delete + reap. Binding full migrate (`dry_run=False`) to candidate schema-ensure means **every** ensure/server load permanently destroys all soft-deleted candidates (including those with `lifecycle.reap_started_at` still counting down). That collapses AC#2’s reap window and contradicts Stage 2 / CLI “Susan OK” / `--dry-run` default. Idempotency “second run counts zero” does **not** hold for Phase A while any `DELETED` rows exist.
+   **Recommendation:** Split cutover from steady-state:
+   - Phase A only targets **pre-cutover** DELETED (e.g. missing `candidate_data.lifecycle.reap_started_at`) **or** runs once behind an explicit migration marker.
+   - Schema-ensure may run Phase B/C (state/trigger remaps) safely; do **not** hard-delete all `DELETED` on every ensure.
+   - Irreversible Phase A / purge stays on CLI `--execute` (and Stage 2 reap-due) after dry-run.
+
+### discuss
+1. `agent_data` has `entity_type` but **no** `entity_id` — cascade step must name a real join (e.g. via `agent_responses`/`batch_id`) or explicitly leave orphans.
+2. Companies/jobs retaining `candidate_id` after hard-delete — Decision is clear; confirm acceptable orphan FK posture for UAT.
+3. Unknown non-registry candidate states → `NEW_CANDIDATE` — parent wants that for legacy; log/count those rows so “no silent data loss” is auditable.
+
+### acceptable
+- Candidate-only `NEW` trigger remap vs job/company `NEW` is correctly guarded.
+- Preserving `state_changed_at` on remap protects stale clocks.
+- Grep gate + bootstrap/script sweep match AC#9–#10.
+- Self-assessment MAJOR-CHANGE / high / HIGH is honest; HIGH risk is why Phase A must not ride ensure.
+
+Update plan on publish ref → Plan Ready + Joan re-validate.
+
+— Joan
+context_tokens≈68000
+
+#### joan — 2026-07-23T23:03:30.070Z
+[validate-plan] blocked — assignee gate
+
+Status is **Plan Ready**, but assignee is **Ada Lovelace**, not Joan.
+
+Chuckles must assign **Joan** (`susan+joan@susansomerset.com`) before validate-plan runs. No rubric pass until then.
+
+— Joan
+context_tokens≈18000
+
+#### ada — 2026-07-23T23:01:25.127Z
+Plan published on `origin/sub/AST-871/AST-973-legacy-candidate-migration` @ `0f54de9`.
+
+**Plan:** [docs/features/candidate/ast-973-legacy-candidate-migration.md](https://github.com/susansomerset/astral/blob/sub/AST-871/AST-973-legacy-candidate-migration/docs/features/candidate/ast-973-legacy-candidate-migration.md)
+
+**Self-assessment**
+- **Scope:** MAJOR-CHANGE — idempotent DB migrate (hard-delete pre-cutover `DELETED`, remap states + safe `dispatch_task` triggers), hard-delete/reap-due helpers, consumer/script sweep + grep gate; blocked by AST-970 vocabulary.
+- **Conf:** high — parent AC #8–#10 and AST-970 handoff are explicit; remap rules keep job/company `NEW` untouched.
+- **Risk:** HIGH — irreversible hard-delete and dispatch unique-key collisions; mitigated by CLI `--dry-run` default, idempotent ensure-path migrate, and dupe handling on trigger remap.
+
+---
+
 # Legacy candidate migration, consumers, and dispatch/task-config keys
 
 **Linear:** [AST-973](https://linear.app/astralcareermatch/issue/AST-973/legacy-candidate-migration-consumers-and-dispatchtask-config-keys)  
