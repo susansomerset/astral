@@ -3,7 +3,11 @@
 import asyncio
 from typing import Any, Callable, Dict, List, Optional
 
-from src.utils.config import PROVIDER_BALANCE_REFUSAL, PROVIDER_CALL_BUDGET
+from src.utils.config import (
+    PROVIDER_BALANCE_REFUSAL,
+    PROVIDER_CALL_BUDGET,
+    PROVIDER_EMPTY_RESPONSE,
+)
 from src.utils.logging import get_logger
 
 
@@ -87,6 +91,46 @@ async def await_provider_call_with_budget(
     if task in done:
         return task.result()
     raise TimeoutError(provider_call_timeout_error_message())
+
+
+def normalize_provider_error(exc_or_msg: Any, *, fallback: Optional[str] = None) -> str:
+    """Non-empty error string for provider failure returns / logs (AST-1190)."""
+    if isinstance(exc_or_msg, BaseException):
+        raw = str(exc_or_msg)
+    elif exc_or_msg is None:
+        raw = ""
+    else:
+        raw = str(exc_or_msg)
+    stripped = raw.strip()
+    if stripped:
+        return stripped
+    if fallback is not None and str(fallback).strip():
+        return str(fallback).strip()
+    if isinstance(exc_or_msg, BaseException):
+        return f"{type(exc_or_msg).__name__}: provider call failed with empty error detail"
+    return "provider call failed with empty error detail"
+
+
+def is_unusable_provider_response(
+    response: Any, *, input_tokens: int, output_tokens: int
+) -> bool:
+    """True when stop is missing, tokens are zero, and content is empty (AST-1190 AC2)."""
+    stop = getattr(response, "stop_reason", None)
+    stop_missing = stop is None or (isinstance(stop, str) and stop.strip() in ("", "?"))
+    zero_tokens = int(input_tokens or 0) == 0 and int(output_tokens or 0) == 0
+    try:
+        text = extract_api_response_text(response)
+        no_content = not (isinstance(text, str) and text.strip())
+    except ValueError:
+        no_content = True
+    return stop_missing and zero_tokens and no_content
+
+
+def is_provider_empty_response(result: Optional[Dict[str, Any]]) -> bool:
+    """True when an agent/provider result dict was tagged as hollow/unusable."""
+    if not isinstance(result, dict):
+        return False
+    return result.get("failure_class") == PROVIDER_EMPTY_RESPONSE["failure_class"]
 
 
 def extract_api_response_text(api_response: Any) -> str:

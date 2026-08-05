@@ -166,13 +166,15 @@ def log_llm_batch_summary(
     """One INFO/ERROR per LLM call when log_batch_id is set (Execution History / app_log)."""
     if not log_batch_id.get():
         return
-    if error:
+    # error is not None (incl. "") → ERROR path; never fake a healthy stop=? / zero-token INFO (AST-1190).
+    if error is not None:
+        display_error = error if str(error).strip() else "(empty error)"
         logger.error(
             "LLM %s task=%s %.1fs error=%s",
             provider,
             prompt_label,
             duration,
-            error,
+            display_error,
         )
         return
     stop = getattr(response, "stop_reason", "?") if response is not None else "?"
