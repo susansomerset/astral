@@ -25,12 +25,12 @@ The plan is binding. Execute stages in order. Do not add files outside the table
 
 | Class | Owner | Meaning |
 |-------|-------|---------|
-| `provider_timeout` | AST-1189 (Ada) | Over per-call budget |
-| `provider_empty_response` | AST-1190 (this plan) | Hollow / unusable response or blank-error surfacing for unusable outcomes |
+| `provider_call_timeout` | AST-1189 (Ada) — published plan | Over per-call budget (`PROVIDER_CALL_BUDGET`) |
+| `provider_empty_response` | AST-1190 (this plan) | Hollow / unusable response + blank-error / fake-healthy-summary surfacing |
 | `provider_balance_refusal` | shipped (AST-897) | Billing/credit refusal |
 | `max_tokens` | shipped (AST-903) | JSON truncated at max_tokens |
 
-If Ada’s published plan uses a different timeout class string than `provider_timeout`, keep **this** ticket’s class as `provider_empty_response` and do not rename hers.
+Do not rename Ada’s `provider_call_timeout`. Overlap note: AST-1189 already normalizes blank `TimeoutError` on the timeout path; this ticket still owns (1) hollow-response fail-closed before a healthy LLM INFO line, (2) `log_llm_batch_summary` never treating `error=""` as healthy, (3) `do_task` non-empty `error=` coerce for any remaining blank provider failure.
 
 ---
 
