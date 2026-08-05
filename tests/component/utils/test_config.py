@@ -2692,10 +2692,11 @@ class TestAst1060QualifyMeteoriteConfig:
         assert tc["requires_candidate_key"] is True
         assert tc["trigger_state"] is None
         schema_items = tc["response_schema"]["jobs"]["items_schema"]
-        # AST-1127: company_job_id optional so omit/null reach consult UUID fallback.
-        for key in ("astral_job_id", "job_title", "job_link", "jd_text"):
+        # AST-1127: company_job_id optional; AST-1195: job_title/job_link optional too.
+        for key in ("astral_job_id", "jd_text"):
             assert schema_items[key]["required"] is True, key
-        assert schema_items["company_job_id"]["required"] is False
+        for key in ("company_job_id", "job_title", "job_link"):
+            assert schema_items[key]["required"] is False, key
 
         rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
         assert rows[("qualify_meteorite", "METEORITE_NEW")]["score_floor"] is None
@@ -2732,8 +2733,11 @@ class TestAst1127QualifyMeteoriteCompanyJobIdOptional:
         item = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
         assert item["company_job_id"]["required"] is False
         assert item["company_job_id"]["type"] == "str"
-        for key in ("astral_job_id", "job_title", "job_link", "jd_text"):
+        # AST-1195: job_title/job_link also optional; anchors stay required.
+        for key in ("astral_job_id", "jd_text"):
             assert item[key]["required"] is True, key
+        for key in ("job_title", "job_link"):
+            assert item[key]["required"] is False, key
 
     def test_validate_allows_omit_null_empty(self) -> None:
         from src.core import agent as agent_mod
@@ -2758,14 +2762,69 @@ class TestAst1127QualifyMeteoriteCompanyJobIdOptional:
         assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
         base["agent_payload"]["jobs"][0] = {**job, "company_job_id": ""}
         assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
-        # Sibling required fields still enforced.
-        missing_title = {"agent_performance": "success", "agent_payload": {"jobs": [
-            {k: v for k, v in job.items() if k != "job_title"}
+        # Sibling still-required field enforced (job_title is optional as of AST-1195).
+        missing_jd = {"agent_performance": "success", "agent_payload": {"jobs": [
+            {k: v for k, v in job.items() if k != "jd_text"}
         ]}}
         err = agent_mod._validate_response_schema(
-            missing_title, schema, "qualify_meteorite"
+            missing_jd, schema, "qualify_meteorite"
         )
-        assert err and "job_title" in err
+        assert err and "jd_text" in err
+
+
+# Branches: qualify_meteorite job_link/job_title optional + BOT_BLOCKED rename (AST-1195).
+class TestAst1195SchemaNullsAndBotBlocked:
+    def test_job_link_title_schema_optional(self) -> None:
+        from src.utils import config as cfg
+
+        item = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert item["job_link"]["required"] is False
+        assert item["job_title"]["required"] is False
+        assert item["astral_job_id"]["required"] is True
+        assert item["jd_text"]["required"] is True
+
+    def test_validate_allows_omit_and_null_link_title(self) -> None:
+        from src.core import agent as agent_mod
+        from src.utils import config as cfg
+
+        schema = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]
+        # Minimal still-required fields only — link/title omitted.
+        job = {"astral_job_id": "j1", "jd_text": "x" * 50}
+        base = {"agent_performance": "success", "agent_payload": {"jobs": [job]}}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        base["agent_payload"]["jobs"][0] = {
+            **job, "job_link": None, "job_title": None, "company_job_id": None,
+        }
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        # Still-required anchor must fail when omitted.
+        missing_id = {"agent_performance": "success", "agent_payload": {"jobs": [
+            {"jd_text": "x" * 50, "job_title": "T", "job_link": "https://ex.example/j"}
+        ]}}
+        err = agent_mod._validate_response_schema(
+            missing_id, schema, "qualify_meteorite"
+        )
+        assert err and "astral_job_id" in err
+
+    def test_bot_blocked_registry_and_skipped_ui(self) -> None:
+        from src.utils import config as cfg
+
+        assert "BOT_BLOCKED" in cfg.JOB_STATES
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
+        assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == [
+            "PASSED_JOBLIST", "METEORITE_NEW",
+        ]
+        assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
+        assert "BOT_BLOCKED" in cfg.SKIPPED_STATES
+        assert "BOT_BLOCKED" in cfg.JOBS_SKIPPED_SECTION_ORDER
+        assert cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE["BOT_BLOCKED"] == "PASSED_JOBLIST"
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOBS_SKIPPED_BULK_RETRY_TO_STATE
+        assert "BOT_BLOCKED" in cfg.GAZER_CONFIG["fetch_jd"]["error_states"]
+        assert "JD_SCRAPE_FAIL_BOT" not in cfg.GAZER_CONFIG["fetch_jd"]["error_states"]
+        # Title-case fallback — no explicit JOBS_SKIPPED_SECTION_LABELS pin required.
+        skipped = cfg.build_state_ui_manifest()["jobs"]["skipped"]
+        assert skipped["section_labels"]["BOT_BLOCKED"] == "Bot Blocked"
+        assert skipped["bulk_retry_to_state_by_from_state"]["BOT_BLOCKED"] == "PASSED_JOBLIST"
 
 
 # Branches: TRACKER uuid_path_segment_pattern present + anchored (AST-1120).

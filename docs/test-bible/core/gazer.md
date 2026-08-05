@@ -361,3 +361,23 @@ Create ingest still calls `text_matches_known_company_job_id_for_candidate`; sho
   -q
 ```
 
+### AST-1195 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+
+`_JD_ERROR_STATES["bot"]` → **`BOT_BLOCKED`** (cookie/missing/closed stay `JD_SCRAPE_FAIL_*`). Config registry / schema: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Bot → `BOT_BLOCKED` map | `src/core/gazer.py` | **`TestAst1195BotBlockedErrorState`** |
+
+**Broken / obsolete:** none in gazer tests (classification still returns `"bot"`; state name change only).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
+  -q
+```
+
