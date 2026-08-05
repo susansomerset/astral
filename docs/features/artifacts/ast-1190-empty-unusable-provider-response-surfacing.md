@@ -196,3 +196,31 @@ Do not add state transitions, batch release, or hop topology changes (AST-1191 /
 | 1 | `c3a39ddf` | `PROVIDER_EMPTY_RESPONSE` + `llm_external` helpers; `log_llm_batch_summary` empty-`error` ERROR path |
 | 2 | `968a3a7c` | DeepSeek/Anthropic hollow fail-closed + blank exception/parse normalize |
 | 3 | `597a41d9` | `do_task` non-empty `error=` coerce + empty-response debug detail |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Publish ref tip:** `0f4469e1`
+**Overall:** DISCUSS
+
+**Full-set sweep:** all `status: active` statutes scored in-session (universal + scoped). No `violates`. One `discuss` straggler below; everything else `conforms` or `not-applicable` (diff doesn't touch `src/ui/**`, `src/data/**`, `canon/statutes/**`, `artifacts/**`, `scripts/spikes/**`).
+
+**What's solid**
+
+- Hollow-response gate sits before the healthy `log_llm_batch_summary` call in both `send_to_anthropic` / `send_to_deepseek`, mirrored structurally, no cross-external import — matches Stage 2 order exactly (usage → timesheet kwargs → hollow check → healthy summary).
+- `log_llm_batch_summary`'s `error is not None` branch (not truthiness) correctly fixes the blank-`TimeoutError` → fake-healthy-INFO bug this ticket exists to close.
+- `PROVIDER_EMPTY_RESPONSE` config block mirrors `PROVIDER_BALANCE_REFUSAL` shape exactly (`astral.config.config-source-of-truth`); `do_task` coercion is defense-in-depth only, classification stays in external (`astral.agent.do-task-delegation`, `astral.layers.core-vs-external-bright-line`).
+- Clean git separation confirmed: `code(AST-1190)` commits touch only `src/`; Betty's `test(AST-1190)` commit + `merge-tests(AST-1190)` touch only `tests/` + `docs/test-bible/`; no AST-1189 (timeout budget) or AST-1191 (hop release) scope smuggled — branch still runs the pre-AST-1189 `asyncio.wait_for` timeout mechanism, confirming isolation.
+- Self-Assessment Scope/Conf/Risk still matches the diff's real footprint (shared utils + both externals + `do_task` only).
+
+**discuss:** Commit `0f4469e1` (`test(AST-1190): import hollow-response helpers in provider clients`) touches only `src/external/anthropic.py` + `src/external/deepseek.py` — pure product-code import fix, not a test-tree change — but carries the `test(...)` vocabulary prefix instead of `code(...)` (`orch.git.commit-vocabulary`). Not fix-now: already pushed, and rewriting it would need rebase/force-push (banned by `orch.git.no-cherry-pick-rebase-force`). Flagging so future post-merge-tests fixups on this lineage use `code(...)`.
+
+**Pattern conformance:** `astral.patterns.coat-check-never-store-empty` — conforms (this ticket is the positive instance: hollow provider payload is never treated as a stored success).
+
+## Frame diff
+
+(none — description accurately reflects the shipped diff; no scope drift from the `## Files Changed` table.)
+
+context_tokens≈9
+
+— Radia
