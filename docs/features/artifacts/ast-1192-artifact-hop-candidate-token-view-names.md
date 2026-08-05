@@ -131,3 +131,34 @@ After AST-1014, `TOKEN_SOURCES` name tokens (`{$FIRST_NAME}`, `{$LAST_NAME}`, `{
 
 **Publish ref:** `sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`  
 **Build tip:** `08d9a966fb4db7dd013eb419cb0912588b3575e0`
+
+### code-rubric.v1 verdict
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1192
+**Publish ref:** `64125186` (`origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`)
+**Overall:** DISCUSS
+
+Full active corpus (63 leaves — 18 universal + 45 scoped) swept in-session against `git diff origin/dev...origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names` (diff layers `{core, docs}`; paths `src/core/agent.py`, `src/core/candidate.py`, `docs/features/**`, `docs/test-bible/**`, `tests/**`; change_types `{add, modify}`). No violations. `src/` footprint is exactly the two planned files (`agent.py` +57/-1, `candidate.py` +2/-1); `_candidate_data_for_job` / `tracker.py` correctly untouched per the plan's stated boundary. Role boundaries clean per commit: `code(AST-1192)` touches only `src/`, `test(AST-1192)` only `tests/`+`docs/test-bible/`, `docs(AST-1192)` only `docs/features/`.
+
+**Plan adherence:** Implementation matches the plan doc literally — `_token_view_for_do_task` branch order (id-load → full-row ctx → already-view → raw fallback), overlay sequencing preserved, Style D `do_task.candidate_token_view` found/recorded gated under existing `if debug:` block, `preview_task_prompt` one-line swap with no new import. Joan's `plan-rubric.v1` verdict (r1, APPROVED) is attached; her 3 `discuss` items are carried forward below since the shipped code still exhibits them as described (her 4th point, DB-read-per-hop, she marked `acceptable` — concur, negligible next to the LLM call).
+
+**Pattern conformance:** `astral.config.config-source-of-truth`, `astral.agent.do-task-delegation`, `astral.standards.debug-contract-gated`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.standards.logging-via-utils`, `astral.layers.import-direction`, `astral.standards.no-cross-contamination` — all cited in the ticket's "In scope" list and covered `conforms` via the full sweep. `pattern.config.config-block` (also cited) does not resolve to any id in the active `canon/statutes/**` corpus — `not-cited`/stale shorthand, likely meant as the same `config-source-of-truth` reference already listed; advisory only, not a block.
+
+**Findings:**
+
+- **discuss** — `requires_candidate_key` guard goes quiet. Branches (c)/(d) of `_token_view_for_do_task` always return the full 8-key view shape once a row loads, so `if task_config.get("requires_candidate_key") and not cd:` (`src/core/agent.py`) can no longer fire even when every value in that view is empty. Confirmed present as shipped — same as Joan flagged at plan time. Consider testing a meaningful field (`first`/`contact`/`context` non-empty) instead of dict truthiness.
+- **discuss** — No branch tag on the debug `found` line. `do_task.candidate_token_view`'s `debug_detail` reports name-token emptiness but not which of the helper's 4 branches produced the view, so a future `astral_candidate_id`/`candidate_data` divergence (e.g. a batch row missing `company`) would silently fall to the raw-blob branch with no signal beyond "empty — name tokens." Confirmed present as shipped.
+- **discuss** — Branches (d)/(e) hardcode `build_candidate_token_view`'s key names (`"first" in ctx`, `"contact" in candidate_data`, `"candidate_data" not in candidate_data`) to detect shape at a distance. If the view's keys change, these probes misroute silently. A small is-view predicate beside the helper in `candidate.py` would keep the shape contract in one place. Confirmed present as shipped.
+
+**What's solid:** Debug contract is textbook — gated under the existing `if debug:` block, `index 1/1` (correctly not inventing a batch counter for a single candidate identity), `found`/`recorded` lines via the `DEBUG_DETAIL_PREFIX` helpers, no full-blob logging. Cycle-break comment on the lazy `candidate` import is accurate (`candidate.py:23` really does import from `agent.py`). `_candidate_data_for_job` / `tracker.py` boundary honored exactly as the plan required.
+
+## Frame diff
+
+(none) — implementation matches the plan doc's Files Changed / Stage 1 / Stage 2 as written; no adds or moves applied to this description.
+
+context_tokens≈58000
+
+— Radia
