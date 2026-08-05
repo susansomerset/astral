@@ -1,8 +1,9 @@
 """Shared helpers for Anthropic- and DeepSeek-compatible external LLM clients (AST-687 / AST-538)."""
 
-from typing import Any, Dict, List, Optional
+import asyncio
+from typing import Any, Callable, Dict, List, Optional
 
-from src.utils.config import PROVIDER_BALANCE_REFUSAL
+from src.utils.config import PROVIDER_BALANCE_REFUSAL, PROVIDER_CALL_BUDGET
 from src.utils.logging import get_logger
 
 
@@ -26,6 +27,66 @@ def is_provider_balance_refusal(result: Optional[Dict[str, Any]]) -> bool:
     if not isinstance(result, dict):
         return False
     return result.get("failure_class") == PROVIDER_BALANCE_REFUSAL["failure_class"]
+
+
+def provider_call_http_timeout_seconds() -> float:
+    """httpx / Anthropic client timeout (seconds)."""
+    return float(PROVIDER_CALL_BUDGET["timeout_seconds"])
+
+
+def provider_call_wait_timeout_seconds() -> float:
+    """Caller-observed wall budget = timeout_seconds + grace_seconds."""
+    return float(PROVIDER_CALL_BUDGET["timeout_seconds"]) + float(
+        PROVIDER_CALL_BUDGET["grace_seconds"]
+    )
+
+
+def provider_call_timeout_error_message() -> str:
+    """Non-empty operator-facing timeout error (str(TimeoutError()) is '')."""
+    return PROVIDER_CALL_BUDGET["error_template"].format(
+        timeout_seconds=int(PROVIDER_CALL_BUDGET["timeout_seconds"])
+    )
+
+
+def provider_call_max_retries() -> int:
+    return int(PROVIDER_CALL_BUDGET["max_retries"])
+
+
+def classify_provider_call_timeout(exc: BaseException) -> Optional[str]:
+    """Return PROVIDER_CALL_BUDGET failure_class when exc (or cause/context) is a call-budget timeout."""
+    fc = PROVIDER_CALL_BUDGET["failure_class"]
+    names = PROVIDER_CALL_BUDGET["exception_type_names"]
+    seen: set[int] = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        if isinstance(cur, TimeoutError) or type(cur).__name__ in names:
+            return fc
+        cur = cur.__cause__ if cur.__cause__ is not None else cur.__context__
+    return None
+
+
+def non_empty_provider_error(exc: BaseException, *, fallback: str) -> str:
+    """str(exc) or fallback — never '' (TimeoutError default)."""
+    err = str(exc).strip()
+    return err if err else fallback
+
+
+async def await_provider_call_with_budget(
+    make_call: Callable[[], Any],
+    *,
+    timeout_seconds: float,
+) -> Any:
+    """Run blocking SDK call in a worker thread; release the caller at timeout_seconds.
+
+    On timeout: raise TimeoutError with provider_call_timeout_error_message() and do
+    **not** await the pending thread task (orphan may finish later; caller is free).
+    """
+    task = asyncio.create_task(asyncio.to_thread(make_call))
+    done, _pending = await asyncio.wait({task}, timeout=timeout_seconds)
+    if task in done:
+        return task.result()
+    raise TimeoutError(provider_call_timeout_error_message())
 
 
 def extract_api_response_text(api_response: Any) -> str:
