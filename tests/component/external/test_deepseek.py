@@ -35,16 +35,20 @@ class FakeDeepseekClient:
         response_text: str = "ok",
         raise_on_create: Optional[Exception] = None,
         stop_reason: str = "end_turn",
+        usage: Optional[Any] = None,
     ) -> None:
         self._response_text = response_text
         self._raise_on_create = raise_on_create
         self._stop_reason = stop_reason
+        self._usage = usage
         self.messages = self
 
     def create(self, **_kwargs: Any) -> FakeDeepseekMessage:
         if self._raise_on_create:
             raise self._raise_on_create
-        return FakeDeepseekMessage(self._response_text, stop_reason=self._stop_reason)
+        return FakeDeepseekMessage(
+            self._response_text, stop_reason=self._stop_reason, usage=self._usage
+        )
 
 
 @pytest.fixture
@@ -229,6 +233,147 @@ class TestAst903JsonMaxTokensHardFail:
         out = await deepseek_mod.send_to_deepseek(
             [{"type": "text", "text": "hi"}],
             vendor_model="deepseek-v4-pro",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is True
+        assert "failure_class" not in out
+
+
+class TestAst1190EmptyUnusableProviderResponse:
+    """AST-1190: hollow response fail-closed + blank exception error normalize."""
+
+    @pytest.mark.asyncio
+    async def test_hollow_stop_question_zero_tokens_fails_closed(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        from src.utils.config import PROVIDER_EMPTY_RESPONSE
+        from src.utils.logging import log_batch_id
+
+        zero = SimpleNamespace(input_tokens=0, output_tokens=0, cache_read_input_tokens=0)
+        client = fake_deepseek_client(response_text="", stop_reason="?", usage=zero)
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        recorded: list[dict] = []
+        token = log_batch_id.set("batch-hollow-ds")
+        try:
+            with caplog.at_level("INFO"):
+                out = await deepseek_mod.send_to_deepseek(
+                    [{"type": "text", "text": "hi"}],
+                    vendor_model="deepseek-v4-flash",
+                    tier_meta={"thinking": False},
+                    response_format="text",
+                    prompt_label="anticipate_scan",
+                    record_timesheet=lambda **kwargs: recorded.append(kwargs),
+                )
+        finally:
+            log_batch_id.reset(token)
+
+        assert out["success"] is False
+        assert out["failure_class"] == PROVIDER_EMPTY_RESPONSE["failure_class"]
+        assert out["error"] == PROVIDER_EMPTY_RESPONSE["error"]
+        assert out["error"].strip()
+        assert recorded and recorded[0]["agent_performance"] == "failure"
+        # ERROR summary, never the healthy stop=? / zero-token INFO line
+        err_msgs = [r.message for r in caplog.records if r.levelname == "ERROR"]
+        assert any("error=" in m and "unusable" in m for m in err_msgs)
+        info_msgs = [r.message for r in caplog.records if r.levelname == "INFO" and "LLM deepseek" in r.message]
+        assert not any("stop=?" in m and "tokens in=0" in m for m in info_msgs)
+
+    @pytest.mark.asyncio
+    async def test_blank_timeout_error_returns_non_empty_error(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(raise_on_create=TimeoutError())
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is False
+        assert out["error"].strip()
+        # AST-1189 may tag TimeoutError as provider_call_timeout; never blank error=
+        if out.get("failure_class") is not None:
+            assert out["failure_class"] == "provider_call_timeout"
+
+    @pytest.mark.asyncio
+    async def test_healthy_end_turn_still_succeeds(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(response_text="plain ok", stop_reason="end_turn")
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is True
+        assert "failure_class" not in out
+
+
+class TestAst1189ProviderCallBudgetTimeout:
+    """AST-1189: TimeoutError → provider_call_timeout + non-empty budget error."""
+
+    @pytest.mark.asyncio
+    async def test_timeout_error_tags_failure_class(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        from src.utils.config import PROVIDER_CALL_BUDGET
+        from src.utils.llm_external import provider_call_timeout_error_message
+
+        client = fake_deepseek_client(raise_on_create=TimeoutError())
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is False
+        assert out["failure_class"] == PROVIDER_CALL_BUDGET["failure_class"]
+        assert out["error"] == provider_call_timeout_error_message()
+        assert out["error"].strip()
+
+    @pytest.mark.asyncio
+    async def test_ordinary_runtime_error_still_omits_timeout_class(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(raise_on_create=RuntimeError("boom"))
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
+            tier_meta={"thinking": False},
+            response_format="text",
+        )
+        assert out["success"] is False
+        assert out["error"] == "boom"
+        assert out.get("failure_class") != "provider_call_timeout"
+
+    @pytest.mark.asyncio
+    async def test_healthy_response_still_succeeds(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        fake_deepseek_client: Callable[..., FakeDeepseekClient],
+    ) -> None:
+        client = fake_deepseek_client(response_text="plain ok", stop_reason="end_turn")
+        monkeypatch.setattr(deepseek_mod, "_get_client", lambda *_a, **_k: client)
+        out = await deepseek_mod.send_to_deepseek(
+            [{"type": "text", "text": "hi"}],
+            vendor_model="deepseek-v4-flash",
             tier_meta={"thinking": False},
             response_format="text",
         )
