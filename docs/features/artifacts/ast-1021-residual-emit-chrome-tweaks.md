@@ -1,3 +1,284 @@
+<!-- linear-archive: AST-1021 archived 2026-08-05 -->
+
+## Linear archive (AST-1021)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1021/residual-emit-chrome-tweaks-take-2-resume-render-format-discrepancies  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1019 — Take 2: Resume Render Format discrepancies  
+**Blocked by / blocks / related:** parent: AST-1019
+
+### Description
+
+## What this implements
+
+Cosmetic emit adjustments the stylesheet cannot fix: document `<title>` → `{name} Resume` (no dashes); keep field-derived candidate-specific meta (do not force the golden HTML’s example meta string); plus any `white-space` / class alignment leftovers vs golden body. Does not rework AST-993 structural contracts. After stylesheet sibling; skip or thin if UAT shows CSS-only is enough.
+
+## Acceptance criteria
+
+ 7. Document `<title>` is `{candidate_name} Resume` (space, no em/en dashes) — not `SomersetResume` and not `{name} — Resume`.
+ 8. ATS `<meta name="description">` is **candidate-specific** from paste name/title/tagline using the AST-993 field-derived template (`Resume of <name>, <title>, specializing in <tagline>`); the literal meta string in the desired HTML is an example of structure only, not a fixed string to force.
+ 9. Candidate base-resume HTML and job-tailored resume HTML that share the builder family show the same cosmetic treatment for equivalent structured content.
+10. Susan can verify by eye against the desired HTML in this ticket for the listed style/format/alignment gaps; no judgment call on “close enough” for those items.
+
+## Boundaries
+
+Does not own embedded stylesheet golden parity (sibling Katherine). Does not rewrite resume content. Does not force literal golden meta example string.
+
+## Notes for planning
+
+Blocked by stylesheet child. Title shape: `{name} Resume` (Susan). Meta: candidate-specific field-derived.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law. Created at dispatch-parent. Publish to origin/<publish-ref> only.
+
+### Comments
+
+#### radia — 2026-07-29T02:23:43.814Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1021
+**Publish ref:** 73ab77f9a6bc1427f22d4f19c8cedfde4f5e06af
+**Overall:** DISCUSS
+
+Diff: `origin/dev...origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks` (AST-1021 product @ `712bd324` / merge-tests tip `517faa96` + this `docs()` append). Includes prior AST-1020 stack on the sub.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1021): origin/tests bcb2d83a` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests`/`resolve` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Forward publish to child `origin/sub/…` only |
+| orch.git.ftr-sub-topology | universal | conforms | Child sub under AST-1019; blockedBy AST-1020 honored |
+| orch.git.merge-on-checkout | universal | conforms | No alternate merge inventiveness |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | universal | conforms | Authoritative sub publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in astral-AST-1019 |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Title/meta shapes from parent AC; residual table closed |
+| orch.pipeline.plan-is-bible | universal | conforms | Stage 1 title fix + Stage 2–3 lock/no-op match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single Artifacts child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Reviewed from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty `test` + `merge-tests`; Ada avoided test tree |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Engineer product commit is `builder.py` only |
+| astral.agent.confidence-bounds | scoped | conforms | No confidence/consult path |
+| astral.agent.do-task-delegation | scoped | conforms | No `do_task` changes |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade/vector work |
+| astral.batch.batch-id-first | scoped | conforms | No batch claim APIs |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id |
+| astral.batch.claim-process-release | scoped | conforms | Not a batch processor |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No agent_data latest-refs |
+| astral.config.config-source-of-truth | scoped | conforms | No new config in AST-1021; prior tokens remain config-owned |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring thresholds |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss — no repo-root `artifacts/**` / `scripts/spikes/**` |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan under `docs/features/`; no spike pollution |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One plan file per ticket (`ast-1021-….md`) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits only tests/bible (+ merge-tests) |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Ada code/docs omit tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Title emit stays core builder |
+| astral.layers.import-direction | scoped | conforms | No new imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss — no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | No UI business logic; config touch is prior AST-1020 tokens |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers/paths miss — no `src/ui/**` |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No data-layer error/log path |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths miss — no `src/data/**` |
+| astral.standards.debug-contract-gated | scoped | conforms | No debug-contract emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single shared `_emit_html_document` title path |
+| astral.standards.in-scope-only | scoped | conforms | Title + meta lock only; stylesheet stays AST-1020 |
+| astral.standards.logging-via-utils | scoped | conforms | No new logging |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in core emit helper |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Title is AC-required literal (plan Decision) |
+| astral.standards.public-then-helpers | scoped | conforms | One-line edit in existing helper |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No utils→data imports |
+| astral.state.core-decides-transitions | scoped | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No dispatch daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers/paths miss — no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | not-applicable | layers/paths miss — no `src/ui/**` |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No worker/RAILWAY knobs |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stage 1 matches the planned `name_raw` title construction. Stage 2 meta template unchanged (lock). Stage 3 residual inventory produced no further edits. Scope `minor` matches the one-line product footprint. Sibling AST-1020 CSS/tokens remain out of this ticket’s engineer commits.
+
+## Findings
+
+**discuss (straggler):** Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.utils-data-late-import-only`, and `astral.ui.single-gunicorn-worker` against plan Files Changed; three-dot diff vs `origin/dev` brings them in-scope (plan/docs/test/config history incl. AST-1020). Each scores **conforms** — no product fix.
+
+### What’s solid
+
+`<title>{name} Resume</title>` / empty → `Resume`; meta stays field-derived `Resume of {name}, {title}, specializing in {tagline}`; no stylesheet/markup scope creep.
+
+### Recommended actions
+
+Acknowledge stragglers (no code change). resolve-child → User Testing when clear.
+
+— Radia
+context_tokens≈48000
+
+#### betty — 2026-07-29T02:20:46.773Z
+## QA test manifest (AST-1021)
+
+**Publish:** `origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks` @ `517faa96` (`merge-tests(AST-1021): origin/tests bcb2d83a`)
+
+### Classification
+
+1. **Existing coverage (bible-backed):** AST-1010 header/meta present-omit; AST-1020 stylesheet regression.
+2. **Broken / obsolete:** none — no prior asserts locked `{name} — Resume`.
+3. **Gaps:** document `<title>` `{name} Resume` (three surfaces + empty → `Resume`) + meta lock against golden example literal.
+
+**Integration:** no existing scenario asserts resume title/meta chrome — no revision.
+
+### Manifest (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1021DocumentTitleChrome \
+  tests/component/core/test_builder.py::TestAst1010HeaderContactMetaStyles \
+  tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  -q
+```
+
+### Bible shasums (on publish tip)
+
+- `docs/test-bible/core/builder.md` `48c1cac21b45afc67b6050066ab1cceb645fa282`
+
+— Betty
+
+#### joan — 2026-07-29T02:15:28.790Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1021
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| 1. Embedded `<style>` golden rules (laundry 3–12) | N/A — boundary: sibling AST-1020 (plan Out of scope) |
+| 2. Experience / education / skills spacing/typography | N/A — boundary: AST-993 stack / AST-1020 CSS; residual inventory excludes body markup |
+| 3. Contact golden flex; header `Name • Title` with markers | N/A — preserve; Stage 3 table: contact single-span no change; header emit untouched |
+| 4. No external stylesheet; styles embedded | N/A — boundary: AST-1020 |
+| 5. Document `<title>` is `{candidate_name} Resume` | Stage 1 (fix em-dash construction + empty-name fallback) |
+| 6. Candidate-specific meta (field-derived; not golden example literal) | Stage 2 lock / no-force on existing AST-1010 template |
+| 7. Shared builders same cosmetics for equivalent content | Stage 4 three-surface chrome verification |
+| 8. Eye verify; no “close enough” | Stage 4 string-checks + UAT; title/meta exact shapes |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| 1 Document `<title>` → `{name} Resume` | Purpose / laundry item 1; parent AC 5; child AC 7 |
+| 2 Meta lock field-derived template | Laundry item 2; parent AC 6; child AC 8 |
+| 3 Residual white-space / class emit leftovers | Child brief “CSS cannot fix” residual; closed inventory at plan time |
+| 4 Three-surface chrome verification | Laundry item 14 / parent AC 7–8; child AC 9–10 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge/test SHA inventiveness; engineer chrome-only |
+| orch.git.commit-vocabulary | conforms | Plan on child `sub/` publish ref; no vocab conflict |
+| orch.git.flow-direction-inviolable | conforms | Publish ref `sub/AST-1019/AST-1021-…`; no reverse flow |
+| orch.git.ftr-sub-topology | conforms | Child sub under parent ftr; blockedBy AST-1020 noted |
+| orch.git.merge-on-checkout | conforms | No alternate merge inventiveness in stages |
+| orch.git.no-cherry-pick-rebase-force | conforms | No cherry-pick/rebase/force directed |
+| orch.git.no-dev-agent-branches | conforms | Uses authoritative child publish ref |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic AST-1019 / this child only |
+| orch.git.three-permanent-branches | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Title/meta shapes fixed by parent AC; Stage 3 stop-and-ask on new residuals |
+| orch.pipeline.plan-is-bible | conforms | Concrete Done-when + closed residual inventory + verification |
+| orch.pipeline.project-scoped-queues | conforms | Single Artifacts child |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready gate only |
+| orch.roles.archie-approves-statutes | conforms | Does not amend statutes |
+| orch.roles.betty-owns-test-tree | conforms | Engineer test-tree ban explicit |
+| orch.roles.chuckles-never-ticket-assignee | conforms | No assignee inventiveness in plan |
+| orch.roles.engineer-assignee-through-resolve | conforms | Build stays engineer-owned |
+| orch.roles.pre-commit-path-bans | conforms | Touches `src/core/builder.py` only |
+| astral.agent.confidence-bounds | conforms | No graded confidence path |
+| astral.agent.do-task-delegation | conforms | No `do_task` changes |
+| astral.agent.grade-vector-validation | conforms | No grade vectors |
+| astral.batch.batch-id-first | conforms | No batch APIs |
+| astral.batch.batch-id-format | conforms | No batch_id |
+| astral.batch.claim-process-release | conforms | Not a batch processor |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data latest-refs |
+| astral.config.config-source-of-truth | conforms | Explicit Decision: title shape stays AC literal next to meta; no config overload of `type_scale.document_title` |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring thresholds |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer edits `src/`; Betty banned |
+| astral.layers.core-vs-external-bright-line | conforms | Emit chrome stays core builder |
+| astral.layers.import-direction | conforms | Core-only Files Changed; no new imports |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer error/log path |
+| astral.standards.debug-contract-gated | conforms | No debug-contract adds |
+| astral.standards.dry-and-focused-functions | conforms | Single `_emit_html_document` title/meta path for all three builders |
+| astral.standards.in-scope-only | conforms | Title + meta lock + residual table only; stylesheet/structure out |
+| astral.standards.logging-via-utils | conforms | No new logging |
+| astral.standards.no-cross-contamination | conforms | Stays in `src/core` |
+| astral.standards.no-hardcoded-sets | conforms | No new state sets; title is AC-required literal (Decision) |
+| astral.standards.public-then-helpers | conforms | Edits existing helper construction line |
+| astral.state.core-decides-transitions | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | conforms | No job states |
+| astral.state.no-daisy-chain-in-run | conforms | No dispatch daisy-chain |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss plan Files Changed
+- astral.debug.spikes-under-debug-dir — paths miss plan Files Changed
+- astral.docs.features-single-file-per-ticket — layers/paths miss (Files Changed is core only)
+- astral.git.engineer-test-tree-ban — paths miss (ban still honored in prose)
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.layers.ui-config-driven-business-logic — layers/paths miss
+- astral.patterns.require-auth-on-protected-endpoints — ui miss
+- astral.standards.database-header-inventory — data miss
+- astral.standards.utils-data-late-import-only — utils miss
+- astral.ui.frontend-file-placement — ui miss
+- astral.ui.naming-conventions — ui miss
+- astral.ui.single-gunicorn-worker — layers/paths miss
+
+## Findings
+
+None (fix-now).
+
+**acceptable:** Stage 2 is intentionally a no-diff lock when baseline already matches — correct adversarial guard against hardcoding the golden example meta string.
+
+**Self-assessment:** Scope minor / Conf high / Risk low — honest for a one-line title fix plus meta lock.
+
+— Joan
+context_tokens≈52000
+
+#### ada — 2026-07-29T02:12:14.384Z
+Plan: [`docs/features/artifacts/ast-1021-residual-emit-chrome-tweaks.md`](https://github.com/susansomerset/astral/blob/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks/docs/features/artifacts/ast-1021-residual-emit-chrome-tweaks.md) on `origin/sub/AST-1019/AST-1021-residual-emit-chrome-tweaks` @ `37527f56`.
+
+**Scope:** `minor` — one document-title construction line in `builder.py` `_emit_html_document`, plus an explicit meta lock / residual no-op inventory; no config or UI changes.
+
+**Conf:** `high` — title still uses `{name} — Resume` (and empty-name fallback is broken); meta template already matches AST-1010 field-derived contract; AST-1020 stylesheet is on ftr; residual table closed at plan time.
+
+**Risk:** `low` — wrong title is tab/PDF chrome only; meta lock prevents forcing the golden example string; body structure and stylesheet stay untouched.
+
+---
+
 # Residual emit / chrome tweaks (Take 2: Resume Render Format discrepancies)
 
 **Linear:** [AST-1021](https://linear.app/astralcareermatch/issue/AST-1021/residual-emit-chrome-tweaks-take-2-resume-render-format-discrepancies)
