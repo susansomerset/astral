@@ -1,0 +1,97 @@
+# AST-1195 — Schema nulls + BOT_BLOCKED replaces JD_SCRAPE_FAIL_BOT
+
+**Linear:** [AST-1195](https://linear.app/astralcareermatch/issue/AST-1195/schema-nulls-bot-blocked-replaces-jd-scrape-fail-bot-errors-for)
+**Parent:** [AST-1188](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task) — Errors for qualify_meteorite dispatch task
+**Publish ref:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`
+
+Allow null/omit `job_link` / `job_title` on the `qualify_meteorite` response schema so one weak Ruth row cannot abort `do_task` for the whole chunk, and rename job state `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** everywhere that state id is consumed (registry, gazer error map, skipped UI manifests). Does **not** own `agent_task` prompt text (AST-1196) or consult assemble/apply / Style D (AST-1197).
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/utils/config.py` | `qualify_meteorite` schema: `job_link` / `job_title` → `required: False`; rename `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` in `JOB_STATES`, `GAZER_CONFIG`, `SKIPPED_STATES`, skipped UI order/labels/bulk-retry; expand `BOT_BLOCKED` priors for meteorite entry | utils |
+| `src/core/gazer.py` | `_JD_ERROR_STATES["bot"]` → `"BOT_BLOCKED"` | core |
+
+No `consult.py` apply, no `agent_task` / `data/admin` prompt edits, no frontend TS (manifest is config-driven), no `tests/` / bible (Betty after Code Complete).
+
+## Stage 1: Schema — null/omit `job_link` / `job_title` on `qualify_meteorite`
+
+**Done when:** Importing `config` succeeds; `_validate_response_schema` accepts a `qualify_meteorite` payload where a jobs item omits or nulls `job_link` and/or `job_title` (other required fields present); a jobs item that still omits a still-required field (e.g. `astral_job_id` or `jd_text`) still fails validation. No product apply logic changes.
+
+1. In `src/utils/config.py` `TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]`, change:
+
+```python
+"job_title":       {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
+"job_link":        {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
+```
+
+Keep `astral_job_id` and `jd_text` **`required: True`**. Keep `company_job_id` **`required: False`** (AST-1127 unchanged).
+
+2. Immediately after the existing module-level assert on `company_job_id` required False (near the end of `TASK_CONFIG`), add matching asserts:
+
+```python
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]["required"] is False
+```
+
+⚠️ **Decision — schema only, apply stays sibling:** Null/omit must pass `_validate_response_schema` so `do_task` does not batch-ERROR the chunk. Per-row QUALIFY / FAIL / BOT / synthesize rules remain AST-1197 (`consult` apply) and AST-1196 (`agent_task` instructions). This stage does not teach Ruth to synthesize links or change transitions.
+
+## Stage 2: Universal `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED`
+
+**Done when:** `rg JD_SCRAPE_FAIL_BOT src/` returns no matches; `BOT_BLOCKED` is a `JOB_STATES` key enterable from `PASSED_JOBLIST` and `METEORITE_NEW`; gazer bot classification targets `BOT_BLOCKED`; Jobs Skipped manifest includes `BOT_BLOCKED` (order, label, bulk-retry) and not `JD_SCRAPE_FAIL_BOT`; `build_state_ui_manifest()` still asserts cleanly on import.
+
+1. In `src/utils/config.py` `JOB_STATES`:
+
+- Replace the key `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"`.
+- Set `"BOT_BLOCKED": {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]}`.
+- In `"PASSED_JOBLIST"` `prior_states`, replace the string `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"` (same list position among the other `JD_SCRAPE_FAIL_*` siblings).
+
+⚠️ **Decision — dual prior for universal bot state:** Parent requires one human-facing bot state for roster scrape **and** meteorite qualify challenge pages. `PASSED_JOBLIST` preserves gazer `fetch_jd` entry; `METEORITE_NEW` lets AST-1197 transition challenge JD bodies without inventing a meteorite-only bot state.
+
+2. In `GAZER_CONFIG["fetch_jd"]["error_states"]`, replace `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"` (keep cookie/missing/closed ids unchanged).
+
+3. In `SKIPPED_STATES`, replace `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"`.
+
+4. In `JOBS_SKIPPED_SECTION_ORDER`, replace `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"` (same position in the scrape-fail cluster).
+
+5. In `JOBS_SKIPPED_SECTION_LABELS`, add an explicit label (other scrape-fail siblings rely on title-case fallback; give the new universal name a clear human string):
+
+```python
+"BOT_BLOCKED": "Bot Blocked",
+```
+
+Place it with the other skipped-section label entries (near the meteorite / scrape cluster is fine — exact dict key order is not semantic).
+
+6. In `JOBS_SKIPPED_BULK_RETRY_TO_STATE`, replace the key `"JD_SCRAPE_FAIL_BOT"` with `"BOT_BLOCKED"`, value still `"PASSED_JOBLIST"`.
+
+⚠️ **Decision — bulk-retry target stays `PASSED_JOBLIST`:** Preserves existing roster scrape retry. A single static map cannot dual-target `METEORITE_NEW` for meteorite-origin rows; context-aware skipped retry is out of scope for this child (parent AC is rename + registry/UI, not dual-origin retry). Meteorite jobs on `BOT_BLOCKED` that use bulk-retry will land on `PASSED_JOBLIST` (same class of cross-track quirk as mapping any dual-entry state to one target).
+
+7. In `src/core/gazer.py` `_JD_ERROR_STATES`, set `"bot": "BOT_BLOCKED"`. Update the adjacent comment so it no longer implies every value is still named `JD_SCRAPE_FAIL_*` (bot is now `BOT_BLOCKED`; cookie/missing/closed stay `JD_SCRAPE_FAIL_*`).
+
+8. Verify with a workspace search that **no** remaining `JD_SCRAPE_FAIL_BOT` string exists under `src/`. Do **not** edit `tests/`, `docs/test-bible/**`, or historical plan docs under `docs/features/**` that mention the old id (Betty / history). Do **not** add a DB row rewrite for jobs already stored as `JD_SCRAPE_FAIL_BOT`.
+
+⚠️ **Decision — no live-row migration:** Product stores job `state` as a free string. This child renames the registry and all `src/` consumers; it does not ship an `UPDATE jobs SET state=…` migration. If staging still has rows on the old id, they fall out of `SKIPPED_STATES` until manually/ops-remapped — call out on Linear if that appears during UAT.
+
+## Execution contract
+
+- Execute stages in order; one commit per stage on the epic worktree; publish each to `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+- Do not edit `consult.py` apply, `data/admin/agent_task.json`, frontend TS, or `tests/`.
+- If a step is ambiguous or the codebase has drifted — stop and comment on **parent** AST-1188 with the standard blocked format.
+
+## Self-Assessment
+
+**Scope:** `Single-Component` — config schema + job-state registry/UI manifests in `config.py`, plus one gazer error-map string in `gazer.py`.
+
+**Conf:** `high` — mirrors AST-1127 `required: False` schema pattern and a straight string rename across known `src/` consumers.
+
+**Risk:** `Medium` — wrong prior_states or a missed consumer would strand bot-blocked jobs or leave `JD_SCRAPE_FAIL_BOT` as a dead id; does not rewrite consult apply.
+
+## Code-rules check
+
+- §1.3 DRY / focused: rename in place; no new helpers.
+- §1.4 / `astral.standards.no-hardcoded-sets`: state id lives in `JOB_STATES` / config lists; gazer map points at the config state name.
+- §2.1 / `astral.config.config-source-of-truth`: schema knobs and state registry stay in `config.py`.
+- §2.6 / `astral.state.job-prior-states-enforced`: `BOT_BLOCKED` priors list both legal entry states; `PASSED_JOBLIST` re-entry list updated.
+- §3.3 imports: no new cross-layer imports.
+- Out of scope here: `astral.standards.debug-contract-gated` (AST-1197), agent_task authoring (AST-1196).
