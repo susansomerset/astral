@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
@@ -5279,7 +5280,10 @@ class TestAst848DispatchChainDoTask:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         transition = MagicMock()
+        release = MagicMock()
         monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        # Provider-failed path also releases claim (AST-1191); keep this hard-string case green.
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -5301,6 +5305,7 @@ class TestAst848DispatchChainDoTask:
         )
         assert out["success"] is False
         transition.assert_called_once_with(["job-848"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-848")
 
     def test_dispatch_chain_ctx_reads_trigger_and_graduate_flag(self) -> None:
         trigger, graduate = agent_mod._dispatch_chain_ctx({
@@ -5669,6 +5674,223 @@ class TestAst1190DoTaskEmptyProviderError:
         assert out.get("failure_class") == fc
         detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
         assert any("provider_empty_response" in str(m) for m in detail_msgs)
+
+
+class TestAst1191ArtifactHopFailureRelease:
+    """AST-1191: provider hop failure → error_state + claim release + debug trail."""
+
+    def _dispatch_ctx(self) -> Dict[str, Any]:
+        return {
+            "candidate_data": {"artifacts": {}},
+            "batch_entities": _batch_entities("job-1191"),
+            "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "dispatch_chain_graduate_on_terminal": True,
+        }
+
+    def test_apply_provider_failed_transitions_and_releases(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="job",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Provider call exceeded per-call time budget (600s)",
+            debug=False,
+            provider_failed=True,
+            failure_class="provider_call_timeout",
+        )
+        assert out["apply_error_state"] is True
+        assert out["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
+        assert out["batch_released"] is True
+        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1191")
+
+    def test_apply_balance_hold_skips_error_state_but_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import PROVIDER_BALANCE_REFUSAL
+
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="job",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Insufficient Balance",
+            debug=False,
+            provider_failed=True,
+            failure_class=PROVIDER_BALANCE_REFUSAL["failure_class"],
+        )
+        assert out["apply_error_state"] is False
+        assert out["error_state"] == ""
+        assert out["batch_released"] is True
+        transition.assert_not_called()
+        release.assert_called_once_with("job-1191")
+
+    def test_apply_non_dispatch_chain_returns_noop(self) -> None:
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="job",
+            index="job-1191",
+            ctx={},
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Provider call failed",
+            debug=False,
+            provider_failed=True,
+            failure_class="provider_call_timeout",
+        )
+        assert out == agent_mod._HOP_FAILURE_NOOP
+
+    @pytest.mark.asyncio
+    async def test_do_task_provider_timeout_releases_and_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider call exceeded per-call time budget (600s)",
+                    "failure_class": "provider_call_timeout",
+                    "api_response": None,
+                    "timesheet": {
+                        "duration": 610.0,
+                        "inputtotal": 0,
+                        "inputcached": 0,
+                        "outputtotal": 0,
+                        "cache_creation_tokens": 0,
+                    },
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            debug=False,
+        )
+        assert out["success"] is False
+        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1191")
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_emits_found_and_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", MagicMock())
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", MagicMock())
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider returned unusable response",
+                    "failure_class": "provider_empty_response",
+                    "api_response": SimpleNamespace(stop_reason="?"),
+                    "timesheet": {
+                        "duration": 1.5,
+                        "inputtotal": 10,
+                        "inputcached": 2,
+                        "outputtotal": 0,
+                        "cache_creation_tokens": 0,
+                    },
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
+        assert any(
+            m.startswith("found duration=")
+            and "stop=?" in m
+            and "tokens fresh=10" in m
+            and "cache_read=2" in m
+            and "failure_class=provider_empty_response" in m
+            for m in detail_msgs
+        )
+        assert any(
+            m.startswith("recorded error=")
+            and "error_state=ERROR_BUILD_ARTIFACTS" in m
+            and "batch_released=true" in m
+            for m in detail_msgs
+        )
+        assert any("chain_hop_failed apply_error_state=True" in m for m in detail_msgs)
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_false_skips_found_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", MagicMock())
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", MagicMock())
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "timeout",
+                    "failure_class": "provider_call_timeout",
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            debug=False,
+        )
+        detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
+        assert not any(m.startswith("found ") for m in detail_msgs)
+        assert not any(m.startswith("recorded ") for m in detail_msgs)
 
 
 class TestAst903CraftRubricMaxTokensFloor:
