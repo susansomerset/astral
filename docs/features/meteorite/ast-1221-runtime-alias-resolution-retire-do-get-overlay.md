@@ -298,3 +298,37 @@ Changes:
 | 1 | `3a606df4` | agent prompt resolve via master_task_key |
 | 2 | `fe2a44df` | consult retire Do/Get overlay + alias routing |
 | 3 | `41c69064` | delete METEORITE_GDL_OUTCOME_BY_TASK + alias exhaust keys |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `49c0cb65`
+
+**Overall: CLEAN**
+
+**What's solid:**
+
+- All three stages match the plan's binding code blocks verbatim, including the Revision 1 fix that closed Joan's round-1 fix-now: `_is_strict_encoded_batch_consult` wraps `resolve_task_key_for_content(...) in _STRICT_ENCODED_BATCH_CONSULT_KEYS` and is used at **both** membership sites (`agent.py` helper guard + `do_task`'s `strict_batch = …` line) — re-grepped `agent.py` and confirmed exactly two call sites, no third caller left on the unresolved key.
+- `_parent_hop_task_key_for_child` / `_current_agent_task_run_next` are untouched in the diff — chain-authority identity stays caller-keyed as the plan's Decision requires (`astral.dispatch.run-next-is-chain-authority` intact, no shadow `run_next` inference for aliases).
+- `_consult_orchestration_for_entity` is now a one-line pass-through (`entity_state` kept for call-site stability, documented unused); the entity-state overlay branch is gone, not just emptied.
+- Header lookup (`_GRADE_DISPATCH_TO_HEADER`) resolves through `resolve_task_key_for_content` on miss rather than adding alias keys to the map — no new meteorite-only dict (`astral.standards.no-hardcoded-sets` holds). `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` alias literals match the existing explicit-membership precedent (`_DISPATCH_BATCH_CALL_MODE_ONE`), consistent with Joan's verified precedent check.
+- `run_consult_task`'s alias branch guards the `_batch = {...}[task_key]` dict dispatch with the masters-only tuple before falling to the alias `else` — no `KeyError` risk for `meteorite_grade_do`/`get`.
+- Style D alias→master debug block in `do_task` matches the file's own established shape (`_debug_conversational_turn`'s `debug_index(func=, index=1, total=1, identifier=, outcome=)` + `debug_detail(...)`), gated strictly on `debug and is_task_alias(task_key)` — no ungated noise.
+- Repo grep gate is fully clean at tip: zero `METEORITE_GDL_OUTCOME_BY_TASK` references anywhere under `src/` (stricter than Joan's round-1 prediction that a couple of comments would survive) — symbol, import, docstring, and overlay/assert body are all gone, not just emptied.
+- Commit hygiene: three `code(AST-1221)` commits touch only `src/core/{agent,consult,dispatcher}.py` + `src/utils/config.py`; `docs(AST-1221)` touches only the plan doc; `test(AST-1221)`/`merge-tests(AST-1221)` touch only `tests/`/`docs/test-bible/**` — `astral.git.engineer-test-tree-ban` and `astral.git.betty-no-src-or-features` both hold.
+- No new imports cross a layer boundary — `agent.py`/`consult.py` add only `resolve_task_key_for_content`/`is_task_alias` from `src.utils.config` (core→utils, allowed).
+- `python3 -m py_compile src/utils/config.py src/core/consult.py src/core/dispatcher.py src/core/agent.py` clean at tip.
+- Full active-set sweep (65 active statutes: 18 universal + 41 scoped-applicable against this diff's `{core, utils, docs}` layers / `src/core/{agent,consult,dispatcher}.py`, `src/utils/config.py`, `docs/features/**`, `docs/test-bible/**`, `tests/**` paths) — zero `violates`, zero `needs-discussion`.
+
+**Note:** this three-dot diff (`origin/dev...origin/sub/AST-1184/AST-1221-...`) also carries AST-1220's already-reviewed changes (merged onto this branch via `origin/ftr/AST-1184-...` per `orch.git.merge-on-checkout`, since AST-1220 hasn't landed on `dev` yet). AST-1220 was independently reviewed clean (Review Posted); this review's findings focus on AST-1221's own commits (`agent.py`, `consult.py`, `dispatcher.py`, and the `config.py` overlay-symbol deletion).
+
+**Pattern conformance:** `pattern.layers.import-discipline` — conforms (core→utils only, no reverse imports). `astral.patterns.render-verdict-orchestrates-consult` / `astral.patterns.coat-check-never-store-empty` — conforms (untouched by this diff).
+
+**Plan adherence:** All three stages match the plan's binding code blocks exactly, including both Revision 1 items (strict-envelope helper at both sites; documented caller-identity carve-out for the two `run_next` readers).
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈78000
+
+— Radia
