@@ -378,3 +378,12 @@ Ticket bounced `Review Posted` → `User Testing` → `Tests Ready` → `Tests P
 context_tokens≈45000
 
 — Radia
+
+## Resolution — 2026-08-06 (post-restack re-review)
+
+**Review tip:** `bbbe983c` (`docs(AST-1222): Radia review — clean (post-restack re-verify)`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none requiring product change.
+- **Advisory:** none.
+- **Product / plan code:** unchanged this pass (resolve clean after restack re-verify).
