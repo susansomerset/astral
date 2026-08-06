@@ -258,6 +258,8 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_initiate_candidate",
         "meteorite_like",
         "meteorite_upshot",
+        "meteorite_grade_do",
+        "meteorite_grade_get",
         "parse_job_list",
         "meteorite_email",
         "preamble_validate_response",
@@ -276,19 +278,20 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON catalog lock (53 rows).
+    """AST-786 UAT: populated agent_task repo JSON catalog lock (55 rows after AST-1222).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
     AST-1211 closed the fixture gap for `evaluate_meteorite` / `craft_evaluate_meteorite_rubric`
     (see **`TestAst1211EvaluateCraftFixtureLockstep`**). Shared-row prompt drift between
     catalog and fixture (other keys) remains deferred — this class still locks catalog keys
     + startup apply only. Surgical `qualify_meteorite` fixture lockstep is
-    **`TestAst1196QualifyMeteoritePromptContract`**.
+    **`TestAst1196QualifyMeteoritePromptContract`**. AST-1222 adds grouping-only
+    `meteorite_grade_do` / `meteorite_grade_get` (53 → 55).
     """
 
-    def test_repo_json_has_53_current_catalog_keys(self) -> None:
+    def test_repo_json_has_55_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 53
+        assert len(rows) == 55
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -304,7 +307,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_53_current_rows(
+    def test_startup_apply_loads_all_55_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -322,7 +325,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 53
+            assert count == 55
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -383,7 +386,7 @@ class TestAst1211EvaluateCraftFixtureLockstep:
     def test_fixture_includes_two_keys_object_equal_to_catalog(self) -> None:
         cat = self._current_by_key("data/admin/agent_task.json")
         fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
-        assert len(fix) == 53
+        assert len(fix) == 55
         for key in self._KEYS:
             assert key in fix, f"fixture missing {key}"
             assert fix[key] == cat[key], f"{key} not object-equal to catalog"
@@ -397,7 +400,7 @@ class TestAst1055MeteoriteCatalogRows:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["meteorite_like"]
         assert row["agent_id"] == "job_analyst_grace"
-        assert row["task_seq"] == 5  # AST-1219 Meteorite Review within-section seq
+        assert row["task_seq"] == 7  # AST-1222: Do/Get aliases take seq 5/6
         assert row["task_group_name"] == "Meteorite Review"
         assert row["task_group_order"] == "4500"
         cache = row["cache_prompt"]
@@ -410,7 +413,7 @@ class TestAst1055MeteoriteCatalogRows:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["meteorite_upshot"]
         assert row["agent_id"] == "principal_recruiter_estelle"
-        assert row["task_seq"] == 6  # AST-1219 Meteorite Review within-section seq
+        assert row["task_seq"] == 8  # AST-1222: Do/Get aliases take seq 5/6
         assert row["task_group_name"] == "Meteorite Review"
         prompt = row["user_prompt"]
         assert "### Meteorite context" in prompt
@@ -924,8 +927,10 @@ class TestAst1218GazeReviewClassicGroupLabel:
         "meteorite_email": 2,
         "qualify_meteorite": 3,
         "evaluate_meteorite": 4,
-        "meteorite_like": 5,
-        "meteorite_upshot": 6,
+        "meteorite_grade_do": 5,
+        "meteorite_grade_get": 6,
+        "meteorite_like": 7,
+        "meteorite_upshot": 8,
     }
 
     def _current_by_key(self, path: str) -> dict:
@@ -934,7 +939,7 @@ class TestAst1218GazeReviewClassicGroupLabel:
 
     def test_catalog_classic_gaze_review_meteorite_job_review(self) -> None:
         by = self._current_by_key("data/admin/agent_task.json")
-        assert len(by) == 53
+        assert len(by) == 55
         for key in self._CLASSIC:
             assert by[key]["task_group_name"] == "Gaze Review", key
             assert by[key]["task_group_order"] == "4000", key
@@ -951,7 +956,7 @@ class TestAst1218GazeReviewClassicGroupLabel:
         # Label fields only — do not require whole-row catalog↔fixture equality (prompt drift).
         cat = self._current_by_key("data/admin/agent_task.json")
         fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
-        assert len(fix) == 53
+        assert len(fix) == 55
         for key in self._CLASSIC | frozenset(self._METEORITE_SEQ):
             assert fix[key]["task_group_name"] == cat[key]["task_group_name"], key
             assert fix[key]["task_group_order"] == cat[key]["task_group_order"], key
@@ -959,15 +964,17 @@ class TestAst1218GazeReviewClassicGroupLabel:
 
 
 class TestAst1219MeteoriteReviewGroupMembership:
-    """AST-1219: meteorite rows → Meteorite Review / 4500 / seq 1…6; no Job Review remains."""
+    """AST-1219 / AST-1222: meteorite rows → Meteorite Review / 4500 / seq 1…8; no Job Review remains."""
 
     _METEORITE_SEQ = {
         "gaze_email": 1,
         "meteorite_email": 2,
         "qualify_meteorite": 3,
         "evaluate_meteorite": 4,
-        "meteorite_like": 5,
-        "meteorite_upshot": 6,
+        "meteorite_grade_do": 5,
+        "meteorite_grade_get": 6,
+        "meteorite_like": 7,
+        "meteorite_upshot": 8,
     }
     _CLASSIC = frozenset(
         {
@@ -989,7 +996,7 @@ class TestAst1219MeteoriteReviewGroupMembership:
 
     def test_catalog_meteorite_review_membership(self) -> None:
         by = self._current_by_key("data/admin/agent_task.json")
-        assert len(by) == 53
+        assert len(by) == 55
         for key in self._CLASSIC:
             assert by[key]["task_group_name"] == "Gaze Review", key
             assert by[key]["task_group_order"] == "4000", key
@@ -1008,9 +1015,52 @@ class TestAst1219MeteoriteReviewGroupMembership:
     def test_fixture_grouping_lockstep_and_ast1211(self) -> None:
         cat = self._current_by_key("data/admin/agent_task.json")
         fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
-        assert len(fix) == 53
+        assert len(fix) == 55
         for key in self._METEORITE_SEQ:
             for field in ("task_group_name", "task_group_order", "task_seq"):
                 assert fix[key][field] == cat[key][field], (key, field)
         for key in ("evaluate_meteorite", "craft_evaluate_meteorite_rubric"):
             assert fix[key] == cat[key], key
+
+
+class TestAst1222MeteoriteGradeAliasCatalogRows:
+    """AST-1222: grouping-only meteorite_grade_do/get under Meteorite Review; empty prompts."""
+
+    _PROMPT_FIELDS = (
+        "system_prompt",
+        "cache_prompt",
+        "cache_prompt_b",
+        "cache_prompt_c",
+        "cache_prompt_d",
+        "nocache_prompt",
+        "user_prompt",
+    )
+    _UUID = {
+        "meteorite_grade_do": "47e47cc0-26b8-4af6-81d6-f9e080b2b712",
+        "meteorite_grade_get": "357b56de-20a6-4360-a98e-d4527db40b7f",
+    }
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_alias_rows_grouping_only_and_fixture_lockstep(self) -> None:
+        cat = self._current_by_key("data/admin/agent_task.json")
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        for key, seq in (("meteorite_grade_do", 5), ("meteorite_grade_get", 6)):
+            for src in (cat, fix):
+                row = src[key]
+                assert row["task_group_name"] == "Meteorite Review"
+                assert row["task_group_order"] == "4500"
+                assert row["task_seq"] == seq
+                assert row["agent_id"] == "n/a"
+                assert row["task_name"] == key
+                assert row["task_key_uuid"] == self._UUID[key]
+                assert (row.get("run_next") or "") == ""
+                for f in self._PROMPT_FIELDS:
+                    assert (row.get(f) or "") == "", (key, f)
+            assert fix[key] == cat[key], key
+        # Classic Gaze masters keep prompts + Gaze Review.
+        for key in ("grade_do", "grade_get"):
+            assert cat[key]["task_group_name"] == "Gaze Review"
+            assert (cat[key].get("user_prompt") or cat[key].get("cache_prompt") or "").strip()

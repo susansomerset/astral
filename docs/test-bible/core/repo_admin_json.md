@@ -406,3 +406,30 @@ Vitest (when running full frontend / this page file):
 ```bash
 cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx
 ```
+
+### AST-1222 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`.
+
+Grouping-only `meteorite_grade_do` / `meteorite_grade_get` under **Meteorite Review** / `"4500"` / seq `5`/`6` (empty prompts, `agent_id` `n/a`); `meteorite_like` / `meteorite_upshot` seq → `7`/`8`; catalog+fixture **55** keys. Dispatch / config: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias grouping-only rows + fixture lockstep | `data/admin/agent_task.json`, AST-756 fixture | **`TestAst1222MeteoriteGradeAliasCatalogRows`** |
+| Catalog count 53→55 + frozenset | same | revised **`TestAst786AgentTaskRepoJsonSeed`**, **`TestAst1211EvaluateCraftFixtureLockstep`** |
+| Meteorite Review seq map (8 keys) | same | revised **`TestAst1218GazeReviewClassicGroupLabel`**, **`TestAst1219MeteoriteReviewGroupMembership`**, **`TestAst1055MeteoriteCatalogRows`** |
+
+**Broken / obsolete:** 53-count / six-key Meteorite Review exclusivity; like/upshot seq `5`/`6`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1222MeteoriteGradeAliasCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1219MeteoriteReviewGroupMembership \
+  tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```

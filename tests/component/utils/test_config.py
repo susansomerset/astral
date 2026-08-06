@@ -2645,10 +2645,13 @@ class TestAst1054MeteoriteGdlDispatch:
         assert ("evaluate_jd", "METEORITE_NEW") not in rows
         assert ("evaluate_jd", "METEORITE_QUALIFIED") not in rows
         assert rows[("evaluate_meteorite", "METEORITE_QUALIFIED")]["score_floor"] is None
-        assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
-        assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
+        assert rows[("meteorite_grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
+        assert rows[("meteorite_grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
         assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
         assert rows[("meteorite_upshot", "METEORITE_PASSED_LIKE")]["score_floor"] == 0.0
+        # AST-1222: shared-key meteorite Do/Get pairs retired from the catalog.
+        assert ("grade_do", "METEORITE_PASSED_JD") not in rows
+        assert ("grade_get", "METEORITE_PASSED_DO") not in rows
         for e in cfg.METEORITE_DISPATCH_TASKS:
             assert e["trigger_state"] in cfg.JOB_STATES
             assert e["auto_mode"] is False
@@ -4157,9 +4160,44 @@ class TestAst1220TaskAliasConfigContract:
         ):
             assert st in cfg._TRANSITION_STATES_USED_BY_SCORED_TASKS
             assert cfg.dispatch_claim_uses_score_floor(st) is True
-        # Dispatch rows still shared grade_do/grade_get until AST-1222.
+        # AST-1222: meteorite Do/Get dispatch rows use alias keys.
         by = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
-        assert ("grade_do", "METEORITE_PASSED_JD") in by
-        assert ("grade_get", "METEORITE_PASSED_DO") in by
-        assert ("meteorite_grade_do", "METEORITE_PASSED_JD") not in by
-        assert ("meteorite_grade_get", "METEORITE_PASSED_DO") not in by
+        assert ("meteorite_grade_do", "METEORITE_PASSED_JD") in by
+        assert ("meteorite_grade_get", "METEORITE_PASSED_DO") in by
+        assert ("grade_do", "METEORITE_PASSED_JD") not in by
+        assert ("grade_get", "METEORITE_PASSED_DO") not in by
+
+
+@pytest.mark.skipif(
+    ("meteorite_grade_do", "METEORITE_PASSED_JD")
+    not in {
+        (e["task_key"], e["trigger_state"])
+        for e in getattr(cfg, "METEORITE_DISPATCH_TASKS", ())
+    },
+    reason="AST-1222 alias dispatch retarget not on this publish tip",
+)
+class TestAst1222MeteoriteAliasDispatchAndSeed:
+    """AST-1222: METEORITE_DISPATCH_TASKS + SEED_CONFIG SQL retarget; grouping catalog key."""
+
+    def test_dispatch_catalog_and_seed_sql_alias_keys(self) -> None:
+        by = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        assert by[("meteorite_grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
+        assert by[("meteorite_grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
+        assert ("evaluate_meteorite", "METEORITE_QUALIFIED") in by
+        assert ("meteorite_like", "METEORITE_PASSED_GET") in by
+        sql = "\n".join(cfg.SEED_CONFIG["dispatch_task-meteorite"])
+        assert "'meteorite_grade_do', 'job'," in sql
+        assert "'meteorite_grade_get', 'job'," in sql
+        assert "'grade_do', 'job'," not in sql
+        assert "'grade_get', 'job'," not in sql
+        assert "task_key = 'meteorite_grade_do'" in sql
+        assert "task_key = 'meteorite_grade_get'" in sql
+
+    def test_grouping_catalog_key_stays_on_alias(self) -> None:
+        assert cfg.dispatch_task_grouping_catalog_key("meteorite_grade_do") == "meteorite_grade_do"
+        assert cfg.dispatch_task_grouping_catalog_key("meteorite_grade_get") == "meteorite_grade_get"
+        assert "meteorite_grade_do" in cfg.get_task_keys()
+        assert "meteorite_grade_get" in cfg.get_task_keys()
+        # Classic Gaze still masters (not aliases).
+        assert cfg.is_task_alias("grade_do") is False
+        assert cfg.TASK_CONFIG["grade_do"]["pass_state"] == "PASSED_DO"

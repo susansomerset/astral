@@ -375,7 +375,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 
 **Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
 
-`meteorite_grade_do` / `meteorite_grade_get` join `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` (explicit frozenset, same pattern as `meteorite_like`). Does **not** retarget `METEORITE_DISPATCH_TASKS` (**AST-1222**).
+`meteorite_grade_do` / `meteorite_grade_get` join `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` (explicit frozenset, same pattern as `meteorite_like`). Dispatch retarget / seed is **AST-1222**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -388,5 +388,26 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_dispatcher.py::TestAst1221AliasChunkExhaust \
+  -q
+```
+
+### AST-1222 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`.
+
+`METEORITE_DISPATCH_TASKS` Do/Get → alias keys; `ensure_meteorite_dispatch_tasks` retires shared-key meteorite triggers when aliases present (classic Gaze `PASSED_JD` / `PASSED_DO` kept). Catalog / fixture: **`docs/test-bible/core/repo_admin_json.md`** · config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias insert + score_floor | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** |
+| Retire shared-key meteorite Do/Get | same | **`TestAst1054MeteoriteDispatchProvision::test_ensure_retires_shared_key_meteorite_do_get_when_aliases_present`** |
+
+**Broken / obsolete:** AST-1054 `by_key["grade_do"]` / `grade_get` meteorite insert lookups.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
   -q
 ```
