@@ -21,7 +21,7 @@ from dotenv import load_dotenv
 
 load_dotenv(_REPO / ".env")
 
-from src.core.contact import handle_slack_event  # noqa: E402
+from src.core.contact import handle_slack_event, slack_debug_enabled  # noqa: E402
 from src.external.slack import open_socket_mode_connection  # noqa: E402
 from src.utils.config import CONTACT_CONFIG  # noqa: E402
 
@@ -39,7 +39,8 @@ def main() -> int:
         return 1
 
     def _on_payload(payload: dict) -> None:
-        handle_slack_event(payload, debug=True)
+        # Same durable SoT as HTTP Events (AST-1207) — not always-on local debug.
+        handle_slack_event(payload, debug=slack_debug_enabled())
 
     print(
         "slack_socket_mode_dev: connecting (local/dev only; "

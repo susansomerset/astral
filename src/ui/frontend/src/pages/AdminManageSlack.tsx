@@ -22,6 +22,8 @@ type EstelleActivityRow = {
 
 export default function AdminManageSlack() {
   const [state, setState] = useState<ListenState | null>(null)
+  // Separate from ListenState — debug load/fail must not clear listen (AST-1208).
+  const [debugEnabled, setDebugEnabled] = useState<boolean | null>(null)
   const [activity, setActivity] = useState<EstelleActivityRow[]>([])
   const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
@@ -35,9 +37,11 @@ export default function AdminManageSlack() {
       setLoading(true)
       setError(null)
       try {
-        const [listenRes, activityRes] = await Promise.all([
+        // Debug leg catches so a network reject cannot hide Listen/activity (AC2).
+        const [listenRes, activityRes, debugRes] = await Promise.all([
           api("/api/admin/contact/listen"),
           api("/api/admin/contact/estelle_activity"),
+          api("/api/admin/contact/debug").catch(() => null),
         ])
         const listenData = await listenRes.json().catch(() => ({} as Record<string, unknown>))
         if (!listenRes.ok) {
@@ -57,6 +61,26 @@ export default function AdminManageSlack() {
               typeof listenData.environment === "string" ? listenData.environment : "",
             is_production: Boolean(listenData.is_production),
           })
+        }
+        // Debug failure toasts but does not block listen / activity.
+        if (debugRes == null || !debugRes.ok) {
+          if (debugRes) {
+            const debugData = await debugRes.json().catch(() => ({} as Record<string, unknown>))
+            const msg =
+              (typeof debugData.error === "string" && debugData.error) ||
+              `HTTP ${debugRes.status}`
+            if (!cancelled) {
+              setToast({ text: msg, variant: "error" })
+            }
+          } else if (!cancelled) {
+            setToast({ text: "Failed to load debug state", variant: "error" })
+          }
+          if (!cancelled) setDebugEnabled(null)
+        } else {
+          const debugData = await debugRes.json().catch(() => ({} as Record<string, unknown>))
+          if (!cancelled) {
+            setDebugEnabled(Boolean(debugData.debug_enabled))
+          }
         }
         // Activity load failure toasts but does not block listen controls.
         const activityData = await activityRes.json().catch(() => ({} as Record<string, unknown>))
@@ -139,6 +163,36 @@ export default function AdminManageSlack() {
     }
   }
 
+  async function toggleDebug() {
+    if (debugEnabled === null || busy) return
+    const next = !debugEnabled
+    setBusy(true)
+    try {
+      const r = await api("/api/admin/contact/debug", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ debug_enabled: next }),
+      })
+      const data = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (!r.ok) {
+        const msg =
+          (typeof data.error === "string" && data.error) || `HTTP ${r.status}`
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      setDebugEnabled(Boolean(data.debug_enabled))
+      setToast({
+        text: next ? "Slack debug enabled" : "Slack debug disabled",
+        variant: "success",
+      })
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to update debug"
+      setToast({ text: msg, variant: "error" })
+    } finally {
+      setBusy(false)
+    }
+  }
+
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ margin: "0 0 16px", fontSize: 22, color: "var(--text-primary)" }}>
@@ -161,6 +215,12 @@ export default function AdminManageSlack() {
                 {state.listen_enabled ? "On" : "Off"}
               </strong>
             </p>
+            <p style={{ margin: "0 0 16px", fontSize: 14, color: "var(--text-secondary)" }}>
+              Debug:{" "}
+              <strong style={{ color: "var(--text-primary)" }}>
+                {debugEnabled === null ? "—" : debugEnabled ? "On" : "Off"}
+              </strong>
+            </p>
             {state.is_production ? (
               <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-secondary)" }}>
                 Production — replies are not prefixed.
@@ -181,6 +241,19 @@ export default function AdminManageSlack() {
               }}
             >
               {state.listen_enabled ? "Disable listen" : "Enable listen"}
+            </button>
+            <button
+              type="button"
+              disabled={busy || debugEnabled === null}
+              onClick={() => void toggleDebug()}
+              style={{
+                padding: "8px 14px",
+                fontSize: 14,
+                cursor: busy ? "wait" : "pointer",
+                marginLeft: 8,
+              }}
+            >
+              {debugEnabled ? "Disable debug" : "Enable debug"}
             </button>
           </div>
           <h2 style={{ margin: "32px 0 12px", fontSize: 16, color: "var(--text-primary)" }}>
