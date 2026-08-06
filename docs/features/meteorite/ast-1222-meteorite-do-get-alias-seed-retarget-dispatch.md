@@ -362,3 +362,19 @@ context_tokens≈92000
 - **Discuss:** none requiring product change.
 - **Advisory:** none.
 - **Product / plan code:** unchanged this pass (resolve clean).
+
+## Radia re-review — [code-rubric] revision=1 (post-restack)
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `cea4222d`
+
+**Overall: CLEAN**
+
+Ticket bounced `Review Posted` → `User Testing` → `Tests Ready` → `Tests Passed` for a `merge-child`-flagged git-history restack (bad `Merge remote-tracking branch` subjects in the `ftr..sub` range) — not a content change. Verified `git diff <prior-tip>..cea4222d -- src/utils/config.py src/core/dispatcher.py data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.json` is empty; the only content delta anywhere in the tree is this doc's own review/resolution history carried forward by the rebase. `ftr..sub` range is now clean (no merge-commit subjects), and `origin/ftr/AST-1184-...` == this tip (already fast-forwarded by `merge-child`). `python3 -m py_compile` clean on all touched product modules at tip. Prior CLEAN verdict stands unchanged; no new findings.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈45000
+
+— Radia
