@@ -1171,14 +1171,14 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK` (DO/GET overlay only); `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). Twin GDL entry is `evaluate_meteorite`@**METEORITE_QUALIFIED** (`score_floor` `None`); classic `evaluate_jd` remains @**JD_READY** only — **AST-1210** (AST-1060-era “retargets `evaluate_jd` to METEORITE_QUALIFIED” is obsolete). Qualify prepend @**METEORITE_NEW** is **AST-1060**.
+`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK` originally held DO/GET overlay only — **AST-1220** empties it (outcomes on `meteorite_grade_*` aliases); `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). Twin GDL entry is `evaluate_meteorite`@**METEORITE_QUALIFIED** (`score_floor` `None`); classic `evaluate_jd` remains @**JD_READY** only — **AST-1210** (AST-1060-era “retargets `evaluate_jd` to METEORITE_QUALIFIED” is obsolete). Qualify prepend @**METEORITE_NEW** is **AST-1060**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (twin key+trigger; **AST-1210**) |
 | Revised ungated smoke | `src/utils/config.py` | revised **`TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched`** |
 
-**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW / evaluate_jd@METEORITE_QUALIFIED insert asserts superseded by **AST-1060** / **AST-1210**.
+**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW / evaluate_jd@METEORITE_QUALIFIED insert asserts superseded by **AST-1060** / **AST-1210**; Do/Get overlay body + consult overlay asserts superseded by **AST-1220**.
 
 **Integration:** none.
 
@@ -2512,5 +2512,27 @@ Live product key rename: `TASK_CONFIG` / `METEORITE_EMAIL_PARSE_CONFIG["task_key
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1213RuthPayloadLinkExcludes \
+  -q
+```
+
+### AST-1220 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers`.
+
+General `master_task_key` contract: `is_task_alias` / `resolve_task_key_for_content` (field-driven); load-time asserts (live non-alias masters, no chains, job-entity alias outcomes ∈ `JOB_STATES`); first-consumer aliases `meteorite_grade_do` → `grade_do`, `meteorite_grade_get` → `grade_get` with meteorite pass/fail/error + field-driven `trigger_state`; empty `METEORITE_GDL_OUTCOME_BY_TASK`; aliases in `_DISPATCH_BATCH_CALL_MODE_ONE`. Does **not** rewire consult/agent (**AST-1221**) or retarget `METEORITE_DISPATCH_TASKS` / seed (**AST-1222**). Consult overlay revision: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve helpers + alias entries + empty overlay + admin defaults | `src/utils/config.py` | **`TestAst1220TaskAliasConfigContract`** |
+| Consult empty-overlay interim (Gaze outcomes for METEORITE_*) | `src/core/consult.py` | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+
+**Broken / obsolete:** AST-1054 consult asserts that indexed `METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]` / expected meteorite overlay pass/fail from shared keys; bible prose that overlay still supplies Do/Get outcomes.
+
+**Integration:** no existing scenarios assert overlay map or `master_task_key` — none revised; do not invent new integration coverage. Do **not** exercise meteorite Do/Get on a tree with only AST-1220 merged (wait for AST-1221 + AST-1222).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
   -q
 ```

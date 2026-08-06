@@ -4095,3 +4095,71 @@ class TestAst1213RuthPayloadLinkExcludes:
             "xmlns=",
         ):
             assert frag in ruth
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "resolve_task_key_for_content")
+    or "meteorite_grade_do" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1220 task-alias contract not on this publish tip",
+)
+class TestAst1220TaskAliasConfigContract:
+    """AST-1220: master_task_key resolve helpers + meteorite_grade_* aliases; empty Do/Get overlay."""
+
+    def test_resolve_helpers_field_driven(self) -> None:
+        assert cfg.is_task_alias("meteorite_grade_do") is True
+        assert cfg.is_task_alias("meteorite_grade_get") is True
+        assert cfg.is_task_alias("grade_do") is False
+        assert cfg.resolve_task_key_for_content("meteorite_grade_do") == "grade_do"
+        assert cfg.resolve_task_key_for_content("meteorite_grade_get") == "grade_get"
+        assert cfg.resolve_task_key_for_content("grade_do") == "grade_do"
+        assert cfg.resolve_task_key_for_content("no_such") == "no_such"
+        # Non-aliases omit master_task_key (absence, not None literal).
+        assert "master_task_key" not in cfg.TASK_CONFIG["grade_do"]
+
+    def test_meteorite_grade_alias_entries_and_empty_overlay(self) -> None:
+        do = cfg.TASK_CONFIG["meteorite_grade_do"]
+        get = cfg.TASK_CONFIG["meteorite_grade_get"]
+        assert do["master_task_key"] == "grade_do"
+        assert do["pass_state"] == "METEORITE_PASSED_DO"
+        assert do["fail_state"] == "METEORITE_FAILED_DO"
+        assert do["error_state"] == "METEORITE_FAILED_TECHNICAL_DO"
+        assert do["trigger_state"] == "METEORITE_PASSED_JD"
+        assert do["entity_type"] == "job"
+        assert do["scored"] is True
+        assert "agent_task" not in do
+        assert get["master_task_key"] == "grade_get"
+        assert get["pass_state"] == "METEORITE_PASSED_GET"
+        assert get["fail_state"] == "METEORITE_FAILED_GET"
+        assert get["error_state"] == "METEORITE_FAILED_TECHNICAL_GET"
+        assert get["trigger_state"] == "METEORITE_PASSED_DO"
+        assert "agent_task" not in get
+        # Overlay no longer supplies Do/Get outcomes (kept empty for AST-1221 consult cleanup).
+        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK == {}
+        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK.get("grade_do") is None
+        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK.get("grade_get") is None
+
+    def test_alias_admin_defaults_and_scored_transition_delta(self) -> None:
+        # Field-driven trigger_state fallback — no meteorite-only helper branches.
+        assert cfg.TASK_CONFIG["grade_do"].get("trigger_state") is None
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_grade_do") == "METEORITE_PASSED_JD"
+        assert cfg._dispatch_trigger_state_for_task_key("meteorite_grade_get") == "METEORITE_PASSED_DO"
+        d_do = cfg.dispatch_task_admin_defaults("meteorite_grade_do")
+        assert d_do["trigger_state"] == "METEORITE_PASSED_JD"
+        assert d_do["entity_type"] == "job"
+        assert d_do["batch_call_mode"] == 1
+        assert "meteorite_grade_do" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        assert "meteorite_grade_get" in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        for st in (
+            "METEORITE_FAILED_DO",
+            "METEORITE_FAILED_TECHNICAL_DO",
+            "METEORITE_FAILED_GET",
+            "METEORITE_FAILED_TECHNICAL_GET",
+        ):
+            assert st in cfg._TRANSITION_STATES_USED_BY_SCORED_TASKS
+            assert cfg.dispatch_claim_uses_score_floor(st) is True
+        # Dispatch rows still shared grade_do/grade_get until AST-1222.
+        by = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
+        assert ("grade_do", "METEORITE_PASSED_JD") in by
+        assert ("grade_get", "METEORITE_PASSED_DO") in by
+        assert ("meteorite_grade_do", "METEORITE_PASSED_JD") not in by
+        assert ("meteorite_grade_get", "METEORITE_PASSED_DO") not in by
