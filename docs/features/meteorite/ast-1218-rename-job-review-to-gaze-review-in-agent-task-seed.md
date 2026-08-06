@@ -145,3 +145,23 @@ Changes: Narrowed Done when + step 6 to label fields this child controls + AST-1
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `debff822` | Gaze Review classic agent_task group label (+ surgical AST-756 fixture) |
+
+## Review (Radia)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1218
+**Publish ref:** `origin/sub/AST-1183/AST-1218-rename-job-review-to-gaze-review-in-agent-task-seed` @ `017e345d`
+**Overall:** CLEAN
+
+**Full-set sweep:** 65 active statutes (18 universal + 47 scoped) scored in-session against `git diff origin/dev...origin/sub/AST-1183/AST-1218-rename-job-review-to-gaze-review-in-agent-task-seed` (5 changed files: `data/admin/agent_task.json` M, `docs/uat-fixtures/AST-756/expected-agent_task.json` M, `docs/test-bible/core/repo_admin_json.md` M, `tests/component/core/test_repo_admin_json.py` M, `docs/features/meteorite/ast-1218-….md` A). All 18 universal `conforms`. 6 scoped statutes matched the diff change set and all score `conforms`: `astral.seed.agent-tables-in-repo-json` (non-empty JSON array, repo-wins seed intact), `astral.seed.define-approved` (Archie-approved membership/order via parent open questions + Joan Plan Approved), `astral.git.engineer-test-tree-ban` (test/bible edits landed via Betty's `test(AST-1218)`→`merge-tests(AST-1218)` commits, not the engineer's `code(AST-1218)` commit, confirmed via `git log --stat`), `astral.git.betty-no-src-or-features` (Betty's merge-tests commit touches only `tests/` + `docs/test-bible/`), `astral.docs.features-single-file-per-ticket` (one file at `docs/features/meteorite/…`), `astral.debug.spikes-under-debug-dir` (plan doc, not spike notes). Remaining 41 scoped statutes `not-applicable` — no diff path/layer intersects their `applies_when` (diff touches only `data/admin/**` and `docs/**`/`tests/**`, no `src/**`). Zero `Job Review`/`Gaze Review` literals under `src/` on this tip (verified via `git grep` on the publish ref). Zero findings.
+
+**Straggler (C4):** Joan plan-rubric verdict attached (revision=1, APPROVED, "18 universal + 10 scoped … all conforms"); slim artifact names no Excluded list to cross-check — no straggler flagged.
+
+**Pattern conformance:** none cited.
+
+**Frame diff:** (none) — diff footprint matches Description In-scope / Files Changed exactly.
+
+context_tokens≈85000
+
+— Radia
