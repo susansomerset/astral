@@ -3672,6 +3672,19 @@ class TestAst1094ActivityConfig:
         assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 
 
+# Branches: debug_enabled + debug_state_filename on CONTACT_CONFIG (AST-1206).
+class TestAst1206ContactDebugConfig:
+    """AST-1206: CONTACT_CONFIG debug default off + durable filename."""
+
+    def test_debug_config_defaults(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["debug_enabled"] is False
+        assert cc["debug_state_filename"] == "contact_slack_debug.json"
+        assert cc["debug_state_filename"].endswith(".json")
+        # Separate durable file from listen — parent forbids overload.
+        assert cc["debug_state_filename"] != cc["listen_state_filename"]
+
+
 class TestAst1099JobArtifactAgentDataPinConfig:
     """AST-1099: task_key → artifact slot pin map + cancel clear keys include pin slots."""
 
