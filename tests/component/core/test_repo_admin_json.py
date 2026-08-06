@@ -259,7 +259,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "meteorite_like",
         "meteorite_upshot",
         "parse_job_list",
-        "parse_meteorite_email",
+        "meteorite_email",
         "preamble_validate_response",
         "prefilter_company",
         "propose_application_responses",
@@ -711,15 +711,20 @@ class TestAst1075TopicMenuCatalogRows:
 
 
 class TestAst1089ParseMeteoriteEmailCatalogRow:
-    """AST-1089: Ruth parse_meteorite_email shell in repo agent_task JSON."""
+    """AST-1089 / AST-1212: Ruth meteorite_email shell in repo agent_task JSON."""
 
     def test_parse_meteorite_email_ruth_shell_and_modes(self) -> None:
+        from src.utils.config import TASK_CONFIG
+
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
-        row = by["parse_meteorite_email"]
+        assert "parse_meteorite_email" not in by
+        row = by["meteorite_email"]
         assert row["agent_id"] == "college_intern_ruth"
         assert row["task_group_name"] == "Job Review"
-        assert row["task_name"] == row["task_key"] == "parse_meteorite_email"
+        assert row["task_name"] == row["task_key"] == "meteorite_email"
+        # Config → seed identity must agree (Joan discuss on AST-1212 plan).
+        assert row["task_key"] == TASK_CONFIG["meteorite_email"]["agent_task"]
         assert row["task_seq"] == 2.4
         cache = row["cache_prompt"]
         assert "html_links" in cache
@@ -746,7 +751,7 @@ class TestAst1106GazeEmailCatalogRow:
         assert row["task_seq"] == 2.3
         assert row["agent_id"] == "n/a"
         assert row["user_prompt"] == ""
-        assert by["parse_meteorite_email"]["task_seq"] == 2.4
+        assert by["meteorite_email"]["task_seq"] == 2.4
         assert by["qualify_meteorite"]["task_seq"] == 2.5
 
 
@@ -778,12 +783,12 @@ class TestAst1107TaskNameEqualsTaskKey:
 
 
 class TestAst1144ParseMeteoriteEmailMetadataPrompt:
-    """AST-1144: catalog prompt documents optional metadata object company/location."""
+    """AST-1144 / AST-1212: catalog prompt documents optional metadata object company/location."""
 
     def test_html_links_prompt_documents_metadata_object(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
-        cache = by["parse_meteorite_email"]["cache_prompt"]
+        cache = by["meteorite_email"]["cache_prompt"]
         assert "metadata" in cache
         assert "company" in cache
         assert "location" in cache
@@ -796,7 +801,7 @@ class TestAst1144ParseMeteoriteEmailMetadataPrompt:
         )
         fix = next(
             r for r in fix_rows
-            if r.get("task_key") == "parse_meteorite_email" and r.get("current") == 1
+            if r.get("task_key") == "meteorite_email" and r.get("current") == 1
         )
         assert fix["cache_prompt"] == cache
 

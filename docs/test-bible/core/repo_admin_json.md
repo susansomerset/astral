@@ -274,3 +274,27 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
   -q
 ```
+
+
+### AST-1212 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`.
+
+Ruth `agent_task` row identity `parse_meteorite_email` → **`meteorite_email`** (`task_name` lockstep; `task_key_uuid` frozen). AST-756 fixture surgical sync on that row. Catalog frozenset still **53** (rename, not add). Config half: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + fixture row + frozenset | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | revised **`TestAst786AgentTaskRepoJsonSeed`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`**, **`TestAst1144ParseMeteoriteEmailMetadataPrompt`** |
+
+**Broken / obsolete:** catalog/fixture lookups and AST-786 frozenset entry still named `parse_meteorite_email`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  -q
+```
