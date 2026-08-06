@@ -211,3 +211,16 @@ On `fail_reason`: transition `cfg["fail_state"]` (**METEORITE_FAILED_QUALIFY**);
 Revision 1 — 2026-08-06
 Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric REVISE) — fix-now bot_threshold unmet on captured Cloudflare body; fix-now `JOB_STATES` asserts before definition; discuss `html.unescape` subject probe; discuss assemble DRY vs in-scope-only.
 Changes: Stage 1 appends both `"Additional Verification Required"` and `"Troubleshooting Cloudflare Errors"`, documents 2-hit threshold + shared-classifier widening Decision, adds captured-body `classify=bot` verification; splits TASK_CONFIG vs `JOB_STATES` assert placement; Stage 3 subject probe uses `html.unescape` (+ optional whitespace collapse); Stage 2 records Decision to keep hand-edit assemble twins.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`
+**Plan path:** `docs/features/meteorite/ast-1197-consult-apply-email-link-bot-blocked.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ee71b044` | `email_link_prefix` / `bot_blocked_state` + two Cloudflare `bot_signals` + asserts |
+| 2 | `c77f1fed` | assemble `CONTENT:` label + api_admin lockstep |
+| 3 | `cca4fb1c` | process: bot → **BOT_BLOCKED**, `email-` QUALIFY waivers, Style D title/link source |
+
+**Tip:** `cca4fb1c` on `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`
