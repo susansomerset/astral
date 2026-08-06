@@ -132,3 +132,16 @@ When `debugEnabled === null` (load failed / unknown), the status line shows `—
 Revision 1 — 2026-08-06
 Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — fix-now 1 (`Promise.all` debug isolation) and fix-now 2 (null status must render `—`, not `Off`).
 Changes: Stage 1 step 2 uses `api(.../debug).catch(() => null)` and treats `null` like `!ok`; step 4 status snippet is three-state `{debugEnabled === null ? "—" : debugEnabled ? "On" : "Off"}`.
+
+---
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1203/AST-1208-manage-slack-ui-debug-toggle` |
+| Tip | `8625077b` |
+| Branch | `sub/AST-1203/AST-1208-manage-slack-ui-debug-toggle` |
+
+Stage 1 landed: Manage Slack Debug beside Listen via admin `GET`/`PUT` `/api/admin/contact/debug` (`AdminManageSlack.tsx` only).
