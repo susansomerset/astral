@@ -5,6 +5,7 @@ import type { SideTab } from "./SideTabPanel"
 import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
+import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
 import { formatRubricVectorHeader, RUBRIC_DEFAULT_IMPORTANCE, rubricItemImportance } from "../lib/rubricDisplay"
 
@@ -134,9 +135,46 @@ export default function ArtifactEditor({
     return railOrderFreeze.map(id => byId[id]).filter(Boolean) as SideTab[]
   }, [tabs, rubricMode, tabsSortedForRail, railOrderFreeze])
 
+  // Candidate Artifacts criteria only — not job-persistence (Recommended Job Modal).
+  const criteriaExpandAll = !jobPersistence && rubricMode
+
+  const criteriaSectionKeys = useMemo(
+    () => (criteriaExpandAll ? tabsForRail.map(t => t.id) : []),
+    [criteriaExpandAll, tabsForRail],
+  )
+  const {
+    isExpanded,
+    onExpandedChange,
+    expandAllSections,
+    setExpandedKeys,
+  } = useSectionExpandPolicy({
+    expandAll: criteriaExpandAll,
+    sectionKeys: criteriaSectionKeys,
+  })
+  const didSeedCriteriaExpandRef = useRef("")
+
   useEffect(() => {
+    didSeedCriteriaExpandRef.current = ""
+    setExpandedKeys(new Set())
     setRailOrderFreeze(null)
-  }, [selectedId, artifactKey])
+  }, [selectedId, artifactKey, setExpandedKeys])
+
+  // One-shot expand-all seed per load (AdminScheduledActions didAutoOpenSectionRef).
+  useEffect(() => {
+    if (!criteriaExpandAll || !loaded) return
+    if (criteriaSectionKeys.length === 0) return
+    const seedKey = `${selectedId ?? ""}:${artifactKey}`
+    if (didSeedCriteriaExpandRef.current === seedKey) return
+    didSeedCriteriaExpandRef.current = seedKey
+    expandAllSections()
+  }, [
+    criteriaExpandAll,
+    loaded,
+    selectedId,
+    artifactKey,
+    criteriaSectionKeys.length,
+    expandAllSections,
+  ])
 
   // Candidate state drives Generate visibility
   const candidateState = useMemo(() => {
@@ -389,7 +427,11 @@ export default function ArtifactEditor({
     if (tabs.length >= MAX_ARTIFACT_TABS) return
     const t: SideTab = { id: genArtifactTabId(), label: "New Criterion", content: "", importance: RUBRIC_DEFAULT_IMPORTANCE }
     handleChange([...tabs, t])
-    setExpandedTabId(t.id)
+    if (criteriaExpandAll) {
+      setExpandedKeys(prev => new Set([...prev, t.id]))
+    } else {
+      setExpandedTabId(t.id)
+    }
     setEditingId(t.id)
   }
 
@@ -642,9 +684,10 @@ export default function ArtifactEditor({
                     </span>
                   ) : undefined
                 }
-                expanded={resolvedExpandedTabId === tab.id}
+                expanded={criteriaExpandAll ? isExpanded(tab.id) : resolvedExpandedTabId === tab.id}
                 onExpandedChange={next => {
-                  if (next) setExpandedTabId(tab.id)
+                  if (criteriaExpandAll) onExpandedChange(tab.id, next)
+                  else if (next) setExpandedTabId(tab.id)
                   else setExpandedTabId("")
                 }}
               >
