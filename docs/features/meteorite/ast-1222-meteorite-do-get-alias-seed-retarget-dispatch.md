@@ -309,3 +309,15 @@ Changes:
 - **discuss:** Stage 2 AC mapping (AC2/AC3/AC4); Done-when + verify asserts `dispatch_task_grouping_catalog_key(alias) == alias`, `get_task_keys()` membership, and seeded Meteorite Review / `"4500"` grouping.
 - **acceptable (carried):** surgical-not-`cp`; empty-prompt / `n/a` seed shape; retirement gated on both aliases; SQL substring asserts; no manual provision step.
 - **nit:** Stage 1 retirement reuses one `rows_after` list for membership + delete loop.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`
+**Plan path:** `docs/features/meteorite/ast-1222-meteorite-do-get-alias-seed-retarget-dispatch.md`
+
+**Built tip:** `22450fa2c3c79390819694070d2c5d5de8cb497f` (`22450fa2`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `320ac917` | retarget meteorite Do/Get dispatch to alias keys |
+| 2 | `22450fa2` | seed meteorite_grade_do/get agent_task grouping rows |
