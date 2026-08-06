@@ -168,3 +168,29 @@ PY
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `39e6a911` | Meteorite Review agent_task group + membership move (+ surgical AST-756 fixture) |
+
+## Review (Radia)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1219
+**Publish ref:** `origin/sub/AST-1183/AST-1219-meteorite-review-group-move-meteorite-agent-task-rows` @ `eee01238`
+**Overall:** CLEAN
+
+**Scope of diff swept:** this ticket's own contribution, isolated as `git diff origin/ftr/AST-1183-gaze-review-rename-meteorite-review-sibling...origin/sub/AST-1183/AST-1219-…` (sibling AST-1218's already-reviewed content is inherited via the `ftr` merge at `ab0cc6b4` and not re-litigated here). 6 changed files: `data/admin/agent_task.json` M, `docs/uat-fixtures/AST-756/expected-agent_task.json` M, `docs/test-bible/core/repo_admin_json.md` M, `tests/component/core/test_repo_admin_json.py` M, `tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx` M, `docs/features/meteorite/ast-1219-….md` A.
+
+**Full-set sweep:** 65 active statutes (18 universal + 47 scoped) scored in-session. All 18 universal `conforms` (single `merge-tests(AST-1219)` commit; commit vocabulary respected; sub explicitly merges `origin/ftr/AST-1183-gaze-review-rename-meteorite-review-sibling` at `ab0cc6b4` per `orch.git.merge-on-checkout`; one epic worktree; assignee stays engineer Hedy). 6 scoped statutes matched the diff and all score `conforms`: `astral.seed.agent-tables-in-repo-json` (53-row non-empty JSON array intact), `astral.seed.define-approved` (Archie-confirmed membership + order `4500` per parent notes / Joan Plan Approved), `astral.git.engineer-test-tree-ban` (the `code(AST-1219)` commit touches only `data/admin/agent_task.json` + `docs/uat-fixtures/AST-756/expected-agent_task.json` — confirmed via `git show --stat`; all `tests/`/`docs/test-bible/` edits landed via Betty's `test(AST-1219)`→`merge-tests(AST-1219)` commits), `astral.git.betty-no-src-or-features` (Betty's commit touches neither `src/` nor `docs/features/`), `astral.docs.features-single-file-per-ticket` (one new file for this ticket), `astral.debug.spikes-under-debug-dir` (plan doc, not spike notes). Remaining 41 scoped statutes `not-applicable` (diff has no `src/**` paths). Zero `Job Review`/`Gaze Review`/`Meteorite Review` literals under `src/` on this tip.
+
+**Independently verified (not taken on trust):** ran the six-key membership + classic-preservation + AST-1211-pair checks against both `data/admin/agent_task.json` and the AST-756 fixture (53 current rows each; six meteorite keys → `Meteorite Review`/`"4500"`/seq `1`…`6`; nine classic keys still `Gaze Review`/`"4000"`; `craft_evaluate_meteorite_rubric` still `Candidate Artifacts`/`"2000"`; zero rows left `Job Review`; `evaluate_meteorite` object-equal catalog↔fixture) — all pass. Also confirmed the `TestAst1055…`/`TestAst1060…` revised `meteorite_like` cache_prompt assertion (`"be liberal"`) matches the actual tip text, replacing a stale pre-existing-drift assertion — legitimate Betty fix, not scope creep.
+
+**Joan's plan-rubric discuss note** ("Done when asserts unchanged classic `task_seq` but step 6 script doesn't check it") did not surface a real defect: diffed `data/admin/agent_task.json` directly and confirmed zero classic-row hunks (only the six meteorite keys changed) — no stray classic `task_seq` edit occurred.
+
+**Straggler (C4):** Joan plan-rubric verdict attached (revision=1, APPROVED, "18 universal + 10 scoped … all conforms"); slim artifact names no Excluded list to cross-check — no straggler flagged.
+
+**Pattern conformance:** none cited.
+
+**Frame diff:** (none) — diff footprint matches Description In-scope / Files Changed exactly.
+
+context_tokens≈100000
+
+— Radia
