@@ -33,7 +33,7 @@
     "run_next": "",
     "updated_at": "2026-06-18 23:50:46",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 9,
     "task_name": "analysis_upshot"
   },
@@ -394,7 +394,7 @@
     "run_next": "",
     "updated_at": "2026-06-18 04:33:30",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 4,
     "task_name": "evaluate_jd"
   },
@@ -432,7 +432,7 @@
     "run_next": "",
     "updated_at": "2026-07-12 22:00:00",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 7,
     "task_name": "fetch_culture_pages"
   },
@@ -451,7 +451,7 @@
     "run_next": "",
     "updated_at": "2026-06-19 00:54:00",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 3,
     "task_name": "fetch_jd"
   },
@@ -565,7 +565,7 @@
     "run_next": "",
     "updated_at": "2026-06-19 00:53:58",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 1,
     "task_name": "gaze"
   },
@@ -603,7 +603,7 @@
     "run_next": "",
     "updated_at": "2026-06-18 04:33:30",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 5,
     "task_name": "grade_do"
   },
@@ -622,7 +622,7 @@
     "run_next": "",
     "updated_at": "2026-06-18 04:33:30",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 6,
     "task_name": "grade_get"
   },
@@ -641,7 +641,7 @@
     "run_next": "",
     "updated_at": "2026-06-18 04:33:30",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 8,
     "task_name": "grade_like"
   },
@@ -869,7 +869,7 @@
     "run_next": "",
     "updated_at": "2026-06-18 04:33:30",
     "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_name": "Gaze Review",
     "task_seq": 2,
     "task_name": "qualify_job_listings"
   },
