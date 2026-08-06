@@ -36,6 +36,30 @@ class TestPruneJd:
         monkeypatch.setattr(gazer_mod, "TRACKER_CONFIG", cfg)
         assert gazer_mod._prune_jd("before marker after") == "before marker after"
 
+class TestAst1195BotBlockedErrorState:
+    """AST-1195: gazer bot classification maps to universal BOT_BLOCKED."""
+
+    def test_bot_maps_to_bot_blocked(self) -> None:
+        assert gazer_mod._JD_ERROR_STATES["bot"] == "BOT_BLOCKED"
+        assert "JD_SCRAPE_FAIL_BOT" not in gazer_mod._JD_ERROR_STATES.values()
+        # Sibling scrape-fail ids unchanged.
+        assert gazer_mod._JD_ERROR_STATES["cookie"] == "JD_SCRAPE_FAIL_COOKIE"
+        assert gazer_mod._JD_ERROR_STATES["missing"] == "JD_SCRAPE_FAIL_MISSING"
+        assert gazer_mod._JD_ERROR_STATES["closed"] == "JD_SCRAPE_FAIL_CLOSED"
+
+
+class TestAst1197ChallengeBotSignals:
+    """AST-1197: parent-captured Cloudflare interstitial classifies as bot (≥2 signals)."""
+
+    def test_captured_challenge_body_is_bot(self) -> None:
+        body = (
+            "Additional Verification Required\n"
+            "Your Ray ID for this request is a26948de4d78f005\n"
+            "Troubleshooting Cloudflare Errors"
+        )
+        assert gazer_mod._classify_jd(body) == "bot"
+
+
 class TestClassifyJd:
     def test_detects_closed_posting(self) -> None:
         assert gazer_mod._classify_jd("role no longer available") == "closed"

@@ -1492,3 +1492,41 @@ Skipped Retry groups selection by current `job.state`, looks up `bulk_retry_to_s
 cd src/ui/frontend && npx vitest run \
   ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
 ```
+
+### AST-1195 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+
+Shared `stateUiManifestFixture.ts` skipped `section_order` + `bulk_retry_to_state_by_from_state`: `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** (aligned with config rename). Primary config/schema: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fixture rename | `tests/component/frontend/fixtures/stateUiManifestFixture.ts` | Consumers via **`page-mocks.ts`** / StateUiContext (no new page cases) |
+
+**Broken / obsolete:** fixture pinned old bot scrape-fail id — revised this pass.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```
+
+---
+
+### AST-1200 · AST-1198
+
+**Parent:** [AST-1198 — Rubric criteria prompts are not appearing in UI Artifacts](https://linear.app/astralcareermatch/issue/AST-1198/rubric-criteria-prompts-are-not-appearing-in-ui-artifacts). **Publish:** `origin/sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`.
+
+Primary coverage is shared **`ArtifactEditor`** (**`docs/test-bible/frontend/components.md`**). Additive Job List Criteria page smoke for AC1 (prompt textarea visible without expand). No page-file product diff — §6c new-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job List Criteria prompt visible on first paint | `ArtifactsJobListCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsJobListCriteria.test.tsx`** — **`AST-1200: criterion prompt textarea visible without expand click`** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx \
+  --testNamePattern="AST-1200"
+```

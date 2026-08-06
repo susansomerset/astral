@@ -2402,3 +2402,24 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
   tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
   -q
 ```
+
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+`TASK_CONFIG["qualify_meteorite"]`: `email_link_prefix="email-"`, `bot_blocked_state="BOT_BLOCKED"`. `TRACKER_CONFIG["jd_classifier"]["bot_signals"]` gains parent challenge phrases (2-hit threshold). Apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Knobs + challenge signals | `src/utils/config.py` | **`TestAst1197QualifyMeteoriteApplyKnobs`** |
+
+**Broken / obsolete:** none in config tests.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1197QualifyMeteoriteApplyKnobs \
+  tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
+  -q
+```

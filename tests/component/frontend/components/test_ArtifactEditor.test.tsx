@@ -598,4 +598,201 @@ describe("ArtifactEditor", () => {
       false,
     )
   })
+
+  it("AST-1200: candidate criteria expand-all shows prompt bodies without chevron click", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                joblist_rubric: [
+                  { label: "Title fit", content: "Prompt A body", importance: 5 },
+                  { label: "Scope", content: "Prompt B body", importance: 4 },
+                ],
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Job List Criteria" artifactKey="joblist_rubric" taskKey="craft_joblist_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    const a = await screen.findByDisplayValue("Prompt A body")
+    const b = screen.getByDisplayValue("Prompt B body")
+    // Expand-all: CollapsiblePanel bodies not hidden (DOM contract for AC1)
+    expect(a.closest(".collapsible-panel-body")).not.toHaveAttribute("hidden")
+    expect(b.closest(".collapsible-panel-body")).not.toHaveAttribute("hidden")
+    expect(screen.getAllByRole("button", { name: "Collapse section" })).toHaveLength(2)
+  })
+
+  it("AST-1200: collapse one criterion stays closed while typing in another", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                joblist_rubric: [
+                  { label: "Title fit", content: "Prompt A body", importance: 5 },
+                  { label: "Scope", content: "Prompt B body", importance: 4 },
+                ],
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Job List Criteria" artifactKey="joblist_rubric" taskKey="craft_joblist_rubric" />,
+    )
+    // Wait for one-shot expand-all seed before interacting
+    await waitFor(() => expect(screen.getAllByRole("button", { name: "Collapse section" })).toHaveLength(2))
+    const a = screen.getByDisplayValue("Prompt A body")
+    const aBody = a.closest(".collapsible-panel-body")
+    expect(aBody).not.toHaveAttribute("hidden")
+    await userEvent.click(screen.getAllByRole("button", { name: "Collapse section" })[0])
+    await waitFor(() => expect(aBody).toHaveAttribute("hidden"))
+    const b = screen.getByDisplayValue("Prompt B body")
+    await userEvent.type(b, " more")
+    expect(aBody).toHaveAttribute("hidden")
+    expect(b.closest(".collapsible-panel-body")).not.toHaveAttribute("hidden")
+  })
+
+  it("AST-1200: jobPersistence dict tabs stay expand-one (bodies hidden until expand)", async () => {
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: {
+              artifacts: {
+                proposed_answers: { q1: "Answer one", q2: "Answer two" },
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Application Questions"
+        artifactKey="proposed_answers"
+        taskKey="craft_proposed_answers"
+        jobPersistence={{ jobId: "j1", artifactKey: "proposed_answers" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Application Questions")).toBeInTheDocument())
+    // Expand-one: ▶ chevrons; bodies start with hidden (not criteria expand-all)
+    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBeGreaterThanOrEqual(1)
+    const answer = screen.getByDisplayValue("Answer one")
+    expect(answer.closest(".collapsible-panel-body")).toHaveAttribute("hidden")
+    await userEvent.click(screen.getAllByRole("button", { name: "Expand section" })[0])
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Answer one").closest(".collapsible-panel-body")).not.toHaveAttribute("hidden"),
+    )
+  })
+
+  it("AST-1200: empty criteria page still shows New Criterion editor expanded", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { joblist_rubric: [] } },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Job List Criteria" artifactKey="joblist_rubric" taskKey="craft_joblist_rubric" />,
+    )
+    // Wait for expand-all seed on the empty New Criterion affordance
+    await waitFor(() => expect(screen.getByRole("button", { name: "Collapse section" })).toBeInTheDocument())
+    expect(screen.getByText(/New Criterion/)).toBeInTheDocument()
+    const area = screen.getByPlaceholderText("Enter new criterion…")
+    expect(area.closest(".collapsible-panel-body")).not.toHaveAttribute("hidden")
+  })
+
+  it("AST-1200: structure mode stays expand-one (not criteria expand-all)", async () => {
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  professional_summary: "Summary body",
+                  technical_skills: "Skills body",
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[
+          { id: "professional_summary", label: "Summary" },
+          { id: "technical_skills", label: "Skills" },
+        ]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Base Resume Content")).toBeInTheDocument())
+    // Structure sets fixedFields → rubricMode false → expand-one
+    await waitFor(() =>
+      expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBeGreaterThanOrEqual(1),
+    )
+    const summary = screen.getByDisplayValue("Summary body")
+    expect(summary.closest(".collapsible-panel-body")).toHaveAttribute("hidden")
+    await userEvent.click(screen.getAllByRole("button", { name: "Expand section" })[0])
+    await waitFor(() =>
+      expect(screen.getByDisplayValue("Summary body").closest(".collapsible-panel-body")).not.toHaveAttribute("hidden"),
+    )
+  })
 })

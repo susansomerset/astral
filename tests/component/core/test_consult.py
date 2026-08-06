@@ -4949,8 +4949,273 @@ class TestAst1133QualifyMeteoriteListCreated:
             "batch-1133-src", [self._claim("C0", create_link)], {}, debug=True
         )
         detail = " ".join(str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list)
-        assert "link_source=input" in detail
+        # AST-1197: Create-time ATS fallback is labeled http-input (was bare "input").
+        assert "link_source=http-input" in detail
         assert "found source=UUID-from-job_link" in detail
+
+
+class TestAst1197QualifyMeteoriteApply:
+    """AST-1197: CONTENT assemble, email- QUALIFY waiver, BOT_BLOCKED, Style D sources."""
+
+    _CHALLENGE = (
+        "Additional Verification Required\n"
+        "Your Ray ID for this request is a26948de4d78f005\n"
+        "Troubleshooting Cloudflare Errors"
+    )
+
+    def _jd(self, n: int = 60) -> str:
+        return "Visible meteorite JD body text. " * ((n // 25) + 1)
+
+    def _job(self, aid: str, *, link: str = "", jd: str | None = None) -> dict:
+        from src.utils.config import TRACKER_CONFIG
+
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        return {
+            "astral_job_id": aid,
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-1197",
+            "job_link": link,
+            "job_data": {jd_key: self._jd() if jd is None else jd},
+        }
+
+    @pytest.mark.asyncio
+    async def test_assemble_emits_content_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG:
+            pytest.skip("qualify_meteorite not on tip")
+        captured: dict = {}
+
+        async def _capture_do_task(**kwargs):
+            captured["live_content"] = kwargs.get("live_content")
+            return {
+                "success": True,
+                "parsed_response": {
+                    "jobs": [{
+                        "astral_job_id": "j1",
+                        "company_job_id": "EXT-1",
+                        "job_title": "Engineer Role",
+                        "job_link": "https://jobs.example.com/1",
+                        "jd_text": self._jd(),
+                    }]
+                },
+                "timesheet": {},
+            }
+
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value={}))
+        monkeypatch.setattr(consult_mod, "do_task", _capture_do_task)
+        await consult_mod.qualify_meteorite(
+            "batch-1197-asm",
+            [self._job("j1", link="https://jobs.example.com/old")],
+            {},
+            debug=False,
+        )
+        lc = captured["live_content"]
+        assert lc.startswith("METEORITE JOBS:")
+        assert "000: job_link: https://jobs.example.com/old" in lc
+        assert "CONTENT:\n" in lc
+        assert "job_description:" not in lc.split("CONTENT:", 1)[0]
+
+    @pytest.mark.asyncio
+    async def test_email_link_qualifies_without_company_job_id(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG:
+            pytest.skip("qualify_meteorite not on tip")
+        prefix = TASK_CONFIG["qualify_meteorite"]["email_link_prefix"]
+        email_link = f"{prefix}recruiter@example.com-20260805T224603Z"
+        transition = MagicMock()
+        initialize = MagicMock(return_value=True)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(consult_mod.tracker, "get_job", MagicMock(return_value={}))
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{
+                            "astral_job_id": "j-email",
+                            "company_job_id": "",
+                            "job_title": "Staff Engineer",
+                            "job_link": email_link,
+                            "jd_text": self._jd(),
+                        }]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1197-email", [self._job("j-email")], {}, debug=False,
+        )
+        assert out["passed"] == 1 and out["failed"] == 0
+        initialize.assert_called_once()
+        parsed = initialize.call_args.args[2]
+        assert parsed["job_link"] == email_link
+        assert parsed["company_job_id"] == ""
+        assert transition.call_args.args[2] == TASK_CONFIG["qualify_meteorite"]["pass_state"]
+
+    @pytest.mark.asyncio
+    async def test_challenge_input_jd_transitions_bot_blocked(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG:
+            pytest.skip("qualify_meteorite not on tip")
+        bot_state = TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]
+        transition = MagicMock()
+        initialize = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", initialize)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{
+                            "astral_job_id": "j-bot",
+                            "company_job_id": "EXT-9",
+                            "job_title": "Engineer Role",
+                            "job_link": "https://jobs.example.com/blocked",
+                            "jd_text": "",
+                        }]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1197-bot",
+            [self._job("j-bot", link="https://jobs.example.com/blocked", jd=self._CHALLENGE)],
+            {},
+            debug=False,
+        )
+        assert out["passed"] == 0
+        assert out["failed"] == 1
+        initialize.assert_not_called()
+        assert transition.call_args.args[2] == bot_state
+
+    @pytest.mark.asyncio
+    async def test_short_title_fails_qualify_not_bot(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TASK_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG:
+            pytest.skip("qualify_meteorite not on tip")
+        fail = TASK_CONFIG["qualify_meteorite"]["fail_state"]
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock())
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{
+                            "astral_job_id": "j-short",
+                            "company_job_id": "EXT-1",
+                            "job_title": "ab",
+                            "job_link": "https://jobs.example.com/1",
+                            "jd_text": self._jd(),
+                        }]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await consult_mod.qualify_meteorite(
+            "batch-1197-fail", [self._job("j-short", link="https://jobs.example.com/1")],
+            {}, debug=False,
+        )
+        assert out["failed"] == 1
+        assert transition.call_args.args[2] == fail
+        assert transition.call_args.args[2] != TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"]
+
+    @pytest.mark.asyncio
+    async def test_style_d_email_link_and_subject_title_source(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG:
+            pytest.skip("qualify_meteorite not on tip")
+        prefix = TASK_CONFIG["qualify_meteorite"]["email_link_prefix"]
+        email_link = f"{prefix}agent@corp.example-20260806T010203Z"
+        # Escaped & in subject must still match Ruth's unescaped title (html.unescape).
+        subject_html = (
+            '<header class="email-subject"><h1>Sales &amp; Marketing Lead</h1></header>\n'
+            + self._jd()
+        )
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(
+                return_value={
+                    "company_job_id": "",
+                    "job_title": "Sales & Marketing Lead",
+                    "job_link": email_link,
+                    "job_data": {jd_key: subject_html},
+                }
+            ),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{
+                            "astral_job_id": "j-sub",
+                            "company_job_id": "",
+                            "job_title": "Sales & Marketing Lead",
+                            "job_link": email_link,
+                            "jd_text": self._jd(),
+                        }]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        dbg_d = MagicMock()
+        monkeypatch.setattr(consult_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_detail", dbg_d)
+        out = await consult_mod.qualify_meteorite(
+            "batch-1197-d",
+            [self._job("j-sub", jd=subject_html)],
+            {},
+            debug=True,
+        )
+        assert out["passed"] == 1
+        detail = " ".join(str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list)
+        assert "link_source=email-synthesized" in detail
+        assert "title_source=subject" in detail
+
+    def test_title_source_helper_unescape(self) -> None:
+        assert consult_mod._qualify_meteorite_title_source(
+            "Sales & Marketing Lead", "Sales & Marketing Lead",
+        ) == "subject"
+        assert consult_mod._qualify_meteorite_email_subject(
+            '<header class="email-subject"><h1>Sales &amp; Marketing Lead</h1></header>'
+        ) == "Sales & Marketing Lead"
 
 
 class TestAst1155IncompleteGradeRetry:
