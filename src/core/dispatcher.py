@@ -161,16 +161,19 @@ def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict
 
 
 def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent insert of meteorite dispatch_task rows; retire evaluate_jd@METEORITE_* (AST-1060/AST-1209).
+    """Idempotent insert of meteorite dispatch_task rows; retire stale shared keys.
 
     Twin GDL entry is evaluate_meteorite@METEORITE_QUALIFIED. Retires any evaluate_jd row
     claiming a METEORITE_* trigger (NEW + QUALIFIED eras); keeps evaluate_jd@JD_READY.
     Retirement runs only when the twin row is already present or was just inserted — never
     strip classic meteorite evaluate_jd and leave METEORITE_QUALIFIED with no claim row.
+    AST-1222: once meteorite_grade_do/get alias rows exist, also retire grade_do@METEORITE_PASSED_JD
+    and grade_get@METEORITE_PASSED_DO (classic Gaze grade_*@PASSED_* stay).
     Call provision when the meteorite evaluate hop is idle (rows are auto_mode False).
 
     Manual verify after provision_meteorite_dispatch_tasks: retired may be > 0 when stale
-    rows existed; evaluate_meteorite@METEORITE_QUALIFIED present; evaluate_jd@JD_READY kept.
+    rows existed; evaluate_meteorite@METEORITE_QUALIFIED present; evaluate_jd@JD_READY kept;
+    alias Do/Get present and shared-key meteorite Do/Get gone.
     """
     cid = str(candidate_id or "").strip()
     if not cid:
@@ -214,6 +217,25 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
             tk = (row.get("task_key") or "").strip()
             ts = (row.get("trigger_state") or "").strip()
             if tk == "evaluate_jd" and ts.startswith("METEORITE_"):
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
+    # AST-1222: once alias Do/Get rows exist, drop shared-key meteorite triggers
+    # (classic Gaze grade_do@PASSED_JD / grade_get@PASSED_DO stay).
+    rows_after = database.list_dispatch_tasks_for_candidate(cid)
+    existing_after = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in rows_after
+    }
+    alias_do = ("meteorite_grade_do", "METEORITE_PASSED_JD")
+    alias_get = ("meteorite_grade_get", "METEORITE_PASSED_DO")
+    if alias_do in existing_after and alias_get in existing_after:
+        for row in rows_after:
+            tk = (row.get("task_key") or "").strip()
+            ts = (row.get("trigger_state") or "").strip()
+            if (tk, ts) in {
+                ("grade_do", "METEORITE_PASSED_JD"),
+                ("grade_get", "METEORITE_PASSED_DO"),
+            }:
                 delete_dispatch_task(int(row["id"]))
                 retired += 1
     return {

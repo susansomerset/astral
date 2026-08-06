@@ -2491,6 +2491,7 @@ assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subje
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
 # Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
+# AST-1222: Do/Get use alias keys meteorite_grade_do / meteorite_grade_get (not shared grade_*).
 METEORITE_DISPATCH_TASKS = (
     {
         "task_key": "qualify_meteorite",
@@ -2511,7 +2512,7 @@ METEORITE_DISPATCH_TASKS = (
         "freq_hrs": 0,
     },
     {
-        "task_key": "grade_do",
+        "task_key": "meteorite_grade_do",
         "trigger_state": "METEORITE_PASSED_JD",
         "score_floor": 0.0,
         "auto_mode": False,
@@ -2520,7 +2521,7 @@ METEORITE_DISPATCH_TASKS = (
         "freq_hrs": 0,
     },
     {
-        "task_key": "grade_get",
+        "task_key": "meteorite_grade_get",
         "trigger_state": "METEORITE_PASSED_DO",
         "score_floor": 0.0,
         "auto_mode": False,
@@ -2591,25 +2592,25 @@ SEED_CONFIG = {
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT c.candidate_id, 'grade_do', 'job', "
+        ") SELECT c.candidate_id, 'meteorite_grade_do', 'job', "
         "'METEORITE_PASSED_JD', 'latest_score', 1, 0, 1, 10, 0, 0.0 "
         "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
         "  WHERE d.candidate_id = c.candidate_id "
-        "    AND d.task_key = 'grade_do' "
+        "    AND d.task_key = 'meteorite_grade_do' "
         "    AND d.trigger_state = 'METEORITE_PASSED_JD'"
         ")",
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
         "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT c.candidate_id, 'grade_get', 'job', "
+        ") SELECT c.candidate_id, 'meteorite_grade_get', 'job', "
         "'METEORITE_PASSED_DO', 'latest_score', 1, 0, 1, 10, 0, 0.0 "
         "FROM candidate c "
         "WHERE NOT EXISTS ("
         "  SELECT 1 FROM dispatch_task d "
         "  WHERE d.candidate_id = c.candidate_id "
-        "    AND d.task_key = 'grade_get' "
+        "    AND d.task_key = 'meteorite_grade_get' "
         "    AND d.trigger_state = 'METEORITE_PASSED_DO'"
         ")",
         "INSERT INTO dispatch_task ("
