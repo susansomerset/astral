@@ -321,3 +321,35 @@ Changes:
 |-------|--------|---------|
 | 1 | `320ac917` | retarget meteorite Do/Get dispatch to alias keys |
 | 2 | `22450fa2` | seed meteorite_grade_do/get agent_task grouping rows |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `e459d368`
+
+**Overall: CLEAN**
+
+**What's solid:**
+
+- Stage 1 retarget is exact: `METEORITE_DISPATCH_TASKS` Do/Get entries now read `meteorite_grade_do`@`METEORITE_PASSED_JD` / `meteorite_grade_get`@`METEORITE_PASSED_DO`; `SEED_CONFIG["dispatch_task-meteorite"]` SELECT/WHERE literals retarget in lockstep (verified both files' substrings live at tip — no drift between the two seed sources). Classic `grade_do`/`grade_get` `TASK_CONFIG` pass_state stays `PASSED_DO`/untouched.
+- Stage 1 retirement in `ensure_meteorite_dispatch_tasks` re-lists rows after the insert loop (stale pre-loop snapshot correctly avoided), gates deletion on **both** alias pairs being present, and deletes only the exact two shared-key pairs — never touches classic Gaze `grade_do`@`PASSED_JD` / `grade_get`@`PASSED_DO`. Matches the AST-1209 twin-before-retire precedent already in the same function.
+- Stage 2 seed rows are byte-exact against the plan's field tables in both `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` — verified `task_key_uuid`, `Meteorite Review`/`"4500"`, `task_seq` 5/6, `agent_id: "n/a"`, all prompt fields empty, `run_next` empty, and `meteorite_like`/`meteorite_upshot` bumped to 7/8 — identically in both files (true surgical sync, not a `cp`; classic `grade_do`/`grade_get` Gaze Review rows with non-empty prompts left untouched).
+- Ran every assertion from the plan's own Stage 1 + Stage 2 verify blocks live against the tip (dispatch catalog membership, SQL substrings, `resolve_task_key_for_content`, `dispatch_task_grouping_catalog_key` returning the alias unchanged, `get_task_keys()` membership, seeded grouping) — all pass.
+- JSON convention preserved: literal em-dashes intact, no `\u2014` re-escape storm, trailing newline kept on both files.
+- No new hardcoded state/allow-lists: the Stage 1 retirement tuple set is a narrow, function-scoped migration literal (same shape as the pre-existing `evaluate_jd`@`METEORITE_*` retirement two lines above it in the same function), not a parallel meteorite-key catalog — Joan's plan-rubric precedent check on this exact pattern concurred.
+- Commit hygiene: `code(AST-1222)` commits touch only `src/utils/config.py`, `src/core/dispatcher.py`, `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json`; `docs(AST-1222)` touches only the plan doc; `test(AST-1222)`/`merge-tests(AST-1222)` touch only `tests/`/`docs/test-bible/**` — `astral.git.engineer-test-tree-ban` and `astral.git.betty-no-src-or-features` both hold.
+- `python3 -m py_compile src/utils/config.py src/core/dispatcher.py src/core/agent.py src/core/consult.py` clean at tip.
+- Full active-set sweep (65 active statutes: 18 universal + 41 scoped-applicable against this diff's `{core, utils, docs}` layers / `src/utils/config.py`, `src/core/dispatcher.py`, `data/admin/agent_task.json`, `docs/uat-fixtures/**`, `docs/features/**`, `docs/test-bible/**`, `tests/**` paths) — zero `violates`, zero `needs-discussion`.
+
+**Note:** this three-dot diff also carries AST-1220's and AST-1221's already-reviewed changes (merged onto this branch via `origin/ftr/AST-1184-...` per `orch.git.merge-on-checkout`, since neither sibling has landed `dev` yet). Both were independently reviewed clean (Review Posted); this review's findings focus on AST-1222's own commits.
+
+**Pattern conformance:** `pattern.layers.import-discipline` — conforms (no new imports at all in this ticket's own commits). None else cited beyond the active `astral.*` statutes already covered by the full sweep.
+
+**Plan adherence:** Both stages match the plan's binding tables/code blocks exactly, including the Revision 1 fix-now (QA note enumerating the seven test classes/pins this seed change invalidates, and the intentional eight-key Meteorite Review membership decision) and the Revision 1 discuss item (AC3 grouping-key verify).
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈92000
+
+— Radia
