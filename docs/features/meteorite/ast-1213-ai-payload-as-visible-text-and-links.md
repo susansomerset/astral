@@ -282,3 +282,33 @@ Changes:
 |-------|--------|---------|
 | 1 | `aef00995` | Ruth live payload visible text + links |
 | 2 | `38a2cecd` | meteorite_email prompts visible text + links (+ surgical AST-756 fixture) |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `871c4b9b`
+
+**Overall: CLEAN**
+
+**What's solid:**
+
+- `gaze_email.py`: `_ruth_candidate_links` / `_ruth_live_parts` / `_format_ruth_live_body` match the plan verbatim; `gazer.py` untouched (Joan round=1 "do not edit gazer" honored); `do_task` call path unchanged — only `live_content` body differs.
+- New `ruth_payload_link_exclude_substrings` is a deliberately narrower, well-commented sibling of `link_exclude_substrings` (not a careless duplicate) — closes the Joan round=1 fix-now (Mailchimp-style click wrappers stay visible to Ruth; Playwright hygiene list untouched). Verified: `list-manage.com` present in the Playwright key, absent from the Ruth key.
+- Debug contract (§1.5.1) done right: `_detail`/`debug_detail` gated by `debug_flag`, found+recorded both logged (`visible_chars=/links=` summary, then `truncate_debug_content(live)` body), no naked `logger.info` added.
+- `astral.standards.in-scope-only` clean this time — diff footprint matches the plan's Files Changed table exactly (`config.py`, `gaze_email.py`, the one `agent_task.json` row + fixture twin, one new `docs/features` file); no repeat of AST-1212's whole-file re-encoding issue on the seed JSON (verified: `data/admin/agent_task.json` diff is 10 lines, catalog↔fixture prompts byte-equal, `updated_at` bumped consistently in both).
+- No live \"HTML\"/\"email HTML\" wording survives in either prompt; catalog and fixture are byte-equal on the touched row.
+- Exactly one `merge-tests(AST-1213)` commit; engineer commits (`aef00995`, `38a2cecd`) never touch `tests/`/`docs/test-bible/**`; `src/core/gazer.py` confirmed untouched.
+- `python3 -m py_compile` clean on both touched modules at tip.
+
+**Advisory (not fix-now):** The `html_links` and `subject_body` branches in `_handle_bound` each repeat the same 5-line assemble-and-log block (`_ruth_live_parts` → `_format_ruth_live_body` → `_detail` summary → `truncate_debug_content` loop) verbatim. A small `_assemble_ruth_live(prefix, html, debug)` helper would collapse the duplication (§1.3 DRY), but it's cosmetic — behavior is identical and the plan's binding code blocks specified this shape explicitly.
+
+**Pattern conformance:** `pattern.layers.import-discipline` — conforms (core→core reuse of `gazer._meteorite_email_body_text`, no new cross-layer import; `bs4` lazy-imported per existing repo convention).
+
+**Plan adherence:** Both stages match the plan's binding code blocks and done-when checks exactly, including the Joan round=1 revision (dual exclude-key decision) and the Stage 2 byte-equality / banned-phrase gates.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈55000
+
+— Radia
