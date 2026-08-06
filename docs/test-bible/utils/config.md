@@ -1171,14 +1171,14 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK`; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). **AST-1060** retargets `evaluate_jd` trigger to **METEORITE_QUALIFIED** and prepends `qualify_meteorite`@**METEORITE_NEW**.
+`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK` (DO/GET overlay only); `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). Twin GDL entry is `evaluate_meteorite`@**METEORITE_QUALIFIED** (`score_floor` `None`); classic `evaluate_jd` remains @**JD_READY** only — **AST-1210** (AST-1060-era “retargets `evaluate_jd` to METEORITE_QUALIFIED” is obsolete). Qualify prepend @**METEORITE_NEW** is **AST-1060**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (evaluate_jd trigger revised **AST-1060**) |
+| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (twin key+trigger; **AST-1210**) |
 | Revised ungated smoke | `src/utils/config.py` | revised **`TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched`** |
 
-**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW row assert superseded by **AST-1060**.
+**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW / evaluate_jd@METEORITE_QUALIFIED insert asserts superseded by **AST-1060** / **AST-1210**.
 
 **Integration:** none.
 
@@ -1277,15 +1277,15 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
 
-Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**; reframes **METEORITE_NEW** as pre-AI; retargets meteorite `evaluate_jd` claim to **METEORITE_QUALIFIED**; `TASK_CONFIG["qualify_meteorite"]` + `METEORITE_DISPATCH_TASKS` row @ **METEORITE_NEW**. Apply / gazer are siblings.
+Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**; reframes **METEORITE_NEW** as pre-AI; GDL entry claim is twin `evaluate_meteorite`@**METEORITE_QUALIFIED** (not classic `evaluate_jd` — **AST-1210**); `TASK_CONFIG["qualify_meteorite"]` + `METEORITE_DISPATCH_TASKS` row @ **METEORITE_NEW**. Apply / gazer are siblings.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Qualify states + TASK_CONFIG + dispatch row + helpers | `src/utils/config.py` | **`TestAst1060QualifyMeteoriteConfig`**; revised **`TestAst1053MeteoriteGdlJobStates`**, **`TestAst1054MeteoriteGdlDispatch`** |
+| Qualify states + TASK_CONFIG + dispatch row + helpers | `src/utils/config.py` | **`TestAst1060QualifyMeteoriteConfig`**; revised **`TestAst1053MeteoriteGdlJobStates`**, **`TestAst1054MeteoriteGdlDispatch`** (**AST-1210** twin entry) |
 | Catalog shell | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** (42 keys) |
-| Retire stale `evaluate_jd`@METEORITE_NEW | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** (+ retire case) — see **`docs/test-bible/core/dispatcher.md`** |
+| Retire stale meteorite `evaluate_jd` rows | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** — see **`docs/test-bible/core/dispatcher.md`** (**AST-1209** / **AST-1210**) |
 
-**Broken / obsolete:** AST-1053 GDL priors from METEORITE_NEW; AST-1054 evaluate_jd@METEORITE_NEW + insert counts; AST-786 **41 → 42** (+ UAT fixture byte lock).
+**Broken / obsolete:** AST-1053 GDL priors from METEORITE_NEW; AST-1054 evaluate_jd@METEORITE_* insert asserts; “retargets meteorite evaluate_jd claim to METEORITE_QUALIFIED” prose (superseded by twin entry — **AST-1210**); AST-786 **41 → 42** (+ UAT fixture byte lock).
 
 **Integration:** no existing scenarios assert qualify_meteorite / METEORITE_QUALIFIED — none revised.
 
@@ -2445,6 +2445,28 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
   -q
 ```
 
+
+### AST-1210 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.
+
+Retire obsolete bible/test claims that meteorite GDL entry is `evaluate_jd`@**METEORITE_QUALIFIED** / JD overlay. Twin truth: `evaluate_meteorite`@**METEORITE_QUALIFIED** (`score_floor` `None`); `evaluate_jd` absent from `METEORITE_GDL_OUTCOME_BY_TASK`; rubric/craft/Analysis-JD override maps own the twin; classic Analysis-JD / `evaluate_jd`@**JD_READY** unchanged. Product retirement: **AST-1209**. Fixture lockstep: **AST-1211**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch key+trigger + score_floor | `src/utils/config.py` | revised **`TestAst1054MeteoriteGdlDispatch`** |
+| Rubric / craft / Analysis override + overlay absence | same | **`TestAst1210EvaluateMeteoriteTwinConfig`** |
+
+**Broken / obsolete:** AST-1054 / AST-1060 prose and asserts that meteorite GDL entry is still `evaluate_jd`@**METEORITE_QUALIFIED**.
+
+**Integration:** none — no new scenarios.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1210EvaluateMeteoriteTwinConfig \
+  -q
+```
 
 ### AST-1212 · AST-1182
 

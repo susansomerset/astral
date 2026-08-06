@@ -136,6 +136,35 @@ class TestEvaluateMeteoriteStandaloneTwin:
         assert TASK_CONFIG["evaluate_meteorite"]["rubric_artifact"] == "meteorite_jobdesc_rubric"
         assert TASK_CONFIG["evaluate_jd"]["rubric_artifact"] == "jobdesc_rubric"
 
+    def test_format_analysis_jd_uses_twin_owner_when_state_meteorite(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Live branch: _entity_state_is_meteorite(job_data.state) → analysis_phases_meteorite_override."""
+        owners: list[str] = []
+
+        def _capture(_cid: str, owner: str):
+            owners.append(owner)
+            return [{"label": "Fit", "code": "FT", "content": "twin rubric blob"}]
+
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_task", _capture)
+        cand = {"_astral_candidate_id": "c-twin"}
+        grades = [{"vector": "Fit", "grade": "A", "confidence": 4}]
+        out_m = consult_mod._format_analysis_phase_text(
+            "ANALYSIS_JD",
+            {"state": "METEORITE_QUALIFIED", "jd_grades": grades},
+            cand,
+        )
+        assert owners == ["evaluate_meteorite"]
+        assert "CONSIDER: Fit" in out_m and "twin rubric blob" in out_m
+        owners.clear()
+        out_c = consult_mod._format_analysis_phase_text(
+            "ANALYSIS_JD",
+            {"state": "JD_READY", "jd_grades": grades},
+            cand,
+        )
+        assert owners == ["evaluate_jd"]
+        assert "CONSIDER: Fit" in out_c
+
 
 class TestRubricHelpers:
     def test_strips_code_suffix(self) -> None:
@@ -3178,7 +3207,6 @@ class TestAst513JobTokenContext:
 
     def _candidate_data(self) -> dict:
         return {
-            "_astral_candidate_id": "cand-513",
             "artifacts": {
                 "jobdesc_rubric": {
                     "criteria": [
@@ -3197,33 +3225,7 @@ class TestAst513JobTokenContext:
             }
         }
 
-    def _patch_live_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Formatter loads live criteria via rubric_criteria_for_task (not artifact blobs)."""
-        live = {
-            "evaluate_jd": [
-                {
-                    "label": "Culture Fit",
-                    "code": "CR",
-                    "content": "Full rubric blob for culture",
-                }
-            ],
-            "grade_do": [
-                {"label": "Day to day", "code": "DD", "content": "Do rubric body"},
-            ],
-        }
-
-        def _crit(cid: str, owner: str) -> list:
-            return list(live.get(owner) or [])
-
-        monkeypatch.setattr(
-            "src.core.candidate.rubric_criteria_for_task",
-            _crit,
-        )
-
-    def test_build_job_token_context_visible_jd_plain_text_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._patch_live_rubric(monkeypatch)
+    def test_build_job_token_context_visible_jd_plain_text_only(self) -> None:
         job = {
             "astral_job_id": "job-513",
             "job_data": {
@@ -3239,10 +3241,7 @@ class TestAst513JobTokenContext:
         assert "Full rubric blob for culture" in ctx["ANALYSIS_JD"]
         assert "ANALYSIS RESULT: A (4/5 confidence)" in ctx["ANALYSIS_JD"]
 
-    def test_missing_phase_grades_yields_empty_analysis_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._patch_live_rubric(monkeypatch)
+    def test_missing_phase_grades_yields_empty_analysis_token(self) -> None:
         job = {
             "astral_job_id": "job-513",
             "job_data": {"job_description": "jd", "do_grades": []},
@@ -3250,15 +3249,10 @@ class TestAst513JobTokenContext:
         ctx = consult_mod.build_job_token_context(job, self._candidate_data())
         assert ctx["ANALYSIS_DO"] == ""
 
-    def test_format_analysis_skips_unmatched_vector(
-        self, monkeypatch: pytest.MonkeyPatch, caplog
-    ) -> None:
-        self._patch_live_rubric(monkeypatch)
+    def test_format_analysis_skips_unmatched_vector(self, caplog) -> None:
         caplog.set_level("WARNING")
         job_data = {"jd_grades": [{"vector": "Unknown Vector", "grade": "B", "confidence": 2}]}
-        out = consult_mod._format_analysis_phase_text(
-            "ANALYSIS_JD", job_data, self._candidate_data()
-        )
+        out = consult_mod._format_analysis_phase_text("ANALYSIS_JD", job_data, self._candidate_data())
         assert out == ""
         assert any("no rubric criterion" in rec.message for rec in caplog.records)
 
@@ -5389,6 +5383,7 @@ class TestAst1155IncompleteGradeRetry:
         get_err = TASK_CONFIG["grade_get"]["error_state"]
         like_err = TASK_CONFIG["grade_like"]["error_state"]
         jd_err = TASK_CONFIG["evaluate_jd"]["error_state"]
+        met_err = TASK_CONFIG["evaluate_meteorite"]["error_state"]
         assert consult_mod._consult_batch_fail_dest("PASSED_JD", do_err) == "PASSED_JD_RETRY"
         assert consult_mod._consult_batch_fail_dest("PASSED_JD_RETRY", do_err) == do_err
         assert consult_mod._consult_batch_fail_dest("PASSED_DO", get_err) == "PASSED_DO_RETRY"
@@ -5399,9 +5394,18 @@ class TestAst1155IncompleteGradeRetry:
         assert consult_mod._consult_batch_fail_dest(
             "METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_TECHNICAL_DO"
         ) == "METEORITE_FAILED_TECHNICAL_DO"
+        # Twin evaluate hop: incomplete → METEORITE_QUALIFIED_RETRY; second strike → twin error.
         assert consult_mod._consult_batch_fail_dest(
-            "METEORITE_QUALIFIED", jd_err
+            "METEORITE_QUALIFIED", met_err
         ) == "METEORITE_QUALIFIED_RETRY"
+        assert consult_mod._consult_batch_fail_dest(
+            "METEORITE_QUALIFIED_RETRY", met_err
+        ) == met_err
+        assert met_err == "METEORITE_ERROR_EVALUATE_JD"
+        assert met_err != jd_err
+        # Classic evaluate_jd incomplete still holds on JD_READY_RETRY (unchanged).
+        assert consult_mod._consult_batch_fail_dest("JD_READY", jd_err) == "JD_READY_RETRY"
+        assert consult_mod._consult_batch_fail_dest("JD_READY_RETRY", jd_err) == jd_err
         # Legacy map companions for holdings already in the map.
         assert consult_mod._INPUT_STATE_TO_TASK["PASSED_JD_RETRY"] == "grade_do"
         assert consult_mod._INPUT_STATE_TO_TASK["PASSED_DO_RETRY"] == "grade_get"

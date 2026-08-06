@@ -210,7 +210,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. **AST-1060** adds `retired` count + surgical delete of `evaluate_jd`@`METEORITE_NEW`. Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
+`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. Twin GDL entry insert is `evaluate_meteorite`@**METEORITE_QUALIFIED**; live retirement of `evaluate_jd`@`METEORITE_*` when twin present is **AST-1209** (not NEW-only). Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -232,13 +232,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
 
-`ensure_meteorite_dispatch_tasks` retires live `evaluate_jd`@`METEORITE_NEW` after insert (`retired` in return; provision sums it). Config primary: **`docs/test-bible/utils/config.md`**.
+`ensure_meteorite_dispatch_tasks` retirement of live meteorite `evaluate_jd` rows is **AST-1209** (`METEORITE_*` when twin present — supersedes NEW-only). Config primary: **`docs/test-bible/utils/config.md`**. Twin insert/retire asserts: **AST-1209** / **AST-1210** section below.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Retire stale meteorite evaluate_jd row; insert counts | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (incl. `test_ensure_retires_stale_evaluate_jd_at_meteorite_new`) |
+| Retire meteorite evaluate_jd; insert twin counts | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (revised **AST-1209**) |
 
-**Broken / obsolete:** AST-1054 insert counts / trigger assert — see above.
+**Broken / obsolete:** NEW-only retire + insert-as-`evaluate_jd`@**METEORITE_QUALIFIED** asserts — see **AST-1209**.
 
 **Integration:** none.
 
