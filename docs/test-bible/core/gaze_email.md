@@ -97,3 +97,26 @@ html_links Ruth payload with dict `jobs[].metadata` still scrapes/creates/archiv
   tests/component/core/test_gaze_email.py::TestAst1090RunGazeEmail::test_html_links_dict_metadata_still_creates \
   -q
 ```
+
+
+### AST-1213 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1213-ai-payload-as-visible-text-and-links`.
+
+Ruth `live_content` for `html_links` / `subject_body` is visible text + optional `--- LINKS ---` (not raw HTML). Link walk uses `ruth_payload_link_exclude_substrings` (keeps click-tracking wrappers). Config: **`docs/test-bible/utils/config.md`**. Prompts: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helpers + both shapes + Style D ruth_payload | `src/core/gaze_email.py` | **`TestAst1213RuthLivePayload`** |
+
+**Broken / obsolete:** none — additive payload assembly; existing AST-1090 create/archive paths still green.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload \
+  tests/component/utils/test_config.py::TestAst1213RuthPayloadLinkExcludes \
+  tests/component/core/test_repo_admin_json.py::TestAst1213MeteoriteEmailVisibleTextPrompts \
+  -q
+```

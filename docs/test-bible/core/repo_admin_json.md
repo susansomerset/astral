@@ -319,3 +319,25 @@ Ruth `agent_task` row identity `parse_meteorite_email` → **`meteorite_email`**
   tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
   -q
 ```
+
+
+### AST-1213 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1213-ai-payload-as-visible-text-and-links`.
+
+`meteorite_email` `cache_prompt` / `user_prompt` describe visible text + `--- LINKS ---` (click-tracking redirects valid); no raw-HTML payload wording. Surgical AST-756 fixture lockstep on those prompt fields.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt contract + fixture | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1213MeteoriteEmailVisibleTextPrompts`**; existing **`TestAst1144ParseMeteoriteEmailMetadataPrompt`** (metadata still present) |
+
+**Broken / obsolete:** none — prompt rewrite; AST-1089 mode / invent asserts and AST-1144 metadata asserts still hold.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1213MeteoriteEmailVisibleTextPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  -q
+```

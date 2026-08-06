@@ -869,3 +869,30 @@ class TestAst1154GradedTaskCompletenessPrompts:
         for key in self._KEYS:
             assert self._MARKER in by[key]["cache_prompt"], key
 
+
+class TestAst1213MeteoriteEmailVisibleTextPrompts:
+    """AST-1213: meteorite_email prompts describe visible text + LINKS, not raw HTML."""
+
+    def test_prompts_visible_text_links_and_fixture_lockstep(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by = {row["task_key"]: row for row in rows if row.get("current") == 1}
+        cache = by["meteorite_email"]["cache_prompt"]
+        user = by["meteorite_email"]["user_prompt"]
+        assert "visible text" in cache.lower()
+        assert "--- LINKS ---" in cache
+        assert "click-tracking" in cache.lower() or "redirect" in cache.lower()
+        for banned in ("HTML body", "email HTML", "absent from the email HTML", "tracking)"):
+            assert banned not in cache
+            assert banned not in user
+        assert "absent from the HTML" not in user
+        fix_rows = json.loads(
+            Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        fix = next(
+            r for r in fix_rows
+            if r.get("task_key") == "meteorite_email" and r.get("current") == 1
+        )
+        assert fix["cache_prompt"] == cache
+        assert fix["user_prompt"] == user
