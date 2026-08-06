@@ -505,8 +505,8 @@ TASK_CONFIG = {
                 "items_schema": {
                     "astral_job_id":   {"type": "str", "required": True},
                     "company_job_id":  {"type": "str", "required": False},  # AST-1127: omit/null → consult UUID fallback
-                    "job_title":       {"type": "str", "required": True},
-                    "job_link":        {"type": "str", "required": True},
+                    "job_title":       {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
+                    "job_link":        {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
                     "jd_text":         {"type": "str", "required": True},  # visible JD content
                 },
             },
@@ -517,6 +517,8 @@ TASK_CONFIG = {
         "pass_state": "METEORITE_QUALIFIED",
         "fail_state": "METEORITE_FAILED_QUALIFY",
         "error_state": "METEORITE_ERROR_QUALIFY",
+        "email_link_prefix": "email-",  # AST-1197: synthesized link; waive http + empty company_job_id gates
+        "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
         "context_format": "qualify_meteorite_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
@@ -973,6 +975,10 @@ TASK_CONFIG = {
     },
 }
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_job_id"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
+assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
 
 def is_conversational_task(task_key: str) -> bool:
     """True when TASK_CONFIG marks the task as CHAT (AST-1072 conversational envelope)."""
@@ -1955,7 +1961,7 @@ GAZER_CONFIG = {
         "fail_state": "JD_SCRAPE_FAIL",
         "error_states": [
             "JD_SCRAPE_FAIL_COOKIE",
-            "JD_SCRAPE_FAIL_BOT",
+            "BOT_BLOCKED",
             "JD_SCRAPE_FAIL_MISSING",
             "JD_SCRAPE_FAIL_CLOSED",
         ],
@@ -2176,13 +2182,13 @@ JOB_STATES = {
     "INVALID_TITLE":          {"prior_states": ["NEW"]},
     "VALID_TITLE_RETRY":      {"prior_states": ["VALID_TITLE"]},                                 # drain-only; no new writes from NEW qualify path
     "NEW_RETRY":              {"prior_states": ["NEW", "VALID_TITLE"]},                          # qualify_job_listings retry holding (post-AST-898)
-    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "JD_READY", "JD_READY_RETRY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "JD_SCRAPE_FAIL_BOT", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
+    "PASSED_JOBLIST":         {"prior_states": ["NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "JD_READY", "JD_READY_RETRY", "JD_SCRAPE_FAIL", "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED"]},
     "FAILED_JOBLIST":         {"prior_states": ["VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY"]},
     "FAILED_TECHNICAL":       {"prior_states": None},                                            # generic technical failure
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": "JD_READY_RETRY"},
     "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "JD_SCRAPE_FAIL_BOT":     {"prior_states": ["PASSED_JOBLIST"]},
+    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]},  # AST-1195: universal bot/challenge
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
     "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
@@ -2275,6 +2281,8 @@ METEORITE_CONFIG = {
 
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
+assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
+assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
 # AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
 # AST-1131: paste/list normalize before link discovery (entity-unescape + nested autolink unwrap).
@@ -3028,7 +3036,7 @@ def trigger_state_used_by_scored_dispatch_task(trigger_state: Optional[str]) -> 
 SKIPPED_STATES = [
     "INVALID_TITLE",
     "FAILED_JOBLIST", "JD_SCRAPE_FAIL",
-    "JD_SCRAPE_FAIL_COOKIE", "JD_SCRAPE_FAIL_BOT", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
+    "JD_SCRAPE_FAIL_COOKIE", "BOT_BLOCKED", "JD_SCRAPE_FAIL_MISSING", "JD_SCRAPE_FAIL_CLOSED",
     "FAILED_JD", "FAILED_TECHNICAL",
     "FAILED_DO", "FAILED_TECHNICAL_DO",
     "FAILED_GET", "FAILED_TECHNICAL_GET",
@@ -3137,7 +3145,7 @@ JOBS_SKIPPED_SECTION_ORDER = [
     "INVALID_TITLE",
     "JD_SCRAPE_FAIL",
     "JD_SCRAPE_FAIL_COOKIE",
-    "JD_SCRAPE_FAIL_BOT",
+    "BOT_BLOCKED",
     "JD_SCRAPE_FAIL_MISSING",
     "JD_SCRAPE_FAIL_CLOSED",
     "ERROR_QUALIFY_JOB_LISTINGS",
@@ -3269,7 +3277,7 @@ JOBS_SKIPPED_BULK_RETRY_TO_STATE = {
     # Non-rubric hop re-entry (replace hard-coded NEW; not AC-critical but map-complete)
     "JD_SCRAPE_FAIL": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_COOKIE": "PASSED_JOBLIST",
-    "JD_SCRAPE_FAIL_BOT": "PASSED_JOBLIST",
+    "BOT_BLOCKED": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_MISSING": "PASSED_JOBLIST",
     "JD_SCRAPE_FAIL_CLOSED": "PASSED_JOBLIST",
     "NEED_CULTURE_CONTENT": "PASSED_GET",
@@ -3409,6 +3417,9 @@ TRACKER_CONFIG = {
             "security check",
             "unusual traffic",
             "automated request",
+            # AST-1197: Cloudflare interstitial phrases (shared classifier; 2 hits → bot)
+            "Additional Verification Required",
+            "Troubleshooting Cloudflare Errors",
         ],
         "cookie_signals": [
             "We value your privacy",

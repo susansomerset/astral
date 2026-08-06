@@ -1226,7 +1226,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
                     continue
                 lines.append(
                     f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
-                    f"job_description: {(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                    f"CONTENT:\n{(job.get('job_data') or {}).get(jd_key, '') or ''}"
                 )
             return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks

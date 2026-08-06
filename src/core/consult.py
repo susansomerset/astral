@@ -14,6 +14,7 @@ evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over
 grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
 
+import html
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
@@ -1748,6 +1749,29 @@ async def qualify_job_listings(
     return result
 
 
+def _qualify_meteorite_email_subject(html_body: str) -> str:
+    """Unescaped subject from AST-1049 email-subject wrapper; '' when absent (AST-1197 Style D)."""
+    m = re.search(
+        r'class="email-subject"[^>]*>.*?<h1>(.*?)</h1>',
+        html_body or "",
+        re.I | re.S,
+    )
+    if not m:
+        return ""
+    return html.unescape(m.group(1)).strip()
+
+
+def _qualify_meteorite_title_source(job_title: str, subject: str) -> str:
+    """Style D label: subject vs content vs neither (collapsed whitespace, casefold)."""
+    title_n = " ".join((job_title or "").split())
+    subject_n = " ".join((subject or "").split())
+    if title_n and subject_n and title_n.casefold() == subject_n.casefold():
+        return "subject"
+    if title_n:
+        return "content"
+    return "neither"
+
+
 async def qualify_meteorite(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -1756,7 +1780,7 @@ async def qualify_meteorite(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Meteorite pre-AI enrich (Pattern A). Same claim/process shape as qualify_job_listings;
-    fields output (no grades). AST-1062."""
+    fields output (no grades). AST-1062 / AST-1197."""
     task_key = "qualify_meteorite"
     cfg = _consult_orchestration(task_key)
     jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
@@ -1779,28 +1803,33 @@ async def qualify_meteorite(
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id excluded from live content (position map in decode/response).
+        # AST-1197: CONTENT label matches qualify_meteorite agent_task (stored email HTML / scraped JD).
         lines = [
             f"{i:03d}: job_link: {j.get('job_link') or ''}\n"
-            f"job_description: {(j.get('job_data') or {}).get(jd_key, '') or ''}"
+            f"CONTENT:\n{(j.get('job_data') or {}).get(jd_key, '') or ''}"
             for i, j in enumerate(jobs)
         ]
         return "METEORITE JOBS:\n" + "\n".join(lines)
 
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
-        # Pre-resolve AI strip — source labels derive from this + resolved id (debug only).
         ai_company_job_id = (response_job.get("company_job_id") or "").strip()
         job_title = (response_job.get("job_title") or "").strip()
         ruth_link = (response_job.get("job_link") or "").strip()
         input_link = (input_job.get("job_link") or "").strip()
         jd_text = (response_job.get("jd_text") or "").strip()
-        # Ruth http(s) wins; else Create-time ATS URL (list ingest) for gate + UUID resolve.
+        input_jd = ((input_job.get("job_data") or {}).get(jd_key, "") or "")
+        email_prefix = cfg["email_link_prefix"]
+        # Ruth http(s) wins; else Create-time ATS URL; else Ruth email- / other token.
         if ruth_link.startswith("http"):
             job_link = ruth_link
-            link_source = "AI"
+            link_source = "http-AI"
         elif input_link.startswith("http"):
             job_link = input_link
-            link_source = "input"
+            link_source = "http-input"
+        elif ruth_link.startswith(email_prefix):
+            job_link = ruth_link
+            link_source = "email-synthesized"
         else:
             job_link = ruth_link
             link_source = "neither"
@@ -1811,17 +1840,51 @@ async def qualify_meteorite(
             id_source = "UUID-from-job_link"
         else:
             id_source = "neither"
+        subject = _qualify_meteorite_email_subject(input_jd)
+        title_source = _qualify_meteorite_title_source(job_title, subject)
         min_title = int(cfg.get("min_job_title_length", 5))
         min_jd = int(cfg.get("min_jd_chars", 40))
 
+        # Bot/challenge before content fails — lazy gazer classify (shared jd_classifier).
+        from src.core.gazer import _classify_jd
+
+        if _classify_jd(input_jd) == "bot" or (jd_text and _classify_jd(jd_text) == "bot"):
+            to_state = cfg["bot_blocked_state"]
+            if debug:
+                logger.debug_index(
+                    func="consult.qualify_meteorite",
+                    index=1,
+                    total=1,
+                    identifier=_consult_job_identifier(input_job),
+                    outcome=f"bot block -> {to_state}",
+                )
+                logger.debug_detail(
+                    " ".join(
+                        [
+                            "gate=bot_classification",
+                            f"link_source={link_source}",
+                            f"title_source={title_source}",
+                            f"company_job_id={company_job_id!r}",
+                            f"title={job_title!r}",
+                            f"link={job_link!r}",
+                            f"jd_chars={len(jd_text)}",
+                        ]
+                    )
+                )
+            else:
+                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [bot_classification]")
+            _transition_job_state_for_task(task_key, [aid], to_state)
+            return to_state
+
+        is_email_link = job_link.startswith(email_prefix)
         fail_reason = None
-        if not company_job_id:
+        if not company_job_id and not is_email_link:
             fail_reason = "empty company_job_id"
         # AST-1152: length/blank content gate only — not roster title-pattern screening.
         elif len(job_title) < min_title:
             fail_reason = f"title too short len={len(job_title)} min={min_title}"
-        elif not job_link.startswith("http"):
-            fail_reason = f"job_link not http: {job_link!r}"
+        elif not job_link.startswith("http") and not is_email_link:
+            fail_reason = f"job_link not http/email: {job_link!r}"
         elif len(jd_text) < min_jd:
             fail_reason = f"jd_text too short len={len(jd_text)} min={min_jd}"
 
@@ -1839,6 +1902,7 @@ async def qualify_meteorite(
                     f"gate={fail_reason}",
                     f"found source={id_source}",
                     f"link_source={link_source}",
+                    f"title_source={title_source}",
                 ]
                 if id_source != "AI":
                     fail_bits.append(f"fallback_job_link={job_link!r}")
@@ -1880,7 +1944,11 @@ async def qualify_meteorite(
                 identifier=_consult_job_identifier(input_job),
                 outcome=str(to_state),
             )
-            found_bits = [f"found source={id_source}", f"link_source={link_source}"]
+            found_bits = [
+                f"found source={id_source}",
+                f"link_source={link_source}",
+                f"title_source={title_source}",
+            ]
             if id_source == "UUID-from-job_link":
                 found_bits.append(f"fallback_job_link={job_link!r}")
             found_bits.extend(
