@@ -6,6 +6,7 @@ AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 AST-1068: `resolve_slack_user` + PROSPECT create-on-miss (wired on accept).
 AST-1070: Slack-sourced conversation context load / process-local cache / append.
 AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
+AST-1206: Manage Slack debug get/set (Events wiring is AST-1207).
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
 """
@@ -25,6 +26,10 @@ from src.core.candidate import (
     get_candidate_id_for_query,
     initiate_prospect_candidate,
     save_candidate_data,
+)
+from src.data.contact_debug import (
+    load_contact_debug_enabled,
+    save_contact_debug_enabled,
 )
 from src.data.contact_listen import (
     load_contact_listen_enabled,
@@ -306,6 +311,46 @@ def set_slack_listen_enabled(enabled: bool, *, debug: bool = False) -> bool:
             f"environment={get_deploy_label()}"
         )
     return bool(CONTACT_CONFIG["listen_enabled"])
+
+
+def slack_debug_enabled() -> bool:
+    """Return Contact Slack debug flag (durable file under db_dir is SoT when present)."""
+    # Re-read every call — same posture as slack_listen_enabled (AST-1101).
+    loaded = load_contact_debug_enabled()
+    if loaded is not None:
+        CONTACT_CONFIG["debug_enabled"] = loaded
+    return bool(CONTACT_CONFIG["debug_enabled"])
+
+
+def set_slack_debug_enabled(enabled: bool, *, debug: bool = False) -> bool:
+    """Persist + apply Contact Slack debug flag for this deploy environment. Returns the stored bool."""
+    if debug:
+        logger.set_debug_flag(True)
+    if not isinstance(enabled, bool):
+        raise TypeError("enabled must be bool")
+    save_contact_debug_enabled(enabled)
+    CONTACT_CONFIG["debug_enabled"] = enabled
+    if debug:
+        logger.debug_index(
+            func="contact.set_slack_debug_enabled",
+            index=1,
+            total=2,
+            identifier="debug",
+            outcome="found",
+        )
+        logger.debug_detail(f"requested={enabled}")
+        logger.debug_index(
+            func="contact.set_slack_debug_enabled",
+            index=2,
+            total=2,
+            identifier="debug",
+            outcome="recorded",
+        )
+        logger.debug_detail(
+            f"debug_enabled={CONTACT_CONFIG['debug_enabled']} "
+            f"environment={get_deploy_label()}"
+        )
+    return bool(CONTACT_CONFIG["debug_enabled"])
 
 
 def list_estelle_activity(*, debug: bool = False) -> list[dict]:

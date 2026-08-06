@@ -43,7 +43,7 @@ Config sections:
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth email-HTML parse task key + parse-mode literals for gaze_email (AST-1089)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
-  CONTACT_CONFIG  — Contact listen flag, Slack env-name contracts, skills ACL (AST-1066; distinct from TASK_CONFIG)
+  CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
 
@@ -1576,6 +1576,10 @@ CONTACT_CONFIG = {
     "listen_enabled": False,
     # Durable listen flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
     "listen_state_filename": "contact_slack_listen.json",
+    # Default off. Manage Slack Debug (AST-1206) owns the per-environment flip.
+    "debug_enabled": False,
+    # Durable Contact Slack debug flag filename under ASTRAL_CONFIG["db_dir"] (per Railway volume / env).
+    "debug_state_filename": "contact_slack_debug.json",
     # Durable @Estelle per–Slack-user activity summary under ASTRAL_CONFIG["db_dir"] (AST-1094).
     "activity_state_filename": "contact_estelle_activity.json",
     # ASTRAL_DEPLOY_ENV value (case-insensitive) that skips non-prod reply prefix.
@@ -1639,6 +1643,8 @@ CONTACT_CONFIG = {
 
 assert isinstance(CONTACT_CONFIG["listen_enabled"], bool)
 assert isinstance(CONTACT_CONFIG["listen_state_filename"], str) and CONTACT_CONFIG["listen_state_filename"].endswith(".json")
+assert isinstance(CONTACT_CONFIG["debug_enabled"], bool)
+assert isinstance(CONTACT_CONFIG["debug_state_filename"], str) and CONTACT_CONFIG["debug_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["activity_state_filename"], str) and CONTACT_CONFIG["activity_state_filename"].endswith(".json")
 assert isinstance(CONTACT_CONFIG["production_deploy_env"], str) and CONTACT_CONFIG["production_deploy_env"].strip()
 assert isinstance(CONTACT_CONFIG["hear_ack_reply_text"], str) and CONTACT_CONFIG["hear_ack_reply_text"].strip()
