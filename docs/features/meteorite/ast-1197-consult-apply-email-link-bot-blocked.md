@@ -224,3 +224,31 @@ Changes: Stage 1 appends both `"Additional Verification Required"` and `"Trouble
 | 3 | `cca4fb1c` | process: bot → **BOT_BLOCKED**, `email-` QUALIFY waivers, Style D title/link source |
 
 **Tip:** `cca4fb1c` on `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`
+
+## Review (code-rubric.v1)
+
+[code-rubric.v1] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1197
+**Overall:** CLEAN
+**Diff:** `origin/dev...origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`, own footprint isolated at `e3e14af1..c081ae0e` (post-plan tip through Betty's `merge-tests` tip) — the wider three-dot diff also carries already-reviewed sibling work (AST-1189/1190/1191/1192/1193, each `resolve(...): — clean`) merged onto `origin/ftr` ahead of this child; none of that is AST-1197's own change.
+
+**Files (own footprint):** `src/core/consult.py`, `src/ui/api/api_admin.py`, `src/utils/config.py` (code); `docs/test-bible/core/consult.md`, `docs/test-bible/core/gazer.md`, `docs/test-bible/ui/api/api_admin.md`, `docs/test-bible/utils/config.md`, `tests/component/core/test_consult.py`, `tests/component/core/test_gazer.py`, `tests/component/ui/api/test_api_admin.py`, `tests/component/utils/test_config.py` (tests/bible); `docs/features/meteorite/ast-1197-consult-apply-email-link-bot-blocked.md` (plan).
+
+## Frame diff
+
+Layers = {core, ui, utils, docs}. Paths = the footprint above. Change types = {modify} only. Full active-set swept: 65 leaves — 18 universal + 47 scoped considered, 4 scoped not-applicable (`astral.debug.no-repo-root-artifacts-dir`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.standards.database-header-inventory`, `astral.ui.frontend-file-placement` — no `artifacts/`, `scripts/`, `src/data/**`, or `src/ui/frontend/**` in this footprint). All 61 applicable statutes score `conforms`. No `fix-now`, no `discuss`.
+
+**Plan adherence:** Implementation matches the Revision-1 plan stage-for-stage — `email_link_prefix`/`bot_blocked_state` knobs + two Cloudflare `bot_signals` phrases (Stage 1), `CONTENT:` assemble relabel in lockstep across `consult.py`/`api_admin.py` (Stage 2), bot-gate-before-content-fail + `email-` waivers + Style D title/link source (Stage 3).
+
+**Verified independently (not just taken on the plan's word):**
+- `_classify_jd` on the shipped `bot_signals` list scores the parent-captured challenge body at 2 hits (`Additional Verification Required`, `Troubleshooting Cloudflare Errors`) → `"bot"`, confirming Joan's round=1 fix-now is actually closed in code, not just in plan prose.
+- `assert "BOT_BLOCKED" in JOB_STATES` / `assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]` land at `config.py:2284-2285`, after the `JOB_STATES` literal opens at `config.py:2173`; the `TASK_CONFIG` pair stays at `config.py:980-981`. Confirmed by byte offset, not just line-number eyeballing — no `NameError` risk.
+- The shipped helper is `_qualify_meteorite_email_subject(html_body: str)`, not the plan-prose's `(html: str)` — the engineer sidestepped Joan's stdlib-`html`-shadowing `discuss` finding by parameter naming rather than `import html as html_module`; either fix is valid and this one is in the code.
+- `api_admin.py`'s ad-hoc assemble line is byte-for-byte identical in shape to `consult.py`'s (`{idx:03d}: job_link: {...}\nCONTENT:\n{...}`), satisfying the recorded hand-edit-twins Decision's Done-when.
+- Role/path separation across the three `code(AST-1197)` commits (src/ only), the `docs(AST-1197)` build-stub commit (plan file only), and the `test(AST-1197)` + `merge-tests(AST-1197)` commits (tests/ + docs/test-bible/ only) — no cross-contamination.
+
+No blockers. `code-rubric.v1` verdict: **CLEAN**.
+
+— Radia
