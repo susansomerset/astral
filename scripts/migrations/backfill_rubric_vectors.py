@@ -22,16 +22,11 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data import database
 from src.utils import rubric_text
-from src.utils.config import ASTRAL_CONFIG, RUBRIC_CRITERIA_ARTIFACT_KEYS
-
-_ARTIFACT_KEY_TO_TASK_KEY: Dict[str, str] = {
-    "company_prefilter": "prefilter_company",
-    "joblist_rubric": "qualify_job_listings",
-    "jobdesc_rubric": "evaluate_jd",
-    "do_rubric": "grade_do",
-    "get_rubric": "grade_get",
-    "like_rubric": "grade_like",
-}
+from src.utils.config import (
+    ASTRAL_CONFIG,
+    RUBRIC_CRITERIA_ARTIFACT_KEYS,
+    RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+)
 
 _COUNT_KEYS = (
     "candidates_scanned",
@@ -115,7 +110,7 @@ def backfill_candidate_rubric_vectors(candidate_id: str, *, dry_run: bool) -> Di
             counts["errors"] += 1
             continue
 
-        task_key = _ARTIFACT_KEY_TO_TASK_KEY.get(artifact_key)
+        task_key = RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY.get(artifact_key)
         if not task_key:
             print(f"[candidate {candidate_id}] no task_key map for {artifact_key!r} — skip")
             counts["errors"] += 1
