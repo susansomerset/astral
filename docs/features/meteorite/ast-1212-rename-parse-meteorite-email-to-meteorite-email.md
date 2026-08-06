@@ -185,3 +185,36 @@ print('caller path OK')
 |-------|--------|---------|
 | 1 | `f048dfd4` | config task key meteorite_email |
 | 2 | `099007f5` | agent_task identity meteorite_email (+ surgical AST-756 fixture) |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `25fc2c82`
+
+**Overall: FIX-NOW**
+
+**What's solid:**
+
+- `src/utils/config.py`: clean, byte-identical rename of `TASK_CONFIG["parse_meteorite_email"]` → `["meteorite_email"]` and `METEORITE_EMAIL_PARSE_CONFIG["task_key"]`; no compat shim, no stray old-key string left live (verified via `git show :src/utils/config.py | grep parse_meteorite_email` — only historical comments remain).
+- `gaze_email.py` untouched as planned — already config-driven via `METEORITE_EMAIL_PARSE_CONFIG["task_key"]`.
+- Exactly one `merge-tests(AST-1212)` commit; engineer's own commits (`f048dfd4`, `099007f5`) never touch `tests/` or `docs/test-bible/**`.
+- Commit vocabulary, branch topology (`sub/AST-1182/AST-1212-...`), and Linear status gates all conform.
+
+**fix-now — file-wide re-encoding of two seed JSON files:**
+
+Both `data/admin/agent_task.json` (92 raw diff lines) and `docs/uat-fixtures/AST-756/expected-agent_task.json` (88 raw diff lines) touch far more than the single planned row. Structural diff by `task_key_uuid` confirms only **1 row** actually changed content in each file (`task_key`/`task_name`/`updated_at`) — the other ~36 hunks are pure re-serialization noise: the file was re-emitted with `json.dump(..., ensure_ascii=True)` (the default) instead of the original `ensure_ascii=False` convention, escaping every em-dash/curly-quote in every untouched prompt row (e.g. `—` → `\u2014`).
+
+Confirmed reproducible: re-dumping the new file with `ensure_ascii=False` collapses the diff to exactly 3 lines (`task_key`, `task_name`, `updated_at`) — matching plan Stage 2's own verification intent ("Do not edit any other row"; "no whole-file `cp`"). The plan's structural check script passes today only because Python string equality ignores JSON escaping — it doesn't catch this at the raw-file level.
+
+Violates `astral.standards.in-scope-only` (silent scope expansion across ~36 unrelated rows) and undermines `astral.seed.agent-tables-in-repo-json`'s rationale (repo JSON as the durable, reviewable seed source). No functional/behavioral risk (content is semantically identical) but must be fixed before User Testing: re-save both files preserving `ensure_ascii=False`, touching only the one row.
+
+**Pattern conformance:** `pattern.config.config-block` — conforms (rename stays inside existing `TASK_CONFIG` dict; no second source of truth).
+
+**Plan adherence:** Stage 1 (config rename) fully matches plan. Stage 2 (seed identity rename) matches the *intended* row-level change but the implementation's file-write mechanism broke the "surgical, no whole-file rewrite" instruction at the byte level on both the catalog and its fixture twin.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; findings are diff-only)
+
+context_tokens≈45000
+
+— Radia
