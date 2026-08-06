@@ -271,3 +271,40 @@ Changes:
 |-------|--------|---------|
 | 1 | `7f5b132e` | hop failure → `ERROR_BUILD_ARTIFACTS` + claim release; outcome dict every exit |
 | 2 | `3aa816f3` | found/recorded duration/stop/tokens/failure_class on provider fail |
+
+---
+
+## Radia review — code-rubric.v1 revision=1
+
+**Publish ref tip:** `5c6cdcda`
+
+**Overall:** CLEAN
+
+### Plan adherence
+
+Isolated this ticket's own contribution via `git diff ee5e760f..5c6cdcda` (the tip AST-1189 left for merge-child) rather than the full three-dot `origin/dev` diff, since the latter also carries already-reviewed AST-1189/AST-1190 product code stacked via `ftr`. AST-1191's own footprint is exactly `src/core/agent.py` (105 lines) + its plan doc + test-bible + tests — matching the Files Changed table with no scope creep. Both Joan revision rounds are honored: `_apply_dispatch_chain_hop_failure` and `_close_hop_ledger` return the outcome dict from **every** exit (including the no-op / no-ledger early returns — no bare `return None` regression), balance-refusal still holds state while releasing the claim, transition happens before release (state_history still stamps the in-flight `batch_id`), and Stage 2's found/recorded lines read the real timesheet keys (`inputtotal`/`inputcached`/`outputtotal`/`cache_creation_tokens`) with honest `n/a` on missing keys — no silent-zero regression of the parent symptom.
+
+Verified `clear_job_batch_lock` (`src/data/database.py`) is a plain `UPDATE ... SET batch_id = NULL` — confirms the plan's "dual clear is idempotent" claim for the intentional double release (`_apply_dispatch_chain_hop_failure` + the existing consult batch runner clear).
+
+Ran the ticket's own test class plus the adjacent `TestAst848DispatchChainDoTask` regression test in a fresh venv: **11/11 pass**. The broader touched-file test run surfaces ~30 pre-existing failures (statute-count fixture drift, shared sqlite db schema state, and unrelated in-flight epics AST-901/1054/1060/1127/1195 whose product code isn't on this branch) — none in `TestAst1191*` or `TestAst848*`, confirmed against an `origin/dev` baseline showing the same classes of failure already present. Not diff-caused.
+
+### Findings
+
+None (fix-now / discuss). No repeat of AST-1189's cross-ticket merge-tests contamination — this branch's `merge-tests(AST-1191)` diff is a clean, isolated 2-file/240-line addition (own test-bible + test file only).
+
+### Pattern conformance
+
+None cited (plan lists statute ids under In-scope / Considered-but-excluded, covered by the full-set sweep).
+
+### Frame diff
+
+(none) — diff matches the plan's Files Changed table exactly; no unplanned adds.
+
+### What's solid
+
+- `_apply_dispatch_chain_hop_failure` / `_close_hop_ledger` outcome-dict threading is correct on every exit path (verified against both Joan revision concerns).
+- Debug found/recorded gating is correct — `found` sits inside the existing `if debug:` block, `recorded` is gated separately after `_close_hop_ledger`, and `debug=False` emits neither (test-covered).
+- `astral.batch.claim-process-release`, `astral.state.core-decides-transitions`, `astral.state.job-prior-states-enforced` all conform — transition-then-release ordering, `ValueError` enforcement preserved via existing try/except, core (not data) decides `err_state`.
+
+`context_tokens≈52000`
+— Radia
