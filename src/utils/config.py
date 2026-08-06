@@ -1019,6 +1019,25 @@ def get_task_keys() -> list:
     return list(TASK_CONFIG.keys())
 
 
+def is_task_alias(task_key: str) -> bool:
+    """True when TASK_CONFIG[task_key] declares a non-empty master_task_key."""
+    tk = (task_key or "").strip()
+    master = (TASK_CONFIG.get(tk) or {}).get("master_task_key")
+    return isinstance(master, str) and bool(master.strip())
+
+
+def resolve_task_key_for_content(task_key: str) -> str:
+    """Return master_task_key for prompt/content lookup; unchanged when not an alias.
+
+    Field-driven only — no one-off meteorite (or other) alias maps.
+    """
+    tk = (task_key or "").strip()
+    master = (TASK_CONFIG.get(tk) or {}).get("master_task_key")
+    if isinstance(master, str) and master.strip():
+        return master.strip()
+    return tk
+
+
 # ---------------------------------------------------------------------------
 # BLOCK_TYPES: content block type enum for agent_data table.
 # Maps to the prompt assembly structure in src/core/agent.py.
@@ -2476,23 +2495,10 @@ METEORITE_DISPATCH_TASKS = (
 # AST-1098: meteorite seed catalog stays CLICK.
 assert all(not bool(e.get("auto_mode")) for e in METEORITE_DISPATCH_TASKS)
 
-# Shared GDL task_keys → meteorite pass/fail/error (consult overlay; prompts unchanged).
-# NOTE: the JD stage no longer uses this overlay — evaluate_meteorite is a standalone twin
-# task with its own TASK_CONFIG pass/fail/error states (same pattern as meteorite_like).
-# DO/GET stay genuinely shared tasks between regular and meteorite jobs, so they still need
-# the overlay to swap outcome states.
-METEORITE_GDL_OUTCOME_BY_TASK = {
-    "grade_do": {
-        "pass_state": "METEORITE_PASSED_DO",
-        "fail_state": "METEORITE_FAILED_DO",
-        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
-    },
-    "grade_get": {
-        "pass_state": "METEORITE_PASSED_GET",
-        "fail_state": "METEORITE_FAILED_GET",
-        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
-    },
-}
+# AST-1220: Do/Get meteorite outcomes moved onto alias TASK_CONFIG entries
+# (meteorite_grade_do / meteorite_grade_get). Overlay no longer supplies those
+# outcomes. Empty dict kept until AST-1221 removes consult's overlay read.
+METEORITE_GDL_OUTCOME_BY_TASK = {}
 
 assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
 assert all(
@@ -5048,6 +5054,38 @@ for _tk, _tc in TASK_CONFIG.items():
     _tt = (_tc or {}).get("task_type")
     if _tt is not None:
         assert _tt in TASK_TYPES, f"TASK_CONFIG[{_tk!r}].task_type invalid: {_tt!r}"
+
+# AST-1220: master_task_key contract — live non-alias masters only; no chains.
+# Job-entity aliases: pass/fail/error must be JOB_STATES (replaces vacuous overlay assert).
+for _alias_key, _alias_cfg in TASK_CONFIG.items():
+    _master_raw = (_alias_cfg or {}).get("master_task_key")
+    if _master_raw is None:
+        continue
+    assert isinstance(_master_raw, str) and _master_raw.strip(), (
+        f"TASK_CONFIG[{_alias_key!r}].master_task_key must be a non-empty str when present"
+    )
+    _master_key = _master_raw.strip()
+    assert _master_key != _alias_key, (
+        f"TASK_CONFIG[{_alias_key!r}] cannot set master_task_key to itself"
+    )
+    assert _master_key in TASK_CONFIG, (
+        f"TASK_CONFIG[{_alias_key!r}].master_task_key={_master_key!r} is not a live TASK_CONFIG key"
+    )
+    _master_cfg = TASK_CONFIG[_master_key] or {}
+    assert not (
+        isinstance(_master_cfg.get("master_task_key"), str)
+        and str(_master_cfg.get("master_task_key")).strip()
+    ), (
+        f"alias chain forbidden: {_alias_key!r} -> {_master_key!r} is itself an alias"
+    )
+    if (_alias_cfg or {}).get("entity_type") == "job":
+        for _outcome_key in ("pass_state", "fail_state", "error_state"):
+            _outcome = (_alias_cfg or {}).get(_outcome_key)
+            if isinstance(_outcome, str) and _outcome.strip():
+                assert _outcome.strip() in JOB_STATES, (
+                    f"TASK_CONFIG[{_alias_key!r}].{_outcome_key}={_outcome!r} "
+                    f"is not a JOB_STATES key"
+                )
 
 # Per-candidate resume section catalog (AST-517); persistence on artifacts.resume_structure.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
