@@ -64,6 +64,8 @@ from src.utils.config import (
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
+    resolve_task_key_for_content,
+    is_task_alias,
 )
 from src.utils.rubric_feedback import (
     format_hydrated_review_debug_line,
@@ -94,9 +96,14 @@ _STRICT_ENCODED_BATCH_CONSULT_KEYS = frozenset({
 })
 
 
+def _is_strict_encoded_batch_consult(task_key: str) -> bool:
+    """True when task_key (or its content master) is in the strict encoded-batch set."""
+    return resolve_task_key_for_content(task_key) in _STRICT_ENCODED_BATCH_CONSULT_KEYS
+
+
 def _strict_encoded_batch_consult_envelope_err(task_key: str, parsed: Any) -> Optional[str]:
     """Return error detail if encoded-batch consult response bypasses envelope rules; otherwise None."""
-    if task_key not in _STRICT_ENCODED_BATCH_CONSULT_KEYS or parsed is None:
+    if not _is_strict_encoded_batch_consult(task_key) or parsed is None:
         return None
     if isinstance(parsed, str):
         return (
@@ -453,17 +460,29 @@ def resolved_task_system(
 
 
 def _resolve_task_prompts(task_key: str):
-    """Fetch and validate agent_task + agent rows for a task_key.
-    Returns (agent_row, agent_task_row). Raises ValueError on misconfiguration."""
-    agent_task_row = get_agent_task(task_key)
+    """Fetch and validate agent_task + agent rows for prompt/content lookup.
+
+    Alias keys resolve to master_task_key for DB rows (AST-1221); caller identity
+    stays the original task_key at do_task / preview call sites.
+    """
+    content_key = resolve_task_key_for_content(task_key)
+    agent_task_row = get_agent_task(content_key)
     if not agent_task_row:
-        raise ValueError(f"No agent_task row for '{task_key}'. Run sync_agent_tasks or configure via Manage Tasks.")
+        raise ValueError(
+            f"No agent_task row for '{content_key}'"
+            + (f" (alias '{task_key}')" if content_key != (task_key or "").strip() else "")
+            + ". Run sync_agent_tasks or configure via Manage Tasks."
+        )
     agent_id = (agent_task_row.get("agent_id") or "").strip()
     if not agent_id:
-        raise ValueError(f"agent_task '{task_key}' has no agent_id assigned. Configure via Manage Tasks.")
+        raise ValueError(
+            f"agent_task '{content_key}' has no agent_id assigned. Configure via Manage Tasks."
+        )
     agent_row = get_agent(agent_id)
     if not agent_row:
-        raise ValueError(f"Agent '{agent_id}' referenced by task '{task_key}' not found.")
+        raise ValueError(
+            f"Agent '{agent_id}' referenced by task '{content_key}' not found."
+        )
     return agent_row, agent_task_row
 
 
@@ -1939,6 +1958,22 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
+    # AST-1221: Style D alias → master when debug=True (gated; no ungated noise).
+    if debug and is_task_alias(task_key):
+        logger.set_debug_flag(True)
+        master = resolve_task_key_for_content(task_key)
+        logger.debug_index(
+            func=f"do_task({task_key})",
+            index=1,
+            total=1,
+            identifier=index or task_key,
+            outcome="alias_resolve",
+        )
+        logger.debug_detail(
+            f"alias={task_key} content_master={master} "
+            f"orchestration=TASK_CONFIG[{task_key}] prompts=agent_task[{master}]"
+        )
+
     cd = _token_view_for_do_task(ctx, candidate_data)
 
     # Dict truthiness is always true for the 8-key view; check identity material (AST-1192 resolve).
@@ -2465,7 +2500,7 @@ async def do_task(
     parsed = result.get("parsed_response")
     output_type = task_config.get("output_type", "")
     rubric_encoded = "_encoded" in output_type and bool(task_config.get("rubric_artifact"))
-    strict_batch = task_key in _STRICT_ENCODED_BATCH_CONSULT_KEYS
+    strict_batch = _is_strict_encoded_batch_consult(task_key)
     if strict_batch and isinstance(parsed, dict) and parsed.get("agent_payload") is not None and parsed.get("agent_performance") is None:
         parsed = {**parsed, "agent_performance": {}}
         result["parsed_response"] = parsed
