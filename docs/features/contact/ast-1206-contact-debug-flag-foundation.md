@@ -270,3 +270,16 @@ def contact_put_debug():
 | §3.5 naming / single worker | snake_case API fields; durable file same single-worker assumption as listen (no multi-worker sync). |
 | §1.5.1 debug-contract-gated | Style D only inside `set_slack_debug_enabled` when its `debug` kwarg is True; data layer silent. |
 | §1.1 in-scope-only | Explicit non-touch list: Events, React, listen file, SQLite. |
+
+---
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation` |
+| Tip | `6b9c405b` |
+| Branch | `sub/AST-1203/AST-1206-contact-debug-flag-foundation` |
+
+Stages 1–4 landed: `debug_enabled` + `debug_state_filename`, `contact_debug.py`, `slack_debug_enabled` / `set_slack_debug_enabled`, admin GET/PUT `/api/admin/contact/debug`.
