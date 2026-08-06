@@ -42,15 +42,17 @@ const [debugEnabled, setDebugEnabled] = useState<boolean | null>(null)
 
 ⚠️ **Decision — separate `debugEnabled` state, not a combined type:** Listen payload and debug payload are separate foundation endpoints. Keep types/state independent so a debug load failure cannot clear listen state (and vice versa for PUT). Environment / production copy stays sourced from the existing listen `state` only.
 
-2. In the existing mount `useEffect` `Promise.all`, add a third request:
+2. In the existing mount `useEffect` `Promise.all`, add a third request with its **own** rejection boundary so a debug network failure cannot reject the group and trip the page-level `catch` / `setError` (which would hide Listen + activity — AC2):
 
 ```tsx
-api("/api/admin/contact/debug"),
+api("/api/admin/contact/debug").catch(() => null),
 ```
+
+⚠️ **Decision — `.catch(() => null)` on the debug leg only:** `api()` does not catch (`fetch` rejection = network/abort). Bare `Promise.all` would then hit the page `catch` and `setError`, blocking Listen/activity. Isolating debug keeps listen’s existing short-circuit semantics untouched.
 
 Parse it after the listen success path (listen failure still short-circuits the page as today). On debug response:
 
-- If `!debugRes.ok`: toast the error (same pattern as activity load failure) and set `debugEnabled` to `null` — **do not** set page-level `error` / block Listen or the activity table.
+- If `debugRes == null` **or** `!debugRes.ok`: toast the error when a Response exists (same pattern as activity load failure); always set `debugEnabled` to `null` — **do not** set page-level `error` / block Listen or the activity table.
 - If ok: `setDebugEnabled(Boolean(debugData.debug_enabled))`.
 - Ignore `environment` / `is_production` on the debug payload for display (listen remains the env label SoT on this page).
 
@@ -71,7 +73,7 @@ Parse it after the listen success path (listen failure still short-circuits the 
 <p style={{ margin: "0 0 16px", fontSize: 14, color: "var(--text-secondary)" }}>
   Debug:{" "}
   <strong style={{ color: "var(--text-primary)" }}>
-    {debugEnabled ? "On" : "Off"}
+    {debugEnabled === null ? "—" : debugEnabled ? "On" : "Off"}
   </strong>
 </p>
 ```
@@ -94,7 +96,7 @@ Place the Debug toggle button immediately after the existing Listen button (same
 </button>
 ```
 
-When `debugEnabled === null` (load failed), show the Debug status line as `—` and keep the button disabled (Listen still usable).
+When `debugEnabled === null` (load failed / unknown), the status line shows `—` (three-state, not `"Off"`) and the button stays disabled (Listen still usable).
 
 5. Do **not** change: listen GET/PUT URLs or payload field `listen_enabled`; activity GET / table columns; env / non-prod prefix copy; toast / loading chrome beyond the additions above. Do **not** call `console.debug` / invent React Style D logging.
 
@@ -122,3 +124,11 @@ When `debugEnabled === null` (load failed), show the Debug status line as `—` 
 | §3.2 UI thin | React only renders/toggles resolved state from API |
 | §3.5 naming | Existing `AdminManageSlack.tsx` / `/admin/manage_slack` unchanged |
 | §1.1 in-scope-only | No foundation / Events / listen-file edits |
+
+---
+
+## Revisions
+
+Revision 1 — 2026-08-06
+Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — fix-now 1 (`Promise.all` debug isolation) and fix-now 2 (null status must render `—`, not `Off`).
+Changes: Stage 1 step 2 uses `api(.../debug).catch(() => null)` and treats `null` like `!ok`; step 4 status snippet is three-state `{debugEnabled === null ? "—" : debugEnabled ? "On" : "Off"}`.
