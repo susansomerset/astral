@@ -218,3 +218,11 @@ Violates `astral.standards.in-scope-only` (silent scope expansion across ~36 unr
 context_tokens≈45000
 
 — Radia
+
+## Resolution
+
+**2026-08-06** — addressed Radia **fix-now** (file-wide `ensure_ascii` re-encoding).
+
+- Rebuilt `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` from `origin/dev` baseline + tip identity fields only (`task_key` / `task_name` / `updated_at` on uuid `577b9ffb-…`), written with `json.dumps(..., indent=2, ensure_ascii=False)`.
+- Raw diff vs `origin/dev` is now 6 lines per file (3 fields) — no `\u2014` escaping of untouched prompt rows.
+- Config rename (`f048dfd4`) and semantic row content unchanged; no product `.py` edits this resolve.
