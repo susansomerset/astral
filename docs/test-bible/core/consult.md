@@ -706,13 +706,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`grade_do` / `grade_get` only); JD stage is standalone twin `evaluate_meteorite` (own `TASK_CONFIG` pass/fail/error — see **`TestEvaluateMeteoriteStandaloneTwin`** / **`test_evaluate_jd_has_no_meteorite_overlay`**). Vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**. Analysis-JD meteorite override + incomplete→retry twin locks: **AST-1210**.
+`_consult_orchestration_for_entity` historically overlaid `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`grade_do` / `grade_get` only). **AST-1220** empties that overlay (outcomes live on `meteorite_grade_*` aliases); until **AST-1221** removes the read path, consult falls through to Gaze `TASK_CONFIG` outcomes for METEORITE_* entity states. JD stage is standalone twin `evaluate_meteorite` (own `TASK_CONFIG` pass/fail/error — see **`TestEvaluateMeteoriteStandaloneTwin`** / **`test_evaluate_jd_has_no_meteorite_overlay`**). Vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**. Analysis-JD meteorite override + incomplete→retry twin locks: **AST-1210**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Overlay + `_render_pass_fail` entity_state | `src/core/consult.py` | **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+| Empty overlay + Gaze fallback for METEORITE_* (AST-1220 interim) | `src/core/consult.py` | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
 
-**Broken / obsolete:** overlay-key lists that still named `evaluate_jd` among meteorite overlay keys (**AST-1210**).
+**Broken / obsolete:** overlay-key lists that still named `evaluate_jd` among meteorite overlay keys (**AST-1210**); asserts that indexed `METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]` / expected meteorite overlay pass/fail (**AST-1220**).
 
 **Integration:** none.
 
