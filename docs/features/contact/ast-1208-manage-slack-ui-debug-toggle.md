@@ -145,3 +145,32 @@ Changes: Stage 1 step 2 uses `api(.../debug).catch(() => null)` and treats `null
 | Branch | `sub/AST-1203/AST-1208-manage-slack-ui-debug-toggle` |
 
 Stage 1 landed: Manage Slack Debug beside Listen via admin `GET`/`PUT` `/api/admin/contact/debug` (`AdminManageSlack.tsx` only).
+
+---
+
+## Radia review
+
+[code-rubric] revision=1
+
+| Field | Value |
+|-------|-------|
+| Rubric | code-rubric.v1 |
+| Publish ref tip | `428e2689d3e566dc1e96aba1bf33ae91bd785960` |
+| Overall | CLEAN |
+
+Full active statute corpus (65 leaves — 18 universal + 47 scoped) scored in-session against the full three-dot diff — zero `violates`, zero `needs-discussion`.
+
+**AST-1208's own commit (`8625077b`) touches only `AdminManageSlack.tsx`** — matches the plan's single-file scope exactly, including both Joan `[plan-discuss] round=1` fix-nows (separate `.catch(() => null)` isolation on the debug `Promise.all` leg; three-state `—`/On/Off status render). No React debug-contract logging added (correct per §1.5.1 UI exception). No edits to `api_contact.py` / core / data / config / listen file / Events.
+
+**Notes:** The three-dot diff vs `origin/dev` also carries (a) the already-reviewed, already Review-Posted AST-1206 foundation (expected — AST-1208 is `blockedBy` AST-1206 and neither has landed on `dev` yet), and (b) two unrelated test commits (`test(AST-1212)`, `test(AST-1209)`) swept in by the single `merge-tests(AST-1208)` pull from the shared `origin/tests` tip — both confined to `tests/` + `docs/test-bible/`, no product code, no boundary violation. No separate Joan verdict attachment on the ticket; the plan doc's own `## Revisions` section documents the round=1 concern and its resolution inline.
+
+**Pattern conformance:** `pattern.ui.admin-endpoint` cited — not a registered `canon/patterns/` id; functionally covered by `astral.patterns.require-auth-on-protected-endpoints` (conforms — calls existing `@require_admin` endpoints via shared `api()`, no new routes).
+
+## Frame diff
+(none) — description AC/Boundaries/In-scope/Excluded checkboxes already reflect the shipped diff.
+
+**What's solid:** `toggleDebug` mirrors `toggleListen` structurally (shared `busy` flag, same toast/error conventions) without duplicating logic. Debug load failure is isolated so it cannot mask Listen/activity load or trip the page-level error boundary — exactly the Joan-mandated isolation.
+
+context_tokens≈8500
+
+— Radia
