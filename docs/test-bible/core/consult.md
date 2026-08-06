@@ -935,3 +935,49 @@ Shared consult apply gate: incomplete/extra live-rubric grade sets raise before 
   tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
   -q
 ```
+
+### AST-1193 · AST-1163
+
+**Parent:** [AST-1163 — Issues while running anticipate_scan](https://linear.app/astralcareermatch/issue/AST-1163/issues-while-running-anticipate-scan). **Publish:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`.
+
+ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code, AST-707); live match first; on miss, job-carried `*_rubric` snapshot identity + live content-by-code so persisted grades are not skipped after label drift. Style D found/recorded per phase when `debug=True` (local logger handle). Thin `debug` thread: `do_task` → `_job_context_for_call` → `build_job_token_context`. Boundaries: name token view (**AST-1192**); provider blank/timeout (**AST-1164**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finder + snapshot fallback + Style D | `src/core/consult.py` | **`TestAst1193AnalysisMatchParity`**; revised **`TestAst513JobTokenContext`** (live criteria via `rubric_criteria_for_task` patch) |
+| `debug=` into builder | `src/core/agent.py` | **`TestAst1193DebugJobContext`** |
+
+**Broken / obsolete:** **`TestAst513JobTokenContext`** — formatter no longer early-returns on empty live alone; tests must supply live criteria (patch) / `_astral_candidate_id`, not artifact-blob-shaped criteria alone.
+
+**Integration:** no existing scenario asserts ANALYSIS snapshot fallback — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1193AnalysisMatchParity \
+  tests/component/core/test_consult.py::TestAst513JobTokenContext \
+  tests/component/core/test_agent.py::TestAst1193DebugJobContext \
+  -q
+```
+
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+`qualify_meteorite` assemble emits `CONTENT:` (stored `job_description`); process: challenge/`_classify_jd==bot` → **BOT_BLOCKED**; `email-` prefix waives empty-`company_job_id` + http gates → **METEORITE_QUALIFIED**; short title → **METEORITE_FAILED_QUALIFY**; Style D `link_source` / `title_source` (subject probe `html.unescape`). Config knobs / bot_signals: **`docs/test-bible/utils/config.md`**. Admin assemble: **`docs/test-bible/ui/api/api_admin.md`**. Classifier: **`docs/test-bible/core/gazer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assemble / email QUALIFY / BOT_BLOCKED / fail / Style D | `src/core/consult.py` | **`TestAst1197QualifyMeteoriteApply`**; revised **`TestAst1133…::test_debug_detail_includes_link_source_input`** (`link_source=http-input`) |
+| Existing content gates still green | same | **`TestAst1062QualifyMeteorite`** |
+
+**Broken / obsolete:** AST-1133 Style D assert `link_source=input` → `http-input`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply \
+  tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated::test_debug_detail_includes_link_source_input \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  -q
+```

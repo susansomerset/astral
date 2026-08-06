@@ -481,3 +481,23 @@ Ad Hoc `_build_adhoc_live_content("qualify_meteorite")` lockstep with consult as
   tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksGazeAvail \
   -q
 ```
+
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` + `CONTENT:` body. Primary apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| CONTENT label lockstep | `src/ui/api/api_admin.py` | revised **`TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite`** |
+
+**Broken / obsolete:** none — additive `CONTENT:` assert.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite \
+  -q
+```

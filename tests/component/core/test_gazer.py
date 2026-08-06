@@ -48,6 +48,18 @@ class TestAst1195BotBlockedErrorState:
         assert gazer_mod._JD_ERROR_STATES["closed"] == "JD_SCRAPE_FAIL_CLOSED"
 
 
+class TestAst1197ChallengeBotSignals:
+    """AST-1197: parent-captured Cloudflare interstitial classifies as bot (≥2 signals)."""
+
+    def test_captured_challenge_body_is_bot(self) -> None:
+        body = (
+            "Additional Verification Required\n"
+            "Your Ray ID for this request is a26948de4d78f005\n"
+            "Troubleshooting Cloudflare Errors"
+        )
+        assert gazer_mod._classify_jd(body) == "bot"
+
+
 class TestClassifyJd:
     def test_detects_closed_posting(self) -> None:
         assert gazer_mod._classify_jd("role no longer available") == "closed"

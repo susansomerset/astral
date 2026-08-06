@@ -381,3 +381,23 @@ Create ingest still calls `text_matches_known_company_job_id_for_candidate`; sho
   -q
 ```
 
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+Shared `jd_classifier.bot_signals` widened so parent-captured Cloudflare interstitial scores ≥ `bot_threshold` (2) → `"bot"`. Consult apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Challenge body → bot | `src/core/gazer.py` / config signals | **`TestAst1197ChallengeBotSignals`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
+  -q
+```
+
