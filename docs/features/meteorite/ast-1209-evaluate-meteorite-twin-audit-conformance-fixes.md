@@ -114,3 +114,16 @@ if tk == "evaluate_jd" and ts.startswith("METEORITE_"):
 - §3.3 layers: dispatcher (core) may call data delete helpers already used; UI stays presentational.
 - `astral.layers.ui-config-driven-business-logic`: Meteorite Criteria page only passes artifact/task keys into `ArtifactEditor`.
 - Engineer must not edit `tests/` or `docs/test-bible/**`.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1186/AST-1209-evaluate-meteorite-twin-audit-conformance-fixes`
+**Plan path:** `docs/features/meteorite/ast-1209-evaluate-meteorite-twin-audit-conformance-fixes.md`
+
+**Built tip:** `261fa01a72a7cc02b58bd6f4cddef5c166b992d4` (`261fa01a`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | (Linear comment) | Twin audit table — point 10 product-defect; point 11 bible-drift → AST-1210 |
+| 2 | `261fa01a` | `ensure_meteorite_dispatch_tasks`: retire `evaluate_jd`@`METEORITE_*` only when twin present; Manual Verify + idle-hop note in docstring |
+| 3 | (no-op) | No config/consult/UI product defects |
