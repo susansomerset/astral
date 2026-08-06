@@ -157,3 +157,14 @@ PY
 - `orch.git.merge-on-checkout` / `orch.pipeline.plan-is-bible`: inventory and Done when bind to post-`sync-child` state with full ftr slug; verify asserts only tip-true predicates (labels/order/seq + AST-1211 pair), not global object equality.
 - §2.1 / §2.4 / §2.6: N/A — no config blocks, batch claim, or state machine changes.
 - §3.3 imports: N/A — no Python/TS edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1183/AST-1219-meteorite-review-group-move-meteorite-agent-task-rows`
+**Plan path:** `docs/features/meteorite/ast-1219-meteorite-review-group-move-meteorite-agent-task-rows.md`
+
+**Built tip:** `39e6a911f6a506afc5991604e9bae83bf73549f2` (`39e6a911`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `39e6a911` | Meteorite Review agent_task group + membership move (+ surgical AST-756 fixture) |
