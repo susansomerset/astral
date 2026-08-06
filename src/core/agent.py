@@ -2390,6 +2390,36 @@ async def do_task(
                     f"provider_empty_response failure_class={result.get('failure_class')!r} "
                     f"error={result.get('error')!r}"
                 )
+            # AST-1191: found/recorded on provider failure (real timesheet keys; n/a not silent 0).
+            ts = result.get("timesheet") if isinstance(result.get("timesheet"), dict) else {}
+            dur_v = ts.get("duration")
+            duration_s = (
+                f"{float(dur_v):.1f}s" if isinstance(dur_v, (int, float)) else "n/a"
+            )
+            api = result.get("api_response")
+            stop_raw = getattr(api, "stop_reason", None) if api is not None else None
+            stop_s = (
+                stop_raw.strip()
+                if isinstance(stop_raw, str) and stop_raw.strip()
+                else "?"
+            )
+
+            def _ts_num(key: str) -> str:
+                v = ts.get(key)
+                return str(int(v)) if isinstance(v, (int, float)) else "n/a"
+
+            fc_raw = result.get("failure_class")
+            fc_s = (
+                str(fc_raw).strip()
+                if fc_raw is not None and str(fc_raw).strip()
+                else "n/a"
+            )
+            _do_task_debug_logger(debug).debug_detail(
+                f"found duration={duration_s} stop={stop_s} "
+                f"tokens fresh={_ts_num('inputtotal')} cache_read={_ts_num('inputcached')} "
+                f"cache_write={_ts_num('cache_creation_tokens')} output={_ts_num('outputtotal')} "
+                f"failure_class={fc_s}"
+            )
         hop_fail_outcome = _close_hop_ledger(
             success=False,
             clear_log=True,
@@ -2401,6 +2431,18 @@ async def do_task(
                 else None
             ) or None,
         )
+        hop_fail_outcome = hop_fail_outcome or _HOP_FAILURE_NOOP
+        if debug:
+            err_disp = str(result.get("error") or "provider_failed")
+            es_disp = (
+                hop_fail_outcome["error_state"]
+                if hop_fail_outcome["apply_error_state"]
+                else "held"
+            )
+            br = "true" if hop_fail_outcome["batch_released"] else "false"
+            _do_task_debug_logger(debug).debug_detail(
+                f"recorded error={err_disp} error_state={es_disp} batch_released={br}"
+            )
         return result
 
     # Capture raw_text now; RESPONSE block storage is deferred until after validation/decode.
