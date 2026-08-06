@@ -6666,14 +6666,14 @@ class TestAst1083StoreResponseDebugResult:
 
 
 @pytest.mark.skipif(
-    "parse_meteorite_email" not in TASK_CONFIG,
-    reason="AST-1089 parse_meteorite_email not on this publish tip",
+    "meteorite_email" not in TASK_CONFIG,
+    reason="AST-1212 meteorite_email not on this publish tip",
 )
 class TestAst1144ParseMeteoriteEmailMetadataDict:
-    """AST-1144: realistic Ruth html_links payload with dict metadata validates."""
+    """AST-1144 / AST-1212: realistic Ruth html_links payload with dict metadata validates."""
 
     def _schema(self):
-        return TASK_CONFIG["parse_meteorite_email"]["response_schema"]
+        return TASK_CONFIG["meteorite_email"]["response_schema"]
 
     def test_dict_metadata_validates(self) -> None:
         parsed = {
@@ -6689,7 +6689,7 @@ class TestAst1144ParseMeteoriteEmailMetadataDict:
             }
         }
         assert agent_mod._validate_response_schema(
-            parsed, self._schema(), "parse_meteorite_email"
+            parsed, self._schema(), "meteorite_email"
         ) is None
 
     def test_str_metadata_rejected(self) -> None:
@@ -6706,7 +6706,7 @@ class TestAst1144ParseMeteoriteEmailMetadataDict:
             }
         }
         err = agent_mod._validate_response_schema(
-            parsed, self._schema(), "parse_meteorite_email"
+            parsed, self._schema(), "meteorite_email"
         )
         assert err is not None
         assert "metadata" in err
@@ -6720,7 +6720,7 @@ class TestAst1144ParseMeteoriteEmailMetadataDict:
             }
         }
         assert agent_mod._validate_response_schema(
-            parsed, self._schema(), "parse_meteorite_email"
+            parsed, self._schema(), "meteorite_email"
         ) is None
 
 

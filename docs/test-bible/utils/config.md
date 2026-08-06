@@ -2444,3 +2444,30 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
   tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
   -q
 ```
+
+
+### AST-1212 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`.
+
+Live product key rename: `TASK_CONFIG` / `METEORITE_EMAIL_PARSE_CONFIG["task_key"]` / `context_format` / `agent_task` → **`meteorite_email`**; `parse_meteorite_email` absent as a live key (no compat shim). Parse modes + response schema unchanged. Catalog: **`docs/test-bible/core/repo_admin_json.md`**. Schema validation: **`docs/test-bible/core/agent.md`**. Payload shape / groupings / aliases are siblings **AST-1213** / **AST-1183** / **AST-1184**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse config + TASK_CONFIG identity | `src/utils/config.py` | revised **`TestAst1089ParseMeteoriteEmailConfig`**, **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** AST-1089 / AST-1144 asserts and skipifs that indexed `TASK_CONFIG["parse_meteorite_email"]` / `task_key == "parse_meteorite_email"`.
+
+**Integration:** no existing scenarios assert parse/meteorite_email task key — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
