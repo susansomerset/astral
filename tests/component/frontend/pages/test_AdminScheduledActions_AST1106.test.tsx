@@ -34,9 +34,9 @@ const taskKeysConfig = {
   gaze_email: {
     entity_type: null as string | null,
     trigger_state: null as string | null,
-    task_group_order: "4000",
-    task_group_name: "Job Review",
-    task_seq: 2.3,
+    task_group_order: "4500",
+    task_group_name: "Meteorite Review",
+    task_seq: 1,
     task_name: "gaze_email",
     is_scored: false,
   },
@@ -175,11 +175,11 @@ describe("AST-1106 gaze_email always visible under Avail gt0", () => {
     expect(within(await filtersRoot()).getByLabelText("Avail")).toHaveValue("gt0")
 
     await selectAllCandidatesFilter()
-    await waitFor(() => expect(screen.getByText(/Job Review \(.*AUTO\)/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Meteorite Review \(.*AUTO\)/)).toBeInTheDocument())
     expect(screen.getByText(/D\. Job Analysis \(.*AUTO\)/)).toBeInTheDocument()
     expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
 
-    const jr = screen.getByText(/Job Review \(.*AUTO\)/).closest(".collapsible-panel") as HTMLElement
+    const jr = screen.getByText(/Meteorite Review \(.*AUTO\)/).closest(".collapsible-panel") as HTMLElement
     if (!within(jr).queryByRole("table")) {
       const expandBtn = within(jr).queryByRole("button", { name: "Expand section" })
       if (expandBtn) await userEvent.click(expandBtn)
@@ -200,6 +200,6 @@ describe("AST-1106 gaze_email always visible under Avail gt0", () => {
     await selectAllCandidatesFilter()
     await waitFor(() => expect(screen.getByText(/D\. Job Analysis \(.*AUTO\)/)).toBeInTheDocument())
     expect(screen.queryByText(/C\. Company Roster \(.*AUTO\)/)).not.toBeInTheDocument()
-    expect(screen.queryByText(/Job Review \(.*AUTO\)/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Meteorite Review \(.*AUTO\)/)).not.toBeInTheDocument()
   }, 20000)
 })
