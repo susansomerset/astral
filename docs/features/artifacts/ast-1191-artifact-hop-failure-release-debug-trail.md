@@ -308,3 +308,17 @@ None cited (plan lists statute ids under In-scope / Considered-but-excluded, cov
 
 `context_tokens≈52000`
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Driven by:** Radia `[code-rubric] revision=1` — **CLEAN** (no fix-now / discuss).  
+**Review tip ingested:** `d8864b7a` (`docs(AST-1191): Radia review — clean`)
+
+| Finding | Action |
+|---------|--------|
+| None | Accepted — no product change this pass |
+
+**§9a:** dry-run `origin/sub/AST-1164/AST-1191-artifact-hop-failure-release-debug` → `origin/dev` (+ ftr when present).
