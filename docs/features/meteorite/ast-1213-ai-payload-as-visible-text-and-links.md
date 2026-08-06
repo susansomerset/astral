@@ -270,3 +270,15 @@ Changes:
 - **discuss #2:** Strengthen Stage 2 gate — catalog↔fixture prompt byte-equality; ban leftover “email HTML” / “absent from the email HTML” phrases in both prompts.
 - **discuss #3:** Collapse S1 helper contract to final `_ruth_live_parts` + `_format_ruth_live_body` (+ `_ruth_candidate_links`); remove superseded `_ruth_live_body(html) -> str` / exploratory alternate signatures.
 - Files Changed / Self-Assessment / code-rules updated for the config + local link-walk delta.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1182/AST-1213-ai-payload-as-visible-text-and-links`
+**Plan path:** `docs/features/meteorite/ast-1213-ai-payload-as-visible-text-and-links.md`
+
+**Built tip:** `38a2cecd269ac07390eab9ceb5bf06ade7863e66` (`38a2cecd`) — tip moves after this stub commit.
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `aef00995` | Ruth live payload visible text + links |
+| 2 | `38a2cecd` | meteorite_email prompts visible text + links (+ surgical AST-756 fixture) |
