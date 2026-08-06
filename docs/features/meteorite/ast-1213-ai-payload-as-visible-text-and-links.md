@@ -276,7 +276,7 @@ Changes:
 **Publish ref:** `origin/sub/AST-1182/AST-1213-ai-payload-as-visible-text-and-links`
 **Plan path:** `docs/features/meteorite/ast-1213-ai-payload-as-visible-text-and-links.md`
 
-**Built tip:** `38a2cecd269ac07390eab9ceb5bf06ade7863e66` (`38a2cecd`) — tip moves after this stub commit.
+**Built tip:** `ecf25eda9e6eb3f936a1dbb8ee47c464b21ac8b4` (`ecf25eda`)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
