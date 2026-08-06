@@ -194,3 +194,12 @@ PY
 context_tokens≈100000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-06
+**Review:** Radia `[code-rubric] revision=1` — **Overall: CLEAN** (findings: none). Tip at intake: `f122db09` (`docs(AST-1219): Radia review — clean`).
+
+**Fix-now / discuss / advisory:** none — no product or plan changes required beyond this resolution stub.
+
+**Outcome:** `resolve(AST-1219): — clean`; advance to **User Testing** (assignee Hedy).
