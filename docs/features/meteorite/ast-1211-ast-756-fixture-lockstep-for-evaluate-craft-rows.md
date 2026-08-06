@@ -175,4 +175,27 @@ PY
 
 ### code-rubric.v1 verdict
 
-_(Radia fills after Tests Passed)_
+[code-rubric] revision=1
+
+| Field | Value |
+|-------|-------|
+| Rubric | code-rubric.v1 |
+| Publish ref tip | `9986de4443e1630f6382fcdc4cdc1293a828dd70` |
+| Overall | FIX-NOW |
+
+Full active statute corpus (65 leaves — 19 universal + 46 scoped) scored in-session against `git diff origin/dev...origin/sub/AST-1186/AST-1211-ast-756-fixture-lockstep-for-evaluate-craft-rows`. Diff has zero `src/**` / `scripts/**` / `data/admin/**` paths (product touch is `docs/uat-fixtures/AST-756/expected-agent_task.json` only, +38/−0), so 41 of 46 scoped statutes are `not-applicable` (no matching layer/path). Five scoped statutes matched and conform (`astral.docs.features-single-file-per-ticket`, `astral.debug.spikes-under-debug-dir`, `astral.git.betty-no-src-or-features`, `astral.git.engineer-test-tree-ban`, `astral.seed.define-approved`). Universal: 17 conform, 1 not-applicable (`orch.roles.archie-approves-statutes` — no `canon/statutes/**` diff path), **1 violates**.
+
+**fix-now — `orch.git.merge-on-checkout` not run at checkout.** This sub's merge-base with `origin/ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests` is `0d926c08` (an `origin/tests` ancestor shared by coincidence), not the ftr tip. Verified independently: `git merge-base --is-ancestor origin/ftr/AST-1186-... origin/sub/AST-1186/AST-1211-...` → **NO**; and `src/core/dispatcher.py` on this sub's tip still carries the **pre-AST-1209** docstring/logic (`retire stale evaluate_jd@METEORITE_NEW (AST-1060)`) rather than AST-1209's shipped twin-aware retirement — because this sub branched off `origin/dev` directly and never merged the already-resolved `origin/ftr/AST-1186` tip (which had AST-1209's `resolve(AST-1209): — clean` landed at 06:03:37, six minutes before this ticket's Plan Ready). No content collision today — this diff touches only the UAT fixture, not `dispatcher.py` — but the sub is stacked on a stale seed per the statute's own example (\"coding on a sub that has not merged an advanced ftr tip with sibling landings\"). **Remedy:** `git fetch origin && git merge origin/ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests` on this sub before `merge-child` folds it into ftr, so the rolled-up parent tip (including AST-1209) is actually present.
+
+**Plan adherence:** Stage 1 done-when met exactly — fixture now 53/53 rows matching catalog, verified independently (Python object-equality check, not just trusting the manifest): `evaluate_meteorite` and `craft_evaluate_meteorite_rubric` are byte/object-identical to catalog; the same 13 shared rows (`craft_*`, `evaluate_jd`, `grade_*`, `meteorite_like`) still differ only in prompt fields, confirming the plan's refusal to absorb unrelated drift held. Insert is a pure addition (+38/−0, zero deletion lines) satisfying Joan's finding #1 gate. Joan's finding #2 (stale `TestAst786AgentTaskRepoJsonSeed` docstring / bible note) is closed by Betty's `test(AST-1211)` commit, not the engineer — commit-role separation clean (`code(AST-1211)` → fixture only; `test(AST-1211)` + one `merge-tests(AST-1211)` SHA → `tests/` + `docs/test-bible/` only).
+
+**Pattern conformance:** none cited in the ticket description.
+
+## Frame diff
+(none) — description AC/In-scope/Boundaries checkboxes already reflect the shipped diff.
+
+**What's solid:** Surgical insert exactly matches the plan's anchor-adjacency placement (`craft_evaluate_meteorite_rubric` after `craft_jobdesc_rubric`; `evaluate_meteorite` after `evaluate_jd`); catalog (`data/admin/agent_task.json`) confirmed byte-for-byte untouched.
+
+context_tokens≈48000
+
+— Radia
