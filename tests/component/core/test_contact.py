@@ -833,9 +833,12 @@ class TestAst1073ContactEstelleTurnLoop:
         assert out["ok"] is True
         log.set_debug_flag.assert_called_with(True)
         log.debug_index.assert_called()
+        # AST-1207: turn bookend is found→recorded (was single outcome="success").
+        outcomes = [c.kwargs.get("outcome") for c in log.debug_index.call_args_list]
+        assert outcomes == ["found", "recorded"]
         kwa = log.debug_index.call_args.kwargs
         assert kwa.get("func") == "contact.run_contact_estelle_turn"
-        assert kwa.get("outcome") == "success"
+        assert kwa.get("outcome") == "recorded"
         details = [c.args[0] for c in log.debug_detail.call_args_list if c.args]
         assert any("reply_len=" in str(m) for m in details)
 
@@ -1258,3 +1261,83 @@ class TestAst1206ContactDebugFlag:
         monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
         with pytest.raises(TypeError, match="enabled must be bool"):
             contact_mod.set_slack_debug_enabled("yes", debug=False)  # type: ignore[arg-type]
+
+
+# Branches: Events hydrate debug from durable SoT; kwarg ignored (AST-1207).
+class TestAst1207DurableDebugSot:
+    """AST-1207: Manage Slack durable debug is sole SoT for Events/handle ingress."""
+
+    def setup_method(self) -> None:
+        contact_mod._seen_event_ids.clear()
+
+    def test_handle_ignores_kwarg_when_durable_off(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_mod, "slack_debug_enabled", MagicMock(return_value=False))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", False)
+        log = MagicMock()
+        monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        out = contact_mod.handle_slack_event(
+            {"event_id": "Ev-sot-off", "event": {"type": "app_mention", "user": "U1"}},
+            debug=True,
+        )
+        assert out == {"accepted": False, "reason": "listen_off"}
+        log.set_debug_flag.assert_called_with(False)
+        log.debug_index.assert_not_called()
+
+    def test_handle_hydrates_on_and_passes_debug_to_turn(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(contact_mod, "slack_debug_enabled", MagicMock(return_value=True))
+        monkeypatch.setitem(CONTACT_CONFIG, "listen_enabled", True)
+        monkeypatch.setattr(
+            contact_mod,
+            "resolve_slack_user",
+            MagicMock(
+                return_value={
+                    "astral_candidate_id": "c1",
+                    "state": "PROSPECT",
+                    "created": False,
+                }
+            ),
+        )
+        turn = _stub_estelle_turn(monkeypatch)
+        log = MagicMock()
+        monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        out = contact_mod.handle_slack_event(
+            {
+                "event_id": "Ev-sot-on",
+                "event": {
+                    "type": "app_mention",
+                    "user": "U1",
+                    "channel": "C1",
+                    "ts": "1.0",
+                    "text": "hi",
+                },
+            },
+            debug=False,
+        )
+        assert out["accepted"] is True
+        log.set_debug_flag.assert_called_with(True)
+        turn.assert_called_once()
+        assert turn.call_args.kwargs["debug"] is True
+
+    def test_receive_ignores_kwarg_when_durable_off(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        secret = "signing-secret"
+        monkeypatch.setenv(CONTACT_CONFIG["signing_secret_env"], secret)
+        monkeypatch.setattr(contact_mod, "slack_debug_enabled", MagicMock(return_value=False))
+        log = MagicMock()
+        monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        body = json.dumps({"type": "url_verification", "challenge": "ch-sot"}).encode()
+        ts = str(int(time.time()))
+        status, out = contact_mod.receive_slack_events_http(
+            body,
+            timestamp=ts,
+            signature=_sign(secret, ts, body),
+            debug=True,
+        )
+        assert status == 200
+        assert out == {"challenge": "ch-sot"}
+        log.set_debug_flag.assert_called_with(False)

@@ -1,4 +1,4 @@
-"""Admin Contact skill ACL + Manage Slack listen/activity API (AST-1071 / AST-1067 / AST-1094).
+"""Admin Contact skill ACL + Manage Slack listen/activity/debug API (AST-1071 / AST-1067 / AST-1094 / AST-1206).
 
 Thin wrappers over src.core.contact.
 """
@@ -11,7 +11,9 @@ from src.core.contact import (
     contact_skills,
     list_estelle_activity,
     run_contact_skill,
+    set_slack_debug_enabled,
     set_slack_listen_enabled,
+    slack_debug_enabled,
     slack_listen_enabled,
 )
 from src.utils.deploy_status import get_deploy_label, ui_llm_debug
@@ -57,6 +59,41 @@ def contact_put_listen():
         return jsonify({"error": str(e)}), 502
     return jsonify(_listen_payload()), 200
 
+
+def _debug_payload() -> dict:
+    return {
+        "debug_enabled": slack_debug_enabled(),
+        "environment": get_deploy_label(),
+        "is_production": contact_is_production_deploy(),
+    }
+
+
+@contact_bp.route("/debug", methods=["GET"])
+@require_admin
+def contact_get_debug():
+    return jsonify(_debug_payload()), 200
+
+
+@contact_bp.route("/debug", methods=["PUT"])
+@require_admin
+def contact_put_debug():
+    body = request.get_json(silent=True) or {}
+    enabled = body.get("debug_enabled")
+    if not isinstance(enabled, bool):
+        return jsonify({"error": "debug_enabled must be a bool"}), 400
+    explicit = (
+        request.args.get("debug", "").lower() in ("1", "true", "yes")
+        or bool(body.get("debug"))
+    )
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        set_slack_debug_enabled(enabled, debug=debug)
+    except TypeError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.warning("[api_contact] debug set failed: %s", e)
+        return jsonify({"error": str(e)}), 502
+    return jsonify(_debug_payload()), 200
 
 
 @contact_bp.route("/estelle_activity", methods=["GET"])
