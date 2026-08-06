@@ -6,21 +6,21 @@
 
 Operators open Artifacts criteria pages (Job List, Company Watch, Job Description, Meteorite, Get, Do, Like) and see header chrome (title + Generate/Regenerate) without criterion **prompt bodies** even when criteria are already loaded. Restore editable prompt visibility on the shared `ArtifactEditor` rubric path without redesigning nav/chrome or touching consult grading.
 
-**Evidence lock (Joan / DOM capture):** the AST-1198 Original brief shows **Regenerate** and the muted autosave `<span>` (not Cancel/Save). That requires `hasData === true` and `inReview === false` in `ArtifactEditor.tsx` — so GET already returned criteria with non-empty `content`, and AST-901 pending-recovery did not populate the tabs. Empty-`rubric_vector` hydrate overwrite cannot be the cause of this report. Prompt bodies are rendered inside `CollapsiblePanel` with `hidden={!expanded}`, and `resolvedExpandedTabId` starts as `""` (expand-one) — so loaded criteria stay collapsed to chevron + label until click. This plan makes rubric-mode criteria **expand-all by default** so each prompt is visible/editable on open (AC1).
+**Evidence lock (Joan / DOM capture):** the AST-1198 Original brief shows **Regenerate** and the muted autosave `<span>` (not Cancel/Save). That requires `hasData === true` and `inReview === false` in `ArtifactEditor.tsx` — so GET already returned criteria with non-empty `content`, and AST-901 pending-recovery did not populate the tabs. Empty-`rubric_vector` hydrate overwrite cannot be the cause of this report. Prompt bodies are rendered inside `CollapsiblePanel` with `hidden={!expanded}`, and `resolvedExpandedTabId` starts as `""` (expand-one) — so loaded criteria stay collapsed to chevron + label until click. This plan makes **candidate Artifacts criteria** pages expand-all by default so each prompt is visible/editable on open (AC1). Gate is structural (`!jobPersistence && rubricMode`) — not a hardcoded seven-key set — so Recommended Job Modal job-persistence tabs stay expand-one.
 
 ## Files Changed (planned)
 
 | File | Change | Layer |
 |------|--------|-------|
 | `docs/features/interface/ast-1200-restore-rubric-criteria-prompts-on-artifacts-pages.md` | This plan | docs |
-| `src/ui/frontend/src/components/ArtifactEditor.tsx` | Rubric-mode criteria stack uses expand-all; seed all sections open after load | ui |
+| `src/ui/frontend/src/components/ArtifactEditor.tsx` | Candidate criteria expand-all (`!jobPersistence && rubricMode`); one-shot seed after load | ui |
 | `scripts/migrations/backfill_rubric_vectors.py` | Delete local `_ARTIFACT_KEY_TO_TASK_KEY`; import `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` from config | scripts |
 
-No `src/core/candidate.py` edits. No `App.css` edits. No `config.py` edits. No consult / grade-dot / Manage Tasks changes. No `tests/` edits (Betty owns the test tree).
+No `src/core/candidate.py` edits. No `App.css` edits. No `config.py` edits. No consult / grade-dot / Manage Tasks / Recommended Job Modal changes. No `tests/` edits (Betty owns the test tree).
 
-## Stage 1: Rubric-mode criteria expand-all so prompt bodies are visible
+## Stage 1: Candidate criteria expand-all so prompt bodies are visible
 
-**Done when:** On any Artifacts criteria page (`artifactKey` in the seven rubric keys) for a candidate whose GET returns a non-empty criteria list, opening the page shows every criterion's prompt textarea (not `hidden`) under its label — without requiring a chevron click. Fixed-tab / structure modes (Base Resume, etc.) keep today's expand-one behavior. Generate/Regenerate, autosave, and empty “New Criterion” affordance still work.
+**Done when:** On candidate Artifacts criteria pages (Job List / Company Watch / Job Description / Meteorite / Get / Do / Like — all use `ArtifactEditor` **without** `jobPersistence`) for a candidate whose GET returns criteria tabs, opening the page shows every criterion's prompt textarea (not `hidden`) under its label — without requiring a chevron click. Fixed-tab / structure modes and **job-persistence** ArtifactEditor uses (Recommended Job Modal Artifacts) keep today's expand-one behavior. Generate/Regenerate, autosave, collapse-one-stays-collapsed while typing, and empty “New Criterion” affordance still work.
 
 1. In `src/ui/frontend/src/components/ArtifactEditor.tsx`, add:
 
@@ -28,12 +28,15 @@ No `src/core/candidate.py` edits. No `App.css` edits. No `config.py` edits. No c
    import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
    ```
 
-2. After `tabsForRail` is defined, add:
+2. After `rubricMode` / `tabsForRail` are defined, add the **structural** expand-all gate (Joan round=2 — do **not** hardcode rubric artifact keys):
 
    ```ts
-   const rubricSectionKeys = useMemo(
-     () => (rubricMode ? tabsForRail.map(t => t.id) : []),
-     [rubricMode, tabsForRail],
+   // Candidate Artifacts criteria only — not job-persistence (Recommended Job Modal).
+   const criteriaExpandAll = !jobPersistence && rubricMode
+
+   const criteriaSectionKeys = useMemo(
+     () => (criteriaExpandAll ? tabsForRail.map(t => t.id) : []),
+     [criteriaExpandAll, tabsForRail],
    )
    const {
      isExpanded,
@@ -41,50 +44,73 @@ No `src/core/candidate.py` edits. No `App.css` edits. No `config.py` edits. No c
      expandAllSections,
      setExpandedKeys,
    } = useSectionExpandPolicy({
-     expandAll: rubricMode,
-     sectionKeys: rubricSectionKeys,
+     expandAll: criteriaExpandAll,
+     sectionKeys: criteriaSectionKeys,
    })
+   const didSeedCriteriaExpandRef = useRef("")
    ```
 
-3. Replace the expand-one state path for **rubric mode only**:
+   ⚠️ **Decision:** Gate on `!jobPersistence && rubricMode`, not `rubricMode` alone. `rubricMode` is `!fixedFields` and is also true for job-persistence dict tabs with no `shapesKey` (e.g. Recommended Job Modal `proposed_answers`). Parent Boundaries and this plan's Out of scope forbid that surface. Structural check stays config-neutral (no hardcoded seven-key set in React).
 
-   - Keep `expandedTabId` / `resolvedExpandedTabId` for **non-rubric** modes (`fixedFields` / structure / job persistence dict) exactly as today.
+3. Wire `CollapsiblePanel` expand state:
+
+   - Keep `expandedTabId` / `resolvedExpandedTabId` for every path where `criteriaExpandAll` is false (fixedFields / structure / **jobPersistence**).
    - On each `CollapsiblePanel` in the stack:
 
      ```tsx
-     expanded={rubricMode ? isExpanded(tab.id) : resolvedExpandedTabId === tab.id}
+     expanded={criteriaExpandAll ? isExpanded(tab.id) : resolvedExpandedTabId === tab.id}
      onExpandedChange={next => {
-       if (rubricMode) onExpandedChange(tab.id, next)
+       if (criteriaExpandAll) onExpandedChange(tab.id, next)
        else if (next) setExpandedTabId(tab.id)
        else setExpandedTabId("")
      }}
      ```
 
-4. After a successful candidate load that sets rubric tabs (the `else` branch of the candidate `useEffect` that maps `arr` → `setTabs`), when `arr.length > 0`, the next paint must open all sections. Add an effect:
+4. One-shot expand-all seed after load (mirror `AdminScheduledActions.tsx` `didAutoOpenSectionRef` — Joan round=2). Do **not** list `criteriaSectionKeys` (array) or an unstable `expandAllSections` identity as the sole re-run trigger without a ref guard:
 
    ```ts
    useEffect(() => {
-     if (!rubricMode || !loaded) return
-     if (rubricSectionKeys.length === 0) return
+     if (!criteriaExpandAll || !loaded) return
+     if (criteriaSectionKeys.length === 0) return
+     const seedKey = `${selectedId ?? ""}:${artifactKey}`
+     if (didSeedCriteriaExpandRef.current === seedKey) return
+     didSeedCriteriaExpandRef.current = seedKey
      expandAllSections()
-   }, [rubricMode, loaded, selectedId, artifactKey, rubricSectionKeys, expandAllSections])
+   }, [
+     criteriaExpandAll,
+     loaded,
+     selectedId,
+     artifactKey,
+     criteriaSectionKeys.length,
+     expandAllSections,
+   ])
    ```
 
-   ⚠️ **Decision:** Expand-all for **rubric mode only** (not Base Resume fixed tabs). AC1 requires each criterion's **prompt text** visible/editable; expand-one with collapsed bodies fails that wording even when labels show. This is visibility restore, not a nav/chrome redesign — Generate/Regenerate/Save chrome unchanged. No Expand/Collapse bulk chrome required (`showBulkChrome` unused).
+   ⚠️ **Decision:** Seed once per `(selectedId, artifactKey)` load. Re-calling `expandAllSections()` on every `setTabs` (keystroke) would re-open panels the operator collapsed and fail Manual verify #6. Length in the dep array is only so the first non-empty tab set after load can seed; the ref blocks all later runs for that seed key.
 
-5. When `addCriterionTab` runs in rubric mode, after `handleChange` / `setExpandedTabId`, also ensure the new id is open under expand-all:
+5. When `addCriterionTab` runs and `criteriaExpandAll` is true, after `handleChange`, open the new id without re-seeding the whole stack:
 
    ```ts
    setExpandedKeys(prev => new Set([...prev, t.id]))
    ```
 
-   (Keep existing `setExpandedTabId(t.id)` for the non-rubric branch if still used; in rubric mode the policy set is authoritative.)
+   Keep existing `setExpandedTabId(t.id)` for the expand-one path (`!criteriaExpandAll`).
 
-6. On `selectedId` / `artifactKey` change, clear expand-all keys so a stale set does not flash: existing `useEffect` that `setRailOrderFreeze(null)` — extend it with `setExpandedKeys(new Set())` when `rubricMode`.
+6. On `selectedId` / `artifactKey` change, reset seed + keys (single effect; ordering is explicit — this runs, then step 4 may seed the new key):
+
+   ```ts
+   useEffect(() => {
+     didSeedCriteriaExpandRef.current = ""
+     setExpandedKeys(new Set())
+     setRailOrderFreeze(null)
+   }, [selectedId, artifactKey, setExpandedKeys])
+   ```
+
+   Replace/extend the existing `setRailOrderFreeze(null)` effect so there is **one** reset effect for these deps (do not leave two competing effects).
 
 7. Do **not** modify `hydrate_rubric_artifacts_for_response`, `apply_rubric_vectors_save`, or any GET handler. Hydrate stays **read-only** overlay from `rubric_criteria_for_task`.
 
-   ⚠️ **Decision (Joan fix-now / `astral.seed.boot-only-not-hot-path`):** No blob→table insert and no `save_candidate_data` from GET/hydrate. Staging blob-but-no-table recovery remains the existing one-shot `scripts/migrations/backfill_rubric_vectors.py` (Stage 2), not an API hot path. The AST-802 company-search-terms reconcile is **not** a carve-out for new seed-on-GET work.
+   ⚠️ **Decision (Joan fix-now / `astral.seed.boot-only-not-hot-path`):** No blob→table insert and no `save_candidate_data` from GET/hydrate. Staging blob-but-no-table recovery remains the existing one-shot `scripts/migrations/backfill_rubric_vectors.py` (Stage 2), not an API hot path.
 
 ## Stage 2: Backfill script reads owner map from config
 
@@ -123,16 +149,17 @@ Use a candidate that shows **Regenerate** on Job List Criteria (criteria already
 3. **Sibling pages:** Spot-check Company Watch, Job Description, Meteorite, Get, Do, Like when that candidate has criteria for those keys — same expand-all visibility.
 4. **Empty affordance:** Candidate/page with genuinely no criteria still shows the single empty “New Criterion” editor (expanded is fine).
 5. **Save / Generate:** Edit a prompt → autosave / reload persists; Generate/Regenerate still runs for an eligible state; Cancel/Save review mode after Generate still works.
-6. **Collapse still works:** Operator can collapse one criterion under expand-all without forcing all closed (expand-all policy allows per-panel toggle).
-7. **Out of scope check:** Do **not** ship CSS changes unless this verify finds `.dep-body` computed height `0` while labels/panels are in the DOM — then stop and comment on the parent (do not invent a clip fix in-stage).
+6. **Collapse still works:** Collapse one criterion, type in another — the collapsed panel stays closed (one-shot seed; no re-expand on keystroke).
+7. **Boundary:** Open Recommended Job Modal → Artifacts → Application Questions (or any `jobPersistence` ArtifactEditor) — still expand-one (bodies `hidden` until expand); not flipped to expand-all.
+8. **Out of scope check:** Do **not** ship CSS changes unless this verify finds `.dep-body` computed height `0` while labels/panels are in the DOM — then stop and comment on the parent (do not invent a clip fix in-stage).
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — shared `ArtifactEditor` rubric expand policy + ops backfill map import; seven criteria pages share one component.
+**Scope:** `Single-Component` — shared `ArtifactEditor` criteria expand policy + ops backfill map import; seven candidate criteria pages share one component.
 
-**Conf:** `Medium` — evidence from the ticket DOM capture + `ArtifactEditor` expand-one path is strong for Stage 1; Conf is not `high` because staging UAT still has to confirm labels-only vs fully blank chrome, and Chuckles' hydrate hypothesis remains a separate ops concern (backfill script), not this UI fix.
+**Conf:** `Medium` — evidence from the ticket DOM capture + expand-one path is strong; round=2 gates (`!jobPersistence`, one-shot ref) remove the prior boundary/re-fire risks from the written steps.
 
-**Risk:** `Medium` — wrong expand wiring could leave fixed-tab modes on expand-all, or fail to re-expand after candidate switch; backfill import mistake could skip owners if the wrong config symbol is used.
+**Risk:** `Medium` — missing the `!jobPersistence` gate would leak expand-all into Recommended Job Modal; missing the seed ref would re-open collapsed panels on every keystroke. Both are called out as literal plan gates above.
 
 ## Rules check
 
@@ -160,3 +187,7 @@ Use a candidate that shows **Regenerate** on Job List Criteria (criteria already
 Revision 1 — 2026-08-06
 Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE) — seed-on-GET statute violation; Stage 1 premise contradicted by Regenerate DOM evidence; AC1 unmapped while expand-one left out of scope; Stage 2 CSS unproven; Stage 3 local map duplicates config.
 Changes: Dropped hydrate write path and speculative CSS. Primary Stage 1 is rubric-mode expand-all via `useSectionExpandPolicy`. Stage 2 imports `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` into the backfill script. Files Changed includes this plan doc. Conf lowered to Medium.
+
+Revision 2 — 2026-08-06
+Driven by: Joan `[plan-discuss] round=2 concern` (plan-rubric.v1 REVISE) — `rubricMode` gate leaks into job-persistence Recommended Job Modal; step 4 effect re-opens collapsed panels on every `setTabs`/keystroke.
+Changes: Gate is `criteriaExpandAll = !jobPersistence && rubricMode` (structural, no hardcoded key set). Expand-all seed is one-shot per `(selectedId, artifactKey)` via `didSeedCriteriaExpandRef` (AdminScheduledActions precedent). CollapsiblePanel / add-criterion / reset effects use `criteriaExpandAll`. Manual verify #7 boundary check for job-persistence.
