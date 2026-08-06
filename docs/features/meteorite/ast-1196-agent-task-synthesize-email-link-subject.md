@@ -222,3 +222,14 @@ context_tokens≈75000
 — Radia
 
 ---
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Review tip:** `e086bb26` (`docs(AST-1196): Radia review — clean`) — **Overall: CLEAN**
+
+No fix-now or discuss items. Radia verified Stage 1 mechanically (single-row catalog/fixture diffs, Done-when assertions on shipped prompts, Joan R1/R2 fix-nows present in prompt text). Frame diff: none.
+
+**Advisory noted (description only):** Considered-but-excluded `pattern.config.config-block` / `pattern.batch.entity-claim-process-release` are not active-corpus ids — corrected on Linear to `astral.config.config-source-of-truth` / `astral.batch.claim-process-release` (sibling-owned; still excluded for this child).
+
+No product or test-tree changes on resolve.
