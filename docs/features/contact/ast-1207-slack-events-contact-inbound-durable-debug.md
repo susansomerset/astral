@@ -130,3 +130,44 @@ Audit (current → required). Edit **only** these functions in `src/core/contact
 | §3.5 naming | Keep `debug_enabled` / `slack_debug_enabled` names from foundation. |
 | §1.5.1 debug-contract-gated | Style D only when hydrated `debug` is True; no new `logger.info("[DEBUG] …")`; external stays silent. |
 | §1.1 in-scope-only | Explicit non-touch: React Manage Slack, listen file/semantics, Events verify redesign, non-Contact modules. |
+
+---
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1203/AST-1207-slack-events-contact-inbound-durable-debug` |
+| Tip | `af5dcce1caff48e600a9e40a2624b5dc9c86a9dc` |
+| Branch | `sub/AST-1203/AST-1207-slack-events-contact-inbound-durable-debug` |
+
+Stages 1–2 landed: Events/Socket hydrate from `slack_debug_enabled()`; Style D found→recorded on context load/append, `contact_post_message`, Estelle turn bookend, and `handle_slack_event` accept bookend (found early per Joan discuss).
+
+---
+
+## Radia review
+
+[code-rubric] revision=1
+
+| Field | Value |
+|-------|-------|
+| Rubric | code-rubric.v1 |
+| Publish ref tip | `deb203754fd9c9c61147620e6949cc67f8d0cb14` |
+| Overall | DISCUSS |
+
+Full active statute corpus (65 leaves — 18 universal + 47 scoped) scored in-session against the full three-dot diff — zero `fix-now`; one `discuss`.
+
+**What's solid:** Stage 1 (`api_slack.py` drops `ui_llm_debug`, `contact.py` re-binds `debug = slack_debug_enabled()` as the first executable line of both `handle_slack_event` and `receive_slack_events_http`, `slack_socket_mode_dev.py` swaps hardcoded `debug=True`) and Stage 2 (found→recorded Style D pairs on `load_slack_conversation_context` (both cache/slack branches), `append_slack_conversation_message`, `contact_post_message`, `run_contact_estelle_turn`, `handle_slack_event` accept bookend) match the plan line-for-line, including the Joan-discuss fix (found bookend emitted early in `run_contact_estelle_turn`/`handle_slack_event` so a mid-turn crash still leaves a trail). All new Style D gated behind `if debug:`; long text goes through `truncate_debug_content`; no new `logger.info("[DEBUG] ...")`. `src/external/slack.py` untouched (stays dumb transport).
+
+**discuss — git branch topology on this publish ref:** Commit `28d92d70` (`Merge remote-tracking branch 'origin/sub/AST-1203/AST-1207-...' into sub/AST-1203/AST-1208-manage-slack-ui-debug-toggle`) is an ancestor of this ticket's tip, and does not use the named `merge-resume(AST-NNN): ...` commit vocabulary (`orch.git.commit-vocabulary`, universal). Net effect: this publish ref's diff vs `origin/dev` also carries AST-1208's plan doc and Betty's AST-1208 test commit as passengers (confirmed AST-1208's own tip does **not** carry AST-1207's code back — one-directional, no functional collision; `AdminManageSlack.tsx` is untouched here). Nothing to fix in the already-pushed history (rewriting would violate `orch.git.no-cherry-pick-rebase-force`) — flagging for Chuckles/Susan awareness on worktree sequencing during sibling builds, not blocking this review.
+
+**Pattern conformance:** none cited beyond active `astral.*` statutes already scored above (`astral.standards.debug-contract-gated`, `astral.standards.logging-via-utils`, `astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.standards.public-then-helpers` — all conforms).
+
+## Frame diff
+(none) — description AC/Boundaries/In-scope/Excluded checkboxes already reflect the shipped diff.
+
+context_tokens≈9500
+
+— Radia
+
