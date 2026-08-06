@@ -157,3 +157,16 @@ Full active statute corpus (65 leaves — 19 universal + 46 scoped) scored in-se
 context_tokens≈62000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Review tip:** `6f016bee` (Radia docs) · product tip `261fa01a`
+
+| Item | Disposition |
+|------|-------------|
+| Fix-now | none |
+| Discuss — mid-flight claim release on retirement | **Accepted as documented.** No product change. Mitigation remains: docstring + Stage 1 audit require `provision_meteorite_dispatch_tasks` only when the meteorite evaluate hop is idle; every meteorite `METEORITE_DISPATCH_TASKS` row is `auto_mode` False (`astral.dispatch.seed-auto-false`). Matches Joan fold-in #2 and Radia “visibility only / not blocking.” Adding a code-level batch clear would expand claim-process-release into provision — out of this child’s Files Changed. |
+| Advisory | none |
+
+No `src/` delta on resolve. `twin_present` guard and `METEORITE_*` retirement from Stage 2 stand.
