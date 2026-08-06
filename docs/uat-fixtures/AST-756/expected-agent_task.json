@@ -247,25 +247,6 @@
     "task_name": "craft_jobdesc_rubric"
   },
   {
-    "task_key_uuid": "901007f7-343f-400b-81f9-c11905183dd9",
-    "task_key": "craft_evaluate_meteorite_rubric",
-    "current": 1,
-    "agent_id": "principal_recruiter_estelle",
-    "user_prompt": "Hey Estelle! We need a candidate-specific job description rubric for {$FIRST_NAME}!\n\nThis will be the criteria inserted into Grace's JD evaluation template. Grace has the FULL job description text and is looking for dealbreakers only — this is NOT the GET/DO/LIKE analysis. She's the second filter after Ruth's joblist triage, catching things Ruth couldn't see from a listing summary.\n\nGrace is sharp and can handle nuance, but she still defaults to a passing grade. Her job is to stop obvious mismatches before we spend money on deep analysis, not to judge fit. Every false F costs {$FIRST_NAME} an opportunity they'll never see.\n\nWe've included {$FIRST_NAME}'s profile details for reference.\n\nProduce a set of 4-7 graded vectors covering the dealbreaker categories relevant to {$FIRST_NAME}. Consider things like: remote/location confirmation, domain or mission dealbreakers, salary thresholds, role type red flags, employment type, junior-level language patterns, unreadable JD content — whatever matters most for this candidate's specific requirements and dealbreakers.\n\nFor each vector, craft the grade definitions for A/B/C/D/F/X that would fit this candidate. Include a brief 5-10 word description per grade and provide a short example. Grace has full JD context, so examples can reference things like hybrid language buried in paragraph 4, \"support/help/contribute\" repeated without ownership language, or domain edge cases.\n\nFor this rubric, MAKE SURE THE F GRADE definitions are clear and concrete enough that Grace will know for sure if a JD needs an F.\n\nGrace absolutely cannot do math. Avoid percentages or quantitative assessments of any kind.\n\nWe're plugging this in with programming tools, so we can only accept a JSON response with this schema:\n\n## Vector code (2 letters)\nUse reasonable UNIQUE abbreviations for each vector title.\nGood examples: \"DO\" == \"Domain Expertise\", \"DE\" == \"Documentation Extant\"\n\nBad example: \"V1\" == \"Domain Expertise\"\n\n## Vector importance (1–10)\n\nEach criterion you return is a scoring **vector**. Assign every vector an integer **`importance`** from **1** (lowest priority) to **10** (highest priority). You **must** return `importance` on **every** criterion in your JSON — do not omit it or leave priority implicit.\n\nSpread importance meaningfully when vectors differ in how much they should move the consult score. Avoid assigning **5** to every vector when priorities clearly differ.\n\n### Weight multipliers (importance → score contribution)\n\nImportance scales each vector's contribution to the overall consult score:\n\n- 1 → 30% of baseline\n- 2 → 49%\n- 3 → 68%\n- 4 → 87%\n- 5 → 106% (baseline)\n- 6 → 125%\n- 7 → 144%\n- 8 → 163%\n- 9 → 182%\n- 10 → 200%\n\n\n### How importance combines with grades and confidence at scoring time\n\nAt runtime each vector receives a letter grade (**A–D**, plus **F** and **X**) and a **confidence** integer **1–5**. Consult scoring combines all three:\n\n- **Counted vectors** contribute: `(equal base share among counted vectors) × (grade density) × (importance multiplier) × (confidence multiplier)`.\n- **Grade density** uses universal letter values (A highest, D lowest) times the confidence multiplier (1 → 0%, 2 → 25%, 3 → 50%, 4 → 75%, 5 → 100% of grade value).\n- **F** with confidence **2–5** is a **dealbreaker** — the rubric fails immediately regardless of other vectors.\n- **X** (cannot evaluate) and **confidence 1** vectors are **excluded** from the scored numerator (they do not add points; remaining vectors share the base).\n- The summed contribution is normalized to a **0–10** consult score and compared to the stage pass threshold.\n\nReturn `importance` as an integer field **1–10** alongside `label` and `content` on each criterion object.\n\n{$RESPONSE_SCHEMA}\n\nUse \"label\" to name the vector, e.g. \"Remote Status\", then use \"content\" to break down all the grade definitions, e.g. \"A == Explicitly remote-first or fully distributed with no office requirement, e.g. 'JD states 100% remote, distributed team across US'\\nB == Remote confirmed with rare travel under once per month, e.g. 'Remote with quarterly team offsites'\\nC == Remote mentioned but some office expectations noted, e.g. 'Remote with monthly in-person team syncs'\\nD == Ambiguous or unstated remote status, e.g. 'JD lists city but does not mention remote'\\nF == Hybrid required, onsite required, or travel more than once per month, e.g. 'Hybrid 3 days per week in NYC office'\\nX == Cannot determine remote policy from JD\"\n\nThanks!\n-the Astral Team",
-    "cache_prompt": "{$FIRST_NAME}'s BIO SUMMARY:\n{$BIO_SUMMARY}\n\n\n{$FIRST_NAME}'s STRENGTHS:\n{$STRENGTHS}\n\n\n{$FIRST_NAME}'s PRIORITIES:\n{$PRIORITIES}\n\n\n{$FIRST_NAME}'s DEAL BREAKERS:\n{$DEAL_BREAKERS}\n\n\n{$FIRST_NAME}'s BASE RESUME:\n{$BASE_RESUME}\n\n\n{$FIRST_NAME}'s LINKEDIN PROFILE TEXT:\n{$LINKEDIN_PROFILE_TEXT}\n",
-    "cache_prompt_b": "",
-    "cache_prompt_c": "",
-    "cache_prompt_d": "",
-    "nocache_prompt": "\n\n",
-    "system_prompt": "",
-    "run_next": "",
-    "updated_at": "2026-08-05 00:00:00",
-    "task_group_order": "2000",
-    "task_group_name": "Candidate Artifacts",
-    "task_seq": 15,
-    "task_name": "craft_evaluate_meteorite_rubric"
-  },
-  {
     "task_key_uuid": "8916bc65-2fb2-4c52-b7ab-84c3429fb7dc",
     "task_key": "craft_joblist_rubric",
     "current": 1,
@@ -397,25 +378,6 @@
     "task_group_name": "Job Review",
     "task_seq": 4,
     "task_name": "evaluate_jd"
-  },
-  {
-    "task_key_uuid": "81102644-d882-4bac-be30-316f960860dd",
-    "task_key": "evaluate_meteorite",
-    "current": 1,
-    "agent_id": "college_intern_ruth",
-    "user_prompt": "Please follow all four steps to evaluate this batch of job descriptions. These instructions are intended to minimize output size at this early stage of evaluation. Your response is handled by downstream software, so you need to comply with your instructions in order for your response to be counted.\n\n** CRITICAL: Do not provide additional notes at this stage. Respond only with the graded rubric with confidence rating as instructed.  We are HIGHLY sensitive to token usage at this stage of analysis.\n\nHere's an upshot about {$FIRST_NAME}:\n{$BIO_SUMMARY}\n<!-- AST-723_RUBRIC_VECTORS_TOKEN -->",
-    "cache_prompt": "## INSTRUCTIONS\n\nSTEP 1 - EVALUATE JOB DESCRIPTION: Use the provided rubric in your instructions to grade this job description for this candidate, following the Output Instructions below.\n\nSTEP 2 - CONSTRUCT PAYLOAD: Construct a token-conservative payload to be interpreted by downstream software.  (see PAYLOAD INSTRUCTIONS below for clarifications)\n\nSTEP 3 - VALIDATE PAYLOAD: Check that you have created the same number of items in your response as you received, with identical matching indexes.  Check that the codes and grades you used are valid. Confirm every rubric vector code appears exactly once; use X0 when silent — never omit a code.\n\nSTEP 4 - PACKAGE RESPONSE: your response must include the payload content along side your agent_performance and failure_note where needed.\n\n*****\nDO NOT ADD CONTEXT AT THIS EVALUATION STAGE. We do not need reasons for your grades or additional information, we are keen to minimize the output tokens at this stage.  Further analysis will delve further.\n*****\n\n## INPUT FORMAT ##\n[internal_job_id]\nJob Description text\n\n## EVALUATE JOB DESCRIPTION\nAssess this job description as if the candidate were skimming through it. This job is meteorite-sourced — {$FIRST_NAME} forwarded or submitted it directly, so grade every vector exactly as you would any other JD, including F where the evidence is clear; do not soften or suppress F because of the source. Use the following rubric to build your set of grades for the job.\n\n{$RUBRIC_VECTORS}\n\n## GRADE SET COMPLETENESS (AST-1154)\nEvery rubric vector code in {$RUBRIC_VECTORS} (or the rubric listed above) MUST appear as exactly one encoded grade segment on that job's line. Omitting a code is invalid. When the source is silent, emit {code}X0 — never skip the segment. Do not add codes that are not in the rubric.\n\n## PAYLOAD INSTRUCTIONS\n{$OUTPUT_INSTRUCTIONS}\n\nRemember: Be ruthless when dealbreakers are explicit, be liberal when using your judgment.  Never fail based on an inference or assumption, just give it a D if you would otherwise fail it.",
-    "cache_prompt_b": "",
-    "cache_prompt_c": "",
-    "cache_prompt_d": "",
-    "nocache_prompt": "",
-    "system_prompt": "",
-    "run_next": "",
-    "updated_at": "2026-08-05 00:00:00",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
-    "task_seq": 4.5,
-    "task_name": "evaluate_meteorite"
   },
   {
     "task_key_uuid": "a8c3e1f2-4b5d-4e6a-9c0d-1f2a3b4c5d6e",
