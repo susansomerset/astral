@@ -331,3 +331,12 @@ Changes:
 context_tokens≈62000
 
 — Radia
+
+## Resolution — 2026-08-06
+
+**Review tip:** `9ce78b40` (`docs(AST-1220): Radia review — clean`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none requiring product change.
+- **Advisory:** alias scoring/schema field duplication left as-is for **AST-1221** handoff (accepted by Joan + Radia; not reopened).
+- **Product / plan code:** unchanged this pass.
