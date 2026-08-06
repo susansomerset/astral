@@ -287,3 +287,15 @@ Changes:
 - **discuss:** Extended Stage 1 alias-contract assert loop so job-entity aliases require `pass_state` / `fail_state` / `error_state` ∈ `JOB_STATES` (restores invariant lost when overlay empties).
 - **discuss:** Documented expected `_TRANSITION_STATES_USED_BY_SCORED_TASKS` / `dispatch_claim_uses_score_floor` delta for the four meteorite FAILED_* strings; verify script asserts membership.
 - **acceptable (carried):** QA note — do not exercise meteorite Do/Get on a tree with only AST-1220 merged.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers`
+**Plan path:** `docs/features/meteorite/ast-1220-task-alias-config-contract-resolve-helpers.md`
+
+**Built tip:** `739bc8476c788578e29773341eca21521118169b` (`739bc847`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `5c7a567f` | task-alias resolve helpers + empty Do/Get overlay |
+| 2 | `739bc847` | meteorite_grade_do/get alias TASK_CONFIG + batch-mode |
