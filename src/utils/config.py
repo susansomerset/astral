@@ -586,8 +586,8 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     # Meteorite dealbreaker screen — candidate-submitted jobs, own rubric (not a shared-task
-    # overlay like the old evaluate_jd/METEORITE_GDL_OUTCOME_BY_TASK pattern). Own pass/fail/
-    # error states baked in directly, same as meteorite_like's twin pattern.
+    # entity-state overlay). Own pass/fail/error states baked in directly, same as
+    # meteorite_like's twin pattern.
     "evaluate_meteorite": {
         "response_format": "json",
         "output_type": "grades_encoded",
@@ -682,8 +682,8 @@ TASK_CONFIG = {
         "trigger_state": None,
     },
     # AST-1184 / AST-1220: meteorite Do/Get aliases — prompts/content from master via
-    # master_task_key; own meteorite pass/fail/error (replaces METEORITE_GDL_OUTCOME_BY_TASK).
-    # agent_task seed + METEORITE_DISPATCH_TASKS retarget are AST-1222; consult resolve is AST-1221.
+    # master_task_key; own meteorite pass/fail/error (consult uses alias TASK_CONFIG outcomes).
+    # agent_task seed + METEORITE_DISPATCH_TASKS retarget are AST-1222.
     "meteorite_grade_do": {
         "master_task_key": "grade_do",
         "scored": True,
@@ -2550,17 +2550,9 @@ METEORITE_DISPATCH_TASKS = (
 # AST-1098: meteorite seed catalog stays CLICK.
 assert all(not bool(e.get("auto_mode")) for e in METEORITE_DISPATCH_TASKS)
 
-# AST-1220: Do/Get meteorite outcomes moved onto alias TASK_CONFIG entries
-# (meteorite_grade_do / meteorite_grade_get). Overlay no longer supplies those
-# outcomes. Empty dict kept until AST-1221 removes consult's overlay read.
-METEORITE_GDL_OUTCOME_BY_TASK = {}
-
+# AST-1221: Do/Get meteorite outcomes live on alias TASK_CONFIG entries
+# (meteorite_grade_do / meteorite_grade_get); entity-state overlay symbol retired.
 assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
-assert all(
-    st in JOB_STATES
-    for overlay in METEORITE_GDL_OUTCOME_BY_TASK.values()
-    for st in overlay.values()
-)
 
 # ---------------------------------------------------------------------------
 # SEED_CONFIG: SQL-first seed register (AST-1108).

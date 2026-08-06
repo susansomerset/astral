@@ -355,6 +355,8 @@ _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "grade_get",
     "grade_like",
     "meteorite_like",
+    "meteorite_grade_do",
+    "meteorite_grade_get",
 })
 
 
