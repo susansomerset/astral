@@ -19,6 +19,16 @@ After **AST-1221** (User Testing): retarget meteorite Do/Get dispatch catalog ro
 
 **No changes expected:** `src/core/agent.py`, `src/core/consult.py`, `TASK_CONFIG` alias literals / resolve helpers, frontend, classic Gaze `agent_task` / Gaze dispatch keys, `tests/` / bible (Betty after Code Complete).
 
+**QA note (Betty after Code Complete):** this ticket deliberately invalidates pinned asserts in existing component tests — engineers do **not** edit `tests/` / bible (`astral.git.engineer-test-tree-ban`). Manifest must revise coverage for:
+
+| File | Classes / asserts to revise |
+|------|-----------------------------|
+| `tests/component/utils/test_config.py` | `TestAst1054MeteoriteGdlDispatch.test_dispatch_row_specs_and_job_states` — `rows[("grade_do", "METEORITE_PASSED_JD")]` / `rows[("grade_get", "METEORITE_PASSED_DO")]` → alias keys `meteorite_grade_do` / `meteorite_grade_get` at the same triggers |
+| `tests/component/core/test_dispatcher.py` | `TestAst1054MeteoriteDispatchProvision` — `by_key["grade_do"]` / `by_key["grade_get"]` score_floor lookups → alias keys (row **count** stays 6; `retired == 0` on the mocked-catalog path is still expected because that fixture never inserts a shared-key meteorite row for the new retire loop) |
+| `tests/component/core/test_repo_admin_json.py` | `TestAst786…` — `len(rows) == 53` / `count == 53` after startup apply, and `AST786_EXPECTED_TASK_KEYS` frozenset (+2 alias keys); `TestAst1211…` — `len(fix) == 53` → **55**; `TestAst1055MeteoriteCatalogRows` — `meteorite_like` `task_seq` 5→**7**, `meteorite_upshot` 6→**8**; `TestAst1218…` / `TestAst1219…` — catalog+fixture `len(by) == 53` → **55**, and each `_METEORITE_SEQ` map must add `meteorite_grade_do: 5` / `meteorite_grade_get: 6` and bump like/upshot |
+
+⚠️ **Decision — Meteorite Review membership becomes eight keys (coverage revision, not a fix):** AST-1219's exclusivity assert (`key not in _METEORITE_SEQ` ⇒ not Meteorite Review) encoded a six-key contract. This ticket **intentionally** expands that set to eight (`gaze_email`, `meteorite_email`, `qualify_meteorite`, `evaluate_meteorite`, `meteorite_grade_do`, `meteorite_grade_get`, `meteorite_like`, `meteorite_upshot`). Betty revises `_METEORITE_SEQ` / exclusivity to match Stage 2's table — do not treat the new alias rows as accidental leakage.
+
 ## Stage 1: Retarget dispatch catalog + retire stale shared-key rows
 
 **Done when:** `METEORITE_DISPATCH_TASKS` Do/Get entries use `meteorite_grade_do` @ `METEORITE_PASSED_JD` and `meteorite_grade_get` @ `METEORITE_PASSED_DO` (other meteorite rows unchanged); `SEED_CONFIG["dispatch_task-meteorite"]` INSERT pairs match those alias keys; `ensure_meteorite_dispatch_tasks` inserts alias rows and, when both alias pairs are present, deletes only `grade_do`@`METEORITE_PASSED_JD` and `grade_get`@`METEORITE_PASSED_DO` (never `grade_do`@`PASSED_JD` / `grade_get`@`PASSED_DO`); classic Gaze dispatch keys remain untouched; `python3 -m py_compile` on the two files succeeds (repo venv: `~/astral/.venv/bin/python`).
@@ -60,14 +70,15 @@ Keep `score_floor` / `batch_size` / `auto_mode` / `min_count` / `freq_hrs` and t
 ```python
     # AST-1222: once alias Do/Get rows exist, drop shared-key meteorite triggers
     # (classic Gaze grade_do@PASSED_JD / grade_get@PASSED_DO stay).
+    rows_after = database.list_dispatch_tasks_for_candidate(cid)
     existing_after = {
         ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
-        for r in database.list_dispatch_tasks_for_candidate(cid)
+        for r in rows_after
     }
     alias_do = ("meteorite_grade_do", "METEORITE_PASSED_JD")
     alias_get = ("meteorite_grade_get", "METEORITE_PASSED_DO")
     if alias_do in existing_after and alias_get in existing_after:
-        for row in database.list_dispatch_tasks_for_candidate(cid):
+        for row in rows_after:
             tk = (row.get("task_key") or "").strip()
             ts = (row.get("trigger_state") or "").strip()
             if (tk, ts) in {
@@ -114,7 +125,9 @@ assert \"task_key = 'meteorite_grade_get'\" in sql
 
 ## Stage 2: Grouping-only alias `agent_task` seed + AST-756 fixture
 
-**Done when:** `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` each have current rows for `meteorite_grade_do` / `meteorite_grade_get` under **Meteorite Review** / `"4500"` with empty prompts and empty `run_next`; `meteorite_like` / `meteorite_upshot` seqs are `7` / `8`; classic Gaze `grade_do` / `grade_get` rows still **Gaze Review** / `"4000"` with prompts intact; current catalog count is **55**; JSON keeps `ensure_ascii=False` (literal em-dashes, no `\u2014` re-escape storm).
+**AC mapping:** AC2 (alias grouping under Meteorite Review) and AC3 (config/DB-driven Admin task-key listings include the alias keys) are both satisfied by this stage — aliases already appear in `get_task_keys()` via **AST-1220** `TASK_CONFIG`; Stage 2 supplies the alias's own `agent_task` row so Admin grouping (`dispatch_task_grouping_catalog_key` → `_catalog_task_grouping_meta` → `get_agent_task`) reads **Meteorite Review**, not the master's Gaze Review. AC4 (no divergent prompt row) is the empty-prompt seed + **AST-1221** resolve.
+
+**Done when:** `data/admin/agent_task.json` and `docs/uat-fixtures/AST-756/expected-agent_task.json` each have current rows for `meteorite_grade_do` / `meteorite_grade_get` under **Meteorite Review** / `"4500"` with empty prompts and empty `run_next`; `meteorite_like` / `meteorite_upshot` seqs are `7` / `8`; classic Gaze `grade_do` / `grade_get` rows still **Gaze Review** / `"4000"` with prompts intact; current catalog count is **55**; `dispatch_task_grouping_catalog_key` returns the alias key unchanged (so grouping uses the alias row, not the master); JSON keeps `ensure_ascii=False` (literal em-dashes, no `\u2014` re-escape storm).
 
 **Meteorite Review seq after this stage:**
 
@@ -245,12 +258,21 @@ def check(path: str) -> dict:
     print("ok", path)
     return by
 
-check("data/admin/agent_task.json")
+cat = check("data/admin/agent_task.json")
 check("docs/uat-fixtures/AST-756/expected-agent_task.json")
 from src.utils import config as c
 assert c.resolve_task_key_for_content("meteorite_grade_do") == "grade_do"
 assert c.resolve_task_key_for_content("meteorite_grade_get") == "grade_get"
-print("resolve still master-only: ok")
+# AC3: grouping catalog key stays the alias (not master) so Admin reads Meteorite Review.
+assert c.dispatch_task_grouping_catalog_key("meteorite_grade_do") == "meteorite_grade_do"
+assert c.dispatch_task_grouping_catalog_key("meteorite_grade_get") == "meteorite_grade_get"
+assert "meteorite_grade_do" in c.get_task_keys()
+assert "meteorite_grade_get" in c.get_task_keys()
+assert cat["meteorite_grade_do"]["task_group_name"] == "Meteorite Review"
+assert cat["meteorite_grade_do"]["task_group_order"] == "4500"
+assert cat["meteorite_grade_get"]["task_group_name"] == "Meteorite Review"
+assert cat["meteorite_grade_get"]["task_group_order"] == "4500"
+print("resolve still master-only; grouping stays on alias: ok")
 PY
 ```
 
@@ -260,16 +282,30 @@ PY
 
 **Scope:** Single-Component — dispatch catalog + provision retirement + admin seed/fixture grouping; no runtime resolve rewrite.
 
-**Conf:** high — siblings already shipped alias `TASK_CONFIG` + resolve; retarget/retire mirrors AST-1209 `evaluate_jd` pattern; grouping-only seed matches gaze_email empty-prompt shape; live section name is already Meteorite Review on tip.
+**Conf:** high — siblings already shipped alias `TASK_CONFIG` + resolve; retarget/retire mirrors AST-1209 `evaluate_jd` pattern; grouping-only seed matches gaze_email empty-prompt shape; live section name is already Meteorite Review on tip; Joan round-1 coverage / AC3 gaps closed in-plan (QA note + grouping verify).
 
-**Risk:** Medium — missing retirement would leave dual meteorite Do/Get claim rows (shared key + alias); wrong seed prompts would fork content from the master (mitigated by empty prompts + resolve). Classic Gaze Do/Get must keep working at `PASSED_JD` / `PASSED_DO`.
+**Risk:** Medium — missing retirement would leave dual meteorite Do/Get claim rows (shared key + alias); wrong seed prompts would fork content from the master (mitigated by empty prompts + resolve). Classic Gaze Do/Get must keep working at `PASSED_JD` / `PASSED_DO`. Existing component pins (53-count / six-key Meteorite Review / shared-key dispatch lookups) fail until Betty revises per the QA note.
 
 ## Code rules check
 
-- §1.3 DRY — one catalog (`METEORITE_DISPATCH_TASKS`) drives provision; retire pairs are the two replaced keys only.
+- §1.3 DRY — one catalog (`METEORITE_DISPATCH_TASKS`) drives provision; retire pairs are the two replaced keys only; one `rows_after` list for membership + delete.
 - §1.4 / `astral.standards.no-hardcoded-sets` — no new meteorite-only alias map; aliases already in `TASK_CONFIG` via `master_task_key`.
-- `astral.seed.agent-tables-in-repo-json` — alias identities land in `data/admin/agent_task.json`.
+- `astral.seed.agent-tables-in-repo-json` — alias identities land in `data/admin/agent_task.json`; AC3 grouping via alias catalog key (not master resolve).
 - `astral.standards.in-scope-only` — no UI audit (**AST-1185**), no section rename (**AST-1183**), no resolve helpers (**AST-1220/1221**).
 - `astral.standards.names-not-ticket-ids` — domain keys `meteorite_grade_do` / `meteorite_grade_get`.
-- `astral.git.engineer-test-tree-ban` — no `tests/` / bible edits on this ticket.
+- `astral.git.engineer-test-tree-ban` — no `tests/` / bible edits on this ticket; broken pins listed for Betty in the QA note.
+- `orch.pipeline.plan-is-bible` — coverage consequences of Done-when are declared for Betty manifests.
 - §3.3 imports — dispatcher already imports `METEORITE_DISPATCH_TASKS` / `TASK_CONFIG`; no new reverse imports.
+
+## Revisions
+
+### Revision 1 — 2026-08-06
+
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE @ tip `a88fbf63`).
+
+Changes:
+
+- **fix-now:** QA note listing the three test files / eight classes and pinned values that Stage 1–2 invalidate (53→55, `AST786_EXPECTED_TASK_KEYS` +2, like/upshot seq 5→7 / 6→8, `_METEORITE_SEQ` maps, Meteorite Review exclusivity, AST-1054 shared-key lookups); Decision that Meteorite Review membership expanding to eight keys is intentional coverage revision.
+- **discuss:** Stage 2 AC mapping (AC2/AC3/AC4); Done-when + verify asserts `dispatch_task_grouping_catalog_key(alias) == alias`, `get_task_keys()` membership, and seeded Meteorite Review / `"4500"` grouping.
+- **acceptable (carried):** surgical-not-`cp`; empty-prompt / `n/a` seed shape; retirement gated on both aliases; SQL substring asserts; no manual provision step.
+- **nit:** Stage 1 retirement reuses one `rows_after` list for membership + delete loop.
