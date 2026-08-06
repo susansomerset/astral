@@ -10,15 +10,15 @@ After AST-1195 (schema nulls + **BOT_BLOCKED** registry) and AST-1196 (`agent_ta
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/utils/config.py` | `TASK_CONFIG["qualify_meteorite"]`: `email_link_prefix`, `bot_blocked_state`; add `"Additional Verification Required"` to `TRACKER_CONFIG["jd_classifier"]["bot_signals"]` | utils |
-| `src/core/consult.py` | `qualify_meteorite` assemble CONTENT label; process: bot → **BOT_BLOCKED**, `email-` waivers, Style D detail | core |
-| `src/ui/api/api_admin.py` | Ad-hoc `qualify_meteorite` assemble lockstep with consult | ui |
+| `src/utils/config.py` | `TASK_CONFIG["qualify_meteorite"]`: `email_link_prefix`, `bot_blocked_state`; append two Cloudflare interstitial phrases to `TRACKER_CONFIG["jd_classifier"]["bot_signals"]` so `_classify_jd` hits `bot_threshold` (2) on the parent-captured challenge body | utils |
+| `src/core/consult.py` | `qualify_meteorite` assemble CONTENT label; process: bot → **BOT_BLOCKED**, `email-` waivers, Style D detail (`html.unescape` subject probe) | core |
+| `src/ui/api/api_admin.py` | Ad-hoc `qualify_meteorite` assemble lockstep with consult (hand-edit twin; see Stage 2 Decision) | ui |
 
 No `agent_task` / `data/admin` edits, no `JOB_STATES` rename work, no `tests/` / bible (Betty after Code Complete).
 
-## Stage 1: Config — email-link prefix + bot-blocked state + challenge signal
+## Stage 1: Config — email-link prefix + bot-blocked state + challenge signals
 
-**Done when:** `TASK_CONFIG["qualify_meteorite"]` exposes `email_link_prefix == "email-"` and `bot_blocked_state == "BOT_BLOCKED"`; `TRACKER_CONFIG["jd_classifier"]["bot_signals"]` contains `"Additional Verification Required"`; `python3 -c "from src.utils import config"` succeeds. No consult/apply behavior changes yet.
+**Done when:** `TASK_CONFIG["qualify_meteorite"]` exposes `email_link_prefix == "email-"` and `bot_blocked_state == "BOT_BLOCKED"`; both new bot_signal strings are in `TRACKER_CONFIG["jd_classifier"]["bot_signals"]`; `python3 -c "from src.utils import config"` succeeds; and the Stage 1 verification snippet below prints `classify=bot` for the parent-captured challenge body (not `missing`). No consult/apply behavior changes yet.
 
 1. In `src/utils/config.py` `TASK_CONFIG["qualify_meteorite"]`, after the existing orchestration keys (`fail_state` / `error_state` / `min_jd_chars` cluster), add:
 
@@ -27,18 +27,49 @@ No `agent_task` / `data/admin` edits, no `JOB_STATES` rename work, no `tests/` /
 "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
 ```
 
-2. Immediately after the existing module-level asserts on `qualify_meteorite` `job_link` / `job_title` `required is False`, add:
+2. Immediately after the existing module-level asserts on `qualify_meteorite` `job_link` / `job_title` `required is False` (near `config.py:973-975`, still inside the post-`TASK_CONFIG` assert cluster — **before** `JOB_STATES` is defined), add **only**:
 
 ```python
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
 assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
+```
+
+Do **not** reference `JOB_STATES` at this anchor — it is defined ~1,200 lines later (`config.py:2173+`); asserting it here raises `NameError` at import and takes down every `src.utils.config` importer.
+
+3. After the `JOB_STATES` literal (immediately after the `"BOT_BLOCKED": {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]}` entry / near other registry asserts around `config.py:2185`), add:
+
+```python
 assert "BOT_BLOCKED" in JOB_STATES
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 ```
 
-3. In `TRACKER_CONFIG["jd_classifier"]["bot_signals"]`, append the string `"Additional Verification Required"` (parent AC names this challenge phrase; keep existing Cloudflare / “Just a moment” / Ray ID signals unchanged).
+These facts are already true from AST-1195; the asserts are a placement-correct import gate for this child.
 
-⚠️ **Decision — prefix + bot state in TASK_CONFIG, signals stay on jd_classifier:** Apply recognition of `email-` and the destination state id must not be inline magic strings in `consult.py` (`astral.standards.no-hardcoded-sets` / config-source-of-truth). Bot **detection** reuses the existing `TRACKER_CONFIG["jd_classifier"]` corpus via `_classify_jd` (AST-1195 already pointed gazer at **BOT_BLOCKED**); this stage only adds the missing parent-named challenge phrase. Do **not** invent a parallel meteorite-only signal list.
+4. In `TRACKER_CONFIG["jd_classifier"]["bot_signals"]`, append **both** of these strings (keep every existing signal unchanged, including `"Cloudflare Ray ID"` / `"Just a moment"`):
+
+```python
+"Additional Verification Required",       # AST-1197: parent AC challenge phrase
+"Troubleshooting Cloudflare Errors",      # AST-1197: co-occurs on captured interstitial; 2nd hit for bot_threshold
+```
+
+`_classify_jd` counts casefold substring hits and returns `"bot"` only when `bot_hits >= bot_threshold` (`bot_threshold` is **2** at `config.py:3432`). A single new phrase is not enough: the parent-captured challenge body (`Additional Verification Required\nYour Ray ID for this request is a26948de4d78f005 … Troubleshooting Cloudflare Errors …`) matches **0** of today’s signals (`"Cloudflare Ray ID"` ≠ `"Your Ray ID for this request is …"`), and with only `"Additional Verification Required"` would score **1** → still `"missing"` (short collapsed length < `min_meaningful_chars`). Both new phrases must be present so that body scores **≥ 2** → `"bot"`.
+
+5. **Verification (run in the epic worktree after the edits; do not commit the snippet):**
+
+```python
+from src.core.gazer import _classify_jd
+body = (
+    "Additional Verification Required\n"
+    "Your Ray ID for this request is a26948de4d78f005\n"
+    "Troubleshooting Cloudflare Errors"
+)
+assert _classify_jd(body) == "bot", _classify_jd(body)
+print("classify=bot")
+```
+
+⚠️ **Decision — widen shared `jd_classifier.bot_signals` (2-hit route), not a meteorite-local decisive list:** Reuse `_classify_jd` / `bot_threshold` as-is. Adding enough phrases from the real interstitial meets AC4 without a new config shape. **Deliberate widening:** `jd_classifier` is shared with gazer/roster `fetch_jd` classification — these phrases also change scrape-time bot detection there. That is intended (universal **BOT_BLOCKED** epic) and is **not** a meteorite-only knob. Rejected alternative: a threshold-1 “decisive signal” list consulted only on the qualify path — more surface for one captured body, and would fork detection from gazer.
+
+⚠️ **Decision — prefix + bot state in TASK_CONFIG:** Apply recognition of `email-` and the destination state id must not be inline magic strings in `consult.py` (`astral.standards.no-hardcoded-sets` / config-source-of-truth).
 
 ## Stage 2: Assemble — CONTENT includes stored email / JD body (+ admin lockstep)
 
@@ -65,6 +96,8 @@ def assemble(jobs):
 ```
 
 2. In `src/ui/api/api_admin.py` ad-hoc assemble branch for `task_key == "qualify_meteorite"`, change the per-job line builder to the **identical** `CONTENT:` shape (keep `METEORITE JOBS:` prefix and `len(lines):03d` indexing). Comment remains “lockstep with consult.qualify_meteorite assemble”.
+
+⚠️ **Decision — leave assemble duplication as hand-edit twins (in-scope-only):** Today `consult.py` and `api_admin.py` already mirror the row format byte-for-byte via comment discipline. Extracting a shared builder from `consult` for `api_admin` to call would make lockstep structural and score better on `astral.standards.dry-and-focused-functions`, but it expands the diff into a pre-existing duplication cleanup outside the ticket’s apply/gate surface. **Keep both copies; edit both in this stage; Done-when still requires byte-for-byte equality.** Do not invent a third shared helper module.
 
 ⚠️ **Decision — no new job_data key / no second email fetch:** Parent Functional scope and Boundaries say assemble sends the email body Ruth needs and forbid a separate pre-Ruth plumbing child. Body-mode create already stores stripped email HTML (AST-1049 subject wrapper + body) under `job_data["job_description"]`; link-mode stores Playwright visible text there. Relabeling the assemble field from `job_description:` → `CONTENT:` aligns with AST-1196 prompt language (`CONTENT` / subject-in-content) without inventing storage. Do **not** re-fetch Gmail in consult.
 
@@ -98,10 +131,12 @@ else:
 3. **Title source (debug / detail only)** — derive from input CONTENT, do not change `job_title`:
 
 - Read `input_jd = ((input_job.get("job_data") or {}).get(jd_key, "") or "")`.
-- Subject probe: if `email-subject` markup is present, take the first `<h1>…</h1>` inner text stripped; else `""`.
-- `title_source = "subject"` when `job_title` and subject are both non-empty and `job_title.casefold() == subject.casefold()`; elif `job_title`: `"content"`; else `"neither"`.
+- Subject probe: if `email-subject` markup is present, take the first `<h1>…</h1>` inner text; else `""`.
+- **Unescape before compare:** `subject = html.unescape(raw_subject).strip()` (stdlib `html.unescape`). Inbox create stores the wrapper via `html.escape(subject, quote=True)` (`inbox.py` / `INBOX_CREATE_JOB_CONFIG["subject_html_template"]`), so subjects with `&`, `'`, `"`, `<`, `>` land as entities (`Sales &amp; Marketing Lead`) while Ruth returns the unescaped title — equality without unescape falsely reports `title_source=content`.
+- Optionally collapse internal whitespace on both sides before compare (`" ".join(s.split())`) so minor spacing drift does not flip the label.
+- `title_source = "subject"` when `job_title` and subject are both non-empty and the normalized strings match casefold; elif `job_title`: `"content"`; else `"neither"`.
 
-Use a tiny local helper inside `qualify_meteorite` (or module-private `_qualify_meteorite_email_subject(html: str) -> str`) with `re` / string find — **no** BeautifulSoup import in consult for this (gazer already owns HTML soup on ingest). Prefer `re.search(r'class="email-subject"[^>]*>.*?<h1>(.*?)</h1>', input_jd, re.I|re.S)` or equivalent; on no match return `""`.
+Use a tiny local helper inside `qualify_meteorite` (or module-private `_qualify_meteorite_email_subject(html: str) -> str`) with `re` + `html.unescape` — **no** BeautifulSoup import in consult for this (gazer already owns HTML soup on ingest). Prefer `re.search(r'class="email-subject"[^>]*>.*?<h1>(.*?)</h1>', input_jd, re.I|re.S)` or equivalent; on no match return `""`.
 
 4. **Bot / challenge gate (before content fails)** — lazy-import and call gazer’s classifier:
 
@@ -156,17 +191,23 @@ On `fail_reason`: transition `cfg["fail_state"]` (**METEORITE_FAILED_QUALIFY**);
 
 **Scope:** `Single-Component` — `qualify_meteorite` assemble/process in `consult.py`, matching admin assemble, plus TASK_CONFIG / jd_classifier knobs in `config.py`.
 
-**Conf:** `high` — siblings shipped schema + prompts; apply gaps are the known gate order (`company_job_id` before http) and missing bot branch; `_classify_jd` + `initialize_job` empty-cid behavior already exist.
+**Conf:** `high` — siblings shipped schema + prompts; Joan R1 closed the bot_threshold/assert-placement gaps; remaining apply work is gate order + Style D.
 
-**Risk:** `Medium` — wrong bot/email gate order could QUALIFY challenge pages or park real email-JD rows on FAILED/ERROR; Style D is debug-only. Envelope ERROR path left intentional for true `do_task` failures.
+**Risk:** `Medium` — wrong bot/email gate order could QUALIFY challenge pages or park real email-JD rows on FAILED/ERROR; shared `bot_signals` widening also affects gazer scrape classification (intentional). Envelope ERROR path left intentional for true `do_task` failures.
 
 ## Code-rules check
 
-- §1.3 / `astral.standards.dry-and-focused-functions` — reuse `_classify_jd` and `_resolve_company_job_id`; small subject probe helper only.
-- §1.4 / `astral.standards.no-hardcoded-sets` — `email_link_prefix` + `bot_blocked_state` in TASK_CONFIG; bot signals stay on `jd_classifier`.
-- §1.5.1 / `astral.standards.debug-contract-gated` — Style D only when `debug=True` via existing logger helpers.
-- §2.1 / `astral.config.config-source-of-truth` — knobs in config; no new parallel registries.
+- §1.3 / `astral.standards.dry-and-focused-functions` — reuse `_classify_jd` and `_resolve_company_job_id`; small subject probe helper only. Assemble twin left duplicated by explicit in-scope-only Decision (Stage 2).
+- §1.4 / `astral.standards.no-hardcoded-sets` — `email_link_prefix` + `bot_blocked_state` in TASK_CONFIG; bot signals stay on `jd_classifier` (widened, not forked).
+- §1.5.1 / `astral.standards.debug-contract-gated` — Style D only when `debug=True` via existing logger helpers; subject probe uses `html.unescape`.
+- §2.1 / `astral.config.config-source-of-truth` — knobs in config; no new parallel registries / decisive-signal list.
 - §2.4 / `astral.batch.claim-process-release` — still claim → `_run_batch_consult` → per-row process → release; no claim API changes.
 - §2.6 / `astral.state.core-decides-transitions` + `astral.state.job-prior-states-enforced` — core chooses **BOT_BLOCKED** / fail / pass; priors already allow `METEORITE_NEW` → **BOT_BLOCKED** (AST-1195).
 - §3.3 imports — lazy `from src.core.gazer import _classify_jd` inside process (existing consult↔gazer pattern).
 - Out of scope: `astral.agent.do-task-delegation` prompt text (AST-1196); schema required flags (AST-1195).
+
+## Revisions
+
+Revision 1 — 2026-08-06
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric REVISE) — fix-now bot_threshold unmet on captured Cloudflare body; fix-now `JOB_STATES` asserts before definition; discuss `html.unescape` subject probe; discuss assemble DRY vs in-scope-only.
+Changes: Stage 1 appends both `"Additional Verification Required"` and `"Troubleshooting Cloudflare Errors"`, documents 2-hit threshold + shared-classifier widening Decision, adds captured-body `classify=bot` verification; splits TASK_CONFIG vs `JOB_STATES` assert placement; Stage 3 subject probe uses `html.unescape` (+ optional whitespace collapse); Stage 2 records Decision to keep hand-edit assemble twins.
