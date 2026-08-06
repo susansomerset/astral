@@ -98,16 +98,26 @@ def load_slack_conversation_context(
                     "source": "cache",
                 }
                 if debug:
+                    ident = f"{channel_n}:{thread_n or '-'}"
                     log.debug_index(
                         func="contact.load_slack_conversation_context",
                         index=1,
-                        total=1,
-                        identifier=f"{channel_n}:{thread_n or '-'}",
-                        outcome="cache",
+                        total=2,
+                        identifier=ident,
+                        outcome="found",
                     )
                     log.debug_detail(
-                        f"source=cache channel={channel_n!r} thread_ts={thread_n!r} "
-                        f"len(messages)={len(messages)}"
+                        f"channel={channel_n!r} thread_ts={thread_n!r} refresh={refresh}"
+                    )
+                    log.debug_index(
+                        func="contact.load_slack_conversation_context",
+                        index=2,
+                        total=2,
+                        identifier=ident,
+                        outcome="recorded",
+                    )
+                    log.debug_detail(
+                        f"source=cache len(messages)={len(messages)}"
                     )
                 return out
 
@@ -124,16 +134,26 @@ def load_slack_conversation_context(
         "source": "slack",
     }
     if debug:
+        ident = f"{channel_n}:{thread_n or '-'}"
         log.debug_index(
             func="contact.load_slack_conversation_context",
             index=1,
-            total=1,
-            identifier=f"{channel_n}:{thread_n or '-'}",
-            outcome="slack",
+            total=2,
+            identifier=ident,
+            outcome="found",
         )
         log.debug_detail(
-            f"source=slack channel={channel_n!r} thread_ts={thread_n!r} "
-            f"len(messages)={len(messages)} refresh={refresh}"
+            f"channel={channel_n!r} thread_ts={thread_n!r} refresh={refresh}"
+        )
+        log.debug_index(
+            func="contact.load_slack_conversation_context",
+            index=2,
+            total=2,
+            identifier=ident,
+            outcome="recorded",
+        )
+        log.debug_detail(
+            f"source=slack len(messages)={len(messages)}"
         )
     return out
 
@@ -174,17 +194,26 @@ def append_slack_conversation_message(
             _context_cache.popitem(last=False)
 
     if debug:
+        ident = f"{key[0]}:{key[1] or '-'}"
         log.debug_index(
             func="contact.append_slack_conversation_message",
             index=1,
-            total=1,
-            identifier=f"{key[0]}:{key[1] or '-'}",
-            outcome="appended",
+            total=2,
+            identifier=ident,
+            outcome="found",
         )
         preview = message["text"]
         if len(preview) > _TEXT_DEBUG_MAX:
             preview = preview[:_TEXT_DEBUG_MAX] + "…"
         log.debug_detail(f"ts={message['ts']!r} text={preview!r}")
+        log.debug_index(
+            func="contact.append_slack_conversation_message",
+            index=2,
+            total=2,
+            identifier=ident,
+            outcome="recorded",
+        )
+        log.debug_detail(f"len(messages)={len(entry['messages'])}")
 
 
 def contact_post_message(
@@ -197,6 +226,18 @@ def contact_post_message(
     """Post via external slack.post_message, then append outbound text into cache."""
     log = get_logger(__name__)
     log.set_debug_flag(debug)
+    chan_id = str(channel)[:80] if channel is not None else ""
+    if debug:
+        log.debug_index(
+            func="contact.contact_post_message",
+            index=1,
+            total=2,
+            identifier=chan_id,
+            outcome="found",
+        )
+        log.debug_detail(f"channel={channel!r} thread_ts={thread_ts!r}")
+        for line in truncate_debug_content(str(text) if text is not None else ""):
+            log.debug_detail(f"text={line}")
     resp = post_message(channel=channel, text=text, thread_ts=thread_ts)
     if resp.get("ok"):
         # Prefer Slack response ts; fall back so cache still warms if shape odd.
@@ -218,12 +259,15 @@ def contact_post_message(
     if debug:
         log.debug_index(
             func="contact.contact_post_message",
-            index=1,
-            total=1,
-            identifier=channel,
-            outcome="ok" if resp.get("ok") else "api_error",
+            index=2,
+            total=2,
+            identifier=chan_id,
+            outcome="recorded",
         )
-        log.debug_detail(f"ok={resp.get('ok')!r} error={resp.get('error')!r}")
+        out_ts = resp.get("ts") or (resp.get("message") or {}).get("ts") or ""
+        log.debug_detail(
+            f"ok={resp.get('ok')!r} error={resp.get('error')!r} ts={out_ts!r}"
+        )
     return resp
 
 
@@ -731,6 +775,28 @@ def run_contact_estelle_turn(
         out["error"] = "listen_off"
         return out
 
+    ident = (
+        astral_candidate_id
+        if isinstance(astral_candidate_id, str) and astral_candidate_id.strip()
+        else str(channel)
+    )
+    # Style D found bookend early so a mid-turn crash still leaves an accept trail.
+    if debug:
+        log.debug_index(
+            func="contact.run_contact_estelle_turn",
+            index=1,
+            total=2,
+            identifier=ident,
+            outcome="found",
+        )
+        log.debug_detail(
+            f"channel={channel!r} thread_ts={thread_ts!r} "
+            f"astral_candidate_id={astral_candidate_id!r} "
+            f"candidate_state={candidate_state!r}"
+        )
+        for line in truncate_debug_content(str(text) if text is not None else ""):
+            log.debug_detail(f"text={line}")
+
     # Late import avoids core→agent cycles at module load.
     from src.core.agent import conversational_turn_from_do_task_result, do_task
 
@@ -874,19 +940,14 @@ def run_contact_estelle_turn(
         "error": do_task_error,
     }
 
-    # h. Style D (debug=True only) — lengths/counts, not full blobs
+    # h. Style D recorded bookend (debug=True only) — lengths/counts, not full blobs
     if debug:
-        ident = (
-            astral_candidate_id
-            if isinstance(astral_candidate_id, str) and astral_candidate_id.strip()
-            else str(channel)
-        )
         log.debug_index(
             func="contact.run_contact_estelle_turn",
-            index=1,
-            total=1,
+            index=2,
+            total=2,
             identifier=ident,
-            outcome=str(outcome or out.get("error") or "unknown"),
+            outcome="recorded",
         )
         skill_ok = sum(1 for r in skill_results if isinstance(r, dict) and r.get("ok"))
         reply_len = len(reply) if isinstance(reply, str) else 0
@@ -1005,6 +1066,20 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
         "thread_ts": event.get("thread_ts"),
         "text": text,
     }
+    # Style D found bookend early (Joan discuss) — survives turn crash.
+    if debug:
+        log.debug_index(
+            func="contact.handle_slack_event",
+            index=1,
+            total=2,
+            identifier=event_id,
+            outcome="found",
+        )
+        preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
+        log.debug_detail(
+            f"event_type={etype!r} user={event.get('user')!r} "
+            f"channel={channel!r} text={preview!r}"
+        )
     user = result.get("user")
     # AST-1105: identity for activity rows (filled by resolve or fallback fetch).
     resolved_meta = {"slack_username": None, "slack_display_name": None}
@@ -1166,17 +1241,27 @@ def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
                     )
                     log.debug_detail(f"hear_ack error={exc!r}")
     if debug:
-        preview = text if len(text) <= _TEXT_DEBUG_MAX else text[:_TEXT_DEBUG_MAX] + "…"
         log.debug_index(
             func="contact.handle_slack_event",
-            index=1,
-            total=1,
+            index=2,
+            total=2,
             identifier=event_id,
-            outcome="accepted",
+            outcome="recorded",
         )
+        turn_out = result.get("estelle_turn")
+        estelle_ok = turn_out.get("ok") if isinstance(turn_out, dict) else None
+        hear = result.get("hear_ack_post")
+        if hear is None:
+            hear_ack = None
+        elif isinstance(hear, dict):
+            hear_ack = bool(hear.get("ok"))
+        else:
+            hear_ack = False
         log.debug_detail(
-            f"accepted=True event_type={etype!r} user={event.get('user')!r} "
-            f"channel={channel!r} text={preview!r}"
+            f"astral_candidate_id={result.get('astral_candidate_id')!r} "
+            f"candidate_state={result.get('candidate_state')!r} "
+            f"candidate_created={result.get('candidate_created')!r} "
+            f"estelle_turn_ok={estelle_ok!r} hear_ack={hear_ack!r}"
         )
     return result
 
