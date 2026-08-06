@@ -252,3 +252,11 @@ Layers = {core, ui, utils, docs}. Paths = the footprint above. Change types = {m
 No blockers. `code-rubric.v1` verdict: **CLEAN**.
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Review tip:** `3c651ebb` (`docs(AST-1197): Radia review — clean`) — **Overall: CLEAN**
+
+No fix-now or discuss items. No product or test-tree changes on resolve.
+
