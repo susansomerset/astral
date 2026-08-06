@@ -62,23 +62,20 @@ class TestRenderPassFail:
 
 @pytest.mark.skipif(
     not hasattr(consult_mod, "_consult_orchestration_for_entity"),
-    reason="AST-1054 meteorite GDL overlay not on this publish tip",
+    reason="AST-1054 meteorite GDL overlay helper not on this publish tip",
 )
 class TestAst1054MeteoriteGdlOutcomeOverlay:
     """AST-1054 introduced METEORITE_GDL_OUTCOME_BY_TASK for shared grade_do/grade_get.
 
-    AST-1220 empties that overlay (outcomes live on meteorite_grade_* TASK_CONFIG aliases).
-    Consult still imports the symbol until AST-1221; empty overlay → Gaze TASK_CONFIG outcomes
-    even when entity_state is METEORITE_* (accepted interim until alias runtime + dispatch retarget).
-    JD stage never used this overlay — see TestEvaluateMeteoriteStandaloneTwin.
+    AST-1221 deletes that symbol and the consult overlay read path. Shared-key grade_do /
+    grade_get always use Gaze TASK_CONFIG outcomes (entity_state ignored). Alias Do/Get
+    orchestration is TestAst1221RuntimeAliasResolution. JD twin: TestEvaluateMeteoriteStandaloneTwin.
     """
 
-    def test_evaluate_jd_has_no_meteorite_overlay(self) -> None:
-        assert "evaluate_jd" not in cfg.METEORITE_GDL_OUTCOME_BY_TASK
+    def test_overlay_symbol_deleted(self) -> None:
+        assert not hasattr(cfg, "METEORITE_GDL_OUTCOME_BY_TASK")
 
-    def test_overlay_empty_meteorite_entity_uses_gaze_outcomes(self) -> None:
-        # AST-1220: Do/Get overlay source retired; no grade_do/grade_get entries.
-        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK == {}
+    def test_grade_do_gaze_outcomes_regardless_of_entity_state(self) -> None:
         gaze = TASK_CONFIG["grade_do"]
         cfg_m = consult_mod._consult_orchestration_for_entity("grade_do", "METEORITE_PASSED_JD")
         assert cfg_m["pass_state"] == gaze["pass_state"]
@@ -88,7 +85,7 @@ class TestAst1054MeteoriteGdlOutcomeOverlay:
         assert cfg_v["pass_state"] == gaze["pass_state"]
         assert cfg_v["fail_state"] == gaze["fail_state"]
 
-    def test_render_pass_fail_gaze_when_overlay_empty(self) -> None:
+    def test_render_pass_fail_gaze_for_shared_grade_do(self) -> None:
         grades = [_pass_grade()]
         gaze_pass = TASK_CONFIG["grade_do"]["pass_state"]
         gaze_fail = TASK_CONFIG["grade_do"]["fail_state"]
@@ -107,6 +104,49 @@ class TestAst1054MeteoriteGdlOutcomeOverlay:
                 entity_state="METEORITE_PASSED_JD",
             )
             == gaze_fail
+        )
+
+
+@pytest.mark.skipif(
+    "meteorite_grade_do" not in getattr(cfg, "TASK_CONFIG", {})
+    or not hasattr(cfg, "resolve_task_key_for_content"),
+    reason="AST-1221 alias runtime not on this publish tip",
+)
+class TestAst1221RuntimeAliasConsult:
+    """AST-1221: alias TASK_CONFIG orchestration + header via master resolve; no overlay."""
+
+    def test_alias_orchestration_and_header_resolve(self) -> None:
+        orch = consult_mod._consult_orchestration_for_entity(
+            "meteorite_grade_do", "METEORITE_PASSED_JD"
+        )
+        assert orch["pass_state"] == "METEORITE_PASSED_DO"
+        assert orch["fail_state"] == "METEORITE_FAILED_DO"
+        assert orch["error_state"] == "METEORITE_FAILED_TECHNICAL_DO"
+        gaze = consult_mod._consult_orchestration_for_entity("grade_do", "PASSED_JD")
+        assert gaze["pass_state"] == "PASSED_DO"
+        assert consult_mod._GRADE_DISPATCH_TO_HEADER.get("meteorite_grade_do") is None
+        assert (
+            consult_mod._GRADE_DISPATCH_TO_HEADER[
+                cfg.resolve_task_key_for_content("meteorite_grade_do")
+            ]
+            == "DO"
+        )
+
+    def test_render_pass_fail_alias_owned_outcomes(self) -> None:
+        grades = [_pass_grade()]
+        assert (
+            consult_mod._render_pass_fail(
+                "meteorite_grade_do", grades, entity_state="METEORITE_PASSED_JD"
+            )
+            == "METEORITE_PASSED_DO"
+        )
+        assert (
+            consult_mod._render_pass_fail(
+                "meteorite_grade_do",
+                [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                entity_state="METEORITE_PASSED_JD",
+            )
+            == "METEORITE_FAILED_DO"
         )
 
 

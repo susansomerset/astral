@@ -652,3 +652,23 @@ Artifact hop `do_task` + Manage Tasks `preview_task_prompt` feed `build_candidat
   tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
   -q
 ```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+`_resolve_task_prompts` fetches `agent_task` / `agent` via `resolve_task_key_for_content` (alias → master); caller `task_key` stays identity for orchestration. `_is_strict_encoded_batch_consult` wraps resolve for both strict-envelope gate sites. Style D alias→master detail when `debug=True`. Consult / config / dispatcher: sibling bible files under this ticket.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt fetch master + strict membership | `src/core/agent.py` | **`TestAst1221RuntimeAliasAgent`** |
+
+**Broken / obsolete:** none for agent paths — additive resolve at prompt choke point.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1221RuntimeAliasAgent \
+  -q
+```

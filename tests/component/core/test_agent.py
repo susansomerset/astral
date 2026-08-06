@@ -711,6 +711,48 @@ class TestResolveTaskPrompts:
             agent_mod._resolve_task_prompts("task")
 
 
+@pytest.mark.skipif(
+    not hasattr(agent_mod, "_is_strict_encoded_batch_consult")
+    or "meteorite_grade_do" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1221 alias prompt resolve not on this publish tip",
+)
+class TestAst1221RuntimeAliasAgent:
+    """AST-1221: prompt fetch via master; strict-envelope membership via resolve."""
+
+    def test_resolve_task_prompts_fetches_master_agent_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fetched: list[str] = []
+
+        def _get_task(key: str):
+            fetched.append(key)
+            return {"agent_id": "agent-1", "user_prompt": "from-master"}
+
+        monkeypatch.setattr(agent_mod, "get_agent_task", _get_task)
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent",
+            lambda agent_id: {"agent_id": agent_id, "model_code": "claude-haiku-4-5"},
+        )
+        agent_row, task_row = agent_mod._resolve_task_prompts("meteorite_grade_do")
+        assert fetched == ["grade_do"]
+        assert task_row["user_prompt"] == "from-master"
+        assert agent_row["agent_id"] == "agent-1"
+
+    def test_resolve_missing_master_mentions_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "get_agent_task", lambda task_key: None)
+        with pytest.raises(ValueError, match=r"alias 'meteorite_grade_do'"):
+            agent_mod._resolve_task_prompts("meteorite_grade_do")
+
+    def test_strict_encoded_batch_via_master_resolve(self) -> None:
+        assert agent_mod._is_strict_encoded_batch_consult("meteorite_grade_do") is True
+        assert agent_mod._is_strict_encoded_batch_consult("meteorite_grade_get") is True
+        assert agent_mod._is_strict_encoded_batch_consult("grade_do") is True
+        assert agent_mod._is_strict_encoded_batch_consult("prefilter_company") is False
+
+
 class TestChainContext:
     def test_merges_extra_chain_tokens(self) -> None:
         base = agent_mod._chain_context(

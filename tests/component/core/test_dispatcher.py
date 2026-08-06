@@ -2212,6 +2212,22 @@ class TestAst1062QualifyMeteoriteChunkExhaust:
 
 
 @pytest.mark.skipif(
+    "meteorite_grade_do" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1221 alias exhaust keys not on this publish tip",
+)
+class TestAst1221AliasChunkExhaust:
+    """AST-1221: meteorite_grade_do/get join chunk-exhaust consult set."""
+
+    def test_chunk_exhaust_includes_meteorite_grade_aliases(self) -> None:
+        from src.core import dispatcher as dispatcher_mod
+
+        keys = dispatcher_mod._CHUNK_EXHAUST_CONSULT_JOB_KEYS
+        assert "grade_do" in keys and "grade_get" in keys
+        assert "meteorite_grade_do" in keys
+        assert "meteorite_grade_get" in keys
+
+
+@pytest.mark.skipif(
     not hasattr(dispatcher_mod, "GAZE_EMAIL_CONFIG"),
     reason="AST-1090 gaze_email wiring not on this publish tip",
 )

@@ -2652,9 +2652,7 @@ class TestAst1054MeteoriteGdlDispatch:
         for e in cfg.METEORITE_DISPATCH_TASKS:
             assert e["trigger_state"] in cfg.JOB_STATES
             assert e["auto_mode"] is False
-        for task_key, overlay in cfg.METEORITE_GDL_OUTCOME_BY_TASK.items():
-            for sk in ("pass_state", "fail_state", "error_state"):
-                assert overlay[sk] in cfg.JOB_STATES, f"{task_key}.{sk}"
+        # AST-1221: METEORITE_GDL_OUTCOME_BY_TASK deleted — outcomes on alias TASK_CONFIG.
 
     def test_score_floor_gating_and_trigger_defaults(self) -> None:
         assert cfg.dispatch_claim_uses_score_floor("METEORITE_NEW") is False
@@ -2690,7 +2688,8 @@ class TestAst1210EvaluateMeteoriteTwinConfig:
         classic = cfg.JOB_TOKEN_CONFIG["analysis_phases"]["ANALYSIS_JD"]
         assert classic["rubric_artifact"] == "jobdesc_rubric"
         assert classic["rubric_owner_task_key"] == "evaluate_jd"
-        assert "evaluate_jd" not in cfg.METEORITE_GDL_OUTCOME_BY_TASK
+        # AST-1221: overlay symbol gone (was: evaluate_jd absent from METEORITE_GDL_OUTCOME_BY_TASK).
+        assert not hasattr(cfg, "METEORITE_GDL_OUTCOME_BY_TASK")
 
 
 @pytest.mark.skipif(
@@ -4103,7 +4102,10 @@ class TestAst1213RuthPayloadLinkExcludes:
     reason="AST-1220 task-alias contract not on this publish tip",
 )
 class TestAst1220TaskAliasConfigContract:
-    """AST-1220: master_task_key resolve helpers + meteorite_grade_* aliases; empty Do/Get overlay."""
+    """AST-1220: master_task_key resolve helpers + meteorite_grade_* aliases.
+
+    AST-1221 deletes METEORITE_GDL_OUTCOME_BY_TASK (was emptied on AST-1220).
+    """
 
     def test_resolve_helpers_field_driven(self) -> None:
         assert cfg.is_task_alias("meteorite_grade_do") is True
@@ -4116,7 +4118,7 @@ class TestAst1220TaskAliasConfigContract:
         # Non-aliases omit master_task_key (absence, not None literal).
         assert "master_task_key" not in cfg.TASK_CONFIG["grade_do"]
 
-    def test_meteorite_grade_alias_entries_and_empty_overlay(self) -> None:
+    def test_meteorite_grade_alias_entries_and_overlay_deleted(self) -> None:
         do = cfg.TASK_CONFIG["meteorite_grade_do"]
         get = cfg.TASK_CONFIG["meteorite_grade_get"]
         assert do["master_task_key"] == "grade_do"
@@ -4133,10 +4135,8 @@ class TestAst1220TaskAliasConfigContract:
         assert get["error_state"] == "METEORITE_FAILED_TECHNICAL_GET"
         assert get["trigger_state"] == "METEORITE_PASSED_DO"
         assert "agent_task" not in get
-        # Overlay no longer supplies Do/Get outcomes (kept empty for AST-1221 consult cleanup).
-        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK == {}
-        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK.get("grade_do") is None
-        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK.get("grade_get") is None
+        # AST-1221: symbol deleted (AST-1220 had emptied the dict).
+        assert not hasattr(cfg, "METEORITE_GDL_OUTCOME_BY_TASK")
 
     def test_alias_admin_defaults_and_scored_transition_delta(self) -> None:
         # Field-driven trigger_state fallback — no meteorite-only helper branches.
