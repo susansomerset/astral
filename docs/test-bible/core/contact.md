@@ -218,3 +218,49 @@ Resolve persists/returns `slack_username` + `slack_display_name`; match-path bac
   -q
 ```
 
+### AST-1206 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
+
+Durable Contact Slack debug get/set: `slack_debug_enabled` / `set_slack_debug_enabled` (re-read every call, separate `contact_slack_debug.json`). Does **not** wire Events/hear (AST-1207) or Manage Slack React (AST-1208). Data: **`docs/test-bible/data/contact_debug.md`**. Config: **`docs/test-bible/utils/config.md`**. Admin API: **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default off; durable re-read; set persist; listen file untouched; TypeError | `src/core/contact.py` | **`TestAst1206ContactDebugFlag`** |
+
+**Broken / obsolete:** none — additive twin of listen get/set; listen/Events paths untouched.
+
+**Integration:** no existing scenario asserts Contact debug SoT — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_contact_debug.py::TestAst1206ContactDebugData \
+  tests/component/utils/test_config.py::TestAst1206ContactDebugConfig \
+  tests/component/core/test_contact.py::TestAst1206ContactDebugFlag \
+  tests/component/ui/api/test_api_contact.py::TestAst1206ContactDebugApi \
+  -q
+```
+
+### AST-1207 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1207-slack-events-contact-inbound-durable-debug`.
+
+Events/Socket ingress hydrates `debug` from `slack_debug_enabled()` (caller kwarg ignored); Style D found→recorded depth on Contact Slack path helpers (`load_slack_conversation_context`, `append_slack_conversation_message`, `contact_post_message`, `run_contact_estelle_turn` bookend, `handle_slack_event` accept bookend). Blueprint: **`docs/test-bible/ui/api/api_slack.md`**. Foundation SoT: **`docs/test-bible/core/contact.md`** (AST-1206).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Durable SoT on handle/receive; debug pass-through to turn | `src/core/contact.py` | **`TestAst1207DurableDebugSot`** |
+| Events blueprint SoT wire | `src/ui/api/api_slack.py` | **`TestAst1207SlackEventsDebugSot`** |
+| Estelle turn Style D bookend shape | `src/core/contact.py` | revised **`TestAst1073ContactEstelleTurnLoop::test_debug_style_d_index_and_detail`** |
+
+**Broken / obsolete:** AST-1073 turn Style D asserted single `outcome="success"` — revised to found→recorded (`["found","recorded"]`) for AST-1207 bookend. No Style D golden-string expansion (ticket / Radia).
+
+**Integration:** no existing scenario asserts Events durable debug SoT — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_contact.py::TestAst1207DurableDebugSot \
+  tests/component/core/test_contact.py::TestAst1073ContactEstelleTurnLoop::test_debug_style_d_index_and_detail \
+  tests/component/ui/api/test_api_slack.py::TestAst1207SlackEventsDebugSot \
+  -q
+```

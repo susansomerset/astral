@@ -3570,24 +3570,27 @@ class TestAst1140GazeEmailSelectedConfig:
         assert g["debug_func"] == "gaze_email.run"
 
 
-# Branches: METEORITE_EMAIL_PARSE_CONFIG + parse_meteorite_email TASK_CONFIG (AST-1089).
+# Branches: METEORITE_EMAIL_PARSE_CONFIG + meteorite_email TASK_CONFIG (AST-1089; key AST-1212).
 @pytest.mark.skipif(
-    "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
-    reason="AST-1089 parse_meteorite_email TASK_CONFIG not on this publish tip",
+    "meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1212 meteorite_email TASK_CONFIG not on this publish tip",
 )
 class TestAst1089ParseMeteoriteEmailConfig:
-    """AST-1089: Ruth email-HTML parse config — not a dispatch claim task."""
+    """AST-1089 / AST-1212: Ruth email-HTML parse config — not a dispatch claim task."""
 
     def test_parse_config_and_task_shell(self) -> None:
         parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
-        assert parse_cfg["task_key"] == "parse_meteorite_email"
+        assert parse_cfg["task_key"] == "meteorite_email"
         assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
+        # Old live key must be gone (no compat shim).
+        assert "parse_meteorite_email" not in cfg.TASK_CONFIG
 
-        tc = cfg.TASK_CONFIG["parse_meteorite_email"]
+        tc = cfg.TASK_CONFIG["meteorite_email"]
         assert tc["scored"] is False
         assert tc["output_type"] == "fields"
         assert tc["response_format"] == "json"
-        assert tc["agent_task"] == "parse_meteorite_email"
+        assert tc["agent_task"] == "meteorite_email"
+        assert tc["context_format"] == "meteorite_email_{index}"
         assert tc["entity_type"] is None
         assert tc["requires_candidate_key"] is True
         assert tc["trigger_state"] is None
@@ -3604,24 +3607,24 @@ class TestAst1089ParseMeteoriteEmailConfig:
 
     def test_not_a_meteorite_dispatch_claim(self) -> None:
         assert all(
-            e["task_key"] != "parse_meteorite_email" for e in cfg.METEORITE_DISPATCH_TASKS
+            e["task_key"] != "meteorite_email" for e in cfg.METEORITE_DISPATCH_TASKS
         )
-        assert "parse_meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
-        with pytest.raises(KeyError, match="parse_meteorite_email"):
-            cfg._dispatch_trigger_state_for_task_key("parse_meteorite_email")
+        assert "meteorite_email" not in cfg._DISPATCH_BATCH_CALL_MODE_ONE
+        with pytest.raises(KeyError, match="meteorite_email"):
+            cfg._dispatch_trigger_state_for_task_key("meteorite_email")
 
 
 
-# Branches: parse_meteorite_email jobs[].metadata dict (AST-1144 UAT).
+# Branches: meteorite_email jobs[].metadata dict (AST-1144 UAT; key AST-1212).
 @pytest.mark.skipif(
-    "parse_meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
-    reason="AST-1089 parse_meteorite_email TASK_CONFIG not on this publish tip",
+    "meteorite_email" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1212 meteorite_email TASK_CONFIG not on this publish tip",
 )
 class TestAst1144ParseMeteoriteEmailMetadataDict:
     """AST-1144: Ruth structured metadata objects — schema type dict, not str."""
 
     def test_metadata_schema_is_optional_dict(self) -> None:
-        meta = cfg.TASK_CONFIG["parse_meteorite_email"]["response_schema"]["jobs"]["items_schema"][
+        meta = cfg.TASK_CONFIG["meteorite_email"]["response_schema"]["jobs"]["items_schema"][
             "metadata"
         ]
         assert meta["type"] == "dict"
@@ -3670,6 +3673,19 @@ class TestAst1094ActivityConfig:
     def test_activity_state_filename(self) -> None:
         assert cfg.CONTACT_CONFIG["activity_state_filename"] == "contact_estelle_activity.json"
         assert cfg.CONTACT_CONFIG["activity_state_filename"].endswith(".json")
+
+
+# Branches: debug_enabled + debug_state_filename on CONTACT_CONFIG (AST-1206).
+class TestAst1206ContactDebugConfig:
+    """AST-1206: CONTACT_CONFIG debug default off + durable filename."""
+
+    def test_debug_config_defaults(self) -> None:
+        cc = cfg.CONTACT_CONFIG
+        assert cc["debug_enabled"] is False
+        assert cc["debug_state_filename"] == "contact_slack_debug.json"
+        assert cc["debug_state_filename"].endswith(".json")
+        # Separate durable file from listen — parent forbids overload.
+        assert cc["debug_state_filename"] != cc["listen_state_filename"]
 
 
 class TestAst1099JobArtifactAgentDataPinConfig:

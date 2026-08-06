@@ -71,3 +71,22 @@ Admin GET `/api/admin/contact/estelle_activity` (`@require_admin`) → `{users: 
   -q
 ```
 
+### AST-1206 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
+
+Admin Manage Slack debug foundation: `GET`/`PUT /api/admin/contact/debug` (`@require_admin`). Thin wrappers over `slack_debug_enabled` / `set_slack_debug_enabled` + deploy label / production gate. Payload mirrors `/listen` (`debug_enabled` + `environment` + `is_production`). Core: **`docs/test-bible/core/contact.md`**. React toggle is sibling **AST-1208** (no §6c page test here).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET/PUT + 400/502 + auth 401/403 | `src/ui/api/api_contact.py` | **`TestAst1206ContactDebugApi`** |
+
+**Broken / obsolete:** none — additive routes on `contact_bp`; listen routes unchanged.
+
+**Integration:** no existing scenario asserts Contact debug API — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_contact.py::TestAst1206ContactDebugApi \
+  -q
+```
