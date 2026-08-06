@@ -36,12 +36,13 @@ from src.utils.config import (
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     METEORITE_CONFIG,
-    METEORITE_GDL_OUTCOME_BY_TASK,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
     grade_value,
     importance_multiplier,
     is_dispatch_chain_trigger,
+    resolve_task_key_for_content,
+    is_task_alias,
 )
 from src.utils.formatting import enumerate_array, normalize_link, uuid_path_segment_from_url
 from src.utils.logging import get_logger
@@ -88,12 +89,13 @@ def _entity_state_is_meteorite(state: Optional[str]) -> bool:
 
 
 def _consult_orchestration_for_entity(task_key: str, entity_state: Optional[str] = None) -> Dict[str, Any]:
-    """TASK_CONFIG row, with meteorite pass/fail/error overlay for shared GDL keys."""
-    cfg = dict(_consult_orchestration(task_key))
-    overlay = METEORITE_GDL_OUTCOME_BY_TASK.get((task_key or "").strip())
-    if overlay and _entity_state_is_meteorite(entity_state):
-        cfg.update(overlay)
-    return cfg
+    """TASK_CONFIG orchestration for dispatch/catalog task_key.
+
+    AST-1221: meteorite Do/Get outcomes live on alias TASK_CONFIG entries
+    (meteorite_grade_do / meteorite_grade_get). Entity-state overlay retired.
+    entity_state retained for call-site compatibility; unused.
+    """
+    return dict(_consult_orchestration(task_key))
 
 
 def _render_pass_fail(task_key: str, grades: list, entity_state: Optional[str] = None) -> str:
@@ -2126,8 +2128,8 @@ async def evaluate_meteorite_batch(
 ) -> Dict[str, Any]:
     """Meteorite JD dealbreaker screen — candidate-submitted jobs, own rubric.
 
-    Standalone twin of evaluate_jd_batch (own TASK_CONFIG pass/fail/error states, no
-    METEORITE_GDL_OUTCOME_BY_TASK overlay needed), same pattern as meteorite_like_batch.
+    Standalone twin of evaluate_jd_batch (own TASK_CONFIG pass/fail/error states),
+    same pattern as meteorite_like_batch / alias Do/Get.
     """
     return await evaluate_jd_batch(
         batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
@@ -2144,7 +2146,9 @@ async def _consult_scored_dispatch_batch_encoded(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
-    hdr = _GRADE_DISPATCH_TO_HEADER[dispatch_task_key]
+    hdr = _GRADE_DISPATCH_TO_HEADER.get(dispatch_task_key)
+    if hdr is None:
+        hdr = _GRADE_DISPATCH_TO_HEADER[resolve_task_key_for_content(dispatch_task_key)]
     entity_state = jobs[0].get("state") if jobs else None
     cfg_dispatch = _consult_orchestration_for_entity(dispatch_task_key, entity_state)
     agent_tk = cfg_dispatch.get("agent_task") or dispatch_task_key
@@ -2513,7 +2517,13 @@ async def run_consult_task(
         r = await evaluate_meteorite_batch(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
-    elif task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
+    elif (
+        task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like")
+        or (
+            is_task_alias(task_key)
+            and resolve_task_key_for_content(task_key) in ("grade_do", "grade_get")
+        )
+    ):
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
             orch = _consult_orchestration_for_entity(task_key, entities[0].get("state"))
@@ -2522,13 +2532,19 @@ async def run_consult_task(
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        _batch = {
-            "grade_do": grade_do_batch,
-            "grade_get": grade_get_batch,
-            "grade_like": grade_like_batch,
-            "meteorite_like": meteorite_like_batch,
-        }[task_key]
-        r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
+        if task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
+            _batch = {
+                "grade_do": grade_do_batch,
+                "grade_get": grade_get_batch,
+                "grade_like": grade_like_batch,
+                "meteorite_like": meteorite_like_batch,
+            }[task_key]
+            r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
+        else:
+            # Alias Do/Get — same encoded path; dispatch_task_key is the alias identity.
+            r = await _consult_scored_dispatch_batch_encoded(
+                task_key, batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            )
     elif task_key in ("analysis_upshot", "meteorite_upshot"):
         return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug, task_key=task_key)
     elif is_dispatch_chain_trigger((input_state or "").strip()) and task_key in TASK_CONFIG:
