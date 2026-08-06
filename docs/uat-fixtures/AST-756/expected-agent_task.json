@@ -412,9 +412,9 @@
     "system_prompt": "",
     "run_next": "",
     "updated_at": "2026-08-05 00:00:00",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
-    "task_seq": 4.5,
+    "task_group_order": "4500",
+    "task_group_name": "Meteorite Review",
+    "task_seq": 4,
     "task_name": "evaluate_meteorite"
   },
   {
@@ -583,9 +583,9 @@
     "system_prompt": "",
     "run_next": "",
     "updated_at": "2026-07-31 17:50:00",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
-    "task_seq": 2.3,
+    "task_group_order": "4500",
+    "task_group_name": "Meteorite Review",
+    "task_seq": 1,
     "task_name": "gaze_email"
   },
   {
@@ -735,9 +735,9 @@
     "system_prompt": "",
     "run_next": "",
     "updated_at": "2026-07-29 22:02:08",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
-    "task_seq": 10,
+    "task_group_order": "4500",
+    "task_group_name": "Meteorite Review",
+    "task_seq": 5,
     "task_name": "meteorite_like"
   },
   {
@@ -754,9 +754,9 @@
     "system_prompt": "",
     "run_next": "",
     "updated_at": "2026-07-29 22:02:08",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
-    "task_seq": 11,
+    "task_group_order": "4500",
+    "task_group_name": "Meteorite Review",
+    "task_seq": 6,
     "task_name": "meteorite_upshot"
   },
   {
@@ -791,9 +791,9 @@
     "nocache_prompt": "",
     "system_prompt": "",
     "run_next": "",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
-    "task_seq": 2.4,
+    "task_group_order": "4500",
+    "task_group_name": "Meteorite Review",
+    "task_seq": 2,
     "task_name": "meteorite_email",
     "updated_at": "2026-08-06 06:31:24"
   },
@@ -878,10 +878,10 @@
     "task_key_uuid": "7598d3ca-cb3a-48f3-90b7-4f1887a189c2",
     "current": 1,
     "agent_id": "college_intern_ruth",
-    "task_group_order": "4000",
-    "task_group_name": "Job Review",
+    "task_group_order": "4500",
+    "task_group_name": "Meteorite Review",
     "task_name": "qualify_meteorite",
-    "task_seq": 2.5,
+    "task_seq": 3,
     "system_prompt": "",
     "cache_prompt": "## INSTRUCTIONS\n\nEach item is a METEORITE job that already holds raw or visible text (email body, recruiter forward, or Playwright-fetched page text) — NOT a normal job-board listing scrape. CONTENT may include subject/headers/body so you can read sender, subject, and JD.\n\n### Row contract (binding)\nCONTENT rows are numbered `000:`, `001:`, … Return exactly one jobs[] object per input row, in the same order. Never drop a row — unusable rows come back with empty-string fields, not omitted. Echo that row's 3-digit index as astral_job_id (`\"000\"`, `\"001\"`, …). Never invent UUIDs for astral_job_id. Never omit astral_job_id. Never use JSON null for astral_job_id. Positional identity is required so apply can bind rows when job_link is \"\" or an email- token.\n\nReturn JSON with a jobs list. For each row always include these string fields (use \"\" when a rule says empty — never JSON null, never omit a required key):\n- astral_job_id: the 3-digit CONTENT index for this row (`\"000\"`, `\"001\"`, …). Required. Always.\n- company_job_id: employer external job UUID when knowable from an ATS/http link; otherwise omit the key or use \"\" (do not invent a fake UUID). This field is optional.\n- job_title: authoritative title (see title rules)\n- job_link: primary job URL or synthesized email- token (see link rules)\n- jd_text: authoritative visible job-description text when the CONTENT is a real JD; otherwise \"\"\n\n### Link rules\n- Prefer a real http(s) ATS / job-posting URL from CONTENT when one exists → use that as job_link.\n- When there is NO usable http(s) job URL but CONTENT contains a real job description → set job_link to exactly:\n  email-<originalsender>-<timestamp>\n  where:\n  - <originalsender> is the original sender's email address discerned from CONTENT (From / forwarded-from / original recruiter). Lowercase; strip display names and angle brackets; keep @ and dots. NEVER use the candidate's own mailbox address as <originalsender>.\n  - <timestamp> is the message Date / sent time visible in CONTENT, formatted UTC compact YYYYMMDDTHHMMSSZ (example: 20260805T224603Z). If no Date/sent time is visible, use 00000000T000000Z (same shape: eight digits, T, six digits, Z).\n- Do NOT synthesize an email- link for ads, marketing blasts, newsletters, or unrelated non-JD content.\n\n### Title rules\n- Prefer a job title stated in the JD / body content.\n- When content has no title but an email SUBJECT is present in CONTENT → use that subject as job_title.\n- When there is no title in content AND no usable subject → set job_title to \"\" (empty string). Do not invent a title. Do not use JSON null. Do not omit the key.\n\n### Fail / unusable content\n- Ads, marketing, unrelated non-JD content, or pages with no usable job description → still return the row (same position / astral_job_id). Fail it by setting job_title=\"\", job_link=\"\", and jd_text=\"\" (empty strings). You may omit company_job_id. Do not synthesize email- links for these. Do not emit JSON null for astral_job_id, job_title, job_link, or jd_text — null/omit on those keys aborts schema validation for the whole chunk. Do not omit the row.\n- Do not emit grade vectors. Usable extracts = filled fields per rules above; unusable rows use empty-string fields (apply layer parks FAILED — not your concern here).\n- Always return valid JSON only (no markdown fences).\n",
     "cache_prompt_b": "",
