@@ -706,13 +706,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`evaluate_jd` / `grade_do` / `grade_get`); vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**.
+`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`grade_do` / `grade_get` only); JD stage is standalone twin `evaluate_meteorite` (own `TASK_CONFIG` pass/fail/error — see **`TestEvaluateMeteoriteStandaloneTwin`** / **`test_evaluate_jd_has_no_meteorite_overlay`**). Vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**. Analysis-JD meteorite override + incomplete→retry twin locks: **AST-1210**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Overlay + `_render_pass_fail` entity_state | `src/core/consult.py` | **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
 
-**Broken / obsolete:** none — additive helper; existing `_render_pass_fail` call sites without `entity_state` unchanged.
+**Broken / obsolete:** overlay-key lists that still named `evaluate_jd` among meteorite overlay keys (**AST-1210**).
 
 **Integration:** none.
 
@@ -979,5 +979,29 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
   tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply \
   tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated::test_debug_detail_includes_link_source_input \
   tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  -q
+```
+
+### AST-1210 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.
+
+Locks standalone twin consult contract: Analysis-JD meteorite override via `_entity_state_is_meteorite(job_data.state)` → `analysis_phases_meteorite_override`; incomplete on **METEORITE_QUALIFIED** → **METEORITE_QUALIFIED_RETRY** using twin `error_state` (**METEORITE_ERROR_EVALUATE_JD**), not classic `ERROR_EVALUATE_JD`. Config maps: **`docs/test-bible/utils/config.md`**. Dispatch retirement: **`docs/test-bible/core/dispatcher.md`** (**AST-1209**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin own states + no JD overlay | `src/core/consult.py` | **`TestEvaluateMeteoriteStandaloneTwin`**, **`TestAst1054MeteoriteGdlOutcomeOverlay::test_evaluate_jd_has_no_meteorite_overlay`** |
+| Analysis-JD override (state-prefix branch) | same | **`TestEvaluateMeteoriteStandaloneTwin::test_format_analysis_jd_uses_twin_owner_when_state_meteorite`** |
+| Incomplete→retry twin error | same | revised **`TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers`** |
+
+**Broken / obsolete:** incomplete→retry asserts that passed classic `evaluate_jd` `error_state` into the meteorite JD hop.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestEvaluateMeteoriteStandaloneTwin \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers \
   -q
 ```
