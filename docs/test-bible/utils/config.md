@@ -1788,6 +1788,27 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+
+### AST-1206 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
+
+`CONTACT_CONFIG["debug_enabled"]` (default `False`) + `debug_state_filename` (`contact_slack_debug.json`) — separate durable file from listen. Core/data/API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/data/contact_debug.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| debug default + filename ≠ listen filename | `src/utils/config.py` | **`TestAst1206ContactDebugConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG keys.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1206ContactDebugConfig \
+  -q
+```
+
 ### AST-1098 · AST-1093
 
 **Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
