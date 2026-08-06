@@ -192,4 +192,33 @@ Changes: Prompt adds Row contract + `astral_job_id` always-include with position
 |-------|--------|---------|
 | 1 | `925178e6` | qualify_meteorite cache/user prompts: email-link synthesize, subject title, empty-string fails, positional astral_job_id; surgical fixture lockstep |
 
+### code-rubric.v1 verdict
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1196
+**Publish ref:** `9ec956e8` (`origin/sub/AST-1188/AST-1196-agent-task-synthesize-email-link-subject`)
+**Overall:** CLEAN
+
+Full active corpus (65 leaves — 18 universal + 47 scoped) swept in-session against this ticket's own diff footprint: `git diff origin/ftr/AST-1188-errors-for-qualify-meteorite-dispatch-task...origin/sub/AST-1188/AST-1196-agent-task-synthesize-email-link-subject` (paths `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json`, `docs/features/meteorite/ast-1196-agent-task-synthesize-email-link-subject.md`, `docs/test-bible/core/repo_admin_json.md`, `tests/component/core/test_repo_admin_json.py`; change_types `{add, modify}`). Zero `src/` paths in this diff, so the entire `src/**`-scoped standards/state/layers/UI/batch/seed block is `not-applicable` on path; 6 scoped statutes apply and score `conforms` (`astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.betty-no-src-or-features`, `astral.git.engineer-test-tree-ban`, `astral.seed.define-approved`, `astral.seed.agent-tables-in-repo-json`); all 18 universal score `conforms`. No violations, no stragglers.
+
+**Layer-mapping note (same gap Joan flagged at plan time):** `data/admin/**` isn't in the code-rubric's literal layer table (`src/data/**`→`data`; nothing maps top-level `data/`), so under a strict reading it contributes no layer and `astral.seed.agent-tables-in-repo-json` (layers `[core,data,utils]`) would score `not-applicable` despite its path (`data/admin/**`) matching. I scored it under the permissive reading Joan used at plan time (`data/admin` → `data` layer) so the directly-relevant statute isn't silently dropped by a rubric-table gap; verdict is `conforms` either way since there's nothing in this diff to violate it against (catalog row ships via repo JSON, no live-DB edit).
+
+## Plan adherence
+
+Verified mechanically, not just by reading the prose: (1) diffing `data/admin/agent_task.json` at `origin/ftr/AST-1188-...` vs the sub tip — exactly one `current==1` row changed (`qualify_meteorite`), matching Stage 1's pre/post snapshot gate; (2) same check on the AST-756 fixture — exactly one row changed there too, and `cache_prompt`/`user_prompt`/`updated_at` are byte-identical between catalog and fixture at the tip (no whole-file `cp`, no absorbed 53↔51 drift); (3) ran the plan's own Done-when assertion script against the shipped `cache_prompt`/`user_prompt` — all 13 substring checks pass, including the fragile never-candidate-mailbox sentence and the `00000000T000000Z` fallback shape Joan's round-2 review demanded. Both of Joan's round-1/round-2 fix-nows (empty-string vs null/omit; blind-`cp` fixture absorption) and both round-2 fix-nows (`astral_job_id` enumerated; never-drop row contract) are present verbatim in the shipped prompt, not just in the plan's prose.
+
+**Pattern conformance:** cited In-scope ids `astral.git.engineer-test-tree-ban` conforms (engineer's `code(AST-1196)` commit touches only `data/admin/` + `docs/uat-fixtures/`, never `tests/`/`docs/test-bible/`). `astral.config.config-source-of-truth`, `astral.agent.do-task-delegation`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.standards.no-hardcoded-sets` all score `not-applicable` on this diff (their path predicate is `src/**`; this child touches zero `src/` files) — same "mechanically excluded, scored in spirit" situation Joan already called out at plan time; nothing to add. **Advisory (recurring, not fix-now/discuss):** `pattern.config.config-block` / `pattern.batch.entity-claim-process-release` under Considered-but-excluded again aren't ids in the active corpus (no `pattern.*` namespace — same slip flagged on AST-1195's review); likely meant `astral.config.config-source-of-truth` / `astral.batch.claim-process-release`.
+
+**What's solid:** Betty's Tests Ready fix for the stale AST-786 `len(rows)==48` gate replaces whole-file byte-identity with a catalog key-set lock (53 rows) plus a dedicated `TestAst1196QualifyMeteoritePromptContract` class that checks the shipped prompt text directly — closing exactly the gate the plan flagged as `[qa-handoff]` rather than an engineer `tests/` edit.
+
+## Frame diff
+
+(none) — implementation matches the plan doc's Files Changed / Stage 1 as written; no adds or moves applied to this description.
+
+context_tokens≈75000
+
+— Radia
+
 ---
