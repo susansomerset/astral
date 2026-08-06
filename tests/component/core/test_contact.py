@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from pathlib import Path
 import hmac
 import json
 import time
@@ -1186,3 +1187,74 @@ class TestAst1105SlackUsernameDisplay:
         assert row["slack_username"] == "ada"
         assert row["slack_display_name"] == "Ada L"
 
+
+# Branches: debug default; durable re-read; set persist; listen file untouched (AST-1206).
+class TestAst1206ContactDebugFlag:
+    """AST-1206: durable Contact Slack debug SoT — mirror listen get/set, separate file."""
+
+    def test_slack_debug_enabled_default_off(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "debug_enabled", False)
+        assert contact_mod.slack_debug_enabled() is False
+        assert CONTACT_CONFIG["debug_enabled"] is False
+
+    def test_slack_debug_rereads_durable_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.data.contact_debug import save_contact_debug_enabled
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "debug_enabled", False)
+        save_contact_debug_enabled(True)
+        assert contact_mod.slack_debug_enabled() is True
+        assert CONTACT_CONFIG["debug_enabled"] is True
+        save_contact_debug_enabled(False)
+        monkeypatch.setitem(CONTACT_CONFIG, "debug_enabled", True)
+        assert contact_mod.slack_debug_enabled() is False
+
+    def test_set_slack_debug_enabled_persists(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.data.contact_debug import load_contact_debug_enabled
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        monkeypatch.setitem(CONTACT_CONFIG, "debug_enabled", False)
+        assert contact_mod.set_slack_debug_enabled(True, debug=False) is True
+        assert CONTACT_CONFIG["debug_enabled"] is True
+        assert load_contact_debug_enabled() is True
+        assert contact_mod.slack_debug_enabled() is True
+        path = tmp_path / CONTACT_CONFIG["debug_state_filename"]
+        assert path.is_file()
+        raw = json.loads(path.read_text(encoding="utf-8"))
+        assert raw == {"debug_enabled": True}
+
+    def test_set_debug_does_not_touch_listen_file(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        listen = tmp_path / CONTACT_CONFIG["listen_state_filename"]
+        listen.write_text(
+            json.dumps({"listen_enabled": True}, indent=2) + "\n",
+            encoding="utf-8",
+        )
+        before = listen.read_text(encoding="utf-8")
+        contact_mod.set_slack_debug_enabled(True, debug=False)
+        assert listen.read_text(encoding="utf-8") == before
+        assert (tmp_path / CONTACT_CONFIG["debug_state_filename"]).is_file()
+
+    def test_set_rejects_non_bool(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import ASTRAL_CONFIG
+
+        monkeypatch.setitem(ASTRAL_CONFIG, "db_dir", str(tmp_path))
+        with pytest.raises(TypeError, match="enabled must be bool"):
+            contact_mod.set_slack_debug_enabled("yes", debug=False)  # type: ignore[arg-type]
