@@ -1064,6 +1064,14 @@ def _maybe_graduate_dispatch_chain(
         dbg.debug_detail(f"from_state={before!r} to_state={to_state!r} trigger={trigger_state!r}")
 
 
+# Outcome of dispatch-chain hop failure side effects (AST-1191); every exit returns a dict.
+_HOP_FAILURE_NOOP = {
+    "apply_error_state": False,
+    "error_state": "",
+    "batch_released": False,
+}
+
+
 def _apply_dispatch_chain_hop_failure(
     *,
     entity_type: str,
@@ -1072,27 +1080,47 @@ def _apply_dispatch_chain_hop_failure(
     task_config: Dict[str, Any],
     error: str,
     debug: bool,
-) -> None:
+    provider_failed: bool = False,
+    failure_class: Optional[str] = None,
+) -> Dict[str, Any]:
     trigger_state, _ = _dispatch_chain_ctx(ctx)
     if not _should_write_dispatch_hop_label(
         entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
     ):
-        return
+        return dict(_HOP_FAILURE_NOOP)
     err_state = (task_config.get("error_state") or "").strip()
-    hard = err_state and (
+    balance_hold = provider_failed and is_provider_balance_refusal(
+        {"failure_class": failure_class}
+    )
+    hard = bool(err_state) and (
         "Job not found" in error
         or "Missing candidate_data" in error
+        or (provider_failed and not balance_hold)
     )
+    apply_error_state = False
+    batch_released = False
+    from src.core import tracker as tracker_mod
     if hard and err_state and index:
-        from src.core import tracker as tracker_mod
         try:
             tracker_mod.transition_job_state([index], err_state)
+            apply_error_state = True
         except ValueError as exc:
             logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
+    # Release after transition so state_history still stamps the in-flight batch_id.
+    if provider_failed and index:
+        tracker_mod.release_job_dispatch_claim(index)
+        batch_released = True
     if debug:
         _do_task_debug_logger(debug).debug_detail(
-            f"chain_hop_failed retryable={not hard} error={error!r}"
+            f"chain_hop_failed apply_error_state={apply_error_state} "
+            f"error_state={err_state or ''} batch_released={batch_released} "
+            f"failure_class={failure_class!r} error={error!r}"
         )
+    return {
+        "apply_error_state": apply_error_state,
+        "error_state": err_state if apply_error_state else "",
+        "batch_released": batch_released,
+    }
 
 
 def _log_chain_entry(task_key: str, batch_id: Optional[str]) -> None:
@@ -2190,25 +2218,33 @@ async def do_task(
         success: bool,
         clear_log: bool = False,
         failure_error: Optional[str] = None,
-    ) -> None:
+        provider_failed: bool = False,
+        failure_class: Optional[str] = None,
+    ) -> Dict[str, Any]:
         nonlocal hop_ledger_closed
         if not success and failure_error:
-            _apply_dispatch_chain_hop_failure(
+            outcome = _apply_dispatch_chain_hop_failure(
                 entity_type=entity_type or "",
                 index=index,
                 ctx=ctx,
                 task_config=task_config,
                 error=failure_error,
                 debug=debug,
+                provider_failed=provider_failed,
+                failure_class=failure_class,
             )
+        else:
+            outcome = dict(_HOP_FAILURE_NOOP)
+        # Must return outcome — hop_ledger_batch_id is None for non-chain / no candidate.
         if hop_ledger_closed or not hop_ledger_batch_id:
-            return
+            return outcome
         _finalize_run_next_hop_ledger(
             hop_ledger_batch_id, success=success, batch_size=batch_size
         )
         hop_ledger_closed = True
         if clear_log:
             log_batch_id.set(None)
+        return outcome
 
     if debug:
         logger.info(
@@ -2354,9 +2390,16 @@ async def do_task(
                     f"provider_empty_response failure_class={result.get('failure_class')!r} "
                     f"error={result.get('error')!r}"
                 )
-        _close_hop_ledger(
-            success=False, clear_log=True,
+        hop_fail_outcome = _close_hop_ledger(
+            success=False,
+            clear_log=True,
             failure_error=str(result.get("error") or "provider_failed"),
+            provider_failed=True,
+            failure_class=(
+                str(result.get("failure_class")).strip()
+                if result.get("failure_class") is not None
+                else None
+            ) or None,
         )
         return result
 
