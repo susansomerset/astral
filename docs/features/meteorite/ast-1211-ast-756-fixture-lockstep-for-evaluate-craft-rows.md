@@ -161,3 +161,18 @@ PY
 - §3.3 imports — N/A (no `src/` edits).
 - Engineer test-tree ban — no `tests/` / bible edits; Betty owns any new lockstep assert.
 - §3.6 spikes — N/A (no spike output).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1186/AST-1211-ast-756-fixture-lockstep-for-evaluate-craft-rows`
+**Plan path:** `docs/features/meteorite/ast-1211-ast-756-fixture-lockstep-for-evaluate-craft-rows.md`
+
+**Built tip:** `ef4b88785931a86074559f77ba10e1848052170c` (`ef4b8878`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `ef4b8878` | AST-756 fixture: insert `evaluate_meteorite` + `craft_evaluate_meteorite_rubric` full-row catalog copies (+38/−0) |
+
+### code-rubric.v1 verdict
+
+_(Radia fills after Tests Passed)_
