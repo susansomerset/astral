@@ -442,7 +442,7 @@ class TestAst1060QualifyMeteoriteCatalogRow:
 
 
 class TestAst878FetchCulturePagesCatalogRow:
-    """AST-878: fetch_culture_pages Job Review hop in repo agent_task JSON."""
+    """AST-878: fetch_culture_pages Gaze Review hop in repo agent_task JSON (AST-1218 rename)."""
 
     def test_fetch_culture_pages_between_get_and_like(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
@@ -450,7 +450,7 @@ class TestAst878FetchCulturePagesCatalogRow:
         assert "fetch_culture_pages" in by
         row = by["fetch_culture_pages"]
         assert row["task_seq"] == 7
-        assert row["task_group_name"] == "Job Review"
+        assert row["task_group_name"] == "Gaze Review"
         assert row["agent_id"] == "n/a"
         assert row["task_name"] == row["task_key"] == "fetch_culture_pages"
         assert by["grade_get"]["task_seq"] == 6
@@ -896,3 +896,57 @@ class TestAst1213MeteoriteEmailVisibleTextPrompts:
         )
         assert fix["cache_prompt"] == cache
         assert fix["user_prompt"] == user
+
+
+class TestAst1218GazeReviewClassicGroupLabel:
+    """AST-1218: classic gaze/GDL rows → Gaze Review; meteorite rows stay Job Review."""
+
+    _CLASSIC = frozenset(
+        {
+            "gaze",
+            "qualify_job_listings",
+            "fetch_jd",
+            "evaluate_jd",
+            "grade_do",
+            "grade_get",
+            "fetch_culture_pages",
+            "grade_like",
+            "analysis_upshot",
+        }
+    )
+    _METEORITE = frozenset(
+        {
+            "gaze_email",
+            "meteorite_email",
+            "qualify_meteorite",
+            "evaluate_meteorite",
+            "meteorite_like",
+            "meteorite_upshot",
+        }
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_catalog_classic_gaze_review_meteorite_job_review(self) -> None:
+        by = self._current_by_key("data/admin/agent_task.json")
+        assert len(by) == 53
+        for key in self._CLASSIC:
+            assert by[key]["task_group_name"] == "Gaze Review", key
+            assert by[key]["task_group_order"] == "4000", key
+        for key in self._METEORITE:
+            assert by[key]["task_group_name"] == "Job Review", key
+            assert by[key]["task_group_order"] == "4000", key
+        for key, row in by.items():
+            if key not in self._CLASSIC:
+                assert row.get("task_group_name") != "Gaze Review", key
+
+    def test_fixture_classic_label_lockstep(self) -> None:
+        # Label fields only — do not require whole-row catalog↔fixture equality (prompt drift).
+        cat = self._current_by_key("data/admin/agent_task.json")
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert len(fix) == 53
+        for key in self._CLASSIC | self._METEORITE:
+            assert fix[key]["task_group_name"] == cat[key]["task_group_name"], key
+            assert fix[key]["task_group_order"] == cat[key]["task_group_order"], key
