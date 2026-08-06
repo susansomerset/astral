@@ -174,3 +174,9 @@ Full active statute corpus (65 leaves — 18 universal + 47 scoped) scored in-se
 context_tokens≈8500
 
 — Radia
+
+---
+
+## Resolution
+
+2026-08-06 — Radia `[code-rubric] revision=1` **CLEAN** (zero fix-now, zero discuss). No product changes. Publish tip after resolve docs: see `resolve(AST-1208): — clean`.
