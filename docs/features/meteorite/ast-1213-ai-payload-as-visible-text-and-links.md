@@ -312,3 +312,11 @@ Changes:
 context_tokens≈55000
 
 — Radia
+
+## Resolution
+
+**2026-08-06** — Radia **CLEAN** (zero fix-now, zero discuss).
+
+- No product or prompt changes this pass.
+- Advisory DRY helper on the duplicated assemble-and-log block left as-is — plan binding blocks specified that shape; cosmetic only.
+- Intake: Radia `docs(AST-1213): Radia review — clean` @ `3b2f9dff` already on the checked-out sub via `sync-child`.
