@@ -332,3 +332,12 @@ Changes:
 context_tokens≈78000
 
 — Radia
+
+## Resolution — 2026-08-06
+
+**Review tip:** `864e58c1` (`docs(AST-1221): Radia review — clean`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none requiring product change.
+- **Advisory:** none.
+- **Product / plan code:** unchanged this pass (resolve clean).
