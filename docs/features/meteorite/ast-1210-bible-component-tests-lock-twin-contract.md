@@ -153,3 +153,15 @@ Full active statute corpus (65 leaves — 19 universal + 46 scoped) scored in-se
 context_tokens≈78000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Review tip:** `95f6dec7` (Radia docs) · product/build tip `f37a0618`
+
+| Item | Disposition |
+|------|-------------|
+| Fix-now — restore `TestAst1193AnalysisMatchParity` (or fold into `TestAst513JobTokenContext`) + keep AST-1193 bible row honest | **`[qa-handoff]` → Betty.** Engineer cannot edit `tests/` / `docs/test-bible/**`. No product defect — zero `src/` delta; coverage regression is Betty's `test(AST-1210)` commit `be3c9d14`. Stay **Review Posted**; assignee Betty until she restores coverage and reassigns Hedy. |
+| Advisory — unchecked description AC boxes | Deferred until final UT flip after Betty return pass. |
+
+No `src/` resolve commit.
