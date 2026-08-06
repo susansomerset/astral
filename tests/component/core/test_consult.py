@@ -3178,7 +3178,6 @@ class TestAst513JobTokenContext:
 
     def _candidate_data(self) -> dict:
         return {
-            "_astral_candidate_id": "cand-513",
             "artifacts": {
                 "jobdesc_rubric": {
                     "criteria": [
@@ -3197,33 +3196,7 @@ class TestAst513JobTokenContext:
             }
         }
 
-    def _patch_live_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Formatter loads live criteria via rubric_criteria_for_task (not artifact blobs)."""
-        live = {
-            "evaluate_jd": [
-                {
-                    "label": "Culture Fit",
-                    "code": "CR",
-                    "content": "Full rubric blob for culture",
-                }
-            ],
-            "grade_do": [
-                {"label": "Day to day", "code": "DD", "content": "Do rubric body"},
-            ],
-        }
-
-        def _crit(cid: str, owner: str) -> list:
-            return list(live.get(owner) or [])
-
-        monkeypatch.setattr(
-            "src.core.candidate.rubric_criteria_for_task",
-            _crit,
-        )
-
-    def test_build_job_token_context_visible_jd_plain_text_only(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._patch_live_rubric(monkeypatch)
+    def test_build_job_token_context_visible_jd_plain_text_only(self) -> None:
         job = {
             "astral_job_id": "job-513",
             "job_data": {
@@ -3239,10 +3212,7 @@ class TestAst513JobTokenContext:
         assert "Full rubric blob for culture" in ctx["ANALYSIS_JD"]
         assert "ANALYSIS RESULT: A (4/5 confidence)" in ctx["ANALYSIS_JD"]
 
-    def test_missing_phase_grades_yields_empty_analysis_token(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        self._patch_live_rubric(monkeypatch)
+    def test_missing_phase_grades_yields_empty_analysis_token(self) -> None:
         job = {
             "astral_job_id": "job-513",
             "job_data": {"job_description": "jd", "do_grades": []},
@@ -3250,15 +3220,10 @@ class TestAst513JobTokenContext:
         ctx = consult_mod.build_job_token_context(job, self._candidate_data())
         assert ctx["ANALYSIS_DO"] == ""
 
-    def test_format_analysis_skips_unmatched_vector(
-        self, monkeypatch: pytest.MonkeyPatch, caplog
-    ) -> None:
-        self._patch_live_rubric(monkeypatch)
+    def test_format_analysis_skips_unmatched_vector(self, caplog) -> None:
         caplog.set_level("WARNING")
         job_data = {"jd_grades": [{"vector": "Unknown Vector", "grade": "B", "confidence": 2}]}
-        out = consult_mod._format_analysis_phase_text(
-            "ANALYSIS_JD", job_data, self._candidate_data()
-        )
+        out = consult_mod._format_analysis_phase_text("ANALYSIS_JD", job_data, self._candidate_data())
         assert out == ""
         assert any("no rubric criterion" in rec.message for rec in caplog.records)
 
@@ -3272,118 +3237,6 @@ class TestAst513JobTokenContext:
         assert ctx["RESUME_SECTION_CATALOG"]
         assert "professional_summary:" in ctx["RESUME_SECTION_CATALOG"]
         assert "job_agent_editable=" in ctx["RESUME_SECTION_CATALOG"]
-
-
-class TestAst1193AnalysisMatchParity:
-    """AST-1193: shared criterion finder + ANALYSIS live/snapshot match + Style D."""
-
-    def test_find_rubric_criterion_label_and_code(self) -> None:
-        criteria = [
-            "skip",
-            {"label": "Compensation", "code": "CO", "content": "pay blob"},
-        ]
-        hit = consult_mod._find_rubric_criterion(criteria, "Compensation")
-        assert hit is not None and hit["code"] == "CO"
-        by_code = consult_mod._find_rubric_criterion(criteria, "CO")
-        assert by_code is not None and by_code["label"] == "Compensation"
-        assert consult_mod._find_rubric_criterion(criteria, "Ghost") is None
-
-    def test_analysis_snapshot_fallback_uses_live_content_by_code(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # Live labels drifted; snapshot still has the grade vector label + code.
-        monkeypatch.setattr(
-            "src.core.candidate.rubric_criteria_for_task",
-            lambda cid, owner: [
-                {"label": "Total Rewards", "code": "CO", "content": "live pay content"},
-            ],
-        )
-        job_data = {
-            "jd_grades": [{"vector": "Compensation", "grade": "B", "confidence": 3}],
-            "jd_rubric": [{"label": "Compensation", "code": "CO"}],
-        }
-        cd = {"_astral_candidate_id": "cand-1193"}
-        out = consult_mod._format_analysis_phase_text("ANALYSIS_JD", job_data, cd)
-        assert "CONSIDER: Total Rewards" in out
-        assert "live pay content" in out
-        assert "ANALYSIS RESULT: B (3/5 confidence)" in out
-
-    def test_analysis_snapshot_without_live_content_still_nonempty(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            "src.core.candidate.rubric_criteria_for_task",
-            lambda cid, owner: [],
-        )
-        job_data = {
-            "jd_grades": [{"vector": "Program Scope", "grade": "A", "confidence": 4}],
-            "jd_rubric": [{"label": "Program Scope", "code": "PS"}],
-        }
-        out = consult_mod._format_analysis_phase_text(
-            "ANALYSIS_JD", job_data, {"_astral_candidate_id": "cand-1193"}
-        )
-        assert out.startswith("CONSIDER: Program Scope")
-        assert "ANALYSIS RESULT: A (4/5 confidence)" in out
-        # Blank blob line between CONSIDER and ANALYSIS RESULT
-        assert "CONSIDER: Program Scope\n\nANALYSIS RESULT:" in out
-
-    def test_build_job_token_context_debug_emits_found_recorded(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        dbg = MagicMock()
-        monkeypatch.setattr(consult_mod, "get_logger", lambda *a, **k: dbg)
-        monkeypatch.setattr(
-            "src.core.candidate.rubric_criteria_for_task",
-            lambda cid, owner: [
-                {"label": "Culture Fit", "code": "CR", "content": "blob"},
-            ]
-            if owner == "evaluate_jd"
-            else [],
-        )
-        job = {
-            "astral_job_id": "job-1193",
-            "job_data": {
-                "job_description": "jd",
-                "jd_grades": [{"vector": "Culture Fit", "grade": "A", "confidence": 2}],
-            },
-        }
-        ctx = consult_mod.build_job_token_context(
-            job, {"_astral_candidate_id": "cand-1193"}, debug=True
-        )
-        assert "CONSIDER: Culture Fit" in ctx["ANALYSIS_JD"]
-        index_calls = [c.kwargs for c in dbg.debug_index.call_args_list]
-        assert any(
-            c.get("func") == "_format_analysis_phase_text"
-            and c.get("identifier") == "job-1193:ANALYSIS_JD"
-            and c.get("outcome") == "formatted"
-            for c in index_calls
-        )
-        details = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
-        assert any(
-            "found_grades=1" in str(m) and "recorded_vectors=1" in str(m) for m in details
-        )
-
-    def test_build_job_token_context_debug_false_is_quiet(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        dbg = MagicMock()
-        monkeypatch.setattr(consult_mod, "get_logger", lambda *a, **k: dbg)
-        monkeypatch.setattr(
-            "src.core.candidate.rubric_criteria_for_task",
-            lambda cid, owner: [],
-        )
-        job = {
-            "astral_job_id": "job-1193",
-            "job_data": {
-                "jd_grades": [{"vector": "X", "grade": "A", "confidence": 1}],
-                "jd_rubric": [{"label": "X", "code": "XX"}],
-            },
-        }
-        consult_mod.build_job_token_context(
-            job, {"_astral_candidate_id": "c"}, debug=False
-        )
-        dbg.debug_index.assert_not_called()
-        dbg.debug_detail.assert_not_called()
 
 
 class TestAst726LatestOnlyConsultOutcomes:

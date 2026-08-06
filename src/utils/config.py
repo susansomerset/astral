@@ -36,6 +36,8 @@ Config sections:
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
   PROVIDER_BALANCE_REFUSAL — LLM billing/credit exhaustion match rules (AST-897)
+  PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
+  PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146)
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
@@ -4039,6 +4041,38 @@ PROVIDER_BALANCE_REFUSAL = {
         "credit exhausted",
         "out of credit",
         "payment required",
+    ),
+}
+
+# PROVIDER_CALL_BUDGET — per-call LLM wall time (AST-1189 / Archie: 10 minutes).
+# httpx client timeout uses timeout_seconds; caller wait uses timeout_seconds + grace_seconds.
+# max_retries=0 → one attempt (SDK default 2 would allow up to 3× wall time inside the worker thread).
+PROVIDER_CALL_BUDGET = {
+    "timeout_seconds": 600,
+    "grace_seconds": 10,
+    "max_retries": 0,
+    "failure_class": "provider_call_timeout",
+    "error_template": (
+        "Provider call exceeded per-call time budget ({timeout_seconds}s)"
+    ),
+    "exception_type_names": (
+        "TimeoutError",       # builtin / asyncio.TimeoutError
+        "TimeoutException",   # httpx base
+        "ReadTimeout",
+        "ConnectTimeout",
+        "WriteTimeout",
+        "PoolTimeout",
+        "APITimeoutError",    # anthropic SDK
+    ),
+}
+
+# PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190).
+# Used by utils.llm_external classifiers and external send_to_* failure returns.
+PROVIDER_EMPTY_RESPONSE = {
+    "failure_class": "provider_empty_response",
+    "error": (
+        "Provider returned unusable response "
+        "(missing stop reason, zero tokens, no content)"
     ),
 }
 
