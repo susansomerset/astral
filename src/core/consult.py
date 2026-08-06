@@ -1779,9 +1779,10 @@ async def qualify_meteorite(
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id excluded from live content (position map in decode/response).
+        # AST-1197: CONTENT label matches qualify_meteorite agent_task (stored email HTML / scraped JD).
         lines = [
             f"{i:03d}: job_link: {j.get('job_link') or ''}\n"
-            f"job_description: {(j.get('job_data') or {}).get(jd_key, '') or ''}"
+            f"CONTENT:\n{(j.get('job_data') or {}).get(jd_key, '') or ''}"
             for i, j in enumerate(jobs)
         ]
         return "METEORITE JOBS:\n" + "\n".join(lines)
