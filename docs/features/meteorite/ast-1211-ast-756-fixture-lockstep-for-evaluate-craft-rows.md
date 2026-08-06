@@ -199,3 +199,14 @@ Full active statute corpus (65 leaves — 19 universal + 46 scoped) scored in-se
 context_tokens≈48000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Publish tip after resolve:** see `resolve(AST-1211)` commit(s) on `origin/sub/AST-1186/AST-1211-ast-756-fixture-lockstep-for-evaluate-craft-rows`
+
+| Finding | Action |
+|---------|--------|
+| **fix-now** — `orch.git.merge-on-checkout`: sub not ancestor of `origin/ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests` | Merged `origin/ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests` into this sub (`resolve(AST-1211): merge origin/ftr/AST-1186 tip`). Verified `git merge-base --is-ancestor origin/ftr/… HEAD` → yes; `src/core/dispatcher.py` now carries AST-1209 twin-aware `evaluate_jd@METEORITE_*` retirement. Fixture lockstep (53 rows; both evaluate/craft keys object-equal to catalog) re-checked after merge — unchanged. |
+
+No product edits to the UAT fixture or catalog in resolve. Frame diff: none.
