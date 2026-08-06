@@ -550,3 +550,137 @@ class TestAst1140RunGazeEmailSelectedIds:
             c.kwargs.get("func") == GAZE_EMAIL_CONFIG["debug_func_selected"]
             for c in dbg.call_args_list
         )
+
+
+@pytest.mark.skipif(
+    not hasattr(ge, "_ruth_live_parts"),
+    reason="AST-1213 Ruth live payload helpers not on this publish tip",
+)
+class TestAst1213RuthLivePayload:
+    """AST-1213: visible text + --- LINKS --- for Ruth; tracking wrappers kept."""
+
+    _HTML = (
+        "<p>New jobs</p>"
+        '<a href="https://jobs.example.com/apply/123">Senior Engineer at Acme</a>'
+        '<a href="https://example.list-manage.com/track/click?u=1">Staff Engineer at Globex</a>'
+        '<a href="https://example.com/unsubscribe">Unsubscribe</a>'
+        '<a href="mailto:x@y.z">x</a>'
+    )
+
+    def test_helpers_keep_tracking_drop_noise(self) -> None:
+        text, links = ge._ruth_live_parts(self._HTML)
+        assert "Staff Engineer at Globex" in text
+        assert "https://jobs.example.com/apply/123" in links
+        assert any("list-manage.com" in u for u in links)
+        assert not any("unsubscribe" in u.casefold() for u in links)
+        assert not any(u.lower().startswith("mailto:") for u in links)
+        body = ge._format_ruth_live_body(text, links)
+        assert "--- LINKS ---" in body
+        assert "<a" not in body and "<p>" not in body
+        assert ge._format_ruth_live_body("", []).startswith("(no visible text)")
+
+    @pytest.mark.asyncio
+    async def test_html_links_live_content_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        stamp = MagicMock()
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", stamp)
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-html", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(return_value={"subject": "", "html_body": self._HTML, "from_address": "a"}),
+        )
+        captured: dict = {}
+
+        async def _do_task(**kwargs):
+            captured["live_content"] = kwargs.get("live_content")
+            return {"success": True, "parsed_response": {"jobs": []}}
+
+        monkeypatch.setattr(ge, "do_task", _do_task)
+        monkeypatch.setattr(ge, "archive_message", MagicMock())
+        await ge.run_gaze_email({"candidate_id": "c1"}, debug=False)
+        live = captured["live_content"]
+        assert live.startswith("PARSE_MODE: html_links\n\n")
+        assert "--- LINKS ---" in live
+        assert any("list-manage.com" in line for line in live.splitlines())
+        assert "<a href=" not in live
+        assert "<p>" not in live
+
+    @pytest.mark.asyncio
+    async def test_subject_body_live_content_shape(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-sub", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "subject": "Weekly digest",
+                    "html_body": self._HTML,
+                    "from_address": "a",
+                }
+            ),
+        )
+        captured: dict = {}
+
+        async def _do_task(**kwargs):
+            captured["live_content"] = kwargs.get("live_content")
+            return {
+                "success": True,
+                "parsed_response": {"jobs": [], "content_text": "Weekly digest"},
+            }
+
+        monkeypatch.setattr(ge, "do_task", _do_task)
+        monkeypatch.setattr(ge, "create_meteorite_job", MagicMock(return_value={"astral_job_id": "j"}))
+        monkeypatch.setattr(ge, "archive_message", MagicMock())
+        await ge.run_gaze_email({"candidate_id": "c1"}, debug=False)
+        live = captured["live_content"]
+        assert live.startswith("PARSE_MODE: subject_body\nSUBJECT: Weekly digest\n\n")
+        assert "--- LINKS ---" in live
+        assert "<a href=" not in live
+
+    @pytest.mark.asyncio
+    async def test_debug_true_emits_ruth_payload_detail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-dbg", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(return_value={"subject": "", "html_body": self._HTML, "from_address": "a"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "do_task",
+            AsyncMock(return_value={"success": True, "parsed_response": {"jobs": []}}),
+        )
+        monkeypatch.setattr(ge, "archive_message", MagicMock())
+        detail = MagicMock()
+        monkeypatch.setattr(ge.logger, "debug_detail", detail)
+        monkeypatch.setattr(ge.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(ge.logger, "set_debug_flag", MagicMock())
+        await ge.run_gaze_email({"candidate_id": "c1"}, debug=True)
+        lines = [c.args[0] for c in detail.call_args_list if c.args]
+        assert any(isinstance(s, str) and s.startswith("ruth_payload visible_chars=") for s in lines)
+        assert any(isinstance(s, str) and "PARSE_MODE: html_links" in s for s in lines)

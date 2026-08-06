@@ -4051,3 +4051,27 @@ class TestAst1156SkippedBulkRetryMap:
             if priors is None:
                 continue
             assert frm in priors, (frm, to)
+
+
+# Branches: ruth_payload_link_exclude_substrings (AST-1213) — narrower than Playwright.
+class TestAst1213RuthPayloadLinkExcludes:
+    """AST-1213: Ruth AI-visibility excludes keep click-tracking wrappers."""
+
+    def test_ruth_excludes_omit_list_manage(self) -> None:
+        from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG as block
+
+        ruth = tuple(s.casefold() for s in block["ruth_payload_link_exclude_substrings"])
+        pw = tuple(s.casefold() for s in block["link_exclude_substrings"])
+        assert "list-manage.com" in pw
+        assert "list-manage.com" not in ruth
+        for frag in (
+            "unsubscribe",
+            "mailto:",
+            "/preferences",
+            "/email-settings",
+            "w3.org",
+            "/2000/svg",
+            "schemas.xmlsoap.org",
+            "xmlns=",
+        ):
+            assert frag in ruth
