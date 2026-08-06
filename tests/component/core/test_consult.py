@@ -65,34 +65,40 @@ class TestRenderPassFail:
     reason="AST-1054 meteorite GDL overlay not on this publish tip",
 )
 class TestAst1054MeteoriteGdlOutcomeOverlay:
-    """AST-1054: shared GDL keys (grade_do/grade_get) overlay meteorite pass/fail when entity
-    state is METEORITE_*. The JD stage no longer uses this overlay — evaluate_meteorite is a
-    standalone twin task (own TASK_CONFIG pass/fail/error states), same pattern as
-    meteorite_like. See TestEvaluateMeteoriteStandaloneTwin below.
+    """AST-1054 introduced METEORITE_GDL_OUTCOME_BY_TASK for shared grade_do/grade_get.
+
+    AST-1220 empties that overlay (outcomes live on meteorite_grade_* TASK_CONFIG aliases).
+    Consult still imports the symbol until AST-1221; empty overlay → Gaze TASK_CONFIG outcomes
+    even when entity_state is METEORITE_* (accepted interim until alias runtime + dispatch retarget).
+    JD stage never used this overlay — see TestEvaluateMeteoriteStandaloneTwin.
     """
 
     def test_evaluate_jd_has_no_meteorite_overlay(self) -> None:
         assert "evaluate_jd" not in cfg.METEORITE_GDL_OUTCOME_BY_TASK
 
-    def test_overlay_for_meteorite_entity_states(self) -> None:
-        overlay = cfg.METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]
+    def test_overlay_empty_meteorite_entity_uses_gaze_outcomes(self) -> None:
+        # AST-1220: Do/Get overlay source retired; no grade_do/grade_get entries.
+        assert cfg.METEORITE_GDL_OUTCOME_BY_TASK == {}
+        gaze = TASK_CONFIG["grade_do"]
         cfg_m = consult_mod._consult_orchestration_for_entity("grade_do", "METEORITE_PASSED_JD")
-        assert cfg_m["pass_state"] == overlay["pass_state"]
-        assert cfg_m["fail_state"] == overlay["fail_state"]
-        assert cfg_m["error_state"] == overlay["error_state"]
+        assert cfg_m["pass_state"] == gaze["pass_state"]
+        assert cfg_m["fail_state"] == gaze["fail_state"]
+        assert cfg_m["error_state"] == gaze["error_state"]
         cfg_v = consult_mod._consult_orchestration_for_entity("grade_do", "PASSED_JD")
-        assert cfg_v["pass_state"] == TASK_CONFIG["grade_do"]["pass_state"]
-        assert cfg_v["fail_state"] == TASK_CONFIG["grade_do"]["fail_state"]
+        assert cfg_v["pass_state"] == gaze["pass_state"]
+        assert cfg_v["fail_state"] == gaze["fail_state"]
 
-    def test_render_pass_fail_uses_meteorite_overlay(self) -> None:
+    def test_render_pass_fail_gaze_when_overlay_empty(self) -> None:
         grades = [_pass_grade()]
+        gaze_pass = TASK_CONFIG["grade_do"]["pass_state"]
+        gaze_fail = TASK_CONFIG["grade_do"]["fail_state"]
         assert (
             consult_mod._render_pass_fail("grade_do", grades, entity_state="METEORITE_PASSED_JD")
-            == "METEORITE_PASSED_DO"
+            == gaze_pass
         )
         assert (
             consult_mod._render_pass_fail("grade_do", grades, entity_state="PASSED_JD")
-            == TASK_CONFIG["grade_do"]["pass_state"]
+            == gaze_pass
         )
         assert (
             consult_mod._render_pass_fail(
@@ -100,7 +106,7 @@ class TestAst1054MeteoriteGdlOutcomeOverlay:
                 [{"grade": "F", "confidence": 2, "vector": "fit"}],
                 entity_state="METEORITE_PASSED_JD",
             )
-            == "METEORITE_FAILED_DO"
+            == gaze_fail
         )
 
 
