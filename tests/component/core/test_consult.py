@@ -136,6 +136,35 @@ class TestEvaluateMeteoriteStandaloneTwin:
         assert TASK_CONFIG["evaluate_meteorite"]["rubric_artifact"] == "meteorite_jobdesc_rubric"
         assert TASK_CONFIG["evaluate_jd"]["rubric_artifact"] == "jobdesc_rubric"
 
+    def test_format_analysis_jd_uses_twin_owner_when_state_meteorite(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """Live branch: _entity_state_is_meteorite(job_data.state) → analysis_phases_meteorite_override."""
+        owners: list[str] = []
+
+        def _capture(_cid: str, owner: str):
+            owners.append(owner)
+            return [{"label": "Fit", "code": "FT", "content": "twin rubric blob"}]
+
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_task", _capture)
+        cand = {"_astral_candidate_id": "c-twin"}
+        grades = [{"vector": "Fit", "grade": "A", "confidence": 4}]
+        out_m = consult_mod._format_analysis_phase_text(
+            "ANALYSIS_JD",
+            {"state": "METEORITE_QUALIFIED", "jd_grades": grades},
+            cand,
+        )
+        assert owners == ["evaluate_meteorite"]
+        assert "CONSIDER: Fit" in out_m and "twin rubric blob" in out_m
+        owners.clear()
+        out_c = consult_mod._format_analysis_phase_text(
+            "ANALYSIS_JD",
+            {"state": "JD_READY", "jd_grades": grades},
+            cand,
+        )
+        assert owners == ["evaluate_jd"]
+        assert "CONSIDER: Fit" in out_c
+
 
 class TestRubricHelpers:
     def test_strips_code_suffix(self) -> None:
@@ -5242,6 +5271,7 @@ class TestAst1155IncompleteGradeRetry:
         get_err = TASK_CONFIG["grade_get"]["error_state"]
         like_err = TASK_CONFIG["grade_like"]["error_state"]
         jd_err = TASK_CONFIG["evaluate_jd"]["error_state"]
+        met_err = TASK_CONFIG["evaluate_meteorite"]["error_state"]
         assert consult_mod._consult_batch_fail_dest("PASSED_JD", do_err) == "PASSED_JD_RETRY"
         assert consult_mod._consult_batch_fail_dest("PASSED_JD_RETRY", do_err) == do_err
         assert consult_mod._consult_batch_fail_dest("PASSED_DO", get_err) == "PASSED_DO_RETRY"
@@ -5252,9 +5282,18 @@ class TestAst1155IncompleteGradeRetry:
         assert consult_mod._consult_batch_fail_dest(
             "METEORITE_PASSED_JD_RETRY", "METEORITE_FAILED_TECHNICAL_DO"
         ) == "METEORITE_FAILED_TECHNICAL_DO"
+        # Twin evaluate hop: incomplete → METEORITE_QUALIFIED_RETRY; second strike → twin error.
         assert consult_mod._consult_batch_fail_dest(
-            "METEORITE_QUALIFIED", jd_err
+            "METEORITE_QUALIFIED", met_err
         ) == "METEORITE_QUALIFIED_RETRY"
+        assert consult_mod._consult_batch_fail_dest(
+            "METEORITE_QUALIFIED_RETRY", met_err
+        ) == met_err
+        assert met_err == "METEORITE_ERROR_EVALUATE_JD"
+        assert met_err != jd_err
+        # Classic evaluate_jd incomplete still holds on JD_READY_RETRY (unchanged).
+        assert consult_mod._consult_batch_fail_dest("JD_READY", jd_err) == "JD_READY_RETRY"
+        assert consult_mod._consult_batch_fail_dest("JD_READY_RETRY", jd_err) == jd_err
         # Legacy map companions for holdings already in the map.
         assert consult_mod._INPUT_STATE_TO_TASK["PASSED_JD_RETRY"] == "grade_do"
         assert consult_mod._INPUT_STATE_TO_TASK["PASSED_DO_RETRY"] == "grade_get"

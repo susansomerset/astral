@@ -276,12 +276,13 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON catalog lock (53 rows on AST-1196 tip).
+    """AST-786 UAT: populated agent_task repo JSON catalog lock (53 rows).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
-    AST-1196: full catalog↔AST-756 fixture byte-identity is deferred (inherited drift —
-    fixture missing `evaluate_meteorite` / `craft_evaluate_meteorite_rubric`); this class
-    locks catalog keys + startup apply. Surgical `qualify_meteorite` fixture lockstep is
+    AST-1211 closed the fixture gap for `evaluate_meteorite` / `craft_evaluate_meteorite_rubric`
+    (see **`TestAst1211EvaluateCraftFixtureLockstep`**). Shared-row prompt drift between
+    catalog and fixture (other keys) remains deferred — this class still locks catalog keys
+    + startup apply only. Surgical `qualify_meteorite` fixture lockstep is
     **`TestAst1196QualifyMeteoritePromptContract`**.
     """
 
@@ -369,6 +370,23 @@ class TestAst1196QualifyMeteoritePromptContract:
         assert cat["user_prompt"] == fix["user_prompt"]
         assert cat["updated_at"] == fix["updated_at"]
 
+
+class TestAst1211EvaluateCraftFixtureLockstep:
+    """AST-1211: AST-756 fixture includes evaluate_meteorite + craft_evaluate_meteorite_rubric."""
+
+    _KEYS = ("evaluate_meteorite", "craft_evaluate_meteorite_rubric")
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_fixture_includes_two_keys_object_equal_to_catalog(self) -> None:
+        cat = self._current_by_key("data/admin/agent_task.json")
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert len(fix) == 53
+        for key in self._KEYS:
+            assert key in fix, f"fixture missing {key}"
+            assert fix[key] == cat[key], f"{key} not object-equal to catalog"
 
 
 class TestAst1055MeteoriteCatalogRows:

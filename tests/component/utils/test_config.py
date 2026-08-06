@@ -2641,9 +2641,10 @@ class TestAst1054MeteoriteGdlDispatch:
 
     def test_dispatch_row_specs_and_job_states(self) -> None:
         rows = {(e["task_key"], e["trigger_state"]): e for e in cfg.METEORITE_DISPATCH_TASKS}
-        # AST-1060: evaluate_jd claims METEORITE_QUALIFIED (not METEORITE_NEW).
+        # Twin GDL entry is evaluate_meteorite@METEORITE_QUALIFIED (not evaluate_jd).
         assert ("evaluate_jd", "METEORITE_NEW") not in rows
-        assert rows[("evaluate_jd", "METEORITE_QUALIFIED")]["score_floor"] is None
+        assert ("evaluate_jd", "METEORITE_QUALIFIED") not in rows
+        assert rows[("evaluate_meteorite", "METEORITE_QUALIFIED")]["score_floor"] is None
         assert rows[("grade_do", "METEORITE_PASSED_JD")]["score_floor"] == 0.0
         assert rows[("grade_get", "METEORITE_PASSED_DO")]["score_floor"] == 0.0
         assert rows[("meteorite_like", "METEORITE_PASSED_GET")]["score_floor"] == 0.0
@@ -2668,9 +2669,28 @@ class TestAst1054MeteoriteGdlDispatch:
             assert cfg.dispatch_claim_uses_score_floor(state) is True
         assert cfg._dispatch_trigger_state_for_task_key("meteorite_like") == "METEORITE_PASSED_GET"
         assert cfg._dispatch_trigger_state_for_task_key("meteorite_upshot") == "METEORITE_PASSED_LIKE"
+        assert cfg._dispatch_trigger_state_for_task_key("evaluate_meteorite") == "METEORITE_QUALIFIED"
         assert cfg._dispatch_trigger_state_for_task_key("evaluate_jd") == "JD_READY"
         assert cfg._dispatch_trigger_state_for_task_key("grade_do") == "PASSED_JD"
         assert cfg._dispatch_trigger_state_for_task_key("grade_get") == "PASSED_DO"
+
+
+class TestAst1210EvaluateMeteoriteTwinConfig:
+    """AST-1210: config locks for evaluate_meteorite twin ownership (side-by-side with classic)."""
+
+    def test_rubric_craft_and_analysis_override(self) -> None:
+        assert cfg.RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY["meteorite_jobdesc_rubric"] == "evaluate_meteorite"
+        assert (
+            cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY["craft_evaluate_meteorite_rubric"]
+            == "meteorite_jobdesc_rubric"
+        )
+        m_jd = cfg.JOB_TOKEN_CONFIG["analysis_phases_meteorite_override"]["ANALYSIS_JD"]
+        assert m_jd["rubric_artifact"] == "meteorite_jobdesc_rubric"
+        assert m_jd["rubric_owner_task_key"] == "evaluate_meteorite"
+        classic = cfg.JOB_TOKEN_CONFIG["analysis_phases"]["ANALYSIS_JD"]
+        assert classic["rubric_artifact"] == "jobdesc_rubric"
+        assert classic["rubric_owner_task_key"] == "evaluate_jd"
+        assert "evaluate_jd" not in cfg.METEORITE_GDL_OUTCOME_BY_TASK
 
 
 @pytest.mark.skipif(
