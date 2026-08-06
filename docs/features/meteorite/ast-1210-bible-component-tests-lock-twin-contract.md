@@ -128,3 +128,28 @@ Suggested run (adjust if class names differ after Stage 3):
 | 1 | (no product commit) | Twin audit points 1–9 re-verified read-only; zero `src/` / `tests/` / bible edits — Code Complete handoff for Betty Stages 2–4 |
 
 **Joan fold-in (APPROVED discuss, for Betty):** Stage 3.1 repairs pre-existing red `rows[("evaluate_jd", "METEORITE_QUALIFIED")]` KeyError. Stage 3.3 Analysis override must use `_entity_state_is_meteorite(job_data.get("state"))` (state prefix), not `is_meteorite_company`.
+
+### code-rubric.v1 verdict
+
+[code-rubric] revision=1
+
+| Field | Value |
+|-------|-------|
+| Rubric | code-rubric.v1 |
+| Publish ref tip | `f37a0618a400565d6aecd7e5c6898ebafd5368fe` |
+| Overall | FIX-NOW |
+
+Full active statute corpus (65 leaves — 19 universal + 46 scoped) scored in-session against `git diff origin/dev...origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`. `orch.git.merge-on-checkout` **conforms** here — verified `origin/ftr/AST-1186-...` IS an ancestor of this sub's tip (the Prerequisite sync ran correctly, unlike the gap found on AST-1211), and `src/core/dispatcher.py` / the AST-756 fixture on this tip are byte-identical to `origin/ftr/AST-1186-...` — inherited from AST-1209/AST-1211 (both already reviewed clean/fix-now under their own tickets), not re-touched here. Zero `code(AST-1210)` commit exists — this ticket is 100% Betty's `test(AST-1210)` commit, correctly (`astral.git.engineer-test-tree-ban` / `orch.roles.betty-owns-test-tree` conform).
+
+**fix-now — unscoped test-coverage deletion, stale bible left behind.** `test(AST-1210)` deletes the entire `TestAst1193AnalysisMatchParity` class from `tests/component/core/test_consult.py` (5 methods: `_find_rubric_criterion` label/code lookup, live-vs-snapshot fallback matching ×2, and — critically — the **only** Style D debug-contract lock on `build_job_token_context`: `test_build_job_token_context_debug_emits_found_recorded` / `test_build_job_token_context_debug_false_is_quiet`). Verified independently: `_find_rubric_criterion` and `rubric_criteria_for_task` are still live, unmodified functions in `src/core/consult.py` (this ticket has zero `src/` diff) — so this is a real coverage regression on unchanged product code, not cleanup of dead code. Neither the AST-1210 plan's Files Changed table nor Stage 3 authorizes touching this class (scope is Analysis-override + incomplete→retry twin locks only) — `astral.standards.in-scope-only`. Betty's own QA manifest for this ticket does not mention the deletion either. Worse: `docs/test-bible/core/consult.md` §**AST-1193 · AST-1163** (lines 939–953, untouched by this diff) still names `TestAst1193AnalysisMatchParity` as the current test for that coverage — the bible now documents a class that does not exist. `astral.standards.debug-contract-gated` conforms for AST-1210's own scope (no new `debug=` path touched), but this deletion silently removes existing debug-contract lock with no replacement. **Remedy:** restore `TestAst1193AnalysisMatchParity` (or fold its assertions into the surviving `TestAst513JobTokenContext` methods) and update/keep the AST-1193 bible row accurate; if Betty has a real reason the class no longer applies, that belongs in a `[qa-handoff]` / bible "Broken / obsolete" note, not a silent drop.
+
+**What's solid:** everything else in this diff is precise and independently verified against live `src/utils/config.py` / `src/core/consult.py` — `TestAst1210EvaluateMeteoriteTwinConfig` (rubric/craft/Analysis-override maps) and `test_format_analysis_jd_uses_twin_owner_when_state_meteorite` both assert exactly what the unmodified product code does today (confirmed by reading `config.py:2017-2034`, `5219-5232` and `consult.py:86-87,811-812` directly, not by trusting the test). `test_dispatch_row_specs_and_job_states` correctly repairs Joan's plan-rubric finding #1 (pre-existing `KeyError` on `("evaluate_jd", "METEORITE_QUALIFIED")`). `_consult_batch_fail_dest` twin second-strike assert (`METEORITE_QUALIFIED_RETRY` → `METEORITE_ERROR_EVALUATE_JD`, not classic `ERROR_EVALUATE_JD`) is registry-accurate. All three bible files (`config.md`, `consult.md`, `dispatcher.md`) correctly retire the `evaluate_jd`@`METEORITE_QUALIFIED` claims per Stage 2 and cross-reference AST-1209/1210/1211 consistently.
+
+**Pattern conformance:** none cited (ticket description cites statute ids only, no `pattern.*`).
+
+## Frame diff
+(none) — description Acceptance Criteria / In-scope boxes are unchecked (`[ ]`) on this ticket unlike its siblings; Radia does not tick engineer/QA checkboxes on review, noting only as an advisory Linear-hygiene item, not a C7 blocker.
+
+context_tokens≈78000
+
+— Radia
