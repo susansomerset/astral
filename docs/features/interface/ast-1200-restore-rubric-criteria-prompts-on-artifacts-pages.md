@@ -196,3 +196,18 @@ Changes: Gate is `criteriaExpandAll = !jobPersistence && rubricMode` (structural
 
 - **Commit:** `b3e810a4`
 - **Branch:** `sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`
+
+### Radia — code-rubric.v1 revision=1
+
+**Overall:** FIX-NOW · **Diff:** `origin/dev...HEAD` (`bb43b7ea`), 9 files — matches plan's Files Changed table exactly.
+
+**Full-set sweep:** 64 active leaf statutes scored in-session (18 universal + 46 scoped); zero `violates`. Straggler check (C4) against the plan's own "Considered but excluded" list: `astral.standards.no-cross-contamination`, `astral.standards.no-hardcoded-sets`, `astral.layers.import-direction`, `astral.ui.naming-conventions`, `astral.git.engineer-test-tree-ban` are all in-diff on layer/path predicates (not `not-applicable` as the plan's exclusion note implies) — all five `conforms` on inspection, no functional issue, just an exclusion-bookkeeping mismatch worth tightening next revision.
+
+**fix-now — stale expand-all seed race survives Joan's round=2 discuss item.** `ArtifactEditor.tsx:156-169`: the `[selectedId, artifactKey]` reset effect (156-160) clears `didSeedCriteriaExpandRef` and fires *before* the candidate-load effect (277+) has called `setLoaded(false)` / refetched. In that gap, the one-shot seed effect (163-169) still sees the *previous* page's stale `loaded === true` and stale `criteriaSectionKeys` (old tab ids), claims the new `seedKey`, and seeds `expandedKeys` from the old tab set. When the real fetch resolves, the ref already matches `seedKey`, so it never re-seeds. Because tab ids are index-based (`v_${i}`), this is silent when the new page has the same-or-fewer criteria and visible (extra criteria stay collapsed) when it has more — an AC1/AC2 miss on the second candidate/page an operator visits with a longer criteria list. This is exactly the race Joan's plan-rubric `APPROVED` verdict flagged as `discuss` and asked to "fold in as you wire step 4" (recommended clearing `didSeedCriteriaExpandRef.current = ""` inside the candidate-load effect next to its `setLoaded(false)`); the fix was not present in the Tests Passed diff, and no component test exercises a page/candidate switch with differing criteria counts. Recommend the one-line ref-clear in the load effect before User Testing.
+
+**Pattern conformance:** `pattern.ui.admin-endpoint`, `pattern.config.config-block` — excluded per plan, confirmed no new admin endpoint / config block in diff.
+
+**What's solid:** clean layer discipline (ui stays ui, scripts import from config not a local dict), DRY reuse of `useSectionExpandPolicy` (no parallel expand machine), structural `!jobPersistence && rubricMode` gate avoids a hardcoded seven-key set in React, and Betty's test/bible coverage tracks every stage precisely.
+
+context_tokens≈95000
+— Radia
