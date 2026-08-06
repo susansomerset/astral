@@ -362,6 +362,24 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 | --- | --- | --- |
 | Blank-error coerce + empty-response debug | `src/core/agent.py` | **`TestAst1190DoTaskEmptyProviderError`** |
 
+### AST-1191 · AST-1164
+
+**Dispatch-chain provider hop failure:** `_apply_dispatch_chain_hop_failure` — non-balance provider failures apply `error_state` then `release_job_dispatch_claim`; balance refusal holds state but still releases claim; `_close_hop_ledger` returns outcome on every exit. **`debug=True`:** found (duration/stop/tokens/`failure_class`, `n/a` not silent 0) + recorded (error / error_state|held / batch_released). Non-dispatch-chain → `_HOP_FAILURE_NOOP`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop failure apply + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
+| Hard-string path still transitions (release added) | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts`** |
+
+**AST-1191** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts \
+  -q
+```
+
 ### AST-903 · AST-900 (UAT fix)
 
 **AST-903:** Craft rubric JSON truncation (`Unterminated string` mid-`criteria[].content`) — `do_task` floors **`max_tokens`** to **`CRAFT_RUBRIC_MAX_TOKENS`** (32000) for **`CRAFT_RUBRIC_UI_TASK_KEYS`**; DeepSeek/Anthropic hard-fail JSON when **`stop_reason == max_tokens`** (no heal-into-partial-success). UI/prompts/consult batches out of scope.
