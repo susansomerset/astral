@@ -191,3 +191,8 @@ Changes: Dropped hydrate write path and speculative CSS. Primary Stage 1 is rubr
 Revision 2 — 2026-08-06
 Driven by: Joan `[plan-discuss] round=2 concern` (plan-rubric.v1 REVISE) — `rubricMode` gate leaks into job-persistence Recommended Job Modal; step 4 effect re-opens collapsed panels on every `setTabs`/keystroke.
 Changes: Gate is `criteriaExpandAll = !jobPersistence && rubricMode` (structural, no hardcoded key set). Expand-all seed is one-shot per `(selectedId, artifactKey)` via `didSeedCriteriaExpandRef` (AdminScheduledActions precedent). CollapsiblePanel / add-criterion / reset effects use `criteriaExpandAll`. Manual verify #7 boundary check for job-persistence.
+
+## Review
+
+- **Commit:** `b3e810a4`
+- **Branch:** `sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`
