@@ -12,7 +12,7 @@ After **AST-1220**: honor `master_task_key` → master resolution wherever promp
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/core/agent.py` | Resolve prompt/`agent_task` fetch via `resolve_task_key_for_content`; keep caller `task_key` as identity; Style D detail when alias resolves; include aliases in strict encoded-batch gate | core |
+| `src/core/agent.py` | Resolve prompt/`agent_task` fetch via `resolve_task_key_for_content`; keep caller `task_key` as identity; Style D detail when alias resolves; `_is_strict_encoded_batch_consult` for both strict-envelope gate sites | core |
 | `src/core/consult.py` | Retire overlay read; alias-aware scored Do/Get dispatch routing; header lookup via master resolve | core |
 | `src/core/dispatcher.py` | Add alias keys to `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` | core |
 | `src/utils/config.py` | Delete `METEORITE_GDL_OUTCOME_BY_TASK` symbol + its value∈`JOB_STATES` assert loop | utils |
@@ -55,7 +55,9 @@ def _resolve_task_prompts(task_key: str):
     return agent_row, agent_task_row
 ```
 
-⚠️ **Decision — resolve only at `_resolve_task_prompts`:** Parent requires master's prompts/content with no alias prompt override; alias remains the identity operators see. `do_task` continues `TASK_CONFIG.get(task_key)` for schema / scored flags / `requires_candidate_key` (alias entries already carry those per **AST-1220** Radia advisory — do **not** invent a field-merge from master). `preview_prompt` / `simulated_chain_context_for_preview` inherit resolve automatically via `_resolve_task_prompts`.
+⚠️ **Decision — content resolve at `_resolve_task_prompts` only (prompt fetch):** Parent requires master's prompts/content with no alias prompt override; alias remains the identity operators see. `do_task` continues `TASK_CONFIG.get(task_key)` for schema / scored flags / `requires_candidate_key` (alias entries already carry those per **AST-1220** Radia advisory — do **not** invent a field-merge from master). `preview_prompt` / `simulated_chain_context_for_preview` inherit resolve automatically via `_resolve_task_prompts`.
+
+⚠️ **Decision — `_parent_hop_task_key_for_child` / `_current_agent_task_run_next` stay on caller identity:** These also call `get_agent_task`, but they are **not** prompt-content lookups — they read `run_next` / chain-parent identity (`astral.dispatch.run-next-is-chain-authority`). Leave them keyed on the raw `task_key`. Safe today (aliases have no `agent_task` row until **AST-1222**) and safe after **AST-1222** seeds grouping-only alias rows with no `run_next` (Do/Get have no chain; `get_agent_task(alias)` returning a grouping row with empty `run_next` yields `""`, same as today). Do **not** resolve these to master — that would silently attribute the master's `run_next` to the alias. Document only; no code change at those two sites on this ticket.
 
 3. In `do_task`, immediately after the successful `TASK_CONFIG` lookup (and before `_resolve_task_prompts`), when `debug` is True and `is_task_alias(task_key)`:
 
@@ -78,27 +80,44 @@ def _resolve_task_prompts(task_key: str):
 
 ⚠️ **Decision — Style D only when `debug=True`:** Matches `astral.standards.debug-contract-gated`. No new ungated INFO noise. Index header uses the **alias** identity; detail names the master.
 
-4. Strict encoded-batch gate — change `_strict_encoded_batch_consult_envelope_err` membership so aliases of listed masters are included without a parallel meteorite-only frozenset:
+4. Strict encoded-batch gate — membership is tested in **two** places today (`do_task` ~line 2468 sets `strict_batch = task_key in _STRICT_ENCODED_BATCH_CONSULT_KEYS`, then only calls `_strict_encoded_batch_consult_envelope_err` when `strict_batch`). Resolving only inside the helper leaves aliases with `strict_batch=False` (helper never called; no `agent_performance` back-fill). Introduce one membership helper and use it in both places:
 
 ```python
+def _is_strict_encoded_batch_consult(task_key: str) -> bool:
+    """True when task_key (or its content master) is in the strict encoded-batch set."""
+    return resolve_task_key_for_content(task_key) in _STRICT_ENCODED_BATCH_CONSULT_KEYS
+
+
 def _strict_encoded_batch_consult_envelope_err(task_key: str, parsed: Any) -> Optional[str]:
     """Return error detail if encoded-batch consult response bypasses envelope rules; otherwise None."""
-    gate_key = resolve_task_key_for_content(task_key)
-    if gate_key not in _STRICT_ENCODED_BATCH_CONSULT_KEYS or parsed is None:
+    if not _is_strict_encoded_batch_consult(task_key) or parsed is None:
         return None
     # ... remainder unchanged (same checks as today) ...
 ```
 
-Do **not** add `meteorite_grade_do` / `meteorite_grade_get` literals to `_STRICT_ENCODED_BATCH_CONSULT_KEYS` — resolve covers them. Leave the frozenset body as masters + existing twins (`meteorite_like`, etc.).
+In `do_task` (~line 2468), replace the direct frozenset membership with the helper:
+
+```python
+    strict_batch = _is_strict_encoded_batch_consult(task_key)
+```
+
+Leave the subsequent `if strict_batch … agent_performance` back-fill and both `envelope_err = _strict_encoded_batch_consult_envelope_err(...)` calls unchanged — they already key off `strict_batch`.
+
+⚠️ **Decision — one membership helper, both call sites:** `astral.standards.dry-and-focused-functions`. Do **not** add `meteorite_grade_do` / `meteorite_grade_get` literals to `_STRICT_ENCODED_BATCH_CONSULT_KEYS` — resolve covers them. Leave the frozenset body as masters + existing twins (`meteorite_like`, etc.).
 
 5. Verify:
 
 ```bash
 ~/astral/.venv/bin/python -c "
 from src.utils.config import resolve_task_key_for_content, is_task_alias
+from src.core.agent import _is_strict_encoded_batch_consult
 assert is_task_alias('meteorite_grade_do')
 assert resolve_task_key_for_content('meteorite_grade_do') == 'grade_do'
 assert resolve_task_key_for_content('grade_do') == 'grade_do'
+assert _is_strict_encoded_batch_consult('meteorite_grade_do') is True
+assert _is_strict_encoded_batch_consult('meteorite_grade_get') is True
+assert _is_strict_encoded_batch_consult('grade_do') is True
+assert _is_strict_encoded_batch_consult('prefilter_company') is False
 "
 ~/astral/.venv/bin/python -m py_compile src/core/agent.py
 ```
@@ -240,16 +259,29 @@ rg -n 'METEORITE_GDL_OUTCOME_BY_TASK' src/ && echo 'FAIL: symbol still reference
 
 **Scope:** Single-Component — core agent/consult/dispatcher plus deleting one utils overlay symbol; no seed/UI.
 
-**Conf:** high — **AST-1220** helpers and alias entries are shipped; overlay call site is a single function; prompt resolve has one choke point (`_resolve_task_prompts`); alias dispatch routing mirrors `meteorite_like` / resolve patterns already in-tree.
+**Conf:** high — **AST-1220** helpers and alias entries are shipped; overlay call site is a single function; prompt-content resolve is one choke point (`_resolve_task_prompts`) with chain/`run_next` readers intentionally caller-keyed; strict-envelope membership is one helper used at both gate sites; alias dispatch routing mirrors `meteorite_like` / resolve patterns already in-tree.
 
 **Risk:** Medium — removing the overlay before **AST-1222** retarget means in-flight shared-key meteorite Do/Get temporarily use Gaze outcomes (accepted epic sequencing); wrong resolve would pull prompts from the wrong `agent_task` row or mis-route alias pass/fail once aliases are dispatched.
 
 ## Code rules check
 
-- §1.3 DRY — one content-resolve choke point; no duplicated alias→master maps in core.
+- §1.3 DRY — one prompt-content resolve choke point; one `_is_strict_encoded_batch_consult` membership test for both gate sites; no duplicated alias→master maps in core.
 - §1.4 / `astral.standards.no-hardcoded-sets` — no new meteorite-only overlay; header via `resolve_task_key_for_content`; strict-envelope gate via resolve; exhaust frozenset lists domain keys (same pattern as existing twins).
 - §1.5.1 / `astral.standards.debug-contract-gated` — alias resolve detail only when `debug=True`, Style D index + detail.
 - §2.2 / `astral.agent.do-task-delegation` — alias invocation still goes through `do_task`; prompts from master’s `agent_task`.
+- `astral.dispatch.run-next-is-chain-authority` — `_parent_hop_task_key_for_child` / `_current_agent_task_run_next` stay on caller identity (no master resolve for chain authority).
 - §3.3 / `pattern.layers.import-discipline` — core imports resolve helpers from utils; no reverse imports; no UI edits.
 - `astral.standards.in-scope-only` — no seed/dispatch retarget (**AST-1222**), no config contract authorship (**AST-1220**), no UI audit (**AST-1185**).
 - `astral.git.engineer-test-tree-ban` — no `tests/` / bible edits on this ticket.
+
+## Revisions
+
+### Revision 1 — 2026-08-06
+
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE @ tip `fd46f3e6`).
+
+Changes:
+
+- **fix-now:** Stage 1 step 4 — add `_is_strict_encoded_batch_consult` wrapping `resolve_task_key_for_content(task_key) in _STRICT_ENCODED_BATCH_CONSULT_KEYS`; use it at `do_task` ~2468 (`strict_batch = …`) and at the top of `_strict_encoded_batch_consult_envelope_err` so aliases get `agent_performance` back-fill and envelope checks (not dead code).
+- **discuss:** Document that `_parent_hop_task_key_for_child` / `_current_agent_task_run_next` intentionally stay on caller identity (grouping-only alias rows, no `run_next`); stop claiming a single choke point for all `get_agent_task` reads.
+- **Self-assessment / code-rules:** Conf justification and §1.3 / `run-next-is-chain-authority` notes updated to match.
