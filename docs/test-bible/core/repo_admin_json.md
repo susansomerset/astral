@@ -370,3 +370,39 @@ Classic gaze/GDL `agent_task` rows: `task_group_name` **Job Review** → **Gaze 
   tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
   -q
 ```
+
+
+### AST-1219 · AST-1183
+
+**Parent:** [AST-1183 — Gaze Review rename + Meteorite Review sibling + agent_task grouping](https://linear.app/astralcareermatch/issue/AST-1183/gaze-review-rename-meteorite-review-sibling-agent-task-grouping). **Publish:** `origin/sub/AST-1183/AST-1219-meteorite-review-group-move-meteorite-agent-task-rows`.
+
+Meteorite-track `agent_task` rows move to **Meteorite Review** (`task_group_order` `"4500"`, within-section `task_seq` `1`…`6`). Classic Gaze Review rows untouched. Surgical AST-756 grouping-field sync on six keys; AST-1211 pair equality preserved; `craft_evaluate_meteorite_rubric` stays Candidate Artifacts. Zero current rows remain **Job Review**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Meteorite Review membership + no Job Review | `data/admin/agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership`**; revised **`TestAst1218GazeReviewClassicGroupLabel`** (meteorite half) |
+| Fixture grouping lockstep + AST-1211 | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership::test_fixture_grouping_lockstep_and_ast1211`** |
+| Per-row group/seq pins | same | revised **`TestAst1055MeteoriteCatalogRows`**, **`TestAst1060QualifyMeteoriteCatalogRow`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`** |
+| Scheduled Actions section header mock | frontend pages | revised **`test_AdminScheduledActions_AST1106.test.tsx`** (Job Review → Meteorite Review) |
+
+**Broken / obsolete:** meteorite **Job Review** / fractional seq asserts (`2.3`…`11`); AST-1218 meteorite-half **Job Review**/`4000`; Scheduled Actions mock/header still **Job Review** for `gaze_email`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1219MeteoriteReviewGroupMembership \
+  tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```
+
+Vitest (when running full frontend / this page file):
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx
+```
