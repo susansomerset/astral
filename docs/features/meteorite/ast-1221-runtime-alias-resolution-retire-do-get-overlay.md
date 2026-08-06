@@ -285,3 +285,16 @@ Changes:
 - **fix-now:** Stage 1 step 4 — add `_is_strict_encoded_batch_consult` wrapping `resolve_task_key_for_content(task_key) in _STRICT_ENCODED_BATCH_CONSULT_KEYS`; use it at `do_task` ~2468 (`strict_batch = …`) and at the top of `_strict_encoded_batch_consult_envelope_err` so aliases get `agent_performance` back-fill and envelope checks (not dead code).
 - **discuss:** Document that `_parent_hop_task_key_for_child` / `_current_agent_task_run_next` intentionally stay on caller identity (grouping-only alias rows, no `run_next`); stop claiming a single choke point for all `get_agent_task` reads.
 - **Self-assessment / code-rules:** Conf justification and §1.3 / `run-next-is-chain-authority` notes updated to match.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`
+**Plan path:** `docs/features/meteorite/ast-1221-runtime-alias-resolution-retire-do-get-overlay.md`
+
+**Built tip:** `41c690642981dd66513285c37f120c77d919baa5` (`41c69064`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `3a606df4` | agent prompt resolve via master_task_key |
+| 2 | `fe2a44df` | consult retire Do/Get overlay + alias routing |
+| 3 | `41c69064` | delete METEORITE_GDL_OUTCOME_BY_TASK + alias exhaust keys |
