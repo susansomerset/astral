@@ -171,3 +171,14 @@ context_tokens≈9500
 
 — Radia
 
+---
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Radia overall:** DISCUSS (`7157b237` docs tip; product tip `af5dcce1` / Tests tip `deb20375`)  
+**Fix-now:** none  
+**Discuss:** git branch topology / sibling passenger commits on this publish ref — Radia flagged for Chuckles/Susan awareness on epic worktree sequencing; explicitly **not blocking** and **nothing to rewrite** in history (`orch.git.no-cherry-pick-rebase-force`). No product or plan-stage change.  
+**Advisory:** none  
+**Product changes this resolve:** none — tip already matches plan + zero fix-now review.
+
