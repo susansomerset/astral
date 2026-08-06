@@ -283,3 +283,25 @@ def contact_put_debug():
 | Branch | `sub/AST-1203/AST-1206-contact-debug-flag-foundation` |
 
 Stages 1–4 landed: `debug_enabled` + `debug_state_filename`, `contact_debug.py`, `slack_debug_enabled` / `set_slack_debug_enabled`, admin GET/PUT `/api/admin/contact/debug`.
+
+---
+
+## Radia review
+
+[code-rubric] revision=1
+
+| Field | Value |
+|-------|-------|
+| Rubric | code-rubric.v1 |
+| Publish ref tip | `b52eb7c756122e4fcb4d7e4290bb0b3045dedb7d` |
+| Overall | CLEAN |
+
+Full active statute corpus (65 leaves under `canon/statutes/**`, 18 universal + 47 scoped) scored in-session per the Full-set sweep algorithm — zero `violates`, zero `needs-discussion`. Three `not-applicable` (`astral.debug.no-repo-root-artifacts-dir`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.ui.frontend-file-placement` — no matching diff paths). No Joan plan-rubric verdict attached to this ticket; not a block.
+
+**What's solid:** `contact_debug.py` / `slack_debug_enabled` / `set_slack_debug_enabled` / `/debug` GET-PUT are literal twins of the shipped AST-1067 listen path (confirmed line-for-line against `contact_listen.py` and `set_slack_listen_enabled`) — same re-read-every-call posture, same Style D gating (`debug_index`/`debug_detail` only inside `if debug:`), same config-block placement, same `@require_admin` + JSON-error convention. Commit trail cleanly separates roles (`code(AST-1206)` touches `src/` only; `test(AST-1206)` + `merge-tests(AST-1206)` land via Betty on `tests/` + `docs/test-bible/` only) — no cross-contamination of the test-tree ban. In-scope-only holds: no Events, React, listen-file, or SQLite touches.
+
+**Pattern conformance:** `pattern.config.config-block`, `pattern.ui.admin-endpoint` cited in the ticket description — not registered under `canon/patterns/` (none exists); functionally covered by `astral.config.config-source-of-truth` and `astral.patterns.require-auth-on-protected-endpoints`, both scored `conforms` above.
+
+context_tokens≈9000
+
+— Radia
