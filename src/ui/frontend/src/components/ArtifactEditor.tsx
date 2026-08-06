@@ -278,6 +278,8 @@ export default function ArtifactEditor({
     if (jobPersistence) return
     if (!selectedId || ((shapesKey || structureMode) && !fixedFields)) return
     setLoaded(false)
+    // Don't let a stale loaded render claim seedKey for the new page/candidate (Radia / Joan).
+    didSeedCriteriaExpandRef.current = ""
     setSnapshot(null)
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
       const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>

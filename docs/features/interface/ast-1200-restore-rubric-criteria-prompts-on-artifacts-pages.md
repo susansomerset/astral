@@ -211,3 +211,11 @@ Changes: Gate is `criteriaExpandAll = !jobPersistence && rubricMode` (structural
 
 context_tokens≈95000
 — Radia
+
+## Resolution
+
+**2026-08-06** — Radia FIX-NOW addressed on `sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`.
+
+- **Stale expand-all seed race:** In the candidate-load effect, clear `didSeedCriteriaExpandRef.current = ""` immediately after `setLoaded(false)` so a stale `loaded === true` render cannot claim `seedKey` for the new candidate/page before fresh tabs arrive (Joan discuss + Radia fix-now).
+- **Discuss (C4 exclusion bookkeeping):** no product change; five statutes already `conforms` on inspection — left as Considered but excluded bookkeeping for a future plan polish.
+
