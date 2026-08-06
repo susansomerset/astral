@@ -305,3 +305,13 @@ Full active statute corpus (65 leaves under `canon/statutes/**`, 18 universal + 
 context_tokens≈9000
 
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-08-06  
+**Radia overall:** CLEAN (`d7b9b07b` docs tip; product tip `b52eb7c7`)  
+**Fix-now:** none  
+**Discuss:** none (Joan plan-discuss notes from Plan Ready were non-blocking; Radia scored zero discuss)  
+**Product changes this resolve:** none — tip already matches plan + CLEAN review.
