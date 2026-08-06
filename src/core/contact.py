@@ -6,7 +6,9 @@ AST-1069: Events HTTP ingress (`receive_slack_events_http`) + inbound routing
 AST-1068: `resolve_slack_user` + PROSPECT create-on-miss (wired on accept).
 AST-1070: Slack-sourced conversation context load / process-local cache / append.
 AST-1067: Manage Slack listen hydrate/set + non-prod reply prefix / post helper.
-AST-1206: Manage Slack debug get/set (Events wiring is AST-1207).
+AST-1206: Manage Slack debug get/set.
+AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
+(`slack_debug_enabled`); Style D found/recorded depth on Contact Slack path.
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
 """
@@ -903,6 +905,9 @@ def run_contact_estelle_turn(
 
 def handle_slack_event(payload: dict, *, debug: bool = False) -> dict:
     """Route one Slack Events API payload into Contact (listen-gated)."""
+    # AST-1207: Manage Slack Debug is sole SoT for Contact Slack Events (Archie).
+    # Caller kwarg kept for signature compat; durable file wins every call.
+    debug = slack_debug_enabled()
     log = get_logger(__name__)
     log.set_debug_flag(debug)
 
@@ -1197,6 +1202,9 @@ def receive_slack_events_http(
 
     Returns (status_code, body) where body is ``dict`` (JSON), ``bytes``, or ``str``.
     """
+    # AST-1207: Manage Slack Debug is sole SoT for Contact Slack Events (Archie).
+    # Caller kwarg kept for signature compat; durable file wins every call.
+    debug = slack_debug_enabled()
     log = get_logger(__name__)
     log.set_debug_flag(debug)
 
