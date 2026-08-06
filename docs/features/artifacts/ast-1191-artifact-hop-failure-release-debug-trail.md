@@ -259,3 +259,15 @@ Driven by: Joan `[plan-discuss] round=2 concern` (plan-rubric.v1 REVISE) — Sta
 Changes:
 - Stage 1 step 7: full concrete body; early no-ledger exit `return outcome` (never bare `return`); Decision restates every-exit return discipline for `_close_hop_ledger`.
 - Stage 2 step 2: `hop_fail_outcome = hop_fail_outcome or _HOP_FAILURE_NOOP` before any key access.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1164/AST-1191-artifact-hop-failure-release-debug`  
+**Tip:** `3aa816f3`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `7f5b132e` | hop failure → `ERROR_BUILD_ARTIFACTS` + claim release; outcome dict every exit |
+| 2 | `3aa816f3` | found/recorded duration/stop/tokens/failure_class on provider fail |
