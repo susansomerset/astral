@@ -252,7 +252,7 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
 
 **Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1196-agent-task-synthesize-email-link-subject`.
 
-`qualify_meteorite` `cache_prompt` / `user_prompt`: synthesize `email-<originalsender>-<timestamp>` when no ATS link; subject as title; empty-string fails (never JSON null); positional `astral_job_id` (`000`/`001`/…); never drop a row. Surgical AST-756 fixture lockstep on that row’s three fields only. Catalog tip lock **53** current keys (includes `evaluate_meteorite` / `craft_evaluate_meteorite_rubric` / candidate-requested / `find_company_website`). Full catalog↔fixture byte-identity deferred to parent re-baseline (fixture still 51 rows).
+`qualify_meteorite` `cache_prompt` / `user_prompt`: synthesize `email-<originalsender>-<timestamp>` when no ATS link; subject as title; empty-string fails (never JSON null); positional `astral_job_id` (`000`/`001`/…); never drop a row. Surgical AST-756 fixture lockstep on that row’s three fields only. Catalog tip lock **53** current keys (includes `evaluate_meteorite` / `craft_evaluate_meteorite_rubric` / candidate-requested / `find_company_website`). The two missing evaluate/craft fixture rows are closed under **AST-1211**; shared-row prompt drift (other keys) stays deferred — not whole-file catalog↔fixture byte-identity.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -260,7 +260,7 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
 | Catalog frozenset / startup apply | same | revised **`TestAst786AgentTaskRepoJsonSeed`** (53; byte-for-byte retired) |
 | Ruth shell fields still present | same | **`TestAst1060QualifyMeteoriteCatalogRow`** (unchanged asserts still green) |
 
-**Broken / obsolete:** AST-786 **48**-row + whole-file byte-identity asserts — tip catalog is **53**; inherited fixture drift (missing two meteorite rows) is out of scope for this child. Also revised **`TestAst1107TaskNameEqualsTaskKey::test_fixture_byte_locked_after_rename`**, **`TestAst1144…`** fixture byte tail, **`TestAst1154…::test_fixture_byte_locked_with_completeness_prompts`** → per-key / surgical checks.
+**Broken / obsolete:** AST-786 **48**-row + whole-file byte-identity asserts — tip catalog is **53**; the missing-two-keys fixture gap is **AST-1211** (not this child). Also revised **`TestAst1107TaskNameEqualsTaskKey::test_fixture_byte_locked_after_rename`**, **`TestAst1144…`** fixture byte tail, **`TestAst1154…::test_fixture_byte_locked_with_completeness_prompts`** → per-key / surgical checks.
 
 **Integration:** none revised.
 
@@ -272,5 +272,50 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   tests/component/core/test_repo_admin_json.py::TestAst1107TaskNameEqualsTaskKey \
   tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
   tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  -q
+```
+
+
+### AST-1211 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1211-ast-756-fixture-lockstep-for-evaluate-craft-rows`.
+
+Surgical AST-756 fixture insert: full-row catalog copies of `evaluate_meteorite` + `craft_evaluate_meteorite_rubric` into `docs/uat-fixtures/AST-756/expected-agent_task.json` (fixture **53**). Does **not** absorb shared-row prompt drift via whole-file `cp`; catalog `data/admin/agent_task.json` untouched. Twin audit / bible fold-in: **AST-1209** / **AST-1210**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Two-key fixture↔catalog object equality | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1211EvaluateCraftFixtureLockstep`** |
+| Stale “fixture missing two keys” note | same + catalog class | revised **`TestAst786AgentTaskRepoJsonSeed`** docstring |
+
+**Broken / obsolete:** AST-1196 / AST-786 notes that fixture still lacks `evaluate_meteorite` / `craft_evaluate_meteorite_rubric` (or “fixture still 51”).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```
+
+### AST-1212 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`.
+
+Ruth `agent_task` row identity `parse_meteorite_email` → **`meteorite_email`** (`task_name` lockstep; `task_key_uuid` frozen). AST-756 fixture surgical sync on that row. Catalog frozenset still **53** (rename, not add). Config half: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + fixture row + frozenset | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | revised **`TestAst786AgentTaskRepoJsonSeed`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`**, **`TestAst1144ParseMeteoriteEmailMetadataPrompt`** |
+
+**Broken / obsolete:** catalog/fixture lookups and AST-786 frozenset entry still named `parse_meteorite_email`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
   -q
 ```

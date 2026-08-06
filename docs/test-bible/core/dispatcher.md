@@ -348,3 +348,25 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst1135GazeEmailDueTasks \
   -q
 ```
+
+### AST-1209 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1209-evaluate-meteorite-twin-audit-conformance-fixes`.
+
+`ensure_meteorite_dispatch_tasks` retires **every** live `evaluate_jd` row whose `trigger_state` starts with `METEORITE_` (NEW + QUALIFIED eras), but **only when** twin `evaluate_meteorite`@`METEORITE_QUALIFIED` is already present or was just inserted. Keeps `evaluate_jd`@`JD_READY`. Insert loop seeds twin GDL entry (`evaluate_meteorite`, not classic `evaluate_jd`). Full twin bible/config/consult lock: sibling **AST-1210**. Fixture lockstep: **AST-1211**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin GDL insert key + trigger | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision::test_ensure_inserts_shared_gdl_and_twins_per_task_config`** |
+| Retire `evaluate_jd`@`METEORITE_*` when twin present; keep `@JD_READY` | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision::test_ensure_retires_evaluate_jd_on_meteorite_triggers_when_twin_present`** (replaces AST-1060 NEW-only retire) |
+| No retire when twin absent from `TASK_CONFIG` | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision::test_ensure_skips_retire_when_twin_absent`** |
+
+**Broken / obsolete:** AST-1060 `test_ensure_retires_stale_evaluate_jd_at_meteorite_new` (NEW-only + assert insert of `evaluate_jd`@`METEORITE_QUALIFIED`); insert assert that meteorite GDL entry is still `evaluate_jd`; `test_start_scheduler_invokes_meteorite_provision` stub of removed `provision_candidate_stage_dispatch_tasks` (scheduler tip is meteorite → gaze only).
+
+**Integration:** none — no existing scenarios assert meteorite dispatch retirement.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  -q
+```

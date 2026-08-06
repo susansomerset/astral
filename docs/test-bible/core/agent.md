@@ -631,3 +631,24 @@ Artifact hop `do_task` + Manage Tasks `preview_task_prompt` feed `build_candidat
   tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_names_from_columns_not_blob \
   -q
 ```
+
+
+### AST-1212 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`.
+
+`_validate_response_schema` regression for Ruth html_links payload now keys **`meteorite_email`** (was `parse_meteorite_email`). Schema source: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dict metadata validates / str rejected | `src/core/agent.py` | revised **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** AST-1144 skipif + schema lookups on `TASK_CONFIG["parse_meteorite_email"]`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
