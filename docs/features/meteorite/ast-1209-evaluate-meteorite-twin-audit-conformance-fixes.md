@@ -127,3 +127,33 @@ if tk == "evaluate_jd" and ts.startswith("METEORITE_"):
 | 1 | (Linear comment) | Twin audit table — point 10 product-defect; point 11 bible-drift → AST-1210 |
 | 2 | `261fa01a` | `ensure_meteorite_dispatch_tasks`: retire `evaluate_jd`@`METEORITE_*` only when twin present; Manual Verify + idle-hop note in docstring |
 | 3 | (no-op) | No config/consult/UI product defects |
+
+---
+
+## Radia review
+
+[code-rubric] revision=1
+
+| Field | Value |
+|-------|-------|
+| Rubric | code-rubric.v1 |
+| Publish ref tip | `224de458b0c87aeffeb112a9eafcdb1b45b2954a` |
+| Overall | DISCUSS |
+
+Full active statute corpus (65 leaves — 19 universal + 46 scoped) scored in-session per the Full-set sweep algorithm against `git diff origin/dev...origin/sub/AST-1186/AST-1209-evaluate-meteorite-twin-audit-conformance-fixes`. Zero `violates`. One `needs-discussion` (`astral.batch.claim-process-release` — see below, converges independently with Joan's plan-rubric finding #2). Ten `not-applicable` on layer/path predicates (`astral.debug.no-repo-root-artifacts-dir`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.layers.ui-config-driven-business-logic`, `astral.patterns.require-auth-on-protected-endpoints`, `astral.seed.agent-tables-in-repo-json`, `astral.standards.database-header-inventory`, `astral.standards.utils-data-late-import-only`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.ui.single-gunicorn-worker` — no matching diff paths; the only product touch is `src/core/dispatcher.py`, plus a docs-only plan file and Betty's `test(AST-1209)` tests/bible commit). The rest score `conforms`.
+
+**Needs-discussion — mid-flight claim release on retirement.** `ensure_meteorite_dispatch_tasks` deletes the live `evaluate_jd`@`METEORITE_*` claim row via `delete_dispatch_task` with no `job.batch_id` release step (`astral.batch.claim-process-release` / `pattern.batch.entity-claim-process-release`). The `twin_present` guard (addressing Joan finding #3) stops an orphaned `METEORITE_QUALIFIED` with no claim row, but there is still no code-level guard against retiring a row with in-flight claims — the docstring's "call when idle" and the Linear audit comment's operator note are the only mitigation. Acceptable given `auto_mode` is `False` on every meteorite row (operator/CLICK-driven, not scheduler-driven per `astral.dispatch.seed-auto-false`) so the window is narrow and Joan already routed this to the builder as fold-in, not fix-now — flagging for visibility only.
+
+**Commit-role separation clean:** `code(AST-1209)` (`261fa01a`) touches `src/core/dispatcher.py` only; `test(AST-1209)` + one `merge-tests(AST-1209)` SHA land via Betty on `tests/` + `docs/test-bible/**` only (`astral.git.engineer-test-tree-ban` / `orch.git.betty-merge-tests-one-sha` conform). `docs(AST-1209)` commits touch only the plan file. Sub stacks cleanly on `origin/ftr/AST-1186` on `origin/dev` (`orch.git.merge-on-checkout` conforms).
+
+**`METEORITE_` prefix check verified independently:** every state in `JOB_STATES` under the meteorite family uses the `METEORITE_` prefix (grepped `src/utils/config.py`), and `JD_READY` does not start with it — so `ts.startswith("METEORITE_")` retires the NEW+QUALIFIED eras without touching classic `evaluate_jd`@`JD_READY`, confirming `astral.standards.no-hardcoded-sets` / `astral.dispatch.run-next-is-chain-authority` conform (state family match, not an invented parallel set).
+
+**Cross-ticket carry-over noted, not counted against this diff:** the `merge-tests(AST-1209)` commit also carries `test(AST-1206): contact debug flag foundation coverage` (already Radia-reviewed clean under AST-1206, not yet on `origin/dev`) — contact/config/api_contact test + bible files in the three-dot diff are that carry-over, not AST-1209 scope; `astral.standards.in-scope-only` conforms on the actual `src/**` footprint (`dispatcher.py` only).
+
+**Pattern conformance:** `pattern.config.config-block`, `pattern.batch.entity-claim-process-release`, `pattern.state.entity-state-transitions` cited in the ticket — first and third conform (no config/consult/state-transition edits this diff); second is the needs-discussion above.
+
+**Notes:** No formal Joan-Excluded-list straggler check triggered — Joan's plan-rubric comment states a `Considered` scope (universal + 8 parent-cited scoped statutes), not a distinct Excluded attachment; the ticket description's own "Considered but excluded" section is definition-time scoping, not a C4 artifact. Joan's plan-rubric `needs-discussion` (finding 2, claim-process-release) is the same item this independent full-sweep lands on.
+
+context_tokens≈62000
+
+— Radia
