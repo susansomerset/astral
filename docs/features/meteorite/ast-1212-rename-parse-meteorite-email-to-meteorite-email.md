@@ -173,3 +173,15 @@ print('caller path OK')
 - **Seed / agent tables in repo JSON:** Catalog row identity renames with the product key; fixture surgically synced without absorbing 53↔51 drift.
 - **§3.3 imports / layers:** No new imports or layer crossings.
 - **Betty test-tree ban:** No edits under `tests/` or `docs/test-bible/**` — expected component asserts on the old key are Betty’s post–Code Complete work.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`
+**Plan path:** `docs/features/meteorite/ast-1212-rename-parse-meteorite-email-to-meteorite-email.md`
+
+**Built tip:** `099007f539c8ff4b8792247a56f06d34bda20f53` (`099007f5`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `f048dfd4` | config task key meteorite_email |
+| 2 | `099007f5` | agent_task identity meteorite_email (+ surgical AST-756 fixture) |
