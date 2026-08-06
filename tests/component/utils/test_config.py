@@ -2827,6 +2827,25 @@ class TestAst1195SchemaNullsAndBotBlocked:
         assert skipped["bulk_retry_to_state_by_from_state"]["BOT_BLOCKED"] == "PASSED_JOBLIST"
 
 
+class TestAst1197QualifyMeteoriteApplyKnobs:
+    """AST-1197: email_link_prefix + bot_blocked_state + challenge bot_signals."""
+
+    def test_task_config_email_and_bot_knobs(self) -> None:
+        from src.utils import config as cfg
+
+        tc = cfg.TASK_CONFIG["qualify_meteorite"]
+        assert tc["email_link_prefix"] == "email-"
+        assert tc["bot_blocked_state"] == "BOT_BLOCKED"
+        assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
+
+    def test_challenge_bot_signals_present(self) -> None:
+        from src.utils import config as cfg
+
+        signals = cfg.TRACKER_CONFIG["jd_classifier"]["bot_signals"]
+        assert "Additional Verification Required" in signals
+        assert "Troubleshooting Cloudflare Errors" in signals
+
+
 # Branches: TRACKER uuid_path_segment_pattern present + anchored (AST-1120).
 class TestAst1120UuidPathSegmentPattern:
     def test_pattern_anchored_fullmatch(self) -> None:

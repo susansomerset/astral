@@ -1389,6 +1389,8 @@ class TestAdhocHelpers:
         batch = admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["j1", "j2"])
         assert batch.startswith("METEORITE JOBS:")
         assert "000: job_link:" in batch
+        # AST-1197: lockstep with consult assemble CONTENT label.
+        assert "CONTENT:\njd-j1" in batch and "CONTENT:\njd-j2" in batch
         assert "jd-j1" in batch and "jd-j2" in batch
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["missing"]) == ""
