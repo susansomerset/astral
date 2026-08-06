@@ -10,13 +10,13 @@ Owns the general **task-alias** contract in `TASK_CONFIG`: any entry may declare
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/utils/config.py` | Add `master_task_key` contract + resolve helpers + load-time asserts; add `meteorite_grade_do` / `meteorite_grade_get` `TASK_CONFIG` aliases with meteorite outcomes; empty `METEORITE_GDL_OUTCOME_BY_TASK`; wire admin trigger/batch-mode defaults for the new keys | utils |
+| `src/utils/config.py` | Add `master_task_key` contract + resolve helpers + load-time asserts (incl. alias outcomes ∈ `JOB_STATES`); add `meteorite_grade_do` / `meteorite_grade_get` `TASK_CONFIG` aliases with meteorite outcomes + field-driven `trigger_state`; empty `METEORITE_GDL_OUTCOME_BY_TASK`; add alias keys to `_DISPATCH_BATCH_CALL_MODE_ONE` | utils |
 
 **No changes expected:** `src/core/consult.py`, `src/core/agent.py`, `src/core/dispatcher.py`, `data/admin/agent_task.json`, `METEORITE_DISPATCH_TASKS` / `SEED_CONFIG` meteorite SQL (still `grade_do` / `grade_get` until **AST-1222**), frontend, `tests/` / bible (Betty after Code Complete).
 
 ## Stage 1: Resolve helpers + alias validation + retire Do/Get overlay source
 
-**Done when:** `resolve_task_key_for_content` / `is_task_alias` exist and behave as specified; load-time asserts reject missing masters and alias chains; `METEORITE_GDL_OUTCOME_BY_TASK` is an empty dict (no `grade_do` / `grade_get` overlay entries); `python3 -m py_compile src/utils/config.py` succeeds (repo venv: `~/astral/.venv/bin/python`).
+**Done when:** `resolve_task_key_for_content` / `is_task_alias` exist and behave as specified; load-time asserts reject missing masters and alias chains, and (once aliases exist) require job-entity alias `pass_state` / `fail_state` / `error_state` ∈ `JOB_STATES`; `METEORITE_GDL_OUTCOME_BY_TASK` is an empty dict (no `grade_do` / `grade_get` overlay entries); `python3 -m py_compile src/utils/config.py` succeeds (repo venv: `~/astral/.venv/bin/python`).
 
 1. In `src/utils/config.py`, immediately after `get_task_keys` (near other TASK_CONFIG helpers ~line 1017), add:
 
@@ -68,7 +68,19 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
     ), (
         f"alias chain forbidden: {_alias_key!r} -> {_master_key!r} is itself an alias"
     )
+    # Restore the invariant formerly guarded by METEORITE_GDL_OUTCOME_BY_TASK
+    # value ∈ JOB_STATES (that assert is vacuous once the overlay is {}).
+    if (_alias_cfg or {}).get("entity_type") == "job":
+        for _outcome_key in ("pass_state", "fail_state", "error_state"):
+            _outcome = (_alias_cfg or {}).get(_outcome_key)
+            if isinstance(_outcome, str) and _outcome.strip():
+                assert _outcome.strip() in JOB_STATES, (
+                    f"TASK_CONFIG[{_alias_key!r}].{_outcome_key}={_outcome!r} "
+                    f"is not a JOB_STATES key"
+                )
 ```
+
+⚠️ **Decision — alias outcome ∈ `JOB_STATES` in this loop:** Emptying the overlay removes the only module-load check that those meteorite Do/Get strings were registered states. There is no generic TASK_CONFIG pass/fail/error → `JOB_STATES` assert elsewhere. Require it for job-entity aliases here so a typo cannot ship silently.
 
 3. Replace the live Do/Get overlay body of `METEORITE_GDL_OUTCOME_BY_TASK` with an empty dict and rewrite the preceding comments to state:
 
@@ -87,7 +99,9 @@ METEORITE_GDL_OUTCOME_BY_TASK = {}
 
 Keep the existing asserts that iterate `METEORITE_GDL_OUTCOME_BY_TASK.values()` (they remain valid on `{}`). Keep `assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)`.
 
-⚠️ **Decision — empty overlay now, do not leave dual source:** Parent AC requires the overlay no longer supply Do/Get outcomes. Leaving `grade_do` / `grade_get` overlay entries alongside alias pass/fail would violate `astral.standards.no-hardcoded-sets` (two sources). Intermediate gap until **AST-1221**/**AST-1222**: meteorite jobs still claimed under shared `grade_do` / `grade_get` will use classic Gaze pass/fail from `TASK_CONFIG` (no overlay). That is accepted epic sequencing — do **not** rewire consult here to paper over it.
+⚠️ **Decision — empty overlay now, do not leave dual source:** Parent AC requires the overlay no longer supply Do/Get outcomes. Leaving `grade_do` / `grade_get` overlay entries alongside alias pass/fail would violate `astral.standards.no-hardcoded-sets` (two sources). Intermediate gap until **AST-1221**/**AST-1222**: meteorite jobs still claimed under shared `grade_do` / `grade_get` will use classic Gaze pass/fail from `TASK_CONFIG` (no overlay) and may trip `prior_states` in `transition_job_state`. That is accepted epic sequencing — do **not** rewire consult here to paper over it.
+
+**QA note (ftr-internal):** Do **not** exercise meteorite Do/Get on a tree that has only AST-1220 merged — wait for AST-1221 + AST-1222 (or full ftr rollup) before that path is operator-safe.
 
 4. Verify Stage 1 (no alias entries required yet for this gate):
 
@@ -106,7 +120,7 @@ assert c.resolve_task_key_for_content('no_such') == 'no_such'
 
 ## Stage 2: First-consumer alias entries + admin dispatch defaults
 
-**Done when:** `meteorite_grade_do` / `meteorite_grade_get` exist in `TASK_CONFIG` with `master_task_key` → `grade_do` / `grade_get`, meteorite pass/fail/error matching the former overlay, and related scored orchestration; admin defaults resolve trigger states `METEORITE_PASSED_JD` / `METEORITE_PASSED_DO`; `METEORITE_DISPATCH_TASKS` still uses `grade_do` / `grade_get`; helpers resolve the new keys to their masters; import-time asserts pass.
+**Done when:** `meteorite_grade_do` / `meteorite_grade_get` exist in `TASK_CONFIG` with `master_task_key` → `grade_do` / `grade_get`, meteorite pass/fail/error matching the former overlay, field-driven `trigger_state` `METEORITE_PASSED_JD` / `METEORITE_PASSED_DO`, and related scored orchestration; `dispatch_task_admin_defaults` resolves those triggers via `TASK_CONFIG[…]["trigger_state"]` (no new `_dispatch_trigger_state_for_task_key` branches); `METEORITE_DISPATCH_TASKS` still uses `grade_do` / `grade_get`; helpers resolve the new keys to their masters; import-time asserts pass.
 
 1. In `TASK_CONFIG`, immediately after the `"grade_get"` block (before `"grade_like"`), insert:
 
@@ -138,7 +152,7 @@ assert c.resolve_task_key_for_content('no_such') == 'no_such'
         "context_format": "meteorite_grade_do_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
-        "trigger_state": None,
+        "trigger_state": "METEORITE_PASSED_JD",
     },
     "meteorite_grade_get": {
         "master_task_key": "grade_get",
@@ -164,30 +178,23 @@ assert c.resolve_task_key_for_content('no_such') == 'no_such'
         "context_format": "meteorite_grade_get_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
-        "trigger_state": None,
+        "trigger_state": "METEORITE_PASSED_DO",
     },
 ```
 
 ⚠️ **Decision — duplicate scored schema fields on the alias, omit `agent_task`:** Alias owns orchestration + scoring shape so `TASK_CONFIG[alias]` is self-sufficient for pass/fail math once **AST-1221** routes by alias key. Prompt identity is **not** declared here (`agent_task` omitted) — content lookup uses `resolve_task_key_for_content` → master; **AST-1222** seeds grouping-only `agent_task` rows. Do **not** copy master's Gaze pass/fail (`PASSED_DO` etc.) onto the alias.
 
+⚠️ **Decision — field-driven `trigger_state` on aliases, no new helper branches:** Set `"trigger_state": "METEORITE_PASSED_JD"` / `"METEORITE_PASSED_DO"` on the alias entries. `_dispatch_trigger_state_for_task_key` already falls through to `TASK_CONFIG[key]["trigger_state"]` when no per-key branch matches (`config.py` ~2878–2880); `api_admin._dispatch_task_key_form_meta` uses the same field. Do **not** add `if task_key == "meteorite_grade_do"` branches — that would be a meteorite-only inline rule contradicting field-driven resolve / `astral.standards.no-hardcoded-sets`. (AST-1055’s `meteorite_like` helper branch is a pre-existing pattern, not a binding precedent for new aliases.)
+
 ⚠️ **Decision — place aliases after `grade_get`, not after `meteorite_like`:** Masters must exist before alias keys in the literal dict so a human reading the file sees master → alias adjacency; load-time assert already requires masters present regardless of order.
+
+⚠️ **Decision — expected `_TRANSITION_STATES_USED_BY_SCORED_TASKS` delta (benign):** Adding two `scored: True` aliases injects `METEORITE_FAILED_DO`, `METEORITE_FAILED_TECHNICAL_DO`, `METEORITE_FAILED_GET`, `METEORITE_FAILED_TECHNICAL_GET` into `_TRANSITION_STATES_USED_BY_SCORED_TASKS` (via `_task_config_transition_strings` on pass/fail/error). That flips `dispatch_claim_uses_score_floor` / admin `is_scored` defaults for those four states. Symmetric with classic `FAILED_DO` already in the set via `grade_do`; no `METEORITE_DISPATCH_TASKS` row claims a FAILED trigger. Pass outcomes (`METEORITE_PASSED_DO` / `METEORITE_PASSED_GET`) were already reachable via the former overlay / other scored meteorite tasks. Do **not** point any alias `not_ready_state` at its own claim trigger (see `evaluate_meteorite` comment ~615–623). Side-effect check: `_task_config_transition_strings` does **not** read `trigger_state`; both alias triggers are already in `PASSED_SCORE_GATED_STATES` and `JOB_STATES`, so `_dispatch_sort_by_for` / `dispatch_task_admin_defaults` resolve unchanged.
 
 2. In `_DISPATCH_BATCH_CALL_MODE_ONE`, add `"meteorite_grade_do"` and `"meteorite_grade_get"` next to `"grade_do", "grade_get"` (same frozenset — batch_call_mode 1).
 
-3. In `_dispatch_trigger_state_for_task_key`, after the `grade_get` / `grade_do` branches, add:
+Do **not** change `METEORITE_DISPATCH_TASKS` (still `task_key: "grade_do"` / `"grade_get"`). Do **not** edit `SEED_CONFIG` meteorite INSERT strings. Do **not** add hardcoded frozenset entries for entity_type — aliases carry `"entity_type": "job"` so `_dispatch_entity_type_for_task_key` resolves via `TASK_CONFIG`. Do **not** edit `_dispatch_trigger_state_for_task_key` for these keys.
 
-```python
-    if task_key == "meteorite_grade_do":
-        return "METEORITE_PASSED_JD"
-    if task_key == "meteorite_grade_get":
-        return "METEORITE_PASSED_DO"
-```
-
-Do **not** change `METEORITE_DISPATCH_TASKS` (still `task_key: "grade_do"` / `"grade_get"`). Do **not** edit `SEED_CONFIG` meteorite INSERT strings. Do **not** add hardcoded frozenset entries for entity_type — aliases carry `"entity_type": "job"` so `_dispatch_entity_type_for_task_key` resolves via `TASK_CONFIG`.
-
-⚠️ **Decision — admin trigger defaults on this ticket:** Same pattern as **AST-1055** (`meteorite_like` trigger rule landed with the TASK_CONFIG twin; dispatch row retarget stayed on the dispatch sibling). Without these branches, `dispatch_task_admin_defaults("meteorite_grade_do")` raises and Admin cannot offer the new keys once they appear in `get_task_keys()`.
-
-4. Verify Stage 2:
+3. Verify Stage 2:
 
 ```bash
 ~/astral/.venv/bin/python -c "
@@ -204,6 +211,7 @@ assert do['master_task_key'] == 'grade_do'
 assert do['pass_state'] == 'METEORITE_PASSED_DO'
 assert do['fail_state'] == 'METEORITE_FAILED_DO'
 assert do['error_state'] == 'METEORITE_FAILED_TECHNICAL_DO'
+assert do['trigger_state'] == 'METEORITE_PASSED_JD'
 assert 'agent_task' not in do
 
 get = c.TASK_CONFIG['meteorite_grade_get']
@@ -211,17 +219,27 @@ assert get['master_task_key'] == 'grade_get'
 assert get['pass_state'] == 'METEORITE_PASSED_GET'
 assert get['fail_state'] == 'METEORITE_FAILED_GET'
 assert get['error_state'] == 'METEORITE_FAILED_TECHNICAL_GET'
+assert get['trigger_state'] == 'METEORITE_PASSED_DO'
 assert 'agent_task' not in get
 
 assert c.METEORITE_GDL_OUTCOME_BY_TASK == {}
 assert c.METEORITE_GDL_OUTCOME_BY_TASK.get('grade_do') is None
 
+# Field-driven path — not a new per-key branch (masters still use helper branches + trigger_state None).
+assert c.TASK_CONFIG['grade_do'].get('trigger_state') is None
 assert c._dispatch_trigger_state_for_task_key('meteorite_grade_do') == 'METEORITE_PASSED_JD'
 assert c._dispatch_trigger_state_for_task_key('meteorite_grade_get') == 'METEORITE_PASSED_DO'
 d_do = c.dispatch_task_admin_defaults('meteorite_grade_do')
 assert d_do['trigger_state'] == 'METEORITE_PASSED_JD'
 assert d_do['entity_type'] == 'job'
 assert d_do['batch_call_mode'] == 1
+# Derived-set delta: alias fail/error strings now in scored transition set.
+for st in (
+    'METEORITE_FAILED_DO', 'METEORITE_FAILED_TECHNICAL_DO',
+    'METEORITE_FAILED_GET', 'METEORITE_FAILED_TECHNICAL_GET',
+):
+    assert st in c._TRANSITION_STATES_USED_BY_SCORED_TASKS
+    assert c.dispatch_claim_uses_score_floor(st) is True
 
 assert all(
     e['task_key'] in ('grade_do', 'grade_get') or e['task_key'] not in (
@@ -238,21 +256,34 @@ assert ('meteorite_grade_do', 'METEORITE_PASSED_JD') not in by
 ~/astral/.venv/bin/python -m py_compile src/utils/config.py
 ```
 
-**Ritual:** `code(AST-1220): meteorite_grade_do/get alias TASK_CONFIG + admin defaults`
+**Ritual:** `code(AST-1220): meteorite_grade_do/get alias TASK_CONFIG + batch-mode`
 
 ## Self-Assessment
 
-**Scope:** Single-Component — only `src/utils/config.py` (utils config contract + first-consumer alias literals + admin default wiring).
+**Scope:** Single-Component — only `src/utils/config.py` (utils config contract + first-consumer alias literals + batch-mode frozenset).
 
-**Conf:** high — reuses `pattern.config.config-block`, mirrors `meteorite_like` twin field shape for scored orchestration, and follows the parent’s field-driven `master_task_key` design with concrete helper names and load-time asserts.
+**Conf:** high — field-driven `master_task_key` + `trigger_state`, load-time master/chain/outcome asserts, and scored twin field shape are concrete; Joan round-1 gaps (helper branches, vacuous overlay assert, derived-set silence) are closed in-plan.
 
-**Risk:** Medium — emptying `METEORITE_GDL_OUTCOME_BY_TASK` before **AST-1221**/**AST-1222** land means in-flight meteorite Do/Get still keyed as `grade_do`/`grade_get` temporarily use classic Gaze outcomes; wrong alias pass/fail strings would mis-route meteorite state once siblings wire aliases.
+**Risk:** Medium — emptying `METEORITE_GDL_OUTCOME_BY_TASK` before **AST-1221**/**AST-1222** land means in-flight meteorite Do/Get still keyed as `grade_do`/`grade_get` temporarily use classic Gaze outcomes; wrong alias pass/fail strings would mis-route meteorite state once siblings wire aliases (mitigated by new `JOB_STATES` asserts).
 
 ## Code rules check
 
-- §1.3 DRY — one resolve helper, no per-pair maps.
-- §1.4 / `astral.standards.no-hardcoded-sets` — alias links are `master_task_key` fields, not a meteorite-only dict; overlay emptied rather than dual-sourced.
+- §1.3 DRY — one resolve helper, no per-pair maps; admin trigger via existing `TASK_CONFIG.trigger_state` fallback, not new branches.
+- §1.4 / `astral.standards.no-hardcoded-sets` — alias links are `master_task_key` fields, not a meteorite-only dict; overlay emptied rather than dual-sourced; no meteorite-only `_dispatch_trigger_state_for_task_key` branches.
 - §2.1 config source of truth — contract and first consumers live in `TASK_CONFIG`.
 - §3.3 imports — utils only; no core/UI edits on this ticket.
 - §3.5 naming — domain keys `meteorite_grade_do` / `meteorite_grade_get` (not ticket ids).
 - Out of scope honored — no consult overlay retirement call-site (**AST-1221**), no seed/dispatch retarget (**AST-1222**), no UI audit (**AST-1185**).
+
+## Revisions
+
+### Revision 1 — 2026-08-06
+
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE @ tip `f9d5f6d3`).
+
+Changes:
+
+- **fix-now:** Alias entries set field-driven `trigger_state` (`METEORITE_PASSED_JD` / `METEORITE_PASSED_DO`); deleted Stage 2 step that added `_dispatch_trigger_state_for_task_key` per-key branches.
+- **discuss:** Extended Stage 1 alias-contract assert loop so job-entity aliases require `pass_state` / `fail_state` / `error_state` ∈ `JOB_STATES` (restores invariant lost when overlay empties).
+- **discuss:** Documented expected `_TRANSITION_STATES_USED_BY_SCORED_TASKS` / `dispatch_claim_uses_score_floor` delta for the four meteorite FAILED_* strings; verify script asserts membership.
+- **acceptable (carried):** QA note — do not exercise meteorite Do/Get on a tree with only AST-1220 merged.
