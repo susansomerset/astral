@@ -1657,9 +1657,11 @@ class TestAst1054MeteoriteDispatchProvision:
         assert first["skipped"] == 0
         assert first.get("retired", 0) == 0
         by_key = {s["task_key"]: s for s in saves}
-        # AST-1060: evaluate_jd inserts at METEORITE_QUALIFIED.
-        assert by_key["evaluate_jd"]["trigger_state"] == "METEORITE_QUALIFIED"
-        assert by_key["evaluate_jd"]["score_floor"] is None
+        # Twin GDL entry: evaluate_meteorite@METEORITE_QUALIFIED (not evaluate_jd).
+        assert "evaluate_meteorite" in dispatcher_mod.TASK_CONFIG
+        assert by_key["evaluate_meteorite"]["trigger_state"] == "METEORITE_QUALIFIED"
+        assert by_key["evaluate_meteorite"]["score_floor"] is None
+        assert "evaluate_jd" not in by_key
         assert by_key["grade_do"]["score_floor"] == 0.0
         assert by_key["grade_get"]["score_floor"] == 0.0
         if qualify_present:
@@ -1709,15 +1711,16 @@ class TestAst1054MeteoriteDispatchProvision:
         assert by_key["meteorite_upshot"]["score_floor"] == 0.0
         assert by_key["meteorite_upshot"]["batch_size"] == 1
 
-    def test_ensure_retires_stale_evaluate_jd_at_meteorite_new(
+    def test_ensure_retires_evaluate_jd_on_meteorite_triggers_when_twin_present(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """AST-1060: delete evaluate_jd@METEORITE_NEW; leave evaluate_jd@JD_READY."""
-        if "qualify_meteorite" not in dispatcher_mod.TASK_CONFIG:
-            pytest.skip("AST-1060 qualify_meteorite not on this tip")
+        """AST-1209: delete evaluate_jd@METEORITE_* when twin present; keep evaluate_jd@JD_READY."""
+        if "evaluate_meteorite" not in dispatcher_mod.TASK_CONFIG:
+            pytest.skip("evaluate_meteorite twin not on this tip")
         existing = [
             {"id": 10, "task_key": "evaluate_jd", "trigger_state": "METEORITE_NEW"},
-            {"id": 11, "task_key": "evaluate_jd", "trigger_state": "JD_READY"},
+            {"id": 11, "task_key": "evaluate_jd", "trigger_state": "METEORITE_QUALIFIED"},
+            {"id": 12, "task_key": "evaluate_jd", "trigger_state": "JD_READY"},
         ]
         saves: list[dict] = []
         deleted: list[int] = []
@@ -1744,16 +1747,51 @@ class TestAst1054MeteoriteDispatchProvision:
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
         monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", _delete)
         out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
-        assert out["retired"] == 1
-        assert deleted == [10]
+        assert out["retired"] == 2
+        assert set(deleted) == {10, 11}
         assert any(
-            s["task_key"] == "evaluate_jd" and s["trigger_state"] == "METEORITE_QUALIFIED"
+            s["task_key"] == "evaluate_meteorite" and s["trigger_state"] == "METEORITE_QUALIFIED"
             for s in saves
         )
         assert any(r["task_key"] == "evaluate_jd" and r["trigger_state"] == "JD_READY" for r in existing)
         assert not any(
-            r["task_key"] == "evaluate_jd" and r["trigger_state"] == "METEORITE_NEW" for r in existing
+            r["task_key"] == "evaluate_jd" and str(r["trigger_state"]).startswith("METEORITE_")
+            for r in existing
         )
+
+    def test_ensure_skips_retire_when_twin_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1209: never strip evaluate_jd@METEORITE_* if twin row cannot be inserted."""
+        existing = [
+            {"id": 20, "task_key": "evaluate_jd", "trigger_state": "METEORITE_QUALIFIED"},
+            {"id": 21, "task_key": "evaluate_jd", "trigger_state": "JD_READY"},
+        ]
+        deleted: list[int] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", MagicMock())
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "delete_dispatch_task",
+            lambda row_id: deleted.append(row_id),
+        )
+        # Drop twin from TASK_CONFIG so insert loop skips it (skipped_missing_config).
+        patched = {
+            k: v for k, v in dispatcher_mod.TASK_CONFIG.items() if k != "evaluate_meteorite"
+        }
+        monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", patched)
+        out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert out["retired"] == 0
+        assert deleted == []
+        assert any(
+            r["task_key"] == "evaluate_jd" and r["trigger_state"] == "METEORITE_QUALIFIED"
+            for r in existing
+        )
+        assert any(r["task_key"] == "evaluate_jd" and r["trigger_state"] == "JD_READY" for r in existing)
 
     def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
@@ -1795,11 +1833,7 @@ class TestAst1054MeteoriteDispatchProvision:
         monkeypatch.setattr(
             dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
         )
-        monkeypatch.setattr(
-            dispatcher_mod,
-            "provision_candidate_stage_dispatch_tasks",
-            MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
-        )
+        # start_scheduler provision order on tip: meteorite then gaze (no stage provision hook).
         mprovision = MagicMock(
             return_value={
                 "template_candidate_id": "tmpl",

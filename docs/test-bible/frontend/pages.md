@@ -1426,6 +1426,24 @@ cd src/ui/frontend && npm run test:component -- AdminManageSlack
 
 ---
 
+### AST-1208 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1208-manage-slack-ui-debug-toggle`.
+
+Admin **Manage Slack** (§6c): Debug On/Off beside Listen via `GET`/`PUT` `/api/admin/contact/debug` (`debug_enabled`). Debug load failure toasts + shows `—` / disables Debug button — does **not** set page `error` or hide Listen / @Estelle activity. API foundation: **`docs/test-bible/ui/api/api_contact.md`** (AST-1206).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page Debug toggle + isolation (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** (AST-1208 cases + listen Off/On scoped) |
+
+**Broken / obsolete:** AST-1067/1094/1105 cases that assumed only one `"Off"`/`"On"` and no `/debug` GET — revised: default mock includes debug GET; listen assertions scoped to Listen label / Enable listen button.
+
+**Integration:** no existing Manage Slack debug scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+
 ### AST-1104 · AST-1102
 
 **Parent:** [AST-1102 — Bug when select All candidates and All avail count](https://linear.app/astralcareermatch/issue/AST-1102/bug-when-select-all-candidates-and-all-avail-count). **Publish:** `origin/sub/AST-1102/AST-1104-fix-sa-blank-candidate-all-avail-all`.
