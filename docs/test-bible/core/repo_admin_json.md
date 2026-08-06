@@ -341,3 +341,95 @@ Ruth `agent_task` row identity `parse_meteorite_email` → **`meteorite_email`**
   tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
   -q
 ```
+
+
+### AST-1218 · AST-1183
+
+**Parent:** [AST-1183 — Gaze Review rename + Meteorite Review sibling + agent_task grouping](https://linear.app/astralcareermatch/issue/AST-1183/gaze-review-rename-meteorite-review-sibling-agent-task-grouping). **Publish:** `origin/sub/AST-1183/AST-1218-rename-job-review-to-gaze-review-in-agent-task-seed`.
+
+Classic gaze/GDL `agent_task` rows: `task_group_name` **Job Review** → **Gaze Review** (order still `"4000"`). Meteorite-track rows stay **Job Review** until sibling **AST-1219**. Surgical AST-756 fixture label sync on classic keys only — no whole-file `cp`; AST-1211 pair equality preserved.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Classic Gaze Review + meteorite Job Review | `data/admin/agent_task.json` | **`TestAst1218GazeReviewClassicGroupLabel`**; revised **`TestAst878FetchCulturePagesCatalogRow`** |
+| Fixture classic label lockstep | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1218GazeReviewClassicGroupLabel::test_fixture_classic_label_lockstep`** |
+| Meteorite Job Review asserts unchanged | same | **`TestAst1060QualifyMeteoriteCatalogRow`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`** (group-name lines); **`TestAst1055MeteoriteCatalogRows`** group-name line still correct — full class has pre-existing `meteorite_like` prompt-string drift on `origin/dev` (not this child) |
+| AST-1211 lockstep still green | same | **`TestAst1211EvaluateCraftFixtureLockstep`** |
+
+**Broken / obsolete:** **`TestAst878FetchCulturePagesCatalogRow`** asserted `task_group_name == "Job Review"` on classic `fetch_culture_pages`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
+  tests/component/core/test_repo_admin_json.py::TestAst878FetchCulturePagesCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```
+
+
+### AST-1219 · AST-1183
+
+**Parent:** [AST-1183 — Gaze Review rename + Meteorite Review sibling + agent_task grouping](https://linear.app/astralcareermatch/issue/AST-1183/gaze-review-rename-meteorite-review-sibling-agent-task-grouping). **Publish:** `origin/sub/AST-1183/AST-1219-meteorite-review-group-move-meteorite-agent-task-rows`.
+
+Meteorite-track `agent_task` rows move to **Meteorite Review** (`task_group_order` `"4500"`, within-section `task_seq` `1`…`6`). Classic Gaze Review rows untouched. Surgical AST-756 grouping-field sync on six keys; AST-1211 pair equality preserved; `craft_evaluate_meteorite_rubric` stays Candidate Artifacts. Zero current rows remain **Job Review**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Meteorite Review membership + no Job Review | `data/admin/agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership`**; revised **`TestAst1218GazeReviewClassicGroupLabel`** (meteorite half) |
+| Fixture grouping lockstep + AST-1211 | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership::test_fixture_grouping_lockstep_and_ast1211`** |
+| Per-row group/seq pins | same | revised **`TestAst1055MeteoriteCatalogRows`**, **`TestAst1060QualifyMeteoriteCatalogRow`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`** |
+| Scheduled Actions section header mock | frontend pages | revised **`test_AdminScheduledActions_AST1106.test.tsx`** (Job Review → Meteorite Review) |
+
+**Broken / obsolete:** meteorite **Job Review** / fractional seq asserts (`2.3`…`11`); AST-1218 meteorite-half **Job Review**/`4000`; Scheduled Actions mock/header still **Job Review** for `gaze_email`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1219MeteoriteReviewGroupMembership \
+  tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```
+
+Vitest (when running full frontend / this page file):
+
+```bash
+cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx
+```
+
+### AST-1222 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`.
+
+Grouping-only `meteorite_grade_do` / `meteorite_grade_get` under **Meteorite Review** / `"4500"` / seq `5`/`6` (empty prompts, `agent_id` `n/a`); `meteorite_like` / `meteorite_upshot` seq → `7`/`8`; catalog+fixture **55** keys. Dispatch / config: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias grouping-only rows + fixture lockstep | `data/admin/agent_task.json`, AST-756 fixture | **`TestAst1222MeteoriteGradeAliasCatalogRows`** |
+| Catalog count 53→55 + frozenset | same | revised **`TestAst786AgentTaskRepoJsonSeed`**, **`TestAst1211EvaluateCraftFixtureLockstep`** |
+| Meteorite Review seq map (8 keys) | same | revised **`TestAst1218GazeReviewClassicGroupLabel`**, **`TestAst1219MeteoriteReviewGroupMembership`**, **`TestAst1055MeteoriteCatalogRows`** |
+
+**Broken / obsolete:** 53-count / six-key Meteorite Review exclusivity; like/upshot seq `5`/`6`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1222MeteoriteGradeAliasCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1219MeteoriteReviewGroupMembership \
+  tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```

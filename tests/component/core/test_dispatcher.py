@@ -1662,8 +1662,12 @@ class TestAst1054MeteoriteDispatchProvision:
         assert by_key["evaluate_meteorite"]["trigger_state"] == "METEORITE_QUALIFIED"
         assert by_key["evaluate_meteorite"]["score_floor"] is None
         assert "evaluate_jd" not in by_key
-        assert by_key["grade_do"]["score_floor"] == 0.0
-        assert by_key["grade_get"]["score_floor"] == 0.0
+        assert by_key["meteorite_grade_do"]["score_floor"] == 0.0
+        assert by_key["meteorite_grade_get"]["score_floor"] == 0.0
+        assert by_key["meteorite_grade_do"]["trigger_state"] == "METEORITE_PASSED_JD"
+        assert by_key["meteorite_grade_get"]["trigger_state"] == "METEORITE_PASSED_DO"
+        assert "grade_do" not in by_key
+        assert "grade_get" not in by_key
         if qualify_present:
             assert by_key["qualify_meteorite"]["trigger_state"] == "METEORITE_NEW"
             assert by_key["qualify_meteorite"]["score_floor"] is None
@@ -1756,6 +1760,61 @@ class TestAst1054MeteoriteDispatchProvision:
         assert any(r["task_key"] == "evaluate_jd" and r["trigger_state"] == "JD_READY" for r in existing)
         assert not any(
             r["task_key"] == "evaluate_jd" and str(r["trigger_state"]).startswith("METEORITE_")
+            for r in existing
+        )
+
+    def test_ensure_retires_shared_key_meteorite_do_get_when_aliases_present(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1222: drop grade_do@METEORITE_PASSED_JD / grade_get@METEORITE_PASSED_DO once aliases exist."""
+        if "meteorite_grade_do" not in dispatcher_mod.TASK_CONFIG:
+            pytest.skip("AST-1222 alias TASK_CONFIG not on tip")
+        existing = [
+            {"id": 30, "task_key": "grade_do", "trigger_state": "METEORITE_PASSED_JD"},
+            {"id": 31, "task_key": "grade_get", "trigger_state": "METEORITE_PASSED_DO"},
+            {"id": 32, "task_key": "grade_do", "trigger_state": "PASSED_JD"},
+            {"id": 33, "task_key": "grade_get", "trigger_state": "PASSED_DO"},
+        ]
+        saves: list[dict] = []
+        deleted: list[int] = []
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            existing.append(
+                {
+                    "task_key": kwargs["task_key"],
+                    "trigger_state": kwargs["trigger_state"],
+                    "id": 100 + len(existing),
+                }
+            )
+
+        def _delete(row_id: int) -> None:
+            deleted.append(row_id)
+            existing[:] = [r for r in existing if int(r["id"]) != int(row_id)]
+
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(existing),
+        )
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        monkeypatch.setattr(dispatcher_mod, "delete_dispatch_task", _delete)
+        out = dispatcher_mod.ensure_meteorite_dispatch_tasks("c1")
+        assert out["retired"] >= 2
+        assert set(deleted) >= {30, 31}
+        assert 32 not in deleted and 33 not in deleted
+        assert any(
+            s["task_key"] == "meteorite_grade_do" and s["trigger_state"] == "METEORITE_PASSED_JD"
+            for s in saves
+        )
+        assert any(
+            s["task_key"] == "meteorite_grade_get" and s["trigger_state"] == "METEORITE_PASSED_DO"
+            for s in saves
+        )
+        assert any(r["task_key"] == "grade_do" and r["trigger_state"] == "PASSED_JD" for r in existing)
+        assert any(r["task_key"] == "grade_get" and r["trigger_state"] == "PASSED_DO" for r in existing)
+        assert not any(
+            r["task_key"] == "grade_do" and r["trigger_state"] == "METEORITE_PASSED_JD"
             for r in existing
         )
 

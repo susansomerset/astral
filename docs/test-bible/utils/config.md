@@ -2558,3 +2558,25 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1210EvaluateMeteoriteTwinConfig \
   -q
 ```
+
+### AST-1222 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`.
+
+`METEORITE_DISPATCH_TASKS` Do/Get → `meteorite_grade_do` @ `METEORITE_PASSED_JD` / `meteorite_grade_get` @ `METEORITE_PASSED_DO`; matching `SEED_CONFIG["dispatch_task-meteorite"]` INSERT SQL. Grouping catalog key stays on the alias. Seed / provision: **`docs/test-bible/core/repo_admin_json.md`** · **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + SQL retarget + grouping key | `src/utils/config.py` | **`TestAst1222MeteoriteAliasDispatchAndSeed`**; revised **`TestAst1054MeteoriteGdlDispatch`**, **`TestAst1220TaskAliasConfigContract`** |
+
+**Broken / obsolete:** shared-key meteorite Do/Get dispatch lookups; AST-1220 “still shared until AST-1222” asserts.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1222MeteoriteAliasDispatchAndSeed \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  -q
+```
