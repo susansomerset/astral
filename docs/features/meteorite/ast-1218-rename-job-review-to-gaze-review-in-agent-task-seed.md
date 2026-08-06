@@ -165,3 +165,12 @@ Changes: Narrowed Done when + step 6 to label fields this child controls + AST-1
 context_tokens≈85000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-06
+**Review:** Radia `[code-rubric] revision=1` — **Overall: CLEAN** (findings: none). Tip at intake: `7bd94058` (`docs(AST-1218): Radia review — clean`).
+
+**Fix-now / discuss / advisory:** none — no product or plan changes required beyond this resolution stub.
+
+**Outcome:** `resolve(AST-1218): — clean`; advance to **User Testing** (assignee Ada).
