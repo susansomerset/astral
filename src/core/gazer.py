@@ -84,10 +84,10 @@ def _gazer_company_identifier(row: Dict[str, Any]) -> str:
     return str(row.get("short_name") or "?")
 
 
-# Maps _classify_jd() return value → JD_SCRAPE_FAIL_* state name
+# Maps _classify_jd() return value → scrape-fail / bot state name
 _JD_ERROR_STATES = {
     "cookie":  "JD_SCRAPE_FAIL_COOKIE",
-    "bot":     "JD_SCRAPE_FAIL_BOT",
+    "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
     "missing": "JD_SCRAPE_FAIL_MISSING",
     "closed":  "JD_SCRAPE_FAIL_CLOSED",
 }
