@@ -341,3 +341,32 @@ Ruth `agent_task` row identity `parse_meteorite_email` → **`meteorite_email`**
   tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
   -q
 ```
+
+
+### AST-1218 · AST-1183
+
+**Parent:** [AST-1183 — Gaze Review rename + Meteorite Review sibling + agent_task grouping](https://linear.app/astralcareermatch/issue/AST-1183/gaze-review-rename-meteorite-review-sibling-agent-task-grouping). **Publish:** `origin/sub/AST-1183/AST-1218-rename-job-review-to-gaze-review-in-agent-task-seed`.
+
+Classic gaze/GDL `agent_task` rows: `task_group_name` **Job Review** → **Gaze Review** (order still `"4000"`). Meteorite-track rows stay **Job Review** until sibling **AST-1219**. Surgical AST-756 fixture label sync on classic keys only — no whole-file `cp`; AST-1211 pair equality preserved.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Classic Gaze Review + meteorite Job Review | `data/admin/agent_task.json` | **`TestAst1218GazeReviewClassicGroupLabel`**; revised **`TestAst878FetchCulturePagesCatalogRow`** |
+| Fixture classic label lockstep | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1218GazeReviewClassicGroupLabel::test_fixture_classic_label_lockstep`** |
+| Meteorite Job Review asserts unchanged | same | **`TestAst1060QualifyMeteoriteCatalogRow`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`** (group-name lines); **`TestAst1055MeteoriteCatalogRows`** group-name line still correct — full class has pre-existing `meteorite_like` prompt-string drift on `origin/dev` (not this child) |
+| AST-1211 lockstep still green | same | **`TestAst1211EvaluateCraftFixtureLockstep`** |
+
+**Broken / obsolete:** **`TestAst878FetchCulturePagesCatalogRow`** asserted `task_group_name == "Job Review"` on classic `fetch_culture_pages`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1218GazeReviewClassicGroupLabel \
+  tests/component/core/test_repo_admin_json.py::TestAst878FetchCulturePagesCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1060QualifyMeteoriteCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
+  -q
+```
