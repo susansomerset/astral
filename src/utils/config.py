@@ -39,7 +39,7 @@ Config sections:
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
-  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146)
+  METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals for gaze_email (AST-1089; renamed AST-1212)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
@@ -2297,6 +2297,20 @@ METEORITE_EMAIL_INGEST_CONFIG = {
         "unsubscribe",
         "mailto:",
         "list-manage.com",
+        "/preferences",
+        "/email-settings",
+        "w3.org",
+        "/2000/svg",
+        "schemas.xmlsoap.org",
+        "xmlns=",
+    ),
+    # AST-1213: href fragments excluded from Ruth's --- LINKS --- payload only.
+    # Deliberately narrower than link_exclude_substrings — click-tracking wrappers
+    # (e.g. list-manage.com) stay visible; _ingest_link Playwright resolves final_url.
+    # Do not reuse this key for Playwright candidate filtering.
+    "ruth_payload_link_exclude_substrings": (
+        "unsubscribe",
+        "mailto:",
         "/preferences",
         "/email-settings",
         "w3.org",
