@@ -936,7 +936,6 @@ Shared consult apply gate: incomplete/extra live-rubric grade sets raise before 
   -q
 ```
 
-<<<<<<< Updated upstream
 ### AST-1193 · AST-1163
 
 **Parent:** [AST-1163 — Issues while running anticipate_scan](https://linear.app/astralcareermatch/issue/AST-1163/issues-while-running-anticipate-scan). **Publish:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`.
@@ -957,7 +956,9 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
   tests/component/core/test_consult.py::TestAst1193AnalysisMatchParity \
   tests/component/core/test_consult.py::TestAst513JobTokenContext \
   tests/component/core/test_agent.py::TestAst1193DebugJobContext \
-=======
+  -q
+```
+
 ### AST-1197 · AST-1188
 
 **Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
@@ -978,6 +979,5 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
   tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply \
   tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated::test_debug_detail_includes_link_source_input \
   tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
->>>>>>> Stashed changes
   -q
 ```
