@@ -397,19 +397,21 @@ class TestAst1055MeteoriteCatalogRows:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["meteorite_like"]
         assert row["agent_id"] == "job_analyst_grace"
-        assert row["task_seq"] == 10
-        assert row["task_group_name"] == "Job Review"
+        assert row["task_seq"] == 5  # AST-1219 Meteorite Review within-section seq
+        assert row["task_group_name"] == "Meteorite Review"
+        assert row["task_group_order"] == "4500"
         cache = row["cache_prompt"]
         assert "no employer website, culture pages, or vibe pages" in cache
-        assert "more liberally" in cache
-        assert "Meteorite — liberal X" in cache
+        # Tip wording (liberal judgment) — not the retired "more liberally" / "Meteorite — liberal X" markers.
+        assert "be liberal" in cache.lower()
 
     def test_meteorite_upshot_user_prompt_context(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["meteorite_upshot"]
         assert row["agent_id"] == "principal_recruiter_estelle"
-        assert row["task_seq"] == 11
+        assert row["task_seq"] == 6  # AST-1219 Meteorite Review within-section seq
+        assert row["task_group_name"] == "Meteorite Review"
         prompt = row["user_prompt"]
         assert "### Meteorite context" in prompt
         assert "meteorite-sourced" in prompt
@@ -426,9 +428,10 @@ class TestAst1060QualifyMeteoriteCatalogRow:
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         row = by["qualify_meteorite"]
         assert row["agent_id"] == "college_intern_ruth"
-        assert row["task_group_name"] == "Job Review"
+        assert row["task_group_name"] == "Meteorite Review"
+        assert row["task_group_order"] == "4500"
         assert row["task_name"] == row["task_key"] == "qualify_meteorite"
-        assert row["task_seq"] == 2.5
+        assert row["task_seq"] == 3
         cache = row["cache_prompt"]
         assert "METEORITE" in cache
         assert "company_job_id" in cache
@@ -739,11 +742,12 @@ class TestAst1089ParseMeteoriteEmailCatalogRow:
         assert "parse_meteorite_email" not in by
         row = by["meteorite_email"]
         assert row["agent_id"] == "college_intern_ruth"
-        assert row["task_group_name"] == "Job Review"
+        assert row["task_group_name"] == "Meteorite Review"
+        assert row["task_group_order"] == "4500"
         assert row["task_name"] == row["task_key"] == "meteorite_email"
         # Config → seed identity must agree (Joan discuss on AST-1212 plan).
         assert row["task_key"] == TASK_CONFIG["meteorite_email"]["agent_task"]
-        assert row["task_seq"] == 2.4
+        assert row["task_seq"] == 2
         cache = row["cache_prompt"]
         assert "html_links" in cache
         assert "subject_body" in cache
@@ -753,24 +757,25 @@ class TestAst1089ParseMeteoriteEmailCatalogRow:
         assert "invent" in cache.lower()
         user = row["user_prompt"]
         assert "PARSE_MODE" in user or "parse" in user.lower()
-        assert by["qualify_meteorite"]["task_seq"] == 2.5
+        assert by["qualify_meteorite"]["task_seq"] == 3
 
 
 class TestAst1106GazeEmailCatalogRow:
-    """AST-1106: gaze_email Job Review mailbox shell in repo agent_task JSON."""
+    """AST-1106: gaze_email Meteorite Review mailbox shell in repo agent_task JSON (AST-1219)."""
 
     def test_gaze_email_job_review_empty_prompt_shell(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by = {row["task_key"]: row for row in rows if row.get("current") == 1}
         assert "gaze_email" in by
         row = by["gaze_email"]
-        assert row["task_group_name"] == "Job Review"
+        assert row["task_group_name"] == "Meteorite Review"
+        assert row["task_group_order"] == "4500"
         assert row["task_name"] == row["task_key"] == "gaze_email"
-        assert row["task_seq"] == 2.3
+        assert row["task_seq"] == 1
         assert row["agent_id"] == "n/a"
         assert row["user_prompt"] == ""
-        assert by["meteorite_email"]["task_seq"] == 2.4
-        assert by["qualify_meteorite"]["task_seq"] == 2.5
+        assert by["meteorite_email"]["task_seq"] == 2
+        assert by["qualify_meteorite"]["task_seq"] == 3
 
 
 class TestAst1107TaskNameEqualsTaskKey:
@@ -899,7 +904,7 @@ class TestAst1213MeteoriteEmailVisibleTextPrompts:
 
 
 class TestAst1218GazeReviewClassicGroupLabel:
-    """AST-1218: classic gaze/GDL rows → Gaze Review; meteorite rows stay Job Review."""
+    """AST-1218: classic gaze/GDL rows → Gaze Review (meteorite half revised under AST-1219)."""
 
     _CLASSIC = frozenset(
         {
@@ -914,16 +919,14 @@ class TestAst1218GazeReviewClassicGroupLabel:
             "analysis_upshot",
         }
     )
-    _METEORITE = frozenset(
-        {
-            "gaze_email",
-            "meteorite_email",
-            "qualify_meteorite",
-            "evaluate_meteorite",
-            "meteorite_like",
-            "meteorite_upshot",
-        }
-    )
+    _METEORITE_SEQ = {
+        "gaze_email": 1,
+        "meteorite_email": 2,
+        "qualify_meteorite": 3,
+        "evaluate_meteorite": 4,
+        "meteorite_like": 5,
+        "meteorite_upshot": 6,
+    }
 
     def _current_by_key(self, path: str) -> dict:
         rows = json.loads(Path(path).read_text(encoding="utf-8"))
@@ -935,10 +938,12 @@ class TestAst1218GazeReviewClassicGroupLabel:
         for key in self._CLASSIC:
             assert by[key]["task_group_name"] == "Gaze Review", key
             assert by[key]["task_group_order"] == "4000", key
-        for key in self._METEORITE:
-            assert by[key]["task_group_name"] == "Job Review", key
-            assert by[key]["task_group_order"] == "4000", key
+        for key, seq in self._METEORITE_SEQ.items():
+            assert by[key]["task_group_name"] == "Meteorite Review", key
+            assert by[key]["task_group_order"] == "4500", key
+            assert by[key]["task_seq"] == seq, key
         for key, row in by.items():
+            assert row.get("task_group_name") != "Job Review", key
             if key not in self._CLASSIC:
                 assert row.get("task_group_name") != "Gaze Review", key
 
@@ -947,6 +952,65 @@ class TestAst1218GazeReviewClassicGroupLabel:
         cat = self._current_by_key("data/admin/agent_task.json")
         fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
         assert len(fix) == 53
-        for key in self._CLASSIC | self._METEORITE:
+        for key in self._CLASSIC | frozenset(self._METEORITE_SEQ):
             assert fix[key]["task_group_name"] == cat[key]["task_group_name"], key
             assert fix[key]["task_group_order"] == cat[key]["task_group_order"], key
+            assert fix[key]["task_seq"] == cat[key]["task_seq"], key
+
+
+class TestAst1219MeteoriteReviewGroupMembership:
+    """AST-1219: meteorite rows → Meteorite Review / 4500 / seq 1…6; no Job Review remains."""
+
+    _METEORITE_SEQ = {
+        "gaze_email": 1,
+        "meteorite_email": 2,
+        "qualify_meteorite": 3,
+        "evaluate_meteorite": 4,
+        "meteorite_like": 5,
+        "meteorite_upshot": 6,
+    }
+    _CLASSIC = frozenset(
+        {
+            "gaze",
+            "qualify_job_listings",
+            "fetch_jd",
+            "evaluate_jd",
+            "grade_do",
+            "grade_get",
+            "fetch_culture_pages",
+            "grade_like",
+            "analysis_upshot",
+        }
+    )
+
+    def _current_by_key(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return {r["task_key"]: r for r in rows if r.get("current") == 1}
+
+    def test_catalog_meteorite_review_membership(self) -> None:
+        by = self._current_by_key("data/admin/agent_task.json")
+        assert len(by) == 53
+        for key in self._CLASSIC:
+            assert by[key]["task_group_name"] == "Gaze Review", key
+            assert by[key]["task_group_order"] == "4000", key
+        for key, seq in self._METEORITE_SEQ.items():
+            assert by[key]["task_group_name"] == "Meteorite Review", key
+            assert by[key]["task_group_order"] == "4500", key
+            assert by[key]["task_seq"] == seq, key
+        craft = by["craft_evaluate_meteorite_rubric"]
+        assert craft["task_group_name"] == "Candidate Artifacts"
+        assert craft["task_group_order"] == "2000"
+        for key, row in by.items():
+            assert row.get("task_group_name") != "Job Review", key
+            if key not in self._METEORITE_SEQ:
+                assert row.get("task_group_name") != "Meteorite Review", key
+
+    def test_fixture_grouping_lockstep_and_ast1211(self) -> None:
+        cat = self._current_by_key("data/admin/agent_task.json")
+        fix = self._current_by_key("docs/uat-fixtures/AST-756/expected-agent_task.json")
+        assert len(fix) == 53
+        for key in self._METEORITE_SEQ:
+            for field in ("task_group_name", "task_group_order", "task_seq"):
+                assert fix[key][field] == cat[key][field], (key, field)
+        for key in ("evaluate_meteorite", "craft_evaluate_meteorite_rubric"):
+            assert fix[key] == cat[key], key
