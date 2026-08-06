@@ -2493,3 +2493,24 @@ Live product key rename: `TASK_CONFIG` / `METEORITE_EMAIL_PARSE_CONFIG["task_key
   tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
   -q
 ```
+
+
+### AST-1213 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1213-ai-payload-as-visible-text-and-links`.
+
+`METEORITE_EMAIL_INGEST_CONFIG["ruth_payload_link_exclude_substrings"]` — Ruth `--- LINKS ---` AI-visibility excludes (narrower than Playwright `link_exclude_substrings`; no `list-manage.com`). Runner: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ruth exclude tuple vs Playwright | `src/utils/config.py` | **`TestAst1213RuthPayloadLinkExcludes`** |
+
+**Broken / obsolete:** none — additive key; AST-1061 / AST-1132 Playwright asserts unchanged.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1213RuthPayloadLinkExcludes \
+  -q
+```

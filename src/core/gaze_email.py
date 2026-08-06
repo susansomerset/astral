@@ -8,6 +8,9 @@ AST-1061 job_link helpers. process_gaze_email_messages is the AST-1129 reuse pat
 
 AST-1140: ``run_gaze_email_selected_ids`` — Land Meteorite selected-ids ingest
 sharing the same bound helper; does not stamp ``candidate.last_email_check``.
+
+AST-1213: Ruth live payload is visible text + links (not raw HTML); link list
+uses ``ruth_payload_link_exclude_substrings`` (not Playwright excludes).
 """
 
 from __future__ import annotations
@@ -19,7 +22,10 @@ from urllib.parse import urlparse
 
 from src.core.agent import do_task
 from src.core.candidate import get_candidate
-from src.core.gazer import _meteorite_fetch_link_visible_text
+from src.core.gazer import (
+    _meteorite_email_body_text,
+    _meteorite_fetch_link_visible_text,
+)
 from src.core.inbox import get_message_html, list_inbox_messages
 from src.core.meteorite import create_meteorite_job
 from src.data.database import (
@@ -123,6 +129,51 @@ async def _ingest_link(
     except Exception as exc:
         _detail(debug, f"create_error={type(exc).__name__}")
         return "error"
+
+
+def _ruth_candidate_links(html: str) -> list[str]:
+    """Ordered unique http(s) hrefs for Ruth --- LINKS --- (ruth_payload excludes)."""
+    # B1 lazy import: bs4 only on Ruth payload assembly (same pattern as gazer).
+    from bs4 import BeautifulSoup
+
+    cfg = METEORITE_EMAIL_INGEST_CONFIG
+    schemes = {s.casefold() for s in cfg["link_schemes"]}
+    excludes = tuple(s.casefold() for s in cfg["ruth_payload_link_exclude_substrings"])
+    allows = tuple(s.casefold() for s in cfg["link_allow_substrings"])
+    soup = BeautifulSoup(html or "", "html.parser")
+    seen: set[str] = set()
+    out: list[str] = []
+    for tag in soup.find_all("a", href=True):
+        href = (tag.get("href") or "").strip()
+        if not href or href in seen:
+            continue
+        parsed = urlparse(href)
+        scheme = (parsed.scheme or "").casefold()
+        if scheme not in schemes:
+            continue
+        low = href.casefold()
+        if any(frag in low for frag in excludes):
+            continue
+        if allows and not any(frag in low for frag in allows):
+            continue
+        seen.add(href)
+        out.append(href)
+    return out
+
+
+def _ruth_live_parts(html: str) -> tuple[str, list[str]]:
+    """Return (visible_text, ruth_candidate_links) from email HTML."""
+    return _meteorite_email_body_text(html), _ruth_candidate_links(html)
+
+
+def _format_ruth_live_body(text: str, links: list[str]) -> str:
+    """Visible text + optional --- LINKS --- enumeration (JD-scrape payload shape)."""
+    parts = [text] if (text or "").strip() else ["(no visible text)"]
+    if links:
+        parts.append("--- LINKS ---")
+        for i, lnk in enumerate(links, 1):
+            parts.append(f"{i}. {lnk}")
+    return "\n".join(parts)
 
 
 async def _ruth_parse(
@@ -231,7 +282,12 @@ async def _handle_bound(
     # html_links: no subject + non-empty body
     if not subject and not empty_body:
         _detail(debug, "shape=html_links")
-        live = f"PARSE_MODE: {html_mode}\n\n{html}"
+        text, links = _ruth_live_parts(html)
+        body = _format_ruth_live_body(text, links)
+        live = f"PARSE_MODE: {html_mode}\n\n{body}"
+        _detail(debug, f"ruth_payload visible_chars={len(text)} links={len(links)}")
+        for line in truncate_debug_content(live):
+            _detail(debug, line)
         parsed = await _ruth_parse(mode=html_mode, live=live, msg_id=mid, ctx=ctx, debug=debug)
         if parsed is None:
             index_dbg(debug, index=index, total=total, mid=mid, outcome="error")
@@ -261,7 +317,12 @@ async def _handle_bound(
     # subject_body: subject + non-empty body (URL subject with body uses this path)
     if subject and not empty_body:
         _detail(debug, "shape=subject_body")
-        live = f"PARSE_MODE: {subject_mode}\nSUBJECT: {subject}\n\n{html}"
+        text, links = _ruth_live_parts(html)
+        body = _format_ruth_live_body(text, links)
+        live = f"PARSE_MODE: {subject_mode}\nSUBJECT: {subject}\n\n{body}"
+        _detail(debug, f"ruth_payload visible_chars={len(text)} links={len(links)}")
+        for line in truncate_debug_content(live):
+            _detail(debug, line)
         parsed = await _ruth_parse(mode=subject_mode, live=live, msg_id=mid, ctx=ctx, debug=debug)
         if parsed is None:
             index_dbg(debug, index=index, total=total, mid=mid, outcome="error")
