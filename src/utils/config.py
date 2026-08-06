@@ -681,6 +681,61 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
+    # AST-1184 / AST-1220: meteorite Do/Get aliases — prompts/content from master via
+    # master_task_key; own meteorite pass/fail/error (replaces METEORITE_GDL_OUTCOME_BY_TASK).
+    # agent_task seed + METEORITE_DISPATCH_TASKS retarget are AST-1222; consult resolve is AST-1221.
+    "meteorite_grade_do": {
+        "master_task_key": "grade_do",
+        "scored": True,
+        "grades_key": "do_grades",
+        "rubric_artifact": "do_rubric",
+        "response_format": "json",
+        "output_type": "grades_encoded_notes",
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": _ENCODED_CONSULT_JOB_ITEM_SCHEMA,
+            },
+        },
+        "fallback_batch_size": 10,
+        "pass_state": "METEORITE_PASSED_DO",
+        "fail_state": "METEORITE_FAILED_DO",
+        "error_state": "METEORITE_FAILED_TECHNICAL_DO",
+        "save_prefix": "do",
+        "pass_threshold": 6.0,
+        "grading_mode": "scored",
+        "context_format": "meteorite_grade_do_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": "METEORITE_PASSED_JD",
+    },
+    "meteorite_grade_get": {
+        "master_task_key": "grade_get",
+        "scored": True,
+        "grades_key": "get_grades",
+        "rubric_artifact": "get_rubric",
+        "response_format": "json",
+        "output_type": "grades_encoded_notes",
+        "response_schema": {
+            "jobs": {
+                "type": "list",
+                "required": True,
+                "items_schema": _ENCODED_CONSULT_JOB_ITEM_SCHEMA,
+            },
+        },
+        "fallback_batch_size": 10,
+        "pass_state": "METEORITE_PASSED_GET",
+        "fail_state": "METEORITE_FAILED_GET",
+        "error_state": "METEORITE_FAILED_TECHNICAL_GET",
+        "save_prefix": "get",
+        "pass_threshold": 6.0,
+        "grading_mode": "scored",
+        "context_format": "meteorite_grade_get_{index}",
+        "entity_type": "job",
+        "requires_candidate_key": True,
+        "trigger_state": "METEORITE_PASSED_DO",
+    },
     # LIKE ANALYSIS - Grace 2
     "grade_like": {
         "scored": True,
@@ -2798,7 +2853,8 @@ DISPATCH_RETIRED_TASK_KEYS = frozenset({
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
     "prefilter", "qualify_job_listings", "qualify_meteorite", "evaluate_jd", "evaluate_meteorite",
-    "grade_do", "grade_get", "grade_like", "meteorite_like", "vet_inflow_discovery",
+    "grade_do", "grade_get", "meteorite_grade_do", "meteorite_grade_get", "grade_like",
+    "meteorite_like", "vet_inflow_discovery",
 })
 
 _DISPATCH_COMPANY_ENTITY_TASK_KEYS = frozenset({
