@@ -157,11 +157,11 @@ context_tokens≈78000
 ## Resolution
 
 **Date:** 2026-08-06  
-**Review tip:** `95f6dec7` (Radia docs) · product/build tip `f37a0618`
+**Review tip:** `95f6dec7` (Radia docs) · resolve tip after Betty return: `e8744b4c`
 
 | Item | Disposition |
 |------|-------------|
-| Fix-now — restore `TestAst1193AnalysisMatchParity` (or fold into `TestAst513JobTokenContext`) + keep AST-1193 bible row honest | **`[qa-handoff]` → Betty.** Engineer cannot edit `tests/` / `docs/test-bible/**`. No product defect — zero `src/` delta; coverage regression is Betty's `test(AST-1210)` commit `be3c9d14`. Stay **Review Posted**; assignee Betty until she restores coverage and reassigns Hedy. |
-| Advisory — unchecked description AC boxes | Deferred until final UT flip after Betty return pass. |
+| Fix-now — restore `TestAst1193AnalysisMatchParity` + AST-1193 bible honesty | **Cleared by Betty.** `test(AST-1210)` `653bf749` restored the class (5 methods incl. Style D); `merge-tests` → publish `e8744b4c`. Bible AST-1193 row already named the class (unchanged). Hedy re-ran twin manifest + `TestAst1193AnalysisMatchParity` — **22 passed**. |
+| Advisory — unchecked description AC boxes | Ticked on UT flip (validated on tip). |
 
-No `src/` resolve commit.
+No `src/` resolve commit after Betty return.
