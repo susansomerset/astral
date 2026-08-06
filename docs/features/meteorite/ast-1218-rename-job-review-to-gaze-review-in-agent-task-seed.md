@@ -134,3 +134,14 @@ Changes: Added **Merge base (build inventory)** binding counts to post-`sync-chi
 Revision 2 — 2026-08-06
 Driven by: Joan `[plan-discuss] round=2 concern` — fix-now on step-6 / Done when over-asserting catalog↔fixture object equality for `METEORITE ∪ {craft_evaluate_meteorite_rubric}` (fails on `meteorite_like` before any AST-1218 edit; 13 unequal rows on tip).
 Changes: Narrowed Done when + step 6 to label fields this child controls + AST-1211 pair equality only; documented pre-existing non-global drift in Merge base; surgical-sync decision forbids “fixing” unrelated prompt drift; Conf `high` → `Medium`; ran proposed verify against tip (AST-1211 equal; old equality fails; simulated classic rename + narrowed script passes) before publish.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1183/AST-1218-rename-job-review-to-gaze-review-in-agent-task-seed`
+**Plan path:** `docs/features/meteorite/ast-1218-rename-job-review-to-gaze-review-in-agent-task-seed.md`
+
+**Built tip:** `debff822ff1c2e6758882c4fcb76176df5772b1e` (`debff822`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `debff822` | Gaze Review classic agent_task group label (+ surgical AST-756 fixture) |
