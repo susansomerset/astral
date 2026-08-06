@@ -299,3 +299,35 @@ Changes:
 |-------|--------|---------|
 | 1 | `5c7a567f` | task-alias resolve helpers + empty Do/Get overlay |
 | 2 | `739bc847` | meteorite_grade_do/get alias TASK_CONFIG + batch-mode |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `aa820952`
+
+**Overall: CLEAN**
+
+**What's solid:**
+
+- Diff footprint is exactly the plan's single-row Files Changed table (`src/utils/config.py`) plus Betty's separate `merge-tests` commit (`docs/test-bible/**`, `tests/**`) — no scope creep, no consult/agent/dispatcher/seed touch (siblings AST-1221/AST-1222 honored).
+- `is_task_alias` / `resolve_task_key_for_content` are field-driven, no meteorite-only link map; both closed Joan round-1 fix-now items verified live at tip: alias `trigger_state` is a literal field (no `_dispatch_trigger_state_for_task_key` per-key branches), and the Stage 1 assert loop requires job-entity alias `pass_state`/`fail_state`/`error_state` ∈ `JOB_STATES`.
+- `METEORITE_GDL_OUTCOME_BY_TASK` emptied cleanly (single source of truth restored — outcomes live only on the alias entries); symbol kept per plan for AST-1221's import.
+- No new imports added anywhere in the diff — layer import direction / no-cross-contamination hold trivially.
+- Helpers placed with the other `TASK_CONFIG` accessor functions (public-then-helpers intact); alias entries inserted after `grade_get` per plan (masters-before-aliases readability, load-time assert enforces it regardless of order).
+- `_DISPATCH_BATCH_CALL_MODE_ONE` extension reuses the existing frozenset pattern rather than inventing a new one; no run_next chain-membership shadow list introduced (`astral.dispatch.run-next-is-chain-authority` doesn't apply here — batch_call_mode, not hop succession).
+- Commit hygiene: two `code(AST-1220)` commits touch only `src/utils/config.py`; Betty's `test(AST-1220)` + `merge-tests(AST-1220)` touch only `tests/`/`docs/test-bible/**` — `astral.git.engineer-test-tree-ban` and `astral.git.betty-no-src-or-features` both hold.
+- `python3 -m py_compile src/utils/config.py` clean at tip.
+- Full active-set sweep (65 active statutes: 18 universal + 47 scoped-applicable against this diff's `{utils, docs}` layers / `docs/features`, `docs/test-bible`, `src/utils/config.py`, `tests/**` paths) — zero `violates`, zero `needs-discussion`.
+
+**Advisory (not fix-now, carried from Joan's plan-rubric):** alias entries duplicate scoring/schema fields (`response_schema`, `grades_key`, `rubric_artifact`, `output_type`, `context_format`, `fallback_batch_size`, `pass_threshold`) alongside the master instead of resolving them through `resolve_task_key_for_content`. Parent AC requires alias-owned orchestration so this is accepted, not reopened — flagging only as a live handoff note for AST-1221 to decide which fields route through the resolver vs. stay alias-local.
+
+**Pattern conformance:** `pattern.config.config-block` — conforms (contract + first-consumer literals live in `TASK_CONFIG`, canonical_refs intact). `pattern.config.task-alias` — proposed, correctly unauthored (Archie approval is the parent's define-approved gate, not this child).
+
+**Plan adherence:** Both stages match the plan's binding code blocks verbatim, including the Revision 1 fixes (field-driven `trigger_state`, `JOB_STATES` assert extension, documented `_TRANSITION_STATES_USED_BY_SCORED_TASKS` delta) that closed Joan's round-1 findings.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈62000
+
+— Radia
