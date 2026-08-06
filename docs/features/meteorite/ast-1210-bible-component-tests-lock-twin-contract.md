@@ -114,3 +114,17 @@ Suggested run (adjust if class names differ after Stage 3):
 - `astral.standards.debug-contract-gated`: no new ungated debug; Style D AC N/A without product touch.
 - Engineer must not edit `tests/` or `docs/test-bible/**` — Betty owns Stages 2–4.
 - `astral.seed.agent-tables-in-repo-json`: excluded (AST-1211).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`
+**Plan path:** `docs/features/meteorite/ast-1210-bible-component-tests-lock-twin-contract.md`
+
+**Built tip:** `d6e4b74d` (merge `origin/ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests` onto plan tip `2cad8fbb` — AST-1209 twin retirement + Betty dispatcher tests on tip; no `src/` delta this child)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| Prerequisite | `d6e4b74d` | sync-child merge full parent ftr (authoritative `ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests`); gate: `twin_present` + `ts.startswith("METEORITE_")` on tip |
+| 1 | (no product commit) | Twin audit points 1–9 re-verified read-only; zero `src/` / `tests/` / bible edits — Code Complete handoff for Betty Stages 2–4 |
+
+**Joan fold-in (APPROVED discuss, for Betty):** Stage 3.1 repairs pre-existing red `rows[("evaluate_jd", "METEORITE_QUALIFIED")]` KeyError. Stage 3.3 Analysis override must use `_entity_state_is_meteorite(job_data.get("state"))` (state prefix), not `is_meteorite_company`.
