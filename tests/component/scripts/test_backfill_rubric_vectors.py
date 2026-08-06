@@ -77,3 +77,15 @@ class TestBackfillMain:
             _mod.main()
         assert exc.value.code == 1
         assert "requires --confirm-purge" in capsys.readouterr().out
+
+
+class TestAst1200OwnerMapFromConfig:
+    """AST-1200: script consumes RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY (no local map)."""
+
+    def test_imports_config_owner_map_including_meteorite(self) -> None:
+        from src.utils import config as cfg
+
+        assert not hasattr(_mod, "_ARTIFACT_KEY_TO_TASK_KEY")
+        assert _mod.RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY is cfg.RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY
+        assert "meteorite_jobdesc_rubric" in cfg.RUBRIC_CRITERIA_ARTIFACT_KEYS
+        assert cfg.RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY["meteorite_jobdesc_rubric"] == "evaluate_meteorite"

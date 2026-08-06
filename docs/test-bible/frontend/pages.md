@@ -1512,3 +1512,21 @@ cd src/ui/frontend && npx vitest run \
   ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
   ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
 ```
+
+---
+
+### AST-1200 · AST-1198
+
+**Parent:** [AST-1198 — Rubric criteria prompts are not appearing in UI Artifacts](https://linear.app/astralcareermatch/issue/AST-1198/rubric-criteria-prompts-are-not-appearing-in-ui-artifacts). **Publish:** `origin/sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`.
+
+Primary coverage is shared **`ArtifactEditor`** (**`docs/test-bible/frontend/components.md`**). Additive Job List Criteria page smoke for AC1 (prompt textarea visible without expand). No page-file product diff — §6c new-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job List Criteria prompt visible on first paint | `ArtifactsJobListCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsJobListCriteria.test.tsx`** — **`AST-1200: criterion prompt textarea visible without expand click`** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx \
+  --testNamePattern="AST-1200"
+```
