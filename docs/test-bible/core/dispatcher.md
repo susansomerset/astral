@@ -370,3 +370,23 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
   -q
 ```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+`meteorite_grade_do` / `meteorite_grade_get` join `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` (explicit frozenset, same pattern as `meteorite_like`). Does **not** retarget `METEORITE_DISPATCH_TASKS` (**AST-1222**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias exhaust membership | `src/core/dispatcher.py` | **`TestAst1221AliasChunkExhaust`** |
+
+**Broken / obsolete:** none — additive frozenset keys.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1221AliasChunkExhaust \
+  -q
+```

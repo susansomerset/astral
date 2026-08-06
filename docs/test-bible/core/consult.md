@@ -706,13 +706,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`_consult_orchestration_for_entity` historically overlaid `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`grade_do` / `grade_get` only). **AST-1220** empties that overlay (outcomes live on `meteorite_grade_*` aliases); until **AST-1221** removes the read path, consult falls through to Gaze `TASK_CONFIG` outcomes for METEORITE_* entity states. JD stage is standalone twin `evaluate_meteorite` (own `TASK_CONFIG` pass/fail/error — see **`TestEvaluateMeteoriteStandaloneTwin`** / **`test_evaluate_jd_has_no_meteorite_overlay`**). Vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**. Analysis-JD meteorite override + incomplete→retry twin locks: **AST-1210**.
+`_consult_orchestration_for_entity` historically overlaid `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`grade_do` / `grade_get` only). **AST-1220** emptied the overlay; **AST-1221** deletes the symbol and consult read path — shared-key `grade_do`/`grade_get` always use Gaze `TASK_CONFIG` outcomes; alias Do/Get use alias `TASK_CONFIG` (see **AST-1221** below). JD stage is standalone twin `evaluate_meteorite` (own `TASK_CONFIG` pass/fail/error — see **`TestEvaluateMeteoriteStandaloneTwin`**). Vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**. Analysis-JD meteorite override + incomplete→retry twin locks: **AST-1210**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Empty overlay + Gaze fallback for METEORITE_* (AST-1220 interim) | `src/core/consult.py` | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+| Overlay symbol deleted + Gaze for shared grade_do | `src/core/consult.py` | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
 
-**Broken / obsolete:** overlay-key lists that still named `evaluate_jd` among meteorite overlay keys (**AST-1210**); asserts that indexed `METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]` / expected meteorite overlay pass/fail (**AST-1220**).
+**Broken / obsolete:** overlay-key lists that still named `evaluate_jd` among meteorite overlay keys (**AST-1210**); asserts that indexed / emptied `METEORITE_GDL_OUTCOME_BY_TASK` (**AST-1220** / **AST-1221**).
 
 **Integration:** none.
 
@@ -720,6 +720,28 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
   tests/component/core/test_consult.py::TestRenderPassFail \
+  -q
+```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+Retires Do/Get overlay read path; `_consult_orchestration_for_entity` returns `TASK_CONFIG[task_key]` with no entity-state overlay. Alias Do/Get (`meteorite_grade_do` / `meteorite_grade_get`) use alias-owned pass/fail/error; header lookup via `resolve_task_key_for_content`. Agent / dispatcher / config: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/core/dispatcher.md`**, **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias orch + header resolve + render | `src/core/consult.py` | **`TestAst1221RuntimeAliasConsult`** |
+| Shared-key Gaze (no overlay) | same | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+
+**Broken / obsolete:** AST-1220 interim empty-dict overlay asserts; AST-1054 overlay-body / indexed-map asserts.
+
+**Integration:** none revised; do not invent new integration coverage. Do **not** exercise meteorite Do/Get as operator-safe until **AST-1222** retargets dispatch.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1221RuntimeAliasConsult \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
   -q
 ```
 
@@ -990,7 +1012,7 @@ Locks standalone twin consult contract: Analysis-JD meteorite override via `_ent
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Twin own states + no JD overlay | `src/core/consult.py` | **`TestEvaluateMeteoriteStandaloneTwin`**, **`TestAst1054MeteoriteGdlOutcomeOverlay::test_evaluate_jd_has_no_meteorite_overlay`** |
+| Twin own states + no JD overlay | `src/core/consult.py` | **`TestEvaluateMeteoriteStandaloneTwin`**, **`TestAst1054MeteoriteGdlOutcomeOverlay::test_overlay_symbol_deleted`** |
 | Analysis-JD override (state-prefix branch) | same | **`TestEvaluateMeteoriteStandaloneTwin::test_format_analysis_jd_uses_twin_owner_when_state_meteorite`** |
 | Incomplete→retry twin error | same | revised **`TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers`** |
 
