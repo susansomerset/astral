@@ -1527,11 +1527,6 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
 
 
-@pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks"),
-    reason="AST-1252 wrapper retire not on this publish tip",
-)
-
 class TestAst1259CandidatePoolClaim:
     """AST-1259: dispatcher candidate pool claim → per-entity process → clear (empty + finally)."""
 
@@ -1638,6 +1633,11 @@ class TestAst1259CandidatePoolClaim:
         clear_job.assert_not_called()
         clear_co.assert_not_called()
 
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks"),
+    reason="AST-1252 wrapper retire not on this publish tip",
+)
 
 class TestAst972CandidateStageDispatch:
     """AST-972 → AST-1252: retire wrappers; claim gate; tick aging; scheduler retire hook."""
