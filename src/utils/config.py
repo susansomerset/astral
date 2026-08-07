@@ -23,6 +23,7 @@ Config sections:
   PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
   TOPIC_MENU_CONFIG — closed informs + status triad for Topic Menu (AST-1074; generation = AST-1075)
   TOPIC_MENU_GEN_CONFIG — Estelle confirm + Topic Menu generation keys (AST-1075)
+  SURFER_CONSENT_CONFIG — Surfer install disclosure version + copy + consent status vocabulary (AST-1235; UI = AST-1237/1238)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
@@ -1472,6 +1473,38 @@ for _req in ("id", "name", "ask", "required", "informs", "status"):
 for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
     assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
 assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
+
+
+# AST-1235: versioned Surfer consent record (install UI = AST-1237; off-switch gate = AST-1238).
+SURFER_CONSENT_CONFIG = {
+    # Stable key under candidate_data (meta sibling of contact/context/artifacts/topic_menu).
+    "candidate_data_key": "surfer_consent",
+    # Bump this string when disclosure_copy changes; prior opt-ins stop being "current".
+    "current_version": "1",
+    # Friends-and-family provisional copy (parent Purpose / Functional scope). AST-1237 may
+    # refine wording in the same keys — do not invent a second config block for copy.
+    "disclosure_copy": (
+        "Astral Surfer uses your own logged-in session on LinkedIn and Indeed to pull job "
+        "postings into Astral. That use is not sanctioned by those sites' terms. We have "
+        "designed the extension to behave like ordinary manual browsing to keep the risk "
+        "low, but we cannot promise a site will never notice. If it does, any account-level "
+        "consequence (warning, suspension) is yours, not Astral's.\n\n"
+        "Surfer is optional — the rest of Astral works without it. This only reaches sources "
+        "Astral otherwise cannot. You can turn Surfer off later from the extension or your "
+        "Astral account."
+    ),
+    # Stored record statuses. Absence / unknown → treat as "none" in normalize.
+    "statuses": ("none", "opted_in", "opted_out"),
+    "default_status": "none",
+}
+
+assert SURFER_CONSENT_CONFIG["candidate_data_key"] == "surfer_consent"
+assert isinstance(SURFER_CONSENT_CONFIG["current_version"], str) and SURFER_CONSENT_CONFIG["current_version"].strip()
+assert isinstance(SURFER_CONSENT_CONFIG["disclosure_copy"], str) and SURFER_CONSENT_CONFIG["disclosure_copy"].strip()
+assert SURFER_CONSENT_CONFIG["statuses"] == ("none", "opted_in", "opted_out")
+assert SURFER_CONSENT_CONFIG["default_status"] in SURFER_CONSENT_CONFIG["statuses"]
+assert SURFER_CONSENT_CONFIG["default_status"] == "none"
+assert len(SURFER_CONSENT_CONFIG["statuses"]) == len(set(SURFER_CONSENT_CONFIG["statuses"]))
 
 
 # AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).

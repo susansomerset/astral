@@ -16,7 +16,7 @@ No batch primitives on candidate — candidates are not batch-processed.
 
 ## candidate_data (library + meta)
 
-Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`, `topic_menu`) are **siblings** of the three library blobs — not inside them.
+Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`, `topic_menu`, `surfer_consent`) are **siblings** of the three library blobs — not inside them.
 
 Do **not** store first/last/full/pronouns inside contact/context/artifacts. Do **not** write a `profile` key (renamed to `contact`; writers refuse shadow copies).
 
@@ -108,6 +108,20 @@ candidate_data.topic_menu = {
 ```
 
 Revising keeps prior topics: dropped ids become `status: "retired"` rather than deleted from the list. Default save path is revise-by-id (`save_topic_menu(..., revise=True)`). Optional `preamble_confirmed_at` is stamped by `mark_topic_menu_preamble_confirmed` when Estelle confirm accepts (AST-1075); normalize/validate/revise preserve it.
+
+### surfer_consent (AST-1235 / AST-1173)
+
+Server-side Surfer install disclosure consent (opt-in / opt-out + accepted wording version). Config: `SURFER_CONSENT_CONFIG` in `src/utils/config.py` (`current_version`, `disclosure_copy`). Core: `get_surfer_consent` / `is_surfer_consent_current` / `opt_in_surfer_consent` / `opt_out_surfer_consent` / `surfer_consent_dto` in `src/core/candidate.py`. API: `GET`/`PUT /api/candidates/<id>/surfer/consent` (`src/ui/api/api_surfer.py`).
+
+```text
+candidate_data.surfer_consent = {
+  "status": "none" | "opted_in" | "opted_out",
+  "accepted_version": "<str matching a SURFER_CONSENT_CONFIG current_version at opt-in>" | null,
+  "updated_at": "<UTC YYYY-MM-DD HH:MM:SS>" | null
+}
+```
+
+`is_current` is true only when `status == opted_in` and `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Bumping `current_version` requires re-consent before capture may resume (enforced by siblings reading `is_current`). Survives extension reinstall because the record is server-side under the candidate, not extension storage. Install disclosure UI = **AST-1237**; off-switch + capture no-op = **AST-1238**. Do **not** place Surfer consent under `contact` / `context` / `artifacts`.
 
 ## Token resolution
 
