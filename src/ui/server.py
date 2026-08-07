@@ -40,7 +40,6 @@ app.register_blueprint(intake_bp)
 from ui.api.api_surfer import surfer_bp  # noqa: E402
 app.register_blueprint(surfer_bp)
 
-
 from ui.api.api_admin import admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 
