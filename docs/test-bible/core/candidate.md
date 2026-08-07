@@ -841,7 +841,7 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
 
-`surfer_consent_dto` adds config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) alongside AST-1235 fields. Config/nav: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/frontend/lib.md`**.
+`surfer_consent_dto` adds config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) alongside AST-1235 fields. Config/nav: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -863,7 +863,7 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
 
-`require_current_surfer_consent` raises `ValueError(capture_denied_message)` when not `is_current`; `surfer_consent_dto` adds off-switch / stale / uninstall / denied chrome. Config: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/frontend/lib.md`**.
+`require_current_surfer_consent` raises `ValueError(capture_denied_message)` when not `is_current`; `surfer_consent_dto` adds off-switch / stale / uninstall / denied chrome. Config: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
