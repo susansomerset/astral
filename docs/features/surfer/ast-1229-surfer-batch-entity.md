@@ -247,10 +247,10 @@ Changes:
 ## Review
 
 **Publish ref:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`
-**Tip (pre-review):** _(filled at Code Complete)_
+**Tip (pre-review):** `55d45854`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1 | _(sha)_ | `SURFER_BATCH_CONFIG` |
-| 2 | _(sha)_ | `surfer_batch` table + data helpers + upsert registry |
-| 3 | _(sha)_ | `src/core/surfer.py` + lifecycle pointer doc |
+| 1 | `1dfd377f` | `SURFER_BATCH_CONFIG` |
+| 2 | `156cbe65` | `surfer_batch` table + data helpers + upsert registry |
+| 3 | `55d45854` | `src/core/surfer.py` + lifecycle pointer doc |
