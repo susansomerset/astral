@@ -192,7 +192,7 @@ context_tokens≈158000
 
 | Finding | Action |
 |---------|--------|
-| **fix-now** — misplaced `@pytest.mark.skipif` above `TestAst1259CandidatePoolClaim` instead of `TestAst972CandidateStageDispatch` | No product change. **`[qa-handoff]`** → Betty (test-tree); stay Review Posted until she reassigns. |
+| **fix-now** — misplaced `@pytest.mark.skipif` above `TestAst1259CandidatePoolClaim` instead of `TestAst972CandidateStageDispatch` | No product change. **`[qa-handoff]`** → Betty; cleared @ `a4f94240` (`test(AST-1259): restore skipif on TestAst972CandidateStageDispatch`). Manifest re-run: 10 passed. |
 | **discuss** — `dry-and-focused-functions` / `public-then-helpers` plan-excluded vs mechanical `conforms` | No product change. Linear **In scope** + plan Rules check now list both (Batch API grouping; no duplicated claim SQL). |
 
 **fix-now (product):** none.
