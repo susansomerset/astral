@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -4019,3 +4019,50 @@ class TestAst1238SurferConsentGate:
         assert dto["off_switch_heading"] == SURFER_CONSENT_CONFIG["off_switch_heading"]
         assert dto["status_stale_label"] == SURFER_CONSENT_CONFIG["status_stale_label"]
         assert dto["capture_denied_message"] == SURFER_CONSENT_CONFIG["capture_denied_message"]
+
+
+class TestAst1259CandidateBatchApi:
+    """AST-1259: get_new_candidate_batch / clear_candidate_batch core wrappers."""
+
+    def test_requires_batch_id_or_context(self) -> None:
+        with pytest.raises(ValueError, match="batch_id or context"):
+            candidate_mod.get_new_candidate_batch("REQUESTED_ARTIFACTS")
+
+    def test_rejects_unknown_state(self) -> None:
+        with pytest.raises(ValueError, match="state must be one of"):
+            candidate_mod.get_new_candidate_batch("NOT_A_STATE", batch_id="b")
+
+    def test_claims_and_returns_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        claim = MagicMock()
+        rows: List[Dict[str, Any]] = [{"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}]
+        monkeypatch.setattr(candidate_mod.database, "claim_candidate_batch", claim)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate_batch", lambda batch_id: rows)
+        bid, out = candidate_mod.get_new_candidate_batch(
+            "REQUESTED_ARTIFACTS",
+            batch_id="fixed-1259",
+            limit=2,
+            sort_by="updated_at",
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+        assert bid == "fixed-1259"
+        assert out == rows
+        claim.assert_called_once_with(
+            "fixed-1259",
+            "REQUESTED_ARTIFACTS",
+            2,
+            sort_by="updated_at",
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+
+    def test_generates_batch_id_from_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "claim_candidate_batch", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate_batch", lambda batch_id: [])
+        bid, _ = candidate_mod.get_new_candidate_batch("ACTIVE_SEARCH", context="inflow_discovery")
+        assert bid.startswith("inflow_discovery-")
+
+    def test_clear_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        clear = MagicMock(return_value=3)
+        monkeypatch.setattr(candidate_mod.database, "clear_candidate_batch", clear)
+        assert candidate_mod.clear_candidate_batch("b-1") == 3
+        clear.assert_called_once_with("b-1")
+
