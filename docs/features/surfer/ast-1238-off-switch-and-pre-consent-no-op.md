@@ -204,3 +204,14 @@ def require_current_surfer_consent(candidate_id: str) -> dict:
 Revision 1 — 2026-08-07  
 Driven by: Joan `[plan-discuss] round=1 concern` (fix-now: extension path under `src/ui/extension/src/lib/`; fix-now: `useUserConfirm` instead of `window.confirm`; discuss: stale status label; discuss: capture_denied_message must not point at Candidate Surfer for opt-in; discuss: stronger capture-route self-check in wiring doc).  
 Changes: Moved Stage 4 files to `src/ui/extension/src/lib/surferConsentGate.ts` + `surferOffSwitch.ts`; wiring notes to `docs/features/surfer/ast-1238-extension-consent-wiring.md`; Stage 3 uses `useUserConfirm`; added `status_stale_label` + three-way status line; trimmed `capture_denied_message`; added AST-1228 call-site + grep self-check to wiring doc.
+
+---
+
+## Build review stub
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `eef627f0` | Joan round=1 plan |
+| 1–4 | `81353be0cb0720dc1f3aad6b31119e0da1a97e23` | Config copy + nav; `require_current_surfer_consent` + DTO fields; Candidate Surfer page; extension `src/lib` gate/off-switch + wiring doc |
+
+**Tip:** `81353be0cb0720dc1f3aad6b31119e0da1a97e23` on publish ref (no PR yet).
