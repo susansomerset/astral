@@ -254,3 +254,23 @@ Changes:
 | 1 | `1dfd377f` | `SURFER_BATCH_CONFIG` |
 | 2 | `156cbe65` | `surfer_batch` table + data helpers + upsert registry |
 | 3 | `55d45854` | `src/core/surfer.py` + lifecycle pointer doc |
+
+### Radia review — code-rubric.v1
+
+[code-rubric] revision=1
+**Publish ref:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity` @ `f819b685ba3e216fac04b31e1fe6119475fb3ebd`
+**Overall:** CLEAN
+
+Full active set (65 statutes: 18 universal + 47 scoped) scored in-session against `git diff origin/dev...origin/sub/AST-1169/AST-1229-surfer-batch-entity`. No `violates`, no `needs-discussion`. Joan's `plan-rubric.v1` verdict (APPROVED) is attached as a Linear comment; her final sweep already moved `astral.standards.debug-contract-gated` / `astral.layers.import-direction` / `astral.standards.data-raises-caller-logs` to `conforms` in-scope rather than excluded, matching this sweep — no C4 straggler.
+
+**What's solid:** pointer clear is the single `save_candidate_data(..., {"lifecycle": {key: None}})` overwrite path (verified against real `_deep_merge`); no core `get_surfer_batch` name shadow — every data call is `database.*`; `surfer_batch` is registered in both `_UPSERT_SCHEMA_ENSURE_FLAGS` / `_UPSERT_LAZY_SCHEMA_HANDLERS` and each public data helper calls `_ensure_surfer_batch_schema(conn)`; auto-complete keys off `requires_all_urls_terminal` (config asserts guarantee exactly one such status, and that it's terminal) rather than a `"COMPLETED"` literal; `src/core/surfer.py` is public-then-helpers cleanly; `debug: bool = False` threaded on all nine public functions; test-tree changes arrived via a single `merge-tests(AST-1229)` commit — engineer commits never touch `tests/` or `docs/test-bible/**`.
+
+**Advisory:** `transition_surfer_batch_status` checks `to_status == from_status` before the `requires_all_urls_terminal` precondition (plan lists the precondition first). This makes a same-status no-op call idempotent even from a fully-terminal batch instead of raising — safer than a literal reading of the plan step order, no AC or statute impact.
+
+## Frame diff
+
+(none) — implementation matches the approved plan; no description drift to reconcile.
+
+context_tokens≈95000
+
+— Radia
