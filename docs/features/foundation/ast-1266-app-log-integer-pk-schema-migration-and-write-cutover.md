@@ -104,3 +104,9 @@
 Revision 1 — 2026-08-07  
 Driven by: Joan `[plan-discuss] round=1 concern` — rebuild omits precedent’s leftover-temp-table guard (`DROP TABLE IF EXISTS` before `CREATE TABLE app_log_new`), which can brick bootstrap if a prior rebuild left `app_log_new` behind.  
 Changes: Stage 1 step 2b now starts with `DROP TABLE IF EXISTS app_log_new` before `CREATE`; Decision / naming self-review note the guard and keep the generic `app_log_new` name.
+
+## Review
+
+**Publish ref:** 
+**Stage commits:** Stage 1 schema/migrate/write @ ; Stage 2 LogEntry type — tip after this commit.
+
