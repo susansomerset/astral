@@ -99,3 +99,39 @@ Changes:
 |-------|--------|---------|
 | 1 | `6b00f250` | neuter AST-1113 craft run_next hot-path migration |
 | 2 | `02bed622` | live CALLER re-inject; hydrate skip/fail-open; succession debug |
+
+## Radia review
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Publish ref tip:** `ec8456a5`
+**Overall:** FIX-NOW
+
+**Full-set sweep:** all 65 active statutes scored in-session (18 universal + 47 scoped). `origin/dev...origin/sub/AST-1243/AST-1264-uat-craft-get-run-next` is already clean scope for this ticket — `ftr/AST-1243-candidate-artifacts-now-daisy-chain` (AST-1252 + AST-1253) landed on `origin/dev` before this branch was cut, so the two-file diff (`src/core/agent.py`, `src/data/database.py`) is this ticket's full and only contribution.
+
+**Stage 1 — solid:** `_apply_ast1113_craft_run_next_chain_migration` neutered to a bare `return` with a docstring naming repo JSON as authority, mirroring the AST-1108/AST-469/AST-834 no-op species exactly. Call site kept in `_ensure_agent_task_schema` (migration slot stays visible). No replacement hop list added anywhere. `python3 -m py_compile` clean. Betty's tests directly assert the no-op (wrong links left untouched, no ghost rows invented, source body is `return`-only) — good regression lock on the actual root cause (hot-path stomp bypassing `_validate_run_next_graph_acyclic`).
+
+**Stage 2 — root-cause fix confirmed, but one required sub-behavior is dead code:**
+
+- The primary reported bug (get→do stall) is fixed correctly: the parent's re-injection of live `CALLER_*` onto `merged_ctx` (gated on `persist_candidate_craft_hops` + `effective_next`) means the child's `chain_context` (passed as `merged_ctx` into the recursive `do_task` call) already carries live CALLER tokens, so the child's `_live_caller` check is `True` and `_hydrate_caller_chain_context` is skipped entirely — no `hydr_err` early-return, chain continues. Confirmed by `test_persist_craft_reinjects_caller_on_recurse` and `test_persist_craft_skips_hydrate_when_live_caller`.
+
+- **fix-now — dead/unreachable fallback branch (Stage 2 step 2, Revision 1's own fix-now):** The plan (and Joan's round-1 revision) explicitly require: *"on `hydr_err`, if incoming `chain_context` still has any non-empty CALLER token, fall back to `effective_chain_context = chain_context`."* As coded (`src/core/agent.py` ~2006–2036), the `else:` branch that calls `_hydrate_caller_chain_context` is only reached when `_live_caller` (`_persist_craft and any(chain_context.get(k) for k in CALLER_HOP_TOKEN_NAMES)`) was already `False`. The `hydr_err` branch re-evaluates the *identical* expression against the *same* `chain_context` — which is never mutated between the two checks (no `await`, and `_hydrate_caller_chain_context` only reads its `chain_context` argument, per `src/core/agent.py:881-907`) — so it is guaranteed to evaluate `False` again. The fallback `effective_chain_context = chain_context` at line ~2028 can never execute; that scenario always falls through to the pre-existing hard `success=False` return. Betty's own test suite reflects this gap: `test_persist_craft_hydrate_hard_fails_without_live_caller` exercises "no live caller → hydrate fails → hard fail," and `test_persist_craft_skips_hydrate_when_live_caller` exercises "live caller from the start → hydrate skipped" — there is no (and, given the current structure, cannot be a) third test for "no live caller initially, hydrate fails, tokens recovered for fallback," because that branch is unreachable. Recommend: either drop the dead fallback block (skip-hydrate already covers the real recurse path — re-scope the plan's "fail-open" language to the skip case only) or, if a genuine fallback is still wanted for hops reached via a path other than direct parent re-inject (e.g. resumed/retried hops where `chain_context` might legitimately differ from what was checked), source the fallback from the actual re-inject data (`hop_ctx`/`caller_only_hop` equivalent) rather than re-checking the same unmutated `chain_context`.
+
+- Debug additions (`candidate_craft_persisted` gating the two new `debug_detail` succession-stopped lines) are correctly scoped and match Stage 2 step 3 — fires only after a real persist, on both the clean-terminal (`planned_next` empty) and invalid-child paths.
+
+- Non-`persist_candidate_craft_hops` paths (jobs, etc.) are unaffected: `_persist_craft` short-circuits `_live_caller` to `False` unconditionally, so hydrate-or-fail semantics are unchanged for every caller outside this ticket's scope.
+
+**Plan adherence:** Files Changed table matches exactly (2 files, no config.py hop list, no UI, no tests/bible from the engineer). Self-Assessment `Risk: HIGH` was earned — the dead fallback above is exactly the kind of subtlety that risk flag was warning about. No `!!-NONE` conflict.
+
+**Cross-ticket boundary:** No AST-1253 UI touched; no resume daisy-chain; no vector-feedback taxonomy changes; `data/admin/agent_task.json` untouched as planned.
+
+**Pattern conformance:** `pattern.dispatch.run-next-chain-authority` — conforms; succession stays on `agent_task.run_next` / repo JSON, no parallel hop list introduced anywhere (config.py untouched).
+
+## Frame diff
+
+(none — ticket description accurately describes the bug and fix scope)
+
+context_tokens≈31000
+
+— Radia
