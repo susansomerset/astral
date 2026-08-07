@@ -89,3 +89,13 @@ Changes:
 - **§1.3 DRY / in-scope-only:** No second chain walker; no AST-1253 UI; vector-feedback taxonomy out of scope.
 - **Betty test-tree ban:** No `tests/` / bible edits in this plan.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1243/AST-1264-uat-craft-get-run-next`  
+**Tip:** `02bed622`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `6b00f250` | neuter AST-1113 craft run_next hot-path migration |
+| 2 | `02bed622` | live CALLER re-inject; hydrate skip/fail-open; succession debug |
