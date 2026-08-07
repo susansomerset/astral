@@ -77,6 +77,7 @@ _DB_SCHEMA_FLAGS = (
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
+    "_surfer_batch_schema_ensured",  # AST-1229
     "_agent_responses_table_sunset_applied",
     "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
@@ -239,6 +240,20 @@ def surfer_client() -> Iterator[FlaskClient]:
     from ui.api.api_surfer import surfer_bp
 
     app.register_blueprint(surfer_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def surfer_consent_client() -> Iterator[FlaskClient]:
+    """AST-1235: Surfer consent GET/PUT under /api/candidates (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api import api_surfer as mod
+
+    # Ada tip: surfer_bp serves consent. Combined local tip may expose surfer_consent_bp.
+    bp = getattr(mod, "surfer_consent_bp", mod.surfer_bp)
+    app.register_blueprint(bp)
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client

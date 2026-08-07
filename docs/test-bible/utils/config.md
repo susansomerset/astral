@@ -2601,3 +2601,86 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
   -q
 ```
+
+### AST-1229 · AST-1169
+
+**Parent:** [AST-1169 — Surfer batch — durable worklist state and batch-scoped intake](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake). **Publish:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
+
+`SURFER_BATCH_CONFIG` — batch statuses (`requires_all_urls_terminal` on COMPLETED only), URL outcomes (`pending`/`delivered` non-terminal), id prefix `surfer`, lifecycle pointer key `active_surfer_batch_id`. No staleness keys. Core: **`docs/test-bible/core/surfer.md`**. Data: **`docs/test-bible/data/database/surfer_batches.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Vocab + flag contract | `src/utils/config.py` | **`TestAst1229SurferBatchConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
+  -q
+```
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`SURFER_CONSENT_CONFIG` — `candidate_data_key` `surfer_consent`, opaque `current_version`, provisional `disclosure_copy`, closed `statuses` (`none`/`opted_in`/`opted_out`), `default_status` `none`. Core helpers + API: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key / version / copy / statuses contract | `src/utils/config.py` | **`TestAst1235SurferConsentConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer consent scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome + version + copy weight + nav | `src/utils/config.py` | **`TestAst1237SurferConsentDisclosureConfig`** |
+
+**Broken / obsolete:** none — AST-1235 contract still holds (opaque non-empty version).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Off-switch copy + Surfer nav | `src/utils/config.py` | **`TestAst1238SurferOffSwitchConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```
