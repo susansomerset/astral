@@ -2450,6 +2450,35 @@ assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
+# ---------------------------------------------------------------------------
+# SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
+# Dwell is centre ± spread seconds, re-rolled per page. max_tabs ships at 1 —
+# raising it is a stealth-risk decision (Susan), not throughput tuning.
+# Bounds must stay under the MV3 ~30s idle window (ordinary timers, not alarms).
+# ---------------------------------------------------------------------------
+SURFER_PACING_CONFIG = {
+    "dwell_center_seconds": 10,
+    "dwell_spread_seconds": 5,
+    "max_tabs": 1,
+    # Named platform limit — dwell ceiling must stay under this (ordinary timers).
+    "mv3_idle_ceiling_seconds": 30,
+}
+
+_surfer_center = SURFER_PACING_CONFIG["dwell_center_seconds"]
+_surfer_spread = SURFER_PACING_CONFIG["dwell_spread_seconds"]
+_surfer_mv3_ceiling = SURFER_PACING_CONFIG["mv3_idle_ceiling_seconds"]
+assert isinstance(_surfer_center, (int, float)) and _surfer_center > 0
+assert isinstance(_surfer_spread, (int, float)) and _surfer_spread >= 0
+assert isinstance(_surfer_mv3_ceiling, (int, float)) and _surfer_mv3_ceiling > 0
+assert _surfer_center - _surfer_spread > 0, (
+    "SURFER_PACING_CONFIG dwell floor (center - spread) must be > 0"
+)
+assert _surfer_center + _surfer_spread < _surfer_mv3_ceiling, (
+    "SURFER_PACING_CONFIG dwell ceiling (center + spread) must stay under "
+    "mv3_idle_ceiling_seconds (ordinary timers, not chrome.alarms)"
+)
+assert isinstance(SURFER_PACING_CONFIG["max_tabs"], int) and SURFER_PACING_CONFIG["max_tabs"] >= 1
+
 # AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
 # AST-1131: paste/list normalize before link discovery (entity-unescape + nested autolink unwrap).
 # AST-1132: link hygiene excludes/allow + post-fetch non-job visible markers.
@@ -4516,6 +4545,7 @@ NAV_CONFIG = [
             {"label": "Manage Agents", "path": "/admin/agent_prompts"},
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},

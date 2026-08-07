@@ -15,6 +15,7 @@ Tables used (inventory):
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984).
+- scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
@@ -180,6 +181,7 @@ _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
 _agent_data_schema_ensured = False
+_scheduled_query_schema_ensured = False
 
 # ---- TODO:Cleanup ----
 # refactor callers of claim_company_batch to use set_company_batch.
@@ -7571,3 +7573,290 @@ def count_entities_in_state(
         finally:
             conn.close()
     return _run_with_retry(_with_conn)
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Queries (AST-1122)
+# ---------------------------------------------------------------------------
+
+def _ensure_scheduled_query_schema(conn: sqlite3.Connection) -> None:
+    """Create scheduled_query table if missing. Idempotent."""
+    global _scheduled_query_schema_ensured
+    if _scheduled_query_schema_ensured:
+        return
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scheduled_query (
+            scheduled_query_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            sql_text TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 0,
+            interval_hours REAL NOT NULL DEFAULT 24,
+            last_run_at TIMESTAMP,
+            last_rows_affected INTEGER,
+            last_error TEXT,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    _scheduled_query_schema_ensured = True
+
+
+def _scheduled_query_row(row: sqlite3.Row) -> Dict[str, Any]:
+    d = _row_to_dict(row)
+    d["active"] = bool(d.get("active"))
+    return d
+
+
+def list_scheduled_queries() -> List[Dict[str, Any]]:
+    """Return all scheduled_query rows ordered by name then id."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            rows = conn.execute(
+                """SELECT * FROM scheduled_query
+                   ORDER BY name COLLATE NOCASE ASC, scheduled_query_id ASC"""
+            ).fetchall()
+            return [_scheduled_query_row(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_scheduled_query(scheduled_query_id: str) -> Optional[Dict[str, Any]]:
+    """Return one scheduled_query row or None."""
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            row = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?",
+                (scheduled_query_id,),
+            ).fetchone()
+            return _scheduled_query_row(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def save_scheduled_query(
+    *,
+    name: str,
+    sql_text: str,
+    active: bool = False,
+    interval_hours: float = 24.0,
+    scheduled_query_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Insert a scheduled_query row. Returns the saved row dict."""
+    qid = (scheduled_query_id or "").strip() or str(uuid.uuid4())
+    name_s = (name or "").strip()
+    sql_s = (sql_text or "").strip()
+    if not name_s:
+        raise ValueError("name is required")
+    if not sql_s:
+        raise ValueError("sql_text is required")
+    hours = float(interval_hours)
+    if hours <= 0:
+        raise ValueError("interval_hours must be > 0")
+    now = _utc_now()
+
+    def _with_conn() -> Dict[str, Any]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            conn.execute(
+                """INSERT INTO scheduled_query
+                   (scheduled_query_id, name, sql_text, active, interval_hours,
+                    last_run_at, last_rows_affected, last_error, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)""",
+                (qid, name_s, sql_s, 1 if active else 0, hours, now, now),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?", (qid,)
+            ).fetchone()
+            return _scheduled_query_row(row)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def update_scheduled_query(
+    scheduled_query_id: str,
+    *,
+    name: Optional[str] = None,
+    sql_text: Optional[str] = None,
+    active: Optional[bool] = None,
+    interval_hours: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """Patch fields on a scheduled_query row. Returns updated row or None if missing."""
+    qid = (scheduled_query_id or "").strip()
+    if not qid:
+        raise ValueError("scheduled_query_id is required")
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            existing = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?", (qid,)
+            ).fetchone()
+            if not existing:
+                return None
+            cur = _scheduled_query_row(existing)
+            new_name = cur["name"] if name is None else str(name).strip()
+            new_sql = cur["sql_text"] if sql_text is None else str(sql_text).strip()
+            new_active = cur["active"] if active is None else bool(active)
+            new_hours = float(cur["interval_hours"] if interval_hours is None else interval_hours)
+            if not new_name:
+                raise ValueError("name is required")
+            if not new_sql:
+                raise ValueError("sql_text is required")
+            if new_hours <= 0:
+                raise ValueError("interval_hours must be > 0")
+            now = _utc_now()
+            conn.execute(
+                """UPDATE scheduled_query
+                   SET name = ?, sql_text = ?, active = ?, interval_hours = ?, updated_at = ?
+                   WHERE scheduled_query_id = ?""",
+                (new_name, new_sql, 1 if new_active else 0, new_hours, now, qid),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?", (qid,)
+            ).fetchone()
+            return _scheduled_query_row(row)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def delete_scheduled_query(scheduled_query_id: str) -> bool:
+    """Delete a scheduled_query row. Returns True if a row was removed."""
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            cur = conn.execute(
+                "DELETE FROM scheduled_query WHERE scheduled_query_id = ?",
+                (scheduled_query_id,),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def _is_operator_sql_fault(exc: BaseException) -> bool:
+    """True when the SQL itself is wrong (deactivate); False for transient DB issues."""
+    msg = str(exc).lower()
+    if "locked" in msg or "busy" in msg or "timeout" in msg:
+        return False
+    if "syntax" in msg or "no such table" in msg or "no such column" in msg:
+        return True
+    if isinstance(exc, sqlite3.ProgrammingError):
+        return True
+    return isinstance(exc, sqlite3.OperationalError) and "disk" not in msg
+
+
+def list_due_scheduled_queries(now: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Active rows whose last_run_at is null or older than interval_hours."""
+    ts = now or _utc_now()
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            rows = conn.execute(
+                """SELECT * FROM scheduled_query
+                   WHERE active = 1
+                     AND (
+                       last_run_at IS NULL
+                       OR (julianday(?) - julianday(last_run_at)) * 24.0 >= interval_hours
+                     )
+                   ORDER BY name COLLATE NOCASE ASC, scheduled_query_id ASC""",
+                (ts,),
+            ).fetchall()
+            return [_scheduled_query_row(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def run_due_scheduled_queries(*, now: Optional[str] = None) -> Dict[str, Any]:
+    """Execute due active scheduled queries; update last_run / deactivate on operator faults.
+
+    Returns counts: scanned, ran, deactivated, skipped_transient.
+    Data layer does not log.
+    """
+    ts = now or _utc_now()
+    due = list_due_scheduled_queries(now=ts)
+    counts: Dict[str, Any] = {
+        "scanned": len(due),
+        "ran": 0,
+        "deactivated": 0,
+        "skipped_transient": 0,
+        "actions": [],
+    }
+    for row in due:
+        qid = row["scheduled_query_id"]
+        sql = row["sql_text"]
+
+        def _exec_one(qid=qid, sql=sql) -> Dict[str, Any]:
+            conn = _get_connection()
+            try:
+                _ensure_scheduled_query_schema(conn)
+                try:
+                    cursor = conn.execute(sql)
+                    if cursor.description:
+                        fetched = cursor.fetchall()
+                        affected = len(fetched)
+                    else:
+                        affected = cursor.rowcount if cursor.rowcount is not None else 0
+                        conn.commit()
+                    conn.execute(
+                        """UPDATE scheduled_query
+                           SET last_run_at = ?, last_rows_affected = ?, last_error = NULL,
+                               updated_at = ?
+                           WHERE scheduled_query_id = ?""",
+                        (ts, int(affected), ts, qid),
+                    )
+                    conn.commit()
+                    return {"outcome": "ran", "rows_affected": int(affected)}
+                except Exception as exc:
+                    if _is_operator_sql_fault(exc):
+                        conn.execute(
+                            """UPDATE scheduled_query
+                               SET active = 0, last_error = ?, updated_at = ?
+                               WHERE scheduled_query_id = ?""",
+                            (str(exc)[:2000], ts, qid),
+                        )
+                        conn.commit()
+                        return {"outcome": "deactivated", "error": str(exc)}
+                    return {"outcome": "skipped_transient", "error": str(exc)}
+            finally:
+                conn.close()
+
+        result = _run_with_retry(_exec_one)
+        outcome = result.get("outcome")
+        if outcome == "ran":
+            counts["ran"] += 1
+        elif outcome == "deactivated":
+            counts["deactivated"] += 1
+        else:
+            counts["skipped_transient"] += 1
+        counts["actions"].append({"scheduled_query_id": qid, **result})
+    return counts

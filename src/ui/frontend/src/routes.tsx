@@ -55,6 +55,7 @@ import AgentPrompts from "./pages/AdminAgentPrompts"
 import TaskPrompts from "./pages/AdminTaskPrompts"
 import AnthropicAdHoc from "./pages/AdminAnthropicAdHoc"
 import DataManagement from "./pages/AdminDataManagement"
+import ScheduledQueries from "./pages/AdminScheduledQueries"
 import SessionResumePaste from "./pages/AdminSessionResumePaste"
 import SessionCoverLetter from "./pages/AdminSessionCoverLetter"
 import AdminManageEmail from "./pages/AdminManageEmail"
@@ -124,6 +125,7 @@ const routes: RouteObject[] = [
           { path: "admin/agent_prompts", element: <AdminRoute><AgentPrompts /></AdminRoute> },
           { path: "admin/task_prompts", element: <AdminRoute><TaskPrompts /></AdminRoute> },
           { path: "admin/anthropic_ad_hoc", element: <AdminRoute><AnthropicAdHoc /></AdminRoute> },
+          { path: "admin/scheduled_queries", element: <AdminRoute><ScheduledQueries /></AdminRoute> },
           { path: "admin/data_management", element: <AdminRoute><DataManagement /></AdminRoute> },
           { path: "admin/session_resume_paste", element: <AdminRoute><SessionResumePaste /></AdminRoute> },
           { path: "admin/session_cover_letter", element: <AdminRoute><SessionCoverLetter /></AdminRoute> },
