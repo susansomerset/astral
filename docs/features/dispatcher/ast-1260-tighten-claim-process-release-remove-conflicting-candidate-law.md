@@ -49,7 +49,7 @@ No `src/**`, no `tests/**`, no bible, no new statute/pattern files, no `HARVEST.
 1. Edit **only** `canon/statutes/astral/batch/astral.batch.claim-process-release.md`. Keep all SCHEMA frontmatter keys; do not change `id`, `tier`, `checkable`, `applies_when`, `source_docs`, or supersession fields. Set `approved_by: Archie` and `approved_at: "<UTC date of this commit YYYY-MM-DD>"`.
 2. Replace `# Statement` body with exactly:
 
-   > Every `ENTITY_TYPES` member used as a dispatch claim queue (`candidate`, `company`, `job`) must use claim → process → release with a row `batch_id` lock and **pool** claim parity: claim up to `limit` unclaimed rows in the claimable state set under one `batch_id`, process only those rows, and clear the lock in `finally` (including empty-batch / early-exit paths). Do not select by state or single-ctx and process without batch locking. Silent per-entity carve-outs that skip pool claim for any `ENTITY_TYPES` claim queue are review defects unless Archie has an explicit approved exception statute.
+   > Every `ENTITY_TYPES` member used as a dispatch claim queue (`candidate`, `company`, `job`) must use claim → process → release with a row `batch_id` lock and **pool** claim parity: claim up to `limit` unclaimed rows in the claimable state set under one `batch_id`, process only those rows, and clear the lock in `finally` (and on every early-exit path **on which rows were actually claimed** — a zero-row claim needs no release). Do not select by state or single-ctx and process without batch locking. Silent per-entity carve-outs that skip pool claim for any `ENTITY_TYPES` claim queue are review defects unless Archie has an explicit approved exception statute.
 
 3. Replace `## Rationale` body with exactly:
 
@@ -75,6 +75,8 @@ No `src/**`, no `tests/**`, no bible, no new statute/pattern files, no `HARVEST.
 5. Optional `## Notes` — if present, replace with exactly this; if absent, append after Examples:
 
    > Non-`ENTITY_TYPES` pollers (e.g. `gaze_email`, meteorite mailbox shells) are not dispatch claim queues and stay outside this statute’s claim-lock duty. Do not use that exception to skip candidate pool claim.
+   >
+   > A zero-row claim locks no rows; company's empty-batch early exit without `clear_company_batch` is known-conforming under this Statement.
 
 6. Do **not** create, retire, or rename any other statute file in this stage.
 
@@ -137,7 +139,7 @@ No `src/**`, no `tests/**`, no bible, no new statute/pattern files, no `HARVEST.
 
 ## Stage 3: `CANDIDATE_DATA_MODEL` honesty
 
-**Done when:** The candidate data-model doc lists `batch_id` / `batch_created_at`, no longer says candidates lack batch primitives or are not batch-processed, and still documents `state_history[].batch_id` without contradicting row locks.
+**Done when:** Both column inventories in the candidate data-model doc list `batch_id` / `batch_created_at` (`## Candidate table (columns)` and `## Snake_case` → **DB columns**); the doc no longer says candidates lack batch primitives or are not batch-processed; `state_history[].batch_id` does not contradict row locks.
 
 1. In `docs/features/candidate/CANDIDATE_DATA_MODEL.md`, under `## Candidate table (columns)`:
    - **Delete** the standalone line: `No batch primitives on candidate — candidates are not batch-processed.`
@@ -148,9 +150,13 @@ No `src/**`, no `tests/**`, no bible, no new statute/pattern files, no `HARVEST.
 
    - Update the **state_history** bullet so it does **not** say batch claim “does not exist.” Keep the field shape `{from_state, to_state, timestamp, batch_id}`. Replace any “until candidate batch claim exists” wording with: `batch_id` on a history entry may be null when the transition was not batch-anchored; row lock columns are separate (claim/clear).
 
-2. Do **not** change token tables, library section layouts, or company FK notes except where they contradict pool claim (leave `company.candidate_id` batch-filter note as-is — that is company scoping, not candidate row locks).
+2. Under `## Snake_case`, replace the **DB columns:** line with exactly:
 
-3. Do **not** edit archived AST-972 plan markdown under `docs/features/candidate/`.
+   `**DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, batch_id, batch_created_at, created_at, updated_at, state_changed_at.`
+
+3. Do **not** change token tables, library section layouts, or company FK notes except where they contradict pool claim (leave `company.candidate_id` batch-filter note as-is — that is company scoping, not candidate row locks).
+
+4. Do **not** edit archived AST-972 plan markdown under `docs/features/candidate/`.
 
 **Commit message:** `docs(AST-1260): candidate data model batch lock columns`
 
@@ -161,7 +167,9 @@ After Stage 3, from the epic worktree tip:
 1. Confirm `rg -n "No batch primitives|not batch-processed" docs/features/candidate/CANDIDATE_DATA_MODEL.md` returns no matches.
 2. Confirm statute Statement contains `ENTITY_TYPES` and `pool`.
 3. Confirm pattern `canonical_refs` lists `claim_candidate_batch` and `get_new_candidate_batch`.
-4. Do **not** run or edit pytest / bible.
+4. Confirm statute Statement contains `zero-row claim needs no release` (or equivalent empty-claim release qualification).
+5. Confirm `rg -n "batch_id|batch_created_at" docs/features/candidate/CANDIDATE_DATA_MODEL.md` matches both names on the `## Snake_case` → **DB columns** line (and on the column bullets).
+6. Do **not** run or edit pytest / bible.
 
 ## Execution contract
 
@@ -176,7 +184,13 @@ After Stage 3, from the epic worktree tip:
 
 **Conf:** high — survey found no separate statute to retire; exact Statement / Solution / column bullets are pinned; siblings already expose the symbols this law cites.
 
-**Risk:** Medium — over-broad statute language could false-flag non-claim-queue pollers (mitigated by Notes + When-not); under-broad language would let unlocked candidate paths pass review again (the failure mode this epic exists to close).
+**Risk:** Medium — under-broad language would let unlocked candidate paths pass review again; over-broad empty-batch wording mitigated by zero-row release qualification + Notes (company empty-path known-conforming).
+
+## Revisions
+
+**Revision 1 — 2026-08-07**  
+Driven by: Joan `[plan-discuss] round=1 concern` (REVISE @ `b84bf175`)  
+Changes: (fix-now) Stage 3 updates `## Snake_case` → **DB columns** to include `batch_id`, `batch_created_at`; Manual check 5 asserts both names on that line. (discuss) Stage 1 Statement qualifies release to early-exit paths where rows were actually claimed (zero-row needs no release); Notes records company's empty-batch early exit as known-conforming.
 
 ## Rules check (plan vs ASTRAL_CODE_RULES)
 
