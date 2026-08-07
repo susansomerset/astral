@@ -106,7 +106,7 @@ describe("AdminPerformanceMonitor", () => {
         return { json: async () => [] } as Response
       }
       if (url.startsWith("/api/admin/dispatch_ledger/batch-1/logs")) {
-        return { json: async () => [{ id: "log-1", level: "ERROR", logger_name: "core", message: "failed", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
+        return { json: async () => [{ id: 1, level: "ERROR", logger_name: "core", message: "failed", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
       }
       if (url.startsWith("/api/admin/dispatch_ledger")) {
         return { json: async () => [ledgerRow] } as Response
@@ -250,10 +250,10 @@ describe("AdminPerformanceMonitor", () => {
     function mockChainList(rows: typeof ledgerRow[]) {
       installBaseApiMocks(mockedApi, async (url: string) => {
         if (url.startsWith("/api/admin/dispatch_ledger/anticipate_scan-uuid-1/logs")) {
-          return { json: async () => [{ id: "l1", level: "INFO", logger_name: "core", message: "hop-one-log", batch_id: "anticipate_scan-uuid-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
+          return { json: async () => [{ id: 1, level: "INFO", logger_name: "core", message: "hop-one-log", batch_id: "anticipate_scan-uuid-1", created_at: "2026-05-01T10:00:01Z" }] } as Response
         }
         if (url.startsWith("/api/admin/dispatch_ledger/contemplate_job-uuid-2/logs")) {
-          return { json: async () => [{ id: "l2", level: "INFO", logger_name: "core", message: "hop-two-log", batch_id: "contemplate_job-uuid-2", created_at: "2026-05-01T10:00:02Z" }] } as Response
+          return { json: async () => [{ id: 2, level: "INFO", logger_name: "core", message: "hop-two-log", batch_id: "contemplate_job-uuid-2", created_at: "2026-05-01T10:00:02Z" }] } as Response
         }
         if (url.startsWith("/api/agent_data/anticipate_scan-uuid-1")) {
           return { json: async () => [{ agent_data_id: "a1", block_type: "RESPONSE", block_data: "\"hop-one-response\"", token_size: 1, task_key: "anticipate_scan", created_at: "2026-05-01T10:00:01Z" }] } as Response
@@ -387,8 +387,8 @@ describe("AdminPerformanceMonitor", () => {
   // AST-840 — client-side log level filter on expanded batch logs (parent AST-838).
   describe("AST-840 log level filter", () => {
     const mixedLogs = [
-      { id: "log-info", level: "INFO", logger_name: "core", message: "verbose info line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
-      { id: "log-error", level: "ERROR", logger_name: "core", message: "failure detail", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
+      { id: 10, level: "INFO", logger_name: "core", message: "verbose info line", batch_id: "batch-1", created_at: "2026-05-01T10:00:01Z" },
+      { id: 11, level: "ERROR", logger_name: "core", message: "failure detail", batch_id: "batch-1", created_at: "2026-05-01T10:00:02Z" },
     ]
 
     function mockMixedLogsApi(extraLedgerRows: typeof ledgerRow[] = [ledgerRow]) {
