@@ -361,7 +361,7 @@ astral/
 │   │   ├── config.py
 │   │   ├── logging.py
 │   │   └── formatting.py
-│   └── ui/                    # Web UI (Flask + React)
+│   └── ui/                    # Web UI (Flask + React) + browser extension client
 │       ├── server.py          # Flask app setup, blueprint registration, scheduler start
 │       ├── auth.py            # require_auth decorator (imported by blueprint modules)
 │       ├── api/               # Flask Blueprints (one module per domain)
@@ -370,41 +370,49 @@ astral/
 │       │   ├── api_jobs.py        # /api/jobs/*
 │       │   ├── api_companies.py   # /api/companies/*
 │       │   └── api_admin.py       # /api/admin/* (agents, tasks, timesheets, dispatch, adhoc, data)
-│       └── frontend/          # Vite + React + TypeScript
+│       ├── frontend/          # Vite + React + TypeScript
+│       │   ├── src/
+│       │   │   ├── App.tsx        # App entry point (BrowserRouter, providers)
+│       │   │   ├── main.tsx       # React DOM mount
+│       │   │   ├── routes.tsx     # React Router route definitions
+│       │   │   ├── App.css        # Single stylesheet (all styles, organized with TOC)
+│       │   │   ├── contexts/      # React context providers
+│       │   │   │   └── CandidateContext.tsx
+│       │   │   ├── lib/           # Shared non-component modules
+│       │   │   │   ├── api.ts     # API client (auth header injection)
+│       │   │   │   └── fmt.ts     # Date/time formatting
+│       │   │   ├── components/    # Reusable UI components (flat)
+│       │   │   │   ├── NavigationShell.tsx
+│       │   │   │   ├── ListPage.tsx
+│       │   │   │   ├── ContextPage.tsx
+│       │   │   │   ├── DetailsEditPage.tsx
+│       │   │   │   ├── FormFields.tsx
+│       │   │   │   ├── Modal.tsx
+│       │   │   │   ├── Toast.tsx
+│       │   │   │   ├── Time.tsx           # Timezone-aware timestamp display
+│       │   │   │   ├── TabbedTextArea.tsx  # Horizontal tab bar + textarea (reusable)
+│       │   │   │   ├── SideTabPanel.tsx    # Vertical side tabs + textarea (fixed or editable)
+│       │   │   │   └── TokenTextarea.tsx   # Textarea with {$TOKEN} autocomplete
+│       │   │   ├── pages/         # Page components (flat, section-prefixed names)
+│       │   │   │   ├── AdminScheduledActions.tsx
+│       │   │   │   ├── JobsRecommended.tsx
+│       │   │   │   ├── CompaniesWatchList.tsx
+│       │   │   │   ├── ArtifactsBaseResumeContent.tsx
+│       │   │   │   ├── CandidateProfile.tsx
+│       │   │   │   └── ...          # No subdirectories
+│       │   │   └── assets/        # Static assets (logo, images)
+│       │   ├── dist/              # Build output (gitignored)
+│       │   ├── package.json
+│       │   ├── vite.config.ts
+│       │   └── index.html
+│       └── extension/         # WXT + TypeScript (Manifest V3) — not served by Flask
 │           ├── src/
-│           │   ├── App.tsx        # App entry point (BrowserRouter, providers)
-│           │   ├── main.tsx       # React DOM mount
-│           │   ├── routes.tsx     # React Router route definitions
-│           │   ├── App.css        # Single stylesheet (all styles, organized with TOC)
-│           │   ├── contexts/      # React context providers
-│           │   │   └── CandidateContext.tsx
-│           │   ├── lib/           # Shared non-component modules
-│           │   │   ├── api.ts     # API client (auth header injection)
-│           │   │   └── fmt.ts     # Date/time formatting
-│           │   ├── components/    # Reusable UI components (flat)
-│           │   │   ├── NavigationShell.tsx
-│           │   │   ├── ListPage.tsx
-│           │   │   ├── ContextPage.tsx
-│           │   │   ├── DetailsEditPage.tsx
-│           │   │   ├── FormFields.tsx
-│           │   │   ├── Modal.tsx
-│           │   │   ├── Toast.tsx
-│           │   │   ├── Time.tsx           # Timezone-aware timestamp display
-│           │   │   ├── TabbedTextArea.tsx  # Horizontal tab bar + textarea (reusable)
-│           │   │   ├── SideTabPanel.tsx    # Vertical side tabs + textarea (fixed or editable)
-│           │   │   └── TokenTextarea.tsx   # Textarea with {$TOKEN} autocomplete
-│           │   ├── pages/         # Page components (flat, section-prefixed names)
-│           │   │   ├── AdminScheduledActions.tsx
-│           │   │   ├── JobsRecommended.tsx
-│           │   │   ├── CompaniesWatchList.tsx
-│           │   │   ├── ArtifactsBaseResumeContent.tsx
-│           │   │   ├── CandidateProfile.tsx
-│           │   │   └── ...          # No subdirectories
-│           │   └── assets/        # Static assets (logo, images)
-│           ├── dist/              # Build output (gitignored)
+│           │   ├── entrypoints/   # WXT file-based entrypoints (background, later content)
+│           │   └── lib/           # Shared non-entrypoint modules (pacing, consent, …)
+│           ├── .output/           # Build output (gitignored) — load-unpacked from here
 │           ├── package.json
-│           ├── vite.config.ts
-│           └── index.html
+│           ├── wxt.config.ts
+│           └── vitest.config.ts
 ├── scripts/               # Build and deployment scripts
 │   ├── build_railway.sh   # Build: pip install, playwright, frontend build
 │   └── start_server.py    # Start: reads RAILWAY_CONFIG, exec's gunicorn
@@ -551,6 +559,15 @@ The dispatcher (`src/core/dispatcher.py`) runs as per-task daemon threads inside
 | Page components | `src/pages/` | Flat directory — section-prefixed names (e.g. `AdminScheduledActions.tsx`, `JobsRecommended.tsx`) |
 | Static assets | `src/assets/` | Logo, images |
 | Styles | `src/App.css` | Single file, organized by numbered section with a TOC comment at the top |
+
+**Extension client (`src/ui/extension/`):**
+
+- Second client surface under `src/ui/`, sibling to `frontend/` (Susan / AST-1170).
+- Own `package.json`, `wxt.config.ts`, `tsconfig`, Vitest config; build output under `.output/` (gitignored); **not** mounted by Flask.
+- Layout: WXT `src/entrypoints/` for runtime entrypoints; `src/lib/` for shared modules (same role as `frontend/src/lib/`).
+- Injected UI (toast / progress later) is plain DOM in a shadow root — **no React** for host-page surfaces.
+- Prefer promise-based `browser.*` (WXT) over raw `chrome.*` callbacks; do not hard-code `ServiceWorkerGlobalScope` — background is the "background context" abstraction (Chrome SW / Firefox event page via WXT).
+- **Python import-direction (§3.3) applies to Python only.** `src/ui/frontend/` and `src/ui/extension/` are TypeScript clients; they do not participate in the ui→core→data import table. Cross-contamination still forbids inventing a top-level `extension/` outside `src/ui/`.
 
 ### 3.6 Local debug and spike output (R&D)
 
