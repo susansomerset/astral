@@ -135,3 +135,12 @@ Changes:
 context_tokens≈31000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Publish tip before resolve:** `16de1579` (`docs(AST-1264): Radia review — findings`)
+
+| Finding | Disposition |
+|---------|-------------|
+| fix-now (dead/unreachable `hydr_err` fallback) | Fixed — removed the unreachable fallback; fail-open is the `_live_caller` skip path after parent re-inject. No-live-caller + hydrate miss still hard-fails. |

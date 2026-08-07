@@ -2003,9 +2003,9 @@ async def do_task(
             parent_for_hydration = _parent_hop_task_key_for_child(task_key)
     if parent_for_hydration and index and entity_type_pre:
         if _task_references_caller_tokens(agent_task_row, live_content):
-            # AST-1264: skip hydrate when candidate-craft recurse already passed live CALLER_*.
-            _persist_craft = bool((ctx or {}).get("persist_candidate_craft_hops"))
-            _live_caller = _persist_craft and any(
+            # AST-1264: fail-open to live CALLER — skip hydrate when persist recurse has CALLER_*
+            # (re-inject on parent). Dead hydr_err fallback removed (Radia).
+            _live_caller = bool((ctx or {}).get("persist_candidate_craft_hops")) and any(
                 ((chain_context or {}).get(k) or "").strip() for k in CALLER_HOP_TOKEN_NAMES
             )
             if _live_caller:
@@ -2020,24 +2020,16 @@ async def do_task(
                     debug=debug,
                 )
                 if hydr_err:
-                    # AST-1264: fail-open to live CALLER when persist path still has them.
-                    if _persist_craft and any(
-                        ((chain_context or {}).get(k) or "").strip()
-                        for k in CALLER_HOP_TOKEN_NAMES
-                    ):
-                        effective_chain_context = chain_context
-                    else:
-                        return {
-                            "success": False,
-                            "error": hydr_err,
-                            "api_response": None,
-                            "parsed_response": None,
-                            "timesheet": {},
-                        }
-                else:
-                    effective_chain_context = _merge_hydrated_caller_context(
-                        chain_context, hydrated
-                    )
+                    return {
+                        "success": False,
+                        "error": hydr_err,
+                        "api_response": None,
+                        "parsed_response": None,
+                        "timesheet": {},
+                    }
+                effective_chain_context = _merge_hydrated_caller_context(
+                    chain_context, hydrated
+                )
     in_chain = _in_run_next_chain(chain_context=chain_context, agent_task_row=agent_task_row)
     _resume_hop_debug_index(task_key, debug=debug, ctx=ctx, index=index)
     hop_ledger_batch_id: Optional[str] = None
