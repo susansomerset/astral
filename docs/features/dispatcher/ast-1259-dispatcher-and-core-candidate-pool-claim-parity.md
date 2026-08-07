@@ -161,3 +161,25 @@ Changes: added **Tests invalidated (Betty contract)** (fix-now — both unlocked
 | 1 | `35265641` | `get_new_candidate_batch` / `clear_candidate_batch` in `candidate.py` |
 | 2 | `e0d18dab` | `_run_unified` pool claim; empty + finally clear; force per-entity process |
 | 3 | (smoke) | Temp-DB claim → clear + empty clear; Style D claim path unchanged (no product delta) |
+
+## Radia review — [code-rubric] revision=1
+
+**Publish ref:** `sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity` @ `d950de10`
+**Overall:** DISCUSS
+
+Full active-set sweep run in-session (65 active statutes: 18 universal + 47 scoped — 39 scoped matched and scored, 8 scoped `not-applicable`). Branch not yet merged onto `dev`, so the three-dot diff also carries AST-1258's already-`Review Posted` data-layer content — not re-litigated here; findings below are scoped to what's new: `src/core/candidate.py`, `src/core/dispatcher.py`, and their tests/bible.
+
+**Plan adherence:** Stage 1 (`35265641`) / Stage 2 (`e0d18dab`) land exactly as planned — `get_new_candidate_batch` / `clear_candidate_batch` mirror `get_new_job_batch` / `get_new_company_batch`; `_run_unified`'s candidate arm swaps the unlocked `[ctx]` gate for a real pool claim, adds empty-batch clear, and replaces the `finally` `pass` with `clear_candidate_batch(bid)`. `use_full_batch = False` forced for candidate is required and correctly scoped. Joan's round-1 items (undisclosed test invalidation; AC4 release-logging parity; cross-candidate inflow `ctx` cadence) are all closed by Revision 1. Scope held — `code()` commits touch only the two core files; `test()`/`merge-tests()` touch only tests/bible; clean role separation across all five commits.
+
+**Pattern conformance:** `pattern.batch.entity-claim-process-release` — conforms; closes the gap AST-1258 opened (candidate now does real claim → process → release, matching job/company).
+
+**Findings:**
+- **discuss** — misplaced `@pytest.mark.skipif` decorator in `test_dispatcher.py`: the new `TestAst1259CandidatePoolClaim` class landed between the pre-existing skip decorator and its intended target `TestAst972CandidateStageDispatch` (confirmed against `origin/dev`'s file at the same lines). Condition is `False` either way on this tip so nothing fails today, but the guard now tracks the wrong class. Betty/test-tree fix, not engineer fix-now.
+- **discuss** — straggler: `astral.standards.dry-and-focused-functions` and `astral.standards.public-then-helpers` were excluded at plan time ("universal; no new statute work") but both are `tier: scoped` and mechanically match this diff's `core` layer / `src/core/**` paths, so this sweep scores both `conforms` (not `not-applicable`). Content genuinely conforms — flagged per C4 to reconcile the plan-exclusion label with the sweep predicate.
+
+**What's solid:** claimed-row shape flows unchanged through `_dispatch_entity_identifier` / `run_consult_task`; the existing entity-agnostic Style D debug block now fires correctly for candidate with zero new debug code; `limit_val` fallback is character-for-character the `get_new_job_batch` precedent; test/bible delta precisely revises the two Stage-2-invalidated tests and adds direct multi-row/empty/finally-clear coverage.
+
+context_tokens≈158000
+
+— Radia
+
