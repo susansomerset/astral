@@ -245,6 +245,35 @@ No unresolved conflicts → Conf stays `high`.
 
 ---
 
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Publish ref tip:** `2d1e2d99` (`sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`)
+**Overall:** CLEAN
+
+Full 65-statute active set scored in-session against `git diff origin/dev...origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in` (this branch stacks on the already-reviewed `AST-1235` tip; incremental review focus was the AST-1237-only delta: `src/core/candidate.py` (+6), `src/utils/config.py` (+41), new `src/ui/extension/src/lib/{surferConsent,surferDisclosureDom}.ts`, new `src/ui/frontend/src/pages/CandidateSurferConsent.tsx`, `routes.tsx` + `App.css` + `CANDIDATE_DATA_MODEL.md` updates). No `violates`, no `needs-discussion`. 3 `not-applicable` (no `src/data/**`, `scripts/**`, or `artifacts/**` touched). No Joan plan-rubric verdict attached — noted, not a block.
+
+**What's solid**
+
+- Chrome strings (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) all land in `SURFER_CONSENT_CONFIG` with non-empty-after-strip asserts, and ride the existing GET DTO — no parallel copy source in React or the extension lib (`pattern.config.config-block`, `astral.standards.no-hardcoded-sets`).
+- Decline path (web `onDecline` and DOM `handlers.onDecline`) is a pure navigate / callback — no `PUT` call in either surface, matching parent AC2/AC6 and the plan's explicit "no opt-in/opt-out on decline" decision. Opt-in always sends `dto.current_version`, never a free-form client value.
+- `mountSurferDisclosure` prefers an existing/attachable shadow root, falls back to plain children, and `unmount()` clears the subtree — matches the plan's isolation requirement without a WXT scaffold.
+- `DisclosureParagraphs` (React) defined ahead of the default-exported page component matches this codebase's established `pages/` convention (`PronounSelect`, `CacheMinCell`, `IntakeResumeDialog`, etc. all precede their page's default export) — not a `public-then-helpers` violation.
+- `src/ui/extension/src/lib/` is a new tree not yet in `ASTRAL_CODE_RULES.md` §3.1's directory listing; the plan documents this placement decision explicitly (citing the AST-1236 pacing-lib precedent) and it reached Plan Approved — flagged here as a documentation-hygiene note for Archie, not a fix-now/discuss finding.
+- Git hygiene clean: one `merge-tests` commit citing one `origin/tests` SHA, correct commit vocabulary, engineer commit (`8a53dc93`) touches only `src/`, test commits touch only `tests/` + `docs/test-bible/`.
+- `py_compile` clean on both changed Python modules; standalone `tsc --noEmit --strict` clean on both new extension lib files; full frontend `tsc --noEmit` clean.
+
+**Plan adherence:** Diff matches the five-stage plan file-for-file (config/DTO chrome, extension lib, web page + route + nav, App.css, data-model doc note); no extra `src/` scope. Self-Assessment `Conf: high` holds.
+
+**Pattern conformance:** `pattern.config.config-block` — conforms (as above). `pattern.ui.admin-endpoint` — correctly not-cited/excluded (no new blueprint; reuses AST-1235's `@require_auth` routes).
+
+**Frame diff:** none (description frame unchanged; diff matches plan as written).
+
+context_tokens≈52000
+— Radia
+
+---
+
 ## Review (build stub)
 
 **Publish ref:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`  
