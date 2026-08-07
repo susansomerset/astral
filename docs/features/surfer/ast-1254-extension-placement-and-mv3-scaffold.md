@@ -332,3 +332,21 @@ context_tokens≈70000
 
 — Radia
 
+---
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Review tip:** `244da6cf` (`docs(AST-1254): Radia review — findings`)  
+**Product tip:** `ff5a7d0e`
+
+**fix-now:** none.
+
+**discuss — orphaned `tests/component/frontend/lib/test_surferFanOut.test.ts`:** No product change (engineer test-tree ban). Filing `[qa-handoff]` @Betty White to delete the residue so frontend Vitest stops double-collecting the migrated extension copy. Staying **Review Posted** with assignee Betty until she delivers and reassigns.
+
+**discuss — `test(AST-1254):` vocabulary on product preflight `ff5a7d0e`:** Acknowledged; Betty's manifest allowed `test(...)` or `code(...)`. No rewrite of history. Future product-only preflights use `code(<ticket>):`.
+
+**discuss — assignee at Tests Passed:** Observation only; assignee is Ada for this resolve pass.
+
+**Advisory / other:** none.
+
