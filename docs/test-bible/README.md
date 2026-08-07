@@ -60,6 +60,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute active + Archie frontmatter; pattern `proposed`; CODE_RULES §2.6.0 cites `astral.dispatch.run-next-is-chain-authority`; statutes README/HARVEST count **58**) — no pytest / zero-arg harness / branch-lock gate. Sibling anomaly remediations under parent **AST-1109** are out of scope.
 
+### AST-1260 · AST-1257 (claim-process-release / candidate law)
+
+**Docs-only** (canon statute + pattern + CODE_RULES §2.4 + `CANDIDATE_DATA_MODEL`). Live edits on **`origin/sub/AST-1257/AST-1260-tighten-claim-process-release-remove-conflicting-candidate-law`**: `canon/statutes/astral/batch/astral.batch.claim-process-release.md` (active, Archie-approved — ENTITY_TYPES pool claim; zero-row release note); `canon/patterns/batch/pattern.batch.entity-claim-process-release.md` (candidate `canonical_refs` + pool-parity Solution); `docs/ASTRAL_CODE_RULES.md` §2.4 candidate/ENTITY_TYPES wording; `docs/features/candidate/CANDIDATE_DATA_MODEL.md` (`batch_id` / `batch_created_at`; no “no batch primitives”). No `src/**`, no pytest. Product claim/dispatch remains siblings **AST-1258** / **AST-1259**.
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute Statement has `ENTITY_TYPES` + pool + zero-row release; `approved_by: Archie`; pattern lists `claim_candidate_batch` / `get_new_candidate_batch`; CODE_RULES §2.4 names candidate claim-queue duty; `CANDIDATE_DATA_MODEL` has lock columns on table + Snake_case DB columns and no “No batch primitives” / “not batch-processed”) — no pytest / zero-arg harness / branch-lock gate.
+
 ### Retired monolith section map
 
 

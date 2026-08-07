@@ -73,6 +73,8 @@ from src.utils.config import (
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
+    _dispatch_trigger_state_for_task_key,
+    is_meteorite_email_mailbox_task_key,
     get_task_keys,
     dispatch_claim_uses_score_floor,
     is_dispatch_chain_trigger,
@@ -859,9 +861,14 @@ def list_dtasks():
     rows = list_dispatch_tasks()
     rows = [r for r in rows if r.get("task_key") not in DISPATCH_RETIRED_TASK_KEYS]
     gaze_tk = GAZE_EMAIL_CONFIG["task_key"]
-    # One inbox snapshot for every candidate-bound gaze_email Avail stamp (AST-1135).
+
+    def _inbox_avail_task_key(tk: str) -> bool:
+        # gaze_email + meteorite mailbox fold share Gmail inbox ping Avail (AST-1214).
+        return tk == gaze_tk or is_meteorite_email_mailbox_task_key(tk)
+
+    # One inbox snapshot when any candidate-bound mailbox Avail row is present.
     need_gaze_counts = any(
-        (r.get("task_key") or "").strip() == gaze_tk
+        _inbox_avail_task_key((r.get("task_key") or "").strip())
         and str(r.get("candidate_id") or "").strip()
         for r in rows
     )
@@ -883,7 +890,7 @@ def list_dtasks():
         et = row.get("entity_type")
         ts = row.get("trigger_state")
         cid = row.get("candidate_id", "")
-        if (row.get("task_key") or "").strip() == gaze_tk:
+        if _inbox_avail_task_key((row.get("task_key") or "").strip()):
             cid_s = str(cid or "").strip()
             row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
         else:
@@ -922,7 +929,7 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
-    """Scheduled Actions form defaults: TASK_CONFIG keys use dispatch_task_admin_defaults
+    """Scheduled Actions form defaults: TASK_CONFIG / mailbox keys use dispatch_task_admin_defaults
     when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
     entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
@@ -931,14 +938,29 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
-    # Prefer derived admin defaults when the key is registered and has a trigger rule.
-    if task_key in TASK_CONFIG:
+    # Prefer derived admin defaults (TASK_CONFIG + meteorite mailbox fold).
+    if task_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(task_key):
         try:
             derived = dispatch_task_admin_defaults(task_key)
-            entity_type = derived["entity_type"]
-            trigger_state = derived["trigger_state"]
+            entity_type = derived["entity_type"] or ""
+            trigger_state = (
+                (derived["trigger_state"] or "")
+                if derived["trigger_state"] is not None
+                else ""
+            )
         except KeyError:
-            pass  # mid-chain / no default trigger — keep TASK_CONFIG field values
+            pass  # mid-chain / no default — keep prior field values
+    # Helper-resolvable agent_task-only hops fill empty entity/trigger.
+    if not entity_type:
+        try:
+            entity_type = _dispatch_entity_type_for_task_key(task_key) or ""
+        except KeyError:
+            pass
+    if not trigger_state:
+        try:
+            trigger_state = _dispatch_trigger_state_for_task_key(task_key) or ""
+        except KeyError:
+            pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
@@ -947,31 +969,34 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     }
 
 
+def _admin_dispatch_task_key_catalog() -> dict[str, dict]:
+    """Live Admin picker catalog: agent_task ∪ TASK_CONFIG ∪ dispatch orphans, alpha by task_key."""
+    membership: set[str] = set(get_task_keys())
+    for row in database.list_candidate_tasks():
+        tk = (row.get("task_key") or "").strip()
+        if tk:
+            membership.add(tk)
+    for r in list_dispatch_tasks():
+        k = (r.get("task_key") or "").strip()
+        if k:
+            membership.add(k)
+    membership -= set(admin_hidden_dispatch_task_keys())
+    membership -= set(DISPATCH_RETIRED_TASK_KEYS)
+    return {tk: _dispatch_task_key_form_meta(tk) for tk in sorted(membership)}
+
+
 @admin_bp.route("/dispatch_tasks/task_keys")
 @require_admin
 def dispatch_task_keys():
-    """task_key → entity_type / trigger_state for Scheduled Actions forms.
+    """task_key → form meta for Scheduled Actions (and peer Admin pickers).
 
-    Every TASK_CONFIG key is selectable. Registered keys use config-built defaults when
-    available; other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
-    seen: dict[str, dict] = {}
-    for tk in get_task_keys():
-        seen[tk] = _dispatch_task_key_form_meta(tk)
-    for r in list_dispatch_tasks():
-        k = r.get("task_key", "")
-        if not k:
-            continue
-        if k in DISPATCH_RETIRED_TASK_KEYS:
-            continue
-        if k not in seen:
-            # Same grouping path as registry keys — do not wipe agent_task metadata.
-            seen[k] = _dispatch_task_key_form_meta(k)
-    hidden = admin_hidden_dispatch_task_keys()
-    for tk in hidden:
-        seen.pop(tk, None)
-    for tk in DISPATCH_RETIRED_TASK_KEYS:
-        seen.pop(tk, None)
-    return jsonify(seen)
+    Membership is the live union of TASK_CONFIG keys, current agent_task keys
+    (including fetch_* and peers), and existing dispatch_task keys — sorted
+    alphabetically by task_key via sorted(membership). Retired / admin-hidden
+    keys are omitted. Grouping fields come from agent_task; no parallel
+    section inventory.
+    """
+    return jsonify(_admin_dispatch_task_key_catalog())
 
 
 @admin_bp.route("/dispatch_tasks/state_options")
@@ -1059,15 +1084,24 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    if tk not in TASK_CONFIG:
+    # Mailbox identities (gaze_email + meteorite fold) — null/empty trigger only.
+    if tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk):
+        ts = (trigger_state or "").strip()
+        if ts:
+            return (
+                f"task_key {tk!r} is a mailbox poller; trigger_state must be null/empty "
+                f"(got {trigger_state!r})"
+            )
+        return None
+    try:
+        et = _dispatch_entity_type_for_task_key(tk)
+    except KeyError:
+        if tk in TASK_CONFIG:
+            return f"task_key {tk!r} has unsupported entity_type"
         return f"Unknown task_key: {tk!r}"
     ts = (trigger_state or "").strip()
     if not ts:
         return "trigger_state is required"
-    try:
-        et = _dispatch_entity_type_for_task_key(tk)
-    except KeyError:
-        return f"task_key {tk!r} has unsupported entity_type"
     if et not in ENTITY_TYPES:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
     try:

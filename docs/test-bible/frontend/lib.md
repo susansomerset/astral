@@ -160,6 +160,25 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
 ```
 
+### AST-1215 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1215-admin-ui-grouping-honesty-alphabetical-dropdowns`.
+
+`compareTaskKeys` / `sortedTaskKeys` — plain lexicographic task_key order (Python `sorted` / SQLite `ORDER BY task_key`; not `localeCompare`). Page wiring: **`docs/test-bible/frontend/pages.md`** (**AST-1215**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Lexicographic helper | `src/ui/frontend/src/lib/taskKeySort.ts` | **`test_taskKeySort.test.ts`** |
+
+**Broken / obsolete:** none — new helper.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_taskKeySort.test.ts
+```
+
 ### Extension Surfer libs (moved)
 
 **AST-1254** migrated `test_surfer*.test.ts` from `tests/component/frontend/lib/` → `tests/component/extension/lib/` (WXT Vitest project). Coverage maps live under **`docs/test-bible/extension/lib.md`** (AST-1236–AST-1239) and **`docs/test-bible/extension/scaffold.md`** (AST-1254). Do not re-add Surfer extension-lib manifests here.

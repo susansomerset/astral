@@ -281,7 +281,7 @@ Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/te
 | Admin JSON seed absence | `data/admin/agent_task.json` | **`TestAst1252RetiredWrapperTaskKeysAbsent`** (narrow — not whole `test_repo_admin_json.py`) |
 | Stage claim states + list ids | `src/data/database.py` | revised **`TestAst972CandidateStageEligibility`** |
 
-**Broken / obsolete (Betty revision):** resume worker tests; manual multi-hop `suppress_run_next` walk; stage ensure/provision; wrapper consult/dispatch fixtures; `craft_task_key` asserts; Avail-via-`count_eligible` for stage states (candidate entity Avail is inflow-only).
+**Broken / obsolete (Betty revision):** resume worker tests; manual multi-hop `suppress_run_next` walk; stage ensure/provision; wrapper consult/dispatch fixtures; `craft_task_key` asserts; Avail-via-`count_eligible` for stage states as inflow-only (superseded by **AST-1258** unclaimed-pool Avail for non-inflow keys — see **`docs/test-bible/data/database/dispatch_tasks.md`**).
 
 **Integration:** none revised.
 
@@ -943,3 +943,24 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
   tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
   -q
 ```
+
+### AST-1259 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity`.
+
+Core `get_new_candidate_batch` / `clear_candidate_batch` wrappers (batch_id-first; cross-candidate pool; no score_floor / candidate_id scope). Dispatcher wiring: **`docs/test-bible/core/dispatcher.md`** § AST-1259.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Wrapper claim / clear / validation | `src/core/candidate.py` | **`TestAst1259CandidateBatchApi`** |
+
+**Broken / obsolete:** none in this module — wrappers are additive.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
+  -q
+```
+

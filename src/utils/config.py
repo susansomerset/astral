@@ -2584,11 +2584,24 @@ assert all(
 # must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
 METEORITE_EMAIL_PARSE_CONFIG = {
     "task_key": "meteorite_email",
+    # Live agent_task seed name until AST-1182 rename / catch_meteorite_email.
+    "legacy_agent_task_key": "parse_meteorite_email",
+    # Archie (AST-1214): candidate-bound mailbox; Avail = Gmail inbox ping.
+    "admin_entity_type": "candidate",
     # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
     "parse_modes": ("html_links", "subject_body"),
 }
 assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
 assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
+assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
+assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"]
+
+
+def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
+    """True for meteorite_email or its live legacy agent_task key (AST-1214 fold)."""
+    tk = (task_key or "").strip()
+    cfg = METEORITE_EMAIL_PARSE_CONFIG
+    return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -3137,7 +3150,7 @@ def dispatch_task_admin_defaults(
     task_key: str,
     trigger_state: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Admin + DB insert defaults for any registered non-retired TASK_CONFIG key.
+    """Admin + DB insert defaults for schedulable task keys (AST-1214 widens beyond TASK_CONFIG).
 
     Optional ``trigger_state`` overrides derivation when the key has no default
     trigger rule (e.g. mid-chain hops with TASK_CONFIG.trigger_state None).
@@ -3146,8 +3159,14 @@ def dispatch_task_admin_defaults(
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         raise KeyError(retired)
-    if tk not in TASK_CONFIG:
-        raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}")
+    # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
+    if is_meteorite_email_mailbox_task_key(tk):
+        return {
+            "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
     # Mailbox poller — no ENTITY_TYPES claim queue (do not use entity/trigger/sort helpers).
     if tk == GAZE_EMAIL_CONFIG["task_key"]:
         return {
@@ -3156,6 +3175,20 @@ def dispatch_task_admin_defaults(
             "sort_by": None,
             "batch_call_mode": 0,
         }
+    # Helper-resolvable agent_task-only hops (fetch_*, gaze, inflow_discovery, …).
+    if tk not in TASK_CONFIG:
+        try:
+            entity_type = _dispatch_entity_type_for_task_key(tk)
+            override = (trigger_state or "").strip()
+            effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
+            return {
+                "entity_type": entity_type,
+                "trigger_state": effective_ts,
+                "sort_by": _dispatch_sort_by_for(entity_type, effective_ts),
+                "batch_call_mode": _dispatch_batch_call_mode_for(tk),
+            }
+        except KeyError as exc:
+            raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}") from exc
     entity_type = _dispatch_entity_type_for_task_key(tk)
     override = (trigger_state or "").strip()
     effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)

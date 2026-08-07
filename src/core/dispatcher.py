@@ -453,6 +453,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     from src.core import consult
     from src.core.tracker import get_new_job_batch, clear_job_batch
     from src.core.roster import get_new_company_batch, clear_company_batch
+    from src.core.candidate import get_new_candidate_batch, clear_candidate_batch
 
     entity_type     = task.get("entity_type", "")
     input_state     = task.get("trigger_state", "")
@@ -465,6 +466,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
     use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
+    # Candidate consult reads entities[0] only — force per-row gather for pool claims (AST-1259).
+    if entity_type == "candidate":
+        use_full_batch = False
     s               = dict(_SUMMARY_ZERO)
     if debug:
         logger.set_debug_flag(True)
@@ -473,8 +477,13 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
-        cur = (ctx.get("state") or "").strip() if ctx else ""
-        entities = [ctx] if ctx and cur in claim_states else []
+        bid, entities = get_new_candidate_batch(
+            input_state,
+            limit=limit,
+            sort_by=sort_by,
+            batch_id=bid,
+            states=claim_states,
+        )
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
@@ -536,6 +545,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     if not entities:
         if entity_type == "job" and bid:
             clear_job_batch(bid)
+        elif entity_type == "candidate" and bid:
+            clear_candidate_batch(bid)
         if debug:
             logger.debug_index(
                 func="dispatcher._run_unified",
@@ -649,7 +660,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         if entity_type == "job":
             clear_job_batch(bid)
         elif entity_type == "candidate":
-            pass
+            clear_candidate_batch(bid)
         else:
             clear_company_batch(bid)
     return s

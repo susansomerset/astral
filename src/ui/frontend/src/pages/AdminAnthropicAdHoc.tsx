@@ -4,6 +4,7 @@ import TokenTextarea from "../components/TokenTextarea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
+import { compareTaskKeys } from "../lib/taskKeySort"
 import { useLocalStorage } from "../lib/useLocalStorage"
 
 const LS = "adhoc:"  // localStorage key prefix
@@ -142,6 +143,12 @@ export default function AnthropicAdHoc() {
 
   const hasContent = userPrompt.trim() || cachePrompt.trim() || nocachePrompt.trim()
 
+  // Explicit lexicographic task_key order (do not rely on API array order alone).
+  const taskKeysSorted = useMemo(
+    () => [...tasks].sort((a, b) => compareTaskKeys(a.task_key, b.task_key)),
+    [tasks],
+  )
+
   function handlePreview() {
     if (!agentId) { setToast({ text: "Select an agent first", variant: "error" }); return }
     setPreviewing(true)
@@ -270,7 +277,7 @@ export default function AnthropicAdHoc() {
           <label className="dep-field-label">Task Key <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(loads prompts + entities)</span></label>
           <select className="dep-input" value={taskKey} onChange={e => setTaskKey(e.target.value)}>
             <option value="">— No Task (ad hoc) —</option>
-            {tasks.map(t => <option key={t.task_key} value={t.task_key}>{t.task_key}</option>)}
+            {taskKeysSorted.map(t => <option key={t.task_key} value={t.task_key}>{t.task_key}</option>)}
           </select>
         </div>
         <div className="dep-field" style={{ flex: 1, maxWidth: 280 }}>
@@ -355,7 +362,7 @@ export default function AnthropicAdHoc() {
               borderRadius: 4, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
               maxHeight: 300, overflowY: "auto", minWidth: 280,
             }}>
-              {tasks.map(t => {
+              {taskKeysSorted.map(t => {
                 const hasExisting = (t.user_prompt_len || 0) > 0 || (t.cache_prompt_len || 0) > 0 || (t.nocache_prompt_len || 0) > 0
                 return (
                   <div key={t.task_key} onClick={() => handleSaveAs(t.task_key)} style={{

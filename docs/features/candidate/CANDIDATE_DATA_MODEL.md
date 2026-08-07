@@ -6,13 +6,13 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 
 - **astral_candidate_id** — Primary key. Lowercase last name (e.g. `somerset`), same convention as company `short_name`.
 - **state** — UPPERCASE; one of `CANDIDATE_STATES` (see state machine below).
-- **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` may be null until candidate batch claim exists; readers treat null as no batch.
+- **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` on a history entry may be null when the transition was not batch-anchored; row lock columns are separate (claim/clear).
 - **first**, **last**, **full**, **pronouns** — High-frequency identity columns (AST-1014). Not nested in any blob. `full` is recomputed from first+last on save when omitted or empty/whitespace; a non-empty value is an explicit override. `pronouns` holds a `PRONOUN_PREFERENCE_OPTIONS` value (default `they/them`).
 - **candidate_data** — One JSON blob; see below (three library sections + meta).
 - **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
+- **batch_id** — Golden-ticket lock for dispatch claim → process → release (AST-1258). Null or empty means unclaimed. Same pool-claim role as job/company `batch_id`.
+- **batch_created_at** — Timestamp set when the row is claimed; cleared with `batch_id` on release.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
-
-No batch primitives on candidate — candidates are not batch-processed.
 
 ## candidate_data (library + meta)
 
@@ -185,7 +185,7 @@ Jobs do not have a direct `candidate_id` column; they are scoped via their paren
 
 ## Snake_case
 
-- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
+- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - **candidate_data keys:** contact, context, artifacts, and all nested keys above; meta siblings as listed.
 - **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, `CANDIDATE_LIBRARY_CONFIG`, etc.
 

@@ -329,30 +329,44 @@ class TestRunUnified:
         clear.assert_called_once_with(batch_id)
 
     @pytest.mark.asyncio
-    async def test_ast505_candidate_entity_routes_ctx_without_company_clear(
+    async def test_ast505_candidate_entity_claims_without_company_clear(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:
+        # AST-1259: pool claim via get_new_candidate_batch; clear_candidate_batch in finally (not job/company).
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claimed = [{"astral_candidate_id": "c505", "state": "ACTIVE_SEARCH", "candidate_data": {}}]
+        claim = MagicMock(return_value=(batch_id, claimed))
+        clear_cand = MagicMock()
         clear_co = MagicMock()
         clear_job = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear_cand)
         monkeypatch.setattr("src.core.roster.clear_company_batch", clear_co)
         monkeypatch.setattr("src.core.tracker.clear_job_batch", clear_job)
         consult_out = {"total_processed": 1, "total_passed": 2, "total_failed": 0, "total_errors": 0}
         run = AsyncMock(return_value=consult_out)
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
         ctx = {"astral_candidate_id": "c505", "state": "ACTIVE_SEARCH", "candidate_data": {}}
         task = {
             "entity_type": "candidate",
             "trigger_state": "ACTIVE_SEARCH",
             "task_key": "inflow_discovery",
+            "batch_size": 1,
             "batch_call_mode": 0,
         }
         out = await dispatcher_mod._run_unified(task, ctx, False)
         assert out == consult_out
+        claim.assert_called_once()
+        clear_cand.assert_called_once_with(batch_id)
         clear_co.assert_not_called()
         clear_job.assert_not_called()
         run.assert_awaited_once_with(
-            "candidate", "ACTIVE_SEARCH", [ctx], batch_id, ctx, False, dispatch_task_key="inflow_discovery",
+            "candidate", "ACTIVE_SEARCH", claimed, batch_id, ctx, False, dispatch_task_key="inflow_discovery",
         )
 
     @pytest.mark.asyncio
@@ -1513,10 +1527,118 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
 
 
+class TestAst1259CandidatePoolClaim:
+    """AST-1259: dispatcher candidate pool claim → per-entity process → clear (empty + finally)."""
+
+    @pytest.mark.asyncio
+    async def test_claim_honors_batch_size_and_claim_states(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        rows = [
+            {"astral_candidate_id": "c1259a", "state": "REQUESTED_ARTIFACTS"},
+            {"astral_candidate_id": "c1259b", "state": "REQUESTED_ARTIFACTS_RETRY"},
+        ]
+        claim = MagicMock(return_value=(batch_id, rows))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "task_key": "craft_get_rubric",
+            "batch_size": 2,
+            "batch_call_mode": 1,  # forced False for candidate — still per-entity
+        }
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "owner"}, False)
+        claim.assert_called_once()
+        assert claim.call_args.args[0] == "REQUESTED_ARTIFACTS"
+        assert claim.call_args.kwargs["limit"] == 2
+        assert claim.call_args.kwargs["batch_id"] == batch_id
+        assert claim.call_args.kwargs["states"] == cfg.dispatch_claim_states(
+            "REQUESTED_ARTIFACTS", "candidate"
+        )
+        assert run.await_count == 2
+        assert run.await_args_list[0].args[2] == [rows[0]]
+        assert run.await_args_list[1].args[2] == [rows[1]]
+        clear.assert_called_once_with(batch_id)
+
+    @pytest.mark.asyncio
+    async def test_empty_batch_clears_candidate_batch(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, []))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
+        run = AsyncMock()
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        clear_job = MagicMock()
+        clear_co = MagicMock()
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", clear_job)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear_co)
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "task_key": "craft_get_rubric",
+            "batch_size": 5,
+        }
+        out = await dispatcher_mod._run_unified(task, {"astral_candidate_id": "c"}, False)
+        assert out == dispatcher_mod._SUMMARY_ZERO
+        run.assert_not_awaited()
+        clear.assert_called_once_with(batch_id)
+        clear_job.assert_not_called()
+        clear_co.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_finally_clears_and_skips_job_company_clear(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        rows = [{"astral_candidate_id": "c1259f", "state": "REQUESTED_ARTIFACTS"}]
+        claim = MagicMock(return_value=(batch_id, rows))
+        clear = MagicMock()
+        clear_job = MagicMock()
+        clear_co = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", clear_job)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear_co)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
+        await dispatcher_mod._run_unified(
+            {
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "task_key": "craft_get_rubric",
+                "batch_size": 1,
+            },
+            {"astral_candidate_id": "c"},
+            False,
+        )
+        clear.assert_called_once_with(batch_id)
+        clear_job.assert_not_called()
+        clear_co.assert_not_called()
+
+
 @pytest.mark.skipif(
     not hasattr(dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks"),
     reason="AST-1252 wrapper retire not on this publish tip",
 )
+
 class TestAst972CandidateStageDispatch:
     """AST-972 → AST-1252: retire wrappers; claim gate; tick aging; scheduler retire hook."""
 
@@ -1562,9 +1684,20 @@ class TestAst972CandidateStageDispatch:
     async def test_run_unified_candidate_claim_gate(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:
+        # AST-1259: gate is pool claim (empty → no consult; claimed row → per-entity consult).
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claimed = {"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}
+        claim = MagicMock(side_effect=[(batch_id, []), (batch_id, [claimed])])
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
         run = AsyncMock(return_value=dict(dispatcher_mod._SUMMARY_ZERO))
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
         task = {
             "id": 1,
             "task_key": "craft_get_rubric",
@@ -1573,17 +1706,19 @@ class TestAst972CandidateStageDispatch:
             "batch_size": 1,
             "batch_call_mode": 0,
         }
-        bad = {"astral_candidate_id": "c1", "state": "ACTIVE_SEARCH"}
-        await dispatcher_mod._run_unified(task, bad, False)
+        ctx = {"astral_candidate_id": "c1", "state": "ACTIVE_SEARCH"}
+        await dispatcher_mod._run_unified(task, ctx, False)
         run.assert_not_called()
-        good = {"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}
-        out = await dispatcher_mod._run_unified(task, good, False)
+        clear.assert_called_with(batch_id)
+        clear.reset_mock()
+        out = await dispatcher_mod._run_unified(task, ctx, False)
         assert out == dispatcher_mod._SUMMARY_ZERO
         run.assert_awaited_once()
         assert run.await_args.args[0] == "candidate"
         assert run.await_args.args[1] == "REQUESTED_ARTIFACTS"
-        assert run.await_args.args[2] == [good]
+        assert run.await_args.args[2] == [claimed]
         assert run.await_args.kwargs["dispatch_task_key"] == "craft_get_rubric"
+        clear.assert_called_once_with(batch_id)
 
     def test_tick_loop_invokes_stale_aging(self, monkeypatch: pytest.MonkeyPatch) -> None:
         aged = MagicMock(return_value=0)
