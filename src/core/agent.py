@@ -2895,6 +2895,55 @@ async def do_task(
                 f"artifact_pin key={pin_slot} skipped reason={reason}"
             )
 
+    # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).
+    if result.get("success") and (ctx or {}).get("persist_candidate_craft_hops") and index:
+        try:
+            from src.core.candidate import _persist_craft_dispatch_success
+            from src.utils.config import CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
+            from src.utils.logging import truncate_debug_content
+
+            parsed_for_persist = result.get("parsed_response")
+            _persist_craft_dispatch_success(str(index), task_key, parsed_for_persist)
+            if debug:
+                art = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key) or (
+                    "company_search_terms" if task_key == "craft_company_search_terms" else task_key
+                )
+                dbg = _do_task_debug_logger(debug)
+                dbg.debug_index(
+                    func=f"do_task({task_key}).persist_candidate_craft",
+                    index=1,
+                    total=1,
+                    identifier=str(index),
+                    outcome="recorded",
+                )
+                dbg.debug_detail(f"found task_key={task_key} artifact={art}")
+                blob = (
+                    json.dumps(parsed_for_persist)
+                    if isinstance(parsed_for_persist, (dict, list))
+                    else str(parsed_for_persist or "")
+                )
+                for line in truncate_debug_content(blob):
+                    dbg.debug_detail(line)
+        except Exception as persist_err:
+            logger.error(
+                "persist_candidate_craft_hops failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
+            )
+            if debug:
+                _do_task_debug_logger(debug).debug_detail(f"persist failed: {persist_err}")
+            _close_hop_ledger(
+                success=False, clear_log=True, failure_error=str(persist_err),
+            )
+            return {
+                "success": False,
+                "api_response": result.get("api_response"),
+                "parsed_response": None,
+                "error": str(persist_err),
+                "timesheet": result.get("timesheet") or {},
+            }
+
     # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:
         try:

@@ -2443,47 +2443,8 @@ def _requested_stage_failure_target(primary_state: str, current_state: str) -> s
     return error
 
 
-async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
-    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
-    logger.set_debug_flag(debug)
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
-    primary = stage["trigger_state"]
-    pass_state = stage["pass_state"]
-    craft_key = stage["craft_task_key"]
-    current = (candidate.get("state") or "").strip()
-    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
-    try:
-        response = await do_task(
-            task_key=craft_key,
-            live_content=live,
-            index=candidate_id,
-            ctx=candidate,
-            debug=debug,
-        )
-        if not response or not response.get("success"):
-            raise RuntimeError(
-                (response or {}).get("error") if response else "do_task returned None"
-            )
-        parsed = response.get("parsed_response")
-        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
-        transition_candidate_state(candidate_id, pass_state)
-        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-    except Exception as e:
-        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
-        target = _requested_stage_failure_target(primary, current)
-        try:
-            transition_candidate_state(candidate_id, target)
-        except ValueError:
-            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-
-
 async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
+    """Claim worker: REQUESTED_ARTIFACTS → craft_get_rubric run_next chain → ARTIFACTS_READY / retry / error."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
@@ -2493,29 +2454,25 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
     primary = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
-    craft_key = (stage.get("craft_task_key") or "").strip()
-    seen: set[str] = set()
+    task_key = (stage.get("task_key") or "").strip()
     try:
-        while craft_key:
-            if craft_key in seen:
-                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
-            seen.add(craft_key)
-            # Refresh ctx each hop so later crafts see earlier persists.
-            candidate = database.get_candidate(candidate_id) or candidate
-            task_ctx = {**(candidate or {}), "suppress_run_next": True}
-            response = await do_task(
-                task_key=craft_key,
-                live_content="",
-                index=candidate_id,
-                ctx=task_ctx,
-                debug=debug,
+        # Native do_task run_next (hop ledgers); persist via ctx flag — no suppress_run_next.
+        task_ctx = {
+            **(candidate or {}),
+            "astral_candidate_id": candidate_id,
+            "persist_candidate_craft_hops": True,
+        }
+        response = await do_task(
+            task_key=task_key,
+            live_content="",
+            index=candidate_id,
+            ctx=task_ctx,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else f"do_task None for {task_key}"
             )
-            if not response or not response.get("success"):
-                raise RuntimeError(
-                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
-                )
-            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
-            craft_key = _current_agent_task_run_next(craft_key)
         transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
