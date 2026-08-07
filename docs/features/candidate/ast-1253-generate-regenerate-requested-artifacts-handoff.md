@@ -62,7 +62,7 @@ Empty-state **Generate** and **Regenerate** on craft-chain Artifacts pages stop 
    - `is_requested_artifacts_chain_ui_task(task_key: str) -> bool`: membership in that live walk (not a config hop frozenset; not `CRAFT_RUBRIC_UI_TASK_KEYS`).
    - `requested_artifacts_chain_task_keys() -> list[str]`: public wrapper over the walk (stable order = live `run_next`).
    - `requested_artifacts_chain_hop_labels() -> list[str]`: same order; for each `task_key`, resolve `CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH[task_key]` → find that path’s `label` under `NAV_CONFIG` Artifacts children; missing path/label falls back to raw `task_key`.
-   - `requested_artifacts_chain_artifact_keys() -> list[str]`: same order; `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)` or `"company_search_terms"` for `craft_company_search_terms` (same persist key AST-1252 / company-search UI already use).
+   - `requested_artifacts_chain_artifact_keys() -> list[str]`: **rubric hops only** — for each walked `task_key` that is in `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`, append that artifact key (seven keys). Do **not** append `"company_search_terms"`: since AST-524/525/802 that value is **table-backed**, stripped from the artifacts blob (`ensure_company_search_terms_table_synced` deletes the nested key), and exposed on `GET /api/candidates/<id>` as top-level `company_search_terms` — never under `candidate_data.artifacts`.
 
 6. In `run_candidate_artifact_generation`, if `is_requested_artifacts_chain_ui_task(task_key)`: return `({"success": False, "error": "… use generate_artifacts / REQUESTED_ARTIFACTS …"}, 409)` **before** opening a ledger / calling `do_task`. Leave `craft_resume_base` and any non-chain keys on the existing suppress_run_next path.
 
@@ -70,7 +70,7 @@ Empty-state **Generate** and **Regenerate** on craft-chain Artifacts pages stop 
 
 ## Stage 2: API — handoff route + manifest merge
 
-**Done when:** `POST /api/candidates/<id>/generate_artifacts` returns `{"ok": true, "state": "REQUESTED_ARTIFACTS"}` on success, 404 when missing, 409 when `ValueError` from illegal transition; `POST …/generate/craft_get_rubric` returns 409; `POST …/generate/craft_resume_base` still reaches `run_candidate_artifact_generation`; `GET /api/state_ui_manifest` includes the three `candidate.artifacts_chain_*` arrays from core (live walk), with hop **order** matching `run_next` and labels matching Artifacts nav.
+**Done when:** `POST /api/candidates/<id>/generate_artifacts` returns `{"ok": true, "state": "REQUESTED_ARTIFACTS"}` on success, 404 when missing, 409 when `ValueError` from illegal transition; `POST …/generate/craft_get_rubric` returns 409; `POST …/generate/craft_resume_base` still reaches `run_candidate_artifact_generation`; `GET /api/state_ui_manifest` includes the three `candidate.artifacts_chain_*` arrays from core (live walk), with hop **order** matching `run_next` and labels matching Artifacts nav; if the walk raises, those three arrays are `[]` and the rest of the manifest still returns 200.
 
 1. In `src/ui/api/api_candidate.py`, add route `POST /<candidate_id>/generate_artifacts` (`@require_auth`), parallel to `api_jobs.generate_artifacts`:
    - `get_candidate` → 404 if missing.
@@ -79,15 +79,18 @@ Empty-state **Generate** and **Regenerate** on craft-chain Artifacts pages stop 
 2. Keep `POST /<candidate_id>/generate/<task_key>` wired to `run_candidate_artifact_generation` (Stage 1 gate rejects chain keys).
 3. In `src/ui/api/api_system.py`, change `state_ui_manifest()` so it:
    - Starts from `manifest = build_state_ui_manifest()` (utils — generate states only).
-   - Imports core helpers (late/import at function scope if needed for cycles): `requested_artifacts_chain_task_keys`, `requested_artifacts_chain_hop_labels`, `requested_artifacts_chain_artifact_keys`.
+   - Import the three core helpers at **module scope** beside the existing `from src.core.candidate import get_candidate` (no function-scope late-import hedge — that import path already works).
    - Sets on `manifest["candidate"]` (exact field names — required, not optional):
      - `artifacts_chain_task_keys`: `requested_artifacts_chain_task_keys()`
      - `artifacts_chain_hop_labels`: `requested_artifacts_chain_hop_labels()`
      - `artifacts_chain_artifact_keys`: `requested_artifacts_chain_artifact_keys()`
    - Returns `jsonify(manifest)`.
    - Do **not** move the live walk into `build_state_ui_manifest()` / utils (`astral.standards.utils-data-late-import-only` / §3.3).
+4. Walk failure on the manifest route: wrap the three helper calls in `try/except Exception`. On failure: log a warning via `src.utils.logging` (endpoint already has `_log`), set the three `artifacts_chain_*` fields to `[]`, and still return the rest of the manifest (jobs/company/candidate generate states). Do **not** 500 the whole app’s state vocabulary because the live walk failed. Missing/truncated seed already degrades to short arrays via `_current_agent_task_run_next` → `""` without raising.
 
 ⚠️ **Decision (fix-now — manifest ownership):** UI API merges live chain fields into the state UI manifest. Config keeps only static unordered path map + generate states. One instruction path for Stage 3 — no “if optional / otherwise heuristic” branches.
+
+⚠️ **Decision (manifest walk failure):** Degrade to empty chain arrays + logged warning; keep the rest of `GET /state_ui_manifest` alive.
 
 ## Stage 3: Frontend Generate / Regenerate handoff
 
@@ -101,14 +104,17 @@ Empty-state **Generate** and **Regenerate** on craft-chain Artifacts pages stop 
 
 2. In `ArtifactEditor.tsx` (candidate mode only, not `jobPersistence`):
    - Chain handoff when `manifest.candidate.artifacts_chain_task_keys.includes(taskKey)`. **No** `craft_` prefix heuristic; **no** special-case only on `craft_resume_base` beyond “not in the list”.
-   - On load of `/api/candidates/<id>`, compute `hasChainData`: any key in `manifest.candidate.artifacts_chain_artifact_keys` has non-empty content in `candidate_data.artifacts` (rubric list with any criterion content, or non-empty search-terms / other stored shape). Use that — not only the current page tabs — for Generate vs Regenerate.
+   - On load of `/api/candidates/<id>`, compute `hasChainData` as true when **either**:
+     - any key in `manifest.candidate.artifacts_chain_artifact_keys` has non-empty content in `candidate_data.artifacts` (rubric list with any criterion content / other stored rubric shape), **or**
+     - the top-level response field `company_search_terms` (string from AST-526 table-backed attach — **not** `candidate_data.artifacts.company_search_terms`) has `trim() !== ""`.
+     Do **not** look for search terms inside the artifacts blob (AST-802 deleted that nested key). Use this combined signal — not only the current page tabs — for Generate vs Regenerate.
    - Replace `doGenerate` for chain keys with `doRequestArtifacts`: `POST /api/candidates/${selectedId}/generate_artifacts`; on success toast “Artifacts build requested — watch Execution History” (or equivalent), `refresh()` from `useCandidate()`, clear confirm state; on 409/error show toast with server `error`.
    - Empty Generate: call `doRequestArtifacts` immediately (no modal).
    - Regenerate: open confirm modal. Copy must state that **all** chain rubrics will be reset / rebuilt, listing every string in `artifacts_chain_hop_labels` (joined readably). Buttons: **No** (`dep-btn cancel`, `autoFocus`) and **Yes** (danger/`#ff6b6b`). Default is No (autofocus + overlay dismiss = No).
    - Remove the old per-artifact “replace current content / Save or Cancel” regenerate copy for chain keys. Keep Cancel/Save review chrome only for non-chain / job persistence paths that still use ad-hoc generate.
    - Do **not** call `/generate/${taskKey}` for chain keys anymore. Leave pending GET recovery as-is (Stage 1 note).
 
-3. In `ArtifactsCompanySearchTerms.tsx`, apply the same handoff + Regenerate warning using the same manifest fields (`taskKey` equivalent = `craft_company_search_terms` membership in `artifacts_chain_task_keys`). Leave autosave/edit behavior for existing content intact.
+3. In `ArtifactsCompanySearchTerms.tsx`, apply the same handoff + Regenerate warning using the same manifest fields (`taskKey` equivalent = `craft_company_search_terms` membership in `artifacts_chain_task_keys`) and the **same** `hasChainData` rule (rubric keys in artifacts blob **or** top-level `company_search_terms`). Leave autosave/edit behavior for existing content intact (page still reads/writes table-backed terms as today).
 
 4. Leave `ArtifactsBaseResumeContent` / `craft_resume_base` on the existing ad-hoc Generate path inside `ArtifactEditor`.
 
@@ -135,13 +141,20 @@ Changes:
 - **discuss:** Explicit AC5 split (completion → AST-1252; editability preserved here).
 - **acceptable:** Documented pending-recovery leave-as-is; documented `start_requested_artifacts` prior_states divergence from job helper.
 
+### Revision 2 — 2026-08-07
+Driven by: Joan `[plan-discuss] round=2 concern` (plan-rubric.v1 REVISE @ `06382ca7`).
+Changes:
+- **fix-now:** `hasChainData` reads search terms from top-level `company_search_terms` on `GET /api/candidates/<id>` (AST-526 table-backed); never from `candidate_data.artifacts`. `requested_artifacts_chain_artifact_keys()` is rubric-only (no `"company_search_terms"` blob key).
+- **discuss:** Manifest walk failure → empty `artifacts_chain_*` arrays + logged warning; rest of manifest still returns.
+- **acceptable:** Dropped Stage 2 late-import hedge; module-scope import beside existing `get_candidate`.
+
 ## Self-Assessment
 
 **Scope:** `Single-Component` — UI handoff + thin API/core start helper + prior_states / manifest merge; no dispatch chain rewrite.
 
-**Conf:** `high` — job `generate_artifacts` template + existing Generate/Regenerate chrome remain; Joan’s layer fix is now a single decided path (API merges live walk into manifest).
+**Conf:** `high` — Stage 1→3 contract is decided and named; search-terms content signal now matches AST-526/802 reality.
 
-**Risk:** `Medium` — wrong prior_states or generate-state list blocks Regenerate or allows double-kick while claimed; retiring ad-hoc generate for chain keys is intentional product change (Betty must update ArtifactEditor tests).
+**Risk:** `Medium` — wrong prior_states or generate-state list blocks Regenerate or allows double-kick while claimed; wrong content signal for the search-terms hop would skip the AC3 warning (mitigated by Revision 2); retiring ad-hoc generate for chain keys is intentional (Betty updates ArtifactEditor tests).
 
 ## Self-review vs ASTRAL_CODE_RULES
 
