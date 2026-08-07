@@ -246,6 +246,20 @@ def surfer_client() -> Iterator[FlaskClient]:
 
 
 @pytest.fixture
+def surfer_consent_client() -> Iterator[FlaskClient]:
+    """AST-1235: Surfer consent GET/PUT under /api/candidates (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api import api_surfer as mod
+
+    # Ada tip: surfer_bp serves consent. Combined local tip may expose surfer_consent_bp.
+    bp = getattr(mod, "surfer_consent_bp", mod.surfer_bp)
+    app.register_blueprint(bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
 def contact_client() -> Iterator[FlaskClient]:
     """AST-1071: Contact skills admin blueprint (@require_admin)."""
     app = Flask(__name__)

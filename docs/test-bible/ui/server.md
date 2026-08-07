@@ -105,3 +105,18 @@ Registers `surfer_bp` (`GET /api/surfer/pacing_config`). Route behavior: **`docs
 **Broken / obsolete:** none.
 
 **Integration:** none.
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+Registers `surfer_bp` (`GET`/`PUT /api/candidates/<id>/surfer/consent`). Route behavior: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blueprint registration | `src/ui/server.py` | import coverage via **`surfer_consent_client`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.

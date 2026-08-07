@@ -2621,3 +2621,24 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
   -q
 ```
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`SURFER_CONSENT_CONFIG` — `candidate_data_key` `surfer_consent`, opaque `current_version`, provisional `disclosure_copy`, closed `statuses` (`none`/`opted_in`/`opted_out`), `default_status` `none`. Core helpers + API: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key / version / copy / statuses contract | `src/utils/config.py` | **`TestAst1235SurferConsentConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer consent scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```

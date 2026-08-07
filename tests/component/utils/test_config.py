@@ -4238,3 +4238,15 @@ class TestAst1229SurferBatchConfig:
         ]
         assert auto == ["COMPLETED"]
         assert "stale_after_hours" not in s
+
+# Branches: SURFER_CONSENT_CONFIG key / version / copy / statuses (AST-1235).
+class TestAst1235SurferConsentConfig:
+    def test_surfer_consent_config_contract(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        assert s["candidate_data_key"] == "surfer_consent"
+        assert isinstance(s["current_version"], str) and s["current_version"].strip()
+        assert isinstance(s["disclosure_copy"], str) and s["disclosure_copy"].strip()
+        assert s["statuses"] == ("none", "opted_in", "opted_out")
+        assert s["default_status"] == "none"
+        assert s["default_status"] in s["statuses"]
+        assert len(s["statuses"]) == len(set(s["statuses"]))
