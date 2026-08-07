@@ -4,26 +4,10 @@ import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
+import { artifactBlobHasContent } from "../lib/artifactBlobHasContent"
 
 const AUTOSAVE_MS = 2000
 const TASK_KEY = "craft_company_search_terms"
-
-/** Rubric / dict / string under candidate_data.artifacts (AST-1253 hasChainData). */
-function artifactBlobHasContent(raw: unknown): boolean {
-  if (Array.isArray(raw)) {
-    return raw.some(v => {
-      if (v && typeof v === "object" && "content" in (v as object)) {
-        return String((v as { content?: unknown }).content ?? "").trim() !== ""
-      }
-      return String(v ?? "").trim() !== ""
-    })
-  }
-  if (typeof raw === "string") return raw.trim() !== ""
-  if (raw && typeof raw === "object") {
-    return Object.values(raw as Record<string, unknown>).some(v => String(v ?? "").trim() !== "")
-  }
-  return false
-}
 
 export default function CompanySearchTerms() {
   const { manifest, loadState } = useStateUi()
@@ -61,7 +45,10 @@ export default function CompanySearchTerms() {
     [manifest?.candidate.artifacts_chain_task_keys],
   )
   const chainHopLabels = manifest?.candidate.artifacts_chain_hop_labels ?? []
-  const chainArtifactKeys = manifest?.candidate.artifacts_chain_artifact_keys ?? []
+  const chainArtifactKeys = useMemo(
+    () => manifest?.candidate.artifacts_chain_artifact_keys ?? [],
+    [manifest?.candidate.artifacts_chain_artifact_keys],
+  )
   const isChainHandoff = chainTaskKeys.has(TASK_KEY)
   const canGenerate = generateStates.has(candidateState)
 

@@ -207,3 +207,12 @@ Changes:
 context_tokens≈34000
 
 — Radia
+
+## Resolution
+
+**2026-08-07** — Radia [code-rubric] revision=1 addressed on `sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+| Finding | Action |
+|---------|--------|
+| **fix-now** — duplicate `artifactBlobHasContent` | Extracted to `src/ui/frontend/src/lib/artifactBlobHasContent.ts`; both `ArtifactEditor` and `ArtifactsCompanySearchTerms` import it. |
+| **discuss** — `chainArtifactKeys` not memoized | Wrapped in `useMemo` on the same source array as `chainTaskKeys`, in both files. |

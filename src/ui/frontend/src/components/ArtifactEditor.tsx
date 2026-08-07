@@ -7,6 +7,7 @@ import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
+import { artifactBlobHasContent } from "../lib/artifactBlobHasContent"
 import { formatRubricVectorHeader, RUBRIC_DEFAULT_IMPORTANCE, rubricItemImportance } from "../lib/rubricDisplay"
 
 interface ShapeField { key: string; label: string; type?: string }
@@ -60,23 +61,6 @@ function criteriaToTabs(
     content: v.content ?? "",
     importance: rubricItemImportance(v),
   }))
-}
-
-/** Non-empty rubric list / dict / string stored under artifacts. */
-function artifactBlobHasContent(raw: unknown): boolean {
-  if (Array.isArray(raw)) {
-    return raw.some(v => {
-      if (v && typeof v === "object" && "content" in (v as object)) {
-        return String((v as { content?: unknown }).content ?? "").trim() !== ""
-      }
-      return String(v ?? "").trim() !== ""
-    })
-  }
-  if (typeof raw === "string") return raw.trim() !== ""
-  if (raw && typeof raw === "object") {
-    return Object.values(raw as Record<string, unknown>).some(v => String(v ?? "").trim() !== "")
-  }
-  return false
 }
 
 export default function ArtifactEditor({
@@ -208,7 +192,10 @@ export default function ArtifactEditor({
     [manifest?.candidate.artifacts_chain_task_keys],
   )
   const chainHopLabels = manifest?.candidate.artifacts_chain_hop_labels ?? []
-  const chainArtifactKeys = manifest?.candidate.artifacts_chain_artifact_keys ?? []
+  const chainArtifactKeys = useMemo(
+    () => manifest?.candidate.artifacts_chain_artifact_keys ?? [],
+    [manifest?.candidate.artifacts_chain_artifact_keys],
+  )
   // AST-1253: craft-chain pages hand off to REQUESTED_ARTIFACTS (not per-artifact generate)
   const isChainHandoff = !jobPersistence && chainTaskKeys.has(taskKey)
   const canGenerate = !jobPersistence && generateStates.has(candidateState)
