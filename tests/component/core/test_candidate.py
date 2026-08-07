@@ -3822,3 +3822,224 @@ class TestAst1148ExpandCoverFromBlock:
         assert idx.call_count == 0
         assert detail.call_count == 0
 
+
+
+class TestAst1235SurferConsent:
+    """AST-1235: versioned Surfer consent normalize / is_current / opt-in / opt-out."""
+
+    def test_normalize_empty_and_unknown(self) -> None:
+        empty = candidate_mod.empty_surfer_consent()
+        assert empty == {
+            "status": "none",
+            "accepted_version": None,
+            "updated_at": None,
+        }
+        assert candidate_mod.normalize_surfer_consent(None) == empty
+        assert candidate_mod.normalize_surfer_consent("x") == empty
+        assert candidate_mod.normalize_surfer_consent({"status": "weird"})["status"] == "none"
+        # Extra keys dropped.
+        n = candidate_mod.normalize_surfer_consent(
+            {
+                "status": "opted_in",
+                "accepted_version": " 1 ",
+                "updated_at": " 2026-01-01 00:00:00 ",
+                "extra": True,
+            }
+        )
+        assert n == {
+            "status": "opted_in",
+            "accepted_version": "1",
+            "updated_at": "2026-01-01 00:00:00",
+        }
+        assert "extra" not in n
+
+    def test_is_current_requires_opt_in_and_matching_version(self) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        assert candidate_mod.is_surfer_consent_current(
+            {"status": "opted_in", "accepted_version": ver}
+        )
+        assert not candidate_mod.is_surfer_consent_current(
+            {"status": "opted_in", "accepted_version": "stale"}
+        )
+        assert not candidate_mod.is_surfer_consent_current(
+            {"status": "opted_out", "accepted_version": ver}
+        )
+        assert not candidate_mod.is_surfer_consent_current({"status": "none"})
+
+    def test_get_surfer_consent_missing_and_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            candidate_mod.get_surfer_consent("missing")
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        assert candidate_mod.get_surfer_consent("c1") == candidate_mod.empty_surfer_consent()
+
+    def test_opt_in_persists_and_rejects_stale_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        stored: dict = {"astral_candidate_id": "c1", "candidate_data": {}}
+        saves: list = []
+
+        def _get(cid: str):
+            return dict(stored)
+
+        def _save(cid: str, data: dict, replace: bool = False, debug: bool = False):
+            saves.append({"data": data, "debug": debug})
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", _get)
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save)
+        monkeypatch.setattr(candidate_mod, "_surfer_consent_now", lambda: "2026-08-07 12:00:00")
+
+        with pytest.raises(ValueError, match="non-empty string"):
+            candidate_mod.opt_in_surfer_consent("c1", "")
+        with pytest.raises(ValueError, match="does not match"):
+            candidate_mod.opt_in_surfer_consent("c1", "stale")
+
+        dto = candidate_mod.opt_in_surfer_consent("c1", ver)
+        assert dto["status"] == "opted_in"
+        assert dto["accepted_version"] == ver
+        assert dto["is_current"] is True
+        assert dto["current_version"] == ver
+        assert dto["disclosure_copy"] == SURFER_CONSENT_CONFIG["disclosure_copy"]
+        assert saves[0]["data"]["surfer_consent"] == {
+            "status": "opted_in",
+            "accepted_version": ver,
+            "updated_at": "2026-08-07 12:00:00",
+        }
+
+    def test_opt_out_preserves_accepted_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        stored: dict = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "surfer_consent": {
+                    "status": "opted_in",
+                    "accepted_version": ver,
+                    "updated_at": "2026-08-07 11:00:00",
+                }
+            },
+        }
+        saves: list = []
+
+        def _save(cid: str, data: dict, replace: bool = False, debug: bool = False):
+            saves.append(data)
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save)
+        monkeypatch.setattr(candidate_mod, "_surfer_consent_now", lambda: "2026-08-07 12:30:00")
+
+        dto = candidate_mod.opt_out_surfer_consent("c1")
+        assert dto["status"] == "opted_out"
+        assert dto["accepted_version"] == ver
+        assert dto["is_current"] is False
+        assert saves[0]["surfer_consent"]["accepted_version"] == ver
+        assert saves[0]["surfer_consent"]["status"] == "opted_out"
+
+    def test_opt_in_debug_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+        from unittest.mock import MagicMock
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        stored = {"astral_candidate_id": "c1", "candidate_data": {}}
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(
+            candidate_mod,
+            "save_candidate_data",
+            lambda cid, data, replace=False, debug=False: None,
+        )
+        monkeypatch.setattr(candidate_mod, "_surfer_consent_now", lambda: "t")
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+
+        candidate_mod.opt_in_surfer_consent("c1", ver, debug=True)
+        assert idx.call_count == 2
+        assert detail.call_count == 2
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.opt_in_surfer_consent("c1", ver, debug=False)
+        assert idx.call_count == 0
+        assert detail.call_count == 0
+
+
+class TestAst1237SurferConsentDtoChrome:
+    """AST-1237: surfer_consent_dto exposes config chrome fields."""
+
+    def test_dto_includes_chrome_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        dto = candidate_mod.surfer_consent_dto("c1")
+        assert dto["current_version"] == SURFER_CONSENT_CONFIG["current_version"]
+        assert dto["disclosure_title"] == SURFER_CONSENT_CONFIG["disclosure_title"]
+        assert dto["opt_in_label"] == SURFER_CONSENT_CONFIG["opt_in_label"]
+        assert dto["decline_label"] == SURFER_CONSENT_CONFIG["decline_label"]
+        assert dto["current_ok_title"] == SURFER_CONSENT_CONFIG["current_ok_title"]
+        assert dto["current_ok_body"] == SURFER_CONSENT_CONFIG["current_ok_body"]
+        assert dto["is_current"] is False
+
+
+class TestAst1238SurferConsentGate:
+    """AST-1238: require_current_surfer_consent + off-switch DTO chrome."""
+
+    def test_require_raises_when_not_current(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        with pytest.raises(ValueError, match="not enabled"):
+            candidate_mod.require_current_surfer_consent("c1")
+        assert SURFER_CONSENT_CONFIG["capture_denied_message"]
+
+    def test_require_returns_dto_when_current(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "candidate_data": {
+                    "surfer_consent": {
+                        "status": "opted_in",
+                        "accepted_version": ver,
+                        "updated_at": "2026-08-07 12:00:00",
+                    }
+                },
+            },
+        )
+        dto = candidate_mod.require_current_surfer_consent("c1")
+        assert dto["is_current"] is True
+        assert dto["off_switch_heading"] == SURFER_CONSENT_CONFIG["off_switch_heading"]
+        assert dto["status_stale_label"] == SURFER_CONSENT_CONFIG["status_stale_label"]
+        assert dto["capture_denied_message"] == SURFER_CONSENT_CONFIG["capture_denied_message"]

@@ -813,3 +813,69 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
   -q
 ```
 
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`candidate_data.surfer_consent` meta sibling: `empty_surfer_consent` / `normalize_surfer_consent` / `get_surfer_consent` / `is_surfer_consent_current` / `surfer_consent_dto` / `opt_in_surfer_consent` / `opt_out_surfer_consent` (preserve last `accepted_version` on opt-out; Style D when `debug=True`). `is_current` only when `opted_in` **and** `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Config: **`docs/test-bible/utils/config.md`**. API: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize / is_current / get / opt-in / opt-out / Style D | `src/core/candidate.py` | **`TestAst1235SurferConsent`** |
+
+**Broken / obsolete:** none — additive Surfer consent helpers.
+
+**Integration:** no existing scenario asserts `surfer_consent` — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1235SurferConsent \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`surfer_consent_dto` adds config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) alongside AST-1235 fields. Config/nav: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DTO chrome keys | `src/core/candidate.py` | **`TestAst1237SurferConsentDtoChrome`** |
+
+**Broken / obsolete:** none — AST-1235 helpers still apply (version read from config).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1237SurferConsentDtoChrome \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`require_current_surfer_consent` raises `ValueError(capture_denied_message)` when not `is_current`; `surfer_consent_dto` adds off-switch / stale / uninstall / denied chrome. Config: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gate + DTO off-switch chrome | `src/core/candidate.py` | **`TestAst1238SurferConsentGate`** |
+
+**Broken / obsolete:** none — AST-1235/1237 helpers still apply.
+
+**Integration:** none (no page_intake capture route yet to revise).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1238SurferConsentGate \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```

@@ -4201,3 +4201,97 @@ class TestAst1222MeteoriteAliasDispatchAndSeed:
         # Classic Gaze still masters (not aliases).
         assert cfg.is_task_alias("grade_do") is False
         assert cfg.TASK_CONFIG["grade_do"]["pass_state"] == "PASSED_DO"
+# Branches: SURFER_PACING_CONFIG defaults + MV3 idle window contract (AST-1236).
+class TestAst1236SurferPacingConfig:
+    def test_surfer_pacing_defaults_and_mv3_window(self) -> None:
+        s = cfg.SURFER_PACING_CONFIG
+        assert s["dwell_center_seconds"] == 10
+        assert s["dwell_spread_seconds"] == 5
+        assert s["max_tabs"] == 1
+        assert s["mv3_idle_ceiling_seconds"] == 30
+        floor = s["dwell_center_seconds"] - s["dwell_spread_seconds"]
+        ceiling = s["dwell_center_seconds"] + s["dwell_spread_seconds"]
+        assert floor > 0
+        assert ceiling < s["mv3_idle_ceiling_seconds"]
+
+# Branches: SURFER_BATCH_CONFIG vocab + auto-complete flag contract (AST-1229).
+class TestAst1229SurferBatchConfig:
+    def test_surfer_batch_config_vocab_and_flags(self) -> None:
+        s = cfg.SURFER_BATCH_CONFIG
+        assert s["batch_id_prefix"] == "surfer"
+        assert s["candidate_data_lifecycle_key"] == "active_surfer_batch_id"
+        assert s["initial_status"] == "RUNNING"
+        assert s["initial_url_outcome"] == "pending"
+        assert set(s["statuses"]) == {"RUNNING", "COMPLETED", "CANCELLED"}
+        assert set(s["url_outcomes"]) == {"pending", "delivered", "success", "failed"}
+        assert s["statuses"]["RUNNING"]["terminal"] is False
+        assert s["statuses"]["COMPLETED"]["terminal"] is True
+        assert s["statuses"]["COMPLETED"]["requires_all_urls_terminal"] is True
+        assert s["statuses"]["CANCELLED"]["terminal"] is True
+        assert s["statuses"]["CANCELLED"]["requires_all_urls_terminal"] is False
+        assert s["url_outcomes"]["pending"]["terminal"] is False
+        assert s["url_outcomes"]["delivered"]["terminal"] is False
+        assert s["url_outcomes"]["success"]["terminal"] is True
+        assert s["url_outcomes"]["failed"]["terminal"] is True
+        auto = [
+            name for name, v in s["statuses"].items() if v["requires_all_urls_terminal"]
+        ]
+        assert auto == ["COMPLETED"]
+        assert "stale_after_hours" not in s
+
+# Branches: SURFER_CONSENT_CONFIG key / version / copy / statuses (AST-1235).
+class TestAst1235SurferConsentConfig:
+    def test_surfer_consent_config_contract(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        assert s["candidate_data_key"] == "surfer_consent"
+        assert isinstance(s["current_version"], str) and s["current_version"].strip()
+        assert isinstance(s["disclosure_copy"], str) and s["disclosure_copy"].strip()
+        assert s["statuses"] == ("none", "opted_in", "opted_out")
+        assert s["default_status"] == "none"
+        assert s["default_status"] in s["statuses"]
+        assert len(s["statuses"]) == len(set(s["statuses"]))
+
+# Branches: chrome strings, version bump to 2, copy weight, Candidate nav (AST-1237).
+class TestAst1237SurferConsentDisclosureConfig:
+    def test_chrome_version_copy_and_nav(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        assert s["current_version"] == "2"
+        for key in (
+            "disclosure_title",
+            "opt_in_label",
+            "decline_label",
+            "current_ok_title",
+            "current_ok_body",
+        ):
+            assert isinstance(s[key], str) and s[key].strip()
+        copy = s["disclosure_copy"]
+        assert "logged-in session" in copy
+        assert "terms of service" in copy
+        assert "account-level consequence" in copy
+        assert "optional" in copy.lower()
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        paths = [i["path"] for i in cand["items"]]
+        assert "/candidate/surfer_consent" in paths
+        assert any(i["label"] == "Surfer Consent" for i in cand["items"])
+
+# Branches: off-switch / stale / uninstall / capture-denied copy + Surfer nav (AST-1238).
+class TestAst1238SurferOffSwitchConfig:
+    def test_off_switch_copy_and_nav(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        for key in (
+            "off_switch_heading",
+            "off_switch_button_label",
+            "off_switch_confirm",
+            "status_on_label",
+            "status_off_label",
+            "status_stale_label",
+            "uninstall_guidance",
+            "capture_denied_message",
+        ):
+            assert isinstance(s[key], str) and s[key].strip()
+        assert "extension disclosure" in s["capture_denied_message"].lower()
+        assert "Astral Surfer page" not in s["capture_denied_message"]
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        paths = [i["path"] for i in cand["items"]]
+        assert "/candidate/surfer" in paths
+        assert any(i["label"] == "Surfer" for i in cand["items"])
