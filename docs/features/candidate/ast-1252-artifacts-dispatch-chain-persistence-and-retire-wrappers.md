@@ -122,3 +122,36 @@ Changes:
 | 1 | `a923e4d2` | retire wrapper TASK_CONFIG keys; craft_get_rubric stage entry |
 | 2 | `f34c3b40` | native run_next + persist_candidate_craft_hops; drop resume worker |
 | 3 | `a26c403c` | retire-only wrapper dispatch_task delete; drop admin agent_task seeds |
+
+## Radia review
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Publish ref tip:** `2b127e9c`
+**Overall:** FIX-NOW
+
+**Full-set sweep:** all 65 active statutes scored in-session (18 universal + 47 scoped) against `git diff origin/dev...origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`. No violates beyond the finding below; scoped statutes outside `src/ui/**` / `src/data/**` / `debug/`-`artifacts/` predicates score `not-applicable` (no matching diff paths).
+
+**What's solid:** Stage 1–3 match the plan closely — `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]` collapses to a single `task_key`, `run_requested_artifacts_dispatch` drops the manual `craft_key` walk for one native `do_task` call with no `suppress_run_next`, the persist hook in `do_task` is gated on `persist_candidate_craft_hops` + `index` with Style D debug lines and `truncate_debug_content`, and `retire_candidate_requested_wrapper_dispatch_tasks` is a clean retire-only delete (no `save_dispatch_task` insert) called once from `start_scheduler`. `rg 'candidate_requested_(resume|artifacts)' src/` and the admin JSON only match the retired-set / retire-message locations. `python3 -m py_compile` clean on all five touched modules. Engineer/Betty test-tree boundary holds (`code(AST-1252)` commits touch only `src/` + `data/admin/`; `test(AST-1252)` commits touch only `tests/` + `docs/test-bible/`).
+
+**Findings**
+
+- **fix-now — B1 imports (`src/core/agent.py`, new persist-hook block):** `from src.core.candidate import _persist_craft_dispatch_success` is a lazy import with no comment explaining the cycle-break, unlike the established sibling precedent a few lines above it in the same function (`from src.core.tracker import pin_job_artifact_agent_data_id` — `# Lazy import breaks agent↔tracker cycle (consult imports agent).`). Add the equivalent one-liner for the candidate import.
+- **discuss — no-hardcoded-sets (`src/core/dispatcher.py`):** `_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset({"candidate_requested_resume", "candidate_requested_artifacts"})` re-declares two literals that already live in `config.DISPATCH_RETIRED_TASK_KEYS`. The in-code comment explains *why* it's a narrower subset, but not why it needs to be a second hardcoded set instead of sourced from config (e.g. a named constant in `config.py`, or filtered from the canonical set). Low risk today (values match, no functional bug), but drifts silently if the canonical set changes.
+- **discuss — `orch.git.betty-merge-tests-one-sha`:** the publish ref carries two `merge-tests(AST-1252): origin/tests <sha>` commits (`2bbdaea6` → `e0b1bc89`, then `2b127e9c` → `3c004de7` after the repo-admin manifest was narrowed) — the statute's own "Violating" example is exactly two merge-tests commits after a test revision. Not a product bug; flagging for Betty's process awareness.
+- **advisory — `data/admin/agent_task.json` (Stage 3 commit `a26c403c`):** beyond removing the two wrapper rows, the file was re-serialized (em-dash `—` / ellipsis `…` → `\u2014` / `\u2026`) across ~15 unrelated prompt entries, almost certainly `json.dump` without `ensure_ascii=False`. Functionally identical after JSON parse, but it's diff noise outside the plan's stated change ("remove the two objects... do not reorder"). Worth a clean re-serialize next touch, not blocking.
+
+**Pattern conformance:** `pattern.dispatch.run-next-chain-authority`, `pattern.state.entity-state-transitions`, `pattern.batch.entity-claim-process-release` (all cited in description, all exist under `canon/patterns/`) — conforms per the sweep above.
+
+**Plan adherence:** Diff matches the Files Changed table exactly (no extra `src/` files touched); Stage 1–3 "Done when" criteria verified directly (rg scope, compile, assert, retire-only semantics). Self-Assessment `Scope: MAJOR-CHANGE` / `Conf: high` matches the diff's real footprint; no `!!-NONE` conflict. No Joan plan-rubric verdict attachment on the Linear issue — noting per C4 (`no plan-rubric verdict attached`); the plan's own "Considered but excluded" list matches this sweep's `not-applicable` / `conforms` scores with no straggler drift.
+
+**Cross-ticket boundary:** `tests/component/extension/**` / `docs/test-bible/extension/**` (AST-1254, parent AST-1170) appear in this three-dot diff only via the single pinned `origin/tests` SHA merges (Betty's shared test-corpus branch) — conforming per `orch.git.betty-merge-tests-one-sha`'s single-SHA mechanism, not scope creep by this ticket.
+
+## Frame diff
+
+(none — no ticket description changes needed; AC/scope table already accurate)
+
+context_tokens≈38000
+
+— Radia
