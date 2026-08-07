@@ -256,13 +256,49 @@ Wire **`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`** claim workers (ready / retry
 
 **Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
 
-Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/data/database/agent_tasks.md`** AST-1113. Candidate walk: `run_requested_artifacts_dispatch` uses singular `craft_task_key` + `_current_agent_task_run_next` with `suppress_run_next=True` per hop; UI generate also suppresses auto-recurse.
+Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/data/database/agent_tasks.md`** AST-1113. **Superseded for dispatch walk by AST-1252:** native `run_next` + `persist_candidate_craft_hops` (no per-hop `suppress_run_next` walk). UI generate still suppresses auto-recurse.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Artifacts dispatch walk / mid-fail | `src/core/candidate.py` | revised **`TestAst972RequestedStageDispatch`** |
 
 **Broken / obsolete (Betty revision):** **`test_artifacts_dispatch_success_runs_all_crafts`** reading `craft_task_keys`.
+
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+`REQUESTED_ARTIFACTS` opens at `craft_get_rubric` with native `do_task` `run_next` (no `suppress_run_next`); per-hop persist via `persist_candidate_craft_hops` in agent; wrappers `candidate_requested_*` retired; resume stage worker removed. UI generate keeps `suppress_run_next=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Native run_next worker + fail targets | `src/core/candidate.py` | revised **`TestAst972RequestedStageDispatch`** |
+| Persist hook | `src/core/agent.py` / persist helper | **`TestAst1252PersistCandidateCraftHops`** |
+| Stage map / retired keys / AC2 selectability | `src/utils/config.py` | revised **`TestAst972CandidateStageDispatch`**; **`TestAst1252ArtifactsDispatchChainConfig`**; revised **`TestAst1113CraftTaskKeysShadowDeleted`** |
+| Consult route on stage `task_key` | `src/core/consult.py` | revised **`TestAst972CandidateStageConsultRouting`** |
+| Retire-only wrapper rows + AUTO-off Style D | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch`**; revised **`TestAst1022HonorAutoOffStageDispatch`** |
+| Admin JSON seed absence | `data/admin/agent_task.json` | **`TestAst1252RetiredWrapperTaskKeysAbsent`** (narrow — not whole `test_repo_admin_json.py`) |
+| Stage claim states + list ids | `src/data/database.py` | revised **`TestAst972CandidateStageEligibility`** |
+
+**Broken / obsolete (Betty revision):** resume worker tests; manual multi-hop `suppress_run_next` walk; stage ensure/provision; wrapper consult/dispatch fixtures; `craft_task_key` asserts; Avail-via-`count_eligible` for stage states (candidate entity Avail is inflow-only).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  -q
+```
 
 
 

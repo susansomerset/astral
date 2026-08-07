@@ -221,8 +221,6 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "advise_job_resume",
         "analysis_upshot",
         "anticipate_scan",
-        "candidate_requested_artifacts",
-        "candidate_requested_resume",
         "check_cover_letter",
         "check_job_resume",
         "contact_estelle_turn",
@@ -275,6 +273,18 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "vet_inflow_discovery",
     },
 )
+
+
+
+class TestAst1252RetiredWrapperTaskKeysAbsent:
+    """AST-1252: candidate_requested_* wrappers gone from agent_task seed (narrow lock)."""
+
+    def test_wrappers_absent_from_repo_json_and_expected_set(self) -> None:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        keys = frozenset(row["task_key"] for row in rows)
+        for tk in ("candidate_requested_resume", "candidate_requested_artifacts"):
+            assert tk not in keys
+            assert tk not in AST786_EXPECTED_TASK_KEYS
 
 
 class TestAst786AgentTaskRepoJsonSeed:

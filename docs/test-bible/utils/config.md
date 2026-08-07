@@ -844,7 +844,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`CANDIDATE_STAGE_DISPATCH`** artifacts entry (`craft_get_rubric`) + claim/trigger helpers; wrappers retired.
 
 ### AST-1022 · AST-1018
 
@@ -1986,6 +1986,13 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
   -q
 ```
+
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: wrappers in `DISPATCH_RETIRED_TASK_KEYS`; `CANDIDATE_STAGE_DISPATCH` artifacts-only with `task_key=craft_get_rubric`; trigger/entity helpers; AC2 `REQUESTED_RESUME` remains selectable.
 
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
