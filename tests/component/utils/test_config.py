@@ -4273,3 +4273,25 @@ class TestAst1237SurferConsentDisclosureConfig:
         paths = [i["path"] for i in cand["items"]]
         assert "/candidate/surfer_consent" in paths
         assert any(i["label"] == "Surfer Consent" for i in cand["items"])
+
+# Branches: off-switch / stale / uninstall / capture-denied copy + Surfer nav (AST-1238).
+class TestAst1238SurferOffSwitchConfig:
+    def test_off_switch_copy_and_nav(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        for key in (
+            "off_switch_heading",
+            "off_switch_button_label",
+            "off_switch_confirm",
+            "status_on_label",
+            "status_off_label",
+            "status_stale_label",
+            "uninstall_guidance",
+            "capture_denied_message",
+        ):
+            assert isinstance(s[key], str) and s[key].strip()
+        assert "extension disclosure" in s["capture_denied_message"].lower()
+        assert "Astral Surfer page" not in s["capture_denied_message"]
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        paths = [i["path"] for i in cand["items"]]
+        assert "/candidate/surfer" in paths
+        assert any(i["label"] == "Surfer" for i in cand["items"])

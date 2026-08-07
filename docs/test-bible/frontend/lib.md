@@ -201,3 +201,24 @@ Extension consent helpers under `src/ui/extension/src/lib/`: `needsDisclosure` /
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_surferConsent.test.ts
 ```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+Extension helpers: `mayCapture` / `fetchConsent` / `assertMayCapture` (`surferConsentGate.ts`); `optOutSurfer` (`surferOffSwitch.ts`). Wire notes: `docs/features/surfer/ast-1238-extension-consent-wiring.md` (AST-1170 / AST-1228). Web off-switch page: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gate + assertMayCapture | `surferConsentGate.ts` | **`test_surferConsentGate.test.ts`** |
+| Opt-out PUT | `surferOffSwitch.ts` | same |
+
+**Broken / obsolete:** none.
+
+**Integration:** none (capture route not yet present).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_surferConsentGate.test.ts
+```
