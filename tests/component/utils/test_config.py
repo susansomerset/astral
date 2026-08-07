@@ -583,8 +583,8 @@ class TestAst471DispatchConfigHelpers:
 class TestAst796FetchJdSchedulableCutover:
     """AST-796: fetch_jd gazer hop; scrape_jd / validate_title / gaze_board retired.
 
-    AST-960: fetch_jd is not a TASK_CONFIG catalog key (gazer runtime only) — admin
-    defaults membership is TASK_CONFIG; derivation helpers remain for runtime wiring.
+    AST-960: fetch_jd is not a TASK_CONFIG catalog key (gazer runtime only).
+    AST-1214: helper-resolvable hops are first-class for dispatch_task_admin_defaults.
     """
 
     def test_fetch_jd_gazer_hop_not_task_config_catalog(self) -> None:
@@ -599,8 +599,10 @@ class TestAst796FetchJdSchedulableCutover:
         assert "gaze_board" in cfg.DISPATCH_RETIRED_TASK_KEYS
         assert _dispatch_trigger_state_for_task_key("fetch_jd") == "PASSED_JOBLIST"
         assert _dispatch_entity_type_for_task_key("fetch_jd") == "job"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_jd")
+        d = cfg.dispatch_task_admin_defaults("fetch_jd")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_JOBLIST"
+        assert d["batch_call_mode"] == 0
 
     def test_gazer_config_fetch_jd_without_transitional_alias(self) -> None:
         """AST-797 removed AST-796 read alias — runtime uses fetch_jd only."""
@@ -1071,13 +1073,15 @@ class TestAst702PrefilterBatchConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: prefilter is roster runtime (not TASK_CONFIG) — helpers stay; defaults gate.
+        # AST-960: prefilter is roster runtime (not TASK_CONFIG). AST-1214: defaults via helpers.
         assert "prefilter" not in cfg.TASK_CONFIG
         assert _dispatch_batch_call_mode_for("prefilter") == 1
         assert _dispatch_trigger_state_for_task_key("prefilter") == "HOMEPAGE_READY"
         assert _dispatch_entity_type_for_task_key("prefilter") == "company"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("prefilter")
+        d = cfg.dispatch_task_admin_defaults("prefilter")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "HOMEPAGE_READY"
+        assert d["batch_call_mode"] == 1
 
 
 class TestAst707EmbeddedPrefilterConfig:
@@ -1180,7 +1184,7 @@ class TestAst719FetchJobPagesConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: fetch_job_pages is gazer runtime — not TASK_CONFIG catalog.
+        # AST-960: fetch_job_pages is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_job_pages" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_job_pages") == "PREFILTER_PASSED"
         assert _dispatch_entity_type_for_task_key("fetch_job_pages") == "company"
@@ -1188,8 +1192,9 @@ class TestAst719FetchJobPagesConfig:
         assert keys["pjl_scrape_pages"] == "pjl_scrape_pages"
         assert keys["pjl_assembled_content"] == "pjl_assembled_content"
         assert keys["pjl_nav_links"] == "pjl_nav_links"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_job_pages")
+        d = cfg.dispatch_task_admin_defaults("fetch_job_pages")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "PREFILTER_PASSED"
 
 
 class TestAst701FetchWebsiteConfig:
@@ -1216,13 +1221,14 @@ class TestAst701FetchWebsiteConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: fetch_website is gazer runtime — not TASK_CONFIG catalog.
+        # AST-960: fetch_website is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_website" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_website") == "WEBSITE_FOUND"
         assert _dispatch_entity_type_for_task_key("fetch_website") == "company"
         assert cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"] == "homepage_text"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_website")
+        d = cfg.dispatch_task_admin_defaults("fetch_website")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "WEBSITE_FOUND"
 
 
 class TestAst874FetchCulturePagesConfig:
@@ -1252,12 +1258,13 @@ class TestAst874FetchCulturePagesConfig:
         assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
         assert entry["no_links_state"] == "NO_CULTURE_LINKS"
         assert entry["fallback_batch_size"] == 10
-        # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG catalog.
+        # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_culture_pages" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_culture_pages") == "PASSED_GET"
         assert _dispatch_trigger_state_for_task_key("grade_like") == "CULTURE_READY"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_culture_pages")
+        d = cfg.dispatch_task_admin_defaults("fetch_culture_pages")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_GET"
         like_defaults = cfg.dispatch_task_admin_defaults("grade_like")
         assert like_defaults["trigger_state"] == "CULTURE_READY"
 
@@ -1412,12 +1419,13 @@ class TestAst505InflowDiscoveryConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG catalog.
+        # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "inflow_discovery" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_discovery") == "candidate"
         assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "ACTIVE_SEARCH"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("inflow_discovery")
+        d = cfg.dispatch_task_admin_defaults("inflow_discovery")
+        assert d["entity_type"] == "candidate"
+        assert d["trigger_state"] == "ACTIVE_SEARCH"
 
     def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
@@ -1445,13 +1453,15 @@ class TestAst506InflowResolveConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG catalog.
+        # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "inflow_resolve_website" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_resolve_website") == "company"
         assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "NEW"
         assert _dispatch_batch_call_mode_for("inflow_resolve_website") == 0
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("inflow_resolve_website")
+        d = cfg.dispatch_task_admin_defaults("inflow_resolve_website")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "NEW"
+        assert d["batch_call_mode"] == 0
 
 
 class TestAst508InflowLocateConfig:
@@ -3669,7 +3679,11 @@ class TestAst1089ParseMeteoriteEmailConfig:
         parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
         assert parse_cfg["task_key"] == "meteorite_email"
         assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
-        # Old live key must be gone (no compat shim).
+        # AST-1214: live seed name until AST-1182 rename — Admin fold key, not TASK_CONFIG.
+        assert parse_cfg["legacy_agent_task_key"] == "parse_meteorite_email"
+        assert parse_cfg["admin_entity_type"] == "candidate"
+        assert cfg.is_meteorite_email_mailbox_task_key("parse_meteorite_email")
+        assert cfg.is_meteorite_email_mailbox_task_key("meteorite_email")
         assert "parse_meteorite_email" not in cfg.TASK_CONFIG
 
         tc = cfg.TASK_CONFIG["meteorite_email"]
@@ -4360,3 +4374,35 @@ class TestAst1238SurferOffSwitchConfig:
         paths = [i["path"] for i in cand["items"]]
         assert "/candidate/surfer" in paths
         assert any(i["label"] == "Surfer" for i in cand["items"])
+
+
+# Branches: AST-1214 helper-resolvable + meteorite mailbox admin defaults.
+class TestAst1214DispatchAdminDefaultsWidened:
+    """AST-1214: helper-resolvable hops + meteorite mailbox fold for admin defaults."""
+
+    def test_helper_resolvable_and_mailbox_defaults(self) -> None:
+        expected = {
+            "fetch_jd": ("job", "PASSED_JOBLIST"),
+            "fetch_job_pages": ("company", "PREFILTER_PASSED"),
+            "fetch_website": ("company", "WEBSITE_FOUND"),
+            "fetch_culture_pages": ("job", "PASSED_GET"),
+            "inflow_discovery": ("candidate", "ACTIVE_SEARCH"),
+            "gaze": ("company", "WATCH"),
+            "recheck_no_openings": ("company", "NO_OPENINGS"),
+            "prefilter": ("company", "HOMEPAGE_READY"),
+            "inflow_resolve_website": ("company", "NEW"),
+        }
+        for tk, (et, ts) in expected.items():
+            d = cfg.dispatch_task_admin_defaults(tk)
+            assert d["entity_type"] == et
+            assert d["trigger_state"] == ts
+        mailbox = {
+            "entity_type": "candidate",
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+        assert cfg.dispatch_task_admin_defaults("parse_meteorite_email") == mailbox
+        assert cfg.dispatch_task_admin_defaults("meteorite_email") == mailbox
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
