@@ -18,26 +18,31 @@ Siblings **AST-1233** and **AST-1234** treat this section as the definition of "
 
 | Side | Input type | Cull operation | Output compared |
 |------|------------|----------------|-----------------|
-| Server (reference) | HTML **string** | `_cull_html` in `src/external/playwright.py` reading **only** `ASTRAL_CONFIG["html_cull"]` | Culled HTML string |
-| Extension (consumer; **AST-1234**) | **Live DOM** | In-place DOM mutation under the **same rule semantics** as `_cull_html` (not a second hand-maintained rule set) | Serialization of the culled subtree (content-script `outerHTML` of the culled root, typically `document.body` after cull) |
+| Server (reference) | HTML **string** | `_cull_html` in `src/external/playwright.py` reading **only** `ASTRAL_CONFIG["html_cull"]` | Culled HTML string = **body inner HTML** (no `<body>` wrapper). Implementation rebuilds soup from `body` children and `return str(soup)` — see `playwright.py` body extract + return. |
+| Extension (consumer; **AST-1234**) | **Live DOM** | In-place DOM mutation under the **same rule semantics** as `_cull_html` (not a second hand-maintained rule set) | **`document.body.innerHTML` after cull** (body-inner serialization). Not `document.body.outerHTML` — that would include a `<body>` element the server never emits, and normalization must not erase tag identity, so outerHTML would fail parity on every page. |
 
 ⚠️ **Decision — live DOM, not serialize-then-string-cull (Joan OQ2):** The client culls the live DOM directly. Parity is **not** byte-identity of raw serializations. Parity is `culled_html_equivalent(server_culled, client_culled)` after the normalization below.
+
+⚠️ **Decision — compare body-inner on both sides (Joan F1):** Server output is body-inner; client output is `document.body.innerHTML` after cull. Do **not** normalize away a stray outermost `<body>` as a substitute — pin the client serialization to innerHTML so the trees share the same root shape before normalize.
 
 ⚠️ **Decision — rules stay single-sourced:** Rule literals remain only in `ASTRAL_CONFIG["html_cull"]` (`pattern.config.config-block` / `astral.config.config-source-of-truth`). This ticket does not ship rules to JS (**AST-1233**). Traversal code necessarily exists twice (Python vs content script); that duplication is acknowledged and out of scope for DRY extraction here (`astral.standards.dry-and-focused-functions` applies to the **comparison helpers** this ticket adds, not to collapsing the two cullers).
 
 ### Rule semantics the client must mirror (reference behavior of `_cull_html`)
 
-These are observational of today's server function — **do not change keep/discard** on this ticket (parent boundary / this ticket Boundaries):
+These are observational of today's server function — **do not change keep/discard** on this ticket (parent boundary / this ticket Boundaries). **Pass order is load-bearing** (Joan F2): the client must run these steps in this order, not a regrouped “all decomposes then unwrap” paraphrase.
 
-1. Operate on **body** inner content when a `<body>` exists; otherwise the whole document.
-2. **Decompose** (remove element and descendants): `script`, `style`, `noscript`, `meta`, `link`, `svg`, HTML comments; `img` without non-empty `alt` and without `class`; elements with `aria-hidden="true"`, `hidden`, inline `display:none` / `display: none`, class tokens in `hidden_class_patterns`, or class/id substring match against `banner_patterns`.
-3. **Special `img`:** if kept, retain only `alt` and `class`.
-4. **Unwrap** every element whose tag is not in `allowed_tags` and is not the specially handled `img` (text/children preserved), repeating until stable (existing `max_passes` safety bound stays untouched — do not invent a new limit).
-5. **Strip attributes** listed in `strip_attributes`, plus any `on*` when `strip_on_attrs` is true. Preserve all other attributes (including `href`, `id`, `class`, `data-*`, `aria-*`).
+1. **Body scope:** Operate on **body** inner content when a `<body>` exists; otherwise the whole document.
+2. **Structural decompose** (remove element and descendants): `script`, `style`, `noscript`, `meta`, `link`, `svg`, HTML comments — in that family of removals, before any unwrap or banner sweep.
+3. **Special `img`:** if the tag has non-empty `alt` or a `class`, keep it but retain only `alt` and `class`; otherwise decompose the `img`.
+4. **Unwrap non-allowed tags:** every element whose tag is not in `allowed_tags` and is not the specially handled `img` is **unwrapped** (text/children preserved). Loop at most **`max_passes = 10`** (hardcoded in `_cull_html`, **not** in `ASTRAL_CONFIG["html_cull"]`). Stop early if a pass finds no non-allowed tags. This is **not** “repeat until stable / fixpoint” — after 10 passes, non-allowed tags may remain, and that residual is part of the reference output the client must match.
+5. **Hidden / banner sweep (after unwrap only):** take a snapshot of remaining elements, then decompose those with `aria-hidden="true"`, `hidden`, inline `display:none` / `display: none`, a class token in `hidden_class_patterns`, or class/id substring match against `banner_patterns`. **Tag-vs-class interaction:** tags **not** in `allowed_tags` (e.g. `nav`, `header`, `aside`) were already unwrapped in step 4, so the banner sweep never sees those wrappers — their children survive. Banner/hidden removal only hits elements whose **tag survived unwrap** (i.e. is in `allowed_tags`, commonly `div`/`span`/…). Read inline `style` for `display:none` **before** attribute strip.
+6. **Strip attributes** on elements that survived step 5 only: attrs in `strip_attributes`, plus any `on*` when `strip_on_attrs` is true. Preserve all other attributes (including `href`, `id`, `class`, `data-*`, `aria-*`).
+
+⚠️ **Decision — client mirrors `max_passes = 10` (Joan F3):** Parity is defined against the bounded unwrap loop, not an unbounded fixpoint. **AST-1234** must apply the same bound of 10. The bound is **absent** from the `html_cull` block **AST-1233** will deliver, so it cannot travel via config delivery as currently shaped — raise that delivery gap on **parent AST-1172** (do **not** move the literal into config on this ticket; Boundaries forbid keep/discard / rule-shape edits beyond proving determinism).
 
 ### Normalization the comparison permits
 
-After both sides produce a culled HTML string, each string is passed through `normalize_culled_html` before equality. Normalization **may** erase:
+After both sides produce a culled HTML string (both body-inner shaped), each string is passed through `normalize_culled_html` before equality. Normalization **may** erase:
 
 | Permitted difference | Normalize action |
 |----------------------|------------------|
@@ -50,7 +55,7 @@ After both sides produce a culled HTML string, each string is passed through `no
 | Text-node whitespace | Collapse internal runs of whitespace in text nodes to a single space; strip leading/trailing space on each text node; drop empty text nodes |
 | Character references that decode to the same Unicode | Decode to Unicode in text and attribute values before emit |
 
-Normalization **must not** erase differences in: tag identity, nesting order of kept elements, attribute presence/values (after decode), or text content (after whitespace collapse).
+Normalization **must not** erase differences in: tag identity, nesting order of kept elements, attribute presence/values (after decode), or text content (after whitespace collapse). It **must not** strip an outermost `<body>` wrapper to paper over a client `outerHTML` mistake — client output is defined as `innerHTML`.
 
 ### Equivalence predicate
 
@@ -58,7 +63,7 @@ Normalization **must not** erase differences in: tag identity, nesting order of 
 culled_html_equivalent(a, b) := normalize_culled_html(a) == normalize_culled_html(b)
 ```
 
-Both arguments are already-culled HTML strings (server `_cull_html` output, or client serialization after live-DOM cull). Do **not** re-cull inside the predicate.
+Both arguments are already-culled **body-inner** HTML strings (server `_cull_html` output, or `document.body.innerHTML` after live-DOM cull). Do **not** re-cull inside the predicate.
 
 ### Anchor / job-URL preservation (AC3)
 
@@ -77,10 +82,12 @@ Independent of full-tree equivalence (search pages care about links even when ma
 
 ### What this contract does not claim
 
-- Byte-identical raw `outerHTML` vs BeautifulSoup `str(soup)`.
+- Byte-identical raw browser serialization vs BeautifulSoup `str(soup)` before `normalize_culled_html` (attribute order, quotes, whitespace — that is what normalize is for).
+- That `document.body.outerHTML` is a valid client comparison input (it is not — use `innerHTML`).
 - Identical output if the live DOM and the captured HTML string are not the same page state.
 - Client rule delivery, content-script placement, fallback, or payload size metrics (**AST-1233** / **AST-1234**).
 - Changes to what the server keeps or discards.
+- Moving `max_passes` into `html_cull` config (parent finding for AST-1233 delivery shape; not this ticket).
 
 ---
 
@@ -91,7 +98,7 @@ Independent of full-tree equivalence (search pages care about links even when ma
 | `docs/features/surfer/ast-1232-parity-contract-and-server-cull-determinism.md` | This plan + normative parity contract | docs |
 | `src/utils/html_cull_parity.py` | New: `normalize_culled_html`, `culled_html_equivalent`, `extract_anchor_hrefs`, `assert_html_cull_anchor_config` | utils |
 | `src/external/playwright.py` | Remove `# pragma: no cover` from `_cull_html` only — no behavior change | external |
-| `scripts/spikes/ast_1232_verify_server_cull.py` | Offline: determinism + href-set check on synthetic HTML and AST-1194 captures; write report under `debug/spikes/AST-1232/` | scripts |
+| `scripts/spikes/verify_server_cull_determinism.py` | Offline: determinism + href-set check on synthetic HTML and AST-1194 captures; write report under `debug/spikes/AST-1232/` | scripts |
 
 **Out of files (siblings / boundaries):**
 
@@ -100,6 +107,8 @@ Independent of full-tree equivalence (search pages care about links even when ma
 | Extension rule delivery / Vite codegen / authenticated config endpoint | AST-1233 |
 | Content-script cull, worker handoff, fallback, client↔server parity proof on real pages | AST-1234 |
 | `ASTRAL_CONFIG["html_cull"]` keep/discard literals | unchanged (read-only; raise-only if anchors unsafe) |
+| `max_passes` literal relocation into config | out of scope — raise on parent only |
+| Existing `find_all("a", href=True)` call sites in `formatting.py` / `gazer.py` / `gaze_email.py` | unchanged (no caller refactor) |
 | `tests/`, `docs/test-bible/**` | Betty |
 | AST-1194 capture HTML (personal data) | gitignored under `debug/spikes/AST-1194/captures/` — never commit |
 
@@ -132,6 +141,8 @@ def culled_html_equivalent(a: str, b: str) -> bool:
 4. `normalize_culled_html`: parse with `BeautifulSoup(html, "html.parser")`, walk the tree, apply the normalization table in the contract, emit a single canonical HTML string. Empty / non-string input → `""`.
 
 5. Do **not** call `_cull_html` from this module (utils must not import external). Callers that need cull + compare import `_cull_html` from external and the helpers from utils.
+
+⚠️ **Decision — helpers in new `html_cull_parity.py`, not folded into `formatting.py` (Joan D1):** `formatting.py` already owns lazy-bs4 HTML-string helpers for roster/meteorite (`parse_text`, `normalize_pasted_list_email_html`, `find_job_containers`). Surfer parity normalize/compare is a distinct contract surface siblings cite by module name; keep it in its own file. Anchor walks already exist at `formatting.py` (~190), `gazer.py` (~1149), `gaze_email.py` (~146) — **do not** refactor those callers into `extract_anchor_hrefs` on this ticket (out of scope / would pull core concerns into a Surfer keystone). Implement the AC3 strip/filter predicate locally in `extract_anchor_hrefs`.
 
 ⚠️ **Decision — helpers in utils, cull stays in external:** Comparison/normalization is pure string work and must be importable without Playwright. Moving `_cull_html` into utils is out of scope and would widen the external/utils boundary for no AC gain.
 
@@ -189,18 +200,18 @@ assert extract_anchor_hrefs(raw) == extract_anchor_hrefs(a), (
 
 ## Stage 3: Offline verify script + AST-1194 capture gate
 
-**Done when:** `scripts/spikes/ast_1232_verify_server_cull.py` runs clean on synthetic fixtures; when AST-1194 search captures exist, it also runs clean on those files and writes `debug/spikes/AST-1232/verify_report.json` (gitignored). If search captures are missing, the builder **stops** and comments (see gate below) — does not invent LinkedIn/Indeed HTML.
+**Done when:** `scripts/spikes/verify_server_cull_determinism.py` runs clean on synthetic fixtures; when AST-1194 search captures exist, it also runs clean on those files and writes `debug/spikes/AST-1232/verify_report.json` (gitignored). If search captures are missing, the builder **stops** and comments (see gate below) — does not invent LinkedIn/Indeed HTML.
 
-1. Add `scripts/spikes/ast_1232_verify_server_cull.py` (scripts are layer-exempt). Defaults:
+1. Add `scripts/spikes/verify_server_cull_determinism.py` (scripts are layer-exempt; **domain name**, no `ast_1232_` module prefix — Joan D2 / `astral.standards.names-not-ticket-ids`). Defaults:
 
    - `--captures-dir` default: `<repo>/debug/spikes/AST-1194/captures` if that path exists under the epic worktree, else `$ASTRAL_MAIN/debug/spikes/AST-1194/captures` when `ASTRAL_MAIN` is set, else `<repo>/debug/spikes/AST-1194/captures`.
-   - `--out-dir` default: `<repo>/debug/spikes/AST-1232/` (create parents; never write under `docs/` or repo-root `artifacts/`).
+   - `--out-dir` default: `<repo>/debug/spikes/AST-1232/` (create parents; never write under `docs/` or repo-root `artifacts/`). Ticket-id path under `debug/spikes/` is required and correct.
 
 2. Script behavior (exact checks):
 
    - Call `assert_html_cull_anchor_config()`.
    - **Synthetic determinism:** fixed HTML string (neutral search-like, job links not under banner patterns) → `_cull_html` twice → outputs `==`; also `extract_anchor_hrefs(raw) == extract_anchor_hrefs(culled)`.
-   - **Synthetic banner still strips:** HTML with an `<a href>` inside an element whose class contains `cookie` → that href absent from culled href set (proves banner path still live).
+   - **Synthetic banner still strips:** HTML with an `<a href="…">` inside a **`div`** (tag **in** `allowed_tags`) whose `class` contains `cookie` → that href absent from culled href set. Pin the wrapper tag to `div` so the banner sweep actually sees it after unwrap (a `nav`/`header`/`aside` wrapper would unwrap first and preserve children — Joan F2).
    - **Normalize sanity:** two culled strings that differ only by attribute order → `culled_html_equivalent` is True.
    - **Captures (when present):** for each `*.html` in captures dir (skip names starting with `_`), run determinism (`_cull_html` twice → `==`) and href-set equality. Record per-file raw/culled byte sizes in the report (measurement only; payload-reduction AC is **AST-1234**).
    - Write `verify_report.json` under `--out-dir` with pass/fail per check. Exit non-zero on any failure.
@@ -220,7 +231,9 @@ assert extract_anchor_hrefs(raw) == extract_anchor_hrefs(a), (
 
    - If search captures exist and href-set equality fails: **STOP** and comment on **parent AST-1172** with the delta (raise finding). Do not change `html_cull`.
 
-4. Run the script once during build after Stages 1–2 land. Do not commit anything under `debug/`.
+4. During Stage 3 (or immediately after the Stage 1 commit if preferred), post a finding on **parent AST-1172** that `_cull_html`'s `max_passes = 10` is outside `html_cull` and therefore outside AST-1233's planned config delivery — AST-1234 still must hardcode the same bound until the parent decides otherwise. Do not move the literal on this ticket.
+
+5. Run the script once during build after Stages 1–2 land. Do not commit anything under `debug/`.
 
 **Commit:** `code(AST-1232): Stage 3 — server cull offline verify spike`
 
@@ -244,9 +257,9 @@ Prefer small inline HTML strings in component tests (no committed LinkedIn dumps
 
 **Scope:** `Single-Component` — new utils parity helpers + one-line coverage-surface edit on `_cull_html` + committed spike verify script; no extension, no rule-delivery, no keep/discard config edits.
 
-**Conf:** `Medium` — server cull behavior and allow-list are readable and already keep `<a href>`; real-page AC3 depends on AST-1194 search captures that are not on disk yet (producer ready, captures pending Susan), so Stage 3 has an explicit stop gate rather than a guessed fixture.
+**Conf:** `Medium` — server cull behavior and allow-list are readable and already keep `<a href>`; real-page AC3 depends on AST-1194 search captures that are not on disk yet (producer ready, captures pending Susan), so Stage 3 has an explicit stop gate rather than a guessed fixture. Joan F1–F3 contract wording is now pinned to the reference implementation order and body-inner serialization.
 
-**Risk:** `Medium` — a wrong normalization predicate would let AST-1234 ship a divergent client cull that "passes" parity while dropping discovery hrefs; a false raise on AC3 would block the epic without a config bug.
+**Risk:** `Medium` — a wrong normalization predicate or wrong unwrap/banner order would let AST-1234 ship a divergent client cull that "passes" parity while dropping discovery hrefs; a false raise on AC3 would block the epic without a config bug.
 
 ---
 
@@ -254,13 +267,28 @@ Prefer small inline HTML strings in component tests (no committed LinkedIn dumps
 
 | Rule | Status |
 |------|--------|
-| §1.3 DRY | Helpers centralize normalize/compare/href extract; do not fork `_cull_html` |
-| §1.4 / §2.1 config | Read `html_cull` only; no hardcoded allow-list copy; raise-only on unsafe config |
+| §1.3 DRY | Helpers centralize normalize/compare/href extract; do not fork `_cull_html`; existing gazer/formatting/gaze_email anchor walks left alone (acknowledged, not refactored) |
+| §1.4 / §2.1 config | Read `html_cull` only; no hardcoded allow-list copy; raise-only on unsafe config; `max_passes` stays in external (parent finding) |
 | §2.4 batch | N/A — no batch/claim work |
 | §2.6 state machine | N/A |
 | §3.3 imports | utils → utils/config only; spike script may import external + utils; no ui→external |
-| §3.5 naming | `html_cull_parity.py`, snake_case functions |
+| §3.5 naming | `html_cull_parity.py`, `verify_server_cull_determinism.py` (no ticket-id module names) |
 | §3.6 spikes | Report/output under `debug/spikes/AST-1232/`; script under `scripts/spikes/`; no repo-root `artifacts/` |
 | Test-tree ban | No `tests/` or bible edits in engineer commits |
 
 No unresolved rule conflicts. Conf stays `Medium` for the capture gate, not `!!-NONE`.
+
+---
+
+## Revisions
+
+### Revision 1 — 2026-08-07
+
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE) — fix-now F1 body-inner vs outerHTML; F2 rule-pass order / tag-vs-class banner interaction; F3 `max_passes=10` must be mirrored and is outside `html_cull`; discuss D1 DRY vs existing anchor walkers / module home; discuss D2 ticket-id spike script name.
+
+Changes:
+- Contract table + decisions: client serialization is `document.body.innerHTML`; server output is body-inner; normalize must not strip a stray `<body>` to paper over outerHTML.
+- Rule semantics renumbered to reference order (structural decompose → img → unwrap with bound 10 → hidden/banner sweep → attr strip); documented tag-vs-class unwrap-before-banner interaction.
+- Stated AST-1234 must mirror `max_passes = 10`; parent raise for AST-1233 delivery gap; no config move on this ticket.
+- Stage 3 banner fixture pinned to wrapper tag `div`; spike script renamed to `verify_server_cull_determinism.py`.
+- Stage 1 Decision: keep `html_cull_parity.py` separate from `formatting.py`; acknowledge existing anchor walkers without refactoring them.
