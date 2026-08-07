@@ -176,3 +176,34 @@ Changes:
 | 1 | `4c6fc90a` | REQUESTED_ARTIFACTS priors + start handoff helpers |
 | 2 | `6f7eab54` | generate_artifacts API + manifest chain fields |
 | 3 | `7668bcf9` | Generate/Regenerate UI handoff |
+
+## Radia review
+
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Publish ref tip:** `1a05e566`
+**Overall:** FIX-NOW
+
+**Full-set sweep:** all 65 active statutes scored in-session (18 universal + 47 scoped) against this ticket's own contribution — `git diff 70bf6729..origin/sub/AST-1243/AST-1253-generate-regenerate-handoff` (`70bf6729` = `origin/ftr/AST-1243-candidate-artifacts-now-daisy-chain` tip = AST-1252's resolved sub tip, which this branch correctly forked from per the plan's explicit ftr-sync instruction — `git diff origin/dev...` would otherwise re-score AST-1252's already-reviewed content under this ticket). No violates beyond the finding below.
+
+**What's solid:** Stage 1–3 match the plan closely. `start_requested_artifacts` lets `transition_candidate_state` + `prior_states` enforce legality (no UI-invented target), `REQUESTED_ARTIFACTS.prior_states` expanded exactly as specified, `CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH` is an unordered path map (hop **order** stays live-`run_next`-only, no parallel sequencing list), the manifest merge lives in `api_system.py` (ui→core, module-scope import, no late-import hedge) with a clean try/except degrade-to-`[]` + logged warning on walk failure, the chain-key 409 gate in `run_candidate_artifact_generation` fires before any DB/ledger touch, `@require_auth` is present on the new route, and the frontend reads `chainTaskKeys` / `chainHopLabels` / `chainArtifactKeys` entirely from the server manifest (no hardcoded state/business-rule sets in React, matching `astral.layers.ui-config-driven-business-logic`). `python3 -m py_compile` clean on all four touched backend modules. Engineer/Betty test-tree boundary holds (`code(AST-1253)` commits touch only `src/`; `test(AST-1253)` commit touches only `tests/` + `docs/test-bible/`). Test coverage matches every Stage 1–3 "Done when" branch (happy path, 404, 409 illegal prior, chain-key 409, manifest merge, walk-failure degrade).
+
+**Findings**
+
+- **fix-now — DRY / frontend-file-placement (`astral.standards.dry-and-focused-functions`, `astral.ui.frontend-file-placement`):** `artifactBlobHasContent()` is defined verbatim (identical 15-line body) in both `src/ui/frontend/src/components/ArtifactEditor.tsx` and `src/ui/frontend/src/pages/ArtifactsCompanySearchTerms.tsx`. `src/ui/frontend/src/lib/` already exists and holds exactly this kind of shared helper (`rubricDisplay.ts`, `candidateJobActions.ts`, etc.) — extract to a new `lib/` module and import from both.
+- **discuss — React re-render hygiene (C6 aid, not a named table entry):** `chainArtifactKeys` (`manifest?.candidate.artifacts_chain_artifact_keys ?? []`) is used inside a `useEffect` dependency array in both files but, unlike the sibling `chainTaskKeys`, isn't wrapped in `useMemo`. While `manifest` is still loading, `?? []` produces a fresh array reference every render, which can re-fire the effect (and its `api()` fetch) repeatedly until the manifest populates — self-heals once `manifest` loads, not fatal, but worth the same memoization treatment as `chainTaskKeys` for consistency.
+
+**Pattern conformance:** `pattern.state.entity-state-transitions` (cited, exists under `canon/patterns/`) — conforms; `start_requested_artifacts` → `transition_candidate_state` only.
+
+**Plan adherence:** Diff matches the Files Changed table exactly. Stage 1–3 "Done when" criteria verified directly (prior_states list, unordered nav-path map, 409 gate placement, manifest merge shape + degrade path, `@require_auth`, compile). Self-Assessment `Scope: Single-Component` / `Conf: high` matches the diff's real footprint; no `!!-NONE` conflict. No Joan plan-rubric verdict attachment on the Linear issue — noting per C4 (not a block); Revisions 1–2 already fold Joan's plan-discuss fix-nows into the shipped code (manifest ownership in `api_system`, top-level `company_search_terms` signal, NAV-label resolution) with no drift from the sweep above.
+
+**Cross-ticket boundary:** No dispatch/persist/retire internals touched (AST-1252 territory, correctly left alone); `craft_resume_base` ad-hoc generate path untouched as planned.
+
+## Frame diff
+
+(none — ticket description AC/scope table already accurate)
+
+context_tokens≈34000
+
+— Radia
