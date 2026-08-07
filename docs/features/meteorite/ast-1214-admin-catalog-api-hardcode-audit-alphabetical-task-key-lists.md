@@ -80,7 +80,6 @@ The plan is binding. Execute stages in order. Do not edit React, seed JSON renam
 **Done when:**
 
 - Each of the **seven** helper-resolvable keys: form meta filled; `_dispatch_task_key_trigger_error` returns `None` for a valid trigger (e.g. `fetch_jd`/`PASSED_JOBLIST`, `inflow_discovery`/`ACTIVE_SEARCH`); `dispatch_task_admin_defaults` returns a dict; POST create succeeds for `fetch_jd`.
-- Each of the **seven** helper-resolvable keys: form meta filled; `_dispatch_task_key_trigger_error` returns `None` for a valid trigger (e.g. `fetch_jd`/`PASSED_JOBLIST`, `inflow_discovery`/`ACTIVE_SEARCH`); `dispatch_task_admin_defaults` returns a dict; POST create succeeds for `fetch_jd`.
 - `parse_meteorite_email` and `meteorite_email`: `dispatch_task_admin_defaults` returns mailbox defaults with `entity_type == "candidate"` and null `trigger_state` / `sort_by` / `batch_call_mode == 0`; form meta shows `entity_type: "candidate"` (mailbox carve-out reached via form-meta gate — edit 1); `_dispatch_task_key_trigger_error` returns `None` when trigger is null/empty and **rejects non-empty** trigger for mailbox keys (edit 3); POST create for `parse_meteorite_email` with a valid candidate and null/omitted `trigger_state` succeeds (201).
 - Registered-but-unschedulable other `TASK_CONFIG` keys (e.g. craft_*) still get `unsupported entity_type` wording, not `Unknown task_key`.
 - `list_dtasks` Avail for a `parse_meteorite_email` / `meteorite_email` row uses the same inbox bind-count path as `gaze_email` (Gmail ping), including both the snapshot gate and the per-row stamp (edit 2).
@@ -263,3 +262,11 @@ Changes: (1) `_dispatch_task_key_form_meta` gate admits `is_meteorite_email_mail
 context_tokens≈65000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Review tip:** `4dcf7879` (`docs(AST-1214): Radia review — clean`) · product/tests tip `b0f12360`  
+**Outcome:** CLEAN — no fix-now / discuss items. No product code changes on resolve.
+
+Doc-only: dropped the duplicated Stage 2 Done-when bullet (Joan plan nit). Checklists already ticked from Code Complete; Frame diff none.
