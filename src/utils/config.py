@@ -40,6 +40,7 @@ Config sections:
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
+  SURFER_BATCH_CONFIG — Surfer client-driven batch statuses, URL outcomes, id prefix, candidate pointer key (AST-1229)
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals for gaze_email (AST-1089; renamed AST-1212)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
@@ -2364,6 +2365,49 @@ assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
+
+# AST-1229: durable Surfer run (client-driven). Not a dispatcher ledger row.
+SURFER_BATCH_CONFIG = {
+    "batch_id_prefix": "surfer",  # ids: f"{prefix}-{uuid4()}"
+    "candidate_data_lifecycle_key": "active_surfer_batch_id",  # under candidate_data.lifecycle
+    # Batch-level statuses (core transitions only).
+    # requires_all_urls_terminal: True only on the status used for worklist-complete auto-transition.
+    "statuses": {
+        "RUNNING": {"terminal": False, "requires_all_urls_terminal": False},
+        "COMPLETED": {"terminal": True, "requires_all_urls_terminal": True},
+        "CANCELLED": {"terminal": True, "requires_all_urls_terminal": False},
+    },
+    "initial_status": "RUNNING",
+    # Per-URL outcome vocabulary on the worklist (not job JOB_STATES).
+    "url_outcomes": {
+        "pending": {"terminal": False},    # never visited
+        "delivered": {"terminal": False},  # posted / attributed; classification not resolved
+        "success": {"terminal": True},
+        "failed": {"terminal": True},
+    },
+    "initial_url_outcome": "pending",
+}
+
+assert SURFER_BATCH_CONFIG["initial_status"] in SURFER_BATCH_CONFIG["statuses"]
+assert SURFER_BATCH_CONFIG["initial_url_outcome"] in SURFER_BATCH_CONFIG["url_outcomes"]
+assert all(
+    isinstance(v.get("terminal"), bool)
+    and isinstance(v.get("requires_all_urls_terminal"), bool)
+    for v in SURFER_BATCH_CONFIG["statuses"].values()
+)
+assert all(
+    isinstance(v.get("terminal"), bool)
+    for v in SURFER_BATCH_CONFIG["url_outcomes"].values()
+)
+# Exactly one auto-complete target (worklist-complete → that status).
+assert sum(
+    1 for v in SURFER_BATCH_CONFIG["statuses"].values() if v["requires_all_urls_terminal"]
+) == 1
+assert all(
+    SURFER_BATCH_CONFIG["statuses"][name]["terminal"]
+    for name, v in SURFER_BATCH_CONFIG["statuses"].items()
+    if v["requires_all_urls_terminal"]
+)
 
 # AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
 # AST-1131: paste/list normalize before link discovery (entity-unescape + nested autolink unwrap).
