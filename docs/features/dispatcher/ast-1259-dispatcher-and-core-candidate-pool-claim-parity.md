@@ -166,27 +166,6 @@ Changes: added **Tests invalidated (Betty contract)** (fix-now — both unlocked
 ## Radia review — [code-rubric] revision=1
 
 **Publish ref:** `sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity` @ `d950de10`
-**Overall:** FIX-NOW
-
-Full active-set sweep run in-session (65 active statutes: 18 universal + 47 scoped — 38 scoped matched, 9 `not-applicable`). Diff vs `origin/dev` also carries AST-1258's data-layer changes (not yet on `dev`) — already reviewed/Review Posted under AST-1258; this pass covers the incremental `src/core/candidate.py` + `src/core/dispatcher.py` surface.
-
-**Plan adherence:** Stage 1 (`get_new_candidate_batch` / `clear_candidate_batch`) mirrors `get_new_company_batch`'s `states` validation; Stage 2 wires claim → process → release in `_run_unified` at exactly the insertion sites Joan verified (empty-batch clear, `finally` clear replacing `pass`, forced `use_full_batch=False` — load-bearing since `consult.py`'s candidate arm reads `entities[0]` only). Debug contract (AC4) satisfied via the pre-existing entity-agnostic Style D block; release stays silent at job/company parity per Stage 3's explicit decision. Engineer/test-tree commit separation clean.
-
-**Pattern conformance:** `pattern.batch.entity-claim-process-release` — conforms.
-
-**Findings:**
-- **fix-now** — misplaced `@pytest.mark.skipif` in `tests/component/core/test_dispatcher.py` now guards the wrong class. It used to sit directly above `class TestAst972CandidateStageDispatch:` (confirmed on AST-1258 tip `10d0df6f`); this diff inserts `class TestAst1259CandidatePoolClaim:` right after it, so the skip guard now attaches to the new class (which doesn't need it) while `TestAst972CandidateStageDispatch` (whose bodies call `retire_candidate_requested_wrapper_dispatch_tasks` directly) loses its guard. Benign today only because that function still exists on this tip (`hasattr` True → skip condition False either way) — but breaks cleanly the day it retires. One-line fix: move the decorator back above `TestAst972CandidateStageDispatch`. Betty scope (`tests/`) — not `resolve-child` territory for Ada.
-
-**What's solid:** new `TestAst1259CandidatePoolClaim` coverage exercises `batch_size`/`dispatch_claim_states` pass-through, multi-row → one `run_consult_task` per row, empty-claim clear, and `finally` clear skipping job/company — matches the Betty-contract coverage list item-for-item.
-
-context_tokens≈158000
-
-— Radia
-
-
-## Radia review — [code-rubric] revision=1
-
-**Publish ref:** `sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity` @ `d950de10`
 **Overall:** DISCUSS
 
 Full active-set sweep run in-session (65 active statutes: 18 universal + 47 scoped — 39 scoped matched and scored, 8 scoped `not-applicable`). Branch not yet merged onto `dev`, so the three-dot diff also carries AST-1258's already-`Review Posted` data-layer content — not re-litigated here; findings below are scoped to what's new: `src/core/candidate.py`, `src/core/dispatcher.py`, and their tests/bible.
