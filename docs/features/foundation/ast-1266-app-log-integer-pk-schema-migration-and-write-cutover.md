@@ -110,3 +110,22 @@ Changes: Stage 1 step 2b now starts with `DROP TABLE IF EXISTS app_log_new` befo
 **Publish ref:** `sub/AST-1263/AST-1266-app-log-integer-pk-schema-migration-and-write-cutover`
 **Product tip:** `a0b87bf1` (Stage 2)
 **Stage commits:** Stage 1 @ `57ce46bd`; Stage 2 @ `a0b87bf1`.
+
+### Radia review — clean
+
+`[code-rubric] revision=1` — full active-set sweep (63 statutes) scored in-session against `git diff origin/dev...e1c78811` (publish ref tip). **Overall: CLEAN.**
+
+**What's solid:**
+
+- Stage 1 and Stage 2 land exactly per plan: `_ensure_app_log_schema` creates `INTEGER PRIMARY KEY AUTOINCREMENT` on fresh DBs, rebuilds legacy `TEXT` PK tables (with the `DROP TABLE IF EXISTS app_log_new` guard from Revision 1), and `add_log_entry` no longer mints a client UUID. `LogEntry.id` widened `string → number` in `AdminPerformanceMonitor.tsx`; no filter/Copy/fetch logic touched.
+- Verified read-only claim: `src/utils/logging.py` `_flush_buffer` still late-imports `add_log_entry` and calls it with only `level`/`logger_name`/`message`/`batch_id` — AC5 holds.
+- Betty's test commit (`7a2ecc1a`, merged via the single-SHA `merge-tests(AST-1266)` pattern) touches only `tests/` + `docs/test-bible/**`; the engineer's own commits (`57ce46bd`, `a0b87bf1`, docs) touch only `src/data/database.py`, `AdminPerformanceMonitor.tsx`, and this plan doc — clean layer/ownership separation.
+
+**Notes (advisory, not fix-now):**
+
+- `astral.seed.boot-only-not-hot-path`: the TEXT→INTEGER rebuild branch is gated only by the process-lifetime `_app_log_schema_ensured` flag (first hot-path call, not an explicit boot/migration script). This mirrors existing precedent (`_ensure_dispatch_task_schema` et al.) already in `database.py` and isn't a new pattern introduced by this ticket — flagging for awareness only.
+- The three-dot diff vs `origin/dev` also carries an inherited `test(AST-1264)` commit (`eaf4467a`) via Betty's shared tests lineage (`tests/component/core/test_agent.py`, `test_agent_tasks.py`, 4 test-bible docs). Confirmed via `git show --stat` on each AST-1266-tagged commit that none of AST-1266's own code/test/docs commits touch those files — no scope smuggling by this ticket.
+
+**Pattern conformance:** `pattern.layers.import-discipline` (no canon match; nearest analog `astral.layers.import-direction` — conforms, no new imports), `astral.standards.utils-data-late-import-only` (conforms), `astral.standards.in-scope-only` (conforms), `astral.standards.database-header-inventory` (conforms).
+
+— Radia
