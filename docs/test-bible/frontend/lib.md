@@ -159,3 +159,24 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
 ```
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+Extension pacing helpers under `src/ui/extension/src/lib/` (not SPA `frontend/src/lib/`): `fetchPacingConfig` / cache, shared `dwell()` (ordinary `setTimeout`, MV3 ceiling from config), `createTabBudget` slot transfer so `max_tabs` cannot be exceeded under interleaved acquire/release. Config + GET: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_surfer.md`**. §6c routed-page rule N/A (no `pages/` change).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cache + fetch injection | `src/ui/extension/src/lib/pacingConfig.ts` | **`test_surferPacingConfig.test.ts`** |
+| Randomized dwell + MV3 reject | `src/ui/extension/src/lib/dwell.ts` | same |
+| One-at-a-time slot transfer | `createTabBudget` in `pacingConfig.ts` | same |
+
+**Broken / obsolete:** none — new modules.
+
+**Integration:** none revised.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_surferPacingConfig.test.ts
+```

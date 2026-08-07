@@ -233,6 +233,18 @@ def meteorite_client() -> Iterator[FlaskClient]:
 
 
 @pytest.fixture
+def surfer_client() -> Iterator[FlaskClient]:
+    """AST-1236: Surfer pacing_config blueprint (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api.api_surfer import surfer_bp
+
+    app.register_blueprint(surfer_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
 def contact_client() -> Iterator[FlaskClient]:
     """AST-1071: Contact skills admin blueprint (@require_admin)."""
     app = Flask(__name__)

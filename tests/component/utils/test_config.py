@@ -4201,3 +4201,15 @@ class TestAst1222MeteoriteAliasDispatchAndSeed:
         # Classic Gaze still masters (not aliases).
         assert cfg.is_task_alias("grade_do") is False
         assert cfg.TASK_CONFIG["grade_do"]["pass_state"] == "PASSED_DO"
+# Branches: SURFER_PACING_CONFIG defaults + MV3 idle window contract (AST-1236).
+class TestAst1236SurferPacingConfig:
+    def test_surfer_pacing_defaults_and_mv3_window(self) -> None:
+        s = cfg.SURFER_PACING_CONFIG
+        assert s["dwell_center_seconds"] == 10
+        assert s["dwell_spread_seconds"] == 5
+        assert s["max_tabs"] == 1
+        assert s["mv3_idle_ceiling_seconds"] == 30
+        floor = s["dwell_center_seconds"] - s["dwell_spread_seconds"]
+        ceiling = s["dwell_center_seconds"] + s["dwell_spread_seconds"]
+        assert floor > 0
+        assert ceiling < s["mv3_idle_ceiling_seconds"]
