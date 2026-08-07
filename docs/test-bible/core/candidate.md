@@ -323,6 +323,13 @@ Generate/Regenerate hand off via `start_requested_artifacts` → `REQUESTED_ARTI
 
 
 
+
+### AST-1264 · AST-1243
+
+**Publish:** `origin/sub/AST-1243/AST-1264-uat-craft-get-run-next`.
+
+UAT succession fix (`craft_get` → `craft_do` via live `run_next`). Primary: **`docs/test-bible/core/agent.md`** / **`data/database/agent_tasks.md`** § AST-1264. No candidate.py product diff this ticket.
+
 ### AST-973 · AST-871
 
 Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch trigger remap; reap-due purge; consumer fixture sweep off retired four-step names.

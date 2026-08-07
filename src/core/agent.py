@@ -2003,25 +2003,33 @@ async def do_task(
             parent_for_hydration = _parent_hop_task_key_for_child(task_key)
     if parent_for_hydration and index and entity_type_pre:
         if _task_references_caller_tokens(agent_task_row, live_content):
-            hydrated, hydr_err = _hydrate_caller_chain_context(
-                entity_type_pre,
-                index,
-                task_key,
-                parent_for_hydration,
-                chain_context,
-                debug=debug,
+            # AST-1264: fail-open to live CALLER — skip hydrate when persist recurse has CALLER_*
+            # (re-inject on parent). Dead hydr_err fallback removed (Radia).
+            _live_caller = bool((ctx or {}).get("persist_candidate_craft_hops")) and any(
+                ((chain_context or {}).get(k) or "").strip() for k in CALLER_HOP_TOKEN_NAMES
             )
-            if hydr_err:
-                return {
-                    "success": False,
-                    "error": hydr_err,
-                    "api_response": None,
-                    "parsed_response": None,
-                    "timesheet": {},
-                }
-            effective_chain_context = _merge_hydrated_caller_context(
-                chain_context, hydrated
-            )
+            if _live_caller:
+                effective_chain_context = chain_context
+            else:
+                hydrated, hydr_err = _hydrate_caller_chain_context(
+                    entity_type_pre,
+                    index,
+                    task_key,
+                    parent_for_hydration,
+                    chain_context,
+                    debug=debug,
+                )
+                if hydr_err:
+                    return {
+                        "success": False,
+                        "error": hydr_err,
+                        "api_response": None,
+                        "parsed_response": None,
+                        "timesheet": {},
+                    }
+                effective_chain_context = _merge_hydrated_caller_context(
+                    chain_context, hydrated
+                )
     in_chain = _in_run_next_chain(chain_context=chain_context, agent_task_row=agent_task_row)
     _resume_hop_debug_index(task_key, debug=debug, ctx=ctx, index=index)
     hop_ledger_batch_id: Optional[str] = None
@@ -2896,6 +2904,7 @@ async def do_task(
             )
 
     # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).
+    candidate_craft_persisted = False
     if result.get("success") and (ctx or {}).get("persist_candidate_craft_hops") and index:
         try:
             # Lazy import breaks agent↔candidate cycle (candidate imports agent).
@@ -2905,6 +2914,7 @@ async def do_task(
 
             parsed_for_persist = result.get("parsed_response")
             _persist_craft_dispatch_success(str(index), task_key, parsed_for_persist)
+            candidate_craft_persisted = True
             if debug:
                 art = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key) or (
                     "company_search_terms" if task_key == "craft_company_search_terms" else task_key
@@ -3047,6 +3057,13 @@ async def do_task(
             dbg.debug_detail(
                 f"task_key={task_key} batch_id={batch_id or ''} success={result.get('success')}"
             )
+            # AST-1264: why candidate-craft succession stopped after a recorded persist.
+            if candidate_craft_persisted:
+                dbg.debug_detail(
+                    f"persist_candidate_craft succession stopped task_key={task_key} "
+                    f"planned_next={planned_next!r} "
+                    f"suppress_run_next={bool((ctx or {}).get('suppress_run_next'))}"
+                )
         _close_hop_ledger(success=True, clear_log=True)
         return result
     if effective_next not in TASK_CONFIG:
@@ -3056,9 +3073,15 @@ async def do_task(
             effective_next,
         )
         if debug:
-            _do_task_debug_logger(debug).debug_detail(
+            dbg = _do_task_debug_logger(debug)
+            dbg.debug_detail(
                 f"run_next suppressed invalid_child={effective_next!r} parent={task_key}"
             )
+            if candidate_craft_persisted:
+                dbg.debug_detail(
+                    f"persist_candidate_craft succession stopped task_key={task_key} "
+                    f"invalid_child={effective_next!r} planned_next={planned_next!r}"
+                )
         _close_hop_ledger(success=True, clear_log=True)
         return result
 
@@ -3076,6 +3099,12 @@ async def do_task(
     for k in CALLER_HOP_TOKEN_NAMES:
         merged_ctx.pop(k, None)
     merged_ctx.pop("_caller_hydration_source", None)
+    # AST-1264: re-inject live CALLER_* for candidate-craft recurse (child skip/fail-open).
+    if (ctx or {}).get("persist_candidate_craft_hops") and effective_next:
+        for k in CALLER_HOP_TOKEN_NAMES:
+            val = caller_only_hop.get(k)
+            if (val or "").strip():
+                merged_ctx[k] = val
     if debug:
         dbg = _do_task_debug_logger(debug)
         dbg.debug_detail(

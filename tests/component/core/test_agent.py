@@ -7028,3 +7028,180 @@ class TestAst1252PersistCandidateCraftHops:
             {"criteria": [{"criterion": "x", "grade_descriptions": {"A": "y"}}]},
         )
         assert any("arts" in (s or {}) for s in saved)
+
+
+
+class TestAst1264CandidateCraftSuccession:
+    """AST-1264: live CALLER re-inject + hydrate skip/fail-open for persist craft path."""
+
+    def test_do_task_source_has_caller_reinject_and_hydrate_gates(self) -> None:
+        src = inspect.getsource(agent_mod.do_task)
+        assert "AST-1264: re-inject" in src
+        assert "_live_caller" in src
+        assert "fail-open to live CALLER" in src
+        assert "persist_candidate_craft succession stopped" in src
+
+    def _stub_craft_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        from src.core import candidate as candidate_mod
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_persist_craft_skips_hydrate_when_live_caller(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        hydrate = MagicMock(return_value=({}, "hydrate should not run"))
+
+        def resolve(task_key: str):
+            agent, task = _agent_rows(run_next="")
+            task["user_prompt"] = "Continue from {CALLER_RESPONSE}"
+            return agent, task
+
+        monkeypatch.setattr(agent_mod, "_hydrate_caller_chain_context", hydrate)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: True)
+        monkeypatch.setattr(agent_mod, "_effective_entity_type", lambda *a, **k: "candidate")
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {
+                        "criteria": [
+                            {"code": "DO", "label": "Do", "content": "body", "importance": 5},
+                        ],
+                    },
+                },
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_craft_llm(monkeypatch, send)
+        out = await agent_mod.do_task(
+            "craft_do_rubric",
+            index="somerset",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "candidate_data": {"astral_candidate_id": "somerset"},
+            },
+            chain_context={
+                "_hop_parent_task_key": "craft_get_rubric",
+                "CALLER_RESPONSE": "live get payload",
+            },
+            debug=True,
+        )
+        assert out.get("success") is True
+        hydrate.assert_not_called()
+        assert send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_persist_craft_hydrate_hard_fails_without_live_caller(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        hydrate = MagicMock(return_value=({}, "missing agent_data for parent"))
+
+        def resolve(task_key: str):
+            agent, task = _agent_rows(run_next="")
+            task["user_prompt"] = "Continue from {CALLER_RESPONSE}"
+            return agent, task
+
+        monkeypatch.setattr(agent_mod, "_hydrate_caller_chain_context", hydrate)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: True)
+        monkeypatch.setattr(agent_mod, "_effective_entity_type", lambda *a, **k: "candidate")
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {},
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_craft_llm(monkeypatch, send)
+        out = await agent_mod.do_task(
+            "craft_do_rubric",
+            index="somerset",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "candidate_data": {"astral_candidate_id": "somerset"},
+            },
+            chain_context={"_hop_parent_task_key": "craft_get_rubric"},
+            debug=True,
+        )
+        assert out.get("success") is False
+        assert "missing agent_data" in (out.get("error") or "")
+        hydrate.assert_called_once()
+        assert send.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_persist_craft_reinjects_caller_on_recurse(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        """Parent craft_get → child craft_do receives live CALLER via reinject."""
+        child_contexts: list = []
+
+        def resolve(task_key: str):
+            agent, task = _agent_rows(
+                run_next="craft_do_rubric" if task_key == "craft_get_rubric" else "",
+            )
+            task["user_prompt"] = (
+                "Use {CALLER_RESPONSE}" if task_key == "craft_do_rubric" else "Craft get"
+            )
+            return agent, task
+
+        real_do = agent_mod.do_task
+
+        async def wrap_do_task(task_key, *args, **kwargs):
+            if task_key == "craft_do_rubric":
+                child_contexts.append(dict(kwargs.get("chain_context") or {}))
+                return {
+                    "success": True,
+                    "parsed_response": {"criteria": []},
+                    "api_response": {},
+                    "timesheet": {},
+                }
+            return await real_do(task_key, *args, **kwargs)
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        monkeypatch.setattr(
+            agent_mod,
+            "_hydrate_caller_chain_context",
+            MagicMock(return_value=({}, "should skip")),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_chain_tokens_for_next_hop",
+            lambda *a, **k: {"CALLER_RESPONSE": "from-get-hop", "CALLER_USER": "u"},
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {
+                        "criteria": [
+                            {"code": "GT", "label": "Get", "content": "body", "importance": 5},
+                        ],
+                    },
+                },
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_craft_llm(monkeypatch, send)
+        monkeypatch.setattr(agent_mod, "do_task", wrap_do_task)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="somerset",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "candidate_data": {"astral_candidate_id": "somerset"},
+            },
+            debug=True,
+        )
+        assert out.get("success") is True
+        assert child_contexts, "expected recurse into craft_do_rubric"
+        assert (child_contexts[0].get("CALLER_RESPONSE") or "").strip() == "from-get-hop"
