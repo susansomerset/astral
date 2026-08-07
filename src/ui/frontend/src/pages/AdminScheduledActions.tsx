@@ -4,6 +4,7 @@ import AdminCandidateFilterControl from "../components/AdminCandidateFilterContr
 import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
+import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 import Time from "../components/Time"
 import CollapsiblePanel from "../components/CollapsiblePanel"
 import SectionExpandChrome from "../components/SectionExpandChrome"
@@ -369,7 +370,7 @@ export default function ScheduledActions() {
     }
   }, [threadStatus, data, loadData])
 
-  const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
+  const taskKeys = useMemo(() => sortedTaskKeys(new Set(data.map(d => d.task_key))), [data])
 
   const sectionGroupOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -396,7 +397,7 @@ export default function ScheduledActions() {
         const as_ = allTaskKeys[a.task_key]?.task_seq ?? 999
         const bs_ = allTaskKeys[b.task_key]?.task_seq ?? 999
         if (as_ !== bs_) return sortDir === "asc" ? as_ - bs_ : bs_ - as_
-        const tk = a.task_key.localeCompare(b.task_key)
+        const tk = compareTaskKeys(a.task_key, b.task_key)
         if (tk !== 0) return tk
         if (!candidateFilter) {
           const av = a.available_count ?? 0
@@ -881,7 +882,7 @@ export default function ScheduledActions() {
                   }
                 }}>
                   <option value="">Select…</option>
-                  {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
+                  {sortedTaskKeys(Object.keys(allTaskKeys)).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
               </div>
               <div className="modal-detail-row">
