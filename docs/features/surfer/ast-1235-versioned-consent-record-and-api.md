@@ -311,3 +311,11 @@ Full 65-statute active set scored in-session against `git diff origin/dev...orig
 
 context_tokens≈45000
 — Radia
+
+---
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Review:** `[code-rubric] revision=1` — **CLEAN** (no fix-now, no discuss).  
+**Action:** No product changes. Radia `docs(AST-1235): Radia review — clean` already on publish tip via sync. Resolve commit records clean close-out before User Testing.
