@@ -4,7 +4,7 @@
 **Parent:** [AST-1169](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake) — Surfer batch — durable worklist state and batch-scoped intake
 **Publish ref:** `origin/sub/AST-1169/AST-1230-search-page-batch-creation`
 
-When classification has already decided a page is a recognized job search page, baseline-extract target listing URLs from the submitted markup, create a Surfer batch via `create_surfer_batch` (AST-1229), and return `batch_id` + the non-empty URL list in an envelope-ready dict. Owns Style D per-URL found/recorded when `debug=True`, and the config copy / error codes for empty extraction and the one-active-batch `ValueError` hand-off from AST-1229. Does **not** own classification, the two-phase HTTP surface (AST-1226 / AST-1228), batch-scoped listing posts or remaining-work query (AST-1231), or site-aware discovery quality (AST-1171).
+When classification has already decided a page is a recognized job search page, baseline-extract target listing URLs from the submitted markup, create a Surfer batch via `create_surfer_batch` (AST-1229), and return `batch_id` + the non-empty URL list in an envelope-ready dict. Owns Style D per-URL found/recorded when `debug=True`, and the config copy / error codes for empty extraction and the one-active-batch conflict (via `get_active_surfer_batch` pre-check). Does **not** own classification, the two-phase HTTP surface (AST-1226 / AST-1228), batch-scoped listing posts or remaining-work query (AST-1231), or site-aware discovery quality (AST-1171).
 
 ## Files Changed (planned)
 
@@ -13,9 +13,9 @@ When classification has already decided a page is a recognized job search page, 
 | `src/utils/config.py` | Extend `SURFER_BATCH_CONFIG` with baseline extract + candidate-facing message / error-code keys; document in module header | utils |
 | `src/core/page_intake.py` | Add `create_batch_from_search_page` (+ private baseline extract helper); Style D per URL | core |
 
-No new Flask routes / blueprints (AST-1228 wires this function into the fixed envelope). No changes to `src/core/surfer.py` beyond calling existing `create_surfer_batch` / relying on `database.get_surfer_batch`. No `tests/` or bible (Betty after Code Complete). No AST-1171 site heuristics.
+No new Flask routes / blueprints (AST-1228 wires this function into the fixed envelope). No edits to `src/core/surfer.py` — call existing `get_active_surfer_batch` and `create_surfer_batch` only. No `tests/` or bible (Betty after Code Complete). No AST-1171 site heuristics.
 
-**Build precondition:** `src/core/page_intake.py` must already exist from AST-1227 (`ingest_recognized_listing`). After `sync-child.sh`, if that file is missing, **STOP** — comment on AST-1230 naming the missing module and that AST-1168 product (at least AST-1227) must be on the epic line / `origin/dev` before build can proceed. Do **not** recreate AST-1227's ingest function and do **not** self-cherry-pick.
+**Build precondition (hard gate — Plan Approved does not clear it):** `src/core/page_intake.py` must already exist from AST-1227 (`ingest_recognized_listing`). After `sync-child.sh`, if that file is missing, **STOP** — comment on AST-1230 naming the missing module and that AST-1168 product (at least AST-1227) must be on the epic line / `origin/dev` before build can proceed. Do **not** recreate AST-1227's ingest function and do **not** self-cherry-pick. Approving this plan makes it dispatchable; a build started before AST-1227 lands halts at Stage 2 §1 after Stage 1 alone.
 
 ## Stage 1: Config — baseline extract + messages
 
@@ -29,9 +29,8 @@ No new Flask routes / blueprints (AST-1228 wires this function into the fixed en
     # AST-1230: baseline <a href> harvest from a classified search page (not AST-1171 quality).
     "baseline_link_schemes": ("http", "https"),
     # Drop hrefs whose casefolded absolute URL contains any of these fragments.
+    # Scheme allowlist already rejects mailto:/javascript:; this tuple is path/host hygiene only.
     "baseline_link_exclude_substrings": (
-        "mailto:",
-        "javascript:",
         "unsubscribe",
         "/preferences",
         "/email-settings",
@@ -72,23 +71,22 @@ assert all(isinstance(v, str) and v.strip() for v in SURFER_BATCH_CONFIG["error_
 
 ⚠️ **Decision — extend `SURFER_BATCH_CONFIG`, do not invent `PAGE_INTAKE_CONFIG`:** Classification status vocabulary and not-recognized copy are AST-1226. This ticket only needs extract filters + the three strings tied to search→batch creation. One Surfer batch block stays the single source for those literals (`pattern.config.config-block`).
 
-⚠️ **Decision — baseline excludes are deliberately thin:** Site-aware allowlists / ATS heuristics are AST-1171. Reusing the full `METEORITE_EMAIL_INGEST_CONFIG["link_exclude_substrings"]` set would couple Surfer search harvest to email hygiene without ownership. Keep a short Surfer-owned tuple; AST-1171 may replace or wrap this later via plan change.
+⚠️ **Decision — baseline excludes are deliberately thin:** Site-aware allowlists / ATS heuristics are AST-1171. Reusing the full `METEORITE_EMAIL_INGEST_CONFIG["link_exclude_substrings"]` set would couple Surfer search harvest to email hygiene without ownership. Keep a short Surfer-owned tuple; AST-1171 may replace or wrap this later via plan change. `mailto:` / `javascript:` are **not** listed here — `baseline_link_schemes` already drops non-http(s) before the exclude check runs.
 
 ## Stage 2: Core — `create_batch_from_search_page`
 
-**Done when:** Given a candidate + search-page `page_url` + HTML with at least one extractable http(s) job link, the function returns a non-empty `urls` list and a `batch_id` whose `database.get_surfer_batch(batch_id)` row carries those URLs with `initial_url_outcome`; a second create while that batch is non-terminal raises with the active-batch error code; HTML with zero surviving links raises with the no-target-urls code; `debug=True` emits Style D per URL (found then recorded); `debug=False` emits no Style D; no Flask routes added; `python3 -m py_compile src/core/page_intake.py` succeeds.
+**Done when:** Given a candidate + search-page `page_url` + HTML with at least one extractable http(s) job link, the function returns a non-empty `urls` list and a `batch_id` whose worklist (from the returned `surfer_batch`) carries those URLs with `initial_url_outcome`; a second create while that batch is non-terminal raises with the active-batch error code (via `get_active_surfer_batch` pre-check); HTML with zero surviving links raises with the no-target-urls code; `debug=True` emits Style D per URL (found then recorded from the stored worklist outcomes); `debug=False` emits no Style D; no Flask routes added; `python3 -m py_compile src/core/page_intake.py` succeeds.
 
 1. **Precondition check (build-time):** Confirm `src/core/page_intake.py` exists and already defines `ingest_recognized_listing` (AST-1227). If missing → STOP (see Files Changed).
 
 2. Update the module docstring to state that the module also owns search-page → Surfer batch creation (AST-1230); classification and HTTP surface remain AST-1226 / AST-1228; discovery quality is AST-1171.
 
-3. Add imports (keep layer rules — **no** `src.ui`, **no** `src.external`):
+3. Add imports (keep layer rules — **no** `src.ui`, **no** `src.external`). Do **not** import `src.data.database` — the return is built entirely from `create_surfer_batch`'s result:
 
 ```python
 from urllib.parse import urljoin, urlparse, urldefrag
 
-from src.core.surfer import create_surfer_batch
-from src.data import database  # only if needed for post-create get; prefer create_surfer_batch return
+from src.core.surfer import create_surfer_batch, get_active_surfer_batch
 from src.utils.config import SURFER_BATCH_CONFIG
 ```
 
@@ -142,12 +140,13 @@ def create_batch_from_search_page(
         "batch_id": str,
         "urls": list[str],          # non-empty; same order as surfer_batch worklist
         "message": str,             # SURFER_BATCH_CONFIG["messages"]["search_batch_created"]
-        "surfer_batch": dict,       # create_surfer_batch / get_surfer_batch row
+        "surfer_batch": dict,       # create_surfer_batch row
       }
 
     Raises:
-      ValueError: bad input; or no extractable URLs (args: message, with .error_code);
-                  or create_surfer_batch active-batch conflict (same pattern).
+      ValueError: bad input; no extractable URLs (.error_code = no_target_urls);
+                  or an active non-terminal Surfer batch already exists
+                  (.error_code = active_surfer_batch_exists).
     """
 ```
 
@@ -165,7 +164,16 @@ def create_batch_from_search_page(
    - Set `err.error_code = SURFER_BATCH_CONFIG["error_codes"]["no_target_urls"]` (attribute on the exception instance).
    - Raise `err`.
 
-9. Debug — **found** (per URL, Style D §1.5.1):
+9. Active-batch pre-check (config-mapped error — **do not** string-match `create_surfer_batch` messages):
+
+```python
+    if get_active_surfer_batch(candidate_id, debug=debug) is not None:
+        err = ValueError(SURFER_BATCH_CONFIG["messages"]["active_batch_exists"])
+        err.error_code = SURFER_BATCH_CONFIG["error_codes"]["active_batch_exists"]
+        raise err
+```
+
+10. Debug — **found** (per URL, Style D §1.5.1):
 
    - `total = len(urls)`.
    - For each `(i, url)` in `enumerate(urls, start=1)`:
@@ -174,31 +182,29 @@ def create_batch_from_search_page(
 
    Only when `debug=True` (gated by `set_debug_flag` + only emit inside `if debug:` blocks, matching `ingest_recognized_listing`).
 
-10. Create batch:
+11. Create batch:
 
 ```python
     try:
         batch = create_surfer_batch(candidate_id, urls, debug=debug)
-    except ValueError as exc:
-        msg = str(exc)
-        # AST-1229: "Candidate {id} already has a non-terminal Surfer batch: {batch_id}"
-        if "already has a non-terminal Surfer batch" in msg:
-            err = ValueError(SURFER_BATCH_CONFIG["messages"]["active_batch_exists"])
-            err.error_code = SURFER_BATCH_CONFIG["error_codes"]["active_batch_exists"]
-            err.__cause__ = exc
-            raise err from exc
+    except ValueError:
+        # Race backstop only — do not string-match create_surfer_batch messages.
+        # Pre-check in §9 owns the config-mapped active_batch_exists path.
         raise
 ```
 
-⚠️ **Decision — map only the active-batch conflict to config copy:** Other `ValueError`s from `create_surfer_batch` (empty urls after its own clean — should not happen if we pass non-empty; missing candidate) propagate unchanged so callers see the real cause. HTTP status mapping for `error_code` values is AST-1228's job when it wires this function; this ticket defines the codes + messages.
+⚠️ **Decision — pre-check via `get_active_surfer_batch`, not exception-message parsing:** AST-1229's raise text is not an API contract. The public pointer reader is the stable signal for "one active non-terminal batch." The `try`/`except` around create re-raises unchanged so a concurrent create race still surfaces; it must **not** map by substring. HTTP status mapping for `error_code` values is AST-1228's job when it wires this function; this ticket defines the codes + messages.
 
-11. Debug — **recorded** (per URL):
+12. Debug — **recorded** (per URL — log what was **stored**, not the config constant):
 
-   - For each `(i, url)` in `enumerate(urls, start=1)`:
-     - `log.debug_index(..., index=i, total=total, identifier=url[:80], outcome="recorded")`
-     - `log.debug_detail(f"batch_id={batch['batch_id']} outcome={SURFER_BATCH_CONFIG['initial_url_outcome']}")`
+   - `worklist = batch["urls"]` (list of `{"url", "outcome", "updated_at"}`).
+   - `total = len(worklist)`.
+   - For each `(i, entry)` in `enumerate(worklist, start=1)`:
+     - `url = entry["url"]`
+     - `log.debug_index(func="page_intake.create_batch_from_search_page", index=i, total=total, identifier=url[:80], outcome="recorded")`
+     - `log.debug_detail(f"batch_id={batch['batch_id']} outcome={entry['outcome']}")`
 
-12. Return:
+13. Return:
 
 ```python
     return {
@@ -209,38 +215,49 @@ def create_batch_from_search_page(
     }
 ```
 
-   Assert by construction: `urls` non-empty and equal in order to the worklist URLs on `batch`. Retrievability AC: caller (or Betty) may `database.get_surfer_batch(batch_id)` afterward — do not add a new get helper.
+   Assert by construction: `urls` non-empty and equal in order to the worklist URLs on `batch`. Retrievability AC: caller (or Betty) may `database.get_surfer_batch(batch_id)` afterward — do not add a get helper or import `database` in this module.
 
-13. Do **not** add Flask routes, outcome-store writes, classification calls, or changes to `ingest_recognized_listing`. Do **not** mark URLs `delivered` / `success` here (AST-1231).
+14. Do **not** add Flask routes, outcome-store writes, classification calls, or changes to `ingest_recognized_listing`. Do **not** mark URLs `delivered` / `success` here (AST-1231).
 
-14. Compile: `python3 -m py_compile src/core/page_intake.py src/utils/config.py`.
+15. Compile: `python3 -m py_compile src/core/page_intake.py src/utils/config.py`.
 
 **Done when (recheck):**
 
-- Fresh candidate + HTML with two distinct `/jobs/…` links → return has `batch_id`, `urls` length 2, and `database.get_surfer_batch(batch_id)["urls"]` has those URLs with `pending` outcomes.
-- Same candidate, second call while batch RUNNING → `ValueError` whose `error_code` is `active_surfer_batch_exists` and message equals config `messages.active_batch_exists`.
-- HTML with only `mailto:` / self page_url links → `ValueError` with `error_code` `no_target_urls`.
-- `debug=True` → per-URL found then recorded index headers; `debug=False` → no Style D lines.
+- Fresh candidate + HTML with two distinct `/jobs/…` links → return has `batch_id`, `urls` length 2, and `surfer_batch["urls"]` has those URLs with `pending` outcomes.
+- Same candidate, second call while batch RUNNING → `ValueError` whose `error_code` is `active_surfer_batch_exists` and message equals config `messages.active_batch_exists` (raised from the §9 pre-check).
+- HTML with only self `page_url` / non-http(s) links → `ValueError` with `error_code` `no_target_urls`.
+- `debug=True` → per-URL found then recorded index headers; recorded detail shows each worklist entry's stored `outcome`; `debug=False` → no Style D lines.
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — config keys on the existing Surfer batch block plus one new core entry on `page_intake.py` calling AST-1229 `create_surfer_batch`; no UI routes.
+**Scope:** `Single-Component` — config keys on the existing Surfer batch block plus one new core entry on `page_intake.py` calling AST-1229 `get_active_surfer_batch` / `create_surfer_batch`; no UI routes.
 
-**Conf:** `high` — mirrors AST-1227's classify-then-call pattern and gazer's baseline href harvest shape; AST-1229 create/pointer contract is already on the epic ftr line.
+**Conf:** `Medium` — classify-then-call and baseline harvest patterns are clear, and the active-batch path now uses a public AST-1229 API; Conf is not `high` because Stage 2 is hard-gated on AST-1227's `page_intake.py` landing on the epic line before build can proceed.
 
 **Risk:** `Medium` — empty or overly aggressive baseline extract would block a recognized search page (AC1); active-batch mapping mistakes would confuse the extension. Dispatcher claim paths and listing ingest are untouched. Site-specific miss rates are accepted until AST-1171 (explicit boundary).
 
 ## Rules check (plan-child §8)
 
-- **§1.3 DRY:** Extract helper is local to page_intake; does not fork `create_surfer_batch`. Message/error-code literals live only in `SURFER_BATCH_CONFIG`.
-- **§2.1 config:** Named block extension; no env for these literals; no hardcoded exclude sets in branches.
+- **§1.3 DRY:** Extract helper is local to page_intake; does not fork `create_surfer_batch`. Message/error-code literals live only in `SURFER_BATCH_CONFIG`. Active-batch detection uses `get_active_surfer_batch` — no duplicated raise-message fragment across modules.
+- **§2.1 / no-hardcoded-sets:** Named block extension; no env for these literals; no behaviour-driving prose strings used for control flow in core.
 - **§2.4 batch:** Uses AST-1229 `surfer-{uuid}` ids via `create_surfer_batch`; batch_id returned for envelope; does not touch dispatcher `job.batch_id` claim locks.
 - **§2.6 state:** No new status transitions; initial RUNNING + pending URL outcomes come from existing create path.
-- **§3.3 imports:** core → surfer + utils (+ bs4 lazy); no `ui` → `data` shortcut; no `external`.
+- **§3.3 imports:** core → surfer + utils (+ bs4 lazy); no `database` import; no `ui` → `data` shortcut; no `external`.
 - **§3.5 naming:** `create_batch_from_search_page` / `_baseline_extract_target_urls`; snake_case.
-- **§1.5.1 debug:** `debug: bool = False` threaded; Style D only when `debug=True`; per-URL index headers + working detail; no aggregate-only substitute.
+- **§1.5.1 debug:** `debug: bool = False` threaded; Style D only when `debug=True`; per-URL index headers + working detail; recorded pass reads stored worklist outcomes.
 - **Import direction:** Thin HTTP remains AST-1228; this ticket is core-only like AST-1227.
 
 ## Envelope contract for AST-1228 (reference only — not this ticket's stages)
 
 When the two-phase surface resolves classification to a recognized search page, it must call `create_batch_from_search_page(...)` and place `batch_id`, `urls`, and `message` into the fixed envelope. On `ValueError` with `error_code` in `SURFER_BATCH_CONFIG["error_codes"]`, use `str(exc)` as the envelope message (already config copy). Classification **status** strings remain AST-1226. This section is documentation for the sibling, not build scope here.
+
+## Revisions
+
+### Revision 1 — 2026-08-07
+Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric.v1 REVISE).
+Changes:
+- **fix-now:** Active-batch path uses `get_active_surfer_batch` pre-check + config-mapped raise; `create_surfer_batch` `ValueError` re-raises unchanged (no substring match on AST-1229 message text).
+- Recorded debug iterates `batch["urls"]` and logs each entry's stored `outcome`.
+- Dropped unused `database` import; return stays on `create_surfer_batch` result only.
+- Dropped unreachable `mailto:` / `javascript:` from `baseline_link_exclude_substrings`; comment notes scheme allowlist owns those.
+- Build precondition elevated: Plan Approved does not clear the AST-1227 module gate; Conf → Medium.
