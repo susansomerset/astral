@@ -239,3 +239,16 @@ Changes: Moved Stage 4 files to `src/ui/extension/src/lib/surferConsentGate.ts` 
 
 context_tokens≈145000
 — Radia
+
+---
+
+## Resolution — 2026-08-07
+
+Addressed Radia `[code-rubric] revision=1` fix-now items (merge erase of AST-1237):
+
+1. Merged `origin/ftr/AST-1173-consent-install-disclosure-affirmative-opt-in-and-off-switch` (AST-1237 rolled up) into this sub.
+2. Unioned `SURFER_CONSENT_CONFIG` / `surfer_consent_dto`: AST-1237 chrome keys + AST-1238 off-switch keys; `current_version` stays `"2"` with AST-1237 disclosure copy.
+3. Restored alongside this ticket’s surfaces: `CandidateSurferConsent.tsx`, `/candidate/surfer_consent` route + nav, `surferConsent.ts` / `surferDisclosureDom.ts`, `App.css` §10b2.
+4. Re-ran AST-1238 manifest + AST-1237 frontend consent tests (pass).
+
+Advisory C4 (plan Files Changed vs Betty `merge-tests` paths): no action — acknowledged, not a role-separation issue.
