@@ -1,3 +1,323 @@
+<!-- linear-archive: AST-1063 archived 2026-08-07 -->
+
+## Linear archive (AST-1063)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1063/job-carried-rubric-hydration-for-list-columns-issue-with-the-rubric  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** Medium / —  
+**Parent:** AST-1059 — Issue with the rubric grade displays on the Jobs List pages  
+**Blocked by / blocks / related:** parent: AST-1059; blocks: AST-1064
+
+### Description
+
+## What this implements
+
+Owns write-path snapshot + API/job payload lift of the **analysis-time hydrated rubric** so list pages can build headers and tooltips without the live candidate rubric. Discovery: criteria are **not** already stored on `job_data` today — persist `{prefix}_rubric` beside grades, then flatten on list/detail. Does **not** own table grouping UI or score column paint (AST-1064).
+
+## In scope
+
+- [X] `pattern.layers.import-discipline` — list consumers paint API-shaped job data; no inventing criteria from live candidate artifacts in this ticket’s API surface
+- [X] `astral.layers.import-direction` — UI over API; `_flatten_grades` lifts job-carried `*_rubric` / existing `*_score`
+- [X] `astral.config.config-source-of-truth` — section → grade-field mapping stays config (`JOBS_*_GRADE_FIELD`); job-carried key = `grade_field.replace("_grades", "_rubric")`
+- [X] `astral.layers.ui-config-driven-business-logic` — grade-field resolution remains config/manifest; React column switch is sibling
+
+## Considered but excluded
+
+- [X] Job-list tables keyed by job-carried rubric fingerprint — AST-1064 (new-pattern flag on parent)
+- [X] Skipped / In Review grade-dot paint + Score column render — AST-1064
+- [X] Live candidate rubric / `JOBS_UI_GRADE_RUBRIC` artifact remap — not this ticket
+- [X] Historical job_data backfill / re-grade — Boundaries
+- [X] Recommended phase-score UI / meteorite GDL — Boundaries
+- [X] `astral.agent.grade-vector-validation` — parent secondary; not primary list hydration bug
+
+## Acceptance criteria
+
+1. [x] List grade columns for a section are derived from each job group’s **job-carried hydrated rubric**, not from the live candidate rubric artifact. Changing the live rubric without re-analyzing jobs does not retitle empty columns over old grades. *(This ticket: persist + surface* `*_rubric` *on job/list payload; AST-1064 consumes it for columns.)*
+2. [x] Score on those rows is the **analysis-time score from job data**, consistent with the grades shown for that analysis. *(This ticket: keep* `*_score` */* `latest_score` *flattened; do not recompute from live rubric.)*
+
+## Boundaries
+
+* Does **not** own Skipped/In Review table grouping UI or grade-dot paint (sibling Katherine / AST-1064).
+* Does **not** re-grade jobs or rewrite historical grades/scores.
+* Does **not** change Recommended phase-score UI or meteorite GDL.
+
+## Notes for planning
+
+Plan corrects parent note: fully hydrated rubrics were **not** on job data — snapshot at grade-write (`consult`) + flatten (`api_jobs`). Pre-snapshot jobs omit `*_rubric`; sibling defines grades-only fallback. New pattern for group-by tables remains sibling scope.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1059-rubric-grade-displays-jobs-list`, child `sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-30T01:28:59.047Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1063
+**Publish ref:** `c5a92b2f8414ad2084b5be251feab0730a378076` (`origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`)
+**Overall:** DISCUSS
+
+Three-dot: `origin/dev...origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`. Diff layers: core, ui, docs. Product footprint: `src/core/consult.py` (`_rubric_snapshot_for_job_data` + three write sites), `src/ui/api/api_jobs.py` (`_flatten_grades` + detail). Plan doc + Betty tests/bible via `merge-tests`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | no confidence bounds change |
+| astral.agent.do-task-delegation | scoped | conforms | snapshot beside existing do_task/verdict paths |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade-vector validation change |
+| astral.batch.batch-id-first | scoped | conforms | no new batch claim APIs |
+| astral.batch.batch-id-format | scoped | conforms | untouched |
+| astral.batch.claim-process-release | scoped | conforms | snapshot inside existing process/verdict saves |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | untouched |
+| astral.config.config-source-of-truth | scoped | conforms | key pairing from existing *_grades / save_prefix |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | applies_when.paths no match |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | no spike artifacts committed; plan smoke uses gitignored debug/spikes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan file under docs/features/interface/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | src + features via code/docs; Betty merge-tests only tests/bible |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code(AST-1063) touched src only; tests via Betty merge-tests |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | persist in core consult; no external |
+| astral.layers.import-direction | scoped | conforms | api_jobs lifts stored keys only; no consult import in UI |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | applies_when.layers no match |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | section→grade_field stays config; React is AST-1064 |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | untouched |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | snapshot in _apply_render_verdict_decoded_job |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | list + detail remain @require_auth |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer logging |
+| astral.standards.database-header-inventory | scoped | not-applicable | applies_when.layers no match |
+| astral.standards.debug-contract-gated | scoped | conforms | no new ungated debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | one snapshot helper; three write sites |
+| astral.standards.in-scope-only | scoped | conforms | no list UI / Recommended / backfill |
+| astral.standards.logging-via-utils | scoped | conforms | untouched |
+| astral.standards.no-cross-contamination | scoped | conforms | core write + ui flatten only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | flatten keys parallel existing grade/score names |
+| astral.standards.public-then-helpers | scoped | conforms | helper beside hydrate helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | applies_when.layers no match |
+| astral.state.core-decides-transitions | scoped | conforms | no transition changes |
+| astral.state.job-prior-states-enforced | scoped | conforms | untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | untouched |
+| astral.ui.frontend-file-placement | scoped | not-applicable | applies_when.paths no match |
+| astral.ui.naming-conventions | scoped | conforms | snake_case *_rubric API fields |
+| astral.ui.single-gunicorn-worker | scoped | conforms | untouched |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests(AST-1063) one SHA on tip |
+| orch.git.commit-vocabulary | universal | conforms | code/docs/test/merge-tests vocabulary used |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub only |
+| orch.git.ftr-sub-topology | universal | conforms | sub/AST-1059/AST-1063-… |
+| orch.git.merge-on-checkout | universal | conforms | no evidence of skipped ftr merge on this tip |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no rewrite ops in tip history for this ticket |
+| orch.git.no-dev-agent-branches | universal | conforms | ticket sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1059 worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | jd_rubric naming decided in plan; no open product Q |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–3 match diff; UI deferred to AST-1064 |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Interface child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible via Betty merge-tests after engineer code |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | assignee remains Ada |
+| orch.roles.pre-commit-path-bans | universal | conforms | role-split commits respected on tip |
+
+## Pattern conformance
+
+| id | verdict |
+| -- | -- |
+| pattern.layers.import-discipline | conforms — list consumers paint API-shaped job data; no live-candidate criteria invent in API |
+| (via statutes) astral.layers.import-direction | conforms |
+| (via statutes) astral.config.config-source-of-truth | conforms |
+| (via statutes) astral.layers.ui-config-driven-business-logic | conforms |
+
+## Plan adherence
+
+Matches plan stages 1–3: snapshot helper omits `content`, write-time persist on verdict/joblist/jd, `_flatten_grades` + detail lift. Self-Assessment Single-Component holds. Boundary vs AST-1064 held (no list React / grouping / live `JOBS_UI_GRADE_RUBRIC` remap / backfill).
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **straggler** — Joan excluded `astral.debug.spikes-under-debug-dir` at plan time; three-dot vs `origin/dev` in-scope → **conforms** (no committed spikes).
+2. **straggler** — Joan excluded `astral.docs.features-single-file-per-ticket`; in-scope → **conforms** (single plan file).
+3. **straggler** — Joan excluded `astral.git.engineer-test-tree-ban`; in-scope via Betty `tests/` / bible on tip → **conforms** (`code(AST-1063)` was src-only; tests via `merge-tests`).
+
+### advisory
+(none)
+
+## What’s solid
+- Job-carried `*_rubric` written beside grades from the same criteria used to hydrate/score.
+- API flatten is the single lift path for list + detail; scores not recomputed from live rubric.
+
+## Recommended actions
+Acknowledge stragglers → resolve-child → User Testing (no product delta).
+
+docs() on publish ref: `docs(AST-1063): Radia review — findings` @ `c5a92b2f`.
+
+context_tokens≈42000
+
+#### betty — 2026-07-30T01:25:02.384Z
+1. `tests/component/core/test_consult.py::TestAst1063JobCarriedRubricHydration` — snapshot omits `content` / preserves order / ensure-on-copy; persist `do_rubric` / `joblist_rubric` / `jd_rubric` on verdict / qualify / evaluate_jd writes
+2. `tests/component/ui/api/test_api_jobs.py::TestFlattenGrades` — lifts `*_rubric` + scores; pre-snapshot jobs omit `*_rubric` keys
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1063JobCarriedRubricHydration \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```
+
+**Broken / obsolete:** none for this diff (additive).
+**Integration:** none revised.
+
+**Publish:** `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns` @ `b9b61e63` (`merge-tests(AST-1063): origin/tests d5839b4a`)
+
+**Bible shasum on publish-ref:**
+- `docs/test-bible/core/consult.md` `f0791727998bc1afe91926e8819e3048901b703f`
+- `docs/test-bible/ui/api/api_jobs.md` `ccb6c08a897c59d89812800b9d0b5911d6357e02`
+
+#### joan — 2026-07-30T01:13:49.992Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1063
+**Overall:** APPROVED
+
+**Notes:** First Plan Ready pass. Tip `96787e7a`. Publish ref `origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns`. Discovery corrects parent “rubric already on job_data” — verified: grade saves write `*_grades` / scores only today; list UI still reads live `JOBS_UI_GRADE_RUBRIC` artifacts.
+**Implementer:** Ada (parent Team table / plan author).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1 List columns from job-carried hydrated rubric (not live candidate) | Stages 1–3 persist + flatten `*_rubric`; column consume N/A — AST-1064 |
+| 2 Separate tables when rubric shape differs | N/A — boundary: AST-1064 |
+| 3 Shared-shape group paints all vectors | N/A — boundary: AST-1064 |
+| 4 Score = analysis-time job data | Stage 3 keeps `*_score` / `latest_score` lift; no live recompute |
+| 5 In Review same rules | Stage 3 lifts on `view=in_review` via same `_flatten_grades`; UI N/A — AST-1064 |
+| 6 Happy path single shared-rubric table | N/A — boundary: AST-1064 (payload enables it) |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 1 Persist + surface `*_rubric` on job/list payload | 1–3 (+ Stage 4 smoke) |
+| 2 Keep analysis-time `*_score` / `latest_score`; do not recompute from live rubric | 3 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 Snapshot helper | Purpose / Functional scope job-carried hydration |
+| 2 Persist on every grade write | AC1 write path; Architecture import-discipline |
+| 3 API `_flatten_grades` lift | AC1 surface + AC2/4 score consistency; import-direction |
+| 4 Manual smoke | Builder verification of AC1/2 readiness for sibling |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Plan `docs(AST-1063):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Prerequisite merge gate correct |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-1059` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | No open product questions; `jd_rubric` vs `jobdesc_rubric` decided |
+| orch.pipeline.plan-is-bible | conforms | Stages binding; UI sibling excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Interface |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope (QA note only) |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Ada on approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | Untouched |
+| astral.agent.do-task-delegation | conforms | Snapshot beside existing do_task/verdict paths |
+| astral.agent.grade-vector-validation | conforms | No validation change; secondary per parent |
+| astral.batch.batch-id-first | conforms | No new batch APIs |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Snapshot inside existing process/verdict |
+| astral.batch.entity-agent-responses-latest-only | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | Key convention from existing `*_grades` / save_prefix; no dual-source into live `JOBS_UI_GRADE_RUBRIC` |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned src |
+| astral.layers.core-vs-external-bright-line | conforms | Persist in core consult |
+| astral.layers.import-direction | conforms | ui `api_jobs` lifts only; no UI→data; API does not import consult |
+| astral.layers.ui-config-driven-business-logic | conforms | Section→grade_field stays config; React consume is sibling |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Snapshot in `_apply_render_verdict_decoded_job` |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | Existing `@require_auth` list routes |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer logging |
+| astral.standards.debug-contract-gated | conforms | No new ungated debug |
+| astral.standards.dry-and-focused-functions | conforms | One snapshot helper; three write sites |
+| astral.standards.in-scope-only | conforms | Excludes list UI, Recommended, backfill, live rubric edits |
+| astral.standards.logging-via-utils | conforms | Untouched |
+| astral.standards.no-cross-contamination | conforms | Layered structure |
+| astral.standards.no-hardcoded-sets | conforms | Key pairing from existing grade field names |
+| astral.standards.public-then-helpers | conforms | Helper near hydrate helpers |
+| astral.state.core-decides-transitions | conforms | No transition changes |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | conforms | Untouched |
+| astral.ui.naming-conventions | conforms | Snake_case API fields |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.standards.utils-data-late-import-only — layers/paths miss
+- astral.ui.frontend-file-placement — paths miss
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### acceptable
+1. Parent “already lives on job” corrected — write-time snapshot is the right product fix.
+2. `jd_rubric` (job-carried) ≠ `jobdesc_rubric` (candidate artifact / `JOBS_UI_GRADE_RUBRIC`) — documented; sibling must not reuse live map for columns.
+3. Shared names `joblist_rubric` / `do_rubric` / `get_rubric` / `like_rubric` exist on candidate artifacts and will also be job_data keys — distinct objects; list JSON lift is unambiguous.
+4. Historical jobs without snapshot — grades-only fallback owned by AST-1064.
+5. Self-assessment Single-Component / Conf Medium / Risk Medium — honest about write-site completeness risk.
+6. All three grade write sites in `consult.py` covered (`_apply_render_verdict_decoded_job`, joblist, jd); no other `*_grades` writers found.
+
+— Joan
+context_tokens≈45000
+
+#### ada — 2026-07-30T01:08:04.905Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns/docs/features/interface/ast-1063-job-carried-rubric-hydration-for-list-columns.md
+
+`origin/sub/AST-1059/AST-1063-job-carried-rubric-hydration-for-list-columns` @ `96787e7a`
+
+**Scope:** Single-Component — `consult.py` grade-write snapshot + `api_jobs.py` flatten only.
+
+**Conf:** Medium — write sites are few and known, but parent “rubric already on job” was wrong; historical jobs stay without `*_rubric` until re-graded (AST-1064 fallback).
+
+**Risk:** Medium — a missed write site leaves that phase without job-carried rubric for the sibling list work.
+
+---
+
 # Job-carried rubric hydration for list columns
 
 **Linear:** [AST-1063](https://linear.app/astralcareermatch/issue/AST-1063/job-carried-rubric-hydration-for-list-columns-issue-with-the-rubric)  
