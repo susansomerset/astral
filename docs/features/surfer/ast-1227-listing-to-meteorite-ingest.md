@@ -137,3 +137,27 @@ def ingest_recognized_listing(
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `411981fd` | `page_intake.ingest_recognized_listing` — dedupe + create + Style D |
+
+## Review (Radia)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1227
+**Publish ref:** `origin/sub/AST-1168/AST-1227-listing-to-meteorite-ingest` @ `c410e680`
+**Overall:** CLEAN
+
+**Scope of diff swept:** `git diff origin/dev...origin/sub/AST-1168/AST-1227-listing-to-meteorite-ingest` — 4 changed files, all `A`: `src/core/page_intake.py`, `tests/component/core/test_page_intake.py`, `docs/test-bible/core/page_intake.md`, `docs/features/surfer/ast-1227-listing-to-meteorite-ingest.md`.
+
+**Full-set sweep:** 65 active statutes (18 universal + 47 scoped) scored in-session. All 18 universal `conforms` (commit vocabulary respected — `plan` via `docs(AST-1227): plan`, `code`, `docs` review-stub, `test`→`merge-tests` one-SHA `af36180c` from Betty via `origin/tests`, per `orch.git.betty-merge-tests-one-sha` / `orch.git.commit-vocabulary`; `origin/dev` is an ancestor of the tip per `orch.git.merge-on-checkout`; sub topology `sub/AST-1168/AST-1227-…`; one epic worktree; assignee stays engineer Hedy through Tests Passed). 20 scoped statutes matched the diff and all score `conforms` — key ones verified directly against the code: `astral.state.core-decides-transitions` (core decides create-vs-duplicate; no UI/data deciding hop), `astral.state.job-prior-states-enforced` (create lands via `create_meteorite_job`'s unrestricted `METEORITE_NEW` entry unchanged; no `transition_job_state` call, no `JOB_STATES` edit), `astral.standards.debug-contract-gated` (Style D gated on `debug=True` via `log.set_debug_flag(debug)`; `debug_index`/`debug_detail` pairs at found/recorded/skipped-duplicate with `index=1/1` universal header shape, no `[DEBUG]` anti-pattern), `astral.standards.data-raises-caller-logs` (raises `ValueError` on bad input with no logging on that path; `job_link_exists_for_candidate` / `text_matches_known_company_job_id_for_candidate` in `database.py` stay quiet — confirmed no log calls in either helper), `astral.layers.import-direction` / `astral.layers.core-vs-external-bright-line` (imports are `core→meteorite`, `core→data`, `core→utils` only; no `ui`/`external`; module docstring states "does not scrape"), `astral.git.engineer-test-tree-ban` / `astral.git.betty-no-src-or-features` (the `code(AST-1227)` commit `411981fd` touches only `src/core/page_intake.py`; test + bible landed via Betty's separate `test(AST-1227)`→`merge-tests(AST-1227)` commits — confirmed via `git log --stat`), `astral.docs.features-single-file-per-ticket` (one file, plan+review combined), `astral.debug.spikes-under-debug-dir` (production plan under `docs/features/`, not spike notes), `astral.config.config-source-of-truth` (no new state/score literals — outcome/reason strings are function-contract labels, not config-owned state names). Remaining 27 scoped statutes `not-applicable` — no diff path/layer intersects their `applies_when` (e.g. no `src/ui/**`, `src/data/**`, `src/external/**`, `src/utils/**`, `scripts/**`, `data/admin/**`, or `src/core/dispatcher.py` touched).
+
+**Independently verified (not taken on trust):** `python3 -m py_compile src/core/page_intake.py` passes. Read `create_meteorite_job` (`src/core/meteorite.py`) and both per-candidate dedupe helpers (`src/data/database.py`) on `origin/dev` — pre-existing, reused as-is, no signature or behavior changes. `debug_index`/`debug_detail`/`set_debug_flag` contract (`src/utils/logging.py`) matches usage exactly. `page_url[:80]` identifier truncation is an established, unextracted codebase-wide convention (`gazer.py`, `gaze_email.py`, `inbox.py`, `contact.py`, `candidate.py` all use the same inline `[:80]`) — not a new violation introduced by this ticket; advisory only, out of scope to fix here. Could not re-run the component test suite locally in this worktree (`scripts/testing/run_component_tests.sh` requires Python 3.10–3.12; only 3.14 is on PATH here) — relying on the ticket's `Tests Passed` state plus direct code/test reading; test file logic (validation, create+link, both dedupe branches, cross-candidate, debug on/off) matches the plan's Done-when criteria and AC1–AC3.
+
+**Straggler (C4):** no plan-rubric verdict attachment on this ticket (only the plan doc attachment) — not a block. Ticket's own "Considered but excluded" list (`pattern.config.config-block`, `pattern.ui.admin-endpoint`, `astral.layers.core-vs-external-bright-line`, `pattern.batch.entity-agent-responses`) all score `conforms`/`not-applicable` in this sweep, never `violates` — no straggler.
+
+**Pattern conformance:** `pattern.state.entity-state-transitions` — conforms (create lands via existing `create_meteorite_job` carve-out, no new transition edges).
+
+**Frame diff:** (none) — diff footprint matches Description In-scope / Files Changed exactly.
+
+context_tokens≈95000
+
+— Radia
