@@ -351,18 +351,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
-    # AST-972: dispatch orchestration for REQUESTED_* stages (not craft prompts).
-    "candidate_requested_resume": {
-        "entity_type": "candidate",
-        "requires_candidate_key": True,
-        "trigger_state": "REQUESTED_RESUME",
-    },
-    "candidate_requested_artifacts": {
-        "entity_type": "candidate",
-        "requires_candidate_key": True,
-        "trigger_state": "REQUESTED_ARTIFACTS",
-    },
-
     # Phase C. Company Roster
     # VET COMPANY PROMPT - Estelle 3
     "find_company_website": {
@@ -2070,33 +2058,17 @@ INFLOW_CONFIG = {
     },
 }
 
-# AST-972: candidate REQUESTED_* dispatch orchestration (claim → craft → ready/retry/error).
+# AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
+# task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
 CANDIDATE_STAGE_DISPATCH = {
-    "requested_resume": {
-        "task_key": "candidate_requested_resume",
-        "trigger_state": "REQUESTED_RESUME",
-        "pass_state": "RESUME_READY",
-        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
-        "craft_task_key": "craft_resume_base",
-    },
     "requested_artifacts": {
-        "task_key": "candidate_requested_artifacts",
+        "task_key": "craft_get_rubric",
         "trigger_state": "REQUESTED_ARTIFACTS",
         "pass_state": "ARTIFACTS_READY",
-        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
-        # Entry hop only — succession via agent_task.run_next (AST-1113).
-        "craft_task_key": "craft_company_search_terms",
+        "auto_mode": False,
     },
 }
-assert all(
-    k in TASK_CONFIG
-    for k in (
-        CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-    )
-)
+assert CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"] in TASK_CONFIG
 
 # Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
 GOOGLE_CSE_CONFIG = {
@@ -2956,6 +2928,7 @@ def fetch_website_prefilter_second_strike_filter() -> tuple[str, str]:
 DISPATCH_RETIRED_TASK_KEYS = frozenset({
     "consult_do", "consult_get", "consult_like",
     "scrape_jd", "validate_title", "gaze_board",
+    "candidate_requested_resume", "candidate_requested_artifacts",
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
@@ -2995,8 +2968,6 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WATCH"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if task_key == CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"]:
-        return CANDIDATE_STAGE_DISPATCH["requested_resume"]["trigger_state"]
     if task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
@@ -3057,10 +3028,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "inflow_discovery" or task_key in (
-        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-    ):
+    if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
@@ -3114,6 +3082,14 @@ _RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES = {
     ),
     "gaze_board": (
         "task_key 'gaze_board' is retired; boards are decommissioned"
+    ),
+    "candidate_requested_resume": (
+        "task_key 'candidate_requested_resume' is retired; use craft_get_rubric "
+        "with trigger_state REQUESTED_ARTIFACTS (REQUESTED_RESUME remains a valid trigger choice)"
+    ),
+    "candidate_requested_artifacts": (
+        "task_key 'candidate_requested_artifacts' is retired; use craft_get_rubric "
+        "with trigger_state REQUESTED_ARTIFACTS"
     ),
 }
 
