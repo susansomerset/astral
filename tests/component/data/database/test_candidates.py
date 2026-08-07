@@ -317,3 +317,70 @@ class TestAst973LegacyCandidateMigration:
         finally:
             conn.close()
         assert "keep_deleted" in ids
+
+
+class TestAst1258CandidateBatchClaim:
+    """AST-1258: candidate batch_id columns + pool claim → get → clear (job/company parity)."""
+
+    def test_schema_has_nullable_batch_columns(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db._candidate_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+            cols = {r[1]: r for r in conn.execute("PRAGMA table_info(candidate)").fetchall()}
+            assert "batch_id" in cols
+            assert "batch_created_at" in cols
+            assert cols["batch_id"][3] == 0  # nullable
+            assert cols["batch_created_at"][3] == 0
+        finally:
+            conn.close()
+
+    def test_save_leaves_batch_unclaimed(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258u", state="REQUESTED_ARTIFACTS", candidate_data={})
+        row = db.get_candidate("c1258u")
+        assert row is not None
+        assert not row.get("batch_id")
+
+    def test_claim_get_clear_multi_row_pool(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258a", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258b", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258c", state="ACTIVE_SEARCH", candidate_data={})  # wrong state
+        n = db.claim_candidate_batch("craft_get_rubric-test-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n == 2
+        rows = db.get_candidate_batch("craft_get_rubric-test-uuid")
+        assert {r["astral_candidate_id"] for r in rows} == {"c1258a", "c1258b"}
+        for r in rows:
+            assert r["batch_id"] == "craft_get_rubric-test-uuid"
+            assert r.get("batch_created_at")
+        # Second concurrent claim cannot steal locked rows
+        n2 = db.claim_candidate_batch("other-batch-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n2 == 0
+        assert db.get_candidate_batch("other-batch-uuid") == []
+        # Clear releases all rows in the batch
+        cleared = db.clear_candidate_batch("craft_get_rubric-test-uuid")
+        assert cleared == 2
+        for cid in ("c1258a", "c1258b"):
+            row = db.get_candidate(cid)
+            assert not row.get("batch_id")
+            assert not row.get("batch_created_at")
+        # Pool is claimable again after clear
+        n3 = db.claim_candidate_batch("reclaim-uuid", "REQUESTED_ARTIFACTS", 2)
+        assert n3 == 2
+
+    def test_claim_unions_retry_states(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258p", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258r", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        n = db.claim_candidate_batch(
+            "batch-1258-union",
+            "REQUESTED_ARTIFACTS",
+            10,
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+        assert n == 2
+        ids = {r["astral_candidate_id"] for r in db.get_candidate_batch("batch-1258-union")}
+        assert ids == {"c1258p", "c1258r"}
+
