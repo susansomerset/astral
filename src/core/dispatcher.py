@@ -277,6 +277,38 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+# AST-1252: wrapper task_keys only — not the full DISPATCH_RETIRED_TASK_KEYS set.
+_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset({
+    "candidate_requested_resume",
+    "candidate_requested_artifacts",
+})
+
+
+def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:
+    """Delete live dispatch_task rows for retired candidate_requested_* keys (AST-1252).
+
+    Retire-only — does not insert craft_get_rubric rows (operators create those).
+    """
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    cids = set(database.list_candidate_ids_with_dispatch_tasks())
+    cids.add(str(template_id).strip())
+    retired = 0
+    for cid in sorted(cids):
+        if not cid:
+            continue
+        for row in database.list_dispatch_tasks_for_candidate(cid):
+            tk = (row.get("task_key") or "").strip()
+            if tk in _RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS:
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_scanned": len(cids),
+        "retired": retired,
+    }
+
 
 def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
     """Idempotent insert of candidate-bound gaze_email dispatch_task (AST-1134)."""
@@ -1292,6 +1324,17 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    try:
+        rstats = retire_candidate_requested_wrapper_dispatch_tasks()
+        _sched_log.info(
+            "AST-1252 candidate_requested_* wrapper retire template=%s "
+            "candidates_scanned=%s retired=%s",
+            rstats.get("template_candidate_id"),
+            rstats.get("candidates_scanned"),
+            rstats.get("retired"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
     try:
         gstats = provision_gaze_email_dispatch_tasks()
         _sched_log.info(
