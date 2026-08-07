@@ -40,8 +40,9 @@
 
    then `conn.commit()`.
 
-   b. Else (table exists): read `PRAGMA table_info(app_log)`. Locate the column named `id`. If its declared type (case-insensitive) is not `INTEGER`, rebuild:
+   b. Else (table exists): read `PRAGMA table_info(app_log)`. Locate the column named `id`. If its declared type (case-insensitive) is not `INTEGER`, rebuild in this order:
 
+   - `DROP TABLE IF EXISTS app_log_new` — clear a leftover temp table from an interrupted prior rebuild so the next `CREATE` cannot raise “table app_log_new already exists” and brick bootstrap (matches `_drop_entity_agent_responses_column`’s `DROP TABLE IF EXISTS {tmp}` guard; keep the name `app_log_new`, do **not** use a ticket-stamped temp name).
    - `CREATE TABLE app_log_new` with the same column list/types as the CREATE in (a).
    - `INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at) SELECT level, logger_name, message, batch_id, created_at FROM app_log` — **omit** `id` so SQLite assigns new integers. Do not preserve old UUID strings as ids (nothing FKs to them).
    - `DROP TABLE app_log`.
@@ -52,7 +53,7 @@
 
    d. Set `_app_log_schema_ensured = True` and return (same as today after create).
 
-   ⚠️ **Decision:** Detect migration need via `PRAGMA table_info` declared type of `id` (not sampling row values, not parsing `sqlite_master` SQL). Precedent for full-table rebuild under SQLite ALTER limits is `_ensure_dispatch_task_schema` / `_drop_entity_agent_responses_column` in this same module. Old UUID primary-key values are discarded on copy because `app_log.id` is not a foreign key anywhere (parent Architectural definition).
+   ⚠️ **Decision:** Detect migration need via `PRAGMA table_info` declared type of `id` (not sampling row values, not parsing `sqlite_master` SQL). Precedent for full-table rebuild under SQLite ALTER limits is `_ensure_dispatch_task_schema` / `_drop_entity_agent_responses_column` in this same module — including the leftover-temp `DROP TABLE IF EXISTS` before `CREATE`. Old UUID primary-key values are discarded on copy because `app_log.id` is not a foreign key anywhere (parent Architectural definition).
 
 3. In `add_log_entry`, remove `entry_id = str(uuid.uuid4())` and change the INSERT to:
 
@@ -96,4 +97,10 @@
 | §2.4 batch | N/A — `app_log` is not a claim queue |
 | §2.6 state machine | N/A |
 | §3.3 imports | UI stays UI; data stays data; utils not edited |
-| §3.5 naming | Column remains `id` (parent boundary: do not rename to `app_log_id`) |
+| §3.5 naming | Column remains `id` (parent boundary: do not rename to `app_log_id`); rebuild temp table is `app_log_new` (not ticket-stamped) |
+
+## Revisions
+
+Revision 1 — 2026-08-07  
+Driven by: Joan `[plan-discuss] round=1 concern` — rebuild omits precedent’s leftover-temp-table guard (`DROP TABLE IF EXISTS` before `CREATE TABLE app_log_new`), which can brick bootstrap if a prior rebuild left `app_log_new` behind.  
+Changes: Stage 1 step 2b now starts with `DROP TABLE IF EXISTS app_log_new` before `CREATE`; Decision / naming self-review note the guard and keep the generic `app_log_new` name.
