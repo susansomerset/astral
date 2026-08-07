@@ -107,6 +107,6 @@ Changes: Stage 1 step 2b now starts with `DROP TABLE IF EXISTS app_log_new` befo
 
 ## Review
 
-**Publish ref:** 
-**Stage commits:** Stage 1 schema/migrate/write @ ; Stage 2 LogEntry type — tip after this commit.
-
+**Publish ref:** `sub/AST-1263/AST-1266-app-log-integer-pk-schema-migration-and-write-cutover`
+**Tip:** `a0b87bf1` (Stage 2 product tip; review stub follows in docs commit)
+**Stage commits:** Stage 1 @ `57ce46bd`; Stage 2 @ `a0b87bf1`.
