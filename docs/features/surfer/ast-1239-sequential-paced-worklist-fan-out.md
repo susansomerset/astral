@@ -337,3 +337,15 @@ Authoritative parent ref is `origin/ftr/AST-1174-human-paced-fan-out` (epic regi
 Revision 1 — 2026-08-07
 Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — unbounded `while (true)` on non-advancing remaining; AC verifiability bookkeeping; client-minted failure `reason` vocabulary.
 Changes: Stage 1 adds per-run `recordedThisRun` liveness → `stoppedReason: "no_progress"`; new **AC verification ownership** table (AC4–7 deferred; AC5 flag-forward only); gate §3 freezes `empty_capture` / `page_error` / `page_error:<detail>` with named `FAN_OUT_FAILURE_DETAIL_MAX = 200`; Risk updated for infinite re-visit.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1174/AST-1239-sequential-paced-fan-out`
+**Plan path:** `docs/features/surfer/ast-1239-sequential-paced-worklist-fan-out.md`
+
+**Built tip:** `139f338f1b4623fa0d5fa212856bd20c45b7e4d1` (`139f338f`)
+
+| Stage | Commit | Summary |
+|-------|--------|--------|
+| 1 | `139f338f` | sequential paced fan-out loop (`fanOut.ts`) |
+| 2 | — | doc-only (no commit) |
