@@ -20,6 +20,22 @@ In the extension background context, walk the server Surfer worklist **one URL a
 
 ⚠️ **Decision — injectable ports, not hardcoded Astral base URL / chrome globals inside the loop module:** Mirror AST-1236 `fetchPacingConfig(getJson)`. Auth, host, `browser.tabs` / messaging, and content-script capture live in the shell (**AST-1170**). `fanOut.ts` receives a `FanOutPorts` object so the loop stays testable and does not bake a second API client.
 
+## AC verification ownership
+
+Which child ACs this ticket's diff can exercise vs inherit:
+
+| AC | Ownership | Verifiable on AST-1239 diff alone? |
+|----|-----------|--------------------------------------|
+| 1 visit once / post / close | Loop + ports | **Partial** — unit/stub: open→dwell→post→close order; full multi-URL needs AST-1231 remaining + AST-1170 tabs |
+| 2 no double-fetch after SW kill | Loop re-asks remaining + liveness set | **Partial** — liveness/`no_progress` on this diff; real SW kill needs AST-1170 |
+| 3 bad page records outcome, continues | `reportUrlFailure` + loop continues | **Partial** — failure branch on this diff; persistence needs AST-1231 |
+| 4 batch reaches completed on outcomes | Server auto-complete (AST-1231 / surfer core) | **Deferred** — loop must **not** await `COMPLETED`; Betty/UAT after AST-1231 |
+| 5 Style D on server post path | AST-1231 handlers; this ticket only forwards `debug` | **Deferred** — do not chase client-side logging |
+| 6 SW survives configured dwell | Ordinary `dwell()` under MV3 idle; shell hosts the timer | **Deferred** — needs AST-1170 background + live dwell |
+| 7 mid-pause kill loses only in-flight page | No worker cursor; remaining still lists pending | **Deferred** — needs AST-1170 re-entry; loop contract supports it |
+
+Do **not** tick Linear AC4 from the loop's `exhausted` exit. Do **not** invent client Style D for AC5.
+
 ## Pre-build dependency gate (before Stage 1 code)
 
 **Done when:** Builder can name the live AST-1231 symbols that satisfy the **Consumer contract** below (or confirm provisional paths still match a published AST-1231 plan on `origin/sub/AST-1169/AST-1231-batch-scoped-intake`).
@@ -30,8 +46,13 @@ In the extension background context, walk the server Surfer worklist **one URL a
 2. Confirm sibling HTTP ownership:
    - **AST-1231** owns batch-scoped post + remaining-work query (+ per-URL `debug=` Style D on that path).
    - **AST-1170** owns authenticated `getJson` / `postJson`, tab open/close/load-wait, and visible-text capture via content-script messaging.
-3. If AST-1231 has published a plan or code whose remaining/post/fail shapes **differ** from the Consumer contract below → **STOP**, comment on **AST-1239** (not parent) with the delta, and wait — do not invent a second client vocabulary and do not implement AST-1231 routes here.
-4. If AST-1231 has **no** published plan/code yet at build time → still implement `fanOut.ts` against the Consumer contract ports (shell can stub); do **not** add server routes. Full end-to-end AC verification waits on AST-1231 + AST-1170 landing (UAT / integration), which is expected for this epic ordering.
+3. **Failure `reason` vocabulary (agree with AST-1231 before inventing more):** Client sends only:
+   - `empty_capture` — whitespace-only / missing capture
+   - `page_error` — non-Error throw, or catch fallback when message is empty
+   - `page_error:<detail>` — when `err instanceof Error` and `message` is non-empty: prefix + first **`FAN_OUT_FAILURE_DETAIL_MAX = 200`** characters of `err.message` (named constant in `fanOut.ts`, not a bare `200`)
+   If AST-1231 validates/stores/groups on `reason` with a different enum → **STOP** and align; do not mint additional client strings.
+4. If AST-1231 has published a plan or code whose remaining/post/fail shapes **differ** from the Consumer contract below → **STOP**, comment on **AST-1239** (not parent) with the delta, and wait — do not invent a second client vocabulary and do not implement AST-1231 routes here.
+5. If AST-1231 has **no** published plan/code yet at build time → still implement `fanOut.ts` against the Consumer contract ports (shell can stub); do **not** add server routes. Full end-to-end AC verification waits on AST-1231 + AST-1170 landing (UAT / integration), which is expected for this epic ordering. Stubs that resolve without recording progress must trip the per-run liveness guard (`no_progress`) rather than loop forever.
 
 ### Consumer contract (ports — provisional until AST-1231 freezes paths)
 
@@ -102,7 +123,7 @@ export type FanOutPorts = {
 
 ## Stage 1: `runPacedFanOut` module
 
-**Done when:** `src/ui/extension/src/lib/fanOut.ts` exists with the exports and control flow below; it imports `dwell`, `fetchPacingConfig`, and `createTabBudget` from the AST-1236 modules; it contains **no** `chrome.alarms` / `browser.alarms`, **no** inline `setTimeout`/`setInterval` for pacing (only `dwell()`), **no** hardcoded dwell seconds / max_tabs literals, **no** Flask/Python files, and **no** WXT entrypoints; a fresh open→close happens per URL; `createTabBudget` wraps each in-flight page; worker-memory URL lists are never used as the source of truth.
+**Done when:** `src/ui/extension/src/lib/fanOut.ts` exists with the exports and control flow below; it imports `dwell`, `fetchPacingConfig`, and `createTabBudget` from the AST-1236 modules; it contains **no** `chrome.alarms` / `browser.alarms`, **no** inline `setTimeout`/`setInterval` for pacing (only `dwell()`), **no** hardcoded dwell seconds / max_tabs literals, **no** Flask/Python files, and **no** WXT entrypoints; a fresh open→close happens per URL; `createTabBudget` wraps each in-flight page; worker-memory URL lists are never used as the source of truth; per-run `recordedThisRun` stops with `no_progress` if the server re-offers a URL already recorded this invocation.
 
 1. Create `src/ui/extension/src/lib/fanOut.ts` with the port types from the Consumer contract (can live in the same file — do not add a second types-only file unless the file exceeds ~250 lines and readability suffers; prefer one file).
 
@@ -118,7 +139,8 @@ export type RunPacedFanOutResult = {
   batchId: string;
   visited: number; // successful delivery posts
   failed: number; // reportUrlFailure calls
-  stoppedReason: "exhausted" | "empty_batch";
+  /** exhausted = no pending left; empty_batch = total_count 0; no_progress = server re-offered a URL this run already recorded */
+  stoppedReason: "exhausted" | "empty_batch" | "no_progress";
 };
 
 /**
@@ -145,9 +167,12 @@ await fetchPacingConfig(ports.getJson);
 const budget = createTabBudget(); // uses getPacingConfig().max_tabs (ships at 1)
 let visited = 0;
 let failed = 0;
+/** Per-run liveness only — not a durable resume cursor (AC7 still re-asks the server). */
+const recordedThisRun = new Set<string>();
+const FAN_OUT_FAILURE_DETAIL_MAX = 200;
 ```
 
-Do **not** snapshot a URL list into a local array that outlives one iteration.
+Do **not** snapshot a URL list into a local array that outlives one iteration. `recordedThisRun` is only a liveness assertion that this invocation already posted or failed a URL; it is discarded when the function returns.
 
 4. **Loop — server truth every iteration:**
 
@@ -162,6 +187,12 @@ while (true) {
       failed,
       stoppedReason: remaining.total_count === 0 ? "empty_batch" : "exhausted",
     };
+  }
+  // Liveness: if the server still offers a URL this run already delivered or failed,
+  // stop — do not re-open it (bot-shaped infinite loop / AC2). Conforming AST-1231
+  // never hits this; stubs that resolve without recording do.
+  if (recordedThisRun.has(nextUrl)) {
+    return { batchId: id, visited, failed, stoppedReason: "no_progress" };
   }
 
   await budget.acquire();
@@ -178,6 +209,7 @@ while (true) {
         reason: "empty_capture",
         debug: opts?.debug,
       });
+      recordedThisRun.add(nextUrl);
       failed += 1;
     } else {
       await ports.postPage({
@@ -187,17 +219,20 @@ while (true) {
         debug: opts?.debug,
       });
       // Delivery only — do NOT treat ack as URL success / batch complete.
+      recordedThisRun.add(nextUrl);
       visited += 1;
     }
   } catch (err) {
-    const reason =
-      err instanceof Error ? err.message.slice(0, 200) : "page_error";
+    const detail =
+      err instanceof Error ? err.message.trim().slice(0, FAN_OUT_FAILURE_DETAIL_MAX) : "";
+    const reason = detail ? `page_error:${detail}` : "page_error";
     await ports.reportUrlFailure({
       batchId: id,
       pageUrl: nextUrl,
       reason,
       debug: opts?.debug,
     });
+    recordedThisRun.add(nextUrl);
     failed += 1;
   } finally {
     if (tabId != null) {
@@ -212,6 +247,8 @@ while (true) {
   // No catch-up: next iteration only after this page fully finishes (incl. dwell).
 }
 ```
+
+⚠️ **Decision — per-run `recordedThisRun` liveness guard (Joan fix-now):** Not a retry policy and not a durable cursor. After a successful `postPage` or `reportUrlFailure`, add the URL. If the next `fetchRemaining` still leads with that URL, return `stoppedReason: "no_progress"`. On a conforming AST-1231 this never fires; on a non-recording stub it converts an invisible infinite paced re-visit into one loud exit (protects AC2 + stealth).
 
 ⚠️ **Decision — order is open → settle (`waitForLoad`) → `dwell()` → capture → post/fail → close:** Matches parent Functional scope (Susan: dwell is the only pause; no separate inter-page delay). Do not dwell before load settle (that would burn the human pause on a spinner). Do not capture before dwell (stealth contract is "look at it").
 
@@ -243,8 +280,8 @@ while (true) {
 test -f src/ui/extension/src/lib/fanOut.ts
 rg -n 'chrome\.alarms|browser\.alarms|setInterval' src/ui/extension/src/lib/fanOut.ts
 # expect no matches for alarms/setInterval
-rg -n 'from \"\./dwell\"|from \"\./pacingConfig\"|runPacedFanOut|createTabBudget|fetchRemaining|reportUrlFailure' src/ui/extension/src/lib/fanOut.ts
-# expect imports + exports present
+rg -n 'from \"\./dwell\"|from \"\./pacingConfig\"|runPacedFanOut|createTabBudget|fetchRemaining|reportUrlFailure|recordedThisRun|no_progress|FAN_OUT_FAILURE_DETAIL_MAX' src/ui/extension/src/lib/fanOut.ts
+# expect imports + exports + liveness + named reason max present
 ```
 
 **Ritual:** `code(AST-1239): sequential paced fan-out loop`
@@ -271,7 +308,7 @@ If build-child is tempted to add `entrypoints/background.ts` to "make it run" �
 
 **Conf:** Medium — loop control flow and pacing wiring are fully specified against landed AST-1236 APIs, but remaining-work / fail / post HTTP paths are still owned by AST-1231 (Todo) and the shell ports by AST-1170 (Discussion); provisional Consumer contract + pre-build gate prevent guessing server code.
 
-**Risk:** Medium — wrong remaining semantics (re-visiting `delivered`) or treating delivery as success would corrupt worklist completion and stealth; budget misuse could open parallel tabs. Mitigated by pending-only contract, explicit delivery≠success rule, and mandatory `createTabBudget` finally-release.
+**Risk:** Medium — wrong remaining semantics (re-visiting `delivered`) or treating delivery as success would corrupt worklist completion and stealth; budget misuse could open parallel tabs; a non-recording stub without liveness would infinite-loop the same URL. Mitigated by pending-only contract, delivery≠success, `createTabBudget` finally-release, and per-run `recordedThisRun` → `no_progress`.
 
 ## Code rules check
 
@@ -294,3 +331,9 @@ Authoritative parent ref is `origin/ftr/AST-1174-human-paced-fan-out` (epic regi
   --ftr AST-1174-human-paced-fan-out \
   --worktree /home/susan/astral-AST-1174/
 ```
+
+## Revisions
+
+Revision 1 — 2026-08-07
+Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — unbounded `while (true)` on non-advancing remaining; AC verifiability bookkeeping; client-minted failure `reason` vocabulary.
+Changes: Stage 1 adds per-run `recordedThisRun` liveness → `stoppedReason: "no_progress"`; new **AC verification ownership** table (AC4–7 deferred; AC5 flag-forward only); gate §3 freezes `empty_capture` / `page_error` / `page_error:<detail>` with named `FAN_OUT_FAILURE_DETAIL_MAX = 200`; Risk updated for infinite re-visit.
