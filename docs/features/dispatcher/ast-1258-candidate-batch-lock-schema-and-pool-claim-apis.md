@@ -141,3 +141,14 @@ Changes: added **Tests invalidated (Betty contract)** (fix-now); corrected Risk 
 | §2.1 config SSoT | no new state lists; callers pass `states` from `dispatch_claim_states` / config |
 | §3.3 import direction | data stays on utils config imports already present (`INFLOW_CONFIG`, `CANDIDATE_STATES`, `ENTITY_TYPES`) |
 | Out of scope | dispatcher finally-clear, core wrappers, debug contract on dispatch path, statute/pattern/`CANDIDATE_DATA_MODEL` — siblings |
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis`
+**Tip:** `e569ada6`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–3 | `e569ada6` | Candidate `batch_id`/`batch_created_at`; claim/get/clear pool APIs; stage Avail pool count (`inflow_discovery` unchanged) |
+| 4 | (smoke) | Manual in-memory claim → get → clear + eligibility; not committed |
+
