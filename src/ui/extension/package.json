@@ -12,6 +12,7 @@
     "test:component": "vitest run --config vitest.config.ts"
   },
   "devDependencies": {
+    "jsdom": "^29.1.1",
     "typescript": "~5.9.3",
     "vite": "^6.3.5",
     "vitest": "^3.2.4",

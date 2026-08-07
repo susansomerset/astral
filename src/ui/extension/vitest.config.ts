@@ -8,6 +8,12 @@ const repoRoot = path.resolve(extensionRoot, '../../..');
 
 export default defineConfig({
   plugins: [WxtVitest()],
+  server: {
+    fs: {
+      // Repo-root tests/component/extension/** live outside the package root.
+      allow: [repoRoot],
+    },
+  },
   test: {
     environment: 'node',
     include: [path.join(repoRoot, 'tests/component/extension/**/*.test.{ts,tsx}')],
