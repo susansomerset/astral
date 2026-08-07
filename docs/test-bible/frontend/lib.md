@@ -222,3 +222,26 @@ Extension helpers: `mayCapture` / `fetchConsent` / `assertMayCapture` (`surferCo
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_surferConsentGate.test.ts
 ```
+
+
+### AST-1239 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1239-sequential-paced-fan-out`.
+
+`runPacedFanOut` sequential loop under `src/ui/extension/src/lib/fanOut.ts`: re-asks server remaining every iteration; fresh open→wait→`dwell()`→capture→post/fail→close; `createTabBudget` around each page; per-run `recordedThisRun` → `no_progress` if server re-offers a recorded URL; exits on empty remaining (`exhausted` / `empty_batch`) — does **not** await batch `COMPLETED`. Pacing helpers: **`docs/test-bible/frontend/lib.md` AST-1236**. §6c N/A (no SPA `pages/`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Happy path order + delivery-only post | `fanOut.ts` | **`test_surferFanOut.test.ts`** |
+| empty_capture / page_error / no_progress / empty_batch | same | same |
+| closeTab failure does not abort | same | same |
+
+**Broken / obsolete:** none — new module. Existing AST-1236 pacing tests still apply (loop consumes them).
+
+**Integration:** none revised (no existing Surfer fan-out scenarios; do not invent).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_surferFanOut.test.ts \
+  ../../../tests/component/frontend/lib/test_surferPacingConfig.test.ts
+```
