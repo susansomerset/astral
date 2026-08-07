@@ -274,3 +274,11 @@ Full active set (65 statutes: 18 universal + 47 scoped) scored in-session agains
 context_tokens≈95000
 
 — Radia
+
+## Resolution
+
+**2026-08-07** — Radia `[code-rubric] revision=1` Overall **CLEAN**; no fix-now / discuss items.
+
+- Product: no code changes.
+- Advisory noted and left as-is: same-status early return before `requires_all_urls_terminal` keeps terminal no-ops idempotent (safer than raising).
+- Resolve commit: `resolve(AST-1229): — clean` on `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
