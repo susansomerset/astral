@@ -5,14 +5,15 @@ from __future__ import annotations
 import pytest
 from flask.testing import FlaskClient
 
-from src.utils.config import SURFER_PACING_CONFIG
-
 
 # Branches: 200 payload mirrors config; 401 unauth; non-admin allowed; response not live config.
+# Lazy-import SURFER_PACING_CONFIG so AST-1235 consent node collects without pacing product.
 class TestAst1236SurferPacingConfigApi:
     def test_get_pacing_config_ok(
         self, surfer_client: FlaskClient, auth_headers: dict[str, str]
     ) -> None:
+        from src.utils.config import SURFER_PACING_CONFIG
+
         resp = surfer_client.get("/api/surfer/pacing_config", headers=auth_headers)
         assert resp.status_code == 200
         body = resp.get_json()
@@ -32,6 +33,8 @@ class TestAst1236SurferPacingConfigApi:
     def test_non_admin_allowed(
         self, surfer_client: FlaskClient, non_admin_headers: dict[str, str]
     ) -> None:
+        from src.utils.config import SURFER_PACING_CONFIG
+
         resp = surfer_client.get("/api/surfer/pacing_config", headers=non_admin_headers)
         assert resp.status_code == 200
         assert resp.get_json()["max_tabs"] == SURFER_PACING_CONFIG["max_tabs"]
