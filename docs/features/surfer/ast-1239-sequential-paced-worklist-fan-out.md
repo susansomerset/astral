@@ -349,3 +349,46 @@ Changes: Stage 1 adds per-run `recordedThisRun` liveness → `stoppedReason: "no
 |-------|--------|--------|
 | 1 | `139f338f` | sequential paced fan-out loop (`fanOut.ts`) |
 | 2 | — | doc-only (no commit) |
+
+## Review (Radia)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1239
+**Publish ref:** `origin/sub/AST-1174/AST-1239-sequential-paced-fan-out` @ `5693a1a7`
+**Overall:** DISCUSS
+
+**Scope of diff swept:** `git diff origin/dev...origin/sub/AST-1174/AST-1239-sequential-paced-fan-out` — 30 changed files. This ticket's own footprint is one file: `src/ui/extension/src/lib/fanOut.ts` (A, 161 lines, commit `139f338f`) + its test `tests/component/frontend/lib/test_surferFanOut.test.ts` (A, 230 lines) + plan/bible docs. `src/ui/extension/src/lib/{dwell,pacingConfig}.ts`, `src/ui/api/api_surfer.py`, `src/ui/server.py`, `src/utils/config.py` are byte-identical to the already `Review Posted` AST-1236 tip (`git diff 7fc377c3..<this-tip> -- <those 5 files>` is empty) — not re-swept in depth. The remaining ~23 files are cross-ticket test/bible content (see Findings).
+
+**Full-set sweep:** 65 active statutes (18 universal + 47 scoped) scored in-session against `fanOut.ts` + its test. 17 of 18 universal `conforms`; `orch.git.betty-merge-tests-one-sha` / `orch.roles.betty-owns-test-tree` → `needs-discussion` (see Findings — now a multi-ticket, multi-epic pattern, not a one-off). Scoped statutes matched by `src/ui/**` / `src/utils/config.py` (same ~32 as the AST-1236 sweep) all `conforms`, verified directly: `astral.standards.in-scope-only` (no Flask route, no WXT scaffold, no React import — matches plan's explicit "Forbidden in this file" list line-for-line: no `chrome.alarms`, no inline pacing `setTimeout`, no hardcoded `10/5/15/1`, no durable local queue, no success-on-post-ack, no toasts/progress/resume, no search-page URL re-derivation); `astral.standards.dry-and-focused-functions` (single `runPacedFanOut`, reuses `dwell()` / `createTabBudget` — no second pacing implementation); `astral.layers.ui-config-driven-business-logic` (remaining-work / outcome judgment stays server-side; loop only consumes `fetchRemaining`); `astral.standards.debug-contract-gated` (forwards `opts?.debug` into `postPage` / `reportUrlFailure` only — no client Style D, matches plan §6); `astral.git.engineer-test-tree-ban` (the single `code(AST-1239)` commit touches only `fanOut.ts`). `astral.batch.batch-id-first` / `astral.batch.claim-process-release` / `astral.state.no-daisy-chain-in-run` are cited in the ticket's In-scope list but mechanically `not-applicable` here (their `applies_when.paths` are `src/core/**` / `src/data/**` only — this ticket's loop lives entirely in `src/ui/extension/`) — behaviorally the code still matches the cited intent (every `FanOutPorts` call carries `batchId`; `fetchRemaining` re-asked every iteration, no durable cursor; loop never awaits classification/COMPLETED) even though the statute's formal predicate doesn't reach the extension layer. Remaining split (not-applicable / applies counts) matches the AST-1236 sweep exactly since diff layers are identical (`ui`, `utils`, `docs` — no `core`/`data`/`external` touched by this ticket's own commit).
+
+**Independently verified (not taken on trust):** Walked `fanOut.ts` line-by-line against the plan's "Forbidden in this file" list (§7) and Revision-1 changes — every item confirmed absent/present as required, including the `recordedThisRun` → `no_progress` liveness guard added in plan Revision 1. `test_surferFanOut.test.ts` exercises all 3 AC-relevant paths this ticket owns (AC1 visit-once, AC2 no-progress liveness, AC3 failure recording) plus `closeTab`-failure resilience and page-error truncation (`FAN_OUT_FAILURE_DETAIL_MAX`). Confirmed the AST-1236 files are unchanged (empty diff against the AST-1236 review tip) — no re-sweep needed there.
+
+**Straggler (C4):** no plan-rubric (Joan) verdict attachment on this ticket, only the plan doc — not a block.
+
+**Pattern conformance:** `pattern.batch.entity-claim-process-release`, `pattern.layers.import-discipline` — cited, both conform (client-driven claim-by-fetch, no data/core code in this diff to violate import discipline).
+
+## Plan adherence
+
+- Diff matches the plan's Self-Assessment (`Single-Component`) exactly — one extension lib file, no Python layers touched, as planned.
+- Revision 1 (Joan plan-discuss round — unbounded `while(true)` on non-advancing remaining) is fully reflected: `recordedThisRun` set + `no_progress` stop reason, exactly as the plan's Revision 1 note describes.
+- AC ownership table honored: this ticket does not tick AC4–7 (deferred to AST-1231 / AST-1170) and does not invent client-side Style D for AC5.
+
+## Findings
+
+**discuss** — Cross-ticket / cross-epic test-tree contamination, now recurring and larger (C6 §5d; `orch.git.betty-merge-tests-one-sha` / `orch.roles.betty-owns-test-tree`): the `merge-tests(AST-1239)` commit's `origin/tests` SHA carries orphaned test files for **at least 5 other tickets**, none of whose product code is an ancestor of this branch:
+  - `tests/component/core/test_page_intake.py` (AST-1227, parent AST-1168) — `src/core/page_intake.py` missing (same finding as the AST-1236 review, still unresolved).
+  - `tests/component/core/test_surfer.py` (AST-1229, parent AST-1174 — this same epic) — `src/core/surfer.py` missing.
+  - `tests/component/data/database/test_surfer_batches.py` (AST-1229) — no `surfer_batches` / `SURFER_BATCH_CONFIG` anywhere in `src/data/database.py` or `src/utils/config.py` on this branch.
+  - `tests/component/core/test_candidate.py`'s new `TestAst1235SurferConsent` class (AST-1235, **parent AST-1173 — a different epic**) calls `candidate_mod.empty_surfer_consent()` / `normalize_surfer_consent()`, which do not exist in `src/core/candidate.py` here (`code(AST-1235)`/`AST-1237`/`AST-1238` commits confirmed **not** ancestors of this branch via `git merge-base --is-ancestor`).
+  - `tests/component/frontend/lib/{test_surferConsent,test_surferConsentGate}.test.ts` and `tests/component/frontend/pages/{test_CandidateSurfer,test_CandidateSurferConsent}.test.tsx` (AST-1235/1237/1238, parent AST-1173) — all import extension/frontend modules (`surferConsent.ts`, `surferDisclosureDom.ts`, `CandidateSurfer.tsx`, `CandidateSurferConsent.tsx`) confirmed missing from this branch's tree.
+
+  Root cause is the same shared-`origin/tests`-branch mechanism flagged on AST-1236, but this time it has pulled in unlanded work from a **second, unrelated parent epic (AST-1173)**, not just a same-epic sibling. Running the full component suite against this exact publish ref will fail collection/attribute-lookup on at least 6 files. Not this engineer's fault, outside engineer fix-authority (`astral.git.engineer-test-tree-ban`), and this ticket's own commit (`139f338f`) touches only `fanOut.ts`. Not blocking Review Posted, but given this is now the second and visibly larger occurrence in the same epic, recommend Susan/Betty look at scoping `merge-tests` to the ticket's own test commit (or landing `origin/tests`-ahead-of-`dev` product code faster) before a third child inherits an even bigger backlog.
+
+## Frame diff
+
+(none) — this ticket's own diff footprint (`fanOut.ts` + test) matches the ticket Description's In-scope / Considered-but-excluded frame exactly.
+
+context_tokens≈130000
+
+— Radia
