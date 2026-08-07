@@ -12,7 +12,26 @@ Add candidate row `batch_id` / `batch_created_at`, keep the database header inve
 |------|--------|-------|
 | `src/data/database.py` | Candidate schema columns; header inventory; `claim_candidate_batch` / `get_candidate_batch` / `clear_candidate_batch`; unclaimed pool count helper; branch `count_eligible_for_dispatch_task` for non-inflow candidate stage tasks | data |
 
-No `src/core/`, `src/utils/config.py`, dispatcher, tests/, bible, or `CANDIDATE_DATA_MODEL.md` in this ticket.
+No `src/core/`, `src/utils/config.py`, dispatcher, or `CANDIDATE_DATA_MODEL.md` in this ticket. Engineer does **not** edit `tests/` or bible (`orch.roles.betty-owns-test-tree`); see **Tests invalidated (Betty contract)** below for the suite delta Stage 3 causes.
+
+## Tests invalidated (Betty contract)
+
+Stage 3 changes `count_eligible_for_dispatch_task` for non-`inflow_discovery` `entity_type=candidate` tasks. This **invalidates** a currently green assertion; Betty owns the revision (`qa-child` after Code Complete). Builder does not touch `tests/` or bible.
+
+| Item | Detail |
+|------|--------|
+| **Broken by tip (after Stage 3)** | `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_candidate_entity_avail_is_inflow_not_stage` |
+| **Today (pre-Stage 3)** | Task `{entity_type: candidate, trigger_state: REQUESTED_ARTIFACTS, candidate_id: c972, task_key: craft_get_rubric}` → `count_eligible_for_dispatch_task` == `0` (inflow helper; candidate not ACTIVE_SEARCH) |
+| **After Stage 3** | Same task → unclaimed pool count for `dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate")` (fixture with one unclaimed `REQUESTED_ARTIFACTS` row → **`1`**, not `0`) |
+| **Betty owns** | Revise that test (and bible note if present) to expect pool Avail for non-inflow candidate keys; keep `inflow_discovery` on the inflow helper |
+
+**Coverage Betty must add or extend for this ticket** (component / bible for data claim path):
+
+1. Claim → get → clear over a **multi-row** unclaimed pool (same `batch_id`).
+2. Second concurrent `claim_candidate_batch` with a different `batch_id` on already-locked rows returns **0**.
+3. `clear_candidate_batch` releases **all** rows in the batch (null/empty `batch_id` again).
+4. Pool count is **0** when every matching-state row is locked.
+5. `task_key=inflow_discovery` still routes to `count_candidate_inflow_discovery_eligible` (unchanged predicate).
 
 ## Stage 1: Candidate lock columns + header inventory
 
@@ -44,7 +63,7 @@ No `src/core/`, `src/utils/config.py`, dispatcher, tests/, bible, or `CANDIDATE_
    - `limit` coerced with `int(limit)`; call `_ensure_candidate_schema` inside the connection path; wrap with `_run_with_retry`.
    - Return `cur.rowcount` (claimed count). Raise on DB errors; **do not log** (data layer).
 3. Implement `get_candidate_batch(batch_id: str) -> List[Dict[str, Any]]`:
-   - `SELECT * FROM candidate WHERE batch_id = ?`; parse each row with `_parse_candidate_row` (same as `get_candidate`).
+   - `SELECT * FROM candidate WHERE batch_id = ?`; parse each row with `_parse_candidate_row(_row_to_dict(row))` — same hop as `get_candidate` (do not pass the raw sqlite3.Row straight into `_parse_candidate_row`).
    - Ensure schema; `_run_with_retry`.
 4. Implement `clear_candidate_batch(batch_id: str) -> int`:
    - `UPDATE candidate SET batch_id = NULL, batch_created_at = NULL WHERE batch_id = ?`; return rowcount.
@@ -57,11 +76,11 @@ No `src/core/`, `src/utils/config.py`, dispatcher, tests/, bible, or `CANDIDATE_
 
 ## Stage 3: Eligibility / count for candidate stage claim tasks
 
-**Done when:** `count_eligible_for_dispatch_task` for `entity_type=candidate` still uses the inflow helper for `task_key=inflow_discovery`, and for every other candidate claim-queue task reports the count of unclaimed candidates in `dispatch_claim_states(trigger_state, "candidate")` (0 when none, all locked, or claim_states empty).
+**Done when:** `count_eligible_for_dispatch_task` for `entity_type=candidate` still uses the inflow helper for `task_key=inflow_discovery`, and for every other candidate claim-queue task reports the count of unclaimed candidates in `dispatch_claim_states(trigger_state, "candidate")` (0 when none available or all locked).
 
 1. Add `count_candidates_unclaimed_in_states(states: List[str]) -> int` in `src/data/database.py` next to the claim APIs (or next to `count_entities_in_state`):
    - Count rows where `{state_sql}` AND `(batch_id IS NULL OR batch_id = '')`.
-   - Empty `states` → raise via `_state_in_sql` (same as other count helpers) or return 0 only if the caller already guards; **prefer** matching job/company: caller passes non-empty `claim_states`.
+   - Use `_state_in_sql(states)` (non-empty list required — same as other count helpers). Callers already have non-empty `claim_states` when they reach this helper (see step 2).
    - Ensure schema; `_run_with_retry`.
 2. In `count_eligible_for_dispatch_task`, replace the unconditional candidate branch:
    ```python
@@ -70,12 +89,14 @@ No `src/core/`, `src/utils/config.py`, dispatcher, tests/, bible, or `CANDIDATE_
    ```
    with:
    - If `(task.get("task_key") or "").strip() == INFLOW_CONFIG["discovery"]["task_key"]` (`"inflow_discovery"`), keep `count_candidate_inflow_discovery_eligible(candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at"))`.
-   - Else if `not claim_states`: return `0`.
    - Else: return `count_candidates_unclaimed_in_states(claim_states)`.
+   - Do **not** add an `if not claim_states: return 0` arm inside the candidate branch — `count_eligible_for_dispatch_task` already returns `0` when `claim_states` is empty **before** the entity-type branches; that arm would be dead code for current `CANDIDATE_STATES` / `dispatch_claim_states`.
 3. Do **not** change `count_candidate_inflow_discovery_eligible` / `describe_candidate_inflow_discovery_eligibility` predicates (ACTIVE_SEARCH + stale terms).
 4. Do **not** extend `count_entities_in_state` to raise-or-handle `"candidate"` unless needed for DRY; the dedicated helper is enough for this ticket. If you reuse `count_entities_in_state`, it must count the **global** unclaimed candidate pool (not filter by `task["candidate_id"]` as an owner).
 
 ⚠️ **Decision:** Stage Avail is **pool-wide** (all candidates in claim states with null/empty `batch_id`), not 0/1 for the dispatch row’s `candidate_id`. That matches parent “unclaimed pool size” / cross-candidate claim. Per-candidate dispatch rows may show the same pool size until AST-1259 wires claim; do not invent a per-row 0/1 carve-out here (overturns AST-972 “Avail always inflow for candidate entity” for non-inflow keys).
+
+⚠️ **Decision — deploy / merge order:** Stage 3 alone flips the dispatcher AUTO volume gate (`available < effective_min` at `src/core/dispatcher.py` ~993). Today non-inflow candidate stage tasks get `0` from the inflow helper and short-circuit; after Stage 3 the pool count can pass the gate and work still runs on the **unlocked** single-ctx candidate branch until AST-1259 lands claim → process → release. **This child must not land on `origin/dev` ahead of AST-1259.** Residual unlocked-path violation is AST-1259’s to close; this ticket still ships the data APIs + honest pool count.
 
 ## Stage 4: Manual verification (build-child, no product commit required if Stages 1–3 already committed)
 
@@ -101,7 +122,13 @@ No `src/core/`, `src/utils/config.py`, dispatcher, tests/, bible, or `CANDIDATE_
 
 **Conf:** high — copies the existing `claim_job_batch` / `get_job_batch` / `clear_job_batch` and unclaimed `(NULL OR '')` predicate; eligibility split is a narrow branch on `task_key` vs inflow.
 
-**Risk:** Medium — wrong eligibility branch would show incorrect Avail for candidate stage tasks or break inflow Avail; wrong unclaimed predicate would allow double-claim or leave rows stuck locked. Dispatcher still on the unlocked path until AST-1259, so production claim behavior does not flip in this ticket alone.
+**Risk:** Medium — wrong eligibility branch skews Avail or breaks inflow; wrong unclaimed predicate allows double-claim or stuck locks. Stage 3 also un-gates the AUTO volume check for candidate stage tasks while the claim path is still unlocked until AST-1259 — do not merge this child to `dev` ahead of AST-1259.
+
+## Revisions
+
+**Revision 1 — 2026-08-07**  
+Driven by: Joan `[plan-discuss] round=1 concern` (REVISE @ `351e9484`)  
+Changes: added **Tests invalidated (Betty contract)** (fix-now); corrected Risk / deploy-order Decision for Stage 3 volume-gate flip (discuss); dropped dead `not claim_states` arm and Done-when clause (discuss); `get_candidate_batch` keeps `_row_to_dict` hop (acceptable nit).
 
 ## Rules check (plan vs ASTRAL_CODE_RULES)
 
