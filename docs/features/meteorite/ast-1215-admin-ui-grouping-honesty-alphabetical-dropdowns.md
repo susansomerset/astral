@@ -130,4 +130,36 @@ export function sortedTaskKeys(keys: Iterable<string>): string[] {
 **Code tip:** `7e6db2fb` (Stage 1 `taskKeySort` → Stage 2 Scheduled Actions + Manage Tasks → Stage 3 Ad Hoc).
 
 Note for Betty: lexicographic vs prior `localeCompare` is contract-hardening — on today’s ASCII catalog the option order is unchanged; assert option order equals API/`sorted` payload order, not a visible reorder.
-)
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Ticket:** AST-1215 · **Publish ref tip:** `6b35b1e0`
+
+**Overall: CLEAN**
+
+**Scope note:** `origin/dev...origin/sub/AST-1185/AST-1215-...` mechanically includes AST-1214's already-reviewed `api_admin.py` / `config.py` hunks (carried over unchanged from the ftr stack-resume merge, `009baedd`) plus the AST-1214 plan-doc/review content. This review scores the full statute sweep against that complete diff but the findings below are scoped to AST-1215's own commits (`ab191901..6b35b1e0`, verified byte-identical for the two Python files via `git diff 009baedd..6b35b1e0 -- src/ui/api/api_admin.py src/utils/config.py` = empty).
+
+**What's solid:**
+
+- `taskKeySort.ts` is exactly the plan's Stage 1 snippet, byte-for-byte (`compareTaskKeys` / `sortedTaskKeys`, no `localeCompare`).
+- All three page wire-ups match plan steps precisely: `AdminScheduledActions.tsx` (Add/Edit options, `taskKeys` memo, within-section `compareTaskKeys` tie-break, section composite sorts left untouched), `AdminTaskPrompts.tsx` (`taskKeyOptions`, within-section tie-break), `AdminAnthropicAdHoc.tsx` (sorts task objects with `compareTaskKeys` so labels stay attached, per the plan's stated preference — both the Task Key `<select>` and Save As list render off `taskKeysSorted`).
+- Grep across all four Files Changed paths for task-key string-literal prefixes (`grade_`, `fetch_`, `meteorite_`, etc.) and section/`GROUPS`/`SECTIONS` inventories — zero hits. No new hardcoded membership or order lists.
+- Git hygiene: engineer commits `71ca7dfd` / `3200f29a` / `7e6db2fb` touch only `src/ui/frontend/**`; Betty's `491fab1f` touches only `tests/` + `docs/test-bible/**`; single `merge-tests(AST-1215)` commit `6b35b1e0`. Commit vocabulary correct throughout.
+- `npx tsc -b --noEmit` clean at tip.
+- No new identifiers embed the ticket id (`compareTaskKeys`, `sortedTaskKeys`, `taskKeysSorted` — all domain language).
+
+**Full active-set sweep (63 statutes, in-session):** zero `violates`. One **discuss** straggler cluster below; everything else `conforms` or `not-applicable` (most `src/core`/`data`/`external`/batch/state/dispatch/seed statutes are `not-applicable` — this diff's layers are `{ui, docs}` only, no Python core/data/external/utils files touched by AST-1215's own commits).
+
+**discuss — `ui`-layer statute predicates over-match on frontend-only diffs (mechanical, not a real gap):** `astral.layers.import-direction`, `astral.config.config-source-of-truth`, `astral.config.secrets-and-env-specific-from-environ`, and `astral.patterns.require-auth-on-protected-endpoints` all list `ui` in `applies_when.layers` with `paths: ["src/**"]` / `["src/ui/**"]` — a predicate written with the Flask `src/ui/api/**` blueprint layer in mind, but it also matches pure-React `src/ui/frontend/**` changes. All four score `conforms` trivially here (no Python imports, no config blocks, no secrets, no Flask routes exist in these three `.tsx` files) — there's nothing to violate, just nothing to *not-applicable* either under the letter of the Full-set sweep algorithm. Joan's plan-rubric verdict (`e577b3f5`, 2026-08-07) excluded three of these four (`import-direction`, `config.*` via "no core/data/external/utils/API paths") using the same real-world reasoning; this is the mechanical predicate catching up to that reasoning, not a disagreement with it. No fix — just flagging per C4 so the gap between "predicate matches" and "statute's actual subject exists in the diff" is on record for whoever tightens these `applies_when` blocks next.
+
+**Pattern conformance:** none cited for this ticket's own scope (`pattern.ui.admin-endpoint` is explicitly excluded in the plan — owned by sibling AST-1214).
+
+**Plan adherence:** Stages 1–3 match the plan's own code snippets essentially verbatim, including the two explicit "leave alone" instructions (section composite sorts, `runNextSelectKeysForUi` cycle-guard exception). Self-Assessment (`Single-Component` / `high` conf / `low` risk) holds — matches Joan's plan-rubric APPROVED verdict, which independently re-verified every line-number anchor in the planner audit table.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; findings are diff-only)
+
+context_tokens≈85000
+
+— Radia
