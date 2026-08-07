@@ -13,7 +13,28 @@ After AST-1258’s data-layer claim / get / clear, add core `get_new_candidate_b
 | `src/core/candidate.py` | Add `get_new_candidate_batch` / `clear_candidate_batch` (batch_id-first wrappers over AST-1258 data APIs); extend module docstring | core |
 | `src/core/dispatcher.py` | Candidate branch of `_run_unified`: claim via those wrappers; empty-batch clear; `finally` clear; force per-entity process for candidate so pool claims are not dropped by `batch_call_mode=1` + `entities[0]`-only consult | core |
 
-No `src/data/database.py`, `src/utils/config.py`, consult runners, gaze_email mailbox path, statute/canon, or `CANDIDATE_DATA_MODEL.md`. Engineer does **not** edit `tests/` or bible.
+No `src/data/database.py`, `src/utils/config.py`, consult runners, gaze_email mailbox path, statute/canon, or `CANDIDATE_DATA_MODEL.md`. Engineer does **not** edit `tests/` or bible (`orch.roles.betty-owns-test-tree`); see **Tests invalidated (Betty contract)** below for the suite delta Stage 2 causes.
+
+## Tests invalidated (Betty contract)
+
+Stage 2 deletes the unlocked `[ctx]` candidate arm in `_run_unified`. These two component tests pass on tip `ded4e05e` and assert that arm; after Stage 2 they fail. Builder does not touch `tests/` or bible — Betty owns the revision (`qa-child` after Code Complete).
+
+| Item | Detail |
+|------|--------|
+| **Broken by tip (after Stage 2)** | `tests/component/core/test_dispatcher.py::TestRunUnified::test_ast505_candidate_entity_routes_ctx_without_company_clear` |
+| **Today (pre-Stage 2)** | `run_consult_task` awaited with entity list `[ctx]` (unlocked single-ctx path) |
+| **After Stage 2** | Entity list comes from `get_new_candidate_batch`; without a claim stub the await may not happen / args are claimed rows, not raw `ctx` |
+| **Broken by tip (after Stage 2)** | `tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate` |
+| **Today (pre-Stage 2)** | `bad` ctx state → `run.assert_not_called()`; `good` → `run.await_args.args[2] == [good]` (exact `entities = [ctx] if … else []` gate) |
+| **After Stage 2** | Gate is pool claim via wrappers + `dispatch_claim_states` / `batch_size`; stub `get_new_candidate_batch` (or DB claim) instead of mutating ctx state alone |
+
+**Coverage Betty must add or extend for this ticket** (component / bible for dispatcher claim path):
+
+1. Claim through `get_new_candidate_batch` honors `batch_size` and `dispatch_claim_states` (multi-row unclaimed pool → claimed under one `batch_id`).
+2. Empty-batch path calls `clear_candidate_batch(bid)` (same early-exit site as job clear).
+3. `finally` calls `clear_candidate_batch` (no more `pass`); locks released after process.
+4. Multi-row claim → one `run_consult_task` call per claimed row (`use_full_batch=False`).
+5. Candidate path does **not** call `clear_job_batch` / `clear_company_batch`.
 
 ## Stage 1: Core claim wrappers
 
@@ -79,21 +100,22 @@ No `src/data/database.py`, `src/utils/config.py`, consult runners, gaze_email ma
    Do **not** edit `consult.py` / inflow / `run_requested_artifacts_dispatch` in this ticket.
 6. Do **not** change `_dispatch_one` ledger mint (`f"{task_key}-{uuid4()}"`), gaze_email mailbox early-return, network skip, or AUTO eligibility / `count_eligible_for_dispatch_task` (AST-1258 already flipped stage Avail to the unclaimed pool).
 
-⚠️ **Decision:** `inflow_discovery` uses the same pool claim path (ACTIVE_SEARCH via `dispatch_claim_states`). Avail still uses the inflow eligibility helper (AST-1258). Claimed ACTIVE_SEARCH rows without stale terms already no-op inside `run_inflow_discovery_batch` (“no stale search terms”) and still release in `finally` — do not invent an inflow-only claim filter here.
+⚠️ **Decision:** `inflow_discovery` uses the same pool claim path (ACTIVE_SEARCH via `dispatch_claim_states`). Avail still uses the inflow eligibility helper (AST-1258). Claimed ACTIVE_SEARCH rows without stale terms already no-op inside `run_inflow_discovery_batch` (“no stale search terms”) and still release in `finally` — do not invent an inflow-only claim filter here. **Accepted cross-candidate ctx:** a dispatch row owned by candidate A may claim/process candidate B; `run_inflow_discovery_batch` still reads `inflow_discovery_freq_hrs` from the row’s `ctx` (A’s cadence) while search terms come from B — cadence-only mismatch; no-stale no-op limits blast radius. Do **not** scope inflow claim to the row’s `candidate_id` in this ticket.
 
 ⚠️ **Decision:** Force `use_full_batch = False` for candidate so `_warm_then_gather` runs `run_consult_task` once per claimed row. Expanding consult to multi-entity candidate batches is out of scope; this keeps pool claim correct without touching consult.
 
 ## Stage 3: Debug contract on the claim path + smoke
 
-**Done when:** With `debug=True`, the existing `_run_unified` Style D claim headers/details fire for candidate the same way they do after a job/company claim (found/recorded: claimed count, per-entity identifiers via `_dispatch_entity_identifier`, batch end summary). Manual smoke confirms claim → clear without editing tests.
+**Done when:** With `debug=True`, the existing `_run_unified` Style D claim headers/details fire for candidate the same way they do after a job/company claim (found/recorded: claimed count, per-entity identifiers via `_dispatch_entity_identifier`, batch end summary). Manual smoke confirms claim → clear without editing tests. **Release logging:** Stage 2’s empty-batch and `finally` `clear_candidate_batch` sites emit nothing — same as job/company clear (AC4 / parent “recorded per step” is satisfied by the shared claim-side Style D block, not by new clear-side lines).
 
 1. Confirm (do not duplicate) the existing post-claim debug block in `_run_unified` (claimed N / per-entity `debug_index` + `debug_detail` with Style D ` | ` prefix) runs for candidate after Stage 2 — it already keys off `entities` / `entity_type` and does not special-case candidate away. If Stage 2 somehow skips it, restore the shared path; do not add a parallel `logger.info("[DEBUG] …")` style.
-2. Empty-batch debug already emits `outcome="no entities claimed"` with `batch_id={bid}` — leave it; after Stage 2 `bid` is the golden ticket used for claim.
-3. Manual smoke under `debug/spikes/AST-1259/` (gitignored; do not commit) or equivalent local check:
+2. Do **not** add gated `debug_detail` on `clear_candidate_batch` at the empty-batch or `finally` sites — release stays at job/company parity (silent clear).
+3. Empty-batch debug already emits `outcome="no entities claimed"` with `batch_id={bid}` — leave it; after Stage 2 `bid` is the golden ticket used for claim.
+4. Manual smoke under `debug/spikes/AST-1259/` (gitignored; do not commit) or equivalent local check:
    - ≥2 unclaimed candidates in `REQUESTED_ARTIFACTS`; run a candidate `entity_type` dispatch path (or call `get_new_candidate_batch` + `clear_candidate_batch` then a thin `_run_unified` exercise) with `batch_size=2` and `debug=True`.
    - Assert rows locked under one `batch_id`, then unlocked after clear / `finally`.
    - Empty claim (`limit` with no matching unclaimed rows) still calls `clear_candidate_batch` and does not leave locks.
-4. No product commit required for smoke-only if Stages 1–2 already committed; smoke findings that need code fixes stay in Stage 2’s files.
+5. No product commit required for smoke-only if Stages 1–2 already committed; smoke findings that need code fixes stay in Stage 2’s files.
 
 ## Execution contract
 
@@ -121,3 +143,10 @@ No `src/data/database.py`, `src/utils/config.py`, consult runners, gaze_email ma
 | §2.1 config SSoT | `dispatch_claim_states` + `CANDIDATE_STATES` validation; no new state lists |
 | §2.6 core-decides-transitions | Claim/clear touch lock columns only; state transitions stay in existing craft/inflow runners |
 | Out of scope | Data schema/eligibility (AST-1258); statute/pattern/`CANDIDATE_DATA_MODEL` (AST-1260); gaze_email non-ENTITY_TYPES mailbox; consult multi-entity rewrite |
+| Betty contract / engineer test-tree ban | Stage 2 invalidates two dispatcher component tests; plan discloses node ids + after-expectation; engineer does not patch `tests/` |
+
+## Revisions
+
+**Revision 1 — 2026-08-07**  
+Driven by: Joan `[plan-discuss] round=1 concern` (REVISE @ `ded4e05e`)  
+Changes: added **Tests invalidated (Betty contract)** (fix-now — both unlocked-`[ctx]` node ids + Betty coverage list); Stage 3 states release logging stays at job/company parity / no clear-side `debug_detail` (discuss); Stage 2 inflow Decision records accepted cross-candidate `ctx` cadence for inflow (discuss).
