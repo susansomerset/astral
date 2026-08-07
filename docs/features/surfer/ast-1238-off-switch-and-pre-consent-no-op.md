@@ -215,3 +215,27 @@ Changes: Moved Stage 4 files to `src/ui/extension/src/lib/surferConsentGate.ts` 
 | 1–4 | `81353be0cb0720dc1f3aad6b31119e0da1a97e23` | Config copy + nav; `require_current_surfer_consent` + DTO fields; Candidate Surfer page; extension `src/lib` gate/off-switch + wiring doc |
 
 **Tip:** `81353be0cb0720dc1f3aad6b31119e0da1a97e23` on publish ref (no PR yet).
+
+---
+
+## Radia review — [code-rubric] revision=1
+
+**Publish ref tip:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op` @ `97c876b1`
+**Overall:** FIX-NOW
+
+**Plan adherence:** Stages 1–4 as authored in this plan (post Joan round-1 revision) are implemented faithfully in isolation — three-way status line, `useUserConfirm`, trimmed `capture_denied_message`, extension gate/off-switch helper signatures, wiring doc content all match. The defect below is not a plan-fidelity gap in what this ticket added; it is what the branch's merge history did to a sibling's already-shipped work.
+
+**fix-now — `orch.git.merge-on-checkout`:** commit `ce3ef40b` ("Merge … origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in …", 03:17:38) pulled in only AST-1237's plan doc (AST-1237's `code`/`test` commits landed afterward, 03:21–03:54). This sub was never re-merged against AST-1237's real tip. Confirmed on the publish-ref tip tree: `src/ui/frontend/src/pages/CandidateSurferConsent.tsx`, the `/candidate/surfer_consent` route + nav entry, `src/ui/extension/src/lib/surferConsent.ts` / `surferDisclosureDom.ts`, and `SURFER_CONSENT_CONFIG`'s five AST-1237 chrome keys (plus the `current_version` "2" bump and the longer disclosure copy) are all **absent** — reverted by the merge, not by any commit in this ticket's own Files Changed list. Concrete proof it's already broken: `tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx` and `tests/component/frontend/lib/test_surferConsent.test.ts` (still present on this branch via a later `test(AST-1237)` commit) import product modules that no longer exist on this tree — they will fail at import resolution. Neither file is in Betty's AST-1238 manifest, so `Tests Passed` never actually ran them. Shipping this branch as-is silently reverts the just-reviewed-clean AST-1237 feature; parent AC1/AC2 would have no reachable opt-in surface.
+
+**fix-now — `astral.standards.in-scope-only`:** the plan's Files Changed table authorizes only additions; nothing in this plan calls for deleting `CandidateSurferConsent.tsx`, its route/nav entry, its extension libs, or AST-1237's config/DTO keys. Same root cause as above, flagged separately because the plan itself never scoped touching those files.
+
+**Fix:** merge AST-1237's current tip (or `origin/ftr/AST-1173-...` once it rolls up) into this sub; reconcile `SURFER_CONSENT_CONFIG` / `surfer_consent_dto` to union both tickets' keys (`current_version` stays `"2"`); restore `CandidateSurferConsent.tsx` + route + nav + extension libs + `App.css` §10b2 alongside this ticket's own `CandidateSurfer.tsx` + route + nav + extension libs; re-run both tickets' tests.
+
+**Straggler (C4):** Joan's plan-rubric verdict (revision=1, APPROVED, `eef627f0`) excludes `astral.git.engineer-test-tree-ban` (plan has no test paths). This sweep scores it against the real diff (which carries Betty's `merge-tests` cumulative `tests/**` paths) — advisory only; content check confirms no engineer commit touches `tests/` or `docs/test-bible/**` (`81353be0` touches only `src/` + `docs/features/`). Mechanical divergence (plan Files Changed vs full diff), not a role-separation violation.
+
+**Frame diff:** (none) — this ticket's own Description (AC/In-scope/Boundaries) is accurate to its own plan; the defect is an execution/merge error, not a scope-definition problem.
+
+**What's solid:** `require_current_surfer_consent`, the three-way status line, `useUserConfirm` usage, and the extension `surferConsentGate.ts` / `surferOffSwitch.ts` signatures all match the Joan-approved plan exactly — this ticket's own code is ready once it stops erasing AST-1237's.
+
+context_tokens≈145000
+— Radia
