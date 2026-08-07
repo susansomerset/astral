@@ -217,7 +217,46 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       },
     },
   },
-  candidate: { artifact_generate_states: ["RESUME_READY", "ACTIVE_SEARCH"] },
+  // AST-1253: expanded generate states + live-chain fields (api_system merges walk).
+  candidate: {
+    artifact_generate_states: [
+      "RESUME_READY",
+      "RESUME_READY_STALE",
+      "ARTIFACTS_READY",
+      "ARTIFACTS_READY_STALE",
+      "ACTIVE_SEARCH",
+      "PAUSE_SEARCH",
+    ],
+    artifacts_chain_task_keys: [
+      "craft_get_rubric",
+      "craft_do_rubric",
+      "craft_like_rubric",
+      "craft_jobdesc_rubric",
+      "craft_evaluate_meteorite_rubric",
+      "craft_joblist_rubric",
+      "craft_prefilter_rubric",
+      "craft_company_search_terms",
+    ],
+    artifacts_chain_hop_labels: [
+      "Get Job Criteria",
+      "Do Job Criteria",
+      "Like Job Criteria",
+      "Job Description Criteria",
+      "Meteorite Criteria",
+      "Job List Criteria",
+      "Company Watch Criteria",
+      "Company Search Terms",
+    ],
+    artifacts_chain_artifact_keys: [
+      "get_rubric",
+      "do_rubric",
+      "like_rubric",
+      "jobdesc_rubric",
+      "meteorite_jobdesc_rubric",
+      "joblist_rubric",
+      "company_prefilter",
+    ],
+  },
   company: {
     watch_readonly_states: ["WATCH"],
     bulk_transitions: {

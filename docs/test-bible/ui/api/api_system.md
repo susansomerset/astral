@@ -24,6 +24,22 @@
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_or_past`** uses **`progress_rank`** (INACTIVE/DELETED never unlock) — revised **`TestSystemNavHelpers`**.
 
+### AST-1253 · AST-1243
+
+**Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+`GET /api/state_ui_manifest` merges `artifacts_chain_task_keys` / `artifacts_chain_hop_labels` / `artifacts_chain_artifact_keys` from core; walk failure → empty arrays (rest of manifest 200).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chain fields + degrade | `src/ui/api/api_system.py` | **`TestAst1253StateUiManifestChainFields`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1253StateUiManifestChainFields \
+  -q
+```
+
 ### AST-1016 · AST-952
 
 `GET /api/ui_config` includes `preamble` from `PREAMBLE_CONFIG`. Primary: **`docs/test-bible/utils/config.md`** § AST-1016 — **`TestSystemAuthRoutes::test_ui_config_includes_preamble_config`**.

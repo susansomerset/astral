@@ -43,6 +43,7 @@ from src.utils.config import (
     is_dispatch_chain_trigger,
     template_candidate_id,
     CANDIDATE_STAGE_DISPATCH,
+    DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -276,6 +277,37 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
         "retired": retired,
     }
 
+
+# AST-1252: wrapper subset of DISPATCH_RETIRED_TASK_KEYS (not a second literal set).
+_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset(
+    k for k in DISPATCH_RETIRED_TASK_KEYS if k.startswith("candidate_requested_")
+)
+
+
+def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:
+    """Delete live dispatch_task rows for retired candidate_requested_* keys (AST-1252).
+
+    Retire-only — does not insert craft_get_rubric rows (operators create those).
+    """
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    cids = set(database.list_candidate_ids_with_dispatch_tasks())
+    cids.add(str(template_id).strip())
+    retired = 0
+    for cid in sorted(cids):
+        if not cid:
+            continue
+        for row in database.list_dispatch_tasks_for_candidate(cid):
+            tk = (row.get("task_key") or "").strip()
+            if tk in _RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS:
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_scanned": len(cids),
+        "retired": retired,
+    }
 
 
 def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
@@ -1240,6 +1272,11 @@ def _tick_loop() -> None:
             # late: avoid cycle with candidate → dispatcher (module-top import)
             from src.core.candidate import age_stale_candidate_states
             age_stale_candidate_states()
+            # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
+            try:
+                database.run_due_scheduled_queries()
+            except Exception:
+                _sched_log.exception("Scheduled query tick error")
             # Claim-queue AUTO rows from data; gaze_email AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _gaze_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
@@ -1287,6 +1324,17 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    try:
+        rstats = retire_candidate_requested_wrapper_dispatch_tasks()
+        _sched_log.info(
+            "AST-1252 candidate_requested_* wrapper retire template=%s "
+            "candidates_scanned=%s retired=%s",
+            rstats.get("template_candidate_id"),
+            rstats.get("candidates_scanned"),
+            rstats.get("retired"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
     try:
         gstats = provision_gaze_email_dispatch_tasks()
         _sched_log.info(

@@ -5,7 +5,12 @@ from typing import Optional
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
-from src.core.candidate import get_candidate
+from src.core.candidate import (
+    get_candidate,
+    requested_artifacts_chain_artifact_keys,
+    requested_artifacts_chain_hop_labels,
+    requested_artifacts_chain_task_keys,
+)
 from src.utils.config import (
     NAV_CONFIG,
     DATA_SHAPES,
@@ -180,7 +185,19 @@ def ui_config():
 @require_auth
 def state_ui_manifest():
     """G1: job/company/candidate state labels + bulk transition targets from config (single source)."""
-    return jsonify(build_state_ui_manifest())
+    manifest = build_state_ui_manifest()
+    cand = manifest.setdefault("candidate", {})
+    # AST-1253: live run_next walk — degrade to empty arrays if walk fails (keep rest of manifest).
+    try:
+        cand["artifacts_chain_task_keys"] = requested_artifacts_chain_task_keys()
+        cand["artifacts_chain_hop_labels"] = requested_artifacts_chain_hop_labels()
+        cand["artifacts_chain_artifact_keys"] = requested_artifacts_chain_artifact_keys()
+    except Exception as exc:
+        _log.warning("artifacts chain manifest walk failed: %s", exc)
+        cand["artifacts_chain_task_keys"] = []
+        cand["artifacts_chain_hop_labels"] = []
+        cand["artifacts_chain_artifact_keys"] = []
+    return jsonify(manifest)
 
 
 # ---------------------------------------------------------------------------

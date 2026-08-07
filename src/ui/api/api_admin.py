@@ -1549,6 +1549,69 @@ def session_cover_letter_html():
     return Response(html_out, mimetype="text/html; charset=utf-8")
 
 
+
+# ---------------------------------------------------------------------------
+# Scheduled Queries (AST-1122)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scheduled_queries", methods=["GET"])
+@require_admin
+def list_scheduled_queries_api():
+    return jsonify(database.list_scheduled_queries())
+
+
+@admin_bp.route("/scheduled_queries", methods=["POST"])
+@require_admin
+def create_scheduled_query_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        row = database.save_scheduled_query(
+            name=body.get("name") or "",
+            sql_text=body.get("sql_text") or "",
+            active=bool(body.get("active", False)),
+            interval_hours=float(body.get("interval_hours", 24)),
+            scheduled_query_id=body.get("scheduled_query_id"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(row), 201
+
+
+@admin_bp.route("/scheduled_queries/<scheduled_query_id>", methods=["PUT"])
+@require_admin
+def update_scheduled_query_api(scheduled_query_id: str):
+    body = request.get_json(silent=True) or {}
+    kwargs = {}
+    if "name" in body:
+        kwargs["name"] = body.get("name")
+    if "sql_text" in body:
+        kwargs["sql_text"] = body.get("sql_text")
+    if "active" in body:
+        kwargs["active"] = bool(body.get("active"))
+    if "interval_hours" in body:
+        kwargs["interval_hours"] = float(body.get("interval_hours"))
+    try:
+        row = database.update_scheduled_query(scheduled_query_id, **kwargs)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    if row is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(row)
+
+
+@admin_bp.route("/scheduled_queries/<scheduled_query_id>", methods=["DELETE"])
+@require_admin
+def delete_scheduled_query_api(scheduled_query_id: str):
+    ok = database.delete_scheduled_query(scheduled_query_id)
+    if not ok:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True})
+
+
 @admin_bp.route("/data/sql", methods=["POST"])
 @require_admin
 def run_sql():

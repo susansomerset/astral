@@ -518,6 +518,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Company Search Terms + Company Watch Criteria (via shared **`ArtifactEditor`**) hand off Generate/Regenerate to **`POST …/generate_artifacts`**. Primary component: **`docs/test-bible/frontend/components.md`** § AST-1253.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Search Terms Generate / Regenerate handoff | `ArtifactsCompanySearchTerms.tsx` | **`test_ArtifactsCompanySearchTerms.test.tsx`** — **`AST-1253:*`** (+ revised **AST-645** in-flight) |
+| Watch Criteria Regenerate Yes → handoff | `ArtifactsCompanyWatchCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsCompanyWatchCriteria.test.tsx`** — **`AST-1253: Regenerate Yes POSTs generate_artifacts`** (replaces AST-677 craft POST) |
+
+**Broken / obsolete:** AST-677 craft_prefilter_rubric ad-hoc generate assert; Search Terms populate-textarea-from-craft generate.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+---
+
 ### AST-659 · AST-639
 
 **AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
@@ -1547,4 +1568,44 @@ Primary coverage is shared **`ArtifactEditor`** (**`docs/test-bible/frontend/com
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx \
   --testNamePattern="AST-1200"
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page — empty / disclosure / opt-in / decline / current-ok | `CandidateSurferConsent.tsx` | **`test_CandidateSurferConsent.test.tsx`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page — empty / on+opt-out / stale / cancel / off | `CandidateSurfer.tsx` | **`test_CandidateSurfer.test.tsx`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx
 ```

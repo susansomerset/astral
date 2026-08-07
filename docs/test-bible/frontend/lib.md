@@ -159,3 +159,7 @@ cd src/ui/frontend && npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx
 ```
+
+### Extension Surfer libs (moved)
+
+**AST-1254** migrated `test_surfer*.test.ts` from `tests/component/frontend/lib/` → `tests/component/extension/lib/` (WXT Vitest project). Coverage maps live under **`docs/test-bible/extension/lib.md`** (AST-1236–AST-1239) and **`docs/test-bible/extension/scaffold.md`** (AST-1254). Do not re-add Surfer extension-lib manifests here.

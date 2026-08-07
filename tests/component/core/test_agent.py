@@ -6996,3 +6996,35 @@ class TestAst1193DebugJobContext:
         assert captured["debug"] is True
         assert captured["job_id"] == "job-1193"
 
+
+
+class TestAst1252PersistCandidateCraftHops:
+    """AST-1252: do_task persist_candidate_craft_hops hook (source + flag wiring)."""
+
+    def test_do_task_source_has_persist_hook(self) -> None:
+        src = inspect.getsource(agent_mod.do_task)
+        assert "persist_candidate_craft_hops" in src
+        assert "_persist_craft_dispatch_success" in src
+        assert "truncate_debug_content" in src
+
+    def test_persist_helper_supports_craft_get_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import candidate as candidate_mod
+
+        saved: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda *a, **k: saved.append(k) or None,
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "apply_rubric_vectors_save",
+            lambda cid, arts: saved.append({"cid": cid, "arts": arts}),
+        )
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", lambda arts: None)
+        candidate_mod._persist_craft_dispatch_success(
+            "cand-1",
+            "craft_get_rubric",
+            {"criteria": [{"criterion": "x", "grade_descriptions": {"A": "y"}}]},
+        )
+        assert any("arts" in (s or {}) for s in saved)
