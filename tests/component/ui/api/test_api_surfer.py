@@ -51,11 +51,11 @@ class TestAst1235SurferConsentApi:
         from src.utils.config import SURFER_CONSENT_CONFIG
 
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.get_candidate",
+            "ui.api.api_surfer.get_candidate",
             lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
         )
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.surfer_consent_dto",
+            "ui.api.api_surfer.surfer_consent_dto",
             lambda cid: {
                 "status": "none",
                 "accepted_version": None,
@@ -81,7 +81,7 @@ class TestAst1235SurferConsentApi:
         auth_headers: dict[str, str],
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
-        monkeypatch.setattr("src.ui.api.api_surfer.get_candidate", lambda cid: None)
+        monkeypatch.setattr("ui.api.api_surfer.get_candidate", lambda cid: None)
         resp = surfer_consent_client.get(
             "/api/candidates/missing/surfer/consent", headers=auth_headers
         )
@@ -97,7 +97,7 @@ class TestAst1235SurferConsentApi:
         from src.utils.config import SURFER_CONSENT_CONFIG
 
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.get_candidate",
+            "ui.api.api_surfer.get_candidate",
             lambda cid: {"astral_candidate_id": cid},
         )
         captured: dict = {}
@@ -115,7 +115,7 @@ class TestAst1235SurferConsentApi:
                 "is_current": True,
             }
 
-        monkeypatch.setattr("src.ui.api.api_surfer.opt_in_surfer_consent", _opt_in)
+        monkeypatch.setattr("ui.api.api_surfer.opt_in_surfer_consent", _opt_in)
         resp = surfer_consent_client.put(
             "/api/candidates/c1/surfer/consent",
             headers=auth_headers,
@@ -136,14 +136,14 @@ class TestAst1235SurferConsentApi:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.get_candidate",
+            "ui.api.api_surfer.get_candidate",
             lambda cid: {"astral_candidate_id": cid},
         )
 
         def _opt_in(cid, ver, *, debug=False):
             raise ValueError("accepted_version does not match current disclosure version")
 
-        monkeypatch.setattr("src.ui.api.api_surfer.opt_in_surfer_consent", _opt_in)
+        monkeypatch.setattr("ui.api.api_surfer.opt_in_surfer_consent", _opt_in)
         resp = surfer_consent_client.put(
             "/api/candidates/c1/surfer/consent",
             headers=auth_headers,
@@ -161,11 +161,11 @@ class TestAst1235SurferConsentApi:
         from src.utils.config import SURFER_CONSENT_CONFIG
 
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.get_candidate",
+            "ui.api.api_surfer.get_candidate",
             lambda cid: {"astral_candidate_id": cid},
         )
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.opt_out_surfer_consent",
+            "ui.api.api_surfer.opt_out_surfer_consent",
             lambda cid, *, debug=False: {
                 "status": "opted_out",
                 "accepted_version": SURFER_CONSENT_CONFIG["current_version"],
@@ -193,7 +193,7 @@ class TestAst1235SurferConsentApi:
         monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         monkeypatch.setattr(
-            "src.ui.api.api_surfer.get_candidate",
+            "ui.api.api_surfer.get_candidate",
             lambda cid: {"astral_candidate_id": cid},
         )
         resp = surfer_consent_client.put(
