@@ -2601,3 +2601,23 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
   -q
 ```
+
+### AST-1229 · AST-1169
+
+**Parent:** [AST-1169 — Surfer batch — durable worklist state and batch-scoped intake](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake). **Publish:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
+
+`SURFER_BATCH_CONFIG` — batch statuses (`requires_all_urls_terminal` on COMPLETED only), URL outcomes (`pending`/`delivered` non-terminal), id prefix `surfer`, lifecycle pointer key `active_surfer_batch_id`. No staleness keys. Core: **`docs/test-bible/core/surfer.md`**. Data: **`docs/test-bible/data/database/surfer_batches.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Vocab + flag contract | `src/utils/config.py` | **`TestAst1229SurferBatchConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
+  -q
+```
