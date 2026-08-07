@@ -233,3 +233,33 @@ Changes: (1) `_dispatch_task_key_form_meta` gate admits `is_meteorite_email_mail
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–2 | `9d2e7629` | live alphabetical catalog + first-class write path (mailbox fold + Avail) |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Ticket:** AST-1214 · **Publish ref tip:** `b0f12360`
+
+**Overall: CLEAN**
+
+**What's solid:**
+
+- `_admin_dispatch_task_key_catalog()` builds membership live from `get_task_keys()` ∪ `database.list_candidate_tasks()` ∪ non-retired `list_dispatch_tasks()`, minus hidden/retired, via `sorted(membership)` — no frozenset gap-key inventory anywhere in the diff. Verified: no `parse_meteorite_email` (or any mailbox key) literal in `api_admin.py`; the fold routes entirely through `is_meteorite_email_mailbox_task_key` / `METEORITE_EMAIL_PARSE_CONFIG`.
+- `admin_hidden_dispatch_task_keys()` still reads an empty `ADMIN_CONFIG` (`hidden_dispatch_task_keys` key absent) — confirms the plan's "no hiding `parse_meteorite_email`" product call is honored, not just asserted in prose.
+- `dispatch_task_admin_defaults` mailbox carve-out lands *before* the `tk not in TASK_CONFIG` raise (matches plan step 4 ordering exactly), so the legacy `parse_meteorite_email` key resolves without depending on TASK_CONFIG membership.
+- `_dispatch_task_key_trigger_error` precedence flip (`_dispatch_entity_type_for_task_key` try/except before the bare `tk not in TASK_CONFIG` check) correctly reverses AST-960 for the seven helper-resolvable hops while preserving `unsupported entity_type` wording (vs `Unknown task_key`) for registered-but-unschedulable TASK_CONFIG keys like `craft_*`.
+- Both `list_dtasks` Avail sites (`need_gaze_counts` gate and the per-row stamp) extended with the same `_inbox_avail_task_key` predicate — no drift between the two call sites.
+- Git hygiene: engineer commit `9d2e7629` touches only `src/`; Betty's `4d4f56b4` touches only `tests/` + `docs/test-bible/**`; single `merge-tests(AST-1214)` commit `b0f12360` — clean role separation (`astral.git.engineer-test-tree-ban`, `astral.git.betty-no-src-or-features`, `orch.git.betty-merge-tests-one-sha` all conform).
+- `python3 -m py_compile` clean on both touched files at tip.
+
+**Full active-set sweep (63 statutes, in-session):** no `violates`. Two scoped-but-excluded-in-plan ids (`astral.seed.agent-tables-in-repo-json`, `astral.layers.import-direction`) predicate-match on `src/utils/config.py`/`src/**` but score `conforms` on inspection — no repo-JSON/bootstrap content touched, no new cross-layer imports, consistent with the plan's own exclusion rationale. No Joan plan-rubric verdict attachment found on the ticket (only Betty's QA manifest comment) — noting `no plan-rubric verdict attached` per C4; not a block.
+
+**Pattern conformance:** `pattern.ui.admin-endpoint` — conforms (thin `@require_admin` route delegates to `_admin_dispatch_task_key_catalog`). `pattern.config.config-block` — conforms (defaults widened via `_dispatch_*` helpers + `dispatch_task_admin_defaults`, no inline Admin sets).
+
+**Plan adherence:** Stage 1 and Stage 2 implementation matches the plan's own code snippets essentially verbatim (gate widen, trigger-error precedence, mailbox carve-out ordering, both Avail sites). Self-Assessment `Single-Component` / `high` conf scope holds — no React, no AST-1182 seed rename, no test-tree edits by the engineer.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; findings are diff-only)
+
+context_tokens≈65000
+
+— Radia
