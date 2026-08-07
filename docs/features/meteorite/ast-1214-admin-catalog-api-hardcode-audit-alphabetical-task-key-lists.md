@@ -222,3 +222,14 @@ Changes: Membership corrected to **eight** agent_task-only keys; rejected ADMIN_
 Revision 4 — 2026-08-07  
 Driven by: Archie/Susan green-light on Joan escalate (round count reset) — apply all three plan edits.  
 Changes: (1) `_dispatch_task_key_form_meta` gate admits `is_meteorite_email_mailbox_task_key(task_key)` so mailbox carve-out reaches form meta; (2) Stage 2 step 5 names both Avail sites `api_admin.py` ~863–867 (`need_gaze_counts`) and ~886 (per-row stamp); (3) mailbox `trigger_state` null-only — reject non-empty. Betty B/E updated accordingly.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1185/AST-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists`
+**Plan path:** `docs/features/meteorite/ast-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists.md`
+
+**Built tip:** `9d2e7629ba3f6bfaaadf6fe9853d552b57a32612` (`9d2e7629`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `9d2e7629` | live alphabetical catalog + first-class write path (mailbox fold + Avail) |
