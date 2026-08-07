@@ -580,6 +580,26 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. `do_task`
 | --- | --- | --- |
 | Persist hook | `src/core/agent.py` | **`TestAst1252PersistCandidateCraftHops`** |
 
+
+### AST-1264 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1264-uat-craft-get-run-next`.
+
+Restore `run_next` succession after `craft_get_rubric` on `persist_candidate_craft_hops`: re-inject live `CALLER_*` into recurse ctx; skip / fail-open child hydration when live CALLER present; Style D detail when succession stops after persist. Migration neuter: **`docs/test-bible/data/database/agent_tasks.md`** § AST-1264.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| CALLER reinject + hydrate skip/hard-fail | `src/core/agent.py` | **`TestAst1264CandidateCraftSuccession`** |
+
+**Broken / obsolete:** AST-1113 migration “corrects wrong links” asserts (now no-op).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+
 ### AST-1112 · AST-1109
 
 **Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.

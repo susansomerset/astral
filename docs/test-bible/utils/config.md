@@ -1987,6 +1987,8 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   -q
 ```
 
+**AST-1264:** craft run_next migration neutered — see **`docs/test-bible/data/database/agent_tasks.md`** § AST-1264.
+
 
 ### AST-1252 · AST-1243
 
