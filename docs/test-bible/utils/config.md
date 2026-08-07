@@ -1994,6 +1994,25 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: wrappers in `DISPATCH_RETIRED_TASK_KEYS`; `CANDIDATE_STAGE_DISPATCH` artifacts-only with `task_key=craft_get_rubric`; trigger/entity helpers; AC2 `REQUESTED_RESUME` remains selectable.
 
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+`REQUESTED_ARTIFACTS.prior_states` adds regenerate re-entry (`ARTIFACTS_READY` / stale / `ACTIVE_SEARCH` / `PAUSE_SEARCH`); `artifact_generate_states` expanded; unordered `CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH` (no hop sequencing list). Core walk / UI: **`docs/test-bible/core/candidate.md`** / **`frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Priors + path map + generate states | `src/utils/config.py` | **`TestAst1253GenerateRegenerateHandoffConfig`**; revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+
+**Broken / obsolete:** prior `artifact_generate_states == ["RESUME_READY", "ACTIVE_SEARCH"]` assert.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1253GenerateRegenerateHandoffConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  -q
+```
+
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
 **Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.

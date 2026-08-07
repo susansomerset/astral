@@ -1233,53 +1233,24 @@ class TestAst901CraftRubricGenerateDelivery:
         )
         return saves
 
-    def test_craft_get_rubric_success_stashes_pending_not_artifact(
+    def test_craft_get_rubric_ui_generate_rejected_for_chain(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # AST-1253: chain keys hand off via generate_artifacts — no ad-hoc UI generate/stash.
         store = {"astral_candidate_id": "karfo", "candidate_data": {}}
         saves = self._stub_generate_common(monkeypatch, store)
-        parsed = {"criteria": list(self._CRITERIA)}
         monkeypatch.setattr(
             candidate_mod,
-            "asyncio",
-            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+            "is_requested_artifacts_chain_ui_task",
+            lambda task_key: task_key == "craft_get_rubric",
         )
         body, status = candidate_mod.run_candidate_artifact_generation(
             "karfo", "craft_get_rubric", None,
         )
-        assert status == 200
-        assert body["success"] is True
-        assert body["parsed_response"] == parsed
-        assert len(saves) == 1
-        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]["craft_get_rubric"]
-        assert pending["parsed_response"] == parsed
-        assert pending["batch_id"].startswith("user-craft_get_rubric-")
-        assert "artifacts" not in saves[0][1].get("candidate_data", {})
-
-    def test_empty_criteria_fails_ledger_and_skips_stash(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
-        saves = self._stub_generate_common(monkeypatch, store)
-        updates: list = []
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "update_dispatch_ledger",
-            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
-        )
-        monkeypatch.setattr(
-            candidate_mod,
-            "asyncio",
-            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": {"criteria": []}})),
-        )
-        body, status = candidate_mod.run_candidate_artifact_generation(
-            "karfo", "craft_get_rubric", None,
-        )
-        assert status == 500
+        assert status == 409
         assert body["success"] is False
-        assert body["error"] == "Generation returned no criteria"
+        assert "generate_artifacts" in body["error"]
         assert saves == []
-        assert updates[-1][1]["status"] == "FAILED"
 
     def test_get_pending_from_stash(self, monkeypatch: pytest.MonkeyPatch) -> None:
         parsed = {"criteria": list(self._CRITERIA)}
@@ -1407,6 +1378,74 @@ class TestAst905RecoverOnlyWhenEmpty:
         assert status == 200
         assert body["source"] == "pending_stash"
         assert body["recovered"] is True
+
+
+class TestAst1253RequestedArtifactsHandoff:
+    """AST-1253: start_requested_artifacts + live walk helpers + chain UI generate reject."""
+
+    def test_start_requested_artifacts_transitions(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "ARTIFACTS_READY"},
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = candidate_mod.start_requested_artifacts("c1")
+        assert out == "REQUESTED_ARTIFACTS"
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS")
+
+    def test_start_requested_artifacts_missing_raises(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: None)
+        with pytest.raises(ValueError, match="not found"):
+            candidate_mod.start_requested_artifacts("missing")
+
+    def test_walk_helpers_order_labels_and_rubric_keys(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Live walk: get → do → company_search_terms (terminal).
+        nxt = {
+            "craft_get_rubric": "craft_do_rubric",
+            "craft_do_rubric": "craft_company_search_terms",
+            "craft_company_search_terms": "",
+        }
+        monkeypatch.setattr(
+            candidate_mod,
+            "_current_agent_task_run_next",
+            lambda key: nxt.get(key, ""),
+        )
+        keys = candidate_mod.requested_artifacts_chain_task_keys()
+        assert keys == [
+            "craft_get_rubric",
+            "craft_do_rubric",
+            "craft_company_search_terms",
+        ]
+        assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_do_rubric") is True
+        assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_resume_base") is False
+        labels = candidate_mod.requested_artifacts_chain_hop_labels()
+        assert labels == [
+            "Get Job Criteria",
+            "Do Job Criteria",
+            "Company Search Terms",
+        ]
+        # Rubric-only — table-backed search terms excluded from artifact keys.
+        assert candidate_mod.requested_artifacts_chain_artifact_keys() == [
+            "get_rubric",
+            "do_rubric",
+        ]
+
+    def test_walk_cycle_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "_current_agent_task_run_next",
+            lambda key: "craft_get_rubric",
+        )
+        with pytest.raises(RuntimeError, match="cycle"):
+            candidate_mod.requested_artifacts_chain_task_keys()
 
 
 # AST-970: prior_states enforcement, DELETED reap, stale aging helper

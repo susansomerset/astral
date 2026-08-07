@@ -518,6 +518,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Company Search Terms + Company Watch Criteria (via shared **`ArtifactEditor`**) hand off Generate/Regenerate to **`POST …/generate_artifacts`**. Primary component: **`docs/test-bible/frontend/components.md`** § AST-1253.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Search Terms Generate / Regenerate handoff | `ArtifactsCompanySearchTerms.tsx` | **`test_ArtifactsCompanySearchTerms.test.tsx`** — **`AST-1253:*`** (+ revised **AST-645** in-flight) |
+| Watch Criteria Regenerate Yes → handoff | `ArtifactsCompanyWatchCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsCompanyWatchCriteria.test.tsx`** — **`AST-1253: Regenerate Yes POSTs generate_artifacts`** (replaces AST-677 craft POST) |
+
+**Broken / obsolete:** AST-677 craft_prefilter_rubric ad-hoc generate assert; Search Terms populate-textarea-from-craft generate.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+---
+
 ### AST-659 · AST-639
 
 **AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
