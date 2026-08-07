@@ -129,3 +129,15 @@ Changes: Stage 1 step 2b now starts with `DROP TABLE IF EXISTS app_log_new` befo
 **Pattern conformance:** `pattern.layers.import-discipline` (no canon match; nearest analog `astral.layers.import-direction` — conforms, no new imports), `astral.standards.utils-data-late-import-only` (conforms), `astral.standards.in-scope-only` (conforms), `astral.standards.database-header-inventory` (conforms).
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Review:** Radia `[code-rubric] revision=1` — **CLEAN** (docs tip `1a907a65`; product tip `e1c78811`).
+
+**fix-now:** none.  
+**Discuss:** none.  
+**Advisory:** left as-is — hot-path ensure flag mirrors existing `_ensure_*` precedent; inherited AST-1264 test lineage not introduced by this ticket.
+
+No product code changes in resolve. Publish advances to **User Testing**.
+
