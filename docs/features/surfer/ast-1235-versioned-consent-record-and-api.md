@@ -285,3 +285,29 @@ No unresolved conflicts → Conf stays `high`.
 | 1–4 | `aa0a6392` | `SURFER_CONSENT_CONFIG` + core helpers + `api_surfer` GET/PUT + data-model doc |
 
 **Tip:** `aa0a6392` on publish ref (no PR yet).
+
+---
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Publish ref tip:** `f3ab8cce` (`sub/AST-1173/AST-1235-versioned-consent-record-and-api`)
+**Overall:** CLEAN
+
+Full 65-statute active set scored in-session against `git diff origin/dev...origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`. No `violates`, no `needs-discussion`. Four `not-applicable` (no `src/data/**`, `src/ui/frontend/**`, `scripts/**`, or `artifacts/**` touched by this diff). No Joan plan-rubric verdict attached — noted, not a block.
+
+**What's solid**
+
+- `SURFER_CONSENT_CONFIG` is the single source for version/copy/status vocabulary; core validates status against the config tuple, never an inline set (`astral.standards.no-hardcoded-sets`).
+- `opt_in_surfer_consent` / `opt_out_surfer_consent` reuse the exact found(1/2)/recorded(2/2) Style D idiom already established at `mark_topic_menu_preamble_confirmed` (line ~1029) — debug-gated correctly, `debug_index` / `debug_detail` signatures match `src/utils/logging.py`.
+- `_surfer_consent_key()` placed ahead of the public block matches the file's existing per-feature grouping convention (`_topic_menu_key()` precedent) — not a `public-then-helpers` violation.
+- Both routes carry `@require_auth`; UI layer imports core + utils only; core raises `ValueError`, UI catches and returns 400/404 JSON.
+- Git hygiene clean: single `merge-tests` commit citing one `origin/tests` SHA, correct commit vocabulary, engineer commit touches only `src/` + `docs/features/`, test commits touch only `tests/` + `docs/test-bible/`.
+- Pattern conformance: `pattern.config.config-block` and `pattern.ui.admin-endpoint` both conform (config-block shape; auth + config-driven + thin API shape — candidate-facing placement is a documented plan decision, not admin-blueprint scope creep).
+
+**Plan adherence:** Diff matches the four-stage plan (config contract, core helpers, API blueprint + registration, data-model doc) file-for-file; no extra `src/` scope. Self-Assessment `Conf: high` holds — no unresolved conflicts found.
+
+**Frame diff:** none (description frame unchanged; diff matches plan as written).
+
+context_tokens≈45000
+— Radia
