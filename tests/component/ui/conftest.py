@@ -77,6 +77,7 @@ _DB_SCHEMA_FLAGS = (
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",
+    "_surfer_batch_schema_ensured",  # AST-1229
     "_agent_responses_table_sunset_applied",
     "_entity_agent_responses_column_sunset_applied",
     "_agent_schema_ensured",
@@ -227,6 +228,18 @@ def meteorite_client() -> Iterator[FlaskClient]:
     from ui.api.api_meteorite import meteorite_bp
 
     app.register_blueprint(meteorite_bp)
+    app.config["TESTING"] = True
+    with app.test_client() as client:
+        yield client
+
+
+@pytest.fixture
+def surfer_client() -> Iterator[FlaskClient]:
+    """AST-1236: Surfer pacing_config blueprint (@require_auth)."""
+    app = Flask(__name__)
+    from ui.api.api_surfer import surfer_bp
+
+    app.register_blueprint(surfer_bp)
     app.config["TESTING"] = True
     with app.test_client() as client:
         yield client
