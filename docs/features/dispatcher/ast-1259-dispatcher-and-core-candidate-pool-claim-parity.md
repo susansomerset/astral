@@ -150,3 +150,14 @@ Stage 2 deletes the unlocked `[ctx]` candidate arm in `_run_unified`. These two 
 **Revision 1 — 2026-08-07**  
 Driven by: Joan `[plan-discuss] round=1 concern` (REVISE @ `ded4e05e`)  
 Changes: added **Tests invalidated (Betty contract)** (fix-now — both unlocked-`[ctx]` node ids + Betty coverage list); Stage 3 states release logging stays at job/company parity / no clear-side `debug_detail` (discuss); Stage 2 inflow Decision records accepted cross-candidate `ctx` cadence for inflow (discuss).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity`
+**Tip:** `e0d18dab`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `35265641` | `get_new_candidate_batch` / `clear_candidate_batch` in `candidate.py` |
+| 2 | `e0d18dab` | `_run_unified` pool claim; empty + finally clear; force per-entity process |
+| 3 | (smoke) | Temp-DB claim → clear + empty clear; Style D claim path unchanged (no product delta) |
