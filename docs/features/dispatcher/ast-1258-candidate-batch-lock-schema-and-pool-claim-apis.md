@@ -152,3 +152,24 @@ Changes: added **Tests invalidated (Betty contract)** (fix-now); corrected Risk 
 | 1–3 | `e569ada6` | Candidate `batch_id`/`batch_created_at`; claim/get/clear pool APIs; stage Avail pool count (`inflow_discovery` unchanged) |
 | 4 | (smoke) | Manual in-memory claim → get → clear + eligibility; not committed |
 
+## Radia review — [code-rubric] revision=1
+
+**Publish ref:** `sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `6f684aff`
+**Overall:** DISCUSS
+
+Full active-set sweep run in-session (65 active statutes: 19 universal + 46 scoped — 24 scoped matched the diff and scored, 22 scoped `not-applicable` with layer/path reasons; full checklist stays off-ticket per rubric).
+
+**Plan adherence:** Stages 1–3 match the revised plan exactly — candidate lock columns + header inventory (Stage 1); `claim_candidate_batch` / `get_candidate_batch` / `clear_candidate_batch` pool trio mirroring `claim_job_batch` (batch_id-first, `_utc_now()`, unclaimed `(NULL OR '')` predicate, subquery `UPDATE … ORDER BY … LIMIT ?`) (Stage 2); `count_eligible_for_dispatch_task` candidate branch splits `inflow_discovery` vs new `count_candidates_unclaimed_in_states` pool count, dead `not claim_states` arm correctly omitted (Stage 3). Joan's round-1 fix-now/discuss items (Betty contract, deploy-order Decision, dead branch) are all closed on this tip. Scope held to `src/data/database.py` only; test/bible landed on a separate `merge-tests` commit, keeping engineer/test-tree commits cleanly separated.
+
+**Pattern conformance:** `pattern.batch.entity-claim-process-release` — conforms.
+
+**Findings:**
+- **discuss** — straggler: `astral.state.core-decides-transitions` was excluded at plan time ("no state transitions here" — content-correct) but this sweep's mechanical `applies_when` match (`layers: [data]`, path `src/data/database.py`) scores it `conforms`, not `not-applicable`. No code change needed; flagged per C4 to reconcile plan-exclusion reasoning with the sweep predicate.
+- **advisory** — schema-push script awareness (Joan already flagged as acceptable): `candidate` is in `ALLOWED_CONFIG_TABLES`; `scripts/push_tables_to_prod.py` needs both DBs on the new columns before the next push (AST-1134 `last_email_check` precedent).
+
+**What's solid:** `_CANDIDATE_BATCH_SORT_COLUMNS` mirrors the existing `_JOB_BATCH_SORT_COLUMNS` allowlist pattern; no new imports added; public claim trio grouped per §1.3; Betty's test/bible delta revises exactly the one invalidated assertion and adds direct coverage for multi-row claim/get/clear, concurrent-claim refusal, release-all, and locked-pool zero-count.
+
+context_tokens≈134000
+
+— Radia
+
