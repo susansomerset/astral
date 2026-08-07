@@ -835,3 +835,25 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
   tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
   -q
 ```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`surfer_consent_dto` adds config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) alongside AST-1235 fields. Config/nav: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DTO chrome keys | `src/core/candidate.py` | **`TestAst1237SurferConsentDtoChrome`** |
+
+**Broken / obsolete:** none — AST-1235 helpers still apply (version read from config).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1237SurferConsentDtoChrome \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```

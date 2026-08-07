@@ -3982,3 +3982,24 @@ class TestAst1235SurferConsent:
         candidate_mod.opt_in_surfer_consent("c1", ver, debug=False)
         assert idx.call_count == 0
         assert detail.call_count == 0
+
+
+class TestAst1237SurferConsentDtoChrome:
+    """AST-1237: surfer_consent_dto exposes config chrome fields."""
+
+    def test_dto_includes_chrome_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        dto = candidate_mod.surfer_consent_dto("c1")
+        assert dto["current_version"] == SURFER_CONSENT_CONFIG["current_version"]
+        assert dto["disclosure_title"] == SURFER_CONSENT_CONFIG["disclosure_title"]
+        assert dto["opt_in_label"] == SURFER_CONSENT_CONFIG["opt_in_label"]
+        assert dto["decline_label"] == SURFER_CONSENT_CONFIG["decline_label"]
+        assert dto["current_ok_title"] == SURFER_CONSENT_CONFIG["current_ok_title"]
+        assert dto["current_ok_body"] == SURFER_CONSENT_CONFIG["current_ok_body"]
+        assert dto["is_current"] is False

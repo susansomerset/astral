@@ -2642,3 +2642,24 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
   -q
 ```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome + version + copy weight + nav | `src/utils/config.py` | **`TestAst1237SurferConsentDisclosureConfig`** |
+
+**Broken / obsolete:** none — AST-1235 contract still holds (opaque non-empty version).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
