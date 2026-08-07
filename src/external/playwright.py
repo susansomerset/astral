@@ -1362,7 +1362,7 @@ async def extract_page_clickables(page: PageHandle, initial_html: Optional[str] 
     return all_clickables, clickable_map
 
 
-def _cull_html(html: str) -> str:  # pragma: no cover
+def _cull_html(html: str) -> str:
     """Cull HTML to keep only explicitly allowed tag types for job metadata extraction.
     
     Uses explicit inclusion: only tags in the allowed_tags list are kept. All other tags
