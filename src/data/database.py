@@ -4929,33 +4929,14 @@ def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -
 
 
 def _apply_ast1113_craft_run_next_chain_migration(conn: sqlite3.Connection) -> None:
-    """AST-1113: confirm/correct craft_* agent_task.run_next succession (idempotent)."""
-    chain = (
-        ("craft_company_search_terms", "craft_joblist_rubric"),
-        ("craft_joblist_rubric", "craft_jobdesc_rubric"),
-        ("craft_jobdesc_rubric", "craft_do_rubric"),
-        ("craft_do_rubric", "craft_get_rubric"),
-        ("craft_get_rubric", "craft_like_rubric"),
-        ("craft_like_rubric", "craft_prefilter_rubric"),
-        ("craft_prefilter_rubric", ""),
-    )
-    for task_key, expected in chain:
-        try:
-            row = conn.execute(
-                "SELECT task_key_uuid, run_next FROM agent_task WHERE task_key = ? AND current = 1 LIMIT 1",
-                (task_key,),
-            ).fetchone()
-        except sqlite3.Error:
-            return
-        if not row:
-            continue
-        if (row[1] or "").strip() == (expected or "").strip():
-            continue
-        conn.execute(
-            "UPDATE agent_task SET run_next = ?, updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
-            (expected, row[0]),
-        )
-        conn.commit()
+    """AST-1264 / AST-1108 species: no-op — craft run_next from repo admin JSON only.
+
+    Prior AST-1113 migration rewrote craft_* edges from `_ensure_agent_task_schema`
+    (hot path), stomping live seed (`craft_get_rubric` → `craft_do_rubric`) and
+    bypassing `_validate_run_next_graph_acyclic`. Repo JSON at bootstrap is authority
+    (`astral.dispatch.run-next-is-chain-authority`, `astral.seed.boot-only-not-hot-path`).
+    """
+    return
 
 
 def _apply_ast834_clear_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
