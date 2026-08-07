@@ -315,3 +315,16 @@ export async function dwell(bounds?: DwellBounds): Promise<number> {
 Revision 1 — 2026-08-07
 Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — `createTabBudget` race under `max_tabs`; Stage 2 verify `ModuleNotFoundError: ui`; discuss bare `30` MV3 ceiling in two languages.
 Changes: Stage 3 `createTabBudget` uses slot-transfer `release()` (no free-then-wake race); Stage 2 verify uses `PYTHONPATH=src` and locks import style to `ui.auth` / `src.utils.config`; Stage 1+2+3 add `mv3_idle_ceiling_seconds` to `SURFER_PACING_CONFIG` / GET / client type so `dwell()` reads the server key.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1174/AST-1236-pacing-config`
+**Plan path:** `docs/features/surfer/ast-1236-pacing-config-and-one-at-a-time-contract.md`
+
+**Built tip:** `9884a8c4f07f86aeb02a702c3e19349c6506ceb5` (`9884a8c4`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `5febe298` | SURFER_PACING_CONFIG block |
+| 2 | `1bad9d79` | GET /api/surfer/pacing_config |
+| 3 | `9884a8c4` | extension dwell + tab budget helpers |
