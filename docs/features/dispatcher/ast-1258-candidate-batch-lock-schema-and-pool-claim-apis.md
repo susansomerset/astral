@@ -141,6 +141,7 @@ Changes: added **Tests invalidated (Betty contract)** (fix-now); corrected Risk 
 | §2.1 config SSoT | no new state lists; callers pass `states` from `dispatch_claim_states` / config |
 | §3.3 import direction | data stays on utils config imports already present (`INFLOW_CONFIG`, `CANDIDATE_STATES`, `ENTITY_TYPES`) |
 | Out of scope | dispatcher finally-clear, core wrappers, debug contract on dispatch path, statute/pattern/`CANDIDATE_DATA_MODEL` — siblings |
+| `astral.state.core-decides-transitions` | **In scope / conforms** (resolve): claim/clear touch lock columns only; never `candidate.state` (Radia C4 discuss — plan had excluded; mechanical layer/path match scores conforms) |
 
 ## Review (build stub)
 
@@ -172,4 +173,17 @@ Full active-set sweep run in-session (65 active statutes: 19 universal + 46 scop
 context_tokens≈134000
 
 — Radia
+
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Tip before resolve:** `412bd950` (Radia `docs(AST-1258): Radia review — findings`)
+
+| Finding | Action |
+|---------|--------|
+| **discuss** — `astral.state.core-decides-transitions` plan-excluded vs mechanical `conforms` | No product change. Linear **In scope** now lists the statute (lock columns only; claim/clear never write `candidate.state`). Plan Rules check updated below. |
+| **advisory** — `push_tables_to_prod` / `ALLOWED_CONFIG_TABLES` column list | Acknowledged; no code change this ticket (same as Joan acceptable / AST-1134 precedent). |
+
+**fix-now:** none.
 
