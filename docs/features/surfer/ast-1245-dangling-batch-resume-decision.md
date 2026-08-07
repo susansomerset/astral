@@ -12,14 +12,15 @@ Authenticated, owner-scoped server decision: whether this candidate has a non-te
 |------|--------|-------|
 | `src/utils/config.py` | Add `SURFER_RESUME_CONFIG` (offer template + age-phrase buckets); document in module header | utils |
 | `src/core/surfer.py` | Add `decide_surfer_batch_resume` (+ age/remaining helpers); `debug` threaded with contract logs | core |
-| `src/ui/api/api_surfer.py` | Authenticated `GET …/resume_decision` thin wrapper over core (create blueprint if missing) | ui |
-| `src/ui/server.py` | Register `surfer_bp` only if this ticket creates the blueprint (skip if already registered) | ui |
+| `src/ui/api/api_surfer.py` | Append authenticated `GET /<candidate_id>/surfer/resume_decision` on the existing AST-1235 `surfer_bp` (`url_prefix="/api/candidates"`) | ui |
 
-**No changes expected:** `surfer_batch` schema / pointer / URL outcome writers (**AST-1229**), search-page create (**AST-1230**), batch-scoped intake HTTP remaining-work query (**AST-1231**), extension wake/prompt (**AST-1250**), login-wall wait (**AST-1251**), pacing (**AST-1236**), cancel/discard (**AST-1176**), `tests/` / bible (Betty after Code Complete).
+**No changes expected:** `src/ui/server.py` (`surfer_bp` already registered on `origin/dev`), `surfer_batch` schema / pointer / URL outcome writers (**AST-1229**), search-page create (**AST-1230**), mid-run remaining-work HTTP query (**AST-1231**), extension wake/prompt (**AST-1250**), login-wall wait (**AST-1251**), pacing (**AST-1236** — its `/api/surfer` blueprint is a divergence AST-1174 must settle; this ticket does not create or rename that blueprint), cancel/discard (**AST-1176**), `tests/` / bible (Betty after Code Complete).
 
 ⚠️ **Decision — consume AST-1229; do not reimplement persistence:** After `sync-child.sh`, `get_active_surfer_batch`, `database.get_surfer_batch`, `SURFER_BATCH_CONFIG`, and `_is_terminal_status` / URL outcome terminal flags must exist (from **AST-1229**, rolled up via `origin/dev` or `origin/ftr/AST-1177` once Chuckles merges). If they are missing at build start, **stop and comment on the parent** — do not invent a parallel batch table or pointer.
 
-⚠️ **Decision — remaining work from URL outcomes, not a new HTTP remaining-work route:** Parent says this epic consumes AST-1169 remaining-work answers. Remaining URLs = worklist entries whose `outcome` is **non-terminal** per `SURFER_BATCH_CONFIG["url_outcomes"][outcome]["terminal"]` (same vocabulary AST-1229 established; same definition AST-1231's mid-run remaining-work query must use). If at build time `src/core/surfer.py` already exports a public remaining-work helper from AST-1231 (name TBD on that plan), **call that helper** instead of duplicating the filter. Do **not** add a second remaining-work GET route here.
+⚠️ **Decision — remaining URL list ships on this decision payload for AST-1250:** Parent says this epic consumes AST-1169 remaining-work answers. Remaining URLs = worklist entries whose `outcome` is **non-terminal** per `SURFER_BATCH_CONFIG["url_outcomes"][outcome]["terminal"]` (same vocabulary AST-1229 established). This ticket returns `remaining_urls` + `remaining_count` on the resume-decision response so AST-1250 can continue fan-out under the same `batch_id` without a second round-trip. That is **not** AST-1231's mid-run remaining-work GET (progress during an active fan-out) — do **not** add a second remaining-work route here. If at build time `src/core/surfer.py` already exports a public remaining-work helper from AST-1231, **call that helper** instead of duplicating the filter; still return the list on this decision payload.
+
+⚠️ **Decision — pin absolute URL to `origin/dev` AST-1235 blueprint:** On `origin/dev`, `src/ui/api/api_surfer.py` is the Surfer **consent** blueprint: `Blueprint("surfer", __name__, url_prefix="/api/candidates")`, already registered in `server.py`. Absolute endpoint for this ticket: **`GET /api/candidates/<candidate_id>/surfer/resume_decision`**. Do **not** invent `/api/surfer/…`, do **not** create a second blueprint, and do **not** nest `/candidates/` under the existing prefix (that would yield `/api/candidates/candidates/…`). AST-1250 builds its wake offer against this absolute URL.
 
 ## Preflight (before Stage 1)
 
@@ -134,7 +135,7 @@ assert SURFER_RESUME_CONFIG['age_phrase_buckets'][-1]['min_seconds'] == 0
 
 ## Stage 2: Core `decide_surfer_batch_resume`
 
-**Done when:** Calling `decide_surfer_batch_resume` for a candidate with a RUNNING batch that has non-terminal URLs returns `resume_allowed=True` with `remaining_count` / `remaining_urls` / `age_phrase` / filled `offer_message`; a candidate with no active batch returns `resume_allowed=False` and `offer_message=None`; an explicit foreign `batch_id` raises `PermissionError`; unknown `batch_id` raises `LookupError`; terminal batch (explicit id or cleared pointer) never sets `resume_allowed=True`; with `debug=True`, contract logs show found + recorded; `python3 -m py_compile src/core/surfer.py` succeeds.
+**Done when:** Calling `decide_surfer_batch_resume` for a candidate with a RUNNING batch that has non-terminal URLs returns `resume_allowed=True` with `remaining_count` / `remaining_urls` / `age_phrase` / filled `offer_message`; a candidate with no active batch returns `resume_allowed=False` and `offer_message=None`; a non-terminal batch with `remaining_count == 0` returns `resume_allowed=False` (no `"0 left"` offer); an explicit foreign `batch_id` raises `PermissionError`; unknown `batch_id` raises `LookupError`; terminal batch (explicit id or cleared pointer) never sets `resume_allowed=True`; with `debug=True`, contract logs show found + recorded; `python3 -m py_compile src/core/surfer.py` succeeds.
 
 1. In `src/core/surfer.py`, keep **public functions first**, helpers below (`astral.standards.public-then-helpers`). Add imports as needed: `SURFER_RESUME_CONFIG` from config; `datetime`/`timezone` already present for `started_at` parsing.
 
@@ -167,9 +168,9 @@ def decide_surfer_batch_resume(
       - Prefer an existing public remaining-work helper from AST-1231 if present on the module at build time.
       - Otherwise: `remaining_urls = [entry["url"] for entry in (batch.get("urls") or []) if not _is_terminal_url_outcome(str((entry or {}).get("outcome") or ""))]`, preserving worklist order. Skip entries missing `url`.
       - `remaining_count = len(remaining_urls)`.
-      - If `remaining_count == 0` while status is still non-terminal: still allow resume (`resume_allowed=True`) — delivered-but-unresolved URLs are non-terminal outcomes so they already appear in remaining; a true empty remaining with RUNNING is an edge AST-1229 auto-complete should normally prevent. Do **not** invent a forced COMPLETED transition here.
-   e. Age: parse `batch["started_at"]` as UTC `"%Y-%m-%d %H:%M:%S"` (AST-1229 format). `age_seconds = max(0, int((now_utc - started).total_seconds()))`. Resolve `age_phrase` via `_age_phrase(age_seconds)` (helper below). Format `offer_message` with `SURFER_RESUME_CONFIG["offer_message_template"].format(age_phrase=..., remaining_count=...)`.
-   f. **Allowed** return shape (exact keys):
+      - If `remaining_count == 0` while status is still non-terminal: return the **denied** payload (step 3g) with `batch_id` / `status` from the row, `remaining_count=0`, `remaining_urls=[]`, `offer_message=None`. Do **not** offer `"…(0 left)"` and do **not** invent a forced COMPLETED transition here (AST-1229 owns auto-complete). Rationale: AST-1250 must not start fan-out over an empty worklist; a true zero-remaining RUNNING row is an edge, not a resume offer.
+   e. Age (only when offering): parse `batch["started_at"]` as UTC `"%Y-%m-%d %H:%M:%S"` (AST-1229 format). `age_seconds = max(0, int((now_utc - started).total_seconds()))`. Resolve `age_phrase` via `_age_phrase(age_seconds)` (helper below). Format `offer_message` with `SURFER_RESUME_CONFIG["offer_message_template"].format(age_phrase=..., remaining_count=...)`.
+   f. **Allowed** return shape (exact keys) — only when non-terminal **and** `remaining_count > 0`:
 
 ```python
 {
@@ -201,7 +202,7 @@ def decide_surfer_batch_resume(
 }
 ```
 
-   For an explicit terminal batch, fill `batch_id` and `status` from the row so the client can see why; leave age/offer null.
+   For an explicit terminal batch **or** zero-remaining non-terminal edge, fill `batch_id` and `status` from the row so the client can see why; leave age/offer null.
 
 4. Helpers (below public section):
 
@@ -219,6 +220,8 @@ def decide_surfer_batch_resume(
 
 ⚠️ **Decision — optional `batch_id` validates ownership even when it is also the active pointer:** Always compare `batch["candidate_id"]` to the path candidate when an explicit id is supplied. Do not trust the client.
 
+⚠️ **Decision — path-scoped ownership (acknowledged limit):** With no `batch_id`, any authenticated caller who knows a `candidate_id` can read that candidate's active batch decision (including `remaining_urls`). This matches the house posture today (`@require_auth` + sibling Surfer consent routes trust the path id the same way). This ticket does **not** bind Stytch `g.user` to candidate ownership. Ticket language "owner-scoped" means **batch ownership vs path candidate** (foreign `batch_id` → 403), not caller-to-candidate binding.
+
 6. Verify Stage 2 (compile + a minimal in-process check if a candidate/batch fixture is awkward without Betty — compile is mandatory):
 
 ```bash
@@ -233,39 +236,25 @@ assert hasattr(surfer, 'decide_surfer_batch_resume')
 
 ## Stage 3: Authenticated `resume_decision` GET
 
-**Done when:** `GET /api/surfer/candidates/<candidate_id>/resume_decision` with a valid Bearer returns the core decision JSON; unauthenticated → 401; unknown candidate → 404; foreign `batch_id` query → 403; unknown `batch_id` → 404; blueprint registered; UI imports core + utils only (never data/external); `python3 -m py_compile src/ui/api/api_surfer.py` succeeds.
+**Done when:** `GET /api/candidates/<candidate_id>/surfer/resume_decision` with a valid Bearer returns the core decision JSON; unauthenticated → 401; unknown candidate → 404; foreign `batch_id` query → 403; unknown `batch_id` → 404; route lives on the existing AST-1235 `surfer_bp`; UI imports core + utils only (never data/external); `python3 -m py_compile src/ui/api/api_surfer.py` succeeds; `src/ui/server.py` is untouched.
 
-1. **Blueprint file:**
-   - If `src/ui/api/api_surfer.py` already exists (e.g. AST-1236 pacing route): **append** the resume route; keep existing `pacing_config` untouched; update the module docstring to mention AST-1245.
-   - If missing: create the file with:
+1. **Blueprint file (pinned to `origin/dev`):** `src/ui/api/api_surfer.py` **already exists** as the AST-1235 Surfer consent module (`Blueprint("surfer", __name__, url_prefix="/api/candidates")`, with `_debug_flag()` and consent GET/PUT). **Append** the resume route to that file. Update the module docstring to mention AST-1245 alongside AST-1235. Keep consent routes untouched. Do **not** create a new blueprint, do **not** change `url_prefix`, do **not** invent an `/api/surfer` module (AST-1236's divergent prefix is out of scope here).
 
-```python
-"""Surfer extension API (AST-1245 resume decision; later Surfer routes may join)."""
-
-from flask import Blueprint, jsonify, request
-
-from ui.auth import require_auth
-from src.core.surfer import decide_surfer_batch_resume
-
-surfer_bp = Blueprint("surfer", __name__, url_prefix="/api/surfer")
-```
-
-2. Add route (exact path and method):
+2. Add route (exact path and method — absolute URL after prefix = `/api/candidates/<candidate_id>/surfer/resume_decision`):
 
 ```python
 @surfer_bp.route(
-    "/candidates/<candidate_id>/resume_decision",
+    "/<candidate_id>/surfer/resume_decision",
     methods=["GET"],
 )
 @require_auth
 def resume_decision(candidate_id: str):
-    debug = str(request.args.get("debug", "")).lower() in ("1", "true", "yes")
     batch_id = request.args.get("batch_id")  # optional
     try:
         payload = decide_surfer_batch_resume(
             candidate_id,
             batch_id=batch_id,
-            debug=debug,
+            debug=_debug_flag(),
         )
     except ValueError as e:
         msg = str(e)
@@ -279,36 +268,30 @@ def resume_decision(candidate_id: str):
     return jsonify(payload), 200
 ```
 
-⚠️ **Decision — path under `/api/surfer/candidates/<candidate_id>/…`:** Candidate-scoped like meteorite (`/api/candidates/<id>/meteorite/…`) but kept on the Surfer blueprint namespace introduced by AST-1236. Do not hang this off `api_admin` or `api_candidate`.
+Add `from src.core.surfer import decide_surfer_batch_resume` to the existing imports (keep `get_candidate` / consent imports as they are).
 
-⚠️ **Decision — GET, not POST:** Decision is read-only; GET matches pacing_config and avoids implying a mutation. Accept/decline POSTs belong to AST-1250 if needed later.
+⚠️ **Decision — absolute URL `GET /api/candidates/<candidate_id>/surfer/resume_decision`:** Matches sibling consent routes (`/<candidate_id>/surfer/consent`) on the same blueprint. AST-1250 must call this exact path.
 
-⚠️ **Decision — `debug` query flag only:** Mirror intake's explicit debug query (`debug=1|true|yes`). Do not invent a body.
+⚠️ **Decision — GET, not POST:** Decision is read-only; avoids implying a mutation. Accept/decline POSTs belong to AST-1250 if needed later.
 
-3. **Server registration** — only if this ticket created `api_surfer.py` and `surfer_bp` is not already registered. In `src/ui/server.py`, next to other API blueprints (after `meteorite_bp` is fine):
+⚠️ **Decision — reuse `_debug_flag()` (DRY / §1.3):** Do **not** inline `request.args.get("debug")…`. Call the module's existing `_debug_flag()`, which already routes through `ui_llm_debug(explicit_debug=…)` like the consent handlers.
 
-```python
-from ui.api.api_surfer import surfer_bp  # noqa: E402
-app.register_blueprint(surfer_bp)
-```
-
-If `surfer_bp` is already imported/registered, leave `server.py` unchanged.
+3. **Do not edit `src/ui/server.py`.** `surfer_bp` is already imported and registered on `origin/dev`.
 
 4. Verify Stage 3:
 
 ```bash
 PYTHONPATH=src ~/astral/.venv/bin/python -m py_compile src/ui/api/api_surfer.py
 PYTHONPATH=src ~/astral/.venv/bin/python -c "
-from ui.api.api_surfer import surfer_bp
-rules = [str(r) for r in surfer_bp.deferred_functions]  # existence smoke
 from ui.api import api_surfer
 assert hasattr(api_surfer, 'resume_decision')
+assert api_surfer.surfer_bp.url_prefix == '/api/candidates'
 "
 ```
 
 (HTTP smoke is Betty/UAT — do not add tests here.)
 
-**Ritual:** `code(AST-1245): GET resume_decision authenticated route`
+**Ritual:** `code(AST-1245): GET resume_decision on AST-1235 surfer_bp`
 
 ## Execution contract
 
@@ -322,21 +305,27 @@ The plan is binding. The agent:
 
 ## Self-Assessment
 
-**Scope:** `Single-Component` — one config block, one core decision function on the existing Surfer module, one authenticated GET on the Surfer blueprint; no extension UI and no schema change.
+**Scope:** `Single-Component` — one config block, one core decision function on the existing Surfer module, one authenticated GET appended to the existing AST-1235 `api_surfer.py` blueprint; no extension UI, no schema change, no `server.py` touch.
 
-**Conf:** `Medium` — AST-1229 surfaces and path patterns are clear, but this branch may still be waiting on AST-1169 rollup at build time, and remaining-work may land as a shared helper from AST-1231 mid-flight (plan already routes that fork).
+**Conf:** `high` — route is pinned to the real `origin/dev` blueprint (`/api/candidates` + `/<candidate_id>/surfer/…`); remaining-list ownership and zero-remaining deny are explicit; AST-1229 dependency still gated by Preflight.
 
-**Risk:** `Medium` — a wrong foreign-batch check or terminal-status offer would leak another candidate's worklist or re-prompt completed runs; dispatcher claim paths are untouched so regression surface outside Surfer is low if the plan is followed.
+**Risk:** `Medium` — a wrong foreign-batch check or terminal-status offer would leak another candidate's worklist or re-prompt completed runs; path-scoped (not caller-scoped) ownership is an acknowledged house-posture limit; dispatcher claim paths are untouched.
 
 ## CODE_RULES self-review
 
-- **§1.3 DRY / public-then-helpers:** Stage 2 places `decide_surfer_batch_resume` with other public Surfer entrypoints; age/remaining helpers below.
+- **§1.3 DRY / public-then-helpers:** Stage 2 places `decide_surfer_batch_resume` with other public Surfer entrypoints; age/remaining helpers below. Stage 3 reuses `_debug_flag()` (no inline duplicate).
 - **§2.1 config:** Offer copy + age buckets in `SURFER_RESUME_CONFIG`; terminal vocab stays in `SURFER_BATCH_CONFIG` (no hardcoded status/outcome sets).
 - **§2.4 batch-id-first:** Data reads go through existing `get_surfer_batch(batch_id)` / `get_active_surfer_batch`; no new claim/clear.
 - **§2.6 / `astral.state.core-decides-transitions`:** Core decides `resume_allowed`; UI only maps exceptions to HTTP. No status transition in this ticket.
 - **§2.9 / `astral.patterns.require-auth-on-protected-endpoints`:** `@require_auth` on the route.
 - **§3.2 / `astral.layers.import-direction`:** UI → core + utils only; no UI → data.
-- **§1.5.1 debug contract:** Gated `debug_index` / `debug_detail` only when `debug=True`.
+- **§1.5.1 debug contract:** Gated `debug_index` / `debug_detail` only when `debug=True` (via `_debug_flag()` → core).
 - **No staleness:** Asserted by config Decision + Files Changed exclusions.
 
 No unresolved statute conflicts; Conf is not `!!-NONE`.
+
+## Revisions
+
+Revision 1 — 2026-08-07
+Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — Stage 3 route vs `origin/dev` AST-1235 blueprint; duplicate debug-flag parsing; remaining_urls / zero-remaining / path-scoped ownership discuss items; drop unused `server.py` row.
+Changes: Absolute URL pinned to `GET /api/candidates/<candidate_id>/surfer/resume_decision` on existing `surfer_bp` (`url_prefix="/api/candidates"`); Stage 3 appends only, reuses `_debug_flag()`, leaves `server.py` untouched; `remaining_urls` explicitly owned here for AST-1250 (not AST-1231 mid-run GET); zero-remaining RUNNING denies offer; path-scoped ownership limit acknowledged; Conf → high.
