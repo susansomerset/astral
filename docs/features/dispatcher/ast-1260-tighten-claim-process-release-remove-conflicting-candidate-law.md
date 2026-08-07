@@ -213,3 +213,23 @@ Changes: (fix-now) Stage 3 updates `## Snake_case` → **DB columns** to include
 | 1 | `2ab2c564` | Tighten `astral.batch.claim-process-release` (ENTITY_TYPES pool; zero-row release note) |
 | 2 | `33d376ff` | Candidate peers in claim pattern `canonical_refs` + CODE_RULES §2.4 |
 | 3 | `6ae865c8` | `CANDIDATE_DATA_MODEL` lock columns + Snake_case inventory |
+
+## Radia review — [code-rubric] revision=1
+
+**Publish ref:** `sub/AST-1257/AST-1260-tighten-claim-process-release-remove-conflicting-candidate-law` @ `d5b04be0`
+**Overall:** CLEAN
+
+Full active-set sweep run in-session (65 active statutes: 18 universal + 47 scoped — 5 scoped matched this docs/canon-only diff, 42 `not-applicable`, mapping `canon/statutes/**` / `canon/patterns/**` to the `docs` layer per Joan's plan-rubric convention).
+
+**Plan adherence:** All three stages land the plan's pinned text verbatim — diffed every amended file against the exact strings Stage 1–3 specify and they match character-for-character. All 5 of the plan's own Manual checks pass against the publish tip. Joan's round-2 discuss (pinned Snake_case string drops the list's `- ` bullet marker) did not manifest — the landed line keeps the bullet, list structure intact. `orch.roles.archie-approves-statutes` conforms: both statute and pattern frontmatter carry `approved_by: Archie` with `approved_at: "2026-08-07"`. Commit separation clean — three per-stage `docs(AST-1260)` commits touch exactly the four planned files; Betty's docs-acceptance/`merge-tests` commits touch only `docs/test-bible/README.md`.
+
+**Pattern conformance:** `pattern.batch.entity-claim-process-release` — conforms.
+
+**Findings:** None.
+
+**What's solid:** Notes section carves out non-`ENTITY_TYPES` pollers and records company's empty-batch early exit as known-conforming — both loose ends from Joan's plan-rubric round are closed in the landed text. `CANDIDATE_DATA_MODEL.md`'s `state_history` rewording stops implying batch claim doesn't exist without overclaiming every history entry carries a `batch_id`.
+
+context_tokens≈92000
+
+— Radia
+
