@@ -128,3 +128,12 @@ def ingest_recognized_listing(
 - **§2.6 / core-decides-transitions / job-prior-states:** Create carve-out unchanged (`prior_states=None` entry into `METEORITE_NEW`); no `transition_job_state` calls; ladder untouched.
 - **§3.3 imports:** `page_intake` core → `meteorite` + `data` + `utils` only; no `ui` / `external`.
 - **data-raises-caller-logs:** Raises on bad input; data helpers stay quiet; caller (AST-1228) owns HTTP logging.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1168/AST-1227-listing-to-meteorite-ingest`
+**Plan path:** `docs/features/surfer/ast-1227-listing-to-meteorite-ingest.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `411981fd` | `page_intake.ingest_recognized_listing` — dedupe + create + Style D |
