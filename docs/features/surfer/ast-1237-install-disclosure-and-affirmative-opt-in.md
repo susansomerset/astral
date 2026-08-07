@@ -278,3 +278,12 @@ context_tokens≈52000
 
 **Publish ref:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`  
 **Built tip:** `8a53dc93` (`origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`)
+
+---
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Radia review:** `[code-rubric] revision=1` — **CLEAN** (no fix-now, no discuss).
+
+No product or plan-doc deltas required. Radia's mid-pipeline `docs(AST-1237): Radia review — clean` (`27acb4e3`) is on the publish tip. Documentation-hygiene note on listing `src/ui/extension/` in `ASTRAL_CODE_RULES.md` §3.1 is left for Archie — not acted on here.
