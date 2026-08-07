@@ -91,3 +91,17 @@ Print Resume / Cover open `/candidate/resume|<job_id>` and `/candidate/cover/<jo
   tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute \
   -q
 ```
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+Registers `surfer_bp` (`GET /api/surfer/pacing_config`). Route behavior: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blueprint registration | `src/ui/server.py` | import coverage via **`server_client`** / **`surfer_client`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
