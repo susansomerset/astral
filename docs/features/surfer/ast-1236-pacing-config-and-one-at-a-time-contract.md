@@ -364,3 +364,16 @@ Changes: Stage 3 `createTabBudget` uses slot-transfer `release()` (no free-then-
 context_tokens≈100000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-07
+**Review tip:** `7fc377c3` (Radia docs) on `origin/sub/AST-1174/AST-1236-pacing-config`
+
+| Finding | Action |
+|---------|--------|
+| **fix-now** | none |
+| **discuss** — AST-1227 `test_page_intake.py` / bible orphaned onto this publish ref via shared `origin/tests` | Acknowledged; no product change. Outside engineer test-tree authority (`astral.git.engineer-test-tree-ban`). Narrow AST-1236 manifest remains green. Flag stands for Betty / `merge-child` / `prep-uat` — self-resolves when AST-1227 product lands on `dev`, or Betty re-anchors `origin/tests`. |
+| **Frame diff** | none |
+
+No product or plan-code edits this resolve pass.
