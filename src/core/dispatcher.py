@@ -43,6 +43,7 @@ from src.utils.config import (
     is_dispatch_chain_trigger,
     template_candidate_id,
     CANDIDATE_STAGE_DISPATCH,
+    DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -277,11 +278,10 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
-# AST-1252: wrapper task_keys only — not the full DISPATCH_RETIRED_TASK_KEYS set.
-_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset({
-    "candidate_requested_resume",
-    "candidate_requested_artifacts",
-})
+# AST-1252: wrapper subset of DISPATCH_RETIRED_TASK_KEYS (not a second literal set).
+_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset(
+    k for k in DISPATCH_RETIRED_TASK_KEYS if k.startswith("candidate_requested_")
+)
 
 
 def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:

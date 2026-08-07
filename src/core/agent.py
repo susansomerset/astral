@@ -2898,6 +2898,7 @@ async def do_task(
     # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).
     if result.get("success") and (ctx or {}).get("persist_candidate_craft_hops") and index:
         try:
+            # Lazy import breaks agent↔candidate cycle (candidate imports agent).
             from src.core.candidate import _persist_craft_dispatch_success
             from src.utils.config import CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
             from src.utils.logging import truncate_debug_content

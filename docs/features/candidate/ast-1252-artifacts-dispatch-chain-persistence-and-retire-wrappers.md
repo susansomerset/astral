@@ -155,3 +155,15 @@ Changes:
 context_tokens≈38000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Publish tip before resolve:** `28686529` (`docs(AST-1252): Radia review — findings`)
+
+| Finding | Disposition |
+|---------|-------------|
+| fix-now (B1: lazy candidate import missing cycle-break comment) | Fixed — added `# Lazy import breaks agent↔candidate cycle (candidate imports agent).` beside `_persist_craft_dispatch_success` import in `do_task`. |
+| discuss (duplicated retired-key frozenset in dispatcher) | Fixed — `_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS` now filters `DISPATCH_RETIRED_TASK_KEYS` by `candidate_requested_` prefix (no second literal set). |
+| discuss (two `merge-tests` commits on publish ref) | Accepted — Betty process / qa-handoff return path; not a product change. |
+| advisory (agent_task.json unicode re-serialize noise) | Accepted — no re-touch; clean re-serialize on next intentional edit. |
