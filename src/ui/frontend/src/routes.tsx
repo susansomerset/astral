@@ -41,6 +41,7 @@ import Priorities from "./pages/CandidatePriorities"
 import DealBreakers from "./pages/CandidateDealBreakers"
 import Backstory from "./pages/CandidateBackstory"
 import WritingPreferences from "./pages/CandidateWritingPreferences"
+import CandidateSurferConsent from "./pages/CandidateSurferConsent"
 
 // --- Admin ---
 import ScheduledActions from "./pages/AdminScheduledActions"
@@ -109,6 +110,7 @@ const routes: RouteObject[] = [
           { path: "candidate/deal_breakers", element: <DealBreakers /> },
           { path: "candidate/backstory", element: <Backstory /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
+          { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> },
 
           // Admin
           { path: "admin/scheduled_actions", element: <AdminRoute><ScheduledActions /></AdminRoute> },

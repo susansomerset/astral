@@ -111,7 +111,7 @@ Revising keeps prior topics: dropped ids become `status: "retired"` rather than 
 
 ### surfer_consent (AST-1235 / AST-1173)
 
-Server-side Surfer install disclosure consent (opt-in / opt-out + accepted wording version). Config: `SURFER_CONSENT_CONFIG` in `src/utils/config.py` (`current_version`, `disclosure_copy`). Core: `get_surfer_consent` / `is_surfer_consent_current` / `opt_in_surfer_consent` / `opt_out_surfer_consent` / `surfer_consent_dto` in `src/core/candidate.py`. API: `GET`/`PUT /api/candidates/<id>/surfer/consent` (`src/ui/api/api_surfer.py`).
+Server-side Surfer install disclosure consent (opt-in / opt-out + accepted wording version). Config: `SURFER_CONSENT_CONFIG` in `src/utils/config.py` (`current_version`, `disclosure_copy`, plus AST-1237 chrome: `disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`). Core: `get_surfer_consent` / `is_surfer_consent_current` / `opt_in_surfer_consent` / `opt_out_surfer_consent` / `surfer_consent_dto` in `src/core/candidate.py`. API: `GET`/`PUT /api/candidates/<id>/surfer/consent` (`src/ui/api/api_surfer.py`).
 
 ```text
 candidate_data.surfer_consent = {
@@ -121,7 +121,9 @@ candidate_data.surfer_consent = {
 }
 ```
 
-`is_current` is true only when `status == opted_in` and `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Bumping `current_version` requires re-consent before capture may resume (enforced by siblings reading `is_current`). Survives extension reinstall because the record is server-side under the candidate, not extension storage. Install disclosure UI = **AST-1237**; off-switch + capture no-op = **AST-1238**. Do **not** place Surfer consent under `contact` / `context` / `artifacts`.
+`surfer_consent_dto` also exposes config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) for display — those fields are **not** persisted under `candidate_data.surfer_consent`.
+
+`is_current` is true only when `status == opted_in` and `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Bumping `current_version` requires re-consent before capture may resume (enforced by siblings reading `is_current`). Survives extension reinstall because the record is server-side under the candidate, not extension storage. Install disclosure UI (web + extension lib) = **AST-1237**; off-switch + capture no-op = **AST-1238**. Do **not** place Surfer consent under `contact` / `context` / `artifacts`.
 
 ## Token resolution
 

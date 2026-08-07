@@ -1480,18 +1480,28 @@ SURFER_CONSENT_CONFIG = {
     # Stable key under candidate_data (meta sibling of contact/context/artifacts/topic_menu).
     "candidate_data_key": "surfer_consent",
     # Bump this string when disclosure_copy changes; prior opt-ins stop being "current".
-    "current_version": "1",
-    # Friends-and-family provisional copy (parent Purpose / Functional scope). AST-1237 may
-    # refine wording in the same keys — do not invent a second config block for copy.
+    "current_version": "2",
+    # Off-store install: this copy is the only warning she gets (AST-1237).
     "disclosure_copy": (
-        "Astral Surfer uses your own logged-in session on LinkedIn and Indeed to pull job "
-        "postings into Astral. That use is not sanctioned by those sites' terms. We have "
-        "designed the extension to behave like ordinary manual browsing to keep the risk "
-        "low, but we cannot promise a site will never notice. If it does, any account-level "
-        "consequence (warning, suspension) is yours, not Astral's.\n\n"
-        "Surfer is optional — the rest of Astral works without it. This only reaches sources "
-        "Astral otherwise cannot. You can turn Surfer off later from the extension or your "
-        "Astral account."
+        "Astral Surfer is a browser extension that uses your own logged-in session on "
+        "LinkedIn and Indeed. When you ask it to, it can read the job pages you are "
+        "looking at and send that page content into Astral so we can pull postings we "
+        "cannot otherwise reach.\n\n"
+        "That use is not sanctioned by those sites' terms of service. We have designed "
+        "Surfer to behave like ordinary manual browsing to keep the risk low, but we "
+        "cannot promise a site will never notice. If it does, any account-level "
+        "consequence (warning, suspension, or similar) is yours, not Astral's.\n\n"
+        "Surfer is optional — the rest of Astral works without it. You can turn Surfer "
+        "off later from the extension or your Astral account."
+    ),
+    # UI chrome for web + extension disclosure (AST-1237) — rides the consent GET DTO.
+    "disclosure_title": "Before you use Astral Surfer",
+    "opt_in_label": "I understand — turn on Surfer",
+    "decline_label": "Not now",
+    "current_ok_title": "Surfer is on",
+    "current_ok_body": (
+        "You already opted in to the current Surfer disclosure for this account. "
+        "Capture stays available until you turn Surfer off or we change the disclosure."
     ),
     # Stored record statuses. Absence / unknown → treat as "none" in normalize.
     "statuses": ("none", "opted_in", "opted_out"),
@@ -1505,6 +1515,14 @@ assert SURFER_CONSENT_CONFIG["statuses"] == ("none", "opted_in", "opted_out")
 assert SURFER_CONSENT_CONFIG["default_status"] in SURFER_CONSENT_CONFIG["statuses"]
 assert SURFER_CONSENT_CONFIG["default_status"] == "none"
 assert len(SURFER_CONSENT_CONFIG["statuses"]) == len(set(SURFER_CONSENT_CONFIG["statuses"]))
+for _surfer_chrome_key in (
+    "disclosure_title",
+    "opt_in_label",
+    "decline_label",
+    "current_ok_title",
+    "current_ok_body",
+):
+    assert isinstance(SURFER_CONSENT_CONFIG[_surfer_chrome_key], str) and SURFER_CONSENT_CONFIG[_surfer_chrome_key].strip()
 
 
 # AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).
@@ -4448,6 +4466,7 @@ NAV_CONFIG = [
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
+            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
         ],
     },
     {

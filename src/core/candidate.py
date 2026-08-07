@@ -1123,6 +1123,12 @@ def surfer_consent_dto(candidate_id: str) -> dict:
         "current_version": SURFER_CONSENT_CONFIG["current_version"],
         "disclosure_copy": SURFER_CONSENT_CONFIG["disclosure_copy"],
         "is_current": is_surfer_consent_current(record),
+        # AST-1237: display chrome from config (not stored on the meta record).
+        "disclosure_title": SURFER_CONSENT_CONFIG["disclosure_title"],
+        "opt_in_label": SURFER_CONSENT_CONFIG["opt_in_label"],
+        "decline_label": SURFER_CONSENT_CONFIG["decline_label"],
+        "current_ok_title": SURFER_CONSENT_CONFIG["current_ok_title"],
+        "current_ok_body": SURFER_CONSENT_CONFIG["current_ok_body"],
     }
 
 

@@ -242,3 +242,10 @@ export async function optInSurferConsent(
 | Test tree | No `tests/` / bible edits |
 
 No unresolved conflicts → Conf stays `high`.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`  
+**Built tip:** (set at Code Complete push)
