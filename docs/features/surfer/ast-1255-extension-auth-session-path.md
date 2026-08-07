@@ -16,6 +16,10 @@ Wires the **AST-1167** decision (extension-owned Stytch B2C on the same project;
 
 ⚠️ **Decision — refresh home = offscreen document (Joan option 1):** Rejected hand-rolled Stytch REST (unsupported) and backend `session_token` Bearer (contradicts AST-1167 “backend deltas: none” + this ticket’s exclusion of `src/ui/auth.py`). Add manifest permission `offscreen`. Background ensures one offscreen document exists, messages it to hydrate + `session.authenticate`, receives fresh tokens, writes them via `sessionTokens`. Consent epic (**AST-1173**) will need to disclose `offscreen` — note that in README; do not invent consent UI here.
 
+⚠️ **Decision — keep the offscreen document warm:** After `createDocument`, do **not** call `closeDocument`. Chrome only lifetime-limits `AUDIO_PLAYBACK`; `LOCAL_STORAGE` documents persist until closed. Reusing one warm document avoids listener-readiness races on every refresh.
+
+⚠️ **Decision — `clearSessionTokens` only on Stytch rejection, never on plumbing errors:** Concurrent `createDocument`, missing receiver, or other local failures return `false` from `refreshSessionTokens` **without** clearing storage. Only an explicit offscreen reply `{ ok: false }` after hydrate+authenticate (Stytch says the session is dead) — or a second Astral 401 after a successful refresh — clears tokens. `session_jwt` may be null after a browser restart (`storage.session` wiped, `storage.local` keeps `session_token`); that is the normal re-entry path, not a logout.
+
 ⚠️ **Decision — bare `action: {}` required for `onClicked`:** AST-1254 ships no `action` key. Chrome / WXT require `action: {}` in the manifest to use `browser.action.onClicked` without a popup. Omitting it throws at background top level and disables the extension. Do **not** set `default_popup` or `default_icon` unless already present from AST-1254.
 
 ⚠️ **Decision — build-time public env only (no secrets in the bundle):** `WXT_STYTCH_PUBLIC_TOKEN` and `WXT_ASTRAL_API_BASE` via WXT/`import.meta.env` (same role as frontend `VITE_STYTCH_PUBLIC_TOKEN`). Document in `env.example` + extension README. Never commit tokens or bake `STYTCH_SECRET`.
@@ -40,7 +44,7 @@ Wires the **AST-1167** decision (extension-owned Stytch B2C on the same project;
 | `src/ui/extension/src/lib/sessionRefresh.ts` | Ensure offscreen doc; message it to refresh; write tokens or clear on failure | ui |
 | `src/ui/extension/src/lib/astralFetch.ts` | Background Astral `fetch` with Bearer; one refresh retry on 401; `astralGetJson` / `astralPutJson` | ui |
 | `src/ui/extension/src/lib/ensureSession.ts` | `ensureSession()` + `SIGN_IN_COPY` constant | ui |
-| `src/ui/extension/src/entrypoints/offscreen.html` (+ co-located script) | DOM context: construct `StytchHeadlessClient`, hydrate, `session.authenticate`, reply with tokens | ui |
+| `src/ui/extension/src/entrypoints/offscreen.html` + `offscreen.ts` | DOM context: sync `onMessage` first; hydrate + `session.authenticate`; reply with tokens | ui |
 | `src/ui/extension/src/entrypoints/background.ts` | `action.onClicked` → `ensureSession` → open sign-in or no-op | ui |
 | `src/ui/extension/src/entrypoints/sign-in.html` (+ co-located script) | Plain DOM + `StytchUIClient` login; persist tokens via `getTokens()` + `setSessionTokens` | ui |
 | `src/ui/extension/README.md` | Env vars, Dashboard allowlist, offscreen permission note, load-unpacked auth smoke | ui |
@@ -82,45 +86,77 @@ Exports (all async, WXT `browser` from `wxt/browser` — no `chrome.*` callbacks
 - `setSessionTokens(jwt: string, sessionToken: string): Promise<void>`
 - `clearSessionTokens(): Promise<void>`
 
-4. Create `src/ui/extension/src/entrypoints/offscreen.html` (WXT HTML entrypoint; co-located `.ts` if WXT pairs script that way for this version — one HTML entry named `offscreen`, no second router). On load, register `browser.runtime.onMessage` handler for message type exactly `astral_stytch_refresh`:
+4. Create `src/ui/extension/src/entrypoints/offscreen.html` and sibling `src/ui/extension/src/entrypoints/offscreen.ts` (same WXT HTML+module pairing as `sign-in.html` / `sign-in.ts` — HTML loads the TS as a module; one HTML entry named `offscreen`, no second router).
+
+In `offscreen.ts`, register the listener **synchronously at module top level**, before `new StytchHeadlessClient(...)` and before any `await`:
 
 ```ts
-// Pseudocode — implement literally this sequence:
+import { browser } from 'wxt/browser'
 import { StytchHeadlessClient } from '@stytch/vanilla-js/headless'
 import { getStytchPublicToken } from '../lib/extensionConfig'
 
-const SESSION_DURATION_MINUTES = 60  // named constant; min SDK value is 5
+const SESSION_DURATION_MINUTES = 60  // named constant; SDK minimum is 5
 
-// payload: { type: 'astral_stytch_refresh', session_token: string, session_jwt: string }
-const client = new StytchHeadlessClient(getStytchPublicToken())
-client.session.updateSession({
-  session_token: payload.session_token,
-  session_jwt: payload.session_jwt,
+browser.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message?.target !== 'offscreen' || message?.type !== 'astral_stytch_refresh') {
+    return
+  }
+  void (async () => {
+    try {
+      // payload: { target: 'offscreen', type: 'astral_stytch_refresh',
+      //            session_token: string, session_jwt: string | null }
+      const client = new StytchHeadlessClient(getStytchPublicToken())
+      client.session.updateSession({
+        session_token: message.session_token,
+        session_jwt: message.session_jwt ?? null,  // optional in SessionTokensUpdate
+      })
+      await client.session.authenticate({
+        session_duration_minutes: SESSION_DURATION_MINUTES,
+      })
+      const tokens = client.session.getTokens()
+      if (!tokens?.session_jwt || !tokens?.session_token) {
+        sendResponse({ ok: false })
+        return
+      }
+      sendResponse({
+        ok: true,
+        session_jwt: tokens.session_jwt,
+        session_token: tokens.session_token,
+      })
+    } catch {
+      sendResponse({ ok: false })  // Stytch rejection / SDK throw → caller clears
+    }
+  })()
+  return true  // keep sendResponse channel open for async
 })
-await client.session.authenticate({ session_duration_minutes: SESSION_DURATION_MINUTES })
-const tokens = client.session.getTokens()
-// reply: { ok: true, session_jwt, session_token } or { ok: false }
 ```
 
-If `getTokens()` returns `null` or either field is missing → reply `{ ok: false }`. Do not call Astral APIs from offscreen.
+Do not call Astral APIs from offscreen.
 
 5. Create `src/ui/extension/src/lib/sessionRefresh.ts`:
 
-- `refreshSessionTokens(): Promise<boolean>`
-- If `getSessionToken()` is null → return `false` (do not open offscreen).
-- If `getSessionJwt()` is null → `clearSessionTokens()` and return `false` (`updateSession` requires both token fields).
-- Ensure offscreen document:
-  - `const existing = await browser.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [browser.runtime.getURL('/offscreen.html')] })` (or the Chromium-equivalent WXT/browser API available in this MV3 target).
-  - If none: `await browser.offscreen.createDocument({ url: browser.runtime.getURL('/offscreen.html'), reasons: ['LOCAL_STORAGE'], justification: 'Stytch session refresh requires a DOM context (SDK checkNotSSR)' })`.
-- `browser.runtime.sendMessage({ type: 'astral_stytch_refresh', session_token, session_jwt })` and await the reply.
-- On `{ ok: true, session_jwt, session_token }` → `setSessionTokens` → return `true`.
-- On failure / throw → `clearSessionTokens()` → return `false`.
+- Module-level `let creatingOffscreen: Promise<void> | null = null`.
+- `async function ensureOffscreenDocument(): Promise<void>`:
+  - If `creatingOffscreen` is non-null → `await creatingOffscreen` and return.
+  - Call `browser.runtime.getContexts({ contextTypes: ['OFFSCREEN_DOCUMENT'], documentUrls: [browser.runtime.getURL('/offscreen.html')] })` — use this API name exactly (Chrome 116+; WXT `browser` wraps it).
+  - If `existing.length > 0` → return.
+  - Else set `creatingOffscreen = (async () => { try { await browser.offscreen.createDocument({ url: browser.runtime.getURL('/offscreen.html'), reasons: ['LOCAL_STORAGE'], justification: 'Stytch session refresh requires a DOM context (SDK checkNotSSR)' }) } catch (e) { const msg = String(e); if (!msg.includes('Only a single offscreen document') && !msg.includes('single offscreen')) throw e; /* already exists — treat as success */ } finally { creatingOffscreen = null } })()` and `await creatingOffscreen`.
+  - Do **not** call `closeDocument` (warm document Decision above).
+- `refreshSessionTokens(): Promise<boolean>`:
+  - If `getSessionToken()` is null → return `false` (fresh install; do not open offscreen).
+  - Read `jwt = await getSessionJwt()` — may be `null` after browser restart; **do not clear tokens** and **do not return early**.
+  - `await ensureOffscreenDocument()`.
+  - Send once: `browser.runtime.sendMessage({ target: 'offscreen', type: 'astral_stytch_refresh', session_token, session_jwt: jwt ?? null })`.
+  - If that rejects with a message containing `Receiving end does not exist` → await a short `setTimeout(50)` (or one microtask tick is not enough — use 50ms), then **retry the same `sendMessage` once**. If the retry also fails → return `false` **without** clearing tokens (plumbing).
+  - On reply `{ ok: true, session_jwt, session_token }` → `setSessionTokens` → return `true`.
+  - On reply `{ ok: false }` → `clearSessionTokens()` → return `false` (Stytch rejected the session).
+  - On any other throw after the retry → return `false` **without** clearing tokens.
 
 6. Create `src/ui/extension/src/lib/astralFetch.ts`:
 
 - `astralFetch(path: string, init?: RequestInit): Promise<Response>` — URL = `${getAstralApiBase()}${path.startsWith('/') ? path : '/' + path}`; set `Authorization: Bearer ${jwt}` when jwt present; `credentials: 'omit'`.
-- Before first attempt: if no jwt, call `refreshSessionTokens()` once. If still no jwt → throw `Error('sign_in_required')` (exact message string).
-- On HTTP 401: one `refreshSessionTokens()` + retry with new jwt; if refresh fails or second response is 401 → `clearSessionTokens()` and throw `Error('sign_in_required')`.
+- Before first attempt: if no jwt, call `refreshSessionTokens()` once. If still no jwt → throw `Error('sign_in_required')` (exact message string). Do **not** clear here — `refreshSessionTokens` already cleared only on Stytch `{ ok: false }`.
+- On HTTP 401: one `refreshSessionTokens()` + retry with new jwt. If refresh returns `false` → throw `Error('sign_in_required')` without an extra clear. If refresh returns `true` but the second response is still 401 → `clearSessionTokens()` and throw `Error('sign_in_required')` (Astral/Stytch reject the minted JWT).
 - `astralGetJson<T>(path: string): Promise<T>` — GET, `res.json()`, throw on non-OK with status in message.
 - `astralPutJson<T>(path: string, body: unknown): Promise<T>` — PUT JSON, same error rules.
 
@@ -139,7 +175,7 @@ export type EnsureSessionResult =
 export async function ensureSession(): Promise<EnsureSessionResult>
 ```
 
-Algorithm: read jwt → if present return `{ ok: true, jwt }` → else `refreshSessionTokens()` → if jwt present return ok → else return `{ ok: false, reason: 'sign_in_required', message: SIGN_IN_COPY }`.
+Algorithm: read jwt → if present return `{ ok: true, jwt }` → else `refreshSessionTokens()` (covers browser-restart: local `session_token` + null jwt) → if jwt present return ok → else return `{ ok: false, reason: 'sign_in_required', message: SIGN_IN_COPY }`.
 
 **Ritual:** `code(AST-1255): session tokens + offscreen refresh + astral Bearer fetch`
 
@@ -213,7 +249,8 @@ WXT_ASTRAL_API_BASE=http://localhost:5001
 - Required `WXT_*` env vars for build/dev.
 - Stytch Dashboard: Redirect URL (Login + Sign-up) for `chrome-extension://<stable-id>/sign-in.html` (stable id from pinned `manifest.key` — read id from `chrome://extensions` after first load-unpacked).
 - Note that `offscreen` is requested for Stytch refresh and will need disclosure under **AST-1173**.
-- Manual smoke: load unpacked → click icon with empty storage → sign-in tab opens → complete login → click icon again → no sign-in tab (session present). Capture still absent until AST-1256.
+- Note that `browser.offscreen` is **Chrome-only** — `npm run build:firefox` still exits 0 (AST-1254 AC4 toolchain/layout), but the Firefox output’s refresh path will not run at runtime; Chrome is the only required target.
+- Manual smoke: load unpacked → click icon with empty storage → sign-in tab opens → complete login → click icon again → no sign-in tab (session present). Also smoke browser restart with stored `session_token`: click icon → refresh via offscreen mints a new jwt → no forced re-login. Capture still absent until AST-1256.
 
 7. Build gate:
 
@@ -258,7 +295,7 @@ Proposed resolutions: <2-3 options, or "need guidance">
 
 **Conf:** Medium — AST-1167 + Bearer path are settled; offscreen refresh is the correct SDK-safe home but is new machinery for this shell (and adds a permission AST-1173 must later disclose).
 
-**Risk:** Medium — missing `action: {}` disables the extension; refresh-in-SW would throw on every post-5-minute capture; Stytch login UI on `chrome-extension://` remains an early Stage 2 proof risk (Dashboard allowlist + SDK origin behavior).
+**Risk:** Medium — missing `action: {}` disables the extension; Stytch login UI on `chrome-extension://` remains an early Stage 2 proof risk; offscreen concurrency/listener races must not clear a valid `session_token` (guards now explicit).
 
 ---
 
@@ -282,3 +319,7 @@ Proposed resolutions: <2-3 options, or "need guidance">
 Revision 1 — 2026-08-07  
 Driven by: Joan `[plan-discuss] round=1 concern` (REVISE) — fix-now: missing `action: {}`; Stytch SDK cannot run in SW; plus discuss hedges / SIGN_IN_COPY / early chrome-extension login proof.  
 Changes: Chose offscreen document as refresh home; require `action: {}` + `offscreen` permission; moved SDK construction out of background; resolved throw-vs-Response / entrypoint / `getTokens()` / `session.authenticate` hedges; justified client `SIGN_IN_COPY`; added Stage 2 early magic-link proof; dropped redundant `api.stytch.com` host; named `SESSION_DURATION_MINUTES`; corrected Betty test-tense; Conf → Medium.
+
+Revision 2 — 2026-08-07  
+Driven by: Joan `[plan-discuss] round=2 concern` (REVISE) — fix-now: null-jwt guard clears long-lived `session_token` on every browser restart (false premise that `updateSession` requires jwt).  
+Changes: Deleted null-jwt clear; hydrate with `session_jwt: jwt ?? null`; `creatingOffscreen` mutex + treat single-document error as success; sync `onMessage` before any await; one retry on missing receiver; `target: 'offscreen'`; clear tokens only on Stytch `{ ok: false }` / post-refresh Astral 401 (not plumbing); keep offscreen warm; named `getContexts` / `offscreen.ts` pairing; Firefox offscreen caveat + restart smoke in README.
