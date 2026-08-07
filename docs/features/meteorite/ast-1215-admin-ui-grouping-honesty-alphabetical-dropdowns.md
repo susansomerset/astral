@@ -123,4 +123,11 @@ export function sortedTaskKeys(keys: Iterable<string>): string[] {
 - §3.5 / `astral.ui.frontend-file-placement` — pages stay flat under `pages/`; helper under `lib/`.
 - `astral.standards.in-scope-only` — no API, seed, alias resolve, Vector Feedback, or Jobs UI.
 - §2.1 / §2.4 / §2.6 / §3.3 — N/A (no config blocks, batch claim, state machine, or Python import-direction changes).
+
+## Review
+
+**Publish ref:** `sub/AST-1185/AST-1215-admin-ui-grouping-honesty-alphabetical-dropdowns`  
+**Code tip:** `7e6db2fb` (Stage 1 `taskKeySort` → Stage 2 Scheduled Actions + Manage Tasks → Stage 3 Ad Hoc).
+
+Note for Betty: lexicographic vs prior `localeCompare` is contract-hardening — on today’s ASCII catalog the option order is unchanged; assert option order equals API/`sorted` payload order, not a visible reorder.
 )
