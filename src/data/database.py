@@ -9,7 +9,7 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
-- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
+- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
@@ -41,7 +41,7 @@ Schema checks use sqlite_master only. No other tables in the database are touche
 
 Company: save_company, get_company, update_company; batch: set_company_batch, get_company_batch, clear_company_batch (claim_company_batch wrapper).
 Job: save_job (upsert), get_job; batch: claim_job_batch, get_job_batch, clear_job_batch.
-Candidate: save_candidate (upsert), get_candidate, list_candidates; last_email_check (nullable; AST-1134 column / AST-1136 stamp call site).
+Candidate: save_candidate (upsert), get_candidate, list_candidates; claim_candidate_batch / get_candidate_batch / clear_candidate_batch (AST-1258); last_email_check (nullable; AST-1134 column / AST-1136 stamp call site).
 Agent: save_agent (upsert), get_agent, list_agents, update_agent, delete_agent, count_agent_task_refs.
 Retry/log/crash on transient DB errors; domain outcomes
 via return values (duplicate -> False, no records -> False / count).
@@ -2540,6 +2540,8 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
                 full TEXT,
                 pronouns TEXT,
                 candidate_api_key TEXT,
+                batch_id TEXT,
+                batch_created_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 state_changed_at TIMESTAMP,
@@ -2558,6 +2560,8 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
             ("full", "TEXT"),
             ("pronouns", "TEXT"),
             ("last_email_check", "TIMESTAMP"),
+            ("batch_id", "TEXT"),
+            ("batch_created_at", "TIMESTAMP"),
         ]:
             if col not in cols:
                 try:
@@ -3305,6 +3309,112 @@ def list_candidates() -> List[Dict[str, Any]]:
             _ensure_candidate_schema(conn)
             rows = conn.execute("SELECT * FROM candidate ORDER BY created_at").fetchall()
             return [_parse_candidate_row(_row_to_dict(r)) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+# Allowed ORDER BY columns for candidate pool claims (AST-1258).
+_CANDIDATE_BATCH_SORT_COLUMNS = frozenset({"rowid", "created_at", "updated_at", "state_changed_at"})
+
+
+def claim_candidate_batch(
+    batch_id: str,
+    state: str,
+    limit: int,
+    sort_by: Optional[str] = None,
+    *,
+    states: Optional[List[str]] = None,
+) -> int:
+    """Claim up to limit unclaimed candidates in state (cross-candidate pool).
+
+    Sets batch_id, batch_created_at. Parameter order: batch_id first (caller owns it).
+    Unclaimed = batch_id IS NULL OR batch_id = '' (same as job/company). Returns count claimed.
+    """
+    now = _utc_now()
+    claim_states = states if states is not None else [state]
+    state_sql, state_params = _state_in_sql(claim_states)
+    order_clause = (
+        f"ORDER BY {sort_by} ASC NULLS FIRST"
+        if sort_by and sort_by in _CANDIDATE_BATCH_SORT_COLUMNS
+        else "ORDER BY rowid"
+    )
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            params = [batch_id, now, *state_params, int(limit)]
+            cur = conn.execute(
+                f"""UPDATE candidate SET batch_id = ?, batch_created_at = ?
+                   WHERE astral_candidate_id IN (
+                     SELECT astral_candidate_id FROM candidate
+                     WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                     {order_clause}
+                     LIMIT ?
+                   )""",
+                tuple(params),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_candidate_batch(batch_id: str) -> List[Dict[str, Any]]:
+    """Return candidate rows with given batch_id as parsed dicts."""
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM candidate WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchall()
+            return [_parse_candidate_row(_row_to_dict(r)) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def clear_candidate_batch(batch_id: str) -> int:
+    """Release batch: set batch_id and batch_created_at to NULL. Returns count released."""
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            cur = conn.execute(
+                "UPDATE candidate SET batch_id = NULL, batch_created_at = NULL WHERE batch_id = ?",
+                (batch_id,),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def count_candidates_unclaimed_in_states(states: List[str]) -> int:
+    """Count unclaimed candidates in the given state set (global pool; AST-1258)."""
+    state_sql, state_params = _state_in_sql(states)
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            row = conn.execute(
+                f"""SELECT COUNT(*) FROM candidate
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
+                tuple(state_params),
+            ).fetchone()
+            return int(row[0])
         finally:
             conn.close()
 
@@ -7421,9 +7531,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(
-            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
-        )
+        # inflow_discovery keeps term/state helper; other candidate claim queues use pool count.
+        if (task_key or "").strip() == INFLOW_CONFIG["discovery"]["task_key"]:
+            return count_candidate_inflow_discovery_eligible(
+                candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+            )
+        return count_candidates_unclaimed_in_states(claim_states)
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)
