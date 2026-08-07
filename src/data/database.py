@@ -16,6 +16,7 @@ Tables used (inventory):
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984).
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
+- surfer_batch — Surfer: durable client-driven run (batch_id PK, candidate_id, status, started_at, urls JSON worklist, job_ids JSON association, created_at, updated_at) (AST-1229).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries).
@@ -165,6 +166,7 @@ _BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
 _company_candidate_fk_ensured = False
 _company_job_scan_schema_ensured = False
+_surfer_batch_schema_ensured = False
 _agent_responses_table_sunset_applied = False
 _entity_agent_responses_column_sunset_applied = False
 _agent_schema_ensured = False
@@ -2511,6 +2513,168 @@ def record_to_company_job_scan(
                 (batch_id, short_name, scan_completed_at, total_found, new, duplicates, title_mismatch, status, failure_message),
             )
             conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
+
+def _ensure_surfer_batch_schema(conn: sqlite3.Connection) -> None:
+    """Create surfer_batch table if not present. Idempotent. AST-1229."""
+    global _surfer_batch_schema_ensured
+    if _surfer_batch_schema_ensured:
+        return
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='surfer_batch'"
+    )
+    if cursor.fetchone()[0] == 0:
+        conn.execute("""
+            CREATE TABLE surfer_batch (
+                batch_id TEXT PRIMARY KEY,
+                candidate_id TEXT NOT NULL,
+                status TEXT NOT NULL,
+                started_at TEXT NOT NULL,
+                urls TEXT NOT NULL,
+                job_ids TEXT NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )
+        """)
+        conn.commit()
+    _surfer_batch_schema_ensured = True
+
+
+def _parse_surfer_batch_row(row: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+    """Parse urls / job_ids JSON columns on a surfer_batch row dict."""
+    if row is None:
+        return None
+    out = dict(row)
+    for key in ("urls", "job_ids"):
+        raw = out.get(key)
+        if isinstance(raw, str):
+            out[key] = json.loads(raw)
+        elif raw is None:
+            out[key] = []
+    return out
+
+
+def insert_surfer_batch(
+    batch_id: str,
+    candidate_id: str,
+    status: str,
+    started_at: str,
+    urls: List[Any],
+    job_ids: List[Any],
+) -> bool:
+    """Insert one surfer_batch row. Returns True on insert, False on duplicate PK."""
+    now = _utc_now()
+    urls_json = json.dumps(urls)
+    job_ids_json = json.dumps(job_ids)
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_surfer_batch_schema(conn)
+            conn.execute(
+                """INSERT OR IGNORE INTO surfer_batch
+                   (batch_id, candidate_id, status, started_at, urls, job_ids, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    batch_id,
+                    candidate_id,
+                    status,
+                    started_at,
+                    urls_json,
+                    job_ids_json,
+                    now,
+                    now,
+                ),
+            )
+            conn.commit()
+            return conn.total_changes > 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_surfer_batch(batch_id: str) -> Optional[Dict[str, Any]]:
+    """Return surfer_batch by batch_id with urls/job_ids parsed, or None."""
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_surfer_batch_schema(conn)
+            row = conn.execute(
+                "SELECT * FROM surfer_batch WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchone()
+            return _parse_surfer_batch_row(_row_to_dict(row) if row else None)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_surfer_batches_for_candidate(candidate_id: str) -> List[Dict[str, Any]]:
+    """All surfer_batch rows for candidate, newest started_at first."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_surfer_batch_schema(conn)
+            rows = conn.execute(
+                """SELECT * FROM surfer_batch
+                   WHERE candidate_id = ?
+                   ORDER BY started_at DESC""",
+                (candidate_id,),
+            ).fetchall()
+            return [
+                _parse_surfer_batch_row(_row_to_dict(r))  # type: ignore[misc]
+                for r in rows
+            ]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def update_surfer_batch(
+    batch_id: str,
+    *,
+    status: Optional[str] = None,
+    urls: Optional[List[Any]] = None,
+    job_ids: Optional[List[Any]] = None,
+) -> None:
+    """Update provided surfer_batch fields; always bumps updated_at. Raises if missing/empty."""
+    if status is None and urls is None and job_ids is None:
+        raise ValueError("update_surfer_batch requires at least one field")
+    now = _utc_now()
+    sets: List[str] = ["updated_at = ?"]
+    vals: List[Any] = [now]
+    if status is not None:
+        sets.append("status = ?")
+        vals.append(status)
+    if urls is not None:
+        sets.append("urls = ?")
+        vals.append(json.dumps(urls))
+    if job_ids is not None:
+        sets.append("job_ids = ?")
+        vals.append(json.dumps(job_ids))
+    vals.append(batch_id)
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_surfer_batch_schema(conn)
+            cur = conn.execute(
+                f"UPDATE surfer_batch SET {', '.join(sets)} WHERE batch_id = ?",
+                vals,
+            )
+            conn.commit()
+            if cur.rowcount == 0:
+                raise ValueError(f"surfer_batch not found: {batch_id}")
         finally:
             conn.close()
 
@@ -6859,6 +7023,7 @@ _UPSERT_SCHEMA_ENSURE_FLAGS: dict[str, tuple[str, ...]] = {
     "candidate_intake_session": ("_intake_session_schema_ensured",),
     "company": ("_company_schema_ensured", "_company_candidate_fk_ensured"),
     "company_job_scan": ("_company_job_scan_schema_ensured",),
+    "surfer_batch": ("_surfer_batch_schema_ensured",),
     "company_search_terms": (
         "_company_search_terms_schema_ensured",
         "_company_search_terms_migration_swept",
@@ -6877,6 +7042,7 @@ _UPSERT_LAZY_SCHEMA_HANDLERS: dict[str, Callable[[sqlite3.Connection], None]] = 
     "candidate_intake_session": _ensure_candidate_intake_session_table,
     "company": _ensure_company_table_for_upsert,
     "company_job_scan": _ensure_company_job_scan_schema,
+    "surfer_batch": _ensure_surfer_batch_schema,
     "company_search_terms": _ensure_company_search_terms_table,
     "dispatch_ledger": _ensure_dispatch_ledger_schema,
     "dispatch_task": _ensure_dispatch_task_schema,
