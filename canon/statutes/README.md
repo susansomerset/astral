@@ -58,9 +58,9 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.layers.import-direction` | scoped | judgment | `astral/layers/astral.layers.import-direction.md` |
 | `astral.layers.scripts-exempt-from-layer-rules` | scoped | judgment | `astral/layers/astral.layers.scripts-exempt-from-layer-rules.md` |
 | `astral.layers.ui-config-driven-business-logic` | scoped | judgment | `astral/layers/astral.layers.ui-config-driven-business-logic.md` |
-| `astral.patterns.coat-check-never-store-empty` | scoped | judgment | `astral/patterns/astral.patterns.coat-check-never-store-empty.md` |
-| `astral.patterns.render-verdict-orchestrates-consult` | scoped | judgment | `astral/patterns/astral.patterns.render-verdict-orchestrates-consult.md` |
-| `astral.patterns.require-auth-on-protected-endpoints` | scoped | judgment | `astral/patterns/astral.patterns.require-auth-on-protected-endpoints.md` |
+| `astral.idioms.coat-check-never-store-empty` | scoped | judgment | `astral/idioms/astral.idioms.coat-check-never-store-empty.md` |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | judgment | `astral/idioms/astral.idioms.render-verdict-orchestrates-consult.md` |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | judgment | `astral/idioms/astral.idioms.require-auth-on-protected-endpoints.md` |
 | `astral.seed.agent-tables-in-repo-json` | scoped | judgment | `astral/seed/astral.seed.agent-tables-in-repo-json.md` |
 | `astral.seed.archie-catalog-wins` | scoped | judgment | `astral/seed/astral.seed.archie-catalog-wins.md` |
 | `astral.seed.boot-only-not-hot-path` | scoped | judgment | `astral/seed/astral.seed.boot-only-not-hot-path.md` |

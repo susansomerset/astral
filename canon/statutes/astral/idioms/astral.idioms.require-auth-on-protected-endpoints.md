@@ -1,19 +1,19 @@
 ---
-id: astral.patterns.require-auth-on-protected-endpoints
+id: astral.idioms.require-auth-on-protected-endpoints
 title: require_auth on protected endpoints
 tier: scoped
 checkable: judgment
-status: retired
+status: active
 applies_when:
   layers: ["ui"]
   paths: ["src/ui/**"]
   change_types: ["add", "modify"]
 source_docs:
   - docs/ASTRAL_CODE_RULES.md
-supersedes: null
-superseded_by: astral.idioms.require-auth-on-protected-endpoints
+supersedes: astral.patterns.require-auth-on-protected-endpoints
+superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-08-07"
 ---
 
 # Statement

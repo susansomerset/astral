@@ -1,19 +1,19 @@
 ---
-id: astral.patterns.render-verdict-orchestrates-consult
+id: astral.idioms.render-verdict-orchestrates-consult
 title: render_verdict orchestrates consult
 tier: scoped
 checkable: judgment
-status: retired
+status: active
 applies_when:
   layers: ["core"]
   paths: ["src/core/**"]
   change_types: ["add", "modify"]
 source_docs:
   - docs/ASTRAL_CODE_RULES.md
-supersedes: null
-superseded_by: astral.idioms.render-verdict-orchestrates-consult
+supersedes: astral.patterns.render-verdict-orchestrates-consult
+superseded_by: null
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-08-07"
 ---
 
 # Statement

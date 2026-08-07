@@ -27,9 +27,9 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | already-landed (AST-920) | `astral.layers.import-direction` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/layers/astral.layers.import-direction.md` |
 | create (AST-921) | `astral.layers.scripts-exempt-from-layer-rules` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/layers/astral.layers.scripts-exempt-from-layer-rules.md` |
 | create (AST-921) | `astral.layers.ui-config-driven-business-logic` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/layers/astral.layers.ui-config-driven-business-logic.md` |
-| create (AST-921) | `astral.patterns.coat-check-never-store-empty` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.coat-check-never-store-empty.md` |
-| create (AST-921) | `astral.patterns.render-verdict-orchestrates-consult` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.render-verdict-orchestrates-consult.md` |
-| create (AST-921) | `astral.patterns.require-auth-on-protected-endpoints` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.require-auth-on-protected-endpoints.md` |
+| create (AST-921), renamed (AST-1115) | `astral.idioms.coat-check-never-store-empty` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/idioms/astral.idioms.coat-check-never-store-empty.md` |
+| create (AST-921), renamed (AST-1115) | `astral.idioms.render-verdict-orchestrates-consult` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/idioms/astral.idioms.render-verdict-orchestrates-consult.md` |
+| create (AST-921), renamed (AST-1115) | `astral.idioms.require-auth-on-protected-endpoints` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/idioms/astral.idioms.require-auth-on-protected-endpoints.md` |
 | create (AST-1108) | `astral.seed.agent-tables-in-repo-json` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.agent-tables-in-repo-json.md` |
 | create (AST-1108) | `astral.seed.archie-catalog-wins` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.archie-catalog-wins.md` |
 | create (AST-1108) | `astral.seed.boot-only-not-hot-path` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.boot-only-not-hot-path.md` |

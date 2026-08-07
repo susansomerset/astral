@@ -266,7 +266,7 @@ Companions: waiting stages may define `stale_after_hours` / `stale_state`; `REQU
 
 ### 2.7 render_verdict Pattern
 
-**Statute:** `astral.patterns.render-verdict-orchestrates-consult`
+**Statute:** `astral.idioms.render-verdict-orchestrates-consult`
 
 `render_verdict(task_type, astral_job_id)` is the standard orchestrator for per-job consult tasks in `src/core/consult.py`. It handles the full lifecycle for one job through one agent task:
 
@@ -288,7 +288,7 @@ Technical failures (job not found, content prep failed, API error, schema valida
 
 ### 2.8 Coat-Check Pattern
 
-**Statute:** `astral.patterns.coat-check-never-store-empty`
+**Statute:** `astral.idioms.coat-check-never-store-empty`
 
 Some data fields need to be lazily populated — the value may or may not exist in the database when a caller first asks for it. The **coat-check pattern** handles this transparently: the caller asks for a value by key, and the handler either returns the cached value or fetches it on-demand, saves it, and returns it. The caller never knows which path was taken.
 
@@ -317,7 +317,7 @@ Some data fields need to be lazily populated — the value may or may not exist 
 
 ### 2.9 Authentication Decorator
 
-**Statute:** `astral.patterns.require-auth-on-protected-endpoints`
+**Statute:** `astral.idioms.require-auth-on-protected-endpoints`
 
 UI API endpoints use `@require_auth` to enforce authentication. The decorator checks for an `Authorization: Bearer <token>` header, validates the token, and sets `g.user` with the authenticated user's identity. Endpoints without the decorator are open (e.g., health checks).
 
