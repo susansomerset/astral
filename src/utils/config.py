@@ -4545,6 +4545,7 @@ NAV_CONFIG = [
             {"label": "Manage Agents", "path": "/admin/agent_prompts"},
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
