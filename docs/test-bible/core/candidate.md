@@ -281,7 +281,7 @@ Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/te
 | Admin JSON seed absence | `data/admin/agent_task.json` | **`TestAst1252RetiredWrapperTaskKeysAbsent`** (narrow — not whole `test_repo_admin_json.py`) |
 | Stage claim states + list ids | `src/data/database.py` | revised **`TestAst972CandidateStageEligibility`** |
 
-**Broken / obsolete (Betty revision):** resume worker tests; manual multi-hop `suppress_run_next` walk; stage ensure/provision; wrapper consult/dispatch fixtures; `craft_task_key` asserts; Avail-via-`count_eligible` for stage states (candidate entity Avail is inflow-only).
+**Broken / obsolete (Betty revision):** resume worker tests; manual multi-hop `suppress_run_next` walk; stage ensure/provision; wrapper consult/dispatch fixtures; `craft_task_key` asserts; Avail-via-`count_eligible` for stage states as inflow-only (superseded by **AST-1258** unclaimed-pool Avail for non-inflow keys — see **`docs/test-bible/data/database/dispatch_tasks.md`**).
 
 **Integration:** none revised.
 
