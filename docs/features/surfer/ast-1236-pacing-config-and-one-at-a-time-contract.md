@@ -328,3 +328,39 @@ Changes: Stage 3 `createTabBudget` uses slot-transfer `release()` (no free-then-
 | 1 | `5febe298` | SURFER_PACING_CONFIG block |
 | 2 | `1bad9d79` | GET /api/surfer/pacing_config |
 | 3 | `9884a8c4` | extension dwell + tab budget helpers |
+
+## Review (Radia)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1236
+**Publish ref:** `origin/sub/AST-1174/AST-1236-pacing-config` @ `947b6124`
+**Overall:** DISCUSS
+
+**Scope of diff swept:** `git diff origin/dev...origin/sub/AST-1174/AST-1236-pacing-config` — 16 changed files (11 `A`, 5 `M`): product `src/utils/config.py` (M), `src/ui/server.py` (M), `src/ui/api/api_surfer.py` (A); extension libs `src/ui/extension/src/lib/{dwell,pacingConfig}.ts` (A); plan doc + 5 test-bible docs (A); tests `tests/component/{core/test_page_intake.py, frontend/lib/test_surferPacingConfig.test.ts, ui/api/test_api_surfer.py}` (A) + `tests/component/{ui/conftest.py, utils/test_config.py}` (M).
+
+**Full-set sweep:** 65 active statutes (18 universal + 47 scoped) scored in-session. 17 of 18 universal `conforms`; `orch.git.betty-merge-tests-one-sha` → `needs-discussion` (one clean merge-tests commit delivered, but the delivered `origin/tests` SHA carries an orphaned sibling-ticket test module — see Findings). 32 scoped statutes matched the diff footprint; key ones verified directly against the code: `astral.config.config-source-of-truth` / `astral.standards.no-hardcoded-sets` (10/5/1/30 live only in `SURFER_PACING_CONFIG`; `dwell.ts` and `api_surfer.py` read the block, no inline literals), `astral.standards.dry-and-focused-functions` (single `dwell()`, single `createTabBudget`), `astral.layers.ui-config-driven-business-logic` / `astral.patterns.require-auth-on-protected-endpoints` (thin `GET /api/surfer/pacing_config` behind `@require_auth`, mirrors `api_meteorite.py`'s `from ui.auth import require_auth` pattern exactly), `astral.layers.import-direction` (`api_surfer.py` imports `ui.auth` + `src.utils.config` only), `astral.standards.in-scope-only` (no fan-out loop, no `tabs.create`, no `chrome.alarms` — matches plan boundaries), `astral.git.engineer-test-tree-ban` (the three `code(AST-1236)` commits touch only `src/utils/config.py` / `src/ui/**`; test+bible landed via Betty's separate `test(AST-1236)`→`merge-tests(AST-1236)` commits). The rest of the scoped-and-matched statutes (`astral.seed.*`, `astral.dispatch.*`, `astral.state.job-prior-states-enforced`, `astral.config.pass-threshold-vs-score-floor`, etc.) matched only because `src/utils/config.py` is a named path in their predicate — `conforms` trivially since the new block is additive and untouched by dispatcher/seed/job-state machinery. 15 scoped statutes `not-applicable` — no diff path/layer under `src/core/**`, `src/data/**`, `src/external/**`, `scripts/**`, `data/admin/**`, or `src/ui/frontend/**` (extension libs live under `src/ui/extension/src/lib/`, settled by AST-1170, not `frontend/` — `astral.ui.frontend-file-placement` predicate does not match).
+
+**Independently verified (not taken on trust):** `SURFER_PACING_CONFIG` asserts hold with shipped values (`10-5=5>0`; `10+5=15<30`). `dwell.ts`'s `hi >= ceiling` guard is consistent with those defaults (15 < 30 passes at runtime). `createTabBudget`'s slot-transfer `release()` matches the plan's Revision-1 race fix, and `test_surferPacingConfig.test.ts` exercises exactly that transfer path. `GET /api/surfer/pacing_config` decorator/import shape is byte-for-byte the existing `api_meteorite.py` pattern. Git archaeology on the Findings item: `git show origin/dev:tests/component/core/test_page_intake.py` and `git show <this-tip>:src/core/page_intake.py` both come back missing — the module the orphaned test imports exists nowhere in this diff's ancestry; `git merge-base --is-ancestor af36180c 1a670795` confirms the file arrived as an `origin/tests` branch ancestor (AST-1227's `test(AST-1227)` commit), not a new AST-1236 commit.
+
+**Straggler (C4):** no plan-rubric (Joan) verdict attachment on this ticket, only the plan doc — not a block. Ticket's own "Considered but excluded" list resolves cleanly: none of the excluded items (fan-out loop, WXT scaffold, progress/cancel UI, resume prompt, `chrome.alarms`, `max_tabs` raise, worklist claim APIs, DOM culling, batch-claim wiring, debug-gated server logging) appear anywhere in this diff.
+
+**Pattern conformance:** `pattern.config.config-block` — conforms (`SURFER_PACING_CONFIG` matches the named-block shape). `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`, `astral.git.engineer-test-tree-ban` — all explicitly cited in the ticket's In-scope list, all `conforms` per the sweep above. `astral.ui.frontend-file-placement` — cited but `not-applicable` (extension libs, not `frontend/`).
+
+## Plan adherence
+
+- Diff footprint matches the plan's Self-Assessment (`Single-Component`) exactly: one config block, one thin GET route, two extension lib modules — no fan-out loop smuggled in.
+- Revision 1 (Joan plan-discuss round) is fully reflected in code: `createTabBudget` slot-transfer race fix and `mv3_idle_ceiling_seconds` threaded through config → GET → client type → `dwell()` guard.
+- All three Stage commits (`5febe298`, `1bad9d79`, `9884a8c4`) match the plan's per-stage rituals and the Review (build stub) table.
+
+## Findings
+
+**discuss** — Cross-ticket test-tree contamination risk (C6 §5d cross-ticket boundaries; `orch.git.betty-merge-tests-one-sha` / `orch.roles.betty-owns-test-tree`): `tests/component/core/test_page_intake.py` (162 lines, `from src.core import page_intake as page_intake_mod`) and `docs/test-bible/core/page_intake.md` landed on this branch via the `merge-tests(AST-1236)` commit, but they belong to sibling ticket **AST-1227** (parent AST-1168), not this ticket. `src/core/page_intake.py` does not exist anywhere in this diff's ancestry — confirmed missing on both `origin/dev` and this branch's tip. Root cause: Betty's shared `origin/tests` branch had AST-1227's `test(AST-1227)` commit (`af36180c`) as a direct ancestor of the `origin/tests` tip (`1a670795`) at the moment AST-1236 ran `merge-tests` — a side effect of the shared-branch design when a sibling's tests land on `tests` before its product code lands on `dev`. Right now, on this exact publish ref, running the full component suite (not the AST-1236-narrowed manifest) will hit an import/collection failure on that one file. Not this engineer's fault and outside engineer fix-authority (`astral.git.engineer-test-tree-ban` — Betty owns `tests/`). Flagging so `merge-child` / `prep-uat` know this self-resolves once AST-1227's product commit lands on `dev`, or so Betty can re-anchor `origin/tests` before the next child cuts from it. Not blocking Review Posted.
+
+## Frame diff
+
+(none) — diff footprint matches the ticket Description's In-scope / Considered-but-excluded frame exactly.
+
+context_tokens≈100000
+
+— Radia
