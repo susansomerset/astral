@@ -729,13 +729,14 @@ class TestAst1112ResumeHopTaskKeysShadowDeleted:
 
 
 class TestAst1113CraftTaskKeysShadowDeleted:
-    """AST-1113: craft_task_keys list gone; singular craft_task_key entry only."""
+    """AST-1113 → AST-1252: no craft hop list; stage entry is craft_get_rubric via task_key only."""
 
     def test_requested_artifacts_entry_key_only(self) -> None:
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert "craft_task_keys" not in arts
-        assert arts["craft_task_key"] == "craft_company_search_terms"
-        assert arts["craft_task_key"] in cfg.TASK_CONFIG
+        assert "craft_task_key" not in arts
+        assert arts["task_key"] == "craft_get_rubric"
+        assert arts["task_key"] in cfg.TASK_CONFIG
 
 
 class TestAst848DispatchHopLabels:
@@ -2118,25 +2119,19 @@ class TestAst970CandidateStateRegistry:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst972CandidateStageDispatch:
-    """AST-972: CANDIDATE_STAGE_DISPATCH + claim/trigger helpers for REQUESTED_*."""
+    """AST-972 → AST-1252: CANDIDATE_STAGE_DISPATCH artifacts entry + claim/trigger helpers."""
 
     def test_stage_dispatch_map_and_task_config(self) -> None:
-        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        assert "requested_resume" not in cfg.CANDIDATE_STAGE_DISPATCH
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert resume["task_key"] == "candidate_requested_resume"
-        assert resume["trigger_state"] == "REQUESTED_RESUME"
-        assert resume["pass_state"] == "RESUME_READY"
-        assert resume["craft_task_key"] == "craft_resume_base"
-        assert arts["task_key"] == "candidate_requested_artifacts"
+        assert arts["task_key"] == "craft_get_rubric"
         assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
         assert arts["pass_state"] == "ARTIFACTS_READY"
-        assert "craft_resume_base" in cfg.TASK_CONFIG
-        assert resume["task_key"] in cfg.TASK_CONFIG
-        assert arts["task_key"] in cfg.TASK_CONFIG
-        # AST-1113: singular entry key — hop order is agent_task.run_next, not craft_task_keys.
-        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert "craft_task_key" not in arts
         assert "craft_task_keys" not in arts
-        assert arts["craft_task_key"] in cfg.TASK_CONFIG
+        assert arts["task_key"] in cfg.TASK_CONFIG
+        assert "candidate_requested_resume" not in cfg.TASK_CONFIG
+        assert "candidate_requested_artifacts" not in cfg.TASK_CONFIG
 
     def test_claim_states_include_retry_companions(self) -> None:
         assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
@@ -2155,13 +2150,11 @@ class TestAst972CandidateStageDispatch:
             _dispatch_trigger_state_for_task_key,
         )
 
-        assert _dispatch_trigger_state_for_task_key("candidate_requested_resume") == "REQUESTED_RESUME"
-        assert _dispatch_trigger_state_for_task_key("candidate_requested_artifacts") == "REQUESTED_ARTIFACTS"
-        assert _dispatch_entity_type_for_task_key("candidate_requested_resume") == "candidate"
-        assert _dispatch_entity_type_for_task_key("candidate_requested_artifacts") == "candidate"
-        d = cfg.dispatch_task_admin_defaults("candidate_requested_resume")
+        assert _dispatch_trigger_state_for_task_key("craft_get_rubric") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("craft_get_rubric") == "candidate"
+        d = cfg.dispatch_task_admin_defaults("craft_get_rubric")
         assert d["entity_type"] == "candidate"
-        assert d["trigger_state"] == "REQUESTED_RESUME"
+        assert d["trigger_state"] == "REQUESTED_ARTIFACTS"
 
 
 
@@ -2170,13 +2163,39 @@ class TestAst972CandidateStageDispatch:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022: CANDIDATE_STAGE_DISPATCH seeds AUTO off for new stage rows."""
+    """AST-1022 → AST-1252: remaining stage entry seeds AUTO off."""
 
     def test_stage_dispatch_auto_mode_seed_false(self) -> None:
-        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert resume["auto_mode"] is False
         assert arts["auto_mode"] is False
+
+
+class TestAst1252ArtifactsDispatchChainConfig:
+    """AST-1252: wrappers retired; craft_get_rubric stage entry; REQUESTED_RESUME selectable."""
+
+    def test_wrappers_retired_and_messaged(self) -> None:
+        from src.utils.config import dispatch_task_key_retired_message
+
+        for tk in ("candidate_requested_resume", "candidate_requested_artifacts"):
+            assert tk in cfg.DISPATCH_RETIRED_TASK_KEYS
+            assert tk not in cfg.TASK_CONFIG
+            msg = dispatch_task_key_retired_message(tk)
+            assert "craft_get_rubric" in msg
+            assert "REQUESTED_ARTIFACTS" in msg
+
+    def test_craft_get_rubric_defaults_and_resume_trigger_allowed(self) -> None:
+        # AC2: registry membership only — REQUESTED_RESUME stays valid for craft_get_rubric create.
+        from src.utils.config import CANDIDATE_STATES, TASK_CONFIG
+        assert "REQUESTED_RESUME" in CANDIDATE_STATES
+        assert "craft_get_rubric" in TASK_CONFIG
+        # Mirror admin helper predicate without importing Flask-bound api_admin.
+        assert "REQUESTED_RESUME" in CANDIDATE_STATES
+        assert "REQUESTED_ARTIFACTS" in CANDIDATE_STATES
+
+    def test_no_hop_order_list_in_stage_or_config_assert(self) -> None:
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert set(arts.keys()) == {"task_key", "trigger_state", "pass_state", "auto_mode"}
+        assert arts["task_key"] == "craft_get_rubric"
 
 
 class TestAst973LegacyCandidateRemap:

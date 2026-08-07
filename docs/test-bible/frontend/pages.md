@@ -1554,7 +1554,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
 
-Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/frontend/lib.md`**.
+Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1574,7 +1574,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
 
-Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/frontend/lib.md`**.
+Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

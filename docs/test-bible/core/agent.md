@@ -569,6 +569,17 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
   -q
 ```
 
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. `do_task` persists candidate craft hops when `ctx.persist_candidate_craft_hops` is set.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist hook | `src/core/agent.py` | **`TestAst1252PersistCandidateCraftHops`** |
+
 ### AST-1112 · AST-1109
 
 **Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.

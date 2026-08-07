@@ -844,7 +844,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`CANDIDATE_STAGE_DISPATCH`** artifacts entry (`craft_get_rubric`) + claim/trigger helpers; wrappers retired.
 
 ### AST-1022 · AST-1018
 
@@ -1987,6 +1987,13 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   -q
 ```
 
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: wrappers in `DISPATCH_RETIRED_TASK_KEYS`; `CANDIDATE_STAGE_DISPATCH` artifacts-only with `task_key=craft_get_rubric`; trigger/entity helpers; AC2 `REQUESTED_RESUME` remains selectable.
+
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
 **Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.
@@ -2586,7 +2593,7 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
 
 **Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
 
-`SURFER_PACING_CONFIG` — dwell centre/spread (10 ± 5 seconds), `max_tabs` (1), named `mv3_idle_ceiling_seconds` (30). Module-load asserts keep the dwell window under the MV3 idle ceiling (ordinary timers, not `chrome.alarms`). GET + extension helpers: **`docs/test-bible/ui/api/api_surfer.md`**, **`docs/test-bible/frontend/lib.md`**.
+`SURFER_PACING_CONFIG` — dwell centre/spread (10 ± 5 seconds), `max_tabs` (1), named `mv3_idle_ceiling_seconds` (30). Module-load asserts keep the dwell window under the MV3 idle ceiling (ordinary timers, not `chrome.alarms`). GET + extension helpers: **`docs/test-bible/ui/api/api_surfer.md`**, **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2648,7 +2655,7 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
 
-`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/frontend/lib.md`**.
+`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2669,7 +2676,7 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
 
 **Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
 
-`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/frontend/lib.md`**.
+`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/extension/lib.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
