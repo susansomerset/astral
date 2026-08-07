@@ -144,6 +144,7 @@ Stage 2 deletes the unlocked `[ctx]` candidate arm in `_run_unified`. These two 
 | §2.6 core-decides-transitions | Claim/clear touch lock columns only; state transitions stay in existing craft/inflow runners |
 | Out of scope | Data schema/eligibility (AST-1258); statute/pattern/`CANDIDATE_DATA_MODEL` (AST-1260); gaze_email non-ENTITY_TYPES mailbox; consult multi-entity rewrite |
 | Betty contract / engineer test-tree ban | Stage 2 invalidates two dispatcher component tests; plan discloses node ids + after-expectation; engineer does not patch `tests/` |
+| `astral.standards.dry-and-focused-functions` / `astral.standards.public-then-helpers` | **In scope / conforms** (resolve): scoped statutes; Batch API grouping + no duplicated claim SQL — plan had excluded as “universal”; Radia C4 discuss |
 
 ## Revisions
 
@@ -203,4 +204,17 @@ Full active-set sweep run in-session (65 active statutes: 18 universal + 47 scop
 context_tokens≈158000
 
 — Radia
+
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Tip before resolve:** `d79cd9a0` (Radia `docs(AST-1259): Radia review — findings`)
+
+| Finding | Action |
+|---------|--------|
+| **fix-now** — misplaced `@pytest.mark.skipif` above `TestAst1259CandidatePoolClaim` instead of `TestAst972CandidateStageDispatch` | No product change. **`[qa-handoff]`** → Betty (test-tree); stay Review Posted until she reassigns. |
+| **discuss** — `dry-and-focused-functions` / `public-then-helpers` plan-excluded vs mechanical `conforms` | No product change. Linear **In scope** + plan Rules check now list both (Batch API grouping; no duplicated claim SQL). |
+
+**fix-now (product):** none.
 
