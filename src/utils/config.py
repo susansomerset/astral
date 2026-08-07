@@ -23,6 +23,7 @@ Config sections:
   PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
   TOPIC_MENU_CONFIG — closed informs + status triad for Topic Menu (AST-1074; generation = AST-1075)
   TOPIC_MENU_GEN_CONFIG — Estelle confirm + Topic Menu generation keys (AST-1075)
+  SURFER_CONSENT_CONFIG — Surfer install disclosure version + copy + consent status vocabulary (AST-1235; UI = AST-1237/1238)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
@@ -1472,6 +1473,90 @@ for _req in ("id", "name", "ask", "required", "informs", "status"):
 for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
     assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
 assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
+
+
+# AST-1235: versioned Surfer consent record (install UI = AST-1237; off-switch gate = AST-1238).
+SURFER_CONSENT_CONFIG = {
+    # Stable key under candidate_data (meta sibling of contact/context/artifacts/topic_menu).
+    "candidate_data_key": "surfer_consent",
+    # Bump this string when disclosure_copy changes; prior opt-ins stop being "current".
+    "current_version": "2",
+    # Off-store install: this copy is the only warning she gets (AST-1237).
+    "disclosure_copy": (
+        "Astral Surfer is a browser extension that uses your own logged-in session on "
+        "LinkedIn and Indeed. When you ask it to, it can read the job pages you are "
+        "looking at and send that page content into Astral so we can pull postings we "
+        "cannot otherwise reach.\n\n"
+        "That use is not sanctioned by those sites' terms of service. We have designed "
+        "Surfer to behave like ordinary manual browsing to keep the risk low, but we "
+        "cannot promise a site will never notice. If it does, any account-level "
+        "consequence (warning, suspension, or similar) is yours, not Astral's.\n\n"
+        "Surfer is optional — the rest of Astral works without it. You can turn Surfer "
+        "off later from the extension or your Astral account."
+    ),
+    # UI chrome for web + extension disclosure (AST-1237) — rides the consent GET DTO.
+    "disclosure_title": "Before you use Astral Surfer",
+    "opt_in_label": "I understand — turn on Surfer",
+    "decline_label": "Not now",
+    "current_ok_title": "Surfer is on",
+    "current_ok_body": (
+        "You already opted in to the current Surfer disclosure for this account. "
+        "Capture stays available until you turn Surfer off or we change the disclosure."
+    ),
+    # Stored record statuses. Absence / unknown → treat as "none" in normalize.
+    "statuses": ("none", "opted_in", "opted_out"),
+    "default_status": "none",
+    # AST-1238: off-switch + uninstall guidance (web + extension; same server record).
+    "off_switch_heading": "Astral Surfer",
+    "off_switch_button_label": "Turn Surfer off",
+    "off_switch_confirm": (
+        "Turn Surfer off? The extension will stop capturing pages until you opt in again."
+    ),
+    "status_on_label": "Surfer is on — the extension may capture pages you choose.",
+    "status_off_label": "Surfer is off — nothing will be captured.",
+    # opted_in but accepted_version != current_version (AST-1235 re-consent).
+    "status_stale_label": (
+        "Surfer was on under an older disclosure — capture is paused until you opt in "
+        "again from the extension. You can also turn Surfer off below."
+    ),
+    "uninstall_guidance": (
+        "To remove the extension entirely: open chrome://extensions, find Astral Surfer, "
+        "and click Remove. Turning Surfer off here keeps the extension installed but idle."
+    ),
+    # Returned when a capture path refuses work without current consent (server authority).
+    # Opt-in lives on the extension disclosure (AST-1237) — not on Candidate > Surfer.
+    "capture_denied_message": (
+        "Surfer is not enabled for this account. Turn it on from the extension disclosure "
+        "before capturing pages."
+    ),
+}
+
+assert SURFER_CONSENT_CONFIG["candidate_data_key"] == "surfer_consent"
+assert isinstance(SURFER_CONSENT_CONFIG["current_version"], str) and SURFER_CONSENT_CONFIG["current_version"].strip()
+assert isinstance(SURFER_CONSENT_CONFIG["disclosure_copy"], str) and SURFER_CONSENT_CONFIG["disclosure_copy"].strip()
+assert SURFER_CONSENT_CONFIG["statuses"] == ("none", "opted_in", "opted_out")
+assert SURFER_CONSENT_CONFIG["default_status"] in SURFER_CONSENT_CONFIG["statuses"]
+assert SURFER_CONSENT_CONFIG["default_status"] == "none"
+assert len(SURFER_CONSENT_CONFIG["statuses"]) == len(set(SURFER_CONSENT_CONFIG["statuses"]))
+for _surfer_chrome_key in (
+    "disclosure_title",
+    "opt_in_label",
+    "decline_label",
+    "current_ok_title",
+    "current_ok_body",
+):
+    assert isinstance(SURFER_CONSENT_CONFIG[_surfer_chrome_key], str) and SURFER_CONSENT_CONFIG[_surfer_chrome_key].strip()
+for _surfer_copy_key in (
+    "off_switch_heading",
+    "off_switch_button_label",
+    "off_switch_confirm",
+    "status_on_label",
+    "status_off_label",
+    "status_stale_label",
+    "uninstall_guidance",
+    "capture_denied_message",
+):
+    assert isinstance(SURFER_CONSENT_CONFIG[_surfer_copy_key], str) and SURFER_CONSENT_CONFIG[_surfer_copy_key].strip()
 
 
 # AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).
@@ -4439,11 +4524,13 @@ NAV_CONFIG = [
         "items": [
             {"label": "Intake", "path": "/candidate/intake"},
             {"label": "Profile", "path": "/candidate/profile"},
+            {"label": "Surfer", "path": "/candidate/surfer"},
             {"label": "Strengths", "path": "/candidate/strengths"},
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
+            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
         ],
     },
     {

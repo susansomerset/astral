@@ -37,6 +37,10 @@ app.register_blueprint(candidate_bp)
 from ui.api.api_intake import intake_bp  # noqa: E402
 app.register_blueprint(intake_bp)
 
+from ui.api.api_surfer import surfer_bp  # noqa: E402
+app.register_blueprint(surfer_bp)
+
+
 from ui.api.api_admin import admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 
@@ -55,8 +59,6 @@ app.register_blueprint(jobs_bp)
 from ui.api.api_meteorite import meteorite_bp  # noqa: E402
 app.register_blueprint(meteorite_bp)
 
-from ui.api.api_surfer import surfer_bp  # noqa: E402
-app.register_blueprint(surfer_bp)
 
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)

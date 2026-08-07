@@ -40,6 +40,7 @@ from src.utils.config import (
     COVER_FROM_BLOCK_CONFIG,
     TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
+    SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
@@ -1049,6 +1050,175 @@ def mark_topic_menu_preamble_confirmed(
         )
         logger.debug_detail(f"preamble_confirmed_at={stamp}")
     return menu
+
+
+def _surfer_consent_key() -> str:
+    return str(SURFER_CONSENT_CONFIG["candidate_data_key"])
+
+
+def _surfer_consent_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def empty_surfer_consent() -> dict:
+    """Empty Surfer consent envelope (AST-1235)."""
+    return {
+        "status": SURFER_CONSENT_CONFIG["default_status"],
+        "accepted_version": None,
+        "updated_at": None,
+    }
+
+
+def normalize_surfer_consent(raw: Any) -> dict:
+    """Coerce stored/raw consent to status / accepted_version / updated_at."""
+    if not isinstance(raw, dict):
+        return empty_surfer_consent()
+    status = raw.get("status")
+    if status not in SURFER_CONSENT_CONFIG["statuses"]:
+        status = "none"
+    accepted = raw.get("accepted_version")
+    if isinstance(accepted, str) and accepted.strip():
+        accepted_version = accepted.strip()
+    else:
+        accepted_version = None
+    updated = raw.get("updated_at")
+    if isinstance(updated, str) and updated.strip():
+        updated_at = updated.strip()
+    else:
+        updated_at = None
+    return {
+        "status": status,
+        "accepted_version": accepted_version,
+        "updated_at": updated_at,
+    }
+
+
+def get_surfer_consent(candidate_id: str) -> dict:
+    """Load ``candidate_data.surfer_consent`` (normalized). Raises if candidate missing."""
+    cand = get_candidate(candidate_id)
+    if not cand:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = cand.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return normalize_surfer_consent(cd.get(_surfer_consent_key()))
+
+
+def is_surfer_consent_current(record: Any) -> bool:
+    """True only when opted_in and accepted_version matches config current_version."""
+    n = normalize_surfer_consent(record)
+    return (
+        n["status"] == "opted_in"
+        and n["accepted_version"] == SURFER_CONSENT_CONFIG["current_version"]
+    )
+
+
+def require_current_surfer_consent(candidate_id: str) -> dict:
+    """Return the consent DTO when current; raise ValueError if capture must no-op."""
+    dto = surfer_consent_dto(candidate_id)
+    if not dto["is_current"]:
+        raise ValueError(str(SURFER_CONSENT_CONFIG["capture_denied_message"]))
+    return dto
+
+
+def surfer_consent_dto(candidate_id: str) -> dict:
+    """Read model for API / siblings (includes current disclosure copy + is_current)."""
+    record = get_surfer_consent(candidate_id)
+    return {
+        "status": record["status"],
+        "accepted_version": record["accepted_version"],
+        "updated_at": record["updated_at"],
+        "current_version": SURFER_CONSENT_CONFIG["current_version"],
+        "disclosure_copy": SURFER_CONSENT_CONFIG["disclosure_copy"],
+        "is_current": is_surfer_consent_current(record),
+        # AST-1237: display chrome from config (not stored on the meta record).
+        "disclosure_title": SURFER_CONSENT_CONFIG["disclosure_title"],
+        "opt_in_label": SURFER_CONSENT_CONFIG["opt_in_label"],
+        "decline_label": SURFER_CONSENT_CONFIG["decline_label"],
+        "current_ok_title": SURFER_CONSENT_CONFIG["current_ok_title"],
+        "current_ok_body": SURFER_CONSENT_CONFIG["current_ok_body"],
+        # AST-1238: off-switch / status chrome from config.
+        "off_switch_heading": SURFER_CONSENT_CONFIG["off_switch_heading"],
+        "off_switch_button_label": SURFER_CONSENT_CONFIG["off_switch_button_label"],
+        "off_switch_confirm": SURFER_CONSENT_CONFIG["off_switch_confirm"],
+        "status_on_label": SURFER_CONSENT_CONFIG["status_on_label"],
+        "status_off_label": SURFER_CONSENT_CONFIG["status_off_label"],
+        "status_stale_label": SURFER_CONSENT_CONFIG["status_stale_label"],
+        "uninstall_guidance": SURFER_CONSENT_CONFIG["uninstall_guidance"],
+        "capture_denied_message": SURFER_CONSENT_CONFIG["capture_denied_message"],
+    }
+
+
+def opt_in_surfer_consent(
+    candidate_id: str,
+    accepted_version: Any,
+    *,
+    debug: bool = False,
+) -> dict:
+    """Record affirmative Surfer opt-in for the current disclosure version."""
+    logger.set_debug_flag(debug)
+    if not isinstance(accepted_version, str) or not accepted_version.strip():
+        raise ValueError("accepted_version must be a non-empty string")
+    accepted_version = accepted_version.strip()
+    if accepted_version != SURFER_CONSENT_CONFIG["current_version"]:
+        raise ValueError("accepted_version does not match current disclosure version")
+    current = get_surfer_consent(candidate_id)
+    to_store = {
+        "status": "opted_in",
+        "accepted_version": accepted_version,
+        "updated_at": _surfer_consent_now(),
+    }
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_in_surfer_consent",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"record={current!r}")
+    save_candidate_data(candidate_id, {_surfer_consent_key(): to_store}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_in_surfer_consent",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"to_store={to_store!r}")
+    return surfer_consent_dto(candidate_id)
+
+
+def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
+    """Record Surfer opt-out; preserve last accepted_version for audit."""
+    logger.set_debug_flag(debug)
+    current = get_surfer_consent(candidate_id)
+    to_store = {
+        "status": "opted_out",
+        "accepted_version": current["accepted_version"],
+        "updated_at": _surfer_consent_now(),
+    }
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_out_surfer_consent",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"record={current!r}")
+    save_candidate_data(candidate_id, {_surfer_consent_key(): to_store}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_out_surfer_consent",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"to_store={to_store!r}")
+    return surfer_consent_dto(candidate_id)
 
 
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:

@@ -402,3 +402,5 @@ context_tokens≈130000
 **discuss — cross-ticket / cross-epic `origin/tests` contamination on `merge-tests(AST-1239)`:** Acknowledged; no product change on this tip. Outside engineer fix-authority (`astral.git.engineer-test-tree-ban`); Betty owns the test tree / `merge-tests` scoping. This ticket's `code(AST-1239)` commit remains `fanOut.ts` only. Betty's AST-1239 manifest (fanOut + pacingConfig) already passed green at Tests Passed — full-suite orphans are a shared-lane process issue for Susan/Betty, not a fan-out loop defect.
 
 **Product / plan:** unchanged vs built tip `139f338f` + Radia docs intake `9cb92796`.
+
+**§9a merge `origin/dev` (2026-08-07):** `api_surfer.py` add/add — kept pacing (`GET /api/surfer/pacing_config`, AST-1236) and consent (`/api/candidates/<id>/surfer/consent`, AST-1235) in one blueprint under `url_prefix="/api"`; deduped double `surfer_bp` register in `server.py`.
