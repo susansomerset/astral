@@ -1113,6 +1113,14 @@ def is_surfer_consent_current(record: Any) -> bool:
     )
 
 
+def require_current_surfer_consent(candidate_id: str) -> dict:
+    """Return the consent DTO when current; raise ValueError if capture must no-op."""
+    dto = surfer_consent_dto(candidate_id)
+    if not dto["is_current"]:
+        raise ValueError(str(SURFER_CONSENT_CONFIG["capture_denied_message"]))
+    return dto
+
+
 def surfer_consent_dto(candidate_id: str) -> dict:
     """Read model for API / siblings (includes current disclosure copy + is_current)."""
     record = get_surfer_consent(candidate_id)
@@ -1129,6 +1137,15 @@ def surfer_consent_dto(candidate_id: str) -> dict:
         "decline_label": SURFER_CONSENT_CONFIG["decline_label"],
         "current_ok_title": SURFER_CONSENT_CONFIG["current_ok_title"],
         "current_ok_body": SURFER_CONSENT_CONFIG["current_ok_body"],
+        # AST-1238: off-switch / status chrome from config.
+        "off_switch_heading": SURFER_CONSENT_CONFIG["off_switch_heading"],
+        "off_switch_button_label": SURFER_CONSENT_CONFIG["off_switch_button_label"],
+        "off_switch_confirm": SURFER_CONSENT_CONFIG["off_switch_confirm"],
+        "status_on_label": SURFER_CONSENT_CONFIG["status_on_label"],
+        "status_off_label": SURFER_CONSENT_CONFIG["status_off_label"],
+        "status_stale_label": SURFER_CONSENT_CONFIG["status_stale_label"],
+        "uninstall_guidance": SURFER_CONSENT_CONFIG["uninstall_guidance"],
+        "capture_denied_message": SURFER_CONSENT_CONFIG["capture_denied_message"],
     }
 
 

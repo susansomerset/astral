@@ -19,6 +19,7 @@
  * 10b2. Surfer consent disclosure (AST-1237)
  * 10e. CollapsiblePanel
  * 10f. Section expand chrome (AST-893)
+ * 10g. Candidate Surfer off-switch (AST-1238)
  * 11. Toast
  * 12. Agent Timesheets
  * 13. Execution History
@@ -1719,6 +1720,23 @@ input.side-tab-heading-editable:focus {
 
 .section-expand-chrome button:hover {
   background: var(--bg-card);
+}
+
+/* === 10g. Candidate Surfer off-switch (AST-1238) === */
+.surfer-page {
+  max-width: 40rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.surfer-page-status {
+  margin: 0;
+}
+
+.surfer-page-uninstall {
+  margin: 0;
+  white-space: pre-wrap;
 }
 
 /* AST-359: Code + Importance row — same select/input styling as .admin-filters (scheduled_actions Task filter) */

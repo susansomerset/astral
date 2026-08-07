@@ -1506,6 +1506,29 @@ SURFER_CONSENT_CONFIG = {
     # Stored record statuses. Absence / unknown → treat as "none" in normalize.
     "statuses": ("none", "opted_in", "opted_out"),
     "default_status": "none",
+    # AST-1238: off-switch + uninstall guidance (web + extension; same server record).
+    "off_switch_heading": "Astral Surfer",
+    "off_switch_button_label": "Turn Surfer off",
+    "off_switch_confirm": (
+        "Turn Surfer off? The extension will stop capturing pages until you opt in again."
+    ),
+    "status_on_label": "Surfer is on — the extension may capture pages you choose.",
+    "status_off_label": "Surfer is off — nothing will be captured.",
+    # opted_in but accepted_version != current_version (AST-1235 re-consent).
+    "status_stale_label": (
+        "Surfer was on under an older disclosure — capture is paused until you opt in "
+        "again from the extension. You can also turn Surfer off below."
+    ),
+    "uninstall_guidance": (
+        "To remove the extension entirely: open chrome://extensions, find Astral Surfer, "
+        "and click Remove. Turning Surfer off here keeps the extension installed but idle."
+    ),
+    # Returned when a capture path refuses work without current consent (server authority).
+    # Opt-in lives on the extension disclosure (AST-1237) — not on Candidate > Surfer.
+    "capture_denied_message": (
+        "Surfer is not enabled for this account. Turn it on from the extension disclosure "
+        "before capturing pages."
+    ),
 }
 
 assert SURFER_CONSENT_CONFIG["candidate_data_key"] == "surfer_consent"
@@ -1523,6 +1546,17 @@ for _surfer_chrome_key in (
     "current_ok_body",
 ):
     assert isinstance(SURFER_CONSENT_CONFIG[_surfer_chrome_key], str) and SURFER_CONSENT_CONFIG[_surfer_chrome_key].strip()
+for _surfer_copy_key in (
+    "off_switch_heading",
+    "off_switch_button_label",
+    "off_switch_confirm",
+    "status_on_label",
+    "status_off_label",
+    "status_stale_label",
+    "uninstall_guidance",
+    "capture_denied_message",
+):
+    assert isinstance(SURFER_CONSENT_CONFIG[_surfer_copy_key], str) and SURFER_CONSENT_CONFIG[_surfer_copy_key].strip()
 
 
 # AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).
@@ -4461,6 +4495,7 @@ NAV_CONFIG = [
         "items": [
             {"label": "Intake", "path": "/candidate/intake"},
             {"label": "Profile", "path": "/candidate/profile"},
+            {"label": "Surfer", "path": "/candidate/surfer"},
             {"label": "Strengths", "path": "/candidate/strengths"},
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
