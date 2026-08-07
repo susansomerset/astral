@@ -165,3 +165,14 @@ Changes:
 - **§1.3 DRY:** Reuse job start-artifact pattern + NAV labels; one POST for both buttons.
 - **Betty test-tree ban:** No `tests/` / bible edits in this plan.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`  
+**Tip:** `7668bcf9`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `4c6fc90a` | REQUESTED_ARTIFACTS priors + start handoff helpers |
+| 2 | `6f7eab54` | generate_artifacts API + manifest chain fields |
+| 3 | `7668bcf9` | Generate/Regenerate UI handoff |
