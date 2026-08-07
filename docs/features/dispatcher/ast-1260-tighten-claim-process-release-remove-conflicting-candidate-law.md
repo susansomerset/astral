@@ -202,3 +202,14 @@ Changes: (fix-now) Stage 3 updates `## Snake_case` → **DB columns** to include
 | `astral.git.engineer-test-tree-ban` / Betty owns tests | No `tests/` or bible edits |
 | §3.3 import direction | N/A — docs/canon only |
 | Out of scope | `src/data/database.py`, `src/core/dispatcher.py`, `src/core/candidate.py` product logic — siblings |
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1257/AST-1260-tighten-claim-process-release-remove-conflicting-candidate-law`
+**Tip:** `6ae865c8`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `2ab2c564` | Tighten `astral.batch.claim-process-release` (ENTITY_TYPES pool; zero-row release note) |
+| 2 | `33d376ff` | Candidate peers in claim pattern `canonical_refs` + CODE_RULES §2.4 |
+| 3 | `6ae865c8` | `CANDIDATE_DATA_MODEL` lock columns + Snake_case inventory |
