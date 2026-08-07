@@ -111,3 +111,14 @@ Changes:
 - **§1.3 / layers:** Persist stays in candidate; hook late-imports from agent; consult routes; dispatcher retires wrappers only.
 - **Betty test-tree ban:** No `tests/` / bible edits in this plan.
 - **No conflict requiring conf-!!-NONE.**
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`  
+**Tip:** `a26c403c`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `a923e4d2` | retire wrapper TASK_CONFIG keys; craft_get_rubric stage entry |
+| 2 | `f34c3b40` | native run_next + persist_candidate_craft_hops; drop resume worker |
+| 3 | `a26c403c` | retire-only wrapper dispatch_task delete; drop admin agent_task seeds |
