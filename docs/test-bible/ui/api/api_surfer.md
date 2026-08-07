@@ -48,7 +48,7 @@ Authenticated `GET`/`PUT /api/candidates/<id>/surfer/consent` — DTO includes `
 | GET DTO / PUT opt_in+opt_out / 400 / 404 / 401 | `src/ui/api/api_surfer.py` | **`TestAst1235SurferConsentApi`** |
 | Blueprint registration | `src/ui/server.py` | **`surfer_consent_client`** fixture |
 
-**Broken / obsolete:** none — consent routes additive on this module (pacing remains AST-1236).
+**Broken / obsolete:** none — consent routes additive on this module (pacing remains AST-1236). Pacing config import is lazy inside `TestAst1236SurferPacingConfigApi` so `::TestAst1235SurferConsentApi` collects on tips without `SURFER_PACING_CONFIG`.
 
 **Integration:** no existing scenario asserts this route — no revision; do not invent new integration coverage.
 
