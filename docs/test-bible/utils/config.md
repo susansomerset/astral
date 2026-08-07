@@ -2580,3 +2580,65 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
   -q
 ```
+
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+`SURFER_PACING_CONFIG` — dwell centre/spread (10 ± 5 seconds), `max_tabs` (1), named `mv3_idle_ceiling_seconds` (30). Module-load asserts keep the dwell window under the MV3 idle ceiling (ordinary timers, not `chrome.alarms`). GET + extension helpers: **`docs/test-bible/ui/api/api_surfer.md`**, **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Defaults + MV3 window contract | `src/utils/config.py` | **`TestAst1236SurferPacingConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer pacing scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
+  -q
+```
+
+### AST-1229 · AST-1169
+
+**Parent:** [AST-1169 — Surfer batch — durable worklist state and batch-scoped intake](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake). **Publish:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
+
+`SURFER_BATCH_CONFIG` — batch statuses (`requires_all_urls_terminal` on COMPLETED only), URL outcomes (`pending`/`delivered` non-terminal), id prefix `surfer`, lifecycle pointer key `active_surfer_batch_id`. No staleness keys. Core: **`docs/test-bible/core/surfer.md`**. Data: **`docs/test-bible/data/database/surfer_batches.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Vocab + flag contract | `src/utils/config.py` | **`TestAst1229SurferBatchConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
+  -q
+```
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`SURFER_CONSENT_CONFIG` — `candidate_data_key` `surfer_consent`, opaque `current_version`, provisional `disclosure_copy`, closed `statuses` (`none`/`opted_in`/`opted_out`), `default_status` `none`. Core helpers + API: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key / version / copy / statuses contract | `src/utils/config.py` | **`TestAst1235SurferConsentConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer consent scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```

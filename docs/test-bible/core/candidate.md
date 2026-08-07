@@ -813,3 +813,25 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
   -q
 ```
 
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`candidate_data.surfer_consent` meta sibling: `empty_surfer_consent` / `normalize_surfer_consent` / `get_surfer_consent` / `is_surfer_consent_current` / `surfer_consent_dto` / `opt_in_surfer_consent` / `opt_out_surfer_consent` (preserve last `accepted_version` on opt-out; Style D when `debug=True`). `is_current` only when `opted_in` **and** `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Config: **`docs/test-bible/utils/config.md`**. API: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize / is_current / get / opt-in / opt-out / Style D | `src/core/candidate.py` | **`TestAst1235SurferConsent`** |
+
+**Broken / obsolete:** none — additive Surfer consent helpers.
+
+**Integration:** no existing scenario asserts `surfer_consent` — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1235SurferConsent \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
