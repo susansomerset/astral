@@ -2710,3 +2710,32 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
   -q
 ```
+
+### AST-1214 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists`.
+
+`dispatch_task_admin_defaults` widens beyond `TASK_CONFIG`: helper-resolvable hops (`fetch_*`, `gaze`, `inflow_discovery`, `recheck_no_openings`, plus writer-capable `prefilter` / `inflow_resolve_website`) resolve via `_dispatch_*` helpers; meteorite mailbox fold via `METEORITE_EMAIL_PARSE_CONFIG` (`legacy_agent_task_key`, `admin_entity_type`) + `is_meteorite_email_mailbox_task_key`. Admin picker/validator/Avail: **`docs/test-bible/ui/api/api_admin.md`** (**AST-1214**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper-resolvable + mailbox defaults | `src/utils/config.py` | revised gap-key classes (**`TestAst796…`**, **`TestAst702…`**, **`TestAst719…`**, **`TestAst701…`**, **`TestAst874…`**, **`TestAst505…`**, **`TestAst506…`**); **`TestAst1214DispatchAdminDefaultsWidened`** |
+| Mailbox fold config fields | same | revised **`TestAst1089ParseMeteoriteEmailConfig`** |
+
+**Broken / obsolete (Betty revision this pass):** `dispatch_task_admin_defaults(<gap_key>)` expecting `unknown task_key` KeyError for helper-resolvable / prefilter / inflow_resolve_website keys.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover::test_fetch_jd_gazer_hop_not_task_config_catalog \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig::test_dispatch_registry_and_pjl_data_keys \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig::test_dispatch_registry_and_homepage_text_key \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_gazer_and_dispatch_registry \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  -q
+```
