@@ -243,3 +243,14 @@ Changes:
 - All public core functions take `debug: bool = False`; module uses `get_logger(__name__)`.
 - Finished file layout: public then helpers; one-batch `ValueError` flagged as AST-1230 envelope hand-off.
 - Self-assessment Conf → Medium.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`
+**Tip (pre-review):** _(filled at Code Complete)_
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | _(sha)_ | `SURFER_BATCH_CONFIG` |
+| 2 | _(sha)_ | `surfer_batch` table + data helpers + upsert registry |
+| 3 | _(sha)_ | `src/core/surfer.py` + lifecycle pointer doc |

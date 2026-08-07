@@ -137,6 +137,8 @@ Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE`
 
 **DELETED reap:** entering `DELETED` writes `candidate_data.lifecycle.reap_started_at` + `reap_after_hours` from the registry. Hard-delete / legacy row remap is AST-973.
 
+**Surfer active batch (AST-1229):** `candidate_data.lifecycle.active_surfer_batch_id` (key name from `SURFER_BATCH_CONFIG["candidate_data_lifecycle_key"]`) holds the id of the candidate's non-terminal Surfer batch when one exists. Cleared to JSON `null` (`None` in Python) when that batch reaches a terminal status. Readers treat `None` and absent identically. Sibling of `reap_*` under `lifecycle` — not inside contact/context/artifacts.
+
 `check_context_complete()` only reports whether the four context fields are populated — it does **not** write state.
 
 
