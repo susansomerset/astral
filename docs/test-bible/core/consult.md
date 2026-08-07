@@ -700,7 +700,7 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`run_consult_task`** routes stage `task_key` (`craft_get_rubric`) to `run_requested_artifacts_dispatch`; wrapper keys no longer routed.
 
 ### AST-1054 · AST-1052
 

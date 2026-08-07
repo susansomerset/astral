@@ -3890,29 +3890,10 @@ class TestAst898QualifyNewRetry:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst972CandidateStageConsultRouting:
-    """AST-972: run_consult_task routes REQUESTED_* keys to stage workers."""
+    """AST-972 → AST-1252: run_consult_task routes craft_get_rubric to artifacts worker."""
 
     @pytest.mark.asyncio
-    async def test_routes_requested_resume(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        worker = AsyncMock(
-            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        )
-        monkeypatch.setattr("src.core.candidate.run_requested_resume_dispatch", worker)
-        entity = {"astral_candidate_id": "c1", "state": "REQUESTED_RESUME"}
-        out = await consult_mod.run_consult_task(
-            "candidate",
-            "REQUESTED_RESUME",
-            [entity],
-            "b1",
-            entity,
-            False,
-            dispatch_task_key="candidate_requested_resume",
-        )
-        assert out["total_passed"] == 1
-        worker.assert_awaited_once_with("c1", debug=False)
-
-    @pytest.mark.asyncio
-    async def test_routes_requested_artifacts(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_routes_requested_artifacts_via_stage_task_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
         worker = AsyncMock(
             return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
         )
@@ -3925,10 +3906,33 @@ class TestAst972CandidateStageConsultRouting:
             "b1",
             entity,
             False,
-            dispatch_task_key="candidate_requested_artifacts",
+            dispatch_task_key="craft_get_rubric",
         )
         assert out["total_passed"] == 1
         worker.assert_awaited_once_with("c2", debug=False)
+
+    @pytest.mark.asyncio
+    async def test_wrapper_keys_no_longer_routed(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        worker = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        )
+        monkeypatch.setattr("src.core.candidate.run_requested_artifacts_dispatch", worker)
+        entity = {"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}
+        out = await consult_mod.run_consult_task(
+            "candidate",
+            "REQUESTED_ARTIFACTS",
+            [entity],
+            "b1",
+            entity,
+            False,
+            dispatch_task_key="candidate_requested_artifacts",
+        )
+        assert out["total_processed"] == 0
+        worker.assert_not_awaited()
+        assert not hasattr(
+            __import__("src.core.candidate", fromlist=["run_requested_resume_dispatch"]),
+            "run_requested_resume_dispatch",
+        )
 
 
 class TestAst1055MeteoriteConsultRoutes:

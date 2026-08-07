@@ -62,6 +62,22 @@ PUT **`artifacts.get_rubric`** with craft-shaped literal `\n` criteria coerces v
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Admin PUT state → **`transition_candidate_state`** (**`TestAst970AdminStateOverride`**).
 
+### AST-1253 · AST-1243
+
+**Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+`POST /api/candidates/<id>/generate_artifacts` → `start_requested_artifacts`; chain-key `POST …/generate/<craft_*>` returns core 409. Primary core: **`docs/test-bible/core/candidate.md`** § AST-1253.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| generate_artifacts + chain 409 | `src/ui/api/api_candidate.py` | **`TestAst1253GenerateArtifactsApi`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1253GenerateArtifactsApi \
+  -q
+```
+
 ### AST-1014 · AST-952
 
 PUT refuse legacy `profile`; signature under `contact`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestCandidateRoutes::test_update_rejects_legacy_profile_body`**.

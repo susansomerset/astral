@@ -23,6 +23,7 @@ Config sections:
   PREAMBLE_CONFIG — mechanical intake Intro + step script (AST-1016; UI = AST-1017)
   TOPIC_MENU_CONFIG — closed informs + status triad for Topic Menu (AST-1074; generation = AST-1075)
   TOPIC_MENU_GEN_CONFIG — Estelle confirm + Topic Menu generation keys (AST-1075)
+  SURFER_CONSENT_CONFIG — Surfer install disclosure version + copy + consent status vocabulary (AST-1235; UI = AST-1237/1238)
   PREAMBLE_VALIDATION_CONFIG — Ruth Valid/Try Again/Escalate task_key + outcomes (AST-1015)
   ROSTER_CONFIG   — roster-specific (prefilter, locate_job_page, parse_job_list)
   GAZER_CONFIG    — gazer batch steps (validate_title inline-only, fetch_jd, fetch_culture_pages, gaze)
@@ -350,18 +351,6 @@ TASK_CONFIG = {
         "requires_candidate_key": True,
         "trigger_state": None,
     },
-    # AST-972: dispatch orchestration for REQUESTED_* stages (not craft prompts).
-    "candidate_requested_resume": {
-        "entity_type": "candidate",
-        "requires_candidate_key": True,
-        "trigger_state": "REQUESTED_RESUME",
-    },
-    "candidate_requested_artifacts": {
-        "entity_type": "candidate",
-        "requires_candidate_key": True,
-        "trigger_state": "REQUESTED_ARTIFACTS",
-    },
-
     # Phase C. Company Roster
     # VET COMPANY PROMPT - Estelle 3
     "find_company_website": {
@@ -1240,6 +1229,11 @@ CANDIDATE_STATES = {
             "RESUME_READY",
             "RESUME_READY_STALE",
             "REQUESTED_ARTIFACTS_RETRY",
+            # AST-1253: regenerate re-entry from post-chain / search states
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
         ],
         "retry_state": "REQUESTED_ARTIFACTS_RETRY",
         "error_state": "REQUESTED_ARTIFACTS_ERROR",
@@ -1472,6 +1466,90 @@ for _req in ("id", "name", "ask", "required", "informs", "status"):
 for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
     assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
 assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
+
+
+# AST-1235: versioned Surfer consent record (install UI = AST-1237; off-switch gate = AST-1238).
+SURFER_CONSENT_CONFIG = {
+    # Stable key under candidate_data (meta sibling of contact/context/artifacts/topic_menu).
+    "candidate_data_key": "surfer_consent",
+    # Bump this string when disclosure_copy changes; prior opt-ins stop being "current".
+    "current_version": "2",
+    # Off-store install: this copy is the only warning she gets (AST-1237).
+    "disclosure_copy": (
+        "Astral Surfer is a browser extension that uses your own logged-in session on "
+        "LinkedIn and Indeed. When you ask it to, it can read the job pages you are "
+        "looking at and send that page content into Astral so we can pull postings we "
+        "cannot otherwise reach.\n\n"
+        "That use is not sanctioned by those sites' terms of service. We have designed "
+        "Surfer to behave like ordinary manual browsing to keep the risk low, but we "
+        "cannot promise a site will never notice. If it does, any account-level "
+        "consequence (warning, suspension, or similar) is yours, not Astral's.\n\n"
+        "Surfer is optional — the rest of Astral works without it. You can turn Surfer "
+        "off later from the extension or your Astral account."
+    ),
+    # UI chrome for web + extension disclosure (AST-1237) — rides the consent GET DTO.
+    "disclosure_title": "Before you use Astral Surfer",
+    "opt_in_label": "I understand — turn on Surfer",
+    "decline_label": "Not now",
+    "current_ok_title": "Surfer is on",
+    "current_ok_body": (
+        "You already opted in to the current Surfer disclosure for this account. "
+        "Capture stays available until you turn Surfer off or we change the disclosure."
+    ),
+    # Stored record statuses. Absence / unknown → treat as "none" in normalize.
+    "statuses": ("none", "opted_in", "opted_out"),
+    "default_status": "none",
+    # AST-1238: off-switch + uninstall guidance (web + extension; same server record).
+    "off_switch_heading": "Astral Surfer",
+    "off_switch_button_label": "Turn Surfer off",
+    "off_switch_confirm": (
+        "Turn Surfer off? The extension will stop capturing pages until you opt in again."
+    ),
+    "status_on_label": "Surfer is on — the extension may capture pages you choose.",
+    "status_off_label": "Surfer is off — nothing will be captured.",
+    # opted_in but accepted_version != current_version (AST-1235 re-consent).
+    "status_stale_label": (
+        "Surfer was on under an older disclosure — capture is paused until you opt in "
+        "again from the extension. You can also turn Surfer off below."
+    ),
+    "uninstall_guidance": (
+        "To remove the extension entirely: open chrome://extensions, find Astral Surfer, "
+        "and click Remove. Turning Surfer off here keeps the extension installed but idle."
+    ),
+    # Returned when a capture path refuses work without current consent (server authority).
+    # Opt-in lives on the extension disclosure (AST-1237) — not on Candidate > Surfer.
+    "capture_denied_message": (
+        "Surfer is not enabled for this account. Turn it on from the extension disclosure "
+        "before capturing pages."
+    ),
+}
+
+assert SURFER_CONSENT_CONFIG["candidate_data_key"] == "surfer_consent"
+assert isinstance(SURFER_CONSENT_CONFIG["current_version"], str) and SURFER_CONSENT_CONFIG["current_version"].strip()
+assert isinstance(SURFER_CONSENT_CONFIG["disclosure_copy"], str) and SURFER_CONSENT_CONFIG["disclosure_copy"].strip()
+assert SURFER_CONSENT_CONFIG["statuses"] == ("none", "opted_in", "opted_out")
+assert SURFER_CONSENT_CONFIG["default_status"] in SURFER_CONSENT_CONFIG["statuses"]
+assert SURFER_CONSENT_CONFIG["default_status"] == "none"
+assert len(SURFER_CONSENT_CONFIG["statuses"]) == len(set(SURFER_CONSENT_CONFIG["statuses"]))
+for _surfer_chrome_key in (
+    "disclosure_title",
+    "opt_in_label",
+    "decline_label",
+    "current_ok_title",
+    "current_ok_body",
+):
+    assert isinstance(SURFER_CONSENT_CONFIG[_surfer_chrome_key], str) and SURFER_CONSENT_CONFIG[_surfer_chrome_key].strip()
+for _surfer_copy_key in (
+    "off_switch_heading",
+    "off_switch_button_label",
+    "off_switch_confirm",
+    "status_on_label",
+    "status_off_label",
+    "status_stale_label",
+    "uninstall_guidance",
+    "capture_denied_message",
+):
+    assert isinstance(SURFER_CONSENT_CONFIG[_surfer_copy_key], str) and SURFER_CONSENT_CONFIG[_surfer_copy_key].strip()
 
 
 # AST-1075: Estelle preamble confirm + Topic Menu generation (persistence = AST-1074).
@@ -1985,33 +2063,17 @@ INFLOW_CONFIG = {
     },
 }
 
-# AST-972: candidate REQUESTED_* dispatch orchestration (claim → craft → ready/retry/error).
+# AST-1252: REQUESTED_ARTIFACTS opens at craft_get_rubric; succession via agent_task.run_next.
+# task_key is the entry hop (no parallel craft_task_key). Resume wrapper stage removed.
 CANDIDATE_STAGE_DISPATCH = {
-    "requested_resume": {
-        "task_key": "candidate_requested_resume",
-        "trigger_state": "REQUESTED_RESUME",
-        "pass_state": "RESUME_READY",
-        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
-        "craft_task_key": "craft_resume_base",
-    },
     "requested_artifacts": {
-        "task_key": "candidate_requested_artifacts",
+        "task_key": "craft_get_rubric",
         "trigger_state": "REQUESTED_ARTIFACTS",
         "pass_state": "ARTIFACTS_READY",
-        "auto_mode": False,  # AST-1022: new stage rows seed CLICK-only
-        # Entry hop only — succession via agent_task.run_next (AST-1113).
-        "craft_task_key": "craft_company_search_terms",
+        "auto_mode": False,
     },
 }
-assert all(
-    k in TASK_CONFIG
-    for k in (
-        CANDIDATE_STAGE_DISPATCH["requested_resume"]["craft_task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-    )
-)
+assert CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"] in TASK_CONFIG
 
 # Google Custom Search HTTP pacing (AST-837). Units: seconds (float/int) and count (int).
 GOOGLE_CSE_CONFIG = {
@@ -2109,6 +2171,17 @@ CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY: Dict[str, str] = {
     "craft_evaluate_meteorite_rubric": "meteorite_jobdesc_rubric",
 }
 CRAFT_RUBRIC_UI_TASK_KEYS: frozenset[str] = frozenset(CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.keys())
+# AST-1253: unordered task_key → Artifacts NAV_CONFIG path (labels resolved from nav; order from live run_next).
+CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH: Dict[str, str] = {
+    "craft_get_rubric": "/artifacts/get_job_criteria",
+    "craft_do_rubric": "/artifacts/do_job_criteria",
+    "craft_like_rubric": "/artifacts/like_job_criteria",
+    "craft_jobdesc_rubric": "/artifacts/job_description_criteria",
+    "craft_evaluate_meteorite_rubric": "/artifacts/meteorite_criteria",
+    "craft_joblist_rubric": "/artifacts/job_list_criteria",
+    "craft_prefilter_rubric": "/artifacts/company_watch_criteria",
+    "craft_company_search_terms": "/artifacts/company_search_terms",
+}
 # Output budget floor for craft_*_rubric UI generate (long per-criterion content).
 # Applied in do_task when the agent/model default is lower (AST-903).
 CRAFT_RUBRIC_MAX_TOKENS = 32000
@@ -2365,6 +2438,35 @@ assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
+# ---------------------------------------------------------------------------
+# SURFER_PACING_CONFIG: client-driven paced fan-out (AST-1236 / AST-1174).
+# Dwell is centre ± spread seconds, re-rolled per page. max_tabs ships at 1 —
+# raising it is a stealth-risk decision (Susan), not throughput tuning.
+# Bounds must stay under the MV3 ~30s idle window (ordinary timers, not alarms).
+# ---------------------------------------------------------------------------
+SURFER_PACING_CONFIG = {
+    "dwell_center_seconds": 10,
+    "dwell_spread_seconds": 5,
+    "max_tabs": 1,
+    # Named platform limit — dwell ceiling must stay under this (ordinary timers).
+    "mv3_idle_ceiling_seconds": 30,
+}
+
+_surfer_center = SURFER_PACING_CONFIG["dwell_center_seconds"]
+_surfer_spread = SURFER_PACING_CONFIG["dwell_spread_seconds"]
+_surfer_mv3_ceiling = SURFER_PACING_CONFIG["mv3_idle_ceiling_seconds"]
+assert isinstance(_surfer_center, (int, float)) and _surfer_center > 0
+assert isinstance(_surfer_spread, (int, float)) and _surfer_spread >= 0
+assert isinstance(_surfer_mv3_ceiling, (int, float)) and _surfer_mv3_ceiling > 0
+assert _surfer_center - _surfer_spread > 0, (
+    "SURFER_PACING_CONFIG dwell floor (center - spread) must be > 0"
+)
+assert _surfer_center + _surfer_spread < _surfer_mv3_ceiling, (
+    "SURFER_PACING_CONFIG dwell ceiling (center + spread) must stay under "
+    "mv3_idle_ceiling_seconds (ordinary timers, not chrome.alarms)"
+)
+assert isinstance(SURFER_PACING_CONFIG["max_tabs"], int) and SURFER_PACING_CONFIG["max_tabs"] >= 1
+
 # AST-1061: gazer email → meteorite ingest (link detect, Playwright, external-id dedupe).
 # AST-1131: paste/list normalize before link discovery (entity-unescape + nested autolink unwrap).
 # AST-1132: link hygiene excludes/allow + post-fetch non-job visible markers.
@@ -2482,11 +2584,24 @@ assert all(
 # must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
 METEORITE_EMAIL_PARSE_CONFIG = {
     "task_key": "meteorite_email",
+    # Live agent_task seed name until AST-1182 rename / catch_meteorite_email.
+    "legacy_agent_task_key": "parse_meteorite_email",
+    # Archie (AST-1214): candidate-bound mailbox; Avail = Gmail inbox ping.
+    "admin_entity_type": "candidate",
     # live_content first line: "PARSE_MODE: <mode>" — see agent_task prompts.
     "parse_modes": ("html_links", "subject_body"),
 }
 assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
 assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
+assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
+assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"]
+
+
+def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
+    """True for meteorite_email or its live legacy agent_task key (AST-1214 fold)."""
+    tk = (task_key or "").strip()
+    cfg = METEORITE_EMAIL_PARSE_CONFIG
+    return tk == cfg["task_key"] or tk == cfg["legacy_agent_task_key"]
 
 # AST-1054: meteorite dispatch_task row specs (unique per candidate on task_key+trigger_state).
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
@@ -2842,6 +2957,7 @@ def fetch_website_prefilter_second_strike_filter() -> tuple[str, str]:
 DISPATCH_RETIRED_TASK_KEYS = frozenset({
     "consult_do", "consult_get", "consult_like",
     "scrape_jd", "validate_title", "gaze_board",
+    "candidate_requested_resume", "candidate_requested_artifacts",
 })
 
 _DISPATCH_BATCH_CALL_MODE_ONE = frozenset({
@@ -2881,8 +2997,6 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
         return "WATCH"
     if task_key == "inflow_discovery":
         return INFLOW_CONFIG["discovery"]["dispatch_trigger_state"]
-    if task_key == CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"]:
-        return CANDIDATE_STAGE_DISPATCH["requested_resume"]["trigger_state"]
     if task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
     if task_key == "inflow_resolve_website":
@@ -2943,10 +3057,7 @@ def _dispatch_trigger_state_for_task_key(task_key: str) -> str:
 def _dispatch_entity_type_for_task_key(task_key: str) -> str:
     if task_key == "prefilter" or task_key in _DISPATCH_COMPANY_ENTITY_TASK_KEYS:
         return "company"
-    if task_key == "inflow_discovery" or task_key in (
-        CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"],
-        CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"],
-    ):
+    if task_key == "inflow_discovery" or task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
         return "candidate"
     cfg = TASK_CONFIG.get(task_key) or TASK_CONFIG.get(resolve_dispatch_task_config_key(task_key)) or {}
     et = cfg.get("entity_type")
@@ -3001,6 +3112,14 @@ _RETIRED_DISPATCH_TASK_KEY_STATIC_MESSAGES = {
     "gaze_board": (
         "task_key 'gaze_board' is retired; boards are decommissioned"
     ),
+    "candidate_requested_resume": (
+        "task_key 'candidate_requested_resume' is retired; use craft_get_rubric "
+        "with trigger_state REQUESTED_ARTIFACTS (REQUESTED_RESUME remains a valid trigger choice)"
+    ),
+    "candidate_requested_artifacts": (
+        "task_key 'candidate_requested_artifacts' is retired; use craft_get_rubric "
+        "with trigger_state REQUESTED_ARTIFACTS"
+    ),
 }
 
 
@@ -3031,7 +3150,7 @@ def dispatch_task_admin_defaults(
     task_key: str,
     trigger_state: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """Admin + DB insert defaults for any registered non-retired TASK_CONFIG key.
+    """Admin + DB insert defaults for schedulable task keys (AST-1214 widens beyond TASK_CONFIG).
 
     Optional ``trigger_state`` overrides derivation when the key has no default
     trigger rule (e.g. mid-chain hops with TASK_CONFIG.trigger_state None).
@@ -3040,8 +3159,14 @@ def dispatch_task_admin_defaults(
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         raise KeyError(retired)
-    if tk not in TASK_CONFIG:
-        raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}")
+    # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
+    if is_meteorite_email_mailbox_task_key(tk):
+        return {
+            "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
     # Mailbox poller — no ENTITY_TYPES claim queue (do not use entity/trigger/sort helpers).
     if tk == GAZE_EMAIL_CONFIG["task_key"]:
         return {
@@ -3050,6 +3175,20 @@ def dispatch_task_admin_defaults(
             "sort_by": None,
             "batch_call_mode": 0,
         }
+    # Helper-resolvable agent_task-only hops (fetch_*, gaze, inflow_discovery, …).
+    if tk not in TASK_CONFIG:
+        try:
+            entity_type = _dispatch_entity_type_for_task_key(tk)
+            override = (trigger_state or "").strip()
+            effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
+            return {
+                "entity_type": entity_type,
+                "trigger_state": effective_ts,
+                "sort_by": _dispatch_sort_by_for(entity_type, effective_ts),
+                "batch_call_mode": _dispatch_batch_call_mode_for(tk),
+            }
+        except KeyError as exc:
+            raise KeyError(f"dispatch_task_admin_defaults: unknown task_key {tk!r}") from exc
     entity_type = _dispatch_entity_type_for_task_key(tk)
     override = (trigger_state or "").strip()
     effective_ts = override if override else _dispatch_trigger_state_for_task_key(tk)
@@ -3378,7 +3517,15 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         s: JOBS_SKIPPED_SECTION_LABELS.get(s, s.replace("_", " ").title()) for s in skipped_order
     }
 
-    gen_states = ["RESUME_READY", "ACTIVE_SEARCH"]
+    # AST-1253: Generate/Regenerate visible before/after chain; hidden while REQUESTED_ARTIFACTS*
+    gen_states = [
+        "RESUME_READY",
+        "RESUME_READY_STALE",
+        "ARTIFACTS_READY",
+        "ARTIFACTS_READY_STALE",
+        "ACTIVE_SEARCH",
+        "PAUSE_SEARCH",
+    ]
     assert all(s in CANDIDATE_STATES for s in gen_states)
 
     bulk_company = {
@@ -4410,11 +4557,13 @@ NAV_CONFIG = [
         "items": [
             {"label": "Intake", "path": "/candidate/intake"},
             {"label": "Profile", "path": "/candidate/profile"},
+            {"label": "Surfer", "path": "/candidate/surfer"},
             {"label": "Strengths", "path": "/candidate/strengths"},
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
+            {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
         ],
     },
     {
@@ -4429,6 +4578,7 @@ NAV_CONFIG = [
             {"label": "Manage Agents", "path": "/admin/agent_prompts"},
             {"label": "Manage Tasks", "path": "/admin/task_prompts"},
             {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
             {"label": "Data Management", "path": "/admin/data_management"},
             {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
             {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},

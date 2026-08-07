@@ -46,15 +46,6 @@ describe("ArtifactsCompanySearchTerms", () => {
       if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
         return { ok: true, json: async () => ({}) } as Response
       }
-      if (url === "/api/candidates/c1/generate/craft_company_search_terms" && init?.method === "POST") {
-        return {
-          ok: true,
-          json: async () => ({
-            success: true,
-            parsed_response: { search_terms: "generated term one\ngenerated term two" },
-          }),
-        } as Response
-      }
       throw new Error(`unexpected api call: ${url}`)
     })
   })
@@ -82,7 +73,8 @@ describe("ArtifactsCompanySearchTerms", () => {
       if (url === "/api/candidates/c1" && !init) {
         return { json: async () => ({ company_search_terms: "", candidate_data: {} }) } as Response
       }
-      if (url === "/api/candidates/c1/generate/craft_company_search_terms" && init?.method === "POST") {
+      // AST-1253: empty Generate hands off via generate_artifacts (not per-task craft POST).
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
         return generatePromise
       }
       throw new Error(`unexpected api call: ${url}`)
@@ -93,18 +85,16 @@ describe("ArtifactsCompanySearchTerms", () => {
     expect(generateBtn).not.toHaveClass("in-flight")
     await userEvent.click(generateBtn)
     await waitFor(() => expect(generateBtn).toHaveClass("in-flight"))
-    expect(screen.getByRole("button", { name: "Save" })).not.toHaveClass("in-flight")
+    expect(generateBtn).toHaveTextContent("Requesting...")
     resolveGenerate({
       ok: true,
-      json: async () => ({
-        success: true,
-        parsed_response: { search_terms: "generated term one\ngenerated term two" },
-      }),
+      json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }),
     } as Response)
     await waitFor(() => expect(generateBtn).not.toHaveClass("in-flight"))
   })
 
-  it("populates textarea after generate when empty", async () => {
+  it("AST-1253: empty Generate POSTs generate_artifacts (no per-task craft)", async () => {
+    const posts: string[] = []
     installPageApiMocks(async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
         return {
@@ -114,14 +104,9 @@ describe("ArtifactsCompanySearchTerms", () => {
       if (url === "/api/candidates/c1" && !init) {
         return { json: async () => ({ company_search_terms: "", candidate_data: {} }) } as Response
       }
-      if (url === "/api/candidates/c1/generate/craft_company_search_terms" && init?.method === "POST") {
-        return {
-          ok: true,
-          json: async () => ({
-            success: true,
-            parsed_response: { search_terms: "generated term one\ngenerated term two" },
-          }),
-        } as Response
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
+        posts.push(url)
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
       }
       throw new Error(`unexpected api call: ${url}`)
     })
@@ -129,9 +114,42 @@ describe("ArtifactsCompanySearchTerms", () => {
     renderWithProviders(<ArtifactsCompanySearchTerms />)
     await waitFor(() => expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Generate" }))
+    await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
     await waitFor(() =>
-      expect(screen.getByRole("textbox")).toHaveValue("generated term one\ngenerated term two"),
+      expect(screen.getByText("Artifacts build requested — watch Execution History")).toBeInTheDocument(),
     )
-    expect(screen.getByRole("button", { name: "Save" })).toBeInTheDocument()
+  })
+
+  it("AST-1253: Regenerate confirms with hop labels then POSTs generate_artifacts", async () => {
+    const posts: string[] = []
+    installPageApiMocks(async (url: string, init?: RequestInit) => {
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            company_search_terms: "Series B fintech\nremote-first",
+            candidate_data: {},
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
+        posts.push(url)
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
+      }
+      throw new Error(`unexpected api call: ${url}`)
+    })
+
+    renderWithProviders(<ArtifactsCompanySearchTerms />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    expect(screen.getByText(/Reset all artifact rubrics/i)).toBeInTheDocument()
+    expect(screen.getByText(/Get Job Criteria/)).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "No" })).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }))
+    await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
   })
 })
