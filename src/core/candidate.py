@@ -43,8 +43,10 @@ from src.utils.config import (
     SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
+    NAV_CONFIG,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
@@ -1733,6 +1735,76 @@ def transition_candidate_state(candidate_id: str, to_state: str) -> None:
         _start_candidate_reap_timer(candidate_id)
 
 
+def start_requested_artifacts(candidate_id: str) -> str:
+    """UI/API handoff into REQUESTED_ARTIFACTS (AST-1253). Priors enforce legality."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    target = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    transition_candidate_state(candidate_id, target)
+    return target
+
+
+def _walk_requested_artifacts_chain_task_keys() -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
+    out: list[str] = []
+    seen: set[str] = set()
+    key = (start or "").strip()
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def requested_artifacts_chain_task_keys() -> list[str]:
+    """Public: live craft chain task_keys in run_next order."""
+    return _walk_requested_artifacts_chain_task_keys()
+
+
+def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
+    """True when task_key is on the live REQUESTED_ARTIFACTS craft chain."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    return tk in _walk_requested_artifacts_chain_task_keys()
+
+
+def _artifacts_nav_label_for_path(path: str) -> str:
+    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    for section in NAV_CONFIG:
+        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+            continue
+        for item in section.get("items") or []:
+            if isinstance(item, dict) and item.get("path") == path:
+                label = (item.get("label") or "").strip()
+                if label:
+                    return label
+    return ""
+
+
+def requested_artifacts_chain_hop_labels() -> list[str]:
+    """Live walk order × NAV_CONFIG Artifacts labels (fallback: task_key)."""
+    labels: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        path = CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH.get(task_key) or ""
+        labels.append(_artifacts_nav_label_for_path(path) or task_key)
+    return labels
+
+
+def requested_artifacts_chain_artifact_keys() -> list[str]:
+    """Rubric artifact keys only (excludes table-backed company_search_terms)."""
+    keys: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+        if artifact:
+            keys.append(artifact)
+    return keys
+
+
 _CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
 
 
@@ -2656,6 +2728,18 @@ def run_candidate_artifact_generation(
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
     logger.set_debug_flag(debug)
+    # AST-1253: chain craft keys hand off via generate_artifacts / REQUESTED_ARTIFACTS
+    if is_requested_artifacts_chain_ui_task(task_key):
+        return (
+            {
+                "success": False,
+                "error": (
+                    "Use POST /api/candidates/<id>/generate_artifacts "
+                    "(REQUESTED_ARTIFACTS dispatch chain); per-artifact UI generate retired for this task"
+                ),
+            },
+            409,
+        )
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)

@@ -1229,6 +1229,11 @@ CANDIDATE_STATES = {
             "RESUME_READY",
             "RESUME_READY_STALE",
             "REQUESTED_ARTIFACTS_RETRY",
+            # AST-1253: regenerate re-entry from post-chain / search states
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
         ],
         "retry_state": "REQUESTED_ARTIFACTS_RETRY",
         "error_state": "REQUESTED_ARTIFACTS_ERROR",
@@ -2166,6 +2171,17 @@ CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY: Dict[str, str] = {
     "craft_evaluate_meteorite_rubric": "meteorite_jobdesc_rubric",
 }
 CRAFT_RUBRIC_UI_TASK_KEYS: frozenset[str] = frozenset(CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.keys())
+# AST-1253: unordered task_key → Artifacts NAV_CONFIG path (labels resolved from nav; order from live run_next).
+CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH: Dict[str, str] = {
+    "craft_get_rubric": "/artifacts/get_job_criteria",
+    "craft_do_rubric": "/artifacts/do_job_criteria",
+    "craft_like_rubric": "/artifacts/like_job_criteria",
+    "craft_jobdesc_rubric": "/artifacts/job_description_criteria",
+    "craft_evaluate_meteorite_rubric": "/artifacts/meteorite_criteria",
+    "craft_joblist_rubric": "/artifacts/job_list_criteria",
+    "craft_prefilter_rubric": "/artifacts/company_watch_criteria",
+    "craft_company_search_terms": "/artifacts/company_search_terms",
+}
 # Output budget floor for craft_*_rubric UI generate (long per-criterion content).
 # Applied in do_task when the agent/model default is lower (AST-903).
 CRAFT_RUBRIC_MAX_TOKENS = 32000
@@ -3468,7 +3484,15 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         s: JOBS_SKIPPED_SECTION_LABELS.get(s, s.replace("_", " ").title()) for s in skipped_order
     }
 
-    gen_states = ["RESUME_READY", "ACTIVE_SEARCH"]
+    # AST-1253: Generate/Regenerate visible before/after chain; hidden while REQUESTED_ARTIFACTS*
+    gen_states = [
+        "RESUME_READY",
+        "RESUME_READY_STALE",
+        "ARTIFACTS_READY",
+        "ARTIFACTS_READY_STALE",
+        "ACTIVE_SEARCH",
+        "PAUSE_SEARCH",
+    ]
     assert all(s in CANDIDATE_STATES for s in gen_states)
 
     bulk_company = {
