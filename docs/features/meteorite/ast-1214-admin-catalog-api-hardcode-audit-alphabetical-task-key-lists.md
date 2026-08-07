@@ -28,7 +28,7 @@ Admin operators need Scheduled Actions (and peer Admin surfaces that consume the
 
 | File | Change | Layer |
 |------|--------|-------|
-| `src/ui/api/api_admin.py` | Expand `dispatch_task_keys` membership to live `agent_task` ∪ `TASK_CONFIG` ∪ dispatch orphans; `sorted(membership)`; form-meta fallback via `_dispatch_*`; align `_dispatch_task_key_trigger_error` for helper-resolvable gap keys + meteorite mailbox fold; preserve `unsupported entity_type` for other in-`TASK_CONFIG` unschedulable keys; Avail for meteorite mailbox keys uses gaze_email inbox bind counts | ui |
+| `src/ui/api/api_admin.py` | Expand `dispatch_task_keys` membership; `sorted(membership)`; form-meta gate admits `TASK_CONFIG` **or** `is_meteorite_email_mailbox_task_key`; `_dispatch_task_key_trigger_error` for helper-resolvable hops + mailbox null-only trigger; Avail at both `list_dtasks` sites (~863–867 and ~886) | ui |
 | `src/utils/config.py` | Extend `dispatch_task_admin_defaults` for helper-resolvable non-`TASK_CONFIG` keys; extend `METEORITE_EMAIL_PARSE_CONFIG` with legacy agent_task key + admin mailbox fields; mailbox carve-out for canonical + legacy keys (`entity_type=candidate`, null trigger/sort); small `is_meteorite_email_mailbox_task_key` helper | utils |
 
 **Side effects of the `dispatch_task_admin_defaults` change (same function — not new Files Changed rows):**
@@ -63,7 +63,7 @@ The plan is binding. Execute stages in order. Do not edit React, seed JSON renam
 
 **Done when:** `GET /api/admin/dispatch_tasks/task_keys` returns the sorted union of `get_task_keys()` ∪ `list_candidate_tasks()` keys ∪ non-retired `list_dispatch_tasks()` keys, minus hidden/retired; built with `sorted(membership)`; on this tip all **eight** agent_task-only keys above are present without a pre-existing `dispatch_task` row; aliases `meteorite_grade_do` / `meteorite_grade_get` present; each value carries form-meta fields.
 
-1. Import `_dispatch_trigger_state_for_task_key` alongside `_dispatch_entity_type_for_task_key` in `api_admin.py`.
+1. Import `_dispatch_trigger_state_for_task_key` and `is_meteorite_email_mailbox_task_key` alongside `_dispatch_entity_type_for_task_key` in `api_admin.py` (Stage 2 also needs `GAZE_EMAIL_CONFIG` — already imported).
 
 2. Add `_admin_dispatch_task_key_catalog()` as previously specified (union + `sorted(membership)` + `_dispatch_task_key_form_meta`).
 
@@ -80,23 +80,36 @@ The plan is binding. Execute stages in order. Do not edit React, seed JSON renam
 **Done when:**
 
 - Each of the **seven** helper-resolvable keys: form meta filled; `_dispatch_task_key_trigger_error` returns `None` for a valid trigger (e.g. `fetch_jd`/`PASSED_JOBLIST`, `inflow_discovery`/`ACTIVE_SEARCH`); `dispatch_task_admin_defaults` returns a dict; POST create succeeds for `fetch_jd`.
-- `parse_meteorite_email` and `meteorite_email`: `dispatch_task_admin_defaults` returns mailbox defaults with `entity_type == "candidate"` and null `trigger_state` / `sort_by` / `batch_call_mode == 0`; `_dispatch_task_key_trigger_error` does **not** return `Unknown task_key` for either; POST create for `parse_meteorite_email` with a valid candidate succeeds (201); form meta shows `entity_type: "candidate"`.
+- Each of the **seven** helper-resolvable keys: form meta filled; `_dispatch_task_key_trigger_error` returns `None` for a valid trigger (e.g. `fetch_jd`/`PASSED_JOBLIST`, `inflow_discovery`/`ACTIVE_SEARCH`); `dispatch_task_admin_defaults` returns a dict; POST create succeeds for `fetch_jd`.
+- `parse_meteorite_email` and `meteorite_email`: `dispatch_task_admin_defaults` returns mailbox defaults with `entity_type == "candidate"` and null `trigger_state` / `sort_by` / `batch_call_mode == 0`; form meta shows `entity_type: "candidate"` (mailbox carve-out reached via form-meta gate — edit 1); `_dispatch_task_key_trigger_error` returns `None` when trigger is null/empty and **rejects non-empty** trigger for mailbox keys (edit 3); POST create for `parse_meteorite_email` with a valid candidate and null/omitted `trigger_state` succeeds (201).
 - Registered-but-unschedulable other `TASK_CONFIG` keys (e.g. craft_*) still get `unsupported entity_type` wording, not `Unknown task_key`.
-- `list_dtasks` Avail for a `parse_meteorite_email` / `meteorite_email` row uses the same inbox bind-count path as `gaze_email` (Gmail ping).
+- `list_dtasks` Avail for a `parse_meteorite_email` / `meteorite_email` row uses the same inbox bind-count path as `gaze_email` (Gmail ping), including both the snapshot gate and the per-row stamp (edit 2).
 
-1. Form-meta `_dispatch_*` fallback for empty entity/trigger (unchanged from revision 2).
+1. In `_dispatch_task_key_form_meta`, change the defaults gate from `if task_key in TASK_CONFIG:` to:
 
-2. `_dispatch_task_key_trigger_error` — after retired check:
+   ```python
+   if task_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(task_key):
+       try:
+           derived = dispatch_task_admin_defaults(task_key)
+           entity_type = derived["entity_type"] or ""
+           trigger_state = (derived["trigger_state"] or "") if derived["trigger_state"] is not None else ""
+       except KeyError:
+           pass  # mid-chain / no default — keep prior field values
+   ```
+
+   Then keep the existing `_dispatch_*` fallback for empty entity/trigger (helper-resolvable gap keys only). Import `is_meteorite_email_mailbox_task_key` from config. Without this gate widen, `parse_meteorite_email` never hits the mailbox carve-out and form meta stays blank (Joan escalate fix-now).
+
+2. `_dispatch_task_key_trigger_error` — after retired check, **mailbox trigger-null only** (reject non-empty; matches `gaze_email` row shape):
 
    ```python
    # Mailbox identities (gaze_email + meteorite fold) — accept before Unknown.
    if tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk):
        ts = (trigger_state or "").strip()
-       # Mailbox rows use null trigger_state (same as gaze_email seed); empty is OK.
        if ts:
-           # If operator supplies a trigger, validate against candidate registry for meteorite
-           # mailbox, or existing gaze_email rules if any; otherwise return a clear error.
-           ...
+           return (
+               f"task_key {tk!r} is a mailbox poller; trigger_state must be null/empty "
+               f"(got {trigger_state!r})"
+           )
        return None
 
    try:
@@ -108,7 +121,7 @@ The plan is binding. Execute stages in order. Do not edit React, seed JSON renam
    # … existing trigger required + registry / hop validation …
    ```
 
-   Import `GAZE_EMAIL_CONFIG`, `is_meteorite_email_mailbox_task_key` from config. Concrete empty-vs-supplied trigger validation: empty → accept (mailbox); non-empty → must be in `CANDIDATE_STATES` when `is_meteorite_email_mailbox_task_key(tk)`.
+   Import `GAZE_EMAIL_CONFIG`, `is_meteorite_email_mailbox_task_key` from config. Do **not** accept non-empty `CANDIDATE_STATES` triggers for mailbox keys.
 
 3. In `METEORITE_EMAIL_PARSE_CONFIG` (`config.py`), add config-backed fold fields (no api_admin frozenset):
 
@@ -139,7 +152,12 @@ The plan is binding. Execute stages in order. Do not edit React, seed JSON renam
    - Then: if `tk not in TASK_CONFIG`, helper-resolvable path (revision 2 snippet) for the seven gazer/inflow hops.
    - Else existing TASK_CONFIG body.
 
-5. In `list_dtasks`, extend the gaze_email Avail branch so `is_meteorite_email_mailbox_task_key(row["task_key"])` also stamps `available_count` from `count_inbox_bound_by_candidate()` (same snapshot). Config-driven key match — do not hardcode `parse_meteorite_email` string in the branch condition.
+5. In `list_dtasks`, extend **both** gaze_email Avail sites so meteorite mailbox keys share the Gmail inbox ping snapshot (do not hardcode `parse_meteorite_email` — use `is_meteorite_email_mailbox_task_key`):
+
+   - **`api_admin.py` ~863–867** (`need_gaze_counts`): treat a row as needing the inbox snapshot when  
+     `(task_key == gaze_tk or is_meteorite_email_mailbox_task_key(task_key))` **and** candidate_id is non-empty.  
+     Otherwise `bound_counts` stays `{}` whenever no gaze_email row is present and every meteorite mailbox Avail silently stamps 0.
+   - **`api_admin.py` ~886** (per-row stamp): same predicate — stamp `available_count` from `bound_counts` for gaze_email **or** meteorite mailbox keys.
 
 6. No alias→master map for AST-1184 aliases. No seed rename of `parse_meteorite_email` in this ticket.
 
@@ -159,14 +177,14 @@ The plan is binding. Execute stages in order. Do not edit React, seed JSON renam
    Flip `test_dispatch_task_keys_omits_fetch_jd_gap_excludes_retired` and `test_gap_key_absent_without_db_row`. Expect the **eight** agent_task-only keys present (seven helper-resolvable + `parse_meteorite_email`). Stay absent from picker: `prefilter`, `inflow_resolve_website`.
 
    **B. Admin validator:**  
-   Flip `test_dispatch_task_key_trigger_error_candidate_paths` for `inflow_discovery` → accept. Add/adjust coverage: `_dispatch_task_key_trigger_error("parse_meteorite_email", None|"" )` does not contain `Unknown task_key`.
+   Flip `test_dispatch_task_key_trigger_error_candidate_paths` for `inflow_discovery` → accept. Add/adjust: `_dispatch_task_key_trigger_error("parse_meteorite_email", None|"" )` returns `None`; `_dispatch_task_key_trigger_error("parse_meteorite_email", "ACTIVE_SEARCH")` (and same for `meteorite_email` / `gaze_email`) **rejects** non-empty trigger (mailbox null-only). Form meta for `parse_meteorite_email` includes `entity_type: "candidate"`.
 
    **C. Config defaults (`test_config.py`):**  
    Flip KeyError expectations for helper-resolvable keys (`fetch_jd`, `fetch_job_pages`, `fetch_website`, `fetch_culture_pages`, `inflow_discovery`); `prefilter` / `inflow_resolve_website` → expect defaults dicts. Add: `dispatch_task_admin_defaults("parse_meteorite_email")` and `("meteorite_email")` return candidate mailbox defaults (not KeyError / not unsupported).
 
    **D. Keepers:** `unsupported entity_type` for craft_* etc.; other `task_keys` endpoint tests.
 
-   **E. Harness:** patch `list_candidate_tasks`; raw-body alphabetical keys; POST `fetch_jd` + POST `parse_meteorite_email`; optional `/adhoc/entities` 200; Avail > 0 path for meteorite mailbox when inbox binds exist (or unit-level stamp assertion).
+   **E. Harness:** patch `list_candidate_tasks`; raw-body alphabetical keys; POST `fetch_jd` + POST `parse_meteorite_email` (null trigger); optional `/adhoc/entities` 200; Avail path covers **both** `need_gaze_counts` (~863–867) and per-row stamp (~886) so meteorite mailbox Avail is non-zero when inbox binds exist even if no gaze_email row is present.
 
 ---
 
@@ -200,3 +218,7 @@ Changes: Named scheduling product call; Betty breadth (test_config + Admin Unkno
 Revision 3 — 2026-08-07  
 Driven by: Joan `[plan-discuss] escalate` (eighth key `parse_meteorite_email` Save dead-end) + Chuckles `[check-linear]` Archie product call (**no hiding**; misnamed — fold into `meteorite_email` / `catch_meteorite_email`; candidate; Avail=Gmail ping; AST-1182 may absorb rename).  
 Changes: Membership corrected to **eight** agent_task-only keys; rejected ADMIN_CONFIG hide and picker-only 400; Stage 2 adds meteorite mailbox fold via `METEORITE_EMAIL_PARSE_CONFIG` (`legacy_agent_task_key`, `admin_entity_type=candidate`) + validator/defaults/Avail; Betty A–E updated for `parse_meteorite_email` / `meteorite_email`; seed rename left to AST-1182.
+
+Revision 4 — 2026-08-07  
+Driven by: Archie/Susan green-light on Joan escalate (round count reset) — apply all three plan edits.  
+Changes: (1) `_dispatch_task_key_form_meta` gate admits `is_meteorite_email_mailbox_task_key(task_key)` so mailbox carve-out reaches form meta; (2) Stage 2 step 5 names both Avail sites `api_admin.py` ~863–867 (`need_gaze_counts`) and ~886 (per-row stamp); (3) mailbox `trigger_state` null-only — reject non-empty. Betty B/E updated accordingly.
