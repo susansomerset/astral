@@ -19,7 +19,7 @@ Tables used (inventory):
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
-- app_log — Application log storage (add_log_entry, list_log_entries).
+- app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
 - rubric_vector — Per-candidate rubric vector identity (rubric_vector_uuid TEXT PK, candidate_id,
@@ -6367,7 +6367,7 @@ def get_recent_ledger_summaries(task_key: str, candidate_id: str, n: int = 3) ->
 # ---------------------------------------------------------------------------
 
 def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
-    """Create app_log table if not present. Idempotent."""
+    """Create app_log with integer AUTOINCREMENT PK; migrate TEXT PK if needed. Idempotent."""
     global _app_log_schema_ensured
     if _app_log_schema_ensured:
         return
@@ -6375,7 +6375,7 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
     if cursor.fetchone()[0] == 0:
         conn.execute("""
             CREATE TABLE app_log (
-                id TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 level TEXT,
                 logger_name TEXT,
                 message TEXT,
@@ -6384,6 +6384,30 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
             )
         """)
         conn.commit()
+    else:
+        # TEXT → INTEGER rebuild when legacy UUID PK remains
+        cols = list(conn.execute("PRAGMA table_info(app_log)").fetchall())
+        id_col = next((r for r in cols if r[1] == "id"), None)
+        id_type = (id_col[2] if id_col else "") or ""
+        if id_type.upper() != "INTEGER":
+            conn.execute("DROP TABLE IF EXISTS app_log_new")
+            conn.execute("""
+                CREATE TABLE app_log_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT,
+                    logger_name TEXT,
+                    message TEXT,
+                    batch_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at)
+                SELECT level, logger_name, message, batch_id, created_at FROM app_log
+            """)
+            conn.execute("DROP TABLE app_log")
+            conn.execute("ALTER TABLE app_log_new RENAME TO app_log")
+            conn.commit()
     _app_log_schema_ensured = True
 
 
@@ -6394,14 +6418,14 @@ def add_log_entry(
     batch_id: Optional[str] = None,
 ) -> bool:
     """Append a log entry. Fast write path; caller ensures valid data."""
-    entry_id = str(uuid.uuid4())
     conn = _get_connection()
     try:
         _ensure_app_log_schema(conn)
+        # DB assigns integer id — do not mint client UUID
         conn.execute("""
-            INSERT OR IGNORE INTO app_log (id, level, logger_name, message, batch_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (entry_id, level, logger_name, message, batch_id))
+            INSERT INTO app_log (level, logger_name, message, batch_id)
+            VALUES (?, ?, ?, ?)
+        """, (level, logger_name, message, batch_id))
         conn.commit()
         return True
     except Exception:
