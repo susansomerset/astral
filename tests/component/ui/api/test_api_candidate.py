@@ -317,6 +317,82 @@ class TestCandidateRoutes:
         assert resp.status_code == 404
 
 
+class TestAst1253GenerateArtifactsApi:
+    """AST-1253: POST /generate_artifacts handoff + chain-key ad-hoc generate 409."""
+
+    def test_generate_artifacts_happy_path(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "ARTIFACTS_READY"},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "start_requested_artifacts",
+            MagicMock(return_value="REQUESTED_ARTIFACTS"),
+        )
+        resp = candidate_client.post("/api/candidates/cand-1/generate_artifacts", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == {"ok": True, "state": "REQUESTED_ARTIFACTS"}
+        candidate_mod.start_requested_artifacts.assert_called_once_with("cand-1")
+
+    def test_generate_artifacts_404(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: None)
+        resp = candidate_client.post("/api/candidates/missing/generate_artifacts", headers=auth_headers)
+        assert resp.status_code == 404
+
+    def test_generate_artifacts_409_illegal_prior(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "NEW_CANDIDATE"},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "start_requested_artifacts",
+            MagicMock(side_effect=ValueError("Invalid candidate state transition")),
+        )
+        resp = candidate_client.post("/api/candidates/cand-1/generate_artifacts", headers=auth_headers)
+        assert resp.status_code == 409
+        assert "Invalid" in resp.get_json()["error"]
+
+    def test_chain_task_generate_returns_core_409(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "candidate_data": {}},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "run_candidate_artifact_generation",
+            MagicMock(
+                return_value=(
+                    {
+                        "success": False,
+                        "error": "Use POST /api/candidates/<id>/generate_artifacts",
+                    },
+                    409,
+                )
+            ),
+        )
+        resp = candidate_client.post(
+            "/api/candidates/cand-1/generate/craft_get_rubric",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        assert "generate_artifacts" in resp.get_json()["error"]
+
+
+# Keep legacy class boundary for AST-723+ suites below this point when present.
+
 # Branches: GET resume_structure 404/success; PUT base_resume orphan strip; PUT resume_structure normalize errors.
 class TestAst519ResumeStructureApi:
     def _valid_accent(self) -> str:

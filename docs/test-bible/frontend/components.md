@@ -598,3 +598,22 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
   --testNamePattern="AST-1200"
 ```
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Chain `ArtifactEditor` pages: empty **Generate** / **Regenerate** (Yes/No modal listing `artifacts_chain_hop_labels`) → `POST …/generate_artifacts`. Non-chain / `craft_resume_base` keep ad-hoc generate. Fixture: **`stateUiManifestFixture.ts`** chain fields. Search Terms page: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty Generate + Regenerate Yes/No | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1253:*`** |
+| AST-904 Save-after-regen stays non-chain | same | revised **`AST-904`** (`craft_rubric`) |
+
+**Broken / obsolete:** per-page ad-hoc regenerate→review for chain `taskKey`s (AST-677 Watch Criteria; Search Terms populate-from-craft).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1253|AST-904"
+```

@@ -2106,7 +2106,15 @@ class TestAst970CandidateStateRegistry:
         assert companies["visible"] == "ACTIVE_SEARCH"
         assert artifacts["visible"] == "RESUME_READY"
         gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
-        assert gen == ["RESUME_READY", "ACTIVE_SEARCH"]
+        # AST-1253: Generate/Regenerate available through search states (not while chain claimed).
+        assert gen == [
+            "RESUME_READY",
+            "RESUME_READY_STALE",
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+        ]
         assert all(s in cfg.CANDIDATE_STATES for s in gen)
 
     def test_retired_four_step_names_absent(self) -> None:
@@ -2196,6 +2204,44 @@ class TestAst1252ArtifactsDispatchChainConfig:
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert set(arts.keys()) == {"task_key", "trigger_state", "pass_state", "auto_mode"}
         assert arts["task_key"] == "craft_get_rubric"
+
+
+class TestAst1253GenerateRegenerateHandoffConfig:
+    """AST-1253: REQUESTED_ARTIFACTS re-entry priors + unordered NAV path map (no hop list)."""
+
+    def test_requested_artifacts_priors_include_regenerate_states(self) -> None:
+        priors = cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"] or []
+        for state in (
+            "RESUME_READY",
+            "RESUME_READY_STALE",
+            "REQUESTED_ARTIFACTS_RETRY",
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+        ):
+            assert state in priors
+        assert "REQUESTED_ARTIFACTS_ERROR" not in priors
+
+    def test_chain_nav_path_map_covers_live_hops_without_ordering_list(self) -> None:
+        path_map = cfg.CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH
+        expected = {
+            "craft_get_rubric": "/artifacts/get_job_criteria",
+            "craft_do_rubric": "/artifacts/do_job_criteria",
+            "craft_like_rubric": "/artifacts/like_job_criteria",
+            "craft_jobdesc_rubric": "/artifacts/job_description_criteria",
+            "craft_evaluate_meteorite_rubric": "/artifacts/meteorite_criteria",
+            "craft_joblist_rubric": "/artifacts/job_list_criteria",
+            "craft_prefilter_rubric": "/artifacts/company_watch_criteria",
+            "craft_company_search_terms": "/artifacts/company_search_terms",
+        }
+        assert path_map == expected
+        # Membership map is not CRAFT_RUBRIC_UI_TASK_KEYS (search terms is chain-only).
+        assert "craft_company_search_terms" in path_map
+        assert "craft_company_search_terms" not in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
+        # No sequencing frozenset / ordered hop list beside the unordered path map.
+        assert not hasattr(cfg, "CRAFT_ARTIFACTS_CHAIN_HOP_ORDER")
+        assert not hasattr(cfg, "REQUESTED_ARTIFACTS_CHAIN_TASK_KEYS")
 
 
 class TestAst973LegacyCandidateRemap:

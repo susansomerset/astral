@@ -300,6 +300,27 @@ Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/te
   -q
 ```
 
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Generate/Regenerate hand off via `start_requested_artifacts` → `REQUESTED_ARTIFACTS`. Live `run_next` walk supplies hop order + NAV labels; chain keys rejected from ad-hoc UI `run_candidate_artifact_generation` (409). UI: **`docs/test-bible/frontend/components.md`** / **`pages.md`**. Config priors + path map: **`docs/test-bible/utils/config.md`**. API: **`docs/test-bible/ui/api/api_candidate.md`** / **`api_system.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Start handoff + walk helpers + chain UI reject | `src/core/candidate.py` | **`TestAst1253RequestedArtifactsHandoff`**; revised **`TestAst901CraftRubricGenerateDelivery`** (chain generate → 409) |
+
+**Broken / obsolete (Betty revision):** AST-901 craft_get_rubric success-stash via UI generate (chain keys no longer open ledger/stash on that path).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1253RequestedArtifactsHandoff \
+  tests/component/core/test_candidate.py::TestAst901CraftRubricGenerateDelivery \
+  -q
+```
+
 
 
 ### AST-973 · AST-871
