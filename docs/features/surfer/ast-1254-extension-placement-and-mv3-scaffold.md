@@ -288,3 +288,47 @@ rg -n "_DIST|extension" src/ui/server.py
 | 2 | `d2986bff` | WXT MV3 empty shell + gitignore + README |
 | 3 | `fffccd43` | vitest home + AC verify |
 
+---
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1254
+**Publish ref:** `origin/sub/AST-1170/AST-1254-extension-placement-and-mv3-scaffold` @ `ff5a7d0e`
+**Overall:** DISCUSS
+
+Full active-statute corpus (64 leaves under `canon/statutes/**`, `status: active`, harness files skipped) scored in-session per the Full-set sweep algorithm — no `violates`. Universal set (18 `orch.*`) all `conforms` except the two noted below. Scoped set (46 `astral.*`) matched-and-scored where diff layers/paths intersected (`ui`, `docs`, `scripts`); everything else `not-applicable` on layer/path predicate (core/data/external/batch/agent/state/seed families — no Python product touched this tip). No `## Statutes checked` table pasted per review-child §5.0.3 / AGENTS.md.
+
+### Plan adherence
+
+- Files Changed table matches the diff almost exactly; optional `public/` icon row correctly dropped per Joan's plan-rubric recommendation (no `action` key added).
+- All three prior Joan `discuss` findings resolved on this tip: `background.ts` now explicitly imports `defineBackground` (consistent with `imports: false`); statute `approved_at` refreshed to `2026-08-07`; `*.pem` added to `.gitignore`.
+- `src/ui/extension/src/lib/**` untouched; `src/ui/server.py` untouched — both verified.
+
+### Findings
+
+- **discuss** — `tests/component/frontend/lib/test_surferFanOut.test.ts` is still present on this tip, byte-identical to the new `tests/component/extension/lib/test_surferFanOut.test.ts`. Betty's own QA comment already flagged this as "known merge residue" requiring a `[qa-handoff]` to remove; that handoff hasn't happened. The frontend Vitest project will keep collecting the orphaned copy. Not a fix-now for the engineer (test-tree ban) — routes to Betty.
+- **discuss** — `orch.git.commit-vocabulary`: commit `ff5a7d0e` (`test(AST-1254): vitest fs.allow + jsdom for extension suite`) touches only product files (`src/ui/extension/{package.json,package-lock.json,vitest.config.ts}`), not the test tree. Betty's manifest comment allowed either `test(...)` or `code(...)` for this preflight fix, so not blocking, but `code(AST-1254):` would keep rollup-log ownership attribution unambiguous.
+- **discuss** — `orch.roles.engineer-assignee-through-resolve`: Linear assignee is already Radia at `Tests Passed` rather than the implementing engineer. Observation only — no diff impact, no action taken (assignee changes are outside review-child's authority).
+
+### Pattern conformance
+
+`pattern.config.config-block` (cited in description) — conforms: no new behavior-driving literals; manifest `name`/`version`/`key`/gecko `id` are packaging identity, not config-driven business state.
+
+### What's solid
+
+Placement amendment is narrow and exact; WXT scaffold matches the plan's exact snippets; empty-shell background has zero network/messaging surface; Firefox portability build documented without a hand-written second manifest; bible reorg (`docs/test-bible/extension/{scaffold,lib}.md`) is clean and cross-references correctly.
+
+### Recommended actions
+
+File `[qa-handoff]` to Betty for the orphaned `tests/component/frontend/lib/test_surferFanOut.test.ts` before the parent rolls up, so the frontend Vitest project stops double-collecting the migrated spec.
+
+## Frame diff
+
+(none) — description checklist already matches the shipped diff; no adds/moves needed.
+
+context_tokens≈70000
+
+— Radia
+
