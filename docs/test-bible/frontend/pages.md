@@ -1548,3 +1548,23 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx \
   --testNamePattern="AST-1200"
 ```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page — empty / disclosure / opt-in / decline / current-ok | `CandidateSurferConsent.tsx` | **`test_CandidateSurferConsent.test.tsx`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx
+```

@@ -180,3 +180,24 @@ Extension pacing helpers under `src/ui/extension/src/lib/` (not SPA `frontend/sr
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_surferPacingConfig.test.ts
 ```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+Extension consent helpers under `src/ui/extension/src/lib/`: `needsDisclosure` / `fetchSurferConsent` / `optInSurferConsent` (injected fetch); `mountSurferDisclosure` plain-DOM panel (shadow root when available; affirmative + decline handlers; no network). Web page: **`docs/test-bible/frontend/pages.md`**. §6c N/A for these lib modules (routed page covered separately).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| needsDisclosure + injected GET/PUT | `surferConsent.ts` | **`test_surferConsent.test.ts`** |
+| DOM mount / handlers / unmount | `surferDisclosureDom.ts` | same |
+
+**Broken / obsolete:** none — new modules.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_surferConsent.test.ts
+```

@@ -4250,3 +4250,26 @@ class TestAst1235SurferConsentConfig:
         assert s["default_status"] == "none"
         assert s["default_status"] in s["statuses"]
         assert len(s["statuses"]) == len(set(s["statuses"]))
+
+# Branches: chrome strings, version bump to 2, copy weight, Candidate nav (AST-1237).
+class TestAst1237SurferConsentDisclosureConfig:
+    def test_chrome_version_copy_and_nav(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        assert s["current_version"] == "2"
+        for key in (
+            "disclosure_title",
+            "opt_in_label",
+            "decline_label",
+            "current_ok_title",
+            "current_ok_body",
+        ):
+            assert isinstance(s[key], str) and s[key].strip()
+        copy = s["disclosure_copy"]
+        assert "logged-in session" in copy
+        assert "terms of service" in copy
+        assert "account-level consequence" in copy
+        assert "optional" in copy.lower()
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        paths = [i["path"] for i in cand["items"]]
+        assert "/candidate/surfer_consent" in paths
+        assert any(i["label"] == "Surfer Consent" for i in cand["items"])
