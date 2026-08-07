@@ -3,7 +3,8 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
-contact uniqueness enforcement on save (AST-1080).
+contact uniqueness enforcement on save (AST-1080),
+get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -17,7 +18,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -1446,6 +1447,43 @@ def list_candidates(include_deleted: bool = False) -> list:
     if include_deleted:
         return all_candidates
     return [c for c in all_candidates if c.get("state") != "DELETED"]
+
+
+# ---- Batch API ----
+def get_new_candidate_batch(
+    state: str,
+    limit: Optional[int] = None,
+    sort_by: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    context: Optional[str] = None,
+    *,
+    states: Optional[List[str]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Claim candidates for batch processing. Returns (batch_id, candidates).
+
+    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    batch_id: when provided, uses this batch_id instead of generating a new one.
+    context: prefix for auto-generated batch_id (required when batch_id is not provided).
+    """
+    allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
+    if states is None:
+        if not allowed or state not in allowed:
+            raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
+    else:
+        for s in states:
+            if not allowed or s not in allowed:
+                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
+    limit_val = limit if limit is not None else 10
+    if not batch_id and not context:
+        raise ValueError("batch_id or context is required for batch_id generation")
+    bid = batch_id or f"{context}-{uuid.uuid4()}"
+    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    return (bid, database.get_candidate_batch(bid))
+
+
+def clear_candidate_batch(batch_id: str) -> int:
+    """Release batch. Returns count cleared."""
+    return database.clear_candidate_batch(batch_id)
 
 
 def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
