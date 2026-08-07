@@ -272,3 +272,16 @@ candidate_data.surfer_consent = {
 | Test tree | No `tests/` / bible edits |
 
 No unresolved conflicts → Conf stays `high`.
+
+---
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `6b3b49b0` | Plan doc |
+| 1–4 | `aa0a6392` | `SURFER_CONSENT_CONFIG` + core helpers + `api_surfer` GET/PUT + data-model doc |
+
+**Tip:** `aa0a6392` on publish ref (no PR yet).
