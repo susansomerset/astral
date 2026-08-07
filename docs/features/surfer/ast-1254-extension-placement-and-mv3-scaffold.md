@@ -280,11 +280,11 @@ rg -n "_DIST|extension" src/ui/server.py
 **Publish ref:** `origin/sub/AST-1170/AST-1254-extension-placement-and-mv3-scaffold`
 **Plan path:** `docs/features/surfer/ast-1254-extension-placement-and-mv3-scaffold.md`
 
-**Built tip:** `e2292bac935b49897c794efeab42be65743d39b9` (`e2292bac`)
+**Built tip:** `156b13978cf4e46961f7fbd4192cdbea9be248ea` (`156b1397`)
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `513e99f7` | placement — code rules + statute |
 | 2 | `d2986bff` | WXT MV3 empty shell + gitignore + README |
-| 3 | `e2292bac` | vitest home + AC verify |
+| 3 | `156b1397` | vitest home + AC verify |
 
