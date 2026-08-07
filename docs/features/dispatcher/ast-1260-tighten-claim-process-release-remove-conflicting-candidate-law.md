@@ -233,3 +233,14 @@ context_tokens≈92000
 
 — Radia
 
+## Resolution
+
+**Date:** 2026-08-07  
+**Tip before resolve:** `d53331ca` (Radia `docs(AST-1260): Radia review — clean`)
+
+| Finding | Action |
+|---------|--------|
+| None (Overall CLEAN) | No product or plan change required. |
+
+**fix-now:** none.
+
