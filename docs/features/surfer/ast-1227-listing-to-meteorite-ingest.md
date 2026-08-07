@@ -161,3 +161,12 @@ def ingest_recognized_listing(
 context_tokens≈95000
 
 — Radia
+
+## Resolution — 2026-08-07
+
+**Review tip:** `58bbf623` (`docs(AST-1227): Radia review — clean`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none requiring product change.
+- **Advisory:** `page_url[:80]` truncation is established codebase convention — left as-is (out of scope).
+- **Product / plan code:** unchanged this pass (resolve clean).
