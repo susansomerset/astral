@@ -163,3 +163,10 @@ Note for Betty: lexicographic vs prior `localeCompare` is contract-hardening —
 context_tokens≈85000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-07  
+**Outcome:** clean — Radia `[code-rubric] revision=1` Overall **CLEAN**; no fix-now. Discuss item (ui-layer statute predicate over-match on frontend-only diffs) is C4 record for statute `applies_when` tightening — no product or plan change on this ticket.
+
+**Publish tip after resolve:** `resolve(AST-1215): — clean` on `origin/sub/AST-1185/AST-1215-admin-ui-grouping-honesty-alphabetical-dropdowns` (this commit).
