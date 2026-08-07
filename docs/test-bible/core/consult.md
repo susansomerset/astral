@@ -700,19 +700,19 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_consult_task`** routes **`candidate_requested_resume` / `candidate_requested_artifacts`** to stage workers.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`run_consult_task`** routes stage `task_key` (`craft_get_rubric`) to `run_requested_artifacts_dispatch`; wrapper keys no longer routed.
 
 ### AST-1054 · AST-1052
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`_consult_orchestration_for_entity` overlays `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`evaluate_jd` / `grade_do` / `grade_get`); vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**.
+`_consult_orchestration_for_entity` historically overlaid `METEORITE_GDL_OUTCOME_BY_TASK` when entity state starts with `METEORITE_` for shared GDL keys (`grade_do` / `grade_get` only). **AST-1220** emptied the overlay; **AST-1221** deletes the symbol and consult read path — shared-key `grade_do`/`grade_get` always use Gaze `TASK_CONFIG` outcomes; alias Do/Get use alias `TASK_CONFIG` (see **AST-1221** below). JD stage is standalone twin `evaluate_meteorite` (own `TASK_CONFIG` pass/fail/error — see **`TestEvaluateMeteoriteStandaloneTwin`**). Vetted-company states keep normal `TASK_CONFIG` outcomes. Twin routing for `meteorite_like` / `meteorite_upshot` is **AST-1055**. Analysis-JD meteorite override + incomplete→retry twin locks: **AST-1210**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Overlay + `_render_pass_fail` entity_state | `src/core/consult.py` | **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+| Overlay symbol deleted + Gaze for shared grade_do | `src/core/consult.py` | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
 
-**Broken / obsolete:** none — additive helper; existing `_render_pass_fail` call sites without `entity_state` unchanged.
+**Broken / obsolete:** overlay-key lists that still named `evaluate_jd` among meteorite overlay keys (**AST-1210**); asserts that indexed / emptied `METEORITE_GDL_OUTCOME_BY_TASK` (**AST-1220** / **AST-1221**).
 
 **Integration:** none.
 
@@ -720,6 +720,28 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
   tests/component/core/test_consult.py::TestRenderPassFail \
+  -q
+```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+Retires Do/Get overlay read path; `_consult_orchestration_for_entity` returns `TASK_CONFIG[task_key]` with no entity-state overlay. Alias Do/Get (`meteorite_grade_do` / `meteorite_grade_get`) use alias-owned pass/fail/error; header lookup via `resolve_task_key_for_content`. Agent / dispatcher / config: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/core/dispatcher.md`**, **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias orch + header resolve + render | `src/core/consult.py` | **`TestAst1221RuntimeAliasConsult`** |
+| Shared-key Gaze (no overlay) | same | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`** |
+
+**Broken / obsolete:** AST-1220 interim empty-dict overlay asserts; AST-1054 overlay-body / indexed-map asserts.
+
+**Integration:** none revised; do not invent new integration coverage. Do **not** exercise meteorite Do/Get as operator-safe until **AST-1222** retargets dispatch.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1221RuntimeAliasConsult \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
   -q
 ```
 
@@ -763,5 +785,245 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`run_con
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
   tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
+  -q
+```
+
+### AST-1120 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
+
+`_resolve_company_job_id` + wire immediately before `qualify_meteorite` empty-`company_job_id` gate: AI wins; else UUID path segment from response/input `job_link`; else empty-id fail. No Style D source labels (AST-1121). Pure extract: **`docs/test-bible/utils/formatting.md`**. Config pattern: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve + qualify wire (AC1–3) | `src/core/consult.py` | **`TestAst1120CompanyJobIdFallback`** |
+
+**Broken / obsolete:** none — existing `TestAst1062QualifyMeteorite::test_content_gates_fail_state` empty-id case still uses a non-UUID `job_link`.
+
+**Integration:** no existing scenarios assert qualify empty-id / company_job_id resolve — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback \
+  tests/component/utils/test_formatting.py::TestUuidPathSegmentFromUrl \
+  tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
+  -q
+```
+
+### AST-1121 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1121-debug-found-recorded-company-job-id-resolve`.
+
+Style D on `qualify_meteorite` apply `debug=True`: `found source=AI` | `UUID-from-job_link` | `neither`; `fallback_job_link=` when source is not AI (fail) / when UUID (pass); recorded half unchanged. Resolve/gate outcomes stay AST-1120.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Found-source Style D detail | `src/core/consult.py` | **`TestAst1121CompanyJobIdDebugSource`** |
+
+**Broken / obsolete:** none — prior AST-1062 / AST-1120 manifests do not assert pre-label detail strings.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1121CompanyJobIdDebugSource \
+  -q
+```
+
+### AST-1127 · AST-1119 (UAT)
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1127-uat-qualify-meteorite-schema-company-job-id-omitted`.
+
+RESPONSE omits `company_job_id` key + UUID in `job_link` → `_resolve_company_job_id` records UUID (schema unblock is config — **`docs/test-bible/utils/config.md`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Omit-key apply after schema optional | `src/core/consult.py` | **`TestAst1127QualifyMeteoriteOmitCompanyJobId`** |
+
+**Broken / obsolete:** none on consult tree — empty-string AST-1120 cases still valid.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1127QualifyMeteoriteOmitCompanyJobId \
+  -q
+```
+
+### AST-1133 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites`.
+
+`_bind_response_jobs_by_job_link` after AST-1076 digit bind for `qualify_meteorite` only; Create-time `job_link` fallback when Ruth link is empty/non-http; Style D `link_source=AI|input|neither`. Digit bind / content FAILED / envelope ERROR unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Link claim bind helper | `src/core/consult.py` | **`TestAst1133BindResponseJobsByJobLink`** |
+| List-created qualify path | `src/core/consult.py` | **`TestAst1133QualifyMeteoriteListCreated`** |
+| Relative-link content gate | `src/core/consult.py` | revised **`TestAst1062QualifyMeteorite::test_content_gates_fail_state`** (empty Create link) |
+
+**Broken / obsolete:** AST-1062 relative `job_link` fail used Create http input — would pass under AST-1133 fallback (revised).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1133BindResponseJobsByJobLink \
+  tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestAst1076QualifyMeteoritePlaceholderId \
+  -q
+```
+
+### AST-1152 · AST-1151
+
+**Parent:** [AST-1151 — Do not validate titles on meteorites](https://linear.app/astralcareermatch/issue/AST-1151/do-not-validate-titles-on-meteorites). **Publish:** `origin/sub/AST-1151/AST-1152-stop-title-pattern-screening-on-meteorite-track`.
+
+Product: `is_meteorite_company` (`METEORITE_CONFIG["short_name_prefix"]`); `validate_title_batch` skips meteorite-company jobs (no `VALID_TITLE` / `INVALID_TITLE`); `qualify_job_listings` re-homes meteorite-company `NEW` → `METEORITE_CONFIG["job_create_state"]` before the roster title screen; `qualify_meteorite` short/blank title content gate unchanged. **Proof/lock** of meteorite skip + re-home + pattern-mismatch eligibility is sibling **AST-1153** — not invented here.
+
+**Manifest focus (existing coverage — no new tests):**
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Roster `NEW` still inline title-screens | `src/core/consult.py` | **`TestAst797QualifyInlineValidateTitle`** |
+| Roster pattern pass/fail → `VALID_TITLE` / `INVALID_TITLE` | `src/core/gazer.py` | **`TestValidateTitleBatch`**, **`TestValidateTitleBatchDebugPaths`** |
+| Meteorite content gates (short/blank → `METEORITE_FAILED_QUALIFY`) | `src/core/consult.py` | **`TestAst1062QualifyMeteorite`** (content-gate rows) |
+| Qualify AI path still after title screen | `src/core/consult.py` | **`TestQualifyJobListings`** |
+
+**Broken / obsolete:** **`TestQualifyJobListings`** three rows used artifacts-only `joblist_rubric` without monkeypatching **`_rubric_criteria_for_cfg`** (table-backed AST-723) — revised to match **`test_runs_debug_and_passing_job_path`**. Meteorite product path unchanged; fixtures omit `meteorite-*` company.
+
+**Gaps (deferred → filled):** meteorite-company `NEW` re-home; `validate_title_batch` skip for `meteorite-*`; pattern-mismatch title still eligible for meteorite qualify — **AST-1153**.
+
+**Integration:** no existing scenarios assert title-screen / meteorite re-home — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch \
+  tests/component/core/test_gazer.py::TestValidateTitleBatchDebugPaths \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestQualifyJobListings \
+  -q
+```
+
+### AST-1153 · AST-1151
+
+**Parent:** [AST-1151 — Do not validate titles on meteorites](https://linear.app/astralcareermatch/issue/AST-1151/do-not-validate-titles-on-meteorites). **Publish:** `origin/sub/AST-1151/AST-1153-prove-meteorite-analysis-without-title-pattern-reject`.
+
+Proof/lock for AST-1152 peel (Archie: title-pattern forbidden on meteorite track; short/blank content gate stays). Product already on parent ftr — no new `src/` on this child. Fills AST-1152 deferred gaps (P1–P5).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| P1 meteorite `NEW` re-home (never `INVALID_TITLE`) | `src/core/consult.py` | **`TestAst1153MeteoriteTitleScreenProof`** |
+| P2 `validate_title_batch` skip + roster still fails | `src/core/gazer.py` | **`TestValidateTitleBatch::test_skips_meteorite_company_roster_still_fails`** |
+| P3 pattern-mismatch title still → `METEORITE_QUALIFIED` | `src/core/consult.py` | **`TestAst1062QualifyMeteorite::test_pattern_mismatch_title_still_qualifies`** |
+| P4 short/blank content gate unchanged | `src/core/consult.py` | **`TestAst1062QualifyMeteorite::test_content_gates_fail_state`** |
+| P5 roster `NEW` title screen unchanged | `src/core/consult.py` / `gazer.py` | **`TestAst797QualifyInlineValidateTitle`**; **`TestValidateTitleBatch`**; P1 mixed-batch roster peer |
+
+**Broken / obsolete:** none — additive proof rows; existing fixtures omit meteorite prefixes where roster behavior is asserted.
+
+**Integration:** no existing scenarios assert title-screen / meteorite re-home — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst797QualifyInlineValidateTitle \
+  tests/component/core/test_gazer.py::TestValidateTitleBatch \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestAst1153MeteoriteTitleScreenProof \
+  -q
+```
+
+### AST-1155 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail`.
+
+Shared consult apply gate: incomplete/extra live-rubric grade sets raise before `_render_score` / binary persist; first strike → trigger `*_RETRY` holding via `_consult_batch_fail_dest` (including `render_verdict`); second strike → technical/error. Intentional `X`/`0` rows count as present. Prefilter incompleteness uses existing `_prefilter_fail` → `WEBSITE_FOUND_RETRY`. Config holdings + claim companions: **`docs/test-bible/utils/config.md`** (**AST-1155**). Prompt completeness copy remains **AST-1154**; Skipped Retry **AST-1156**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Completeness helper + fail-dest + `render_verdict` / batch | `src/core/consult.py` | **`TestAst1155IncompleteGradeRetry`**; existing **`TestRenderScore::test_x_excluded_from_v`**, **`TestConsultBatchFailDest`** |
+| Prefilter incomplete → company retry | `src/core/roster.py` | **`TestAst1155PrefilterIncompleteRetry`** |
+
+**Broken / obsolete:** **`TestAst874FetchCulturePagesConfig`** / **`TestAst1053MeteoriteGdlJobStates`** exact prior lists (and meteorite In Review `_PASS`) revised for new `*_RETRY` holdings — see **`docs/test-bible/utils/config.md`**.
+
+**Integration:** none — no existing scenario asserts incomplete→technical vs retry routing.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry \
+  tests/component/core/test_roster.py::TestAst1155PrefilterIncompleteRetry \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
+
+### AST-1193 · AST-1163
+
+**Parent:** [AST-1163 — Issues while running anticipate_scan](https://linear.app/astralcareermatch/issue/AST-1163/issues-while-running-anticipate-scan). **Publish:** `origin/sub/AST-1163/AST-1193-analysis-token-vector-rubric-match-parity`.
+
+ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code, AST-707); live match first; on miss, job-carried `*_rubric` snapshot identity + live content-by-code so persisted grades are not skipped after label drift. Style D found/recorded per phase when `debug=True` (local logger handle). Thin `debug` thread: `do_task` → `_job_context_for_call` → `build_job_token_context`. Boundaries: name token view (**AST-1192**); provider blank/timeout (**AST-1164**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Finder + snapshot fallback + Style D | `src/core/consult.py` | **`TestAst1193AnalysisMatchParity`**; revised **`TestAst513JobTokenContext`** (live criteria via `rubric_criteria_for_task` patch) |
+| `debug=` into builder | `src/core/agent.py` | **`TestAst1193DebugJobContext`** |
+
+**Broken / obsolete:** **`TestAst513JobTokenContext`** — formatter no longer early-returns on empty live alone; tests must supply live criteria (patch) / `_astral_candidate_id`, not artifact-blob-shaped criteria alone.
+
+**Integration:** no existing scenario asserts ANALYSIS snapshot fallback — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1193AnalysisMatchParity \
+  tests/component/core/test_consult.py::TestAst513JobTokenContext \
+  tests/component/core/test_agent.py::TestAst1193DebugJobContext \
+  -q
+```
+
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+`qualify_meteorite` assemble emits `CONTENT:` (stored `job_description`); process: challenge/`_classify_jd==bot` → **BOT_BLOCKED**; `email-` prefix waives empty-`company_job_id` + http gates → **METEORITE_QUALIFIED**; short title → **METEORITE_FAILED_QUALIFY**; Style D `link_source` / `title_source` (subject probe `html.unescape`). Config knobs / bot_signals: **`docs/test-bible/utils/config.md`**. Admin assemble: **`docs/test-bible/ui/api/api_admin.md`**. Classifier: **`docs/test-bible/core/gazer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assemble / email QUALIFY / BOT_BLOCKED / fail / Style D | `src/core/consult.py` | **`TestAst1197QualifyMeteoriteApply`**; revised **`TestAst1133…::test_debug_detail_includes_link_source_input`** (`link_source=http-input`) |
+| Existing content gates still green | same | **`TestAst1062QualifyMeteorite`** |
+
+**Broken / obsolete:** AST-1133 Style D assert `link_source=input` → `http-input`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1197QualifyMeteoriteApply \
+  tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated::test_debug_detail_includes_link_source_input \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  -q
+```
+
+### AST-1210 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.
+
+Locks standalone twin consult contract: Analysis-JD meteorite override via `_entity_state_is_meteorite(job_data.state)` → `analysis_phases_meteorite_override`; incomplete on **METEORITE_QUALIFIED** → **METEORITE_QUALIFIED_RETRY** using twin `error_state` (**METEORITE_ERROR_EVALUATE_JD**), not classic `ERROR_EVALUATE_JD`. Config maps: **`docs/test-bible/utils/config.md`**. Dispatch retirement: **`docs/test-bible/core/dispatcher.md`** (**AST-1209**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin own states + no JD overlay | `src/core/consult.py` | **`TestEvaluateMeteoriteStandaloneTwin`**, **`TestAst1054MeteoriteGdlOutcomeOverlay::test_overlay_symbol_deleted`** |
+| Analysis-JD override (state-prefix branch) | same | **`TestEvaluateMeteoriteStandaloneTwin::test_format_analysis_jd_uses_twin_owner_when_state_meteorite`** |
+| Incomplete→retry twin error | same | revised **`TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers`** |
+
+**Broken / obsolete:** incomplete→retry asserts that passed classic `evaluate_jd` `error_state` into the meteorite JD hop.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestEvaluateMeteoriteStandaloneTwin \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers \
   -q
 ```

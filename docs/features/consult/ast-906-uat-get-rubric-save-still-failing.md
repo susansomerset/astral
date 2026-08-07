@@ -1,3 +1,101 @@
+<!-- linear-archive: AST-906 archived 2026-08-02 -->
+
+## Linear archive (AST-906)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-906/uat-get-rubric-save-still-failing-dolike-ok  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-900 — craft get rubric did not populate the rubric content for candidate  
+**Blocked by / blocks / related:** parent: AST-900
+
+### Description
+
+## What failed
+
+Save for **Get** Job Criteria is **still failing** on UAT (candidate `karfo` / Get rubric). Susan reports Save for **Do** and **Like** appear to work; Get Save still fails. (Overwrite recovery made it hard to fully confirm Do/Like, but Get Save failure is confirmed.)
+
+## Expected
+
+After Get criteria are visible for review, Save persists them to the candidate's stored Get rubric artifact with a clear success path. Same Save reliability as Do/Like for equivalent rubric saves.
+
+## Repro
+
+1. Open candidate Artifacts → Get Job Criteria (e.g. `karfo`).
+2. Ensure criteria are on screen for review (Generate or existing).
+3. Click Save → Save fails for Get.
+4. Compare: Save on Do and/or Like rubric pages succeeds (or appears to).
+
+## Parent AC (quoted inline)
+
+> Generating Get Job Criteria for a candidate with an empty rubric ends with the criteria visible in the editor, and after Save they are present in the candidate's stored artifact.
+
+## Boundaries
+
+* This bug does **not** change the empty-only recovery rule (sibling overwrite bug).
+* Does not change Do/Like prompt content unless the Get Save failure shares a Get-specific API/payload bug.
+
+### Comments
+
+#### radia — 2026-07-18T17:14:19.229Z
+### Radia review — clean
+
+Diff: `origin/dev`…`origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing` @ `ad6df5a` (product tip `b3553b0` + this doc commit). Product delta = `src/utils/rubric_text.py` only (`f2e5b53`).
+
+Plan doc: https://github.com/susansomerset/astral/blob/ad6df5aa69328495bcd182e01892493798403d4b/docs/features/consult/ast-906-uat-get-rubric-save-still-failing.md
+
+No fix-now / discuss.
+
+**Solid:** Stage 2 matches — `coerce_embedded_newline_escapes` expands literal `\n` / `\r\n` only when real newline count `< 2`; `ensure_criterion_grade_table` writes healed content before grade-table parse; ≥2 grade-line rule unchanged; empty / single-grade still reject. Heal lives in utils on the shared normalize path (Get/Do/Like) with no prompt / API / ArtifactEditor / AST-905 scope creep. Betty unit + PUT coverage matches Stage 3.
+
+**Advisory:** Already-multiline prose (≥2 real newlines) that still embeds literal `\n` only in the trailing grade block skips coerce — craft Get single-line shape is the UAT case; not blocking.
+
+#### betty — 2026-07-18T17:12:30.300Z
+## QA test manifest — AST-906
+
+**Publish:** `origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing` @ `b3553b0` (`merge-tests(AST-906): origin/tests 38a88a6a96d80329487aaa8e04c955785044b88d`)
+
+### Manifest (run all)
+
+1. `tests/component/utils/test_rubric_text.py` — `coerce_embedded_newline_escapes` expands craft-shaped literal `\n` / `\r\n`; skips when already multiline; `ensure_criterion_grade_table` mutates content + parses grades; empty / single-grade still `ValueError`
+2. `tests/component/ui/api/test_api_candidate.py::TestAst906GetRubricLiteralNewlineSave` — PUT `artifacts.get_rubric` with literal-`\n` criteria → 200; empty / single-grade → 400
+
+### Narrowed run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_rubric_text.py \
+  tests/component/ui/api/test_api_candidate.py::TestAst906GetRubricLiteralNewlineSave \
+  -q
+```
+
+### Bible shasums (`origin/sub/…` tip)
+
+- `docs/test-bible/utils/rubric_text.md` — `2ea66bc139e8e18a98ce91dc9b0e7c6942a99fa1`
+- `docs/test-bible/ui/api/api_candidate.md` — `302c6820bc9ff87bc11d7c2234aae4c0603f4479`
+
+— Betty
+
+#### ada — 2026-07-18T17:09:32.549Z
+origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing @ 832141eac71475b681ee13c9d6e18b0405b9c304
+
+Betty: literal-\n grade-table heal in rubric_text — cover coerce/ensure + optional PUT get_rubric with literal-\n criteria → 200; empty/single-grade still 400.
+
+#### ada — 2026-07-18T17:08:23.096Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-900/AST-906-uat-get-rubric-save-still-failing/docs/features/consult/ast-906-uat-get-rubric-save-still-failing.md
+
+**Scope:** Single-Component — heal embedded `\\n` in `rubric_text` so Save-time grade-table parse accepts craft Get content shaped like the live prompts; no AST-905 / Do-Like prompt / AST-904 pending changes.
+
+**Conf:** Medium — literal-`\\n` → one physical line is proven against craft_get/do/like prompt examples and explains Get-vs-Do/Like; Stage 1 must confirm the post-AST-904 400 string is grade-table (UAT did not paste the toast).
+
+**Risk:** Medium — shared rubric Save helper; mitigated by coercing only when real newline count `< 2` and keeping the ≥2 trailing grade-line rule.
+
+Publish: `origin/sub/AST-900/AST-906-uat-get-rubric-save-still-failing` @ `ced5259`
+
+---
+
 # UAT: Get rubric Save still failing (Do/Like OK)
 
 **Parent:** [AST-900 — craft get rubric did not populate the rubric content for candidate](https://linear.app/astralcareermatch/issue/AST-900/craft-get-rubric-did-not-populate-the-rubric-content-for-candidate)

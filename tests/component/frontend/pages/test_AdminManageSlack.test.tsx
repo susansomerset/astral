@@ -13,7 +13,7 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
 
 const mockedApi = vi.mocked(api)
 
-describe("AdminManageSlack — AST-1067 / AST-1094 / AST-1105 (§6c routed page)", () => {
+describe("AdminManageSlack — AST-1067 / AST-1094 / AST-1105 / AST-1208 (§6c routed page)", () => {
   beforeEach(() => {
     mockedApi.mockReset()
   })
@@ -31,6 +31,14 @@ describe("AdminManageSlack — AST-1067 / AST-1094 / AST-1105 (§6c routed page)
           is_production: false,
         })
       }
+      // AST-1208: first-paint always GETs debug beside listen/activity.
+      if (url === "/api/admin/contact/debug" && (!init || !init.method || init.method === "GET")) {
+        return jsonResponse({
+          debug_enabled: false,
+          environment: "staging",
+          is_production: false,
+        })
+      }
       if (url === "/api/admin/contact/estelle_activity") {
         return jsonResponse({ users: [] })
       }
@@ -42,7 +50,8 @@ describe("AdminManageSlack — AST-1067 / AST-1094 / AST-1105 (§6c routed page)
     renderWithProviders(<AdminManageSlack />)
     expect(screen.getByRole("heading", { name: "Manage Slack" })).toBeInTheDocument()
     await waitFor(() => expect(screen.getByText("staging")).toBeInTheDocument())
-    expect(screen.getByText("Off")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Enable listen" })).toBeInTheDocument()
+    expect(screen.getByText(/Listen:/)).toHaveTextContent("Off")
     expect(screen.getByText(/Non-production/)).toBeInTheDocument()
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/contact/listen")
     expect(mockedApi).toHaveBeenCalledWith("/api/admin/contact/estelle_activity")
@@ -60,10 +69,67 @@ describe("AdminManageSlack — AST-1067 / AST-1094 / AST-1105 (§6c routed page)
       }
     })
     renderWithProviders(<AdminManageSlack />)
-    await waitFor(() => expect(screen.getByText("Off")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Enable listen" })).toBeInTheDocument(),
+    )
     await user.click(screen.getByRole("button", { name: "Enable listen" }))
-    await waitFor(() => expect(screen.getByText("On")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disable listen" })).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/Listen:/)).toHaveTextContent("On")
     expect(screen.getByText("Slack listen enabled")).toBeInTheDocument()
+  })
+
+  it("renders Debug Off beside Listen and GETs /debug on first paint (AST-1208)", async () => {
+    mockApis()
+    renderWithProviders(<AdminManageSlack />)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Enable debug" })).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/Debug:/)).toHaveTextContent("Off")
+    expect(screen.getByRole("button", { name: "Enable listen" })).toBeInTheDocument()
+    expect(mockedApi).toHaveBeenCalledWith("/api/admin/contact/debug")
+  })
+
+  it("toggle PUT enables debug and shows success toast (AST-1208)", async () => {
+    const user = userEvent.setup()
+    mockApis(async (url, init) => {
+      if (url === "/api/admin/contact/debug" && init?.method === "PUT") {
+        return jsonResponse({
+          debug_enabled: true,
+          environment: "staging",
+          is_production: false,
+        })
+      }
+    })
+    renderWithProviders(<AdminManageSlack />)
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Enable debug" })).toBeInTheDocument(),
+    )
+    await user.click(screen.getByRole("button", { name: "Enable debug" }))
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Disable debug" })).toBeInTheDocument(),
+    )
+    expect(screen.getByText(/Debug:/)).toHaveTextContent("On")
+    expect(screen.getByText("Slack debug enabled")).toBeInTheDocument()
+    // Listen controls remain usable / unchanged by the debug PUT.
+    expect(screen.getByRole("button", { name: "Enable listen" })).toBeInTheDocument()
+    expect(screen.getByText(/Listen:/)).toHaveTextContent("Off")
+  })
+
+  it("debug load failure shows — and keeps Listen + activity (AST-1208)", async () => {
+    mockApis(async (url, init) => {
+      if (url === "/api/admin/contact/debug" && (!init || !init.method || init.method === "GET")) {
+        return jsonResponse({ error: "debug unavailable" }, false)
+      }
+    })
+    renderWithProviders(<AdminManageSlack />)
+    await waitFor(() => expect(screen.getByText(/Listen:/)).toHaveTextContent("Off"))
+    expect(screen.getByText(/Debug:/)).toHaveTextContent("—")
+    expect(screen.getByRole("button", { name: "Enable debug" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Enable listen" })).toBeEnabled()
+    expect(screen.getByText("No @Estelle users recorded yet.")).toBeInTheDocument()
+    expect(screen.getByText("debug unavailable")).toBeInTheDocument()
   })
 
   it("renders @Estelle users activity table from GET estelle_activity (AST-1094)", async () => {

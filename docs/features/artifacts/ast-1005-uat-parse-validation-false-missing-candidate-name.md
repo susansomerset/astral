@@ -1,3 +1,186 @@
+<!-- linear-archive: AST-1005 archived 2026-08-05 -->
+
+## Linear archive (AST-1005)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1005/uat-parse-validation-false-missing-candidate-name-after-job-array  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-994 — Parse resume json output is incomplete  
+**Blocked by / blocks / related:** parent: AST-994
+
+### Description
+
+## What failed
+
+On Session Resume Paste / craft-base parse UAT, experience jobs return correctly as an array, but the UI validation popup claims the response is missing `candidate_name` — even though the returned JSON includes `agent_payload.resume_structure.candidate_name` (e.g. `"Susan Somerset"`) alongside a well-formed `experience` job array.
+
+Susan: “Did we miss updating the response validation logic?”
+
+## Expected
+
+A successful craft-base parse whose `resume_structure` includes `candidate_name` and the experience job array must pass response validation and not show a false “missing candidate_name” failure.
+
+## Repro
+
+1. Open Session Resume Paste (Admin) on staging/`dev`.
+2. Paste a multi-job resume and run Parse (craft-base).
+3. Observe experience jobs look correct in the payload.
+4. Note validation popup claiming missing `candidate_name` while the JSON body still contains `resume_structure.candidate_name`.
+
+## Parent AC (quoted inline)
+
+> 1. After craft-base parse of a multi-job resume paste, Experience is an ordered list of jobs; each job exposes company, title, dates, location, and one accomplishments text block observable in the parse JSON (session parse response and/or Base Resume Content equivalent).
+
+> Contract alignment (parent Functional scope): Task response contracts / structure expectations for craft-base and job-tailored Experience match the job-array shape so validation and downstream split/persist paths accept the new form without silently flattening it back to a single string.
+
+## Diagnosis
+
+* **Hypothesis:** Response validation / task contract still expects pre–job-array Experience (string or different shape), so schema/path checks fail after Experience became an array and surface a misleading `candidate_name` missing error even when that field is present.
+* **Correct outcome:** Valid parse JSON with `candidate_name` + experience job array passes validation; user can accept/use the parse without a false-missing popup.
+* **Wrong fix to avoid:** Swallowing validation errors; removing `candidate_name` checks; flattening Experience back to a single string; treating “no popup” alone as done without confirming AC #1 payload remains a real job array.
+* **Related siblings / contracts:** AST-996 (craft-base job-array contract), AST-997 (job-tailored same shape), AST-998 (HTML builders) — validation must accept the shared job-array contract without breaking those paths.
+
+## Boundaries
+
+* This bug does **not** change: AST-993 richer role chrome; cover-letter HTML; inventing candidate fields; relaxing factual job metadata rules.
+* "No more stacktrace / no more error" alone is **not** done — Parent AC + Correct outcome must hold.
+
+### Comments
+
+#### radia — 2026-07-28T15:29:31.061Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1005
+**Publish ref:** `32c2338d` on `origin/sub/AST-994/AST-1005-uat-parse-validation-false-missing-candidate-name` (baseline `origin/dev`)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| --- | --- | --- | --- |
+| astral.agent.confidence-bounds | scoped | conforms | core touched; no graded confidence changes |
+| astral.agent.do-task-delegation | scoped | conforms | craft-base normalize + schema validate path only |
+| astral.agent.grade-vector-validation | scoped | conforms | no graded vectors |
+| astral.batch.batch-id-first | scoped | conforms | no new batch APIs |
+| astral.batch.batch-id-format | scoped | conforms | untouched |
+| astral.batch.claim-process-release | scoped | conforms | no new claim pattern |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | untouched |
+| astral.config.config-source-of-truth | scoped | conforms | no config literal/schema drift; required `candidate_name` kept |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | thresholds untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | conforms | no repo-root `artifacts/` dump |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under `docs/features/**` |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one combined plan/review file for AST-1005 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty `test`/`merge-tests` touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code(AST-1005)` has no tests/ |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | promote + schema harden stay in core |
+| astral.layers.import-direction | scoped | conforms | core-only product edit |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss (no `scripts/**`) |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers/paths miss (no `src/ui/**`) |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check changes |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult/render-verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers/paths miss (no `src/ui/**`) |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer logging; validation errors still return |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths miss (`src/data/**`) |
+| astral.standards.debug-contract-gated | scoped | conforms | no new ungated debug |
+| astral.standards.dry-and-focused-functions | scoped | conforms | shared `_promote` + dedicated object-field validator |
+| astral.standards.in-scope-only | scoped | needs-discussion | tip includes AST-1001 bible README via merge-tests (see findings) |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging anti-patterns |
+| astral.standards.no-cross-contamination | scoped | conforms | product layers clean; bible pollution is tests-line |
+| astral.standards.no-hardcoded-sets | scoped | conforms | promote uses known section ids; schema unchanged |
+| astral.standards.public-then-helpers | scoped | conforms | helpers near existing validate/flatten |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers/paths miss (no `src/utils/**`) |
+| astral.state.core-decides-transitions | scoped | conforms | no state machine |
+| astral.state.job-prior-states-enforced | scoped | conforms | untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | untouched |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers/paths miss |
+| astral.ui.naming-conventions | scoped | not-applicable | layers/paths miss |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers/paths miss |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip includes `merge-tests(AST-1005)` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` |
+| orch.git.flow-direction-inviolable | universal | conforms | publish to child `sub/*` only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-994/AST-1005-…` matches branch law |
+| orch.git.merge-on-checkout | universal | conforms | no skip of merge procedure |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no rewrite ops |
+| orch.git.no-dev-agent-branches | universal | conforms | work on ticket sub |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-994` |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | UAT diagnosis followed; no schema weaken |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–2 match tip; wrong fixes rejected |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Artifacts child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | review from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/bible via Betty |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Chuckles not assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | assignee left untouched for resolve |
+| orch.roles.pre-commit-path-bans | universal | conforms | role path bans respected |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stages 1–2 match: promote direct `resume_structure` known section ids (incl. job-array experience) before default wipe; `_validate_schema_object_fields` for list `items_schema` without envelope recurse; required `candidate_name` not loosened; experience remains list+items_schema. Self-Assessment Single-Component fits. Wrong fixes (toast suppress / flatten / drop required) not taken.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **Cross-ticket / in-scope tip hygiene** — three-dot vs `origin/dev` includes `docs(AST-1001): test bible — missing-thread skill policy docs-acceptance` (`docs/test-bible/README.md`) pulled through `merge-tests` from `origin/tests`. Not in AST-1005 Files Changed / UAT bug scope. Product `agent.py`/`candidate.py` fix is clean; scrub is tests-line / rollup hygiene (Chuckles/Betty), not a craft-base logic defect.
+
+### advisory
+(none)
+
+## What’s solid
+
+False-missing name fixed by promote-before-wipe; items_schema no longer misreads job objects as envelopes; AC #1 job-array shape preserved.
+
+## Notes
+
+no plan-rubric verdict attached — not a block. 56 active statutes checked.
+
+context_tokens≈32000
+
+#### betty — 2026-07-28T15:26:29.027Z
+## QA test manifest — AST-1005
+
+**Publish:** `origin/sub/AST-994/AST-1005-uat-parse-validation-false-missing-candidate-name` @ `236a7dd0` (`merge-tests(AST-1005): origin/tests f7e4d098`)
+
+### Classification
+1. **Existing coverage:** `TestAst517ResumeStructure` (normalize/inject/content-map promote); `TestAst996ExperienceJobArray` (job-array preserve); `TestResponseSchemaBranches` (schema type branches)
+2. **Broken / obsolete (fixed this pass):** `TestResponseSchemaBranches::test_ast676_craft_rubric_criteria_schema` — criteria fixture now includes required `code` under hardened `items_schema` object-field validation
+3. **Gaps (new):** `TestAst1005FalseMissingCandidateName` (direct `resume_structure` key promote with/without sections; still-missing name); `TestAst1005ItemsSchemaObjectValidation` (path-prefixed item errors; valid job array; no envelope recurse on items)
+
+### Manifest (test-child)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_candidate.py::TestAst1005FalseMissingCandidateName tests/component/core/test_candidate.py::TestAst996ExperienceJobArray tests/component/core/test_candidate.py::TestAst517ResumeStructure tests/component/core/test_agent.py::TestAst1005ItemsSchemaObjectValidation tests/component/core/test_agent.py::TestResponseSchemaBranches -q`
+
+**Pass:** narrowed pytest green (not zero-arg / branch-lock).
+
+### Bible (publish tip)
+
+| File | sha256 |
+| --- | --- |
+| `docs/test-bible/core/candidate.md` | `ba1fed14656b135f40151ccab045e0db8806cb48fee96ff5423223316f78d242` |
+| `docs/test-bible/core/agent.md` | `1252824549e317dc251784e077bf4667851d8f65b524b3cd8e5f216f771d4851` |
+
+#### ada — 2026-07-28T15:19:59.825Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-994/AST-1005-uat-parse-validation-false-missing-candidate-name/docs/features/artifacts/ast-1005-uat-parse-validation-false-missing-candidate-name.md
+
+**Scope:** Single-Component — craft-base normalize in `candidate.py` plus list-item schema validation in `agent.py`; no UI/config/builder changes.
+
+**Conf:** high — reproduced false-missing when `candidate_name` is only under `resume_structure`; promote gap + sections-wipe order are explicit in current code.
+
+**Risk:** Medium — validate path used by paste-resume; mitigated by known-id-only promote and skip-if-top-level-non-empty (existing `_promote` rules).
+
+---
+
 # UAT: parse validation false-missing candidate_name after job-array
 
 **Linear:** [AST-1005](https://linear.app/astralcareermatch/issue/AST-1005/uat-parse-validation-false-missing-candidate-name-after-job-array)

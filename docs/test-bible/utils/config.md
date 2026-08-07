@@ -755,6 +755,23 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 
 Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 
+
+### AST-1189 · AST-1164
+
+**`PROVIDER_CALL_BUDGET`** — 600s timeout + 10s grace, `max_retries=0`, `failure_class=provider_call_timeout`. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1189.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block | `src/utils/config.py` | **`TestAst1189ProviderCallBudgetConfig`** |
+
+### AST-1190 · AST-1164
+
+**`PROVIDER_EMPTY_RESPONSE`** — `failure_class` + canonical error string for hollow / unusable LLM responses. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config block | `src/utils/config.py` | **`TestAst1190ProviderEmptyResponseConfig`** |
+
 ### AST-903 · AST-900 (UAT fix)
 
 **`CRAFT_RUBRIC_MAX_TOKENS = 32000`** floor for craft rubric UI generate. Primary manifest: **`docs/test-bible/core/agent.md`** § AST-903.
@@ -827,7 +844,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`CANDIDATE_STAGE_DISPATCH`** artifacts entry (`craft_get_rubric`) + claim/trigger helpers; wrappers retired.
 
 ### AST-1022 · AST-1018
 
@@ -1154,14 +1171,14 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK`; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). **AST-1060** retargets `evaluate_jd` trigger to **METEORITE_QUALIFIED** and prepends `qualify_meteorite`@**METEORITE_NEW**.
+`METEORITE_DISPATCH_TASKS` (shared GDL + twin keys; `score_floor` None @ GDL entry, `0.0` on gated hops); `METEORITE_GDL_OUTCOME_BY_TASK` originally held DO/GET overlay — **AST-1220** emptied it; **AST-1221** deletes the symbol; `PASSED_SCORE_GATED_STATES` + `_dispatch_trigger_state_for_task_key` for `meteorite_like` / `meteorite_upshot`. Does **not** add twin `TASK_CONFIG` shells (AST-1055). Twin GDL entry is `evaluate_meteorite`@**METEORITE_QUALIFIED** (`score_floor` `None`); classic `evaluate_jd` remains @**JD_READY** only — **AST-1210** (AST-1060-era “retargets `evaluate_jd` to METEORITE_QUALIFIED” is obsolete). Qualify prepend @**METEORITE_NEW** is **AST-1060**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (evaluate_jd trigger revised **AST-1060**) |
+| Dispatch specs + score-floor gating + twin triggers | `src/utils/config.py` | **`TestAst1054MeteoriteGdlDispatch`** (twin key+trigger; **AST-1210**; overlay loop retired **AST-1221**) |
 | Revised ungated smoke | `src/utils/config.py` | revised **`TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched`** |
 
-**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW row assert superseded by **AST-1060**.
+**Broken / obsolete:** AST-1053 score-gated membership smoke — see above; evaluate_jd@METEORITE_NEW / evaluate_jd@METEORITE_QUALIFIED insert asserts superseded by **AST-1060** / **AST-1210**; Do/Get overlay body + consult overlay asserts superseded by **AST-1220** / **AST-1221**.
 
 **Integration:** none.
 
@@ -1260,15 +1277,15 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
 
-Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**; reframes **METEORITE_NEW** as pre-AI; retargets meteorite `evaluate_jd` claim to **METEORITE_QUALIFIED**; `TASK_CONFIG["qualify_meteorite"]` + `METEORITE_DISPATCH_TASKS` row @ **METEORITE_NEW**. Apply / gazer are siblings.
+Registers **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**; reframes **METEORITE_NEW** as pre-AI; GDL entry claim is twin `evaluate_meteorite`@**METEORITE_QUALIFIED** (not classic `evaluate_jd` — **AST-1210**); `TASK_CONFIG["qualify_meteorite"]` + `METEORITE_DISPATCH_TASKS` row @ **METEORITE_NEW**. Apply / gazer are siblings.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Qualify states + TASK_CONFIG + dispatch row + helpers | `src/utils/config.py` | **`TestAst1060QualifyMeteoriteConfig`**; revised **`TestAst1053MeteoriteGdlJobStates`**, **`TestAst1054MeteoriteGdlDispatch`** |
+| Qualify states + TASK_CONFIG + dispatch row + helpers | `src/utils/config.py` | **`TestAst1060QualifyMeteoriteConfig`**; revised **`TestAst1053MeteoriteGdlJobStates`**, **`TestAst1054MeteoriteGdlDispatch`** (**AST-1210** twin entry) |
 | Catalog shell | `data/admin/agent_task.json` | **`TestAst1060QualifyMeteoriteCatalogRow`**, revised **`TestAst786AgentTaskRepoJsonSeed`** (42 keys) |
-| Retire stale `evaluate_jd`@METEORITE_NEW | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** (+ retire case) — see **`docs/test-bible/core/dispatcher.md`** |
+| Retire stale meteorite `evaluate_jd` rows | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** — see **`docs/test-bible/core/dispatcher.md`** (**AST-1209** / **AST-1210**) |
 
-**Broken / obsolete:** AST-1053 GDL priors from METEORITE_NEW; AST-1054 evaluate_jd@METEORITE_NEW + insert counts; AST-786 **41 → 42** (+ UAT fixture byte lock).
+**Broken / obsolete:** AST-1053 GDL priors from METEORITE_NEW; AST-1054 evaluate_jd@METEORITE_* insert asserts; “retargets meteorite evaluate_jd claim to METEORITE_QUALIFIED” prose (superseded by twin entry — **AST-1210**); AST-786 **41 → 42** (+ UAT fixture byte lock).
 
 **Integration:** no existing scenarios assert qualify_meteorite / METEORITE_QUALIFIED — none revised.
 
@@ -1771,6 +1788,27 @@ Resume/Messages email labels; `contact.extra_emails` (`string_list`) in library 
   -q
 ```
 
+
+### AST-1206 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
+
+`CONTACT_CONFIG["debug_enabled"]` (default `False`) + `debug_state_filename` (`contact_slack_debug.json`) — separate durable file from listen. Core/data/API: **`docs/test-bible/core/contact.md`**, **`docs/test-bible/data/contact_debug.md`**, **`docs/test-bible/ui/api/api_contact.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| debug default + filename ≠ listen filename | `src/utils/config.py` | **`TestAst1206ContactDebugConfig`** |
+
+**Broken / obsolete:** none — additive CONTACT_CONFIG keys.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1206ContactDebugConfig \
+  -q
+```
+
 ### AST-1098 · AST-1093
 
 **Parent:** [AST-1093 — Gnarly looking deploy logs on railway](https://linear.app/astralcareermatch/issue/AST-1093/gnarly-looking-deploy-logs-on-railway). **Publish:** `origin/sub/AST-1093/AST-1098-seed-gaze-email-click-statute-seed-auto-false`.
@@ -1949,6 +1987,34 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   -q
 ```
 
+**AST-1264:** craft run_next migration neutered — see **`docs/test-bible/data/database/agent_tasks.md`** § AST-1264.
+
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: wrappers in `DISPATCH_RETIRED_TASK_KEYS`; `CANDIDATE_STAGE_DISPATCH` artifacts-only with `task_key=craft_get_rubric`; trigger/entity helpers; AC2 `REQUESTED_RESUME` remains selectable.
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+`REQUESTED_ARTIFACTS.prior_states` adds regenerate re-entry (`ARTIFACTS_READY` / stale / `ACTIVE_SEARCH` / `PAUSE_SEARCH`); `artifact_generate_states` expanded; unordered `CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH` (no hop sequencing list). Core walk / UI: **`docs/test-bible/core/candidate.md`** / **`frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Priors + path map + generate states | `src/utils/config.py` | **`TestAst1253GenerateRegenerateHandoffConfig`**; revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+
+**Broken / obsolete:** prior `artifact_generate_states == ["RESUME_READY", "ACTIVE_SEARCH"]` assert.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1253GenerateRegenerateHandoffConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  -q
+```
+
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
 **Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.
@@ -1977,3 +2043,701 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
+### AST-1116 · AST-1091 (UAT)
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1116-cover-letter-field-defs`.
+
+`DATA_SHAPES["candidates"]["detail"]["cover_letter"]` field defs (`Subject` / `Letter` / `signature`) for ArtifactEditor `shapes_key=cover_letter`. Hydrate normalize: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cover field defs + tab shapes_key | `src/utils/config.py` | **`TestAst1116CoverLetterDataShapes`** |
+| Shapes API detail.cover_letter | `src/ui/api` shapes route | **`TestAst1116ShapesCoverLetter`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1116CoverLetterDataShapes \
+  tests/component/ui/api/test_api_system.py::TestAst1116ShapesCoverLetter \
+  -q
+```
+
+### AST-1120 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
+
+`TRACKER_CONFIG["uuid_path_segment_pattern"]` — anchored UUID-shaped full path-segment regex for `job_link` fallback (no host allowlist). Apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UUID path pattern | `src/utils/config.py` | **`TestAst1120UuidPathSegmentPattern`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
+  -q
+```
+
+### AST-1127 · AST-1119 (UAT)
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1127-uat-qualify-meteorite-schema-company-job-id-omitted`.
+
+`TASK_CONFIG["qualify_meteorite"].response_schema` `company_job_id.required` → `False` so omit/`null` reach AST-1120 consult resolve (not `Missing required field`). Sibling item fields stay required. Apply omit path: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema optional + `_validate_response_schema` omit/null/empty | `src/utils/config.py` / `src/core/agent.py` | **`TestAst1127QualifyMeteoriteCompanyJobIdOptional`**; revised **`TestAst1060QualifyMeteoriteConfig`** |
+
+**Broken / obsolete:** `TestAst1060QualifyMeteoriteConfig` asserted `company_job_id` `required is True` — revised this pass.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1127QualifyMeteoriteCompanyJobIdOptional \
+  tests/component/utils/test_config.py::TestAst1060QualifyMeteoriteConfig \
+  tests/component/core/test_consult.py::TestAst1127QualifyMeteoriteOmitCompanyJobId \
+  -q
+```
+
+### AST-1125 · AST-1123
+
+**Parent:** [AST-1123 — Support Signature_Image as a token in the cover letter](https://linear.app/astralcareermatch/issue/AST-1123/support-signature-image-as-a-token-in-the-cover-letter). **Publish:** `origin/sub/AST-1123/AST-1125-cover-letter-signature-image-token-contract`.
+
+`BUILD_CONFIG["cover_letter_render_tokens"]["SIGNATURE_IMAGE"]` — cover-only render contract (`{$SIGNATURE_IMAGE}` → `contact.cover_letter_signature_image`, omit policies). Accessor `get_cover_letter_render_token`. **Not** in `TOKEN_SOURCES` / `resolve_tokens`. Emit placement = sibling **AST-1126**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Cover render-token contract + accessor + TOKEN_SOURCES exclusion | `src/utils/config.py` | **`TestAst1125CoverLetterRenderTokenContract`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none (config-only; no existing integration scenario invalidated).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1125CoverLetterRenderTokenContract \
+  -q
+```
+
+### AST-1131 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`.
+
+`METEORITE_EMAIL_INGEST_CONFIG` paste-normalize knobs: `entity_unescape_marker` / min count / max passes, `nested_autolink_attr_names`, `promote_bare_http_urls`. Primary behavior: **`docs/test-bible/utils/formatting.md`** (**AST-1131**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Paste-normalize config | `src/utils/config.py` | **`TestAst1131MeteoriteEmailIngestPasteNormalizeConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing AST-1061 ingest config.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1131MeteoriteEmailIngestPasteNormalizeConfig \
+  -q
+```
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+Candidate-bound `GAZE_EMAIL_CONFIG` / `TASK_CONFIG["gaze_email"]` (null entity/trigger kept — mailbox poller, not claim queue). Removes `dispatch_ledger_candidate_id`. Empties `ADMIN_CONFIG["always_visible_under_avail_gt0_dispatch_task_keys"]` (helper + API/React generic stamp remain). Secrets stay environ; `unbound_retention_days` kept. Provision / schema / ledger: **`docs/test-bible/core/dispatcher.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/data/database/candidates.md`**. Live Avail / runner: siblings **AST-1135** / **AST-1136**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Candidate-bound shell + no ledger placeholder | `src/utils/config.py` | revised **`TestAst1088GazeEmailConfig`**, **`TestAst1090GazeEmailRunnerConfig`** |
+| Empty always-visible carve-out | `src/utils/config.py` | revised **`TestAst1106AlwaysVisibleUnderAvailGt0`** |
+
+**Broken / obsolete (Betty revision):** null-shell wording / `dispatch_ledger_candidate_id == ""` / gaze_email membership in always-visible keys (AST-1088 / AST-1090 / AST-1106 config asserts).
+
+**Integration:** no existing scenarios assert null-shell gaze_email config — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1088GazeEmailConfig \
+  tests/component/utils/test_config.py::TestAst1090GazeEmailRunnerConfig \
+  tests/component/utils/test_config.py::TestAst1106AlwaysVisibleUnderAvailGt0 \
+  -q
+```
+
+### AST-1132 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1132-job-link-hygiene-non-job-create-skip`.
+
+`METEORITE_EMAIL_INGEST_CONFIG` hygiene: expanded `link_exclude_substrings`, empty `link_allow_substrings`, `non_job_visible_substrings`. Primary ingest behavior: **`docs/test-bible/core/gazer.md`** (**AST-1132**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hygiene / non-job config | `src/utils/config.py` | **`TestAst1132MeteoriteEmailIngestHygieneConfig`** |
+
+**Broken / obsolete:** none — additive keys + expanded exclude tuple (AST-1061 exclude membership asserts still hold).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1132MeteoriteEmailIngestHygieneConfig \
+  -q
+```
+
+### AST-1137 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1137-candidate-from-block-text-contact-defaults`.
+
+`COVER_FROM_BLOCK_CONFIG` + `CANDIDATE_LIBRARY_CONFIG["contact_keys"]` entry `cover_letter_from_block`. Profile field placement: own **Cover Letter From** section (**AST-1149**; originally under Cover Letter Signature). Not in `TOPIC_MENU_GEN_CONFIG["packet_contact_keys"]` / `TOKEN_SOURCES`. Primary resolve: **`docs/test-bible/core/candidate.md`** (**AST-1137**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| From-block config + signature-group exclusion | `src/utils/config.py` | **`TestAst1137CoverFromBlockConfig`** (profile section assert revised by **AST-1149**) |
+
+**Broken / obsolete:** profile “under Cover Letter Signature” assert → revised to signature-only (**AST-1149**).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
+  -q
+```
+
+### AST-1147 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1147-from-block-token-template-config-contract`.
+
+Extends `COVER_FROM_BLOCK_CONFIG` with `default_template`, `allowed_token_ids` (`FULL_NAME` / `LOCATION` / `CONTACT_EMAIL` / `PHONE`), `authoring_separator` `|`, `emit_separator` ` • `, `empty_segment_policy` `drop_with_adjacent_separator`. Keeps AST-1137 path/separator keys. Brief aliases not registered. Resolve/emit = sibling **AST-1148**; help chrome = **AST-1149**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Token template + rewrite + alias exclusion | `src/utils/config.py` | **`TestAst1147CoverFromBlockTokenTemplateConfig`** |
+| Prior from-block field contract | same | **`TestAst1137CoverFromBlockConfig`** (unchanged keys) |
+
+**Broken / obsolete:** none — additive keys on existing block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1147CoverFromBlockTokenTemplateConfig \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  -q
+```
+
+
+### AST-1149 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1149-from-block-authoring-help-profile-session`.
+
+`COVER_FROM_BLOCK_CONFIG` `authoring_help` / `session_authoring_help`; `DATA_SHAPES` own **Cover Letter From** section with `placeholder`=`default_template` and `help`=`authoring_help`. UI `/api/ui_config` `cover_from_block` slice + pages: **`docs/test-bible/ui/api/api_system.md`**, **`docs/test-bible/frontend/pages.md`**. Resolve/emit = **AST-1148**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Authoring help + Cover Letter From section | `src/utils/config.py` | **`TestAst1149CoverFromBlockAuthoringHelpConfig`** |
+| Revised signature-group (from-block removed) | same | **`TestAst1137CoverFromBlockConfig`** |
+
+**Broken / obsolete:** AST-1137 profile placement under Cover Letter Signature — revised this pass.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1149CoverFromBlockAuthoringHelpConfig \
+  tests/component/utils/test_config.py::TestAst1137CoverFromBlockConfig \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_ui_config_includes_cover_from_block \
+  -q
+```
+
+### AST-1138 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`.
+
+`BUILD_CONFIG["job_cover_somerset"]` — `document_title_key` → session title, `artifact_to_fields` (`re_line`/`body`/`signature` → `subject`/`letter`/`signature`), `unset_fields` for layout-only session keys. Does **not** change `session_cover_letter` required flags or `artifact_shapes["cover_letter"]`. Primary emit: **`docs/test-bible/core/builder.md`** (**AST-1138**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job→Somerset field map | `src/utils/config.py` | **`TestAst1138JobCoverSomersetConfig`** |
+
+**Broken / obsolete:** none — additive `BUILD_CONFIG` block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1138JobCoverSomersetConfig \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  -q
+```
+
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`.
+
+`BUILD_CONFIG["session_cover_letter"]`: `fields.from_block.empty_uses_candidate_resolve` + block-level `from_block_sources` (`session` / `candidate` / `default`). Keeps `from_block.required` True. Does **not** change other session field required flags or job `job_cover_somerset`. Primary emit + Admin page: **`docs/test-bible/core/builder.md`**, **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty-resolve flag + source labels | `src/utils/config.py` | **`TestAst1139SessionCoverEmptyResolveConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing `session_cover_letter`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1139SessionCoverEmptyResolveConfig \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  -q
+```
+
+### AST-1140 · AST-1129
+
+**Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1140-selected-ids-gaze-email-ingest-entrypoint`.
+
+`GAZE_EMAIL_CONFIG` selected-ids literals: `debug_func_selected`, `selected_outcome_skipped_unbound` / `_not_in_inbox` / `_unmatched`. No parallel Land-Meteorite config block. Primary runner: **`docs/test-bible/core/gaze_email.md`** (**AST-1140**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Selected-ids config vocabulary | `src/utils/config.py` | **`TestAst1140GazeEmailSelectedConfig`** |
+
+**Broken / obsolete:** none — additive keys on existing `GAZE_EMAIL_CONFIG`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1140GazeEmailSelectedConfig \
+  tests/component/core/test_gaze_email.py::TestAst1140RunGazeEmailSelectedIds \
+  -q
+```
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+UAT: `TASK_CONFIG["parse_meteorite_email"].response_schema.jobs.items_schema.metadata` type `str` → `dict` (optional) so Ruth structured company/location objects validate. Prompt/fixture: **`docs/test-bible/core/repo_admin_json.md`**. Validation + runner: **`docs/test-bible/core/agent.md`** · **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema type dict | `src/utils/config.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** none — type flip; AST-1089 shell asserts still hold (did not lock `metadata` type).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
+
+### AST-1146 · AST-1130 (UAT)
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1146-uat-create-skips-null-company-job-id-dedupe`.
+
+`METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"]` = `8`. Primary behavior: **`docs/test-bible/data/database/jobs.md`** (**AST-1146**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Id-match min length | `src/utils/config.py` | **`TestAst1146MeteoriteEmailIngestMinCompanyJobIdChars`** |
+
+**Broken / obsolete:** none — additive key.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1146MeteoriteEmailIngestMinCompanyJobIdChars \
+  -q
+```
+
+### AST-1154 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1154-rubric-completeness-contracts-all-graded-tasks`.
+
+Shared `_ENCODED_GRADE_SET_COMPLETENESS` clause on multi-vector encoded `payload_instructions` (`grades_encoded`, `_notes`, `_meta`, `_prefilter_links`); not on `grades_encoded_vet_meta` / `grades_json`. Seven graded `agent_task` `cache_prompt`s carry the same AST-1154 marker + VALIDATE/Rules tighteners; AST-756 fixture stays byte-identical. Retry/Skipped Retry remain AST-1155 / AST-1156.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared encoded completeness clause | `src/utils/config.py` | **`TestAst1154EncodedGradeSetCompleteness`** |
+| Graded task prompts + fixture lock | `data/admin/agent_task.json` | **`TestAst1154GradedTaskCompletenessPrompts`**; existing **`TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`** |
+
+**Broken / obsolete:** none — additive prompt/contract text; catalog count unchanged.
+
+**Integration:** none — prompt/config contract only; no existing integration scenario asserts these strings.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1154EncodedGradeSetCompleteness \
+  tests/component/core/test_repo_admin_json.py::TestAst1154GradedTaskCompletenessPrompts \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte \
+  -q
+```
+
+### AST-1155 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1155-incomplete-grades-retry-holding-never-technical-fail`.
+
+Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_claim_states` companions; In Review UI/labels/grade-field maps. Apply/retry routing: **`docs/test-bible/core/consult.md`** (**AST-1155**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Holdings + claim companions + UI maps | `src/utils/config.py` | **`TestAst1155GradedRetryHoldings`**; revised **`TestAst874FetchCulturePagesConfig`**, **`TestAst1053MeteoriteGdlJobStates`** |
+
+**Broken / obsolete:** LIKE / meteorite GDL exact `prior_states` lists and meteorite In Review membership expanded for holdings.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1155GradedRetryHoldings \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
+
+### AST-1156 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`.
+
+`JOBS_SKIPPED_BULK_RETRY_TO_STATE` maps every Skipped section state (except `CANDIDATE_SKIPPED`) to a claimable **primary** trigger; manifest exposes `bulk_retry_to_state_by_from_state` (scalar `bulk_retry_to_state` removed). Target `prior_states` expanded so `transition_job_state` accepts Retry. UI/API: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/ui/api/api_jobs.md`** (or ui/api bible if present).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Retry map + priors + manifest | `src/utils/config.py` | **`TestAst1156SkippedBulkRetryMap`**; revised **`TestBuildStateUiManifest`**, **`TestAst874FetchCulturePagesConfig`**, **`TestAst1053MeteoriteGdlJobStates`** |
+
+**Broken / obsolete:** scalar `bulk_retry_to_state == "NEW"`; exact prior lists on CULTURE_READY / PASSED_JD / meteorite pass targets expanded for Skipped Retry from-states.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1156SkippedBulkRetryMap \
+  tests/component/utils/test_config.py::TestBuildStateUiManifest::test_manifest_contains_expected_sections \
+  -q
+```
+
+### AST-1195 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+
+`qualify_meteorite` schema: `job_link` / `job_title` → `required: False` so omit/`null` do not abort `do_task`. Universal rename `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** in `JOB_STATES` (priors `PASSED_JOBLIST` + `METEORITE_NEW`), `GAZER_CONFIG` fetch_jd error_states, `SKIPPED_STATES`, skipped section order + bulk-retry map (retry → `PASSED_JOBLIST`). Gazer map: **`docs/test-bible/core/gazer.md`**. Fixture: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema optional + `_validate_response_schema` omit/null | `src/utils/config.py` / `src/core/agent.py` | **`TestAst1195SchemaNullsAndBotBlocked`**; revised **`TestAst1127QualifyMeteoriteCompanyJobIdOptional`**, **`TestAst1060QualifyMeteoriteConfig`** |
+| `BOT_BLOCKED` registry + skipped UI + gazer error_states | `src/utils/config.py` | **`TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui`**; **`TestAst1156SkippedBulkRetryMap`** (covers map completeness / priors) |
+
+**Broken / obsolete:** AST-1060 / AST-1127 asserts that `job_title` / `job_link` stay `required: True`; AST-1127 sibling-missing check on `job_title` → `jd_text`. Frontend fixture `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` (see pages bible).
+
+**Integration:** none revised (no existing scenarios pin `JD_SCRAPE_FAIL_BOT` / qualify schema required flags).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked \
+  tests/component/utils/test_config.py::TestAst1127QualifyMeteoriteCompanyJobIdOptional \
+  tests/component/utils/test_config.py::TestAst1060QualifyMeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1156SkippedBulkRetryMap \
+  tests/component/core/test_gazer.py::TestAst1195BotBlockedErrorState \
+  -q
+```
+
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+`TASK_CONFIG["qualify_meteorite"]`: `email_link_prefix="email-"`, `bot_blocked_state="BOT_BLOCKED"`. `TRACKER_CONFIG["jd_classifier"]["bot_signals"]` gains parent challenge phrases (2-hit threshold). Apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Knobs + challenge signals | `src/utils/config.py` | **`TestAst1197QualifyMeteoriteApplyKnobs`** |
+
+**Broken / obsolete:** none in config tests.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1197QualifyMeteoriteApplyKnobs \
+  tests/component/core/test_gazer.py::TestAst1197ChallengeBotSignals \
+  -q
+```
+
+
+### AST-1210 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.
+
+Retire obsolete bible/test claims that meteorite GDL entry is `evaluate_jd`@**METEORITE_QUALIFIED** / JD overlay. Twin truth: `evaluate_meteorite`@**METEORITE_QUALIFIED** (`score_floor` `None`); `evaluate_jd` absent from `METEORITE_GDL_OUTCOME_BY_TASK`; rubric/craft/Analysis-JD override maps own the twin; classic Analysis-JD / `evaluate_jd`@**JD_READY** unchanged. Product retirement: **AST-1209**. Fixture lockstep: **AST-1211**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dispatch key+trigger + score_floor | `src/utils/config.py` | revised **`TestAst1054MeteoriteGdlDispatch`** |
+| Rubric / craft / Analysis override + overlay absence | same | **`TestAst1210EvaluateMeteoriteTwinConfig`** |
+
+**Broken / obsolete:** AST-1054 / AST-1060 prose and asserts that meteorite GDL entry is still `evaluate_jd`@**METEORITE_QUALIFIED**.
+
+**Integration:** none — no new scenarios.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1210EvaluateMeteoriteTwinConfig \
+  -q
+```
+
+### AST-1212 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`.
+
+Live product key rename: `TASK_CONFIG` / `METEORITE_EMAIL_PARSE_CONFIG["task_key"]` / `context_format` / `agent_task` → **`meteorite_email`**; `parse_meteorite_email` absent as a live key (no compat shim). Parse modes + response schema unchanged. Catalog: **`docs/test-bible/core/repo_admin_json.md`**. Schema validation: **`docs/test-bible/core/agent.md`**. Payload shape / groupings / aliases are siblings **AST-1213** / **AST-1183** / **AST-1184**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Parse config + TASK_CONFIG identity | `src/utils/config.py` | revised **`TestAst1089ParseMeteoriteEmailConfig`**, **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** AST-1089 / AST-1144 asserts and skipifs that indexed `TASK_CONFIG["parse_meteorite_email"]` / `task_key == "parse_meteorite_email"`.
+
+**Integration:** no existing scenarios assert parse/meteorite_email task key — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1089ParseMeteoriteEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1106GazeEmailCatalogRow \
+  tests/component/core/test_repo_admin_json.py::TestAst1144ParseMeteoriteEmailMetadataPrompt \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
+
+
+### AST-1213 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1213-ai-payload-as-visible-text-and-links`.
+
+`METEORITE_EMAIL_INGEST_CONFIG["ruth_payload_link_exclude_substrings"]` — Ruth `--- LINKS ---` AI-visibility excludes (narrower than Playwright `link_exclude_substrings`; no `list-manage.com`). Runner: **`docs/test-bible/core/gaze_email.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ruth exclude tuple vs Playwright | `src/utils/config.py` | **`TestAst1213RuthPayloadLinkExcludes`** |
+
+**Broken / obsolete:** none — additive key; AST-1061 / AST-1132 Playwright asserts unchanged.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1213RuthPayloadLinkExcludes \
+  -q
+```
+
+### AST-1220 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers`.
+
+General `master_task_key` contract: `is_task_alias` / `resolve_task_key_for_content` (field-driven); load-time asserts (live non-alias masters, no chains, job-entity alias outcomes ∈ `JOB_STATES`); first-consumer aliases `meteorite_grade_do` → `grade_do`, `meteorite_grade_get` → `grade_get` with meteorite pass/fail/error + field-driven `trigger_state`; **AST-1220** emptied `METEORITE_GDL_OUTCOME_BY_TASK` (**AST-1221** deletes the symbol); aliases in `_DISPATCH_BATCH_CALL_MODE_ONE`. Does **not** rewire consult/agent (**AST-1221**) or retarget `METEORITE_DISPATCH_TASKS` / seed (**AST-1222**). Consult overlay revision: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Resolve helpers + alias entries + overlay deleted + admin defaults | `src/utils/config.py` | **`TestAst1220TaskAliasConfigContract`** (overlay assert revised **AST-1221**) |
+| Consult Gaze for shared keys / alias orch | `src/core/consult.py` | revised **`TestAst1054MeteoriteGdlOutcomeOverlay`**; **`TestAst1221RuntimeAliasConsult`** |
+
+**Broken / obsolete:** AST-1054 consult asserts that indexed `METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]` / expected meteorite overlay pass/fail from shared keys; bible prose that overlay still supplies Do/Get outcomes; empty-dict overlay asserts superseded by **AST-1221** symbol deletion.
+
+**Integration:** no existing scenarios assert overlay map or `master_task_key` — none revised; do not invent new integration coverage. Do **not** exercise meteorite Do/Get on a tree with only AST-1220 merged (wait for AST-1221 + AST-1222).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  -q
+```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runtime resolve / consult / exhaust: **`docs/test-bible/core/agent.md`**, **`docs/test-bible/core/consult.md`**, **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Overlay symbol gone; alias entries unchanged | `src/utils/config.py` | revised **`TestAst1220TaskAliasConfigContract`**, **`TestAst1054MeteoriteGdlDispatch`**, **`TestAst1210EvaluateMeteoriteTwinConfig`** |
+
+**Broken / obsolete:** any assert that indexes / iterates / empties `METEORITE_GDL_OUTCOME_BY_TASK`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1210EvaluateMeteoriteTwinConfig \
+  -q
+```
+
+### AST-1222 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`.
+
+`METEORITE_DISPATCH_TASKS` Do/Get → `meteorite_grade_do` @ `METEORITE_PASSED_JD` / `meteorite_grade_get` @ `METEORITE_PASSED_DO`; matching `SEED_CONFIG["dispatch_task-meteorite"]` INSERT SQL. Grouping catalog key stays on the alias. Seed / provision: **`docs/test-bible/core/repo_admin_json.md`** · **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Catalog + SQL retarget + grouping key | `src/utils/config.py` | **`TestAst1222MeteoriteAliasDispatchAndSeed`**; revised **`TestAst1054MeteoriteGdlDispatch`**, **`TestAst1220TaskAliasConfigContract`** |
+
+**Broken / obsolete:** shared-key meteorite Do/Get dispatch lookups; AST-1220 “still shared until AST-1222” asserts.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1222MeteoriteAliasDispatchAndSeed \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  -q
+```
+
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+`SURFER_PACING_CONFIG` — dwell centre/spread (10 ± 5 seconds), `max_tabs` (1), named `mv3_idle_ceiling_seconds` (30). Module-load asserts keep the dwell window under the MV3 idle ceiling (ordinary timers, not `chrome.alarms`). GET + extension helpers: **`docs/test-bible/ui/api/api_surfer.md`**, **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Defaults + MV3 window contract | `src/utils/config.py` | **`TestAst1236SurferPacingConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer pacing scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
+  -q
+```
+
+### AST-1229 · AST-1169
+
+**Parent:** [AST-1169 — Surfer batch — durable worklist state and batch-scoped intake](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake). **Publish:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
+
+`SURFER_BATCH_CONFIG` — batch statuses (`requires_all_urls_terminal` on COMPLETED only), URL outcomes (`pending`/`delivered` non-terminal), id prefix `surfer`, lifecycle pointer key `active_surfer_batch_id`. No staleness keys. Core: **`docs/test-bible/core/surfer.md`**. Data: **`docs/test-bible/data/database/surfer_batches.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Vocab + flag contract | `src/utils/config.py` | **`TestAst1229SurferBatchConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
+  -q
+```
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`SURFER_CONSENT_CONFIG` — `candidate_data_key` `surfer_consent`, opaque `current_version`, provisional `disclosure_copy`, closed `statuses` (`none`/`opted_in`/`opted_out`), `default_status` `none`. Core helpers + API: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key / version / copy / statuses contract | `src/utils/config.py` | **`TestAst1235SurferConsentConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer consent scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome + version + copy weight + nav | `src/utils/config.py` | **`TestAst1237SurferConsentDisclosureConfig`** |
+
+**Broken / obsolete:** none — AST-1235 contract still holds (opaque non-empty version).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Off-switch copy + Surfer nav | `src/utils/config.py` | **`TestAst1238SurferOffSwitchConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```
+
+### AST-1214 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists`.
+
+`dispatch_task_admin_defaults` widens beyond `TASK_CONFIG`: helper-resolvable hops (`fetch_*`, `gaze`, `inflow_discovery`, `recheck_no_openings`, plus writer-capable `prefilter` / `inflow_resolve_website`) resolve via `_dispatch_*` helpers; meteorite mailbox fold via `METEORITE_EMAIL_PARSE_CONFIG` (`legacy_agent_task_key`, `admin_entity_type`) + `is_meteorite_email_mailbox_task_key`. Admin picker/validator/Avail: **`docs/test-bible/ui/api/api_admin.md`** (**AST-1214**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper-resolvable + mailbox defaults | `src/utils/config.py` | revised gap-key classes (**`TestAst796…`**, **`TestAst702…`**, **`TestAst719…`**, **`TestAst701…`**, **`TestAst874…`**, **`TestAst505…`**, **`TestAst506…`**); **`TestAst1214DispatchAdminDefaultsWidened`** |
+| Mailbox fold config fields | same | revised **`TestAst1089ParseMeteoriteEmailConfig`** |
+
+**Broken / obsolete (Betty revision this pass):** `dispatch_task_admin_defaults(<gap_key>)` expecting `unknown task_key` KeyError for helper-resolvable / prefilter / inflow_resolve_website keys.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover::test_fetch_jd_gazer_hop_not_task_config_catalog \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig::test_dispatch_registry_and_pjl_data_keys \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig::test_dispatch_registry_and_homepage_text_key \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_gazer_and_dispatch_registry \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  -q
+```

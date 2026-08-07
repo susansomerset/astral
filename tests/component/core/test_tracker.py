@@ -1003,7 +1003,8 @@ class TestAst1100ResolveHydrateJobArtifactPins:
             }
         )
         assert out["job_resume"] == {"body": "pin-resume"}
-        assert out["cover_letter"] == {"Subject": "keep"}
+        # AST-1116: legacy/partial cover dicts normalize to Subject/Letter/signature spine.
+        assert out["cover_letter"] == {"Subject": "keep", "Letter": "", "signature": ""}
         assert out["proposed_answers"] == {"body": "pin-answers"}
         assert out["analysis_upshot"] == {"summary": "x"}
 
@@ -1020,4 +1021,38 @@ class TestAst1100ResolveHydrateJobArtifactPins:
             lambda pin, debug=False: {"ok": True},
         )
         tracker_mod.hydrate_job_artifacts_for_display({"job_resume": "pin-1"})
+        assert saved == []
+
+class TestAst1116HydrateCoverLetterNormalize:
+    """AST-1116: hydrate overlay normalizes cover_letter dict to Subject/Letter/signature."""
+
+    def test_hydrate_normalizes_pin_resolved_re_line_body(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            tracker_mod,
+            "resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {"re_line": "Re: Role", "body": "Hello", "signature": "Ada"},
+        )
+        out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
+        assert out["cover_letter"] == {
+            "Subject": "Re: Role",
+            "Letter": "Hello",
+            "signature": "Ada",
+        }
+
+    def test_hydrate_normalizes_legacy_body_dict(self) -> None:
+        out = tracker_mod.hydrate_job_artifacts_for_display(
+            {"cover_letter": {"re_line": "Re", "body": "Hi", "signature": ""}}
+        )
+        assert out["cover_letter"] == {"Subject": "Re", "Letter": "Hi", "signature": ""}
+
+    def test_hydrate_cover_normalize_does_not_save(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: list = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
+        tracker_mod.hydrate_job_artifacts_for_display(
+            {"cover_letter": {"re_line": "Re", "body": "Hi"}}
+        )
         assert saved == []

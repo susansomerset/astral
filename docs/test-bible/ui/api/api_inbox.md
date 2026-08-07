@@ -77,3 +77,23 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
   tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
   -q
 ```
+
+### AST-1141 · AST-1129
+
+**Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1141-admin-land-meteorite-api-selected-message-ids`. **Blocked by:** AST-1140.
+
+`POST /api/admin/inbox/land-meteorite` (`@require_admin`, `ui_llm_debug`): non-empty stripped `message_ids` → `asyncio.run(run_gaze_email_selected_ids(...))` → **200** pass-through (`results` + totals); missing/non-list/empty → **400**; ValueError → **400**; upstream → **502**; never calls `create_meteorite_job_from_inbox_message`. Core entrypoint: **`docs/test-bible/core/gaze_email.md`** (**AST-1140**). React consumer: **`docs/test-bible/frontend/pages.md`** (**AST-1142**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land Meteorite route + auth + empty reject + Create ban | `src/ui/api/api_inbox.py` | **`TestAst1141InboxLandMeteoriteApi`** |
+
+**Broken / obsolete:** none — additive route; create-job remains until AST-1142.
+
+**Integration:** none — no existing scenario asserts Land Meteorite HTTP; do not invent new coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi \
+  -q
+```

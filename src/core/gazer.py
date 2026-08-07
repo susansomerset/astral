@@ -37,17 +37,21 @@ from src.utils.config import (
     PLAYWRIGHT_CONFIG,
 )
 from src.core.tracker import ingest_jobs, save_job_data, transition_job_state
-from src.core.meteorite import create_meteorite_job
+from src.core.meteorite import create_meteorite_job, is_meteorite_company
 from src.data.database import (
     get_company,
-    job_link_exists,
+    job_link_exists_for_candidate,
     record_to_company_job_scan,
     raw_job_listing_is_duplicate,
-    text_matches_known_company_job_id,
+    text_matches_known_company_job_id_for_candidate,
     update_company_last_scan_at,
 )
 from src.external.playwright import create_browser_context, create_batch_browser_session, get_page, load_all_jobs, extract_page_dom, get_visible_text, check_connectivity, extract_raw_job_listings
-from src.utils.formatting import collapse_consecutive_blank_lines, normalize_link
+from src.utils.formatting import (
+    collapse_consecutive_blank_lines,
+    normalize_link,
+    normalize_pasted_list_email_html,
+)
 from src.utils.logging import get_logger
 
 _log = get_logger(__name__)
@@ -80,10 +84,10 @@ def _gazer_company_identifier(row: Dict[str, Any]) -> str:
     return str(row.get("short_name") or "?")
 
 
-# Maps _classify_jd() return value → JD_SCRAPE_FAIL_* state name
+# Maps _classify_jd() return value → scrape-fail / bot state name
 _JD_ERROR_STATES = {
     "cookie":  "JD_SCRAPE_FAIL_COOKIE",
-    "bot":     "JD_SCRAPE_FAIL_BOT",
+    "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
     "missing": "JD_SCRAPE_FAIL_MISSING",
     "closed":  "JD_SCRAPE_FAIL_CLOSED",
 }
@@ -851,6 +855,17 @@ async def validate_title_batch(
     passed = failed = 0
     for ji, job in enumerate(jobs, start=1):
         aid = job.get("astral_job_id", "")
+        # AST-1152: meteorite track never gets roster title-pattern outcomes.
+        if is_meteorite_company(job.get("company")):
+            if debug:
+                _log.debug_index(
+                    func="gazer.validate_title_batch",
+                    index=ji,
+                    total=job_total,
+                    identifier=_gazer_job_identifier(job),
+                    outcome="skipped — meteorite company (no title-pattern screen)",
+                )
+            continue
         jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
         raw_listing = (jd or {}).get("raw_job_listing") or ""
         if not isinstance(raw_listing, str):
@@ -1127,6 +1142,7 @@ def _meteorite_email_candidate_links(html: str) -> List[str]:
     cfg = METEORITE_EMAIL_INGEST_CONFIG
     schemes = {s.casefold() for s in cfg["link_schemes"]}
     excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
+    allows = tuple(s.casefold() for s in cfg["link_allow_substrings"])
     soup = BeautifulSoup(html or "", "html.parser")
     seen: set[str] = set()
     out: List[str] = []
@@ -1140,6 +1156,9 @@ def _meteorite_email_candidate_links(html: str) -> List[str]:
             continue
         low = href.casefold()
         if any(frag in low for frag in excludes):
+            continue
+        # Empty allow = no filter (AST-1132); non-empty requires ≥1 allow substring.
+        if allows and not any(frag in low for frag in allows):
             continue
         seen.add(href)
         out.append(href)
@@ -1187,6 +1206,9 @@ async def ingest_meteorite_jobs_from_email_html(
     if not isinstance(html, str) or not html.strip():
         raise ValueError("html is required")
 
+    # AST-1131: normalize paste/list HTML before link discovery (idempotent with inbox strip).
+    html = normalize_pasted_list_email_html(html)
+
     log = get_logger(__name__)
     log.set_debug_flag(debug)
     cfg = METEORITE_EMAIL_INGEST_CONFIG
@@ -1223,8 +1245,48 @@ async def ingest_meteorite_jobs_from_email_html(
                     return
 
                 link = (final_url or url).strip() or url
+                # AST-1132 Gate A: final URL may redirect onto excluded hosts/paths.
+                low_link = link.casefold()
+                excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
+                if any(frag in low_link for frag in excludes):
+                    skipped.append({
+                        "reason": "excluded_link",
+                        "url": link,
+                        "matched_company_job_id": None,
+                    })
+                    if debug:
+                        log.debug_index(
+                            func="gazer.meteorite_email_ingest",
+                            index=i,
+                            total=n,
+                            identifier=link[:80],
+                            outcome="skipped-excluded",
+                        )
+                        log.debug_detail("reason=excluded_link")
+                    return
+
+                # AST-1132 Gate B: long-enough SVG/spec pages still skip create.
+                markers = tuple(s.casefold() for s in cfg["non_job_visible_substrings"])
+                hay_vis = (text or "").casefold()
+                if markers and any(m in hay_vis for m in markers):
+                    skipped.append({
+                        "reason": "non_job_page",
+                        "url": link,
+                        "matched_company_job_id": None,
+                    })
+                    if debug:
+                        log.debug_index(
+                            func="gazer.meteorite_email_ingest",
+                            index=i,
+                            total=n,
+                            identifier=link[:80],
+                            outcome="skipped-non-job",
+                        )
+                        log.debug_detail("reason=non_job_page")
+                    return
+
                 haystack = f"{link}\n{text}"
-                if job_link_exists(link):
+                if job_link_exists_for_candidate(candidate_id, link):
                     skipped.append({
                         "reason": "known_job_link",
                         "url": link,
@@ -1241,7 +1303,9 @@ async def ingest_meteorite_jobs_from_email_html(
                         log.debug_detail("reason=known_job_link")
                     return
 
-                matched = text_matches_known_company_job_id(haystack)
+                matched = text_matches_known_company_job_id_for_candidate(
+                    candidate_id, haystack
+                )
                 if matched:
                     skipped.append({
                         "reason": "known_company_job_id",
@@ -1309,7 +1373,7 @@ async def ingest_meteorite_jobs_from_email_html(
         if not text:
             text = html.strip()
 
-        matched = text_matches_known_company_job_id(text)
+        matched = text_matches_known_company_job_id_for_candidate(candidate_id, text)
         if matched:
             skipped.append({
                 "reason": "known_company_job_id",

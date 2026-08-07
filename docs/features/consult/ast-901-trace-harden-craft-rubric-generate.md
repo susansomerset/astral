@@ -1,3 +1,136 @@
+<!-- linear-archive: AST-901 archived 2026-08-02 -->
+
+## Linear archive (AST-901)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-901/trace-and-harden-craft-rubric-generate-delivery-craft-get-rubric-did  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-900 — craft get rubric did not populate the rubric content for candidate  
+**Blocked by / blocks / related:** parent: AST-900; blocks: AST-902
+
+### Description
+
+## What this implements
+
+Trace the `karfo` `craft_get_rubric` run end to end and document where the successful criteria payload was lost. Harden the candidate UI generate path so a successful backend COMPLETED cannot leave the user with nothing and no error — including long-running generations. When the browser never receives the result, the completed generation must be recoverable. Backend debug on the generate path must show what was produced and what was recorded when debug is on (AST-538 contract).
+
+## Acceptance criteria
+
+* The root cause of the `karfo` drop is documented on this ticket or a child ticket.
+* A generation that completes on the backend can no longer vanish without a user-visible trace: the editor shows the result or an error, or the completed result is recoverable when the user returns to the page.
+* Base resume generation still parses and saves as before.
+
+## Boundaries
+
+* Does not change rubric prompts, response schema, criteria content, or grading semantics.
+* Does not auto-Save overwriting the candidate artifact without user confirmation after Generate.
+* Does not change dispatcher batch consult paths (`grade_get` and siblings).
+* Artifact editor UX for review-after-Generate and page-return recovery is the sibling Katherine ticket.
+
+## Notes for planning
+
+* Generate entry: candidate UI generate → `run_candidate_artifact_generation` → `do_task` for `craft_*_rubric`.
+* Ledger already closed COMPLETED for `karfo` with a full criteria payload — start from that trail.
+* Keep review-then-Save: Generate must not silently overwrite stored candidate artifacts.
+* Fix must apply to every craft rubric generate path, not get-only.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-16T21:37:19.532Z
+[merge-child] blocked: missing plan(AST-901): on origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate
+
+Plan was published as `docs(AST-901): plan — …` instead of `plan(AST-901): …`. @Ada Lovelace — republish with a `plan(AST-901):` commit in the canonical sub log (empty commit OK if the plan blob already exists), then Chuckles will re-run merge-child.
+
+— Chuckles
+
+#### chuckles — 2026-07-16T21:36:35.170Z
+[merge-child] blocked: missing plan(AST-901): on origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate
+
+Plan was published as `docs(AST-901): plan — …` instead of `plan(AST-901): …`. @Ada Lovelace — republish with a `plan(AST-901):` commit in the canonical sub log (empty commit OK if the plan blob already exists), then Chuckles will re-run merge-child.
+
+— Chuckles
+
+#### radia — 2026-07-16T21:33:42.949Z
+### Radia review — findings
+
+Diff: `origin/dev`…`origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate` @ `2dec798` (product tip was `f8be916` + this doc commit).
+
+Plan doc: https://github.com/susansomerset/astral/blob/2dec798dd2197d1d34605a2da8e2ec2e5de4918f/docs/features/consult/ast-901-trace-harden-craft-rubric-generate.md
+
+**fix-now:** Nested import without B1 comment — `get_pending_craft_generation` does `from src.core.dispatcher import list_dispatch_ledger` at function scope (`src/core/candidate.py` ~886). `dispatcher` does not import `candidate`, so this is not a documented cycle break. Per §1.2 / B1: move to module top, or keep lazy with a one-line why-comment.
+
+**fix-now:** Silent stash skip — `_stash_pending_craft_generation` returns with no log when `get_candidate` is None (`src/core/candidate.py` ~72–74). On a multi-minute generate that is the race this ticket hardens against; success can still return HTTP 200 / ledger `COMPLETED` with no pending stash and no operator signal (D2). Log at least `logger.error` (prefer failing the craft-rubric success path if stash cannot be written).
+
+**Solid:** Stages 1–5 plan fidelity; `CRAFT_RUBRIC_UI_TASK_KEYS` from existing map; API→core only; AST-538 debug gated + truncated via `debug_detail_block`; AST-902 / `craft_resume_base` boundaries held.
+
+#### betty — 2026-07-16T21:29:30.835Z
+## QA test manifest — AST-901
+
+**Publish:** `origin/sub/AST-900/AST-901-trace-harden-craft-rubric-generate` @ `f8be916` (`merge-tests(AST-901): origin/tests 75474cf9424f15024758ce0dc78a177bc1d53966`)
+
+### Manifest (run all)
+
+1. `tests/component/core/test_candidate.py::TestAst901CraftRubricGenerateDelivery` — stash on craft rubric success (not artifact); empty criteria → 500 + ledger FAILED; recover from pending stash; ledger+`agent_data` fallback; reject non-rubric / missing candidate; clear pending RMW
+2. `tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration` — existing; `craft_resume_base` auto-persist unchanged
+3. `tests/component/ui/api/test_api_candidate.py::TestAst901PendingCraftGenerationApi` — `GET …/generate/<task_key>/pending`; PUT matching rubric artifact clears pending
+4. `tests/component/utils/test_config.py::TestAst901CraftRubricUiTaskKeys` — `CRAFT_RUBRIC_UI_TASK_KEYS` == map keys (6), excludes `craft_resume_base`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst901CraftRubricGenerateDelivery \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration \
+  tests/component/ui/api/test_api_candidate.py::TestAst901PendingCraftGenerationApi \
+  tests/component/utils/test_config.py::TestAst901CraftRubricUiTaskKeys
+```
+
+### Existing coverage (bible-backed, no rewrite)
+
+- `TestRunCandidateArtifactGeneration` — resume-base persist / non-rubric no-artifact path still valid
+- No obsolete tests found for this diff (craft rubric generate previously had no stash/recovery surface)
+
+### Bible shasums on publish ref
+
+- `docs/test-bible/core/candidate.md` `b13c9ee0af7f7dfa4fa296850f25d855dfa6c4da`
+- `docs/test-bible/ui/api/api_candidate.md` `9c9efae379ccf0609dafc432be7acacf4176fbd8`
+
+— Betty
+
+#### chuckles — 2026-07-16T21:22:22.656Z
+## validate-plan — APPROVED
+
+**Verdict:** APPROVED → Plan Approved (assignee Ada)
+
+### Findings
+None blocking.
+
+**Definition fidelity:** Matches AST-900 scope (delivery hardening vs UX recovery split). Boundaries respected (no prompt/schema/consult batch changes; review-then-Save kept).
+
+**Layers / config:** Files-changed stay in allowed layers. Craft rubric task set derived from existing `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (DRY). Pending stash outside `artifacts` is correct.
+
+**Acceptable notes for build:** Prefer public core helpers over importing `_clear_*` into `api_candidate`; watch `candidate`↔`dispatcher` import direction when wiring ledger fallback.
+
+— Chuckles
+
+#### ada — 2026-07-16T21:19:19.059Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-900/AST-901-trace-harden-craft-rubric-generate/docs/features/consult/ast-901-trace-harden-craft-rubric-generate.md @ `0083732`
+
+**Root cause (`karfo`):** Backend path succeeded end-to-end — ledger `COMPLETED`, full criteria in `agent_data` RESPONSE — but delivery was synchronous-only. `craft_*_rubric` tasks do not write `candidate.agent_responses` (`entity_type: None`) and do not auto-save artifacts (review-then-Save). When the browser missed the HTTP response after a ~3-minute wait, there was no candidate-facing recovery path. AST-901 adds `pending_craft_generations` stash, empty-criteria guard, `GET …/pending` recovery API, and AST-538 debug on the generate path. UI page-return wiring → AST-902.
+
+**Scope:** `Single-Component` — `candidate.py` generate/recovery + one API route + config frozenset; no UI or dispatcher changes.
+
+**Conf:** `Medium` — root cause is clear from ledger/logs; pending stash + ledger fallback are new but follow existing batch patterns.
+
+**Risk:** `Medium` — all six `craft_*_rubric` generates touch the success path; empty-criteria guard may surface latent model failures as 500s (intended).
+
+---
+
 # Trace and harden craft rubric generate delivery
 
 **Parent:** [AST-900 — craft get rubric did not populate the rubric content for candidate](https://linear.app/astralcareermatch/issue/AST-900/craft-get-rubric-did-not-populate-the-rubric-content-for-candidate)

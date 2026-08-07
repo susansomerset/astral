@@ -3,7 +3,8 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
-contact uniqueness enforcement on save (AST-1080).
+contact uniqueness enforcement on save (AST-1080),
+get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -17,7 +18,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -37,11 +38,16 @@ from src.utils.config import (
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    COVER_FROM_BLOCK_CONFIG,
+    TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
+    SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
+    NAV_CONFIG,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
@@ -53,6 +59,7 @@ from src.utils.config import (
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
 )
+from src.utils.formatting import value_to_str
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -60,6 +67,8 @@ logger = get_logger(__name__)
 
 _NAME_COLUMNS = CANDIDATE_LIBRARY_CONFIG["name_columns"]
 _LIBRARY_BLOB_KEYS = ("contact", "context", "artifacts")
+# AST-1148: same shape as config._TOKEN_RE — do not import that private.
+_FROM_BLOCK_TOKEN_RE = re.compile(r"\{\$([A-Z_]+)\}")
 
 
 def build_candidate_token_view(candidate: dict) -> dict:
@@ -79,10 +88,198 @@ def build_candidate_token_view(candidate: dict) -> dict:
     }
 
 
+def is_candidate_token_view(obj: object) -> bool:
+    """True when obj matches build_candidate_token_view output (not a DB row/raft)."""
+    if not isinstance(obj, dict) or "candidate_data" in obj:
+        return False
+    return "first" in obj or "last" in obj or "full" in obj or "contact" in obj
+
+
+def is_candidate_row_with_name_columns(obj: object) -> bool:
+    """True when obj is a DB row/raft with nested candidate_data and name columns."""
+    if not isinstance(obj, dict) or not isinstance(obj.get("candidate_data"), dict):
+        return False
+    return "first" in obj or "last" in obj or "full" in obj
+
+
 def recompute_full_name(first: str, last: str) -> str:
     join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
     parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
     return join.join(parts)
+
+
+def expand_cover_from_block_text(
+    text: str,
+    candidate: dict,
+    *,
+    source: str,
+    debug: bool = False,
+) -> str:
+    """Expand from-block authoring text for emit (AST-1148).
+
+    Allowlisted ``{$TOKEN}`` → candidate values; ``|`` → emit separator;
+    empty segments dropped per COVER_FROM_BLOCK_CONFIG. Unrecognized
+    ``{$…}`` left as-is. ``source`` is a debug label only (candidate/default/session).
+    """
+    logger.set_debug_flag(debug)
+    auth_sep = COVER_FROM_BLOCK_CONFIG["authoring_separator"]
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    line_sep = COVER_FROM_BLOCK_CONFIG["line_separator"]
+    policy = COVER_FROM_BLOCK_CONFIG["empty_segment_policy"]
+    allowed = COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+    if policy != "drop_with_adjacent_separator":
+        raise ValueError(
+            f"Unsupported COVER_FROM_BLOCK_CONFIG empty_segment_policy: {policy!r}"
+        )
+
+    # DB row → token view; builder/token-view shape keeps top-level contact.
+    if isinstance(candidate.get("candidate_data"), dict):
+        view = build_candidate_token_view(candidate)
+    else:
+        contact = (
+            candidate["contact"]
+            if isinstance(candidate.get("contact"), dict)
+            else {}
+        )
+        view = {
+            "first": candidate.get("first") or "",
+            "last": candidate.get("last") or "",
+            "full": candidate.get("full") or "",
+            "contact": contact,
+            "_astral_candidate_id": (
+                candidate.get("_astral_candidate_id")
+                or candidate.get("astral_candidate_id")
+                or ""
+            ),
+        }
+    if not str(view.get("full") or "").strip():
+        view["full"] = recompute_full_name(
+            str(view.get("first") or ""), str(view.get("last") or "")
+        )
+
+    def _walk_path(obj: object, path: str) -> object:
+        for segment in path.split("."):
+            if not isinstance(obj, dict):
+                return None
+            obj = obj.get(segment)
+        return obj
+
+    def _lookup_allowed(name: str) -> Optional[str]:
+        # None → leave {$name} as-is; "" → allowlisted empty (segment may drop).
+        if name not in allowed:
+            return None
+        spec = TOKEN_SOURCES.get(name)
+        if not spec or spec.get("source") != "candidate":
+            return None
+        raw = _walk_path(view, spec["path"])
+        if raw is None or raw == "" or raw == []:
+            return ""
+        return value_to_str(raw).strip()
+
+    totals = {"resolved": 0, "empty": 0, "left_as_is": 0}
+
+    def _expand_segment(segment: str) -> str:
+        def _replace(match: re.Match) -> str:
+            name = match.group(1)
+            looked = _lookup_allowed(name)
+            if looked is None:
+                totals["left_as_is"] += 1
+                return match.group(0)
+            if looked:
+                totals["resolved"] += 1
+            else:
+                totals["empty"] += 1
+            return looked
+
+        return _FROM_BLOCK_TOKEN_RE.sub(_replace, segment)
+
+    raw = (text or "").replace("\r\n", "\n")
+    tokens_found = len(_FROM_BLOCK_TOKEN_RE.findall(raw))
+    out_lines = []
+    for line in raw.split(line_sep):
+        # Split on authoring "|", expand tokens, drop empty, join with emit sep.
+        keepers = []
+        for seg in line.split(auth_sep):
+            expanded = _expand_segment(seg).strip()
+            if expanded:
+                keepers.append(expanded)
+        if keepers:
+            out_lines.append(emit_sep.join(keepers))
+    result = line_sep.join(out_lines)
+
+    if debug:
+        cid = (
+            view.get("_astral_candidate_id")
+            or candidate.get("astral_candidate_id")
+            or ""
+        )
+        logger.debug_index(
+            func="candidate.expand_cover_from_block_text",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=f"success — from_block {source}",
+        )
+        logger.debug_detail(f"source={source}")
+        logger.debug_detail(f"tokens_found={tokens_found}")
+        logger.debug_detail(f"tokens_resolved={totals['resolved']}")
+        logger.debug_detail(f"tokens_empty={totals['empty']}")
+        logger.debug_detail(f"tokens_left_as_is={totals['left_as_is']}")
+        logger.debug_detail(
+            f"separator_rewrite={'yes' if auth_sep in raw else 'no'}"
+        )
+        logger.debug_detail(f"text_chars={len(result)}")
+    return result
+
+
+def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
+    """Return cover from-block text + source for emit consumers (AST-1137 / AST-1148).
+
+    Returns ``{"text": str, "source": "candidate"|"default"}``.
+    Custom wins when ``contact.cover_letter_from_block`` strips non-empty;
+    otherwise expand ``default_template``. Both paths run token / ``|``→``•`` /
+    empty-segment expand.
+    """
+    logger.set_debug_flag(debug)
+    src_candidate, src_default = COVER_FROM_BLOCK_CONFIG["sources"]
+    contact_key = COVER_FROM_BLOCK_CONFIG["contact_key"]
+
+    # DB row (candidate_data.contact) or token-view (top-level contact).
+    cd = candidate.get("candidate_data")
+    if isinstance(cd, dict):
+        contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    elif isinstance(candidate.get("contact"), dict):
+        contact = candidate["contact"]
+    else:
+        contact = {}
+
+    raw = contact.get(contact_key)
+    if isinstance(raw, str) and raw.strip():
+        authoring = raw.strip()
+        source = src_candidate
+    else:
+        authoring = COVER_FROM_BLOCK_CONFIG["default_template"]
+        source = src_default
+
+    text = expand_cover_from_block_text(
+        authoring, candidate, source=source, debug=debug
+    )
+    if debug:
+        cid = (
+            candidate.get("astral_candidate_id")
+            or candidate.get("_astral_candidate_id")
+            or ""
+        )
+        logger.debug_index(
+            func="candidate.resolve_cover_from_block",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=f"success — from_block {source}",
+        )
+        logger.debug_detail(f"source={source}")
+        logger.debug_detail(f"text_chars={len(text)}")
+    return {"text": text, "source": source}
 
 
 def normalize_contact_urls(contact: dict) -> None:
@@ -858,6 +1055,175 @@ def mark_topic_menu_preamble_confirmed(
     return menu
 
 
+def _surfer_consent_key() -> str:
+    return str(SURFER_CONSENT_CONFIG["candidate_data_key"])
+
+
+def _surfer_consent_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def empty_surfer_consent() -> dict:
+    """Empty Surfer consent envelope (AST-1235)."""
+    return {
+        "status": SURFER_CONSENT_CONFIG["default_status"],
+        "accepted_version": None,
+        "updated_at": None,
+    }
+
+
+def normalize_surfer_consent(raw: Any) -> dict:
+    """Coerce stored/raw consent to status / accepted_version / updated_at."""
+    if not isinstance(raw, dict):
+        return empty_surfer_consent()
+    status = raw.get("status")
+    if status not in SURFER_CONSENT_CONFIG["statuses"]:
+        status = "none"
+    accepted = raw.get("accepted_version")
+    if isinstance(accepted, str) and accepted.strip():
+        accepted_version = accepted.strip()
+    else:
+        accepted_version = None
+    updated = raw.get("updated_at")
+    if isinstance(updated, str) and updated.strip():
+        updated_at = updated.strip()
+    else:
+        updated_at = None
+    return {
+        "status": status,
+        "accepted_version": accepted_version,
+        "updated_at": updated_at,
+    }
+
+
+def get_surfer_consent(candidate_id: str) -> dict:
+    """Load ``candidate_data.surfer_consent`` (normalized). Raises if candidate missing."""
+    cand = get_candidate(candidate_id)
+    if not cand:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = cand.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return normalize_surfer_consent(cd.get(_surfer_consent_key()))
+
+
+def is_surfer_consent_current(record: Any) -> bool:
+    """True only when opted_in and accepted_version matches config current_version."""
+    n = normalize_surfer_consent(record)
+    return (
+        n["status"] == "opted_in"
+        and n["accepted_version"] == SURFER_CONSENT_CONFIG["current_version"]
+    )
+
+
+def require_current_surfer_consent(candidate_id: str) -> dict:
+    """Return the consent DTO when current; raise ValueError if capture must no-op."""
+    dto = surfer_consent_dto(candidate_id)
+    if not dto["is_current"]:
+        raise ValueError(str(SURFER_CONSENT_CONFIG["capture_denied_message"]))
+    return dto
+
+
+def surfer_consent_dto(candidate_id: str) -> dict:
+    """Read model for API / siblings (includes current disclosure copy + is_current)."""
+    record = get_surfer_consent(candidate_id)
+    return {
+        "status": record["status"],
+        "accepted_version": record["accepted_version"],
+        "updated_at": record["updated_at"],
+        "current_version": SURFER_CONSENT_CONFIG["current_version"],
+        "disclosure_copy": SURFER_CONSENT_CONFIG["disclosure_copy"],
+        "is_current": is_surfer_consent_current(record),
+        # AST-1237: display chrome from config (not stored on the meta record).
+        "disclosure_title": SURFER_CONSENT_CONFIG["disclosure_title"],
+        "opt_in_label": SURFER_CONSENT_CONFIG["opt_in_label"],
+        "decline_label": SURFER_CONSENT_CONFIG["decline_label"],
+        "current_ok_title": SURFER_CONSENT_CONFIG["current_ok_title"],
+        "current_ok_body": SURFER_CONSENT_CONFIG["current_ok_body"],
+        # AST-1238: off-switch / status chrome from config.
+        "off_switch_heading": SURFER_CONSENT_CONFIG["off_switch_heading"],
+        "off_switch_button_label": SURFER_CONSENT_CONFIG["off_switch_button_label"],
+        "off_switch_confirm": SURFER_CONSENT_CONFIG["off_switch_confirm"],
+        "status_on_label": SURFER_CONSENT_CONFIG["status_on_label"],
+        "status_off_label": SURFER_CONSENT_CONFIG["status_off_label"],
+        "status_stale_label": SURFER_CONSENT_CONFIG["status_stale_label"],
+        "uninstall_guidance": SURFER_CONSENT_CONFIG["uninstall_guidance"],
+        "capture_denied_message": SURFER_CONSENT_CONFIG["capture_denied_message"],
+    }
+
+
+def opt_in_surfer_consent(
+    candidate_id: str,
+    accepted_version: Any,
+    *,
+    debug: bool = False,
+) -> dict:
+    """Record affirmative Surfer opt-in for the current disclosure version."""
+    logger.set_debug_flag(debug)
+    if not isinstance(accepted_version, str) or not accepted_version.strip():
+        raise ValueError("accepted_version must be a non-empty string")
+    accepted_version = accepted_version.strip()
+    if accepted_version != SURFER_CONSENT_CONFIG["current_version"]:
+        raise ValueError("accepted_version does not match current disclosure version")
+    current = get_surfer_consent(candidate_id)
+    to_store = {
+        "status": "opted_in",
+        "accepted_version": accepted_version,
+        "updated_at": _surfer_consent_now(),
+    }
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_in_surfer_consent",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"record={current!r}")
+    save_candidate_data(candidate_id, {_surfer_consent_key(): to_store}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_in_surfer_consent",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"to_store={to_store!r}")
+    return surfer_consent_dto(candidate_id)
+
+
+def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
+    """Record Surfer opt-out; preserve last accepted_version for audit."""
+    logger.set_debug_flag(debug)
+    current = get_surfer_consent(candidate_id)
+    to_store = {
+        "status": "opted_out",
+        "accepted_version": current["accepted_version"],
+        "updated_at": _surfer_consent_now(),
+    }
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_out_surfer_consent",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"record={current!r}")
+    save_candidate_data(candidate_id, {_surfer_consent_key(): to_store}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_out_surfer_consent",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"to_store={to_store!r}")
+    return surfer_consent_dto(candidate_id)
+
+
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
     """For each rubric criteria artifact in ``artifacts``, parse trailing grade tables, set
     ``grade_descriptions``, and coerce ``importance`` (1–10). Mutates criterion dicts in place.
@@ -941,7 +1307,7 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
-    if owner_task_key == "evaluate_jd":
+    if owner_task_key in ("evaluate_jd", "evaluate_meteorite"):
         return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
@@ -969,7 +1335,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
         # AST-1085: restore QC/GC on save (append; embedded wins on code).
-        if owner == "evaluate_jd":
+        # QC/GC are source-agnostic dealbreaker safety-net vectors — also apply to the
+        # meteorite JD screen, not just the regular gazer-discovered evaluate_jd.
+        if owner in ("evaluate_jd", "evaluate_meteorite"):
             val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
@@ -1079,6 +1447,43 @@ def list_candidates(include_deleted: bool = False) -> list:
     if include_deleted:
         return all_candidates
     return [c for c in all_candidates if c.get("state") != "DELETED"]
+
+
+# ---- Batch API ----
+def get_new_candidate_batch(
+    state: str,
+    limit: Optional[int] = None,
+    sort_by: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    context: Optional[str] = None,
+    *,
+    states: Optional[List[str]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Claim candidates for batch processing. Returns (batch_id, candidates).
+
+    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    batch_id: when provided, uses this batch_id instead of generating a new one.
+    context: prefix for auto-generated batch_id (required when batch_id is not provided).
+    """
+    allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
+    if states is None:
+        if not allowed or state not in allowed:
+            raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
+    else:
+        for s in states:
+            if not allowed or s not in allowed:
+                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
+    limit_val = limit if limit is not None else 10
+    if not batch_id and not context:
+        raise ValueError("batch_id or context is required for batch_id generation")
+    bid = batch_id or f"{context}-{uuid.uuid4()}"
+    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    return (bid, database.get_candidate_batch(bid))
+
+
+def clear_candidate_batch(batch_id: str) -> int:
+    """Release batch. Returns count cleared."""
+    return database.clear_candidate_batch(batch_id)
 
 
 def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
@@ -1208,7 +1613,8 @@ def preview_task_prompt(
         if not candidates:
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
-    cd = candidate.get("candidate_data") or {}
+    # AST-1192: walkable view (name columns + library blobs) for resolve_tokens.
+    cd = build_candidate_token_view(candidate)
     cid = candidate.get("astral_candidate_id") or candidate_id
     jc: Optional[Dict[str, str]] = None
     if astral_job_id and str(astral_job_id).strip():
@@ -1365,6 +1771,76 @@ def transition_candidate_state(candidate_id: str, to_state: str) -> None:
     database.save_candidate(candidate_id, state=to_state, state_history=history)
     if to_state == "DELETED":
         _start_candidate_reap_timer(candidate_id)
+
+
+def start_requested_artifacts(candidate_id: str) -> str:
+    """UI/API handoff into REQUESTED_ARTIFACTS (AST-1253). Priors enforce legality."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    target = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    transition_candidate_state(candidate_id, target)
+    return target
+
+
+def _walk_requested_artifacts_chain_task_keys() -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
+    out: list[str] = []
+    seen: set[str] = set()
+    key = (start or "").strip()
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def requested_artifacts_chain_task_keys() -> list[str]:
+    """Public: live craft chain task_keys in run_next order."""
+    return _walk_requested_artifacts_chain_task_keys()
+
+
+def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
+    """True when task_key is on the live REQUESTED_ARTIFACTS craft chain."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    return tk in _walk_requested_artifacts_chain_task_keys()
+
+
+def _artifacts_nav_label_for_path(path: str) -> str:
+    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    for section in NAV_CONFIG:
+        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+            continue
+        for item in section.get("items") or []:
+            if isinstance(item, dict) and item.get("path") == path:
+                label = (item.get("label") or "").strip()
+                if label:
+                    return label
+    return ""
+
+
+def requested_artifacts_chain_hop_labels() -> list[str]:
+    """Live walk order × NAV_CONFIG Artifacts labels (fallback: task_key)."""
+    labels: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        path = CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH.get(task_key) or ""
+        labels.append(_artifacts_nav_label_for_path(path) or task_key)
+    return labels
+
+
+def requested_artifacts_chain_artifact_keys() -> list[str]:
+    """Rubric artifact keys only (excludes table-backed company_search_terms)."""
+    keys: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+        if artifact:
+            keys.append(artifact)
+    return keys
 
 
 _CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
@@ -2057,7 +2533,8 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         if not isinstance(criteria, list) or len(criteria) == 0:
             raise ValueError(f"{task_key} returned no criteria")
         # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
-        if artifact_key == "jobdesc_rubric":
+        # QC/GC are source-agnostic — also restore for the meteorite dealbreaker screen.
+        if artifact_key in ("jobdesc_rubric", "meteorite_jobdesc_rubric"):
             criteria = _merge_embedded_evaluate_jd_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
@@ -2076,47 +2553,8 @@ def _requested_stage_failure_target(primary_state: str, current_state: str) -> s
     return error
 
 
-async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
-    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
-    logger.set_debug_flag(debug)
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
-    primary = stage["trigger_state"]
-    pass_state = stage["pass_state"]
-    craft_key = stage["craft_task_key"]
-    current = (candidate.get("state") or "").strip()
-    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
-    try:
-        response = await do_task(
-            task_key=craft_key,
-            live_content=live,
-            index=candidate_id,
-            ctx=candidate,
-            debug=debug,
-        )
-        if not response or not response.get("success"):
-            raise RuntimeError(
-                (response or {}).get("error") if response else "do_task returned None"
-            )
-        parsed = response.get("parsed_response")
-        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
-        transition_candidate_state(candidate_id, pass_state)
-        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-    except Exception as e:
-        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
-        target = _requested_stage_failure_target(primary, current)
-        try:
-            transition_candidate_state(candidate_id, target)
-        except ValueError:
-            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-
-
 async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
+    """Claim worker: REQUESTED_ARTIFACTS → craft_get_rubric run_next chain → ARTIFACTS_READY / retry / error."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
@@ -2126,29 +2564,25 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
     primary = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
-    craft_key = (stage.get("craft_task_key") or "").strip()
-    seen: set[str] = set()
+    task_key = (stage.get("task_key") or "").strip()
     try:
-        while craft_key:
-            if craft_key in seen:
-                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
-            seen.add(craft_key)
-            # Refresh ctx each hop so later crafts see earlier persists.
-            candidate = database.get_candidate(candidate_id) or candidate
-            task_ctx = {**(candidate or {}), "suppress_run_next": True}
-            response = await do_task(
-                task_key=craft_key,
-                live_content="",
-                index=candidate_id,
-                ctx=task_ctx,
-                debug=debug,
+        # Native do_task run_next (hop ledgers); persist via ctx flag — no suppress_run_next.
+        task_ctx = {
+            **(candidate or {}),
+            "astral_candidate_id": candidate_id,
+            "persist_candidate_craft_hops": True,
+        }
+        response = await do_task(
+            task_key=task_key,
+            live_content="",
+            index=candidate_id,
+            ctx=task_ctx,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else f"do_task None for {task_key}"
             )
-            if not response or not response.get("success"):
-                raise RuntimeError(
-                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
-                )
-            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
-            craft_key = _current_agent_task_run_next(craft_key)
         transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
@@ -2332,6 +2766,18 @@ def run_candidate_artifact_generation(
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
     logger.set_debug_flag(debug)
+    # AST-1253: chain craft keys hand off via generate_artifacts / REQUESTED_ARTIFACTS
+    if is_requested_artifacts_chain_ui_task(task_key):
+        return (
+            {
+                "success": False,
+                "error": (
+                    "Use POST /api/candidates/<id>/generate_artifacts "
+                    "(REQUESTED_ARTIFACTS dispatch chain); per-artifact UI generate retired for this task"
+                ),
+            },
+            409,
+        )
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)
@@ -2459,7 +2905,8 @@ def run_candidate_artifact_generation(
                     500,
                 )
             # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
-            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+            # QC/GC are source-agnostic — also apply to the meteorite dealbreaker rubric.
+            if task_key in ("craft_jobdesc_rubric", "craft_evaluate_meteorite_rubric") and isinstance(parsed_response, dict):
                 crit = parsed_response.get("criteria")
                 if isinstance(crit, list):
                     parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)

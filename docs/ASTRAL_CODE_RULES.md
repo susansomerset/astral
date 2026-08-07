@@ -154,7 +154,7 @@ Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`�
 **Statute:** `astral.batch.batch-id-format`
 **Statute:** `astral.batch.batch-id-first`
 
-All batch jobs that process entities by state use batch locking. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks (including RESPONSE `entity_id` latest-per-task refs), dispatch_ledger entries, and timesheets.
+All batch jobs that process entities by state use batch locking. Every `ENTITY_TYPES` member used as a dispatch claim queue (`candidate`, `company`, `job`) uses the same pool claim → process → release shape. Candidate is not exempt: no unlocked single-ctx claim path, no empty release stub. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks (including RESPONSE `entity_id` latest-per-task refs), dispatch_ledger entries, and timesheets.
 
 **batch_id format:** `f"{task_key}-{uuid}"` — prefixed with the task_key for human readability in foreign-key references (e.g. `prefilter-3f8a2b1c-...`). For non-dispatch calls (e.g. artifact generation), the prefix is the function context.
 
@@ -184,7 +184,7 @@ finally:
     database.clear_company_batch(batch_id)
 ```
 
-Do not select by state and process without batch_id. Use claim / get / clear and batch_id-first order consistently for all entity types.
+Do not select by state (or single-ctx) and process without batch_id. Use claim / get / clear and batch_id-first order consistently for every `ENTITY_TYPES` claim queue, including candidate.
 
 ### 2.4.1 Entity latest agent refs (via agent_data)
 

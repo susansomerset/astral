@@ -14,7 +14,6 @@ from src.core.tracker import (
     job_misses_dispatch_score_floor,
     list_jobs,
     list_jobs_below_dispatch_score_floor,
-    save_job,
     save_job_artifact_cover_letter,
     save_job_artifact_resume_content,
     save_job_data,
@@ -95,10 +94,11 @@ def bulk_state():
     to_state = data.get("to_state", "")
     if not ids or not to_state:
         return jsonify({"error": "astral_job_ids and to_state required"}), 400
+    # AST-1156: enforce JOB_STATES priors + state_history (was save_job bypass).
     updated = 0
     for job_id in ids:
         try:
-            save_job(job_id, state=to_state)
+            transition_job_state([job_id], to_state)
             updated += 1
         except ValueError:
             pass

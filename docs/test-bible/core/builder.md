@@ -357,16 +357,16 @@ Equivalent harness:
 
 ### AST-1024 · AST-1023
 
-**AST-1024:** `build_session_cover_letter` emits session-only SomersetCover HTML from an in-memory field payload (no job load / artifact write). Optional `candidate_id` reads `profile.cover_letter_signature_image` via `_safe_image_src` (name-only sign-off when absent/rejected). Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. Job `build_cover_letter` / React page out of scope (sibling **AST-1025**).
+**AST-1024:** `build_session_cover_letter` emits SomersetCover HTML from an in-memory field payload (no job load / artifact write). Shared document helper is `_emit_somerset_cover_html_document` (renamed from session-only; job cover-only reuse = **AST-1138**). Optional `candidate_id` loads candidate contact for signature image — **AST-1126** places the image only when signature text contains `{$SIGNATURE_IMAGE}` (path `contact.cover_letter_signature_image` via AST-1125 contract; no auto-inject). Empty form `from_block` → `resolve_cover_from_block` when candidate selected = **AST-1139**. Admin route: **`docs/test-bible/ui/api/api_admin.md`**. Config spine: **`docs/test-bible/utils/config.md`**. React Session Cover Letter page = sibling **AST-1025**; job Print Cover Letter emit = **AST-1138**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Validation + SomersetCover DOM/CSS + optional to/subject | `src/core/builder.py` | **`TestAst1024BuildSessionCoverLetter`** |
-| Optional candidate signature image / miss / skip | same | same class (image accepted / absent / rejected / blank id) |
+| Optional candidate signature image / miss / skip | same | same class — token-gated (AST-1126 revise) |
 | Paragraph split + HTML escape | same | same class |
 | Style D debug True/False (no log-string asserts) | same | success + failure debug paths |
 
-**Broken / obsolete this pass:** none — additive session path; job cover emit unchanged.
+**Broken / obsolete (superseded by AST-1126):** auto-inject image above session name without token; profile-path image lookup (now `contact.cover_letter_signature_image`).
 
 **Integration:** no existing `tests/integration/` scenario asserts session cover HTML — no revision; do not invent new integration coverage.
 
@@ -405,3 +405,154 @@ Equivalent harness:
   tests/component/core/test_builder.py::TestAst1100BuilderPinResolve \
   -q
 ```
+
+### AST-1126 · AST-1123
+
+**Parent:** [AST-1123 — Support Signature_Image as a token in the cover letter](https://linear.app/astralcareermatch/issue/AST-1123/support-signature-image-as-a-token-in-the-cover-letter). **Publish:** `origin/sub/AST-1123/AST-1126-cover-html-emit-token-replace-stop-auto-above`. **Blocked by:** AST-1125 config contract.
+
+Job + session cover HTML: replace `{$SIGNATURE_IMAGE}` at token position via `get_cover_letter_render_token` + `_safe_image_src`; stop unconditional image prepend/inject; omit when token absent or image missing/rejected; Style D `signature_image_token=` / `signature_image=` on touched cover debug paths. Resume emit must not resolve the token. Config contract: **`docs/test-bible/utils/config.md`** § AST-1125.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job signoff token placement / omit / no auto-above | `src/core/builder.py` | **`TestAst1126CoverSignatureImageToken`** + revised **`TestBuilderHelpers::test_emits_cover_signoff_and_ats_tokens`** |
+| Session token replace / no auto-inject | same | revised **`TestAst1024BuildSessionCoverLetter`** image cases |
+| Token status matrix + resume non-resolution + job debug lines | same | **`TestAst1126CoverSignatureImageToken`** |
+
+**Broken / obsolete (revised this pass):** `_emit_cover_signoff_html` image-only prepend; session `test_signature_image_from_profile` auto-inject + profile path.
+
+**Integration:** none (no existing scenario asserts cover signature image placement).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1126CoverSignatureImageToken \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_cover_signoff_and_ats_tokens \
+  tests/component/core/test_builder.py::TestBuildCoverLetterFromJobDebugPaths \
+  -q
+```
+
+### AST-1138 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1138-job-cover-html-somersetcover-fromblock-golden-css`. **Blocked by:** AST-1137 (`resolve_cover_from_block`).
+
+`build_cover_letter_from_job` emits SomersetCover (shared `_emit_somerset_cover_html_document`) with `fromBlock` from `resolve_cover_from_block`; maps Subject/Letter/signature via `BUILD_CONFIG["job_cover_somerset"]`; no resume `h1`/`.contact` shell on cover-only; Style D `from_block_source=` / `document_path=somerset_cover`. Resume Print / materials `include_cover` stay on legacy cover sections. Session Admin defaults = **AST-1139**. Config map: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Default + custom fromBlock, golden CSS selectors, no resume chrome | `src/core/builder.py` | **`TestAst1138JobCoverSomersetFromBlock`** |
+| Subject/Letter aliases + cover-only shell | same | revised **`TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only`**, **`TestAst518BuilderResumeStructure::test_cover_letter_subject_letter_aliases_render_on_cover_route`** |
+| Field mapper + candidate shape helpers | same | **`TestAst1138JobCoverSomersetFromBlock`** mapper/shape cases |
+| Style D fromBlock source / document path | same | same class — debug True/False |
+| Resume Print unchanged | same | **`test_resume_print_unchanged_no_from_block`** (+ existing resume suites) |
+
+**Broken / obsolete (revised this pass):** cover-only asserts on `aria-label="Cover body"` (resume cover-block) — cover-only is SomersetCover after this ticket.
+
+**Integration:** none (no existing scenario asserts job Print Cover Letter DOM).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
+  tests/component/core/test_builder.py::TestAst518BuilderResumeStructure::test_cover_letter_subject_letter_aliases_render_on_cover_route \
+  tests/component/core/test_builder.py::TestAst1126CoverSignatureImageToken \
+  tests/component/utils/test_config.py::TestAst1138JobCoverSomersetConfig \
+  -q
+```
+
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`. **Blocked by:** AST-1137.
+
+`build_session_cover_letter`: empty form `from_block` + loaded candidate → `resolve_cover_from_block` (source `candidate`/`default`); non-empty form wins as `session` and is expanded by **AST-1148** `expand_cover_from_block_text`; no candidate + empty still required; Style D `from_block_source=` / `document_path=somerset_cover`; golden CSS selectors unchanged. Admin UI = **`docs/test-bible/frontend/pages.md`**. Config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty from_block resolve + session win + Style D | `src/core/builder.py` | **`TestAst1139SessionCoverEmptyFromBlock`** |
+| No-candidate empty still required | same | same class + existing **`TestAst1024BuildSessionCoverLetter::test_rejects_missing_required`** |
+| Golden CSS selectors on session emit | same | **`test_empty_from_block_with_candidate_uses_default`** (+ **`TestAst1024BuildSessionCoverLetter`**) |
+
+**Broken / obsolete:** none — additive defaulting path; required-without-candidate preserved.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter \
+  tests/component/utils/test_config.py::TestAst1139SessionCoverEmptyResolveConfig \
+  -q
+```
+
+### AST-1148 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1148-resolve-tokens-in-from-block-emit-debug`.
+
+Non-empty session `from_block` runs `expand_cover_from_block_text` before SomersetCover emit; empty→resolve already expands via **AST-1148** candidate helper; job Print Cover Letter consumes expanded resolve text (no second expand). Primary expand/resolve: **`docs/test-bible/core/candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session-typed token/`|` expand + job custom tokens | `src/core/builder.py` | **`TestAst1148SessionTypedFromBlockExpand`** |
+| Empty→resolve golden shape (template expand) | same | **`TestAst1139SessionCoverEmptyFromBlock`**, **`TestAst1138JobCoverSomersetFromBlock`** |
+
+**Broken / obsolete:** none for builder HTML asserts (golden Name/City/email still holds via template).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1148SessionTypedFromBlockExpand \
+  tests/component/core/test_builder.py::TestAst1139SessionCoverEmptyFromBlock \
+  tests/component/core/test_builder.py::TestAst1138JobCoverSomersetFromBlock \
+  -q
+```
+
+### AST-1162 · AST-1161
+
+**Parent:** [AST-1161 — Signature Image now overlaps Name text in signature](https://linear.app/astralcareermatch/issue/AST-1161/signature-image-now-overlaps-name-text-in-signature). **Publish:** `origin/sub/AST-1161/AST-1162-fix-signature-image-name-vertical-spacing`.
+
+Shared SomersetCover `.signature-img` vertical margin in `_emit_somerset_cover_html_document`: supersede AST-1024 / AST-1124 golden `margin: 8px 0 -25px 0` → `margin: 8px 0 8px 0` so image stacks above name with no overlap. Session + job cover surfaces inherit via the shared helper. Token / omit / from-block / resume emit unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session CSS margin + closing→img→name order | `src/core/builder.py` | **`TestAst1162SignatureImgVerticalSpacing::test_session_signature_img_margin_non_negative`** |
+| Job SomersetCover same CSS rule | same | **`…::test_job_somerset_signature_img_margin_non_negative`** |
+| No-image signoff (no empty img) | same | **`…::test_session_no_image_keeps_closing_and_name`** |
+| Prior token placement / omit | same | existing **`TestAst1024BuildSessionCoverLetter`** image cases, **`TestAst1126CoverSignatureImageToken`** |
+
+**Broken / obsolete:** none (prior suites asserted selector presence / DOM order, not the negative bottom margin).
+
+**Integration:** none (no existing scenario asserts SomersetCover `.signature-img` CSS).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1162SignatureImgVerticalSpacing \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_token_replaces_with_contact_image \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_no_image_without_token_even_with_contact_image \
+  -q
+```
+
+### AST-1165 · AST-1161
+
+**Parent:** [AST-1161 — Signature Image now overlaps Name text in signature](https://linear.app/astralcareermatch/issue/AST-1161/signature-image-now-overlaps-name-text-in-signature). **Publish:** `origin/sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title`.
+
+UAT: `_html_with_signature_image_token` escapes SomersetCover signature segments then converts authored newlines to `<br>` (token-present and token-absent paths). Session + job share the helper. Does not touch resume `_emit_cover_signoff_html`, AST-1162 `.signature-img` margin, or AST-1126 omit policies.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session name/title `<br>` after image + margin lock | `src/core/builder.py` | **`TestAst1165SignoffNewlineToBr::test_session_name_and_title_br_after_image`** |
+| Job SomersetCover same fragment | same | **`…::test_job_somerset_name_and_title_br_after_image`** |
+| Token-absent newlines, no empty img | same | **`…::test_token_absent_preserves_newlines_no_img`** |
+| Prior overlap / token placement | same | **`TestAst1162SignatureImgVerticalSpacing`**, **`TestAst1024BuildSessionCoverLetter`** image cases |
+
+**Broken / obsolete:** none (prior asserts used single-line names after the token; `<br>` after leading `\n` does not break order checks).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1165SignoffNewlineToBr \
+  tests/component/core/test_builder.py::TestAst1162SignatureImgVerticalSpacing \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_token_replaces_with_contact_image \
+  -q
+```
+

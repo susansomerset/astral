@@ -4,12 +4,22 @@ name: Entity claim / process / release
 status: approved
 proposed_in: AST-913
 approved_by: Archie
-approved_at: "2026-07-23"
+approved_at: "2026-08-07"
 canonical_refs:
   - path: src/data/database.py
     symbol: claim_job_batch
   - path: src/data/database.py
     symbol: clear_job_batch
+  - path: src/data/database.py
+    symbol: claim_candidate_batch
+  - path: src/data/database.py
+    symbol: get_candidate_batch
+  - path: src/data/database.py
+    symbol: clear_candidate_batch
+  - path: src/core/candidate.py
+    symbol: get_new_candidate_batch
+  - path: src/core/candidate.py
+    symbol: clear_candidate_batch
   - path: docs/ASTRAL_CODE_RULES.md
     symbol: "§2.4"
 related_statutes:
@@ -26,10 +36,11 @@ Dispatch and entity runners need a concurrency-safe way to select work, process 
 
 # Solution shape
 
-Claim a batch with a `batch_id` (first parameter on claim/get/clear helpers), process only claimed rows, and clear the batch in `finally` (or equivalent release). Core decides transitions; data owns claim/clear. Point at `canonical_refs` — do not paste large code into this catalog entry.
+Claim a batch with a `batch_id` (first parameter on claim/get/clear helpers), process only claimed rows, and clear the batch in `finally` (or equivalent release). Pool claim applies to every `ENTITY_TYPES` dispatch claim queue — candidate helpers (`claim_candidate_batch` / `get_new_candidate_batch` / `clear_candidate_batch`) are first-class peers of job/company, not a single-ctx unlocked shape. Core decides transitions; data owns claim/clear. Point at `canonical_refs` — do not paste large code into this catalog entry.
 
 ## When not to use
 
 - One-off admin scripts that intentionally bypass dispatch locking.
 - Read-only queries that never mutate claimed rows.
 - Non-entity work with no batch table.
+- Non-`ENTITY_TYPES` mailbox / null-entity pollers (e.g. `gaze_email`) that are not dispatch claim queues.

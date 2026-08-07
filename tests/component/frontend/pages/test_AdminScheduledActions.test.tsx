@@ -1180,4 +1180,58 @@ describe("AdminScheduledActions", () => {
       })
     }, 20000)
   })
+
+  describe("AST-1215 alphabetical task_key dropdown", () => {
+    it("Add Task modal options follow lexicographic catalog order (unsorted API keys)", async () => {
+      // Deliberately unsorted object insertion — UI must not rely on Object.keys order alone.
+      const unsortedCatalog = {
+        zebra_task: {
+          entity_type: "job",
+          trigger_state: "NEW",
+          task_group_order: "Z",
+          task_group_name: "Z",
+          task_seq: 1,
+          task_name: "zebra_task",
+          is_scored: false,
+        },
+        alpha_task: {
+          entity_type: "job",
+          trigger_state: "NEW",
+          task_group_order: "A",
+          task_group_name: "A",
+          task_seq: 1,
+          task_name: "alpha_task",
+          is_scored: false,
+        },
+        meteorite_grade_do: {
+          entity_type: "job",
+          trigger_state: "PASSED_JD",
+          task_group_order: "M",
+          task_group_name: "M",
+          task_seq: 1,
+          task_name: "meteorite_grade_do",
+          is_scored: true,
+        },
+        fetch_jd: {
+          entity_type: "job",
+          trigger_state: "PASSED_JOBLIST",
+          task_group_order: "F",
+          task_group_name: "F",
+          task_seq: 1,
+          task_name: "fetch_jd",
+          is_scored: false,
+        },
+      }
+      mockApi(false, { tasks: [], taskKeysPayload: unsortedCatalog })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("No dispatch tasks configured")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      const taskSelect = within(modal).getAllByRole("combobox")[0]
+      const values = Array.from(taskSelect.querySelectorAll("option"))
+        .map(o => (o as HTMLOptionElement).value)
+        .filter(Boolean)
+      expect(values).toEqual(["alpha_task", "fetch_jd", "meteorite_grade_do", "zebra_task"])
+    }, 20000)
+  })
 })

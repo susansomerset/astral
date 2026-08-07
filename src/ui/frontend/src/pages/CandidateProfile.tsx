@@ -192,7 +192,11 @@ export default function Profile() {
       label: sec.label,
       key: f.key,
       disabled: isResume && hasBaseResume,
-      placeholder: isResume && hasBaseResume ? "Locked — base resume has been generated from this text" : undefined,
+      // Prefer shapes placeholder; resume-lock override when base resume exists.
+      placeholder: f.placeholder ?? (isResume && hasBaseResume
+        ? "Locked — base resume has been generated from this text"
+        : undefined),
+      help: typeof f.help === "string" && f.help.trim() ? f.help : undefined,
     }
   })
 

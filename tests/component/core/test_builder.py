@@ -169,6 +169,7 @@ class TestAst581ResumeCoverSplit:
         assert "Cover body" in html
 
     def test_build_cover_letter_from_job_emits_cover_only(self) -> None:
+        # AST-1138: cover-only is SomersetCover (fromBlock), not resume cover-block aria.
         job = {
             "job_data": {
                 "artifacts": {
@@ -177,8 +178,10 @@ class TestAst581ResumeCoverSplit:
             }
         }
         html = builder_mod.build_cover_letter_from_job(job, _candidate_row(base_resume=_resume_blob()))
-        assert 'aria-label="Cover body"' in html
+        assert 'class="fromBlock"' in html
+        assert 'class="lettercontent"' in html
         assert "Dear team" in html
+        assert 'aria-label="Cover body"' not in html
         assert 'id="summary"' not in html
 
     def test_build_cover_letter_raises_without_content(self) -> None:
@@ -321,13 +324,15 @@ class TestBuilderHelpers:
 
     def test_emits_cover_signoff_and_ats_tokens(self) -> None:
         assert builder_mod._emit_cover_signoff_html({"signature": ""}, {}) == ""
+        # AST-1126: image alone (no {$SIGNATURE_IMAGE}) must not create a signoff.
         image_only = builder_mod._emit_cover_signoff_html(
             {"signature": ""},
             {"cover_letter_signature_image": "https://example.com/sig.png"},
         )
-        assert "Cover letter signature" in image_only
+        assert image_only == ""
         signoff = builder_mod._emit_cover_signoff_html({"signature": "Thanks"}, {})
         assert "Thanks" in signoff
+        assert "<img" not in signoff
         ak = builder_mod.BUILD_CONFIG["default_style"]["ats_keyword_block"]
         assert "python" in builder_mod._emit_ats_block("python, sql", ak)
         assert builder_mod._emit_ats_block(None, ak) == ""
@@ -462,6 +467,7 @@ class TestAst518BuilderResumeStructure:
         assert style["colors"]["default_accent"] == accent
 
     def test_cover_letter_subject_letter_aliases_render_on_cover_route(self) -> None:
+        # AST-1138: Subject/Letter map into lettersubject / lettercontent (SomersetCover).
         job = {
             "job_data": {
                 "artifacts": {
@@ -470,9 +476,10 @@ class TestAst518BuilderResumeStructure:
             }
         }
         html = builder_mod.build_cover_letter_from_job(job, _candidate_row(base_resume=_resume_blob()))
-        assert 'aria-label="Cover body"' in html
+        assert 'class="lettersubject"' in html
         assert "Re: Role" in html
         assert "Hello there" in html
+        assert 'aria-label="Cover body"' not in html
         assert "Professional Summary" not in html
 
     def test_ats_block_skips_blank_escaped_tokens(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2425,10 +2432,13 @@ class TestAst1024BuildSessionCoverLetter:
                 self._fields(), candidate_id="cand-x", debug=True
             )
 
-    def test_signature_image_from_profile(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_no_image_without_token_even_with_contact_image(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1126: stop auto-inject — image only when signature contains token.
         row = {
             "candidate_data": {
-                "profile": {
+                "contact": {
                     "cover_letter_signature_image": "https://example.com/sig.png",
                 }
             }
@@ -2437,35 +2447,65 @@ class TestAst1024BuildSessionCoverLetter:
         html = builder_mod.build_session_cover_letter(
             self._fields(), candidate_id="cand-1"
         )
-        assert 'class="signature-img"' in html
-        assert 'src="https://example.com/sig.png"' in html
-        assert "Susan Somerset" in html  # typed name always present
+        assert "<img" not in html
+        assert "Susan Somerset" in html
 
-    def test_name_only_when_profile_image_absent_or_rejected(
+    def test_token_replaces_with_contact_image(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        row_absent = {"candidate_data": {"profile": {}}}
+        row = {
+            "candidate_data": {
+                "contact": {
+                    "cover_letter_signature_image": "https://example.com/sig.png",
+                }
+            }
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: row)
+        html = builder_mod.build_session_cover_letter(
+            self._fields(signature="{$SIGNATURE_IMAGE}\nSusan Somerset"),
+            candidate_id="cand-1",
+        )
+        # Signature may also appear in head meta; assert emit placement in signoff only.
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert 'src="https://example.com/sig.png"' in signoff
+        assert "{$SIGNATURE_IMAGE}" not in signoff
+        assert "Susan Somerset" in signoff
+        assert signoff.index("Best,") < signoff.index("<img") < signoff.index(
+            "Susan Somerset"
+        )
+
+    def test_name_only_when_contact_image_absent_or_rejected(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        row_absent = {"candidate_data": {"contact": {}}}
         monkeypatch.setattr(
             builder_mod.candidate_mod, "get_candidate", lambda cid: row_absent
         )
         html = builder_mod.build_session_cover_letter(
-            self._fields(), candidate_id="cand-1"
+            self._fields(signature="{$SIGNATURE_IMAGE}\nSusan Somerset"),
+            candidate_id="cand-1",
         )
-        assert "<img" not in html
-        assert "Susan Somerset" in html
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff
+        assert "{$SIGNATURE_IMAGE}" not in signoff
+        assert "Susan Somerset" in signoff
 
         row_bad = {
             "candidate_data": {
-                "profile": {"cover_letter_signature_image": "javascript:alert(1)"}
+                "contact": {"cover_letter_signature_image": "javascript:alert(1)"}
             }
         }
         monkeypatch.setattr(
             builder_mod.candidate_mod, "get_candidate", lambda cid: row_bad
         )
         html2 = builder_mod.build_session_cover_letter(
-            self._fields(), candidate_id="cand-1"
+            self._fields(signature="{$SIGNATURE_IMAGE}\nSusan Somerset"),
+            candidate_id="cand-1",
         )
-        assert "<img" not in html2
+        signoff2 = html2.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff2
+        assert "{$SIGNATURE_IMAGE}" not in signoff2
 
     def test_blank_candidate_id_skips_lookup(self, monkeypatch: pytest.MonkeyPatch) -> None:
         get_c = MagicMock()
@@ -2525,3 +2565,638 @@ class TestAst1100BuilderPinResolve:
             {"context": {}},
         )
         assert out == {"re_line": "Re", "body": "Hello", "signature": ""}
+
+
+class TestAst1126CoverSignatureImageToken:
+    """AST-1126: token-only cover signature image; stop auto-above; Style D status lines."""
+
+    _LIT = "{$SIGNATURE_IMAGE}"
+    _SAFE = "https://example.com/sig.png"
+
+    def test_job_signoff_image_between_closing_and_name(self) -> None:
+        sig = f"Sincerely,\n\n{self._LIT}\nAda Lovelace\nEngineer"
+        html = builder_mod._emit_cover_signoff_html(
+            {"signature": sig},
+            {"cover_letter_signature_image": self._SAFE},
+        )
+        assert "Cover letter signature" in html
+        assert self._LIT not in html
+        assert html.index("Sincerely") < html.index("<img") < html.index("Ada Lovelace")
+
+    def test_job_no_image_without_token(self) -> None:
+        html = builder_mod._emit_cover_signoff_html(
+            {"signature": "Sincerely,\n\nAda Lovelace"},
+            {"cover_letter_signature_image": self._SAFE},
+        )
+        assert "Ada Lovelace" in html
+        assert "<img" not in html
+
+    def test_job_token_omits_literal_when_image_rejected(self) -> None:
+        html = builder_mod._emit_cover_signoff_html(
+            {"signature": f"Ada\n{self._LIT}\nTitle"},
+            {"cover_letter_signature_image": "javascript:alert(1)"},
+        )
+        assert "<img" not in html
+        assert self._LIT not in html
+        assert "Ada" in html and "Title" in html
+
+    def test_token_status_matrix(self) -> None:
+        root_ok = {"contact": {"cover_letter_signature_image": self._SAFE}}
+        ts, src, im = builder_mod._signature_image_token_status(self._LIT, root_ok)
+        assert (ts, src, im) == ("present", self._SAFE, "accepted")
+        ts, src, im = builder_mod._signature_image_token_status("no token", root_ok)
+        assert (ts, src, im) == ("absent", self._SAFE, "accepted")
+        ts, src, im = builder_mod._signature_image_token_status(self._LIT, {"contact": {}})
+        assert (ts, src, im) == ("present", None, "absent")
+        ts, src, im = builder_mod._signature_image_token_status(
+            self._LIT, {"contact": {"cover_letter_signature_image": "javascript:x"}}
+        )
+        assert (ts, src, im) == ("present", None, "rejected")
+        assert builder_mod._lookup_dotted_path({"a": {"b": 1}}, "a.b") == 1
+        assert builder_mod._lookup_dotted_path({"a": 1}, "a.b") is None
+
+    def test_job_debug_emits_token_and_image_status(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(
+            builder_mod._log, "debug_index", lambda **_k: None
+        )
+        job = {
+            "astral_job_id": "job-1126",
+            "job_data": {
+                "artifacts": {
+                    "cover_letter": {
+                        "Subject": "Re",
+                        "Letter": "Hello",
+                        "signature": f"Sincerely,\n{self._LIT}\nAda",
+                    },
+                }
+            },
+        }
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_signature_image"] = self._SAFE
+        html = builder_mod.build_cover_letter_from_job(job, cd, debug=True)
+        assert "<img" in html
+        assert "signature_image_token=present" in details
+        assert "signature_image=accepted" in details
+
+    def test_resume_html_does_not_resolve_token(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: _candidate_row(
+                base_resume=_resume_blob(
+                    professional_summary=f"Lead {self._LIT} line"
+                )
+            ),
+        )
+        html = builder_mod.build_base_resume("cand-1")
+        assert self._LIT in html
+        assert 'alt="Cover letter signature"' not in html
+        assert 'class="signature-img"' not in html
+
+
+class TestAst1139SessionCoverEmptyFromBlock:
+    """AST-1139: session empty from_block → resolve_cover_from_block + Style D source."""
+
+    def _fields(self, **overrides: str) -> dict[str, Any]:
+        base = {
+            "from_block": "Susan Somerset • Oakland, CA\nhire@susansomerset.com",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Hiring Team,\n\nParagraph two.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        base.update(overrides)
+        return base
+
+    def _cand_row(self, **contact: Any) -> Dict[str, Any]:
+        return {
+            "astral_candidate_id": "cand-1139",
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "candidate_data": {
+                "contact": {
+                    "contact_email": "ada@example.com",
+                    "location": "London, UK",
+                    **contact,
+                },
+                "artifacts": {},
+                "context": {},
+            },
+        }
+
+    def test_empty_from_block_with_candidate_uses_default(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda _cid: self._cand_row()
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block="  "), candidate_id="cand-1139"
+        )
+        assert "<title>SomersetCover</title>" in html
+        assert 'class="fromBlock"' in html
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        assert "ada@example.com" in from_html
+        assert "Susan Somerset" not in from_html
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        for sel in (
+            ".fromBlock",
+            ".toBlock",
+            ".letterdate",
+            ".lettersubject",
+            ".lettercontent",
+            ".letterSignoff",
+            ".signature-img",
+        ):
+            assert sel in style
+
+    def test_empty_from_block_with_candidate_custom_text(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda _cid: self._cand_row(
+                cover_letter_from_block="Custom From\ncustom@example.com"
+            ),
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block=""), candidate_id="cand-1139"
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Custom From" in from_html
+        assert "custom@example.com" in from_html
+        assert "Ada Lovelace" not in from_html
+
+    def test_nonempty_form_from_block_wins_as_session(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        get_c = MagicMock(return_value=self._cand_row())
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_index", lambda **_k: None)
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block="Form Wins\nform@example.com"),
+            candidate_id="cand-1139",
+            debug=True,
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Form Wins" in from_html
+        assert "Ada Lovelace" not in from_html
+        assert "from_block_source=session" in details
+        assert "document_path=somerset_cover" in details
+        get_c.assert_called_once_with("cand-1139")
+
+    def test_empty_from_block_without_candidate_still_required(self) -> None:
+        with pytest.raises(ValueError, match="from_block is required"):
+            builder_mod.build_session_cover_letter(self._fields(from_block=""))
+
+    def test_debug_default_source(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda _cid: self._cand_row()
+        )
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_index", lambda **_k: None)
+        builder_mod.build_session_cover_letter(
+            self._fields(from_block=""), candidate_id="cand-1139", debug=True
+        )
+        assert "from_block_source=default" in details
+        assert any(d.startswith("from_block_chars=") for d in details)
+        assert "document_path=somerset_cover" in details
+
+
+
+class TestAst1148SessionTypedFromBlockExpand:
+    """AST-1148: non-empty session from_block expands tokens / | → • before emit."""
+
+    def _fields(self, **overrides: str) -> dict[str, Any]:
+        base = {
+            "from_block": "",
+            "letter_date": "July 27, 2026",
+            "to_block": "",
+            "subject": "",
+            "letter": "Dear Hiring Team,\n\nParagraph two.",
+            "signoff_closing": "Best,",
+            "signature": "Susan Somerset",
+        }
+        base.update(overrides)
+        return base
+
+    def _cand_row(self, **contact: Any) -> Dict[str, Any]:
+        return {
+            "astral_candidate_id": "cand-1148",
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "candidate_data": {
+                "contact": {
+                    "contact_email": "ada@example.com",
+                    "location": "London, UK",
+                    "phone": "555-0100",
+                    **contact,
+                },
+                "artifacts": {},
+                "context": {},
+            },
+        }
+
+    def test_session_typed_tokens_and_pipe_expand(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod, "get_candidate", lambda _cid: self._cand_row()
+        )
+        html = builder_mod.build_session_cover_letter(
+            self._fields(
+                from_block="{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+            ),
+            candidate_id="cand-1148",
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        assert "ada@example.com" in from_html and "555-0100" in from_html
+        assert "{$FULL_NAME}" not in from_html
+        assert "|" not in from_html.replace("&", "")  # authoring | rewritten
+        assert "•" in from_html or "&#8226;" in from_html or "&bull;" in from_html
+
+    def test_session_typed_without_candidate_drops_empty_tokens(self) -> None:
+        html = builder_mod.build_session_cover_letter(
+            self._fields(from_block="{$FULL_NAME} | Hello\nWorld")
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        # FULL_NAME empty without candidate → segment dropped; literal Hello/World remain.
+        assert "Hello" in from_html and "World" in from_html
+        assert "{$FULL_NAME}" not in from_html
+
+    def test_job_custom_tokens_expand(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["location"] = "London, UK"
+        cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
+            "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL}"
+        )
+        html = builder_mod.build_cover_letter_from_job(
+            {
+                "astral_job_id": "job-1148",
+                "job_data": {
+                    "artifacts": {
+                        "cover_letter": {
+                            "Subject": "Re: Role",
+                            "Letter": "Dear team,",
+                            "signature": "Ada",
+                        }
+                    }
+                },
+            },
+            cd,
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Ada Lovelace" in from_html and "London, UK" in from_html
+        assert "ada@example.com" in from_html
+        assert "{$FULL_NAME}" not in from_html
+
+
+class TestAst1138JobCoverSomersetFromBlock:
+    """AST-1138: job Print Cover Letter → SomersetCover fromBlock + golden CSS."""
+
+    _GOLDEN_SELECTORS = (
+        ".fromBlock",
+        ".toBlock",
+        ".letterdate",
+        ".lettersubject",
+        ".lettercontent",
+        ".letterSignoff",
+        ".signature-img",
+    )
+
+    def _job(self, cover: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "astral_job_id": "job-1138",
+            "job_data": {"artifacts": {"cover_letter": cover}},
+        }
+
+    def test_default_from_block_and_somerset_shell(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["location"] = "London, UK"
+        html = builder_mod.build_cover_letter_from_job(
+            self._job({"Subject": "Re: Role", "Letter": "Dear team,\n\nThanks.", "signature": "Ada"}),
+            cd,
+        )
+        assert "<title>SomersetCover</title>" in html
+        assert 'class="fromBlock"' in html
+        # Default composition: Name • City / email (br between identity lines).
+        assert "Ada Lovelace" in html and "London, UK" in html
+        assert "ada@example.com" in html
+        assert "<br>" in html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert 'class="lettersubject"' in html and "Re: Role" in html
+        assert "Dear team," in html and "Thanks." in html
+        assert 'class="letterSignoff"' in html and "Ada" in html
+        assert 'class="letterdate"' in html  # empty date still emits selector
+        assert 'class="toBlock"' not in html
+        # No resume header/contact chrome on cover-only.
+        assert 'aria-label="Cover body"' not in html
+        assert re.search(r"<h1[^>]*>\s*Ada Lovelace\s*</h1>", html) is None
+        assert 'class="contact"' not in html
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        for sel in self._GOLDEN_SELECTORS:
+            assert sel in style
+
+    def test_candidate_from_block_text(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_from_block"] = (
+            "Custom Name • Place\ncustom@example.com"
+        )
+        html = builder_mod.build_cover_letter_from_job(
+            self._job({"Letter": "Body only", "signature": ""}),
+            cd,
+        )
+        from_html = html.split('class="fromBlock"', 1)[1].split("</div>", 1)[0]
+        assert "Custom Name" in from_html
+        assert "custom@example.com" in from_html
+        assert "Ada Lovelace" not in from_html
+
+    def test_resume_print_unchanged_no_from_block(self) -> None:
+        job = {
+            "job_data": {
+                "artifacts": {
+                    "resume_content": _resume_blob(professional_summary="Summary text"),
+                    "cover_letter": {"re_line": "Re", "body": "Cover body", "signature": ""},
+                }
+            }
+        }
+        html = builder_mod.build_resume_from_job(
+            job, _candidate_row(base_resume=_resume_blob()), include_cover=False
+        )
+        assert "Summary text" in html
+        assert 'class="fromBlock"' not in html
+        assert "<title>SomersetCover</title>" not in html
+
+    def test_debug_from_block_source_and_document_path(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        details: list[str] = []
+        outcomes: list[str] = []
+
+        def _index(**kwargs: Any) -> None:
+            outcomes.append(str(kwargs.get("outcome") or ""))
+
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        cd = _candidate_row(base_resume=_resume_blob())
+        cd["candidate_data"]["contact"]["cover_letter_from_block"] = "Line A\nLine B"
+        html = builder_mod.build_cover_letter_from_job(
+            self._job({"Letter": "Hello", "signature": "Ada"}),
+            cd,
+            debug=True,
+        )
+        assert "Hello" in html
+        assert any("somerset cover html" in o for o in outcomes)
+        assert "from_block_source=candidate" in details
+        assert any(d.startswith("from_block_chars=") for d in details)
+        assert "document_path=somerset_cover" in details
+
+    def test_debug_false_skips_builder_index(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        called = {"index": 0}
+
+        def _index(**_k: Any) -> None:
+            called["index"] += 1
+
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        builder_mod.build_cover_letter_from_job(
+            self._job({"Letter": "Quiet", "signature": ""}),
+            _candidate_row(base_resume=_resume_blob()),
+            debug=False,
+        )
+        assert called["index"] == 0
+
+    def test_job_cover_somerset_field_mapper(self) -> None:
+        fields = builder_mod._job_cover_somerset_fields(
+            {"re_line": "Subj", "body": "Letter body", "signature": "Sig"},
+            "From text",
+        )
+        assert fields["from_block"] == "From text"
+        assert fields["subject"] == "Subj"
+        assert fields["letter"] == "Letter body"
+        assert fields["signature"] == "Sig"
+        assert fields["letter_date"] == ""
+        assert fields["to_block"] == ""
+        assert fields["signoff_closing"] == ""
+        assert set(fields) == set(builder_mod.BUILD_CONFIG["session_cover_letter"]["fields"])
+
+    def test_candidate_shape_for_resolve(self) -> None:
+        shaped = builder_mod._candidate_for_cover_from_block(
+            {
+                "_full": "Ada Lovelace",
+                "_first": "Ada",
+                "_last": "Lovelace",
+                "contact": {"contact_email": "ada@example.com"},
+                "astral_candidate_id": "cand-1",
+            }
+        )
+        assert shaped == {
+            "full": "Ada Lovelace",
+            "first": "Ada",
+            "last": "Lovelace",
+            "contact": {"contact_email": "ada@example.com"},
+            "astral_candidate_id": "cand-1",
+        }
+
+
+class TestAst1162SignatureImgVerticalSpacing:
+    """AST-1162: SomersetCover `.signature-img` non-negative bottom margin (no overlap)."""
+
+    _LIT = "{$SIGNATURE_IMAGE}"
+    _SAFE = "https://example.com/sig.png"
+    # Supersedes AST-1024 / AST-1124 golden `margin: 8px 0 -25px 0`.
+    _MARGIN = "margin: 8px 0 8px 0"
+
+    @staticmethod
+    def _signature_img_rule(html: str) -> str:
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        m = re.search(r"\.signature-img\s*\{([^}]+)\}", style)
+        assert m is not None, "missing .signature-img rule"
+        return m.group(1)
+
+    def _assert_positive_stack_margin(self, html: str) -> None:
+        rule = self._signature_img_rule(html)
+        assert "display: block" in rule
+        assert "height: 61px" in rule
+        assert self._MARGIN in rule
+        assert "-25px" not in rule
+
+    def test_session_signature_img_margin_non_negative(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda _cid: {
+                "candidate_data": {
+                    "contact": {"cover_letter_signature_image": self._SAFE}
+                }
+            },
+        )
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,\n\nThanks.",
+                "signoff_closing": "Best,",
+                "signature": f"{self._LIT}\nSusan Somerset",
+            },
+            candidate_id="cand-1162",
+        )
+        self._assert_positive_stack_margin(html)
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert signoff.index("Best,") < signoff.index("<img") < signoff.index(
+            "Susan Somerset"
+        )
+
+    def test_job_somerset_signature_img_margin_non_negative(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        html = builder_mod.build_cover_letter_from_job(
+            {
+                "astral_job_id": "job-1162",
+                "job_data": {
+                    "artifacts": {
+                        "cover_letter": {
+                            "Subject": "Re: Role",
+                            "Letter": "Dear team,",
+                            "signature": f"{self._LIT}\nAda Lovelace",
+                        }
+                    }
+                },
+            },
+            cd,
+        )
+        self._assert_positive_stack_margin(html)
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert signoff.index("<img") < signoff.index("Ada Lovelace")
+
+    def test_session_no_image_keeps_closing_and_name(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Token absent → no empty <img> / no image box from this CSS-only change.
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,",
+                "signoff_closing": "Best,",
+                "signature": "Susan Somerset",
+            }
+        )
+        self._assert_positive_stack_margin(html)  # rule still present in stylesheet
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff
+        assert "Best," in signoff and "Susan Somerset" in signoff
+
+
+class TestAst1165SignoffNewlineToBr:
+    """AST-1165: SomersetCover signature fragment newlines → <br> after escape."""
+
+    _LIT = "{$SIGNATURE_IMAGE}"
+    _SAFE = "https://example.com/sig.png"
+
+    def test_session_name_and_title_br_after_image(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda _cid: {
+                "candidate_data": {
+                    "contact": {"cover_letter_signature_image": self._SAFE}
+                }
+            },
+        )
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,",
+                "signoff_closing": "Best,",
+                "signature": f"{self._LIT}\nSusan Somerset\nSenior Product Manager",
+            },
+            candidate_id="cand-1165",
+        )
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert "Susan Somerset<br>Senior Product Manager" in signoff
+        assert signoff.index("Best,") < signoff.index("<img") < signoff.index(
+            "Susan Somerset"
+        )
+        # AST-1162 sibling: non-negative stack margin still present.
+        style = html.split("<style>", 1)[1].split("</style>", 1)[0]
+        assert "margin: 8px 0 8px 0" in style
+        assert "-25px" not in style
+
+    def test_job_somerset_name_and_title_br_after_image(self) -> None:
+        cd = _candidate_row(base_resume=_resume_blob())
+        html = builder_mod.build_cover_letter_from_job(
+            {
+                "astral_job_id": "job-1165",
+                "job_data": {
+                    "artifacts": {
+                        "cover_letter": {
+                            "Subject": "Re: Role",
+                            "Letter": "Dear team,",
+                            "signature": f"{self._LIT}\nAda Lovelace\nEngineer",
+                        }
+                    }
+                },
+            },
+            cd,
+        )
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert 'class="signature-img"' in signoff
+        assert "Ada Lovelace<br>Engineer" in signoff
+        assert signoff.index("<img") < signoff.index("Ada Lovelace")
+
+    def test_token_absent_preserves_newlines_no_img(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "",
+                "letter": "Dear Hiring Team,",
+                "signoff_closing": "Best,",
+                "signature": "Susan Somerset\nSenior Product Manager",
+            }
+        )
+        signoff = html.split('class="letterSignoff"', 1)[1].split("</div>", 1)[0]
+        assert "<img" not in signoff
+        assert "Susan Somerset<br>Senior Product Manager" in signoff
+        assert "{$SIGNATURE_IMAGE}" not in signoff

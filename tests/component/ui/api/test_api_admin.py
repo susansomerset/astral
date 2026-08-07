@@ -603,15 +603,33 @@ class TestAst749DispatchTaskKeysRetiredFilter:
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
 
 
-# AST-796 / AST-960: fetch_jd gazer hop; scrape_jd / validate_title / gaze_board retired on admin paths.
+# AST-796 / AST-960 / AST-1214: fetch_jd gazer hop; retired still excluded; live agent_task union in picker.
+_AST1214_AGENT_TASK_ONLY_KEYS = (
+    "fetch_culture_pages",
+    "fetch_jd",
+    "fetch_job_pages",
+    "fetch_website",
+    "gaze",
+    "inflow_discovery",
+    "parse_meteorite_email",
+    "recheck_no_openings",
+)
+
+
 class TestAst796FetchJdRetiredDispatchKeys:
-    def test_dispatch_task_keys_omits_fetch_jd_gap_excludes_retired(
+    def test_dispatch_task_keys_includes_agent_task_union_excludes_retired(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # AST-960: gap keys (fetch_jd ∉ TASK_CONFIG) leave the picker unless a DB row exists.
+        # AST-1214: agent_task-only keys join the picker via live catalog (not frozenset); retired stay out.
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [{"task_key": tk} for tk in _AST1214_AGENT_TASK_ONLY_KEYS],
+        )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        assert "fetch_jd" not in keys
+        for tk in _AST1214_AGENT_TASK_ONLY_KEYS:
+            assert tk in keys
         assert "grade_do" in keys
         for retired in ("scrape_jd", "validate_title", "gaze_board"):
             assert retired not in keys
@@ -858,6 +876,68 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
         assert by[2]["always_visible_under_avail_gt0"] is False
 
 
+
+# AST-1135: list_dtasks stamps live bind-filtered available_count for gaze_email rows.
+@pytest.mark.skipif(
+    not hasattr(admin_mod, "GAZE_EMAIL_CONFIG"),
+    reason="AST-1135 gaze Avail stamp not on this publish tip",
+)
+class TestAst1135ListDtasksGazeAvail:
+    def test_stamps_bound_counts_once(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "gaze_email",
+                    "trigger_state": None,
+                    "entity_type": None,
+                    "candidate_id": "A",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "gaze_email",
+                    "trigger_state": None,
+                    "entity_type": None,
+                    "candidate_id": "B",
+                    "score_floor": None,
+                },
+                {
+                    "id": 3,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(
+            admin_mod,
+            "admin_always_visible_under_avail_gt0_dispatch_task_keys",
+            lambda: frozenset(),
+        )
+        bound = MagicMock(return_value={"A": 2, "B": 0})
+        monkeypatch.setattr(admin_mod, "count_inbox_bound_by_candidate", bound)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda row: 9,
+        )
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        by = {r["id"]: r for r in rows}
+        assert by[1]["available_count"] == 2
+        assert by[2]["available_count"] == 0
+        assert by[3]["available_count"] == 9
+        assert by[1]["always_visible_under_avail_gt0"] is False
+        bound.assert_called_once_with()
+
+
 # AST-773: PUT dispatch_tasks accepts task_key with validation and AUTO guard.
 class TestAst773UpdateDispatchTaskTaskKey:
     def test_dispatch_task_key_trigger_error_helper(self) -> None:
@@ -959,8 +1039,8 @@ class TestAst773UpdateDispatchTaskTaskKey:
 
 
 # AST-804: candidate entity_type admin validation + state_options exposure.
-# AST-970: candidate registry vocab (ACTIVE_SEARCH / NEW_CANDIDATE). inflow_discovery is
-# not in TASK_CONFIG (AST-960) so trigger validation uses intake_initiate_candidate instead.
+# AST-970: candidate registry vocab (ACTIVE_SEARCH / NEW_CANDIDATE).
+# AST-1214: inflow_discovery is first-class writable (helper-resolvable).
 class TestAst804CandidateDispatchAdminValidation:
     def test_dispatch_task_key_trigger_error_candidate_paths(self) -> None:
         assert admin_mod._dispatch_task_key_trigger_error("intake_initiate_candidate", "ACTIVE_SEARCH") is None
@@ -970,10 +1050,8 @@ class TestAst804CandidateDispatchAdminValidation:
         assert job_bad is not None and "intake_initiate_candidate" in job_bad
         assert admin_mod._dispatch_task_key_trigger_error("grade_do", "PASSED_JD") is None
         assert admin_mod._dispatch_task_key_trigger_error("vet_inflow_discovery", "NEW") is None
-        # AST-960: inflow_discovery is runtime-only — helper rejects unknown TASK_CONFIG key
-        assert "Unknown task_key" in (
-            admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "ACTIVE_SEARCH") or ""
-        )
+        # AST-1214: inflow_discovery is first-class writable via helper-resolvable path
+        assert admin_mod._dispatch_task_key_trigger_error("inflow_discovery", "ACTIVE_SEARCH") is None
 
     def test_state_options_includes_candidate_with_active_search(
         self, admin_client: FlaskClient, auth_headers: dict[str, str]
@@ -1327,6 +1405,8 @@ class TestAdhocHelpers:
         batch = admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["j1", "j2"])
         assert batch.startswith("METEORITE JOBS:")
         assert "000: job_link:" in batch
+        # AST-1197: lockstep with consult assemble CONTENT label.
+        assert "CONTENT:\njd-j1" in batch and "CONTENT:\njd-j2" in batch
         assert "jd-j1" in batch and "jd-j2" in batch
         monkeypatch.setattr(admin_mod.database, "get_job", lambda job_id: None)
         assert admin_mod._build_adhoc_live_content("qualify_meteorite", "", ["missing"]) == ""
@@ -2383,12 +2463,13 @@ class TestAst955AlignScheduledActionsSave:
         )["sort_by"]
 
 
-# AST-960: task_keys / form meta — TASK_CONFIG only (no frozenset merge).
+# AST-960: no frozenset merge. AST-1214: live agent_task ∪ TASK_CONFIG ∪ dispatch orphans.
 class TestAst960TaskKeysNoFrozensetInventory:
     def test_grade_do_form_meta_still_derived(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(admin_mod.database, "list_candidate_tasks", lambda: [])
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
         assert keys["grade_do"]["entity_type"] == "job"
         assert keys["grade_do"]["trigger_state"] == "PASSED_JD"
@@ -2397,28 +2478,28 @@ class TestAst960TaskKeysNoFrozensetInventory:
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(admin_mod.database, "list_candidate_tasks", lambda: [])
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
         assert "check_cover_letter" in keys
         # Mid-chain: no default trigger rule — form meta falls through to TASK_CONFIG fields.
         assert keys["check_cover_letter"]["entity_type"] == "job"
 
-    def test_gap_key_absent_without_db_row(
+    def test_agent_task_only_keys_present_non_agent_gaps_absent(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # Eight live agent_task-only keys in picker; prefilter / inflow_resolve_website stay out
+        # (not agent_task keys — writer may still accept them if POSTed).
         monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [{"task_key": tk} for tk in _AST1214_AGENT_TASK_ONLY_KEYS],
+        )
         keys = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers).get_json()
-        for gap in (
-            "fetch_jd",
-            "prefilter",
-            "fetch_website",
-            "fetch_job_pages",
-            "fetch_culture_pages",
-            "inflow_discovery",
-            "inflow_resolve_website",
-            "gaze",
-            "recheck_no_openings",
-        ):
-            assert gap not in keys
+        for tk in _AST1214_AGENT_TASK_ONLY_KEYS:
+            assert tk in keys
+        assert "prefilter" not in keys
+        assert "inflow_resolve_website" not in keys
 
 
 # AST-986: Admin POST /session_resume/parse — thin delegate; no candidate bind in route.
@@ -2772,3 +2853,114 @@ class TestAst1024SessionCoverLetterHtmlApi:
         )
         assert resp.status_code == 200
         assert captured["candidate_id"] is None
+
+
+# AST-1214: live alphabetical Admin catalog + first-class write / mailbox fold.
+class TestAst1214AdminCatalogAlphabeticalWritable:
+    def test_catalog_keys_alphabetical_and_mailbox_form_meta(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "list_dispatch_tasks", lambda: [])
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [{"task_key": tk} for tk in _AST1214_AGENT_TASK_ONLY_KEYS],
+        )
+        resp = admin_client.get("/api/admin/dispatch_tasks/task_keys", headers=auth_headers)
+        assert resp.status_code == 200
+        # Raw body order is the contract (sorted(membership)), not only Flask jsonify sorting.
+        raw_keys = list(resp.get_json().keys())
+        assert raw_keys == sorted(raw_keys)
+        keys = resp.get_json()
+        assert keys["parse_meteorite_email"]["entity_type"] == "candidate"
+        assert keys["parse_meteorite_email"]["trigger_state"] == ""
+        assert keys["fetch_jd"]["entity_type"] == "job"
+        assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
+
+    def test_mailbox_trigger_null_only_and_unsupported_craft_wording(self) -> None:
+        for tk in ("parse_meteorite_email", "meteorite_email", "gaze_email"):
+            assert admin_mod._dispatch_task_key_trigger_error(tk, None) is None
+            assert admin_mod._dispatch_task_key_trigger_error(tk, "") is None
+            bad = admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH")
+            assert bad is not None and "mailbox poller" in bad
+        # Registered TASK_CONFIG without entity helper → unsupported, not Unknown.
+        craft_err = admin_mod._dispatch_task_key_trigger_error("craft_do_rubric", "NEW")
+        assert craft_err is not None and "unsupported entity_type" in craft_err
+        assert "Unknown task_key" not in craft_err
+
+    def test_post_fetch_jd_and_parse_meteorite_email_create(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(admin_mod, "_candidate_dispatch_api_key_error", lambda candidate_id: None)
+        save = MagicMock(side_effect=[71, 72])
+        monkeypatch.setattr(admin_mod, "save_dispatch_task", save)
+        fetch = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "fetch_jd",
+                "trigger_state": "PASSED_JOBLIST",
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert fetch.status_code == 201
+        assert fetch.get_json()["id"] == 71
+        mailbox = admin_client.post(
+            "/api/admin/dispatch_tasks",
+            json={
+                "candidate_id": "c1",
+                "task_key": "parse_meteorite_email",
+                "trigger_state": None,
+                "min_count": 1,
+            },
+            headers=auth_headers,
+        )
+        assert mailbox.status_code == 201
+        assert mailbox.get_json()["id"] == 72
+        assert save.call_count == 2
+
+    def test_list_dtasks_meteorite_mailbox_avail_without_gaze_email_row(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # need_gaze_counts + per-row stamp must fire for mailbox keys even with no gaze_email row.
+        monkeypatch.setattr(
+            admin_mod,
+            "list_dispatch_tasks",
+            lambda: [
+                {
+                    "id": 1,
+                    "task_key": "parse_meteorite_email",
+                    "trigger_state": None,
+                    "entity_type": "candidate",
+                    "candidate_id": "A",
+                    "score_floor": None,
+                },
+                {
+                    "id": 2,
+                    "task_key": "scan_jobs",
+                    "trigger_state": "NEW",
+                    "entity_type": "job",
+                    "candidate_id": "c1",
+                    "score_floor": None,
+                },
+            ],
+        )
+        monkeypatch.setattr(admin_mod, "admin_hidden_dispatch_task_keys", lambda: frozenset())
+        monkeypatch.setattr(
+            admin_mod,
+            "admin_always_visible_under_avail_gt0_dispatch_task_keys",
+            lambda: frozenset(),
+        )
+        bound = MagicMock(return_value={"A": 3})
+        monkeypatch.setattr(admin_mod, "count_inbox_bound_by_candidate", bound)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "count_eligible_for_dispatch_task",
+            lambda row: 9,
+        )
+        rows = admin_client.get("/api/admin/dispatch_tasks", headers=auth_headers).get_json()
+        by = {r["id"]: r for r in rows}
+        assert by[1]["available_count"] == 3
+        assert by[2]["available_count"] == 9
+        bound.assert_called_once_with()

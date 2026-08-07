@@ -1,3 +1,305 @@
+<!-- linear-archive: AST-982 archived 2026-08-05 -->
+
+## Linear archive (AST-982)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-982/drop-agent-responses-table-from-schema-and-existing-dbs-decommission  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-975 — Decommission table AGENT_RESPONSES  
+**Blocked by / blocks / related:** parent: AST-975; blocks: AST-983
+
+### Description
+
+## What this implements
+
+Removes the standalone `agent_responses` table from the data-layer inventory/bootstrap/ensure path and drops it on upgrade so local and Railway DBs match. Does not own docs/test prose.
+
+## Acceptance criteria
+
+1. After deploy/bootstrap on a legacy DB that still had the standalone `agent_responses` table, that table is gone and is not recreated on subsequent starts.
+2. A repo-wide search of product code under `src/`, `scripts/`, and `tests/` finds no remaining create/read/write of the standalone `agent_responses` **table** (entity-column name collisions are allowed until the column-retirement sibling lands).
+
+## Boundaries
+
+* Does **not** remove runtime call sites (sibling AST-981 owns stop-writes).
+* Does **not** own docs/bible/test prose (sibling: Docs sweep).
+* Does **not** drop entity JSON columns (sibling: Retire entity columns).
+* Hard-drop of historical standalone-table rows is approved — no archive/export.
+
+## Notes for planning
+
+* Database header inventory must drop the table; ensure/bootstrap must not recreate it.
+* Coordinate with AST-981 so no code path still expects the table at runtime.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law. Publish to `origin/<publish-ref>` only.
+
+### Comments
+
+#### radia — 2026-07-25T19:41:53.789Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-982
+**Publish ref:** `dde1cf017fe260c21e37937ef6b9b89e7a213911` (`origin/sub/AST-975/AST-982-drop-agent-responses-table-schema`)
+**Overall:** DISCUSS
+
+Diff baseline: `origin/dev...origin/sub/AST-975/AST-982-drop-agent-responses-table-schema` (includes AST-981 ancestors not yet on `origin/dev` via ftr merge).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | No grade/confidence edits in AST-982; core delta is AST-981 ancestor |
+| astral.agent.do-task-delegation | scoped | conforms | AST-982 does not alter `do_task` delegation; ancestor stop-writes already reviewed |
+| astral.agent.grade-vector-validation | scoped | conforms | Grade-vector validation untouched |
+| astral.batch.batch-id-first | scoped | conforms | No claim/get/clear signature changes |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | scoped | conforms | No claim→process→release edits |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | `append_agent_response` + entity JSON columns kept |
+| astral.config.config-source-of-truth | scoped | conforms | No new config keys |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Scoring thresholds untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env handling changes |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss (`artifacts/**` / `scripts/spikes/**`) |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan docs under `docs/features/`; not misplaced spikes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One features file per ticket (981 + 982) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty `test(AST-982)` touched bible/tests/conftest only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code(AST-982)` is `database.py` only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No external I/O moves |
+| astral.layers.import-direction | scoped | conforms | Data-layer DDL only; no illegal imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Script paths are AST-981 ancestors; AST-982 has no script edits |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers miss (no ui) |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | Coat-check keys untouched |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Consult orchestrator not in AST-982 delta |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss (no ui) |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Sunset helper is DDL only; no data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | Retired standalone table removed from header inventory |
+| astral.standards.debug-contract-gated | scoped | conforms | No new ungated debug-contract emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | One sunset helper + one bootstrap call |
+| astral.standards.in-scope-only | scoped | conforms | Schema/bootstrap lane only; no column retirement / prose steal |
+| astral.standards.logging-via-utils | scoped | conforms | No logging facade changes |
+| astral.standards.no-cross-contamination | scoped | conforms | AST-982 stays in `src/data/database.py` |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new inline state sets |
+| astral.standards.public-then-helpers | scoped | conforms | Private sunset helper; not registered as upsert handler |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers miss (no utils) |
+| astral.state.core-decides-transitions | scoped | conforms | No state-transition logic |
+| astral.state.job-prior-states-enforced | scoped | conforms | No JOB_STATES edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No run_next / daisy-chain changes |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss (no ui) |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss (no ui) |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No gunicorn/start_server edits |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-982): origin/tests 7215e0b…` |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`code`/`test`/`merge-tests` vocab |
+| orch.git.flow-direction-inviolable | universal | conforms | Tip on child `sub/` publish-ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-975/AST-982-drop-agent-responses-table-schema` |
+| orch.git.merge-on-checkout | universal | conforms | Merged `origin/dev` + ftr (AST-981) before Stage 1 |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in ticket commits |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-975` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Hard-drop per OQ2; no new product fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 + build gate match delivery |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-child review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Tests/bible via Betty `test()` + `merge-tests` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Implementer Hedy; Chuckles not assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Review does not flip assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Docs-only Radia commit |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Matches Stages 1–2 and Self-Assessment Scope (Single-Component). Header inventory + CREATE/ensure/registry removed; DROP sunset hooked from `ensure_all_upsert_registry_schemas_at_startup` before registry loop; entity `append_agent_response` kept. AST-981 `blockedBy` / ftr ancestor satisfied before DROP.
+
+## Findings
+
+**discuss (C4 straggler):** Joan Excluded these 15 statutes; three-dot scores them in-scope due to AST-981 ancestor paths still absent from `origin/dev`: `astral.agent.confidence-bounds`, `astral.agent.do-task-delegation`, `astral.agent.grade-vector-validation`, `astral.config.secrets-and-env-specific-from-environ`, `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.core-vs-external-bright-line`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.patterns.coat-check-never-store-empty`, `astral.patterns.render-verdict-orchestrates-consult`, `astral.standards.debug-contract-gated`, `astral.standards.logging-via-utils`, `astral.state.no-daisy-chain-in-run`, `astral.ui.single-gunicorn-worker`. Substance for all: **conforms**. No product fix expected.
+
+**advisory:** Mandate/bible prose sweep remains AST-983.
+
+### What’s solid
+
+- Idempotent `DROP TABLE IF EXISTS` + process flag; no CREATE/ensure left.
+- Entity latest-only path preserved; compress helpers kept.
+- One Betty merge-tests SHA with sunset bootstrap coverage.
+
+### Recommended actions
+
+1. Acknowledge C4 stragglers at resolve-child (no code).
+2. AST-983 / AST-984 for remaining epic lanes.
+
+**Notes:** Joan plan-rubric verdict attached (APPROVED). Docs append on plan file @ tip.
+
+context_tokens≈38000
+
+#### betty — 2026-07-25T19:39:56.731Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-975/AST-982-drop-agent-responses-table-schema` @ `f201a47` (`merge-tests(AST-982): origin/tests 7215e0b5e23be4fd2d5bae4f9a9fc949e9402098`)
+
+### 1. Existing coverage (keep)
+1. `TestAst726AppendAgentResponseUpsert` — entity JSON latest-only (AST-984).
+2. `TestAst981StandaloneTableIoRetired` — table I/O helpers gone; hard_delete omits table key (revised: no longer asserts `_ensure_*`).
+
+### 2. Obsolete revised
+1. AST-981 ensure-kept assertion → ensure/registry removed under AST-982.
+2. Conftest `_SCHEMA_FLAGS`: `_agent_responses_schema_ensured` → `_agent_responses_table_sunset_applied` (data/core/ui/integration).
+3. PUB tip was missing AST-981 test tree (merge ancestry quirk); `merge-tests` of this SHA also lands AST-981 test/bible corpus onto the publish-ref.
+
+### 3. New coverage
+1. `TestAst982StandaloneTableSunset::test_ensure_and_registry_symbols_removed`
+2. `TestAst982StandaloneTableSunset::test_bootstrap_drops_legacy_table_and_does_not_recreate` — DROP via `ensure_all_upsert_registry_schemas_at_startup`; second bootstrap no recreate; company entity column remains.
+
+### 4. Run (test-child)
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_responses.py::TestAst981StandaloneTableIoRetired \
+  tests/component/data/database/test_agent_responses.py::TestAst982StandaloneTableSunset \
+  tests/component/data/database/test_agent_responses.py::TestAst726AppendAgentResponseUpsert \
+  -q
+```
+
+Also Stage 2 plan `rg` gates on epic worktree tip.
+
+### Bible shasum on publish-ref
+- `docs/test-bible/data/database/agent_responses.md` `cf355487b1143b1b12b6a05302e6e2e65286c421`
+
+Mandate/prose sweep remains sibling **AST-983**.
+
+— Betty
+
+#### joan — 2026-07-25T19:09:41.445Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-982
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-975/AST-982-drop-agent-responses-table-schema`
+**Implementer:** Hedy (parent Team table / plan author)
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| AC1 — after deploy/bootstrap, standalone table gone and not recreated | Stage 1 (`_apply_agent_responses_table_sunset` + bootstrap hook); Stage 2 greps |
+| AC2 — no create/read/write of standalone table under `src/`/`scripts/`/`tests/` | Stages 1–2 for CREATE/ensure/registry in `src/` (schema lane); runtime I/O N/A — boundary AST-981; `tests/` N/A — boundary AST-983 / Betty |
+| AC3 — `do_task` / `agent_data` without writing retired table | N/A — boundary: “Does not remove runtime call sites (sibling AST-981)” |
+| AC4 — mandate/bible prose | N/A — AST-983 |
+| AC5 — drop entity columns (if OQ1) | N/A — AST-984 |
+| AC6 — keep entity columns / latest-only | Stage 1 keep-list: `append_agent_response` + entity JSON columns |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| Stage 1 — delete ensure/CREATE/registry/header; DROP sunset on bootstrap | Parent Purpose + Functional scope §1; parent AC1; child AC1; OQ2 hard drop |
+| Stage 2 — acceptance rg + py_compile | Parent AC1/AC2 (schema slice); child AC1–2 (src lane) |
+| Build gate — blockedBy AST-981 + ftr ancestor check | Parent Dependencies sequencing (after #1); child Notes |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| astral.batch.batch-id-first | conforms | No claim/get/clear signature changes |
+| astral.batch.batch-id-format | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | conforms | No claim→process→release edits |
+| astral.batch.entity-agent-responses-latest-only | conforms | Explicit keep-list for `append_agent_response` / entity JSON columns |
+| astral.config.config-source-of-truth | conforms | No new config keys |
+| astral.config.pass-threshold-vs-score-floor | conforms | Scoring thresholds untouched |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns `src/data/database.py`; Betty owns tests |
+| astral.layers.import-direction | conforms | Data-layer only; no new cross-layer imports |
+| astral.standards.data-raises-caller-logs | conforms | Sunset helper does DDL only; no data-layer logging |
+| astral.standards.database-header-inventory | conforms | Stage 1 step 7 deletes retired table from header inventory |
+| astral.standards.dry-and-focused-functions | conforms | One sunset helper + one bootstrap call; no parallel CLI |
+| astral.standards.in-scope-only | conforms | Sibling out-of-scope table explicit; no docs/core/column drop |
+| astral.standards.no-cross-contamination | conforms | Stays in `src/data/database.py` |
+| astral.standards.no-hardcoded-sets | conforms | No new inline state sets |
+| astral.standards.public-then-helpers | conforms | Private sunset helper; no scattered public API |
+| astral.state.core-decides-transitions | conforms | No state-transition logic |
+| astral.state.job-prior-states-enforced | conforms | No JOB_STATES edits |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Normal engineer commits on publish-ref |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/AST-975/...` per parent Git table |
+| orch.git.ftr-sub-topology | conforms | Publish ref matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Build gate requires merge ftr/dev before Stage 1 |
+| orch.git.no-cherry-pick-rebase-force | conforms | No cherry-pick/rebase/force instructed |
+| orch.git.no-dev-agent-branches | conforms | Uses `sub/` publish-ref |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree AST-975 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | OQ2 hard-drop already answered; no new product fork |
+| orch.pipeline.plan-is-bible | conforms | Concrete stages + rg gates + blockedBy gate |
+| orch.pipeline.project-scoped-queues | conforms | Single-child scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate path |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | Betty note; engineer does not edit `tests/` |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer is Hedy |
+| orch.roles.engineer-assignee-through-resolve | conforms | Returns to Hedy on Plan Approved |
+| orch.roles.pre-commit-path-bans | conforms | No banned-path edits planned |
+
+## Considered and excluded
+
+**Considered:** astral.batch.batch-id-first; astral.batch.batch-id-format; astral.batch.claim-process-release; astral.batch.entity-agent-responses-latest-only; astral.config.config-source-of-truth; astral.config.pass-threshold-vs-score-floor; astral.git.betty-no-src-or-features; astral.layers.import-direction; astral.standards.data-raises-caller-logs; astral.standards.database-header-inventory; astral.standards.dry-and-focused-functions; astral.standards.in-scope-only; astral.standards.no-cross-contamination; astral.standards.no-hardcoded-sets; astral.standards.public-then-helpers; astral.state.core-decides-transitions; astral.state.job-prior-states-enforced; orch.git.betty-merge-tests-one-sha; orch.git.commit-vocabulary; orch.git.flow-direction-inviolable; orch.git.ftr-sub-topology; orch.git.merge-on-checkout; orch.git.no-cherry-pick-rebase-force; orch.git.no-dev-agent-branches; orch.git.one-epic-worktree-per-parent; orch.git.three-permanent-branches; orch.pipeline.call-susan-for-product-decisions; orch.pipeline.plan-is-bible; orch.pipeline.project-scoped-queues; orch.pipeline.status-gates-skill-entry; orch.roles.archie-approves-statutes; orch.roles.betty-owns-test-tree; orch.roles.chuckles-never-ticket-assignee; orch.roles.engineer-assignee-through-resolve; orch.roles.pre-commit-path-bans
+
+**Excluded:**
+- astral.agent.confidence-bounds — layers/paths miss (core/utils)
+- astral.agent.do-task-delegation — layers/paths miss
+- astral.agent.grade-vector-validation — layers/paths miss
+- astral.config.secrets-and-env-specific-from-environ — layers miss (no data)
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss
+- astral.git.engineer-test-tree-ban — paths miss (no tests/** in Files Changed)
+- astral.layers.core-vs-external-bright-line — layers/paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.layers.ui-config-driven-business-logic — layers/paths miss
+- astral.patterns.coat-check-never-store-empty — layers/paths miss
+- astral.patterns.render-verdict-orchestrates-consult — layers/paths miss
+- astral.patterns.require-auth-on-protected-endpoints — layers/paths miss
+- astral.standards.debug-contract-gated — layers miss
+- astral.standards.logging-via-utils — layers miss
+- astral.standards.utils-data-late-import-only — layers/paths miss
+- astral.state.no-daisy-chain-in-run — layers/paths miss
+- astral.ui.frontend-file-placement — layers/paths miss
+- astral.ui.naming-conventions — layers/paths miss
+- astral.ui.single-gunicorn-worker — layers/paths miss
+
+## Findings
+
+None fix-now.
+
+- **acceptable** — AST-766 board sunset hooks from `_ensure_job_schema`; this plan hooks from `ensure_all_upsert_registry_schemas_at_startup` instead. Justified: agent_responses is not an entity-table ensure, and bootstrap is the AC1 contract path (`src/core/bootstrap.py`). Explicitly rejects wiring DROP into job/company/candidate ensures.
+- **acceptable** — Child AC2 names `tests/`; plan correctly defers test edits to AST-983 / Betty per Boundaries.
+- **acceptable** — Self-assessment Scope Single-Component / Conf high / Risk Medium matches localized surface + blockedBy/ftr gate.
+
+## R6 checklist (summary)
+
+Definition fidelity: schema drop only, hard drop per OQ2. Layers: data only. Config: none new. Placement: no new files. Patterns: entity latest-only + agent_data preserved. DRY/scope: one sunset helper; siblings named; AST-981 gate before DROP. Self-assessment: honest.
+
+context_tokens≈85000
+
+— Joan
+
+#### hedy — 2026-07-25T19:00:30.894Z
+Plan on publish ref `origin/sub/AST-975/AST-982-drop-agent-responses-table-schema` @ `20c67cd`:
+
+https://github.com/susansomerset/astral/blob/sub/AST-975/AST-982-drop-agent-responses-table-schema/docs/features/foundation/ast-982-drop-agent-responses-table-schema.md
+
+**Scope:** Single-Component — `src/data/database.py` only: remove standalone-table header inventory + CREATE/`_ensure_agent_responses_schema` + upsert-registry keys; add `_apply_agent_responses_table_sunset` (`DROP TABLE IF EXISTS`) hooked from `ensure_all_upsert_registry_schemas_at_startup`.
+
+**Conf:** high — AST-981 already reserved this surface; AST-766 establishes the DROP-on-bootstrap pattern; sibling keep-list (entity columns / `append_agent_response` / compress helpers) is explicit.
+
+**Risk:** Medium — DROP while AST-981 writers remain would break inserts; mitigated by Linear `blockedBy` + ftr ancestor gate before Stage 1. Entity-column helpers are keep-listed so latest-only refs survive until AST-984.
+
+---
+
 # AST-982 — Drop agent_responses table from schema and existing DBs
 
 **Linear:** [AST-982 — Drop agent_responses table from schema and existing DBs (Decommission table AGENT_RESPONSES)](https://linear.app/astralcareermatch/issue/AST-982/drop-agent-responses-table-from-schema-and-existing-dbs-decommission)

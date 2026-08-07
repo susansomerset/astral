@@ -75,6 +75,17 @@ class TestSystemAuthRoutes:
         assert len(preamble["steps"]) == len(PREAMBLE_CONFIG["steps"])
         assert [s["id"] for s in preamble["steps"]] == [s["id"] for s in PREAMBLE_CONFIG["steps"]]
 
+    def test_ui_config_includes_cover_from_block(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
+        # AST-1149: Session Cover Letter reads authoring chrome from ui_config.
+        from src.utils.config import COVER_FROM_BLOCK_CONFIG
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        block = payload.get("cover_from_block")
+        assert isinstance(block, dict)
+        assert block["default_template"] == COVER_FROM_BLOCK_CONFIG["default_template"]
+        assert block["authoring_help"] == COVER_FROM_BLOCK_CONFIG["authoring_help"]
+        assert block["session_authoring_help"] == COVER_FROM_BLOCK_CONFIG["session_authoring_help"]
+
     def test_nav_config_without_candidate_id(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = system_client.get("/api/nav_config", headers=auth_headers)
         assert resp.status_code == 200
@@ -235,3 +246,61 @@ class TestSystemNavHelpers:
         assert nav[0]["items"][0]["enabled"] is False
         nav_live = system_mod._resolve_nav("ACTIVE_SEARCH", "cand-1")
         assert nav_live[0]["items"][0]["enabled"] is True
+
+
+class TestAst1116ShapesCoverLetter:
+    """AST-1116: /api/shapes/candidates exposes detail.cover_letter field defs."""
+
+    def test_shapes_candidates_detail_cover_letter(
+        self, system_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = system_client.get("/api/shapes/candidates", headers=auth_headers)
+        assert resp.status_code == 200
+        cover = resp.get_json()["detail"]["cover_letter"]
+        assert [f["key"] for f in cover] == ["Subject", "Letter", "signature"]
+
+
+class TestAst1253StateUiManifestChainFields:
+    """AST-1253: GET /state_ui_manifest merges live chain arrays from core."""
+
+    def test_manifest_includes_chain_fields(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_task_keys",
+            lambda: ["craft_get_rubric", "craft_do_rubric"],
+        )
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_hop_labels",
+            lambda: ["Get Job Criteria", "Do Job Criteria"],
+        )
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_artifact_keys",
+            lambda: ["get_rubric", "do_rubric"],
+        )
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidate"]
+        assert cand["artifacts_chain_task_keys"] == ["craft_get_rubric", "craft_do_rubric"]
+        assert cand["artifacts_chain_hop_labels"] == ["Get Job Criteria", "Do Job Criteria"]
+        assert cand["artifacts_chain_artifact_keys"] == ["get_rubric", "do_rubric"]
+        assert "ARTIFACTS_READY" in cand["artifact_generate_states"]
+
+    def test_manifest_degrades_chain_on_walk_failure(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_task_keys",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidate"]
+        assert cand["artifacts_chain_task_keys"] == []
+        assert cand["artifacts_chain_hop_labels"] == []
+        assert cand["artifacts_chain_artifact_keys"] == []
+        assert "artifact_generate_states" in cand

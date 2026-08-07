@@ -244,7 +244,7 @@ Config claim helper: **`docs/test-bible/utils/config.md`** (**AST-882**).
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`count_eligible_for_dispatch_task`** splits candidate stage keys vs **`inflow_discovery`**; fixtures use **`ACTIVE_SEARCH`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`count_eligible_for_dispatch_task`** splits candidate stage keys vs **`inflow_discovery`**; fixtures use **`ACTIVE_SEARCH`**. **AST-1258** overturns inflow-only Avail for non-inflow stage keys (unclaimed pool) — see § AST-1258 below.
 
 ### AST-1000 · AST-995
 
@@ -309,6 +309,75 @@ Nullable `dispatch_task.candidate_id` (schema rebuild when live column is NOT NU
 ./scripts/testing/run_component_tests.sh \
   tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
   tests/component/data/database/test_jobs.py::TestAst1090JobLinkExistsForCandidate \
+  -q
+```
+
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+`save_dispatch_task` requires `candidate_id` for **every** task_key including `gaze_email` (null-shell allowance removed). Schema `candidate_id` stays nullable + partial unique index for residual rows deleted at provision. Due/avail task-key special-case unchanged until **AST-1135** — tests use bound rows. Stamp column: **`docs/test-bible/data/database/candidates.md`**. Provision: **`docs/test-bible/core/dispatcher.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Reject null gaze_email; bound save; schema/index | `src/data/database.py` | revised **`TestAst1088NullCandidateGazeEmail`** |
+| Due / count_eligible on bound row | `src/data/database.py` | revised **`TestAst1090GazeEmailDue`** |
+
+**Broken / obsolete (Betty revision):** `save_dispatch_task(candidate_id=None, task_key=gaze_email)` success path; null-cid due fixtures.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1088NullCandidateGazeEmail \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  -q
+```
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+Deletes `_gaze_email_available_count`; `count_eligible_for_dispatch_task` / `get_due_tasks` no longer special-case `gaze_email` (null entity/trigger → 0 / skip). Public `dispatch_task_freq_allows` for AUTO cadence. Live Avail: **`docs/test-bible/core/inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fake due retired | `src/data/database.py` | revised **`TestAst1090GazeEmailDue`** |
+| Freq helper | `src/data/database.py` | **`TestAst1135DispatchTaskFreqAllows`** |
+
+**Broken / obsolete (Betty revision):** AST-1090 due includes gaze / count_eligible fake `1`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1090GazeEmailDue \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1135DispatchTaskFreqAllows \
+  -q
+```
+
+### AST-1258 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis`.
+
+`count_eligible_for_dispatch_task` for `entity_type=candidate`: **`inflow_discovery`** keeps `count_candidate_inflow_discovery_eligible`; every other candidate claim-queue task reports **`count_candidates_unclaimed_in_states(claim_states)`** (global unclaimed pool). Claim/get/clear APIs: **`docs/test-bible/data/database/candidates.md`** § AST-1258.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Non-inflow stage Avail = unclaimed pool | `src/data/database.py` | revised **`TestAst972CandidateStageEligibility::test_candidate_stage_avail_is_unclaimed_pool`** |
+| Pool count 0 when all matching rows locked | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked`** |
+| `inflow_discovery` still uses inflow helper | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_inflow_discovery_still_uses_inflow_helper`** |
+
+**Broken / obsolete (Betty revision):** `TestAst972CandidateStageEligibility::test_candidate_entity_avail_is_inflow_not_stage` (expected `0` via inflow helper) → renamed/revised to expect pool count `1` for one unclaimed `REQUESTED_ARTIFACTS` row.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility \
+  tests/component/data/database/test_candidates.py::TestAst1258CandidateBatchClaim \
   -q
 ```
 

@@ -572,3 +572,48 @@ FormFields `string_list`: ordered text inputs + Remove + Add (label `Add`); valu
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_FormFields.test.tsx
 ```
+
+---
+
+### AST-1200 · AST-1198
+
+**Parent:** [AST-1198 — Rubric criteria prompts are not appearing in UI Artifacts](https://linear.app/astralcareermatch/issue/AST-1198/rubric-criteria-prompts-are-not-appearing-in-ui-artifacts). **Publish:** `origin/sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`.
+
+Candidate Artifacts criteria pages share **`ArtifactEditor`** without `jobPersistence`: expand-all via `useSectionExpandPolicy` (`criteriaExpandAll = !jobPersistence && rubricMode`) so criterion prompt textareas are visible on load; one-shot seed per `(selectedId, artifactKey)` (collapse stays closed while typing). **jobPersistence** dict tabs (Recommended Job Modal) stay expand-one. Structure mode sets `fixedFields` → `rubricMode` false → stays expand-one. Backfill ops map: **`docs/test-bible/dev/backfill_rubric_vectors.md`**. Job List page smoke: **`docs/test-bible/frontend/pages.md`**. No page-file product diff — §6c routed-page rule N/A; Job List assert is additive AC1 smoke.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Expand-all prompt bodies | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1200: candidate criteria expand-all shows prompt bodies without chevron click`** |
+| One-shot seed (collapse survives typing) | same | **`AST-1200: collapse one criterion stays closed while typing in another`** |
+| Empty New Criterion affordance | same | **`AST-1200: empty criteria page still shows New Criterion editor expanded`** |
+| jobPersistence expand-one boundary | same | **`AST-1200: jobPersistence dict tabs stay expand-one (bodies hidden until expand)`** |
+| Structure mode expand-one boundary | same | **`AST-1200: structure mode stays expand-one (not criteria expand-all)`** |
+
+**Broken / obsolete:** none — additive expand policy; existing AST-902 / AST-553 / AST-996 rows stay.
+
+**Integration:** no existing scenario asserts CollapsiblePanel expand policy on Artifacts criteria — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1200"
+```
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Chain `ArtifactEditor` pages: empty **Generate** / **Regenerate** (Yes/No modal listing `artifacts_chain_hop_labels`) → `POST …/generate_artifacts`. Non-chain / `craft_resume_base` keep ad-hoc generate. Fixture: **`stateUiManifestFixture.ts`** chain fields. Search Terms page: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty Generate + Regenerate Yes/No | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1253:*`** |
+| AST-904 Save-after-regen stays non-chain | same | revised **`AST-904`** (`craft_rubric`) |
+
+**Broken / obsolete:** per-page ad-hoc regenerate→review for chain `taskKey`s (AST-677 Watch Criteria; Search Terms populate-from-craft).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1253|AST-904"
+```

@@ -43,6 +43,7 @@ from src.utils.config import (
     is_dispatch_chain_trigger,
     template_candidate_id,
     CANDIDATE_STAGE_DISPATCH,
+    DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -161,7 +162,20 @@ def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict
 
 
 def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent insert of meteorite dispatch_task rows; retire stale evaluate_jd@METEORITE_NEW (AST-1060)."""
+    """Idempotent insert of meteorite dispatch_task rows; retire stale shared keys.
+
+    Twin GDL entry is evaluate_meteorite@METEORITE_QUALIFIED. Retires any evaluate_jd row
+    claiming a METEORITE_* trigger (NEW + QUALIFIED eras); keeps evaluate_jd@JD_READY.
+    Retirement runs only when the twin row is already present or was just inserted — never
+    strip classic meteorite evaluate_jd and leave METEORITE_QUALIFIED with no claim row.
+    AST-1222: once meteorite_grade_do/get alias rows exist, also retire grade_do@METEORITE_PASSED_JD
+    and grade_get@METEORITE_PASSED_DO (classic Gaze grade_*@PASSED_* stay).
+    Call provision when the meteorite evaluate hop is idle (rows are auto_mode False).
+
+    Manual verify after provision_meteorite_dispatch_tasks: retired may be > 0 when stale
+    rows existed; evaluate_meteorite@METEORITE_QUALIFIED present; evaluate_jd@JD_READY kept;
+    alias Do/Get present and shared-key meteorite Do/Get gone.
+    """
     cid = str(candidate_id or "").strip()
     if not cid:
         raise ValueError("candidate_id is required")
@@ -169,6 +183,9 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
         ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
         for r in database.list_dispatch_tasks_for_candidate(cid)
     }
+    # Twin must exist before we delete evaluate_jd@METEORITE_* (Joan / AST-1209).
+    twin_key = ("evaluate_meteorite", "METEORITE_QUALIFIED")
+    twin_present = twin_key in existing
     added = 0
     skipped = 0
     skipped_missing_config = 0
@@ -192,14 +209,36 @@ def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
             score_floor=entry.get("score_floor"),
         )
         added += 1
-    # AST-1060: live claim surface — drop evaluate_jd@METEORITE_NEW (keep JD_READY).
+        if (tk, ts) == twin_key:
+            twin_present = True
+    # Twin contract (AST-1209): drop evaluate_jd on any METEORITE_* trigger (keep JD_READY).
     retired = 0
-    for row in database.list_dispatch_tasks_for_candidate(cid):
-        tk = (row.get("task_key") or "").strip()
-        ts = (row.get("trigger_state") or "").strip()
-        if tk == "evaluate_jd" and ts == "METEORITE_NEW":
-            delete_dispatch_task(int(row["id"]))
-            retired += 1
+    if twin_present:
+        for row in database.list_dispatch_tasks_for_candidate(cid):
+            tk = (row.get("task_key") or "").strip()
+            ts = (row.get("trigger_state") or "").strip()
+            if tk == "evaluate_jd" and ts.startswith("METEORITE_"):
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
+    # AST-1222: once alias Do/Get rows exist, drop shared-key meteorite triggers
+    # (classic Gaze grade_do@PASSED_JD / grade_get@PASSED_DO stay).
+    rows_after = database.list_dispatch_tasks_for_candidate(cid)
+    existing_after = {
+        ((r.get("task_key") or "").strip(), (r.get("trigger_state") or "").strip())
+        for r in rows_after
+    }
+    alias_do = ("meteorite_grade_do", "METEORITE_PASSED_JD")
+    alias_get = ("meteorite_grade_get", "METEORITE_PASSED_DO")
+    if alias_do in existing_after and alias_get in existing_after:
+        for row in rows_after:
+            tk = (row.get("task_key") or "").strip()
+            ts = (row.get("trigger_state") or "").strip()
+            if (tk, ts) in {
+                ("grade_do", "METEORITE_PASSED_JD"),
+                ("grade_get", "METEORITE_PASSED_DO"),
+            }:
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
     return {
         "candidate_id": cid,
         "added": added,
@@ -239,53 +278,69 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+# AST-1252: wrapper subset of DISPATCH_RETIRED_TASK_KEYS (not a second literal set).
+_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset(
+    k for k in DISPATCH_RETIRED_TASK_KEYS if k.startswith("candidate_requested_")
+)
 
-def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
-    """Idempotent insert of the shared Astral inbox gaze_email row (null candidate_id).
 
-    Due eligibility + mailbox runner live on AST-1090 (`get_due_tasks` / `_dispatch_one`).
-    AST-1098: reconcile stuck AUTO-on shared row back to seed CLICK.
+def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:
+    """Delete live dispatch_task rows for retired candidate_requested_* keys (AST-1252).
+
+    Retire-only — does not insert craft_get_rubric rows (operators create those).
     """
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    cids = set(database.list_candidate_ids_with_dispatch_tasks())
+    cids.add(str(template_id).strip())
+    retired = 0
+    for cid in sorted(cids):
+        if not cid:
+            continue
+        for row in database.list_dispatch_tasks_for_candidate(cid):
+            tk = (row.get("task_key") or "").strip()
+            if tk in _RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS:
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_scanned": len(cids),
+        "retired": retired,
+    }
+
+
+def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of candidate-bound gaze_email dispatch_task (AST-1134)."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
     tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
     if tk not in TASK_CONFIG:
         return {
+            "candidate_id": cid,
             "task_key": tk,
             "added": 0,
             "skipped": 0,
-            "reconciled": 0,
             "skipped_missing_config": 1,
             "id": None,
         }
     existing = None
-    for row in database.list_dispatch_tasks():
-        if (row.get("task_key") or "").strip() != tk:
-            continue
-        cid = row.get("candidate_id")
-        if cid is None or str(cid).strip() == "":
+    for row in database.list_dispatch_tasks_for_candidate(cid):
+        if (row.get("task_key") or "").strip() == tk:
             existing = row
             break
     if existing is not None:
-        # Bad-seed / prior AUTO: force seed law CLICK on this shared row only.
-        if bool(existing.get("auto_mode")):
-            database.update_dispatch_task(int(existing["id"]), auto_mode=False)
-            return {
-                "task_key": tk,
-                "added": 0,
-                "skipped": 0,
-                "reconciled": 1,
-                "skipped_missing_config": 0,
-                "id": existing.get("id"),
-            }
         return {
+            "candidate_id": cid,
             "task_key": tk,
             "added": 0,
             "skipped": 1,
-            "reconciled": 0,
             "skipped_missing_config": 0,
             "id": existing.get("id"),
         }
     new_id = database.save_dispatch_task(
-        candidate_id=None,
+        candidate_id=cid,
         task_key=tk,
         min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
         auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
@@ -295,18 +350,44 @@ def ensure_gaze_email_dispatch_task() -> Dict[str, Any]:
         freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
     )
     return {
+        "candidate_id": cid,
         "task_key": tk,
         "added": 1,
         "skipped": 0,
-        "reconciled": 0,
         "skipped_missing_config": 0,
         "id": new_id,
     }
 
 
-def provision_gaze_email_dispatch_task() -> Dict[str, Any]:
-    """Startup provision for the shared gaze_email dispatch shell (AST-1088)."""
-    return ensure_gaze_email_dispatch_task()
+def provision_gaze_email_dispatch_tasks() -> Dict[str, Any]:
+    """Retire null gaze_email shell; ensure gaze_email for every candidate (AST-1134)."""
+    tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
+    retired_null = 0
+    for row in database.list_dispatch_tasks():
+        if (row.get("task_key") or "").strip() != tk:
+            continue
+        cid = row.get("candidate_id")
+        if cid is None or str(cid).strip() == "":
+            database.delete_dispatch_task(int(row["id"]))
+            retired_null += 1
+    added = skipped = skipped_missing_config = candidates_touched = 0
+    for cand in database.list_candidates():
+        cid = str((cand or {}).get("astral_candidate_id") or "").strip()
+        if not cid:
+            continue
+        stats = ensure_gaze_email_dispatch_task(cid)
+        added += int(stats.get("added") or 0)
+        skipped += int(stats.get("skipped") or 0)
+        skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
+        candidates_touched += 1
+    return {
+        "task_key": tk,
+        "retired_null": retired_null,
+        "candidates_touched": candidates_touched,
+        "added": added,
+        "skipped": skipped,
+        "skipped_missing_config": skipped_missing_config,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -328,6 +409,8 @@ _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "grade_get",
     "grade_like",
     "meteorite_like",
+    "meteorite_grade_do",
+    "meteorite_grade_get",
 })
 
 
@@ -370,6 +453,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     from src.core import consult
     from src.core.tracker import get_new_job_batch, clear_job_batch
     from src.core.roster import get_new_company_batch, clear_company_batch
+    from src.core.candidate import get_new_candidate_batch, clear_candidate_batch
 
     entity_type     = task.get("entity_type", "")
     input_state     = task.get("trigger_state", "")
@@ -382,6 +466,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
     use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
+    # Candidate consult reads entities[0] only — force per-row gather for pool claims (AST-1259).
+    if entity_type == "candidate":
+        use_full_batch = False
     s               = dict(_SUMMARY_ZERO)
     if debug:
         logger.set_debug_flag(True)
@@ -390,8 +477,13 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
-        cur = (ctx.get("state") or "").strip() if ctx else ""
-        entities = [ctx] if ctx and cur in claim_states else []
+        bid, entities = get_new_candidate_batch(
+            input_state,
+            limit=limit,
+            sort_by=sort_by,
+            batch_id=bid,
+            states=claim_states,
+        )
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
@@ -453,6 +545,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     if not entities:
         if entity_type == "job" and bid:
             clear_job_batch(bid)
+        elif entity_type == "candidate" and bid:
+            clear_candidate_batch(bid)
         if debug:
             logger.debug_index(
                 func="dispatcher._run_unified",
@@ -566,7 +660,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         if entity_type == "job":
             clear_job_batch(bid)
         elif entity_type == "candidate":
-            pass
+            clear_candidate_batch(bid)
         else:
             clear_company_batch(bid)
     return s
@@ -652,13 +746,20 @@ async def _dispatch_one(task: Dict) -> None:
     if debug:
         logger.set_debug_flag(True)
 
-    # AST-1090: null-candidate gaze_email mailbox — no candidate API key; one runner call.
+    # AST-1134: candidate-bound gaze_email mailbox — ledger uses row candidate_id.
     if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"]:
         # late: keep gaze_email off module-top load (peer late imports in this file)
         from src.core.gaze_email import run_gaze_email
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
-        ledger_cid = GAZE_EMAIL_CONFIG["dispatch_ledger_candidate_id"]
+        ledger_cid = str(candidate_id or "").strip()
+        if not ledger_cid:
+            _sched_log.error(
+                "Skipping %s/%s — gaze_email requires bound candidate_id",
+                task_key,
+                task_id,
+            )
+            return
         if debug:
             logger.debug_index(
                 func="dispatcher._dispatch_one",
@@ -669,6 +770,7 @@ async def _dispatch_one(task: Dict) -> None:
             )
             logger.debug_detail(
                 f"gaze_email mailbox runner entity_batch_id={entity_batch_id} "
+                f"candidate_id={ledger_cid} "
                 f"mode={'AUTO' if not is_click else 'CLICK'}"
             )
         database.save_dispatch_ledger(
@@ -1012,7 +1114,17 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     et = task.get("entity_type")
     ts = task.get("trigger_state")
     cid = task.get("candidate_id", "")
-    task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
+    if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"] and str(cid or "").strip():
+        try:
+            from src.core.inbox import count_inbox_messages_bound_to_candidate
+            task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
+        except Exception:
+            _sched_log.warning(
+                "run_task: gaze_email available_count failed task_id=%s", task_id, exc_info=True
+            )
+            task["available_count"] = 0
+    else:
+        task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
     task["_ui_initiated"] = ui_initiated
 
     with _registry_lock:
@@ -1129,6 +1241,38 @@ def _debug_log_auto_off_stage_skips() -> None:
         )
 
 
+def _gaze_email_due_tasks() -> List[Dict[str, Any]]:
+    """AUTO candidate-bound gaze_email rows with live Avail ≥ min_count and freq allowing."""
+    # late: keep inbox/Gmail off module-top load (peer late imports in this file)
+    from src.core.inbox import count_inbox_bound_by_candidate
+
+    tk = GAZE_EMAIL_CONFIG["task_key"]
+    auto_gaze = [
+        t for t in database.list_dispatch_tasks()
+        if (t.get("task_key") or "").strip() == tk
+        and bool(t.get("auto_mode"))
+        and str(t.get("candidate_id") or "").strip()
+    ]
+    if not auto_gaze:
+        return []
+    try:
+        bound_counts = count_inbox_bound_by_candidate()
+    except Exception:
+        _sched_log.warning("gaze_email due: inbox bind counts failed", exc_info=True)
+        return []
+    due: List[Dict[str, Any]] = []
+    for task in auto_gaze:
+        cid = str(task["candidate_id"]).strip()
+        avail = int(bound_counts.get(cid, 0))
+        if avail < (task.get("min_count") or 1):
+            continue
+        if not database.dispatch_task_freq_allows(task):
+            continue
+        task["available_count"] = avail
+        due.append(task)
+    return due
+
+
 def _tick_loop() -> None:
     """Global tick: wakes every tick_rate_minutes, spawns due AUTO tasks up to max_auto_threads."""
     # Captured once at thread start — changes to ASTRAL_CONFIG require a server restart
@@ -1139,10 +1283,15 @@ def _tick_loop() -> None:
             # late: avoid cycle with candidate → dispatcher (module-top import)
             from src.core.candidate import age_stale_candidate_states
             age_stale_candidate_states()
-            due = database.get_due_tasks()  # returns auto_mode=1 tasks with available entities
-            # Note: freq_hrs is an entity-level filter (applied during batch claim to exclude
-            # recently-processed entities), NOT a task-level cooldown. The tick spawns any
-            # auto_mode=1 task that has available entities; if none qualify, the runner exits cleanly.
+            # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
+            try:
+                database.run_due_scheduled_queries()
+            except Exception:
+                _sched_log.exception("Scheduled query tick error")
+            # Claim-queue AUTO rows from data; gaze_email AUTO merged via live bind Avail (AST-1135).
+            due = list(database.get_due_tasks()) + _gaze_email_due_tasks()
+            # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
+            # gaze_email has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
@@ -1187,18 +1336,30 @@ def start_scheduler() -> None:
     except Exception:
         _sched_log.exception("AST-1054 meteorite dispatch provision failed")
     try:
-        gstats = provision_gaze_email_dispatch_task()
+        rstats = retire_candidate_requested_wrapper_dispatch_tasks()
         _sched_log.info(
-            "AST-1088 gaze_email dispatch provision task_key=%s added=%s skipped=%s "
-            "skipped_missing_config=%s id=%s",
+            "AST-1252 candidate_requested_* wrapper retire template=%s "
+            "candidates_scanned=%s retired=%s",
+            rstats.get("template_candidate_id"),
+            rstats.get("candidates_scanned"),
+            rstats.get("retired"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
+    try:
+        gstats = provision_gaze_email_dispatch_tasks()
+        _sched_log.info(
+            "AST-1134 gaze_email dispatch provision task_key=%s retired_null=%s "
+            "candidates_touched=%s added=%s skipped=%s skipped_missing_config=%s",
             gstats.get("task_key"),
+            gstats.get("retired_null"),
+            gstats.get("candidates_touched"),
             gstats.get("added"),
             gstats.get("skipped"),
             gstats.get("skipped_missing_config"),
-            gstats.get("id"),
         )
     except Exception:
-        _sched_log.exception("AST-1088 gaze_email dispatch provision failed")
+        _sched_log.exception("AST-1134 gaze_email dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",

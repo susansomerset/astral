@@ -53,3 +53,9 @@ if (("$#" == 0)) && [[ -f "$ROOT/src/ui/frontend/package.json" ]]; then
   # that list stays empty unless Product adopts per-file branch locks (docs/test-bible/README.md §6b).
   "$PYTHON" "$ROOT/scripts/testing/check_frontend_coverage.py" "$COV_DIR/frontend/coverage-summary.json" "$ROOT"
 fi
+
+# Extension client (WXT / tests/component/extension/) — AST-1254 tier; no branch-lock gate.
+if (("$#" == 0)) && [[ -f "$ROOT/src/ui/extension/package.json" ]]; then
+  export ASTRAL_VITEST_MAX_WORKERS="${ASTRAL_VITEST_MAX_WORKERS:-2}"
+  (cd "$ROOT/src/ui/extension" && npm install --silent && npm run test:component)
+fi

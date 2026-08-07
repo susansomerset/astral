@@ -354,6 +354,32 @@ Batch **`astral_candidate_id`** wiring: **`docs/test-bible/core/consult.md`**.
 .venv/bin/python -m pytest tests/component/core/test_agent.py::TestAst880GradesEncodedVetMetaDecode -q
 ```
 
+### AST-1190 · AST-1164
+
+**`do_task`:** coerce blank provider `error=` to a non-empty string on the `provider call failed` log/return; **`debug=True`** detail when **`is_provider_empty_response`**. Primary manifest: **`docs/test-bible/utils/llm_external.md`** § AST-1190.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blank-error coerce + empty-response debug | `src/core/agent.py` | **`TestAst1190DoTaskEmptyProviderError`** |
+
+### AST-1191 · AST-1164
+
+**Dispatch-chain provider hop failure:** `_apply_dispatch_chain_hop_failure` — non-balance provider failures apply `error_state` then `release_job_dispatch_claim`; balance refusal holds state but still releases claim; `_close_hop_ledger` returns outcome on every exit. **`debug=True`:** found (duration/stop/tokens/`failure_class`, `n/a` not silent 0) + recorded (error / error_state|held / batch_released). Non-dispatch-chain → `_HOP_FAILURE_NOOP`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop failure apply + claim release + debug | `src/core/agent.py` | **`TestAst1191ArtifactHopFailureRelease`** |
+| Hard-string path still transitions (release added) | `src/core/agent.py` | **`TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts`** |
+
+**AST-1191** narrowed run:
+
+```bash
+.venv/bin/python -m pytest \
+  tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease \
+  tests/component/core/test_agent.py::TestAst848DispatchChainDoTask::test_hard_failure_transitions_error_build_artifacts \
+  -q
+```
+
 ### AST-903 · AST-900 (UAT fix)
 
 **AST-903:** Craft rubric JSON truncation (`Unterminated string` mid-`criteria[].content`) — `do_task` floors **`max_tokens`** to **`CRAFT_RUBRIC_MAX_TOKENS`** (32000) for **`CRAFT_RUBRIC_UI_TASK_KEYS`**; DeepSeek/Anthropic hard-fail JSON when **`stop_reason == max_tokens`** (no heal-into-partial-success). UI/prompts/consult batches out of scope.
@@ -543,6 +569,37 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
   -q
 ```
 
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. `do_task` persists candidate craft hops when `ctx.persist_candidate_craft_hops` is set.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist hook | `src/core/agent.py` | **`TestAst1252PersistCandidateCraftHops`** |
+
+
+### AST-1264 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1264-uat-craft-get-run-next`.
+
+Restore `run_next` succession after `craft_get_rubric` on `persist_candidate_craft_hops`: re-inject live `CALLER_*` into recurse ctx; skip / fail-open child hydration when live CALLER present; Style D detail when succession stops after persist. Migration neuter: **`docs/test-bible/data/database/agent_tasks.md`** § AST-1264.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| CALLER reinject + hydrate skip/hard-fail | `src/core/agent.py` | **`TestAst1264CandidateCraftSuccession`** |
+
+**Broken / obsolete:** AST-1113 migration “corrects wrong links” asserts (now no-op).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1264CandidateCraftSuccession \
+  tests/component/data/database/test_agent_tasks.py::TestAst1113CraftRunNextChainMigration \
+  -q
+```
+
 ### AST-1112 · AST-1109
 
 **Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1112-anomaly-resume-hop-task-keys`.
@@ -561,5 +618,88 @@ Primary config map: **`docs/test-bible/utils/config.md`** AST-1112. Agent surfac
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst597MidChainResumeHydrationAndTransitions \
+  -q
+```
+
+### AST-1144 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1144-uat-parse-meteorite-email-metadata-dict-str`.
+
+Regression: `_validate_response_schema` accepts realistic `parse_meteorite_email` html_links payload with `jobs[].metadata` as dict; rejects str (pre-fix contract). Schema source: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dict metadata validates / str rejected | `src/core/agent.py` | **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** none — additive against TASK_CONFIG schema.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
+
+### AST-1192 · AST-1163
+
+**Parent:** [AST-1163 — Issues while running anticipate_scan](https://linear.app/astralcareermatch/issue/AST-1163/issues-while-running-anticipate-scan). **Publish:** `origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`.
+
+Artifact hop `do_task` + Manage Tasks `preview_task_prompt` feed `build_candidate_token_view` (name columns + library blobs) so `{$FIRST_NAME}` / `{$LAST_NAME}` resolve on `anticipate_scan` / shared hops. Dispatch rafts load the full candidate row by `astral_candidate_id`. Style D found/recorded for name-token outcomes when `debug=True`. Boundaries: ANALYSIS match parity (**AST-1193**); provider blank/timeout (**AST-1164**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `_token_view_for_do_task` branches + `do_task` name resolve + Style D | `src/core/agent.py` | **`TestAst1192TokenViewForDoTask`** |
+| `preview_task_prompt` columns → name tokens | `src/core/candidate.py` | **`TestPreviewTaskPrompt::test_preview_resolves_names_from_columns_not_blob`** |
+
+**Broken / obsolete:** none — additive cutover at resolve boundary; `_candidate_data_for_job` blob consumers unchanged.
+
+**Integration:** no existing scenario asserts artifact-hop name-token wiring — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1192TokenViewForDoTask \
+  tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_names_from_columns_not_blob \
+  -q
+```
+
+
+### AST-1212 · AST-1182
+
+**Parent:** [AST-1182 — Rename task to meteorite_email + AI payload as visible text/links](https://linear.app/astralcareermatch/issue/AST-1182/rename-task-to-meteorite-email-ai-payload-as-visible-textlinks). **Publish:** `origin/sub/AST-1182/AST-1212-rename-parse-meteorite-email-to-meteorite-email`.
+
+`_validate_response_schema` regression for Ruth html_links payload now keys **`meteorite_email`** (was `parse_meteorite_email`). Schema source: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dict metadata validates / str rejected | `src/core/agent.py` | revised **`TestAst1144ParseMeteoriteEmailMetadataDict`** |
+
+**Broken / obsolete:** AST-1144 skipif + schema lookups on `TASK_CONFIG["parse_meteorite_email"]`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1144ParseMeteoriteEmailMetadataDict \
+  -q
+```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+`_resolve_task_prompts` fetches `agent_task` / `agent` via `resolve_task_key_for_content` (alias → master); caller `task_key` stays identity for orchestration. `_is_strict_encoded_batch_consult` wraps resolve for both strict-envelope gate sites. Style D alias→master detail when `debug=True`. Consult / config / dispatcher: sibling bible files under this ticket.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt fetch master + strict membership | `src/core/agent.py` | **`TestAst1221RuntimeAliasAgent`** |
+
+**Broken / obsolete:** none for agent paths — additive resolve at prompt choke point.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1221RuntimeAliasAgent \
   -q
 ```

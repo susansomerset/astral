@@ -30,6 +30,7 @@ from src.core.candidate import (
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
+    start_requested_artifacts,
     transition_candidate_state,
 )
 from src.utils.config import (
@@ -286,6 +287,20 @@ def delete_candidate(candidate_id):
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     return jsonify({"deleted": candidate_id})
+
+
+@candidate_bp.route("/<candidate_id>/generate_artifacts", methods=["POST"])
+@require_auth
+def generate_artifacts(candidate_id):
+    """Handoff to REQUESTED_ARTIFACTS for the craft daisy chain (AST-1253)."""
+    candidate = get_candidate(candidate_id)
+    if not candidate:
+        return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
+    try:
+        state = start_requested_artifacts(candidate_id)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 409
+    return jsonify({"ok": True, "state": state})
 
 
 @candidate_bp.route("/<candidate_id>/generate/<task_key>", methods=["POST"])

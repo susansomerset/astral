@@ -461,3 +461,77 @@ Ad Hoc `_build_adhoc_live_content("qualify_meteorite")` lockstep with consult as
   -q
 ```
 
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+`list_dtasks` stamps live bind-filtered `available_count` for candidate-bound `gaze_email` rows from one `count_inbox_bound_by_candidate()` snapshot. Always-visible flag remains generic (empty after AST-1134). Inbox: **`docs/test-bible/core/inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gaze Avail stamp | `src/ui/api/api_admin.py` | **`TestAst1135ListDtasksGazeAvail`** |
+
+**Broken / obsolete:** none — additive stamp path; AST-1106 flag test still valid with mocked helper.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1135ListDtasksGazeAvail \
+  -q
+```
+
+### AST-1197 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1197-consult-apply-email-link-bot-blocked`.
+
+Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` + `CONTENT:` body. Primary apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| CONTENT label lockstep | `src/ui/api/api_admin.py` | revised **`TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite`** |
+
+**Broken / obsolete:** none — additive `CONTENT:` assert.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite \
+  -q
+```
+
+### AST-1214 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists`.
+
+`GET /api/admin/dispatch_tasks/task_keys` is the live union of `TASK_CONFIG` ∪ `agent_task` ∪ dispatch orphans, built with `sorted(membership)` (no gap frozenset). Helper-resolvable hops + meteorite mailbox fold (`parse_meteorite_email` / `meteorite_email`) are first-class writable; mailbox trigger is null-only; `list_dtasks` Avail shares gaze_email inbox counts for mailbox keys. Config defaults: **`docs/test-bible/utils/config.md`** (**AST-1214**). React dropdown polish = sibling **AST-1215**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Live alpha catalog + eight agent_task-only keys | `src/ui/api/api_admin.py` | revised **`TestAst796FetchJdRetiredDispatchKeys`**, **`TestAst960TaskKeysNoFrozensetInventory`**; **`TestAst1214AdminCatalogAlphabeticalWritable`** |
+| Validator (inflow_discovery accept; mailbox null-only; craft unsupported) | same | revised **`TestAst804CandidateDispatchAdminValidation`**; **`TestAst1214AdminCatalogAlphabeticalWritable`** |
+| POST create fetch_jd + parse_meteorite_email; mailbox Avail | same | **`TestAst1214AdminCatalogAlphabeticalWritable`** |
+
+**Broken / obsolete (Betty revision this pass):** AST-960 gap-absent picker asserts (`test_dispatch_task_keys_omits_fetch_jd_gap_excludes_retired`, `test_gap_key_absent_without_db_row`); `inflow_discovery` → `Unknown task_key` in **`test_dispatch_task_key_trigger_error_candidate_paths`**.
+
+**Integration:** no existing scenarios assert Admin `task_keys` membership / mailbox Avail — none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys \
+  tests/component/ui/api/test_api_admin.py::TestAst960TaskKeysNoFrozensetInventory \
+  tests/component/ui/api/test_api_admin.py::TestAst804CandidateDispatchAdminValidation::test_dispatch_task_key_trigger_error_candidate_paths \
+  tests/component/ui/api/test_api_admin.py::TestAst1214AdminCatalogAlphabeticalWritable \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover::test_fetch_jd_gazer_hop_not_task_config_catalog \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig::test_dispatch_registry_and_pjl_data_keys \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig::test_dispatch_registry_and_homepage_text_key \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_gazer_and_dispatch_registry \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
+  -q
+```

@@ -33,3 +33,23 @@ One-time backfill from legacy **`candidate_data.artifacts`** rubric keys into **
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1200 · AST-1198
+
+**Parent:** [AST-1198 — Rubric criteria prompts are not appearing in UI Artifacts](https://linear.app/astralcareermatch/issue/AST-1198/rubric-criteria-prompts-are-not-appearing-in-ui-artifacts). **Publish:** `origin/sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`.
+
+Delete local `_ARTIFACT_KEY_TO_TASK_KEY`; resolve owners via `RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY` from config so `meteorite_jobdesc_rubric` → `evaluate_meteorite` cannot drift. UI expand-all: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config owner map (no local dict; incl. meteorite) | `scripts/migrations/backfill_rubric_vectors.py` | **`TestAst1200OwnerMapFromConfig`** |
+
+**Broken / obsolete:** none — import swap only; dry-run / purge unchanged.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/scripts/test_backfill_rubric_vectors.py::TestAst1200OwnerMapFromConfig \
+  -q
+```

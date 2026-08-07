@@ -34,6 +34,27 @@ const failedJob = {
   like_grades: [{ vector: "Technical (TE)", grade: "D", confidence: 0.2 }],
 }
 
+
+const meteoriteFailedDoJob = {
+  astral_job_id: "met-do-1",
+  job_title: "Meteorite Do Fail",
+  company: "meteorite-co",
+  state: "METEORITE_FAILED_DO",
+  state_changed_at: "2026-01-03T00:00:00Z",
+  latest_score: 0.4,
+  do_grades: [{ vector: "Fit", grade: "F", confidence: 0.9 }],
+}
+
+const regularFailedGetJob = {
+  astral_job_id: "reg-get-1",
+  job_title: "Regular Get Fail",
+  company: "Delta",
+  state: "FAILED_GET",
+  state_changed_at: "2026-01-03T01:00:00Z",
+  latest_score: 0.35,
+  get_grades: [{ vector: "Fit", grade: "F", confidence: 0.8 }],
+}
+
 const skippedJob = {
   astral_job_id: "skip-1",
   job_title: "Skipped Role",
@@ -64,6 +85,14 @@ describe("JobsSkipped", () => {
     await userEvent.click(checkbox)
     await userEvent.click(screen.getByRole("button", { name: "Retry (1)" }))
     await waitFor(() => expect(screen.getByText("1 jobs queued for retry")).toBeInTheDocument())
+    // AST-1156: FAILED_LIKE → CULTURE_READY (not hard-coded NEW).
+    expect(mockedApi).toHaveBeenCalledWith(
+      "/api/jobs/bulk_state",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ astral_job_ids: ["fail-1"], to_state: "CULTURE_READY" }),
+      }),
+    )
     await userEvent.click(checkbox)
     await userEvent.click(screen.getByRole("columnheader", { name: /TE/ }))
     await userEvent.click(screen.getByText("Failed Role"))
@@ -269,4 +298,65 @@ describe("JobsSkipped", () => {
       )
     })
   })
+
+  describe("AST-1156 hop-correct Skipped Retry", () => {
+    it("retries meteorite FAILED_DO to METEORITE_PASSED_JD", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [meteoriteFailedDoJob]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /Meteorite Failed DO/i })).toBeInTheDocument(),
+      )
+      await userEvent.click(screen.getByRole("button", { name: /Meteorite Failed DO/i }))
+      await userEvent.click(screen.getByRole("checkbox"))
+      await userEvent.click(screen.getByRole("button", { name: "Retry (1)" }))
+      await waitFor(() => expect(screen.getByText("1 jobs queued for retry")).toBeInTheDocument())
+      expect(mockedApi).toHaveBeenCalledWith(
+        "/api/jobs/bulk_state",
+        expect.objectContaining({
+          method: "POST",
+          body: JSON.stringify({
+            astral_job_ids: ["met-do-1"],
+            to_state: "METEORITE_PASSED_JD",
+          }),
+        }),
+      )
+    })
+
+    it("mixed meteorite Do fail + regular Get fail posts two hop-correct destinations", async () => {
+      installBaseApiMocks(
+        mockedApi,
+        jobsViewHandler("skipped", [meteoriteFailedDoJob, regularFailedGetJob]),
+      )
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() =>
+        expect(screen.getByRole("button", { name: /Meteorite Failed DO/i })).toBeInTheDocument(),
+      )
+      await userEvent.click(screen.getByRole("button", { name: /Meteorite Failed DO/i }))
+      await userEvent.click(screen.getByRole("checkbox"))
+      await userEvent.click(screen.getByRole("button", { name: /Meteorite Failed DO/i }))
+      await userEvent.click(screen.getByRole("button", { name: /Failed GET/i }))
+      await userEvent.click(screen.getByRole("checkbox"))
+      await userEvent.click(screen.getByRole("button", { name: "Retry (2)" }))
+      await waitFor(() => expect(screen.getByText("2 jobs queued for retry")).toBeInTheDocument())
+      expect(mockedApi).toHaveBeenCalledWith(
+        "/api/jobs/bulk_state",
+        expect.objectContaining({
+          body: JSON.stringify({
+            astral_job_ids: ["met-do-1"],
+            to_state: "METEORITE_PASSED_JD",
+          }),
+        }),
+      )
+      expect(mockedApi).toHaveBeenCalledWith(
+        "/api/jobs/bulk_state",
+        expect.objectContaining({
+          body: JSON.stringify({
+            astral_job_ids: ["reg-get-1"],
+            to_state: "PASSED_DO",
+          }),
+        }),
+      )
+    })
+  })
+
 })

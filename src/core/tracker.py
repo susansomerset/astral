@@ -276,6 +276,10 @@ def hydrate_job_artifacts_for_display(
         body = resolve_job_artifact_agent_data_body(raw, debug=debug)
         if body is not None:
             out[key] = body
+    # AST-1116: Subject/Letter spine for ArtifactEditor (pin body or legacy dict; overlay only).
+    cover = out.get("cover_letter")
+    if isinstance(cover, dict):
+        out["cover_letter"] = normalize_cover_letter_artifact(cover)
     return out
 
 

@@ -4,11 +4,15 @@ Thin Flask wrappers over src.core.inbox. No Gmail I/O here; no persistence.
 AST-1047: pass ui_llm_debug into list for From→candidate_match enrichment.
 AST-1049: POST create-job — strip/extract + meteorite create orchestration.
 AST-1061: create-job may return multiple created / skipped jobs (gazer ingest).
+AST-1141: POST land-meteorite — selected-ids ingest via run_gaze_email_selected_ids.
 """
+
+import asyncio
 
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_admin
+from src.core.gaze_email import run_gaze_email_selected_ids
 from src.core.inbox import (
     create_meteorite_job_from_inbox_message,
     get_message_html,
@@ -93,3 +97,32 @@ def inbox_create_job_from_message(message_id: str):
     }
     # ≥1 created → 201; all skipped → 200
     return jsonify(payload), (201 if created else 200)
+
+
+@inbox_bp.route("/land-meteorite", methods=["POST"])
+@require_admin
+def inbox_land_meteorite():
+    body = request.get_json(silent=True) or {}
+    raw_ids = body.get("message_ids")
+    if not isinstance(raw_ids, list):
+        return jsonify({"error": "message_ids must be a list"}), 400
+    # Strip empties the same way core does; reject empty selection at the API edge
+    # so Manage Email can treat empty as non-actionable without a core round-trip.
+    message_ids = [str(x).strip() for x in raw_ids if str(x or "").strip()]
+    if not message_ids:
+        return jsonify({"error": "message_ids is required"}), 400
+    explicit = (
+        request.args.get("debug", "").lower() in ("1", "true", "yes")
+        or bool(body.get("debug"))
+    )
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        result = asyncio.run(
+            run_gaze_email_selected_ids(message_ids, debug=debug)
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        logger.warning("[api_inbox] land-meteorite failed: %s", e)
+        return jsonify({"error": str(e)}), 502
+    return jsonify(result), 200

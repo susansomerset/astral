@@ -5,7 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict
+from typing import Any, Dict, List
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -1233,53 +1233,24 @@ class TestAst901CraftRubricGenerateDelivery:
         )
         return saves
 
-    def test_craft_get_rubric_success_stashes_pending_not_artifact(
+    def test_craft_get_rubric_ui_generate_rejected_for_chain(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
+        # AST-1253: chain keys hand off via generate_artifacts — no ad-hoc UI generate/stash.
         store = {"astral_candidate_id": "karfo", "candidate_data": {}}
         saves = self._stub_generate_common(monkeypatch, store)
-        parsed = {"criteria": list(self._CRITERIA)}
         monkeypatch.setattr(
             candidate_mod,
-            "asyncio",
-            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+            "is_requested_artifacts_chain_ui_task",
+            lambda task_key: task_key == "craft_get_rubric",
         )
         body, status = candidate_mod.run_candidate_artifact_generation(
             "karfo", "craft_get_rubric", None,
         )
-        assert status == 200
-        assert body["success"] is True
-        assert body["parsed_response"] == parsed
-        assert len(saves) == 1
-        pending = saves[0][1]["candidate_data"]["pending_craft_generations"]["craft_get_rubric"]
-        assert pending["parsed_response"] == parsed
-        assert pending["batch_id"].startswith("user-craft_get_rubric-")
-        assert "artifacts" not in saves[0][1].get("candidate_data", {})
-
-    def test_empty_criteria_fails_ledger_and_skips_stash(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        store = {"astral_candidate_id": "karfo", "candidate_data": {}}
-        saves = self._stub_generate_common(monkeypatch, store)
-        updates: list = []
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "update_dispatch_ledger",
-            lambda batch_id, **kwargs: updates.append((batch_id, kwargs)),
-        )
-        monkeypatch.setattr(
-            candidate_mod,
-            "asyncio",
-            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": {"criteria": []}})),
-        )
-        body, status = candidate_mod.run_candidate_artifact_generation(
-            "karfo", "craft_get_rubric", None,
-        )
-        assert status == 500
+        assert status == 409
         assert body["success"] is False
-        assert body["error"] == "Generation returned no criteria"
+        assert "generate_artifacts" in body["error"]
         assert saves == []
-        assert updates[-1][1]["status"] == "FAILED"
 
     def test_get_pending_from_stash(self, monkeypatch: pytest.MonkeyPatch) -> None:
         parsed = {"criteria": list(self._CRITERIA)}
@@ -1407,6 +1378,74 @@ class TestAst905RecoverOnlyWhenEmpty:
         assert status == 200
         assert body["source"] == "pending_stash"
         assert body["recovered"] is True
+
+
+class TestAst1253RequestedArtifactsHandoff:
+    """AST-1253: start_requested_artifacts + live walk helpers + chain UI generate reject."""
+
+    def test_start_requested_artifacts_transitions(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "ARTIFACTS_READY"},
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = candidate_mod.start_requested_artifacts("c1")
+        assert out == "REQUESTED_ARTIFACTS"
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS")
+
+    def test_start_requested_artifacts_missing_raises(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda _cid: None)
+        with pytest.raises(ValueError, match="not found"):
+            candidate_mod.start_requested_artifacts("missing")
+
+    def test_walk_helpers_order_labels_and_rubric_keys(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Live walk: get → do → company_search_terms (terminal).
+        nxt = {
+            "craft_get_rubric": "craft_do_rubric",
+            "craft_do_rubric": "craft_company_search_terms",
+            "craft_company_search_terms": "",
+        }
+        monkeypatch.setattr(
+            candidate_mod,
+            "_current_agent_task_run_next",
+            lambda key: nxt.get(key, ""),
+        )
+        keys = candidate_mod.requested_artifacts_chain_task_keys()
+        assert keys == [
+            "craft_get_rubric",
+            "craft_do_rubric",
+            "craft_company_search_terms",
+        ]
+        assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_do_rubric") is True
+        assert candidate_mod.is_requested_artifacts_chain_ui_task("craft_resume_base") is False
+        labels = candidate_mod.requested_artifacts_chain_hop_labels()
+        assert labels == [
+            "Get Job Criteria",
+            "Do Job Criteria",
+            "Company Search Terms",
+        ]
+        # Rubric-only — table-backed search terms excluded from artifact keys.
+        assert candidate_mod.requested_artifacts_chain_artifact_keys() == [
+            "get_rubric",
+            "do_rubric",
+        ]
+
+    def test_walk_cycle_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "_current_agent_task_run_next",
+            lambda key: "craft_get_rubric",
+        )
+        with pytest.raises(RuntimeError, match="cycle"):
+            candidate_mod.requested_artifacts_chain_task_keys()
 
 
 # AST-970: prior_states enforcement, DELETED reap, stale aging helper
@@ -1645,59 +1684,56 @@ class TestAst971CandidateTransitionHistory:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst972RequestedStageDispatch:
-    """AST-972: REQUESTED_* claim workers → ready / retry / error."""
+    """AST-972 → AST-1252: REQUESTED_ARTIFACTS → single craft_get_rubric do_task (native run_next)."""
 
     @pytest.mark.asyncio
-    async def test_resume_dispatch_success_passes(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    async def test_artifacts_dispatch_success_native_run_next(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
+        )
+        do = AsyncMock(return_value={"success": True, "parsed_response": {}})
+        monkeypatch.setattr(candidate_mod, "do_task", do)
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_passed"] == 1
+        assert do.await_count == 1
+        call = do.await_args
+        assert call.kwargs["task_key"] == "craft_get_rubric"
+        assert call.kwargs["index"] == "c1"
+        assert call.kwargs["ctx"].get("persist_candidate_craft_hops") is True
+        assert call.kwargs["ctx"].get("suppress_run_next") is not True
+        assert call.kwargs["ctx"].get("astral_candidate_id") == "c1"
+        trans.assert_called_once_with("c1", "ARTIFACTS_READY")
+
+    @pytest.mark.asyncio
+    async def test_artifacts_dispatch_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "fail"}),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_failed"] == 1
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_RETRY")
+
+    @pytest.mark.asyncio
+    async def test_artifacts_dispatch_retry_failure_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
             lambda cid: {
                 "astral_candidate_id": cid,
-                "state": "REQUESTED_RESUME",
-                "candidate_data": {"context": {"raw_resume": "hello"}},
-            },
-        )
-        monkeypatch.setattr(
-            candidate_mod,
-            "do_task",
-            AsyncMock(return_value={"success": True, "parsed_response": {"ok": 1}}),
-        )
-        persist = MagicMock()
-        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", persist)
-        trans = MagicMock()
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
-        out = await candidate_mod.run_requested_resume_dispatch("c1")
-        assert out == {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-        persist.assert_called_once()
-        trans.assert_called_once_with("c1", "RESUME_READY")
-
-    @pytest.mark.asyncio
-    async def test_resume_dispatch_primary_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "get_candidate",
-            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_RESUME", "candidate_data": {}},
-        )
-        monkeypatch.setattr(
-            candidate_mod,
-            "do_task",
-            AsyncMock(return_value={"success": False, "error": "boom"}),
-        )
-        trans = MagicMock()
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
-        out = await candidate_mod.run_requested_resume_dispatch("c1")
-        assert out["total_failed"] == 1 and out["total_passed"] == 0
-        trans.assert_called_once_with("c1", "REQUESTED_RESUME_RETRY")
-
-    @pytest.mark.asyncio
-    async def test_resume_dispatch_retry_failure_errors(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "get_candidate",
-            lambda cid: {
-                "astral_candidate_id": cid,
-                "state": "REQUESTED_RESUME_RETRY",
+                "state": "REQUESTED_ARTIFACTS_RETRY",
                 "candidate_data": {},
             },
         )
@@ -1708,77 +1744,17 @@ class TestAst972RequestedStageDispatch:
         )
         trans = MagicMock()
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
-        out = await candidate_mod.run_requested_resume_dispatch("c1")
-        assert out["total_failed"] == 1
-        trans.assert_called_once_with("c1", "REQUESTED_RESUME_ERROR")
-
-    @pytest.mark.asyncio
-    async def test_artifacts_dispatch_success_runs_all_crafts(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "get_candidate",
-            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
-        )
-        # AST-1113: succession from run_next (not craft_task_keys list).
-        craft_chain = {
-            "craft_company_search_terms": "craft_joblist_rubric",
-            "craft_joblist_rubric": "craft_jobdesc_rubric",
-            "craft_jobdesc_rubric": "craft_do_rubric",
-            "craft_do_rubric": "craft_get_rubric",
-            "craft_get_rubric": "craft_like_rubric",
-            "craft_like_rubric": "craft_prefilter_rubric",
-            "craft_prefilter_rubric": "",
-        }
-        keys = list(craft_chain.keys())
-        monkeypatch.setattr(
-            candidate_mod,
-            "_current_agent_task_run_next",
-            lambda tk: craft_chain.get(tk, ""),
-        )
-        do = AsyncMock(return_value={"success": True, "parsed_response": {}})
-        monkeypatch.setattr(candidate_mod, "do_task", do)
-        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
-        trans = MagicMock()
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
-        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
-        assert out["total_passed"] == 1
-        assert do.await_count == len(keys)
-        assert [c.kwargs["task_key"] for c in do.await_args_list] == keys
-        assert all(c.kwargs["ctx"].get("suppress_run_next") is True for c in do.await_args_list)
-        trans.assert_called_once_with("c1", "ARTIFACTS_READY")
-
-    @pytest.mark.asyncio
-    async def test_artifacts_dispatch_mid_chain_failure_retries(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            candidate_mod.database,
-            "get_candidate",
-            lambda cid: {"astral_candidate_id": cid, "state": "REQUESTED_ARTIFACTS", "candidate_data": {}},
-        )
-        craft_chain = {
-            "craft_company_search_terms": "craft_joblist_rubric",
-            "craft_joblist_rubric": "craft_jobdesc_rubric",
-            "craft_jobdesc_rubric": "",
-        }
-        monkeypatch.setattr(
-            candidate_mod,
-            "_current_agent_task_run_next",
-            lambda tk: craft_chain.get(tk, ""),
-        )
-        calls = {"n": 0}
-
-        async def _do(**kwargs):
-            calls["n"] += 1
-            if calls["n"] == 2:
-                return {"success": False, "error": "fail"}
-            return {"success": True, "parsed_response": {}}
-
-        monkeypatch.setattr(candidate_mod, "do_task", _do)
-        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
-        trans = MagicMock()
-        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
         out = await candidate_mod.run_requested_artifacts_dispatch("c1")
         assert out["total_failed"] == 1
-        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_RETRY")
+        trans.assert_called_once_with("c1", "REQUESTED_ARTIFACTS_ERROR")
+
+    def test_resume_wrapper_worker_removed(self) -> None:
+        assert not hasattr(candidate_mod, "run_requested_resume_dispatch")
+
+    def test_ui_generate_still_suppresses_run_next(self) -> None:
+        import inspect
+        gen_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
+        assert "suppress_run_next" in gen_src
 
 
 class TestAst973HardDeleteAndReapPurge:
@@ -3555,4 +3531,538 @@ class TestAst1095EmailUniqueRootAndExtra:
                 last="C",
             )
         assert save.call_count == 0
+
+
+# Branches: custom vs default source; DB-row vs token-view contact; empty segments/lines;
+# full vs recompute_full_name; non-str/whitespace custom; debug True/False.
+# AST-1148: default path expands default_template (not path composition); custom expands too.
+class TestAst1137ResolveCoverFromBlock:
+    """AST-1137/1148: resolve_cover_from_block custom vs default_template expand."""
+
+    def test_custom_text_wins_and_strips_outer_whitespace(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ignored Name",
+                "candidate_data": {
+                    "contact": {
+                        "cover_letter_from_block": "  Custom Line 1\nCustom Line 2  ",
+                        "location": "Oakland, CA",
+                    }
+                },
+            }
+        )
+        assert out == {
+            "text": "Custom Line 1\nCustom Line 2",
+            "source": "candidate",
+        }
+
+    def test_whitespace_only_and_non_str_custom_use_default(self) -> None:
+        ws = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "contact": {
+                        "cover_letter_from_block": "   \n  ",
+                        "location": "London, UK",
+                        "contact_email": "ada@example.com",
+                    }
+                },
+            }
+        )
+        assert ws["source"] == "default"
+        # Template expand: empty PHONE segment dropped on line 2.
+        assert ws["text"] == "Ada Lovelace • London, UK\nada@example.com"
+
+        non_str = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada Lovelace",
+                "candidate_data": {"contact": {"cover_letter_from_block": 42}},
+            }
+        )
+        assert non_str == {"text": "Ada Lovelace", "source": "default"}
+
+    def test_default_omits_empty_segments_and_lines(self) -> None:
+        name_only = candidate_mod.resolve_cover_from_block(
+            {"full": "Ada Lovelace", "candidate_data": {"contact": {}}}
+        )
+        assert name_only == {"text": "Ada Lovelace", "source": "default"}
+
+        contact_only = candidate_mod.resolve_cover_from_block(
+            {
+                "first": "",
+                "last": "",
+                "full": "",
+                "candidate_data": {
+                    "contact": {"contact_email": "ada@example.com", "phone": "555"}
+                },
+            }
+        )
+        assert contact_only == {
+            "text": "ada@example.com • 555",
+            "source": "default",
+        }
+
+        empty = candidate_mod.resolve_cover_from_block({"candidate_data": {}})
+        assert empty == {"text": "", "source": "default"}
+
+    def test_recompute_full_name_when_full_empty(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "  ",
+                "candidate_data": {
+                    "contact": {
+                        "location": "London, UK",
+                        "contact_email": "ada@example.com",
+                        "phone": "555-0100",
+                    }
+                },
+            }
+        )
+        assert out == {
+            "text": (
+                "Ada Lovelace • London, UK\n"
+                "ada@example.com • 555-0100"
+            ),
+            "source": "default",
+        }
+
+    def test_token_view_contact_shape(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada Lovelace",
+                "contact": {
+                    "cover_letter_from_block": "From token view",
+                    "location": "ignored",
+                },
+            }
+        )
+        assert out == {"text": "From token view", "source": "candidate"}
+
+    def test_candidate_data_contact_not_dict_falls_back(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            {
+                "full": "Ada",
+                "candidate_data": {"contact": "not-a-dict"},
+                "contact": {"location": "should-not-win"},
+            }
+        )
+        assert out == {"text": "Ada", "source": "default"}
+
+    def test_debug_true_custom_and_default_paths(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+
+        candidate_mod.resolve_cover_from_block(
+            {
+                "astral_candidate_id": "c-custom",
+                "candidate_data": {
+                    "contact": {"cover_letter_from_block": "Custom"}
+                },
+            },
+            debug=True,
+        )
+        # Last index is resolve; expand also indexes when debug=True (AST-1148).
+        assert idx.call_args.kwargs["func"] == "candidate.resolve_cover_from_block"
+        assert idx.call_args.kwargs["identifier"] == "c-custom"
+        assert "candidate" in idx.call_args.kwargs["outcome"]
+        detail_msgs = [c.args[0] for c in detail.call_args_list]
+        assert "source=candidate" in detail_msgs
+        assert "text_chars=6" in detail_msgs
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.resolve_cover_from_block(
+            {
+                "_astral_candidate_id": "c-default",
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "contact": {
+                        "location": "London, UK",
+                        "contact_email": "ada@example.com",
+                    }
+                },
+            },
+            debug=True,
+        )
+        assert idx.call_args.kwargs["identifier"] == "c-default"
+        assert "default" in idx.call_args.kwargs["outcome"]
+        detail_msgs = [c.args[0] for c in detail.call_args_list]
+        assert "source=default" in detail_msgs
+        # AST-1148 expand details replace AST-1137 line*_segments composition logs.
+        assert "tokens_found=4" in detail_msgs
+        assert "separator_rewrite=yes" in detail_msgs
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.resolve_cover_from_block(
+            {"full": "Ada", "candidate_data": {"contact": {}}},
+            debug=False,
+        )
+        assert idx.call_count == 0
+        assert detail.call_count == 0
+
+
+class TestAst1148ExpandCoverFromBlock:
+    """AST-1148: expand_cover_from_block_text + resolve token/| rewrite + aliases left as-is."""
+
+    def _cand(self, **contact: object) -> dict:
+        return {
+            "astral_candidate_id": "c-1148",
+            "full": "Ada Lovelace",
+            "first": "Ada",
+            "last": "Lovelace",
+            "candidate_data": {
+                "contact": {
+                    "location": "London, UK",
+                    "contact_email": "ada@example.com",
+                    "phone": "555-0100",
+                    **contact,
+                }
+            },
+        }
+
+    def test_expand_tokens_pipe_and_drop_empty(self) -> None:
+        text = candidate_mod.expand_cover_from_block_text(
+            "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}",
+            self._cand(phone=""),
+            source="default",
+        )
+        assert text == "Ada Lovelace • London, UK\nada@example.com"
+
+    def test_expand_leaves_unknown_and_brief_aliases(self) -> None:
+        text = candidate_mod.expand_cover_from_block_text(
+            "{$FULL_NAME} | {$RESUME_LOCATION} | {$GITHUB}",
+            self._cand(),
+            source="session",
+        )
+        # RESUME_LOCATION / GITHUB not allowlisted → left as-is; empty segments not applicable.
+        assert text == "Ada Lovelace • {$RESUME_LOCATION} • {$GITHUB}"
+
+    def test_resolve_custom_tokens_and_pipe(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            self._cand(
+                cover_letter_from_block=(
+                    "{$FULL_NAME} | {$LOCATION}\n{$CONTACT_EMAIL} | {$PHONE}"
+                )
+            )
+        )
+        assert out["source"] == "candidate"
+        assert out["text"] == (
+            "Ada Lovelace • London, UK\n"
+            "ada@example.com • 555-0100"
+        )
+
+    def test_resolve_clearing_custom_returns_default_template(self) -> None:
+        out = candidate_mod.resolve_cover_from_block(
+            self._cand(cover_letter_from_block="   \n\t  ")
+        )
+        assert out["source"] == "default"
+        assert out["text"] == (
+            "Ada Lovelace • London, UK\n"
+            "ada@example.com • 555-0100"
+        )
+
+    def test_expand_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        candidate_mod.expand_cover_from_block_text(
+            "{$FULL_NAME} | {$LOCATION}\n{$BOGUS}",
+            self._cand(),
+            source="session",
+            debug=True,
+        )
+        assert idx.call_args.kwargs["func"] == "candidate.expand_cover_from_block_text"
+        assert idx.call_args.kwargs["identifier"] == "c-1148"
+        assert "session" in idx.call_args.kwargs["outcome"]
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert "source=session" in msgs
+        assert "tokens_found=3" in msgs
+        assert "tokens_resolved=2" in msgs
+        assert "tokens_left_as_is=1" in msgs
+        assert "separator_rewrite=yes" in msgs
+        assert any(m.startswith("text_chars=") for m in msgs)
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.expand_cover_from_block_text(
+            "plain", self._cand(), source="candidate", debug=False
+        )
+        assert idx.call_count == 0
+        assert detail.call_count == 0
+
+
+
+class TestAst1235SurferConsent:
+    """AST-1235: versioned Surfer consent normalize / is_current / opt-in / opt-out."""
+
+    def test_normalize_empty_and_unknown(self) -> None:
+        empty = candidate_mod.empty_surfer_consent()
+        assert empty == {
+            "status": "none",
+            "accepted_version": None,
+            "updated_at": None,
+        }
+        assert candidate_mod.normalize_surfer_consent(None) == empty
+        assert candidate_mod.normalize_surfer_consent("x") == empty
+        assert candidate_mod.normalize_surfer_consent({"status": "weird"})["status"] == "none"
+        # Extra keys dropped.
+        n = candidate_mod.normalize_surfer_consent(
+            {
+                "status": "opted_in",
+                "accepted_version": " 1 ",
+                "updated_at": " 2026-01-01 00:00:00 ",
+                "extra": True,
+            }
+        )
+        assert n == {
+            "status": "opted_in",
+            "accepted_version": "1",
+            "updated_at": "2026-01-01 00:00:00",
+        }
+        assert "extra" not in n
+
+    def test_is_current_requires_opt_in_and_matching_version(self) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        assert candidate_mod.is_surfer_consent_current(
+            {"status": "opted_in", "accepted_version": ver}
+        )
+        assert not candidate_mod.is_surfer_consent_current(
+            {"status": "opted_in", "accepted_version": "stale"}
+        )
+        assert not candidate_mod.is_surfer_consent_current(
+            {"status": "opted_out", "accepted_version": ver}
+        )
+        assert not candidate_mod.is_surfer_consent_current({"status": "none"})
+
+    def test_get_surfer_consent_missing_and_absent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: None)
+        with pytest.raises(ValueError, match="Candidate not found"):
+            candidate_mod.get_surfer_consent("missing")
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        assert candidate_mod.get_surfer_consent("c1") == candidate_mod.empty_surfer_consent()
+
+    def test_opt_in_persists_and_rejects_stale_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        stored: dict = {"astral_candidate_id": "c1", "candidate_data": {}}
+        saves: list = []
+
+        def _get(cid: str):
+            return dict(stored)
+
+        def _save(cid: str, data: dict, replace: bool = False, debug: bool = False):
+            saves.append({"data": data, "debug": debug})
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", _get)
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save)
+        monkeypatch.setattr(candidate_mod, "_surfer_consent_now", lambda: "2026-08-07 12:00:00")
+
+        with pytest.raises(ValueError, match="non-empty string"):
+            candidate_mod.opt_in_surfer_consent("c1", "")
+        with pytest.raises(ValueError, match="does not match"):
+            candidate_mod.opt_in_surfer_consent("c1", "stale")
+
+        dto = candidate_mod.opt_in_surfer_consent("c1", ver)
+        assert dto["status"] == "opted_in"
+        assert dto["accepted_version"] == ver
+        assert dto["is_current"] is True
+        assert dto["current_version"] == ver
+        assert dto["disclosure_copy"] == SURFER_CONSENT_CONFIG["disclosure_copy"]
+        assert saves[0]["data"]["surfer_consent"] == {
+            "status": "opted_in",
+            "accepted_version": ver,
+            "updated_at": "2026-08-07 12:00:00",
+        }
+
+    def test_opt_out_preserves_accepted_version(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        stored: dict = {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "surfer_consent": {
+                    "status": "opted_in",
+                    "accepted_version": ver,
+                    "updated_at": "2026-08-07 11:00:00",
+                }
+            },
+        }
+        saves: list = []
+
+        def _save(cid: str, data: dict, replace: bool = False, debug: bool = False):
+            saves.append(data)
+            cd = dict(stored.get("candidate_data") or {})
+            cd.update(data)
+            stored["candidate_data"] = cd
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", _save)
+        monkeypatch.setattr(candidate_mod, "_surfer_consent_now", lambda: "2026-08-07 12:30:00")
+
+        dto = candidate_mod.opt_out_surfer_consent("c1")
+        assert dto["status"] == "opted_out"
+        assert dto["accepted_version"] == ver
+        assert dto["is_current"] is False
+        assert saves[0]["surfer_consent"]["accepted_version"] == ver
+        assert saves[0]["surfer_consent"]["status"] == "opted_out"
+
+    def test_opt_in_debug_gated(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+        from unittest.mock import MagicMock
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        stored = {"astral_candidate_id": "c1", "candidate_data": {}}
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda cid: dict(stored))
+        monkeypatch.setattr(
+            candidate_mod,
+            "save_candidate_data",
+            lambda cid, data, replace=False, debug=False: None,
+        )
+        monkeypatch.setattr(candidate_mod, "_surfer_consent_now", lambda: "t")
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+
+        candidate_mod.opt_in_surfer_consent("c1", ver, debug=True)
+        assert idx.call_count == 2
+        assert detail.call_count == 2
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.opt_in_surfer_consent("c1", ver, debug=False)
+        assert idx.call_count == 0
+        assert detail.call_count == 0
+
+
+class TestAst1237SurferConsentDtoChrome:
+    """AST-1237: surfer_consent_dto exposes config chrome fields."""
+
+    def test_dto_includes_chrome_keys(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        dto = candidate_mod.surfer_consent_dto("c1")
+        assert dto["current_version"] == SURFER_CONSENT_CONFIG["current_version"]
+        assert dto["disclosure_title"] == SURFER_CONSENT_CONFIG["disclosure_title"]
+        assert dto["opt_in_label"] == SURFER_CONSENT_CONFIG["opt_in_label"]
+        assert dto["decline_label"] == SURFER_CONSENT_CONFIG["decline_label"]
+        assert dto["current_ok_title"] == SURFER_CONSENT_CONFIG["current_ok_title"]
+        assert dto["current_ok_body"] == SURFER_CONSENT_CONFIG["current_ok_body"]
+        assert dto["is_current"] is False
+
+
+class TestAst1238SurferConsentGate:
+    """AST-1238: require_current_surfer_consent + off-switch DTO chrome."""
+
+    def test_require_raises_when_not_current(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        with pytest.raises(ValueError, match="not enabled"):
+            candidate_mod.require_current_surfer_consent("c1")
+        assert SURFER_CONSENT_CONFIG["capture_denied_message"]
+
+    def test_require_returns_dto_when_current(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "candidate_data": {
+                    "surfer_consent": {
+                        "status": "opted_in",
+                        "accepted_version": ver,
+                        "updated_at": "2026-08-07 12:00:00",
+                    }
+                },
+            },
+        )
+        dto = candidate_mod.require_current_surfer_consent("c1")
+        assert dto["is_current"] is True
+        assert dto["off_switch_heading"] == SURFER_CONSENT_CONFIG["off_switch_heading"]
+        assert dto["status_stale_label"] == SURFER_CONSENT_CONFIG["status_stale_label"]
+        assert dto["capture_denied_message"] == SURFER_CONSENT_CONFIG["capture_denied_message"]
+
+
+class TestAst1259CandidateBatchApi:
+    """AST-1259: get_new_candidate_batch / clear_candidate_batch core wrappers."""
+
+    def test_requires_batch_id_or_context(self) -> None:
+        with pytest.raises(ValueError, match="batch_id or context"):
+            candidate_mod.get_new_candidate_batch("REQUESTED_ARTIFACTS")
+
+    def test_rejects_unknown_state(self) -> None:
+        with pytest.raises(ValueError, match="state must be one of"):
+            candidate_mod.get_new_candidate_batch("NOT_A_STATE", batch_id="b")
+
+    def test_claims_and_returns_rows(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        claim = MagicMock()
+        rows: List[Dict[str, Any]] = [{"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}]
+        monkeypatch.setattr(candidate_mod.database, "claim_candidate_batch", claim)
+        monkeypatch.setattr(candidate_mod.database, "get_candidate_batch", lambda batch_id: rows)
+        bid, out = candidate_mod.get_new_candidate_batch(
+            "REQUESTED_ARTIFACTS",
+            batch_id="fixed-1259",
+            limit=2,
+            sort_by="updated_at",
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+        assert bid == "fixed-1259"
+        assert out == rows
+        claim.assert_called_once_with(
+            "fixed-1259",
+            "REQUESTED_ARTIFACTS",
+            2,
+            sort_by="updated_at",
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+
+    def test_generates_batch_id_from_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(candidate_mod.database, "claim_candidate_batch", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "get_candidate_batch", lambda batch_id: [])
+        bid, _ = candidate_mod.get_new_candidate_batch("ACTIVE_SEARCH", context="inflow_discovery")
+        assert bid.startswith("inflow_discovery-")
+
+    def test_clear_delegates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        clear = MagicMock(return_value=3)
+        monkeypatch.setattr(candidate_mod.database, "clear_candidate_batch", clear)
+        assert candidate_mod.clear_candidate_batch("b-1") == 3
+        clear.assert_called_once_with("b-1")
 

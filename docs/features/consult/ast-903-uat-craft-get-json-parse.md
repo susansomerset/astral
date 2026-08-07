@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-903 archived 2026-08-02 -->
+
+## Linear archive (AST-903)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-903/uat-craft-get-rubric-json-parse-unterminated-string  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-900 — craft get rubric did not populate the rubric content for candidate  
+**Blocked by / blocks / related:** parent: AST-900
+
+### Description
+
+## What failed
+
+On `/artifacts/get_job_criteria` for candidate `karfo`, Generate for Get Job Criteria failed with an Astral error diagnostic while craft_DO succeeded on the same session.
+
+```
+message: Failed to parse JSON response: Unterminated string starting at: line 43 column 20 (char 5489)
+route: /artifacts/get_job_criteria
+astral_candidate_id: karfo
+```
+
+The diagnostic showed `agent_performance.status=success` with `vector_reviews` present, but `agent_payload.criteria[0].content` was truncated mid-string (`"A == The JD's target title exactly matches or is `), so JSON parse failed.
+
+## Expected
+
+A successful Get rubric generation returns parseable JSON with a complete `criteria` array, and the editor shows the criteria for review (or a clear recoverable error — not a truncated payload treated as success).
+
+## Repro
+
+1. Open candidate `karfo` → Artifacts → Get Job Criteria.
+2. Click Generate (or Regenerate).
+3. Observe Astral error diagnostic: Failed to parse JSON response / Unterminated string (Get fails; Do may still succeed).
+
+## Parent AC (quoted inline)
+
+> Generating Get Job Criteria for a candidate with an empty rubric ends with the criteria visible in the editor, and after Save they are present in the candidate's stored artifact.
+> A generation that completes on the backend can no longer vanish without a user-visible trace: the editor shows the result or an error, or the completed result is recoverable when the user returns to the page.
+
+## Boundaries
+
+* This bug does **not** change: rubric grading semantics, dispatcher consult batches (`grade_get`), or Do/Like rubric prompt content unless required to fix Get parse/truncation.
+* Artifact editor Save/recovery UX after a successful on-screen generate is the sibling UAT bug.
+
+### Comments
+
+#### radia — 2026-07-16T22:53:32.442Z
+### Radia review — clean
+
+Diff: `origin/dev`…`origin/sub/AST-900/AST-903-uat-craft-get-json-parse` @ `926dfca` (product tip `a3d971c` + this doc commit).
+
+Plan doc: https://github.com/susansomerset/astral/blob/926dfcaa86387a76091b6de430ab805d985e4cc3/docs/features/consult/ast-903-uat-craft-get-json-parse.md
+
+No fix-now / discuss.
+
+**Solid:** Stages 1–3 match plan — `CRAFT_RUBRIC_MAX_TOKENS=32000` floor in `do_task` for `CRAFT_RUBRIC_UI_TASK_KEYS`; Anthropic + DeepSeek hard-fail JSON when `stop_reason == "max_tokens"` before heal/parse (`failure_class: max_tokens`); Stage 4 no-op confirmed (`run_candidate_artifact_generation` already forwards `error` + ledger `FAILED`). §5g clean (no cross-external imports; own logger per provider). Timesheet `except` mirrors existing parse_err pattern. Text `max_tokens` still succeeds. No ArtifactEditor / prompt / `grade_*` scope creep.
+
+**Advisory:** Truncation path double-calls `log_llm_batch_summary` (success then error) — same as existing parse_err path; not blocking.
+
+#### betty — 2026-07-16T22:51:14.326Z
+## QA test manifest — AST-903
+
+**Publish:** `origin/sub/AST-900/AST-903-uat-craft-get-json-parse` @ `a3d971c` (`merge-tests(AST-903): origin/tests 936aba51aaa19bfe66d2eaf36c425f6251f08521`)
+
+### Manifest (run all)
+
+1. `tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor` — `craft_get_rubric` floors `max_tokens` to 32000; non-craft keeps agent 100
+2. `tests/component/utils/test_config.py::TestAst903CraftRubricMaxTokens` — `CRAFT_RUBRIC_MAX_TOKENS == 32000`
+3. `tests/component/external/test_deepseek.py::TestAst903JsonMaxTokensHardFail` — JSON + `stop_reason=max_tokens` → `failure_class`; text format still succeeds
+4. `tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail` — same hard-fail gate
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  tests/component/utils/test_config.py::TestAst903CraftRubricMaxTokens \
+  tests/component/external/test_deepseek.py::TestAst903JsonMaxTokensHardFail \
+  tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
+```
+
+### Existing coverage
+
+- No obsolete tests for this diff (new fail-closed path + config floor)
+- Stage 4 (candidate generate forwards provider error) covered by existing `TestRunCandidateArtifactGeneration` failure path — no new candidate tests required
+
+### Bible shasums on publish ref
+
+- `docs/test-bible/core/agent.md` `f30b5bcb012057ab3a9aa61ef5ff3bb972a0a548`
+- `docs/test-bible/utils/config.md` `a66570852e826a1bf95ae081a1f84ff326cd30cf`
+- `docs/test-bible/external/deepseek.md` `81c14a81c98a4aae910ba4a900d792f7264a90d3`
+- `docs/test-bible/external/anthropic.md` `266699e17c75cfb5db40d70f4fd4b1ce4449ed78`
+
+— Betty
+
+#### ada — 2026-07-16T22:46:20.233Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-900/AST-903-uat-craft-get-json-parse/docs/features/consult/ast-903-uat-craft-get-json-parse.md @ `4d706d41d04f6ab39d93c6d3e8e69a26b5aab465`
+
+**Root cause:** LLM output truncated mid-`agent_payload.criteria[0].content` (`Unterminated string`). `heal_json` cannot recover when truncation is inside the first criterion string. Do succeeded same session because its payload fit the token budget.
+
+**Fix:** `CRAFT_RUBRIC_MAX_TOKENS=32000` floor in `do_task` for all craft rubric UI tasks; hard-fail JSON provider calls when `stop_reason == max_tokens` (no heal-into-partial-success).
+
+**Scope:** `Single-Component` — config + agent params + deepseek/anthropic gate; no UI / prompts / consult batches.
+
+**Conf:** `high` — truncation signature is unambiguous.
+
+**Risk:** `Medium` — higher cost/latency on six craft rubrics; intentional fail-closed on max_tokens.
+
+---
+
 # UAT: craft_get_rubric JSON parse Unterminated string
 
 **Parent:** [AST-900 — craft get rubric did not populate the rubric content for candidate](https://linear.app/astralcareermatch/issue/AST-900/craft-get-rubric-did-not-populate-the-rubric-content-for-candidate)

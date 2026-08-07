@@ -23,7 +23,11 @@ from urllib.parse import urlparse
 from src.core import candidate as candidate_mod
 from src.core import tracker as tracker_mod
 from src.data import database
-from src.utils.config import BUILD_CONFIG, RESUME_STRUCTURE_CONTACT_SECTION_IDS
+from src.utils.config import (
+    BUILD_CONFIG,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    get_cover_letter_render_token,
+)
 from src.utils.formatting import split_to_list
 from src.utils.logging import get_logger
 
@@ -306,7 +310,7 @@ def build_cover_letter_from_job(
     *,
     debug: bool = False,
 ) -> str:
-    """Render cover-letter HTML only from job artifacts (no resume body sections)."""
+    """Render cover-only Print Cover Letter as SomersetCover (fromBlock + golden CSS)."""
     cd = _coerce_candidate_blob(candidate_data)
     if debug:
         _log.set_debug_flag(True)
@@ -324,41 +328,42 @@ def build_cover_letter_from_job(
             debug=debug,
         )
         raise ValueError(msg)
-    render: Dict[str, Any] = {}
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
-    markers = _apply_resume_text_markers(render)
-    style = _merge_effective_style(cd)
-    html_out = _emit_html_document(
-        markers,
-        style,
-        include_cover=True,
-        cover_letter=cover,
-        critical_keywords=None,
-        emit_prior_experience=False,
-        cover_profile=cd.get("contact") or {},
-        body_section_ids=[],
-        body_section_titles={},
+
+    # AST-1138: SomersetCover path — no resume header/contact shell for cover-only.
+    from_res = candidate_mod.resolve_cover_from_block(
+        _candidate_for_cover_from_block(cd), debug=debug
+    )
+    contact = cd.get("contact") or {}
+    cover_sig = cover.get("signature") or ""
+    token_status, sig_src, image_status = _signature_image_token_status(
+        cover_sig, {"contact": contact}
+    )
+    fields = _job_cover_somerset_fields(cover, from_res["text"])
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
+    html_out = _emit_somerset_cover_html_document(
+        fields, signature_image_src=sig_src, document_title=doc_title
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd)
-        contact = cd.get("contact") or {}
-        safe_sig = _safe_image_src(contact.get("cover_letter_signature_image"))
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
             total=1,
             identifier=identifier,
-            outcome="success — cover letter html",
+            outcome="success — somerset cover html",
         )
+        _log.debug_detail(f"from_block_source={from_res['source']}")
+        _log.debug_detail(f"from_block_chars={len(from_res['text'])}")
+        _log.debug_detail("document_path=somerset_cover")
         _log.debug_detail(f"cover_source={cover_src!r}")
         _log.debug_detail(
             f"fields re_line={bool((cover.get('re_line') or '').strip())} "
             f"body={bool((cover.get('body') or '').strip())} "
             f"signature={bool((cover.get('signature') or '').strip())}"
         )
-        _log.debug_detail(
-            f"signature_image={'accepted' if safe_sig else 'absent_or_rejected'}"
-        )
+        _log.debug_detail(f"signature_image_token={token_status}")
+        _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
@@ -504,7 +509,7 @@ def build_session_cover_letter(
     candidate_id: Optional[str] = None,
     debug: bool = False,
 ) -> str:
-    """AST-1024: SomersetCover HTML from in-memory fields — no job load / artifact write."""
+    """AST-1024 / AST-1139: SomersetCover HTML from in-memory fields — no job load / artifact write."""
     if debug:
         _log.set_debug_flag(True)
     identifier = (
@@ -523,6 +528,24 @@ def build_session_cover_letter(
         raise ValueError(msg)
     cfg = BUILD_CONFIG["session_cover_letter"]
     field_defs = cfg["fields"]
+
+    # Load candidate before from_block required check (empty → resolve when configured).
+    cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
+    candidate_root: Dict[str, Any] = {}
+    if cid:
+        row = candidate_mod.get_candidate(cid)
+        if not row:
+            msg = f"Candidate not found: {cid}"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        candidate_root = _coerce_candidate_blob(row)
+
+    from_block_source: Optional[str] = None
     normalized: Dict[str, str] = {}
     for key, meta in field_defs.items():
         raw = fields.get(key, "")
@@ -537,6 +560,35 @@ def build_session_cover_letter(
                 debug=debug,
             )
             raise ValueError(msg)
+        if key == "from_block":
+            if raw.strip():
+                # AST-1148: session-typed From — same token / |→• / empty-segment expand.
+                from_block_source = cfg["from_block_sources"][0]  # session
+                if candidate_root:
+                    shaped = _candidate_for_cover_from_block(candidate_root)
+                else:
+                    shaped = {"full": "", "first": "", "last": "", "contact": {}}
+                normalized[key] = candidate_mod.expand_cover_from_block_text(
+                    raw, shaped, source=from_block_source, debug=debug
+                )
+            elif meta.get("empty_uses_candidate_resolve") and candidate_root:
+                from_res = candidate_mod.resolve_cover_from_block(
+                    _candidate_for_cover_from_block(candidate_root), debug=debug
+                )
+                normalized[key] = from_res["text"]
+                from_block_source = from_res["source"]
+            elif meta.get("required"):
+                msg = f"{key} is required"
+                _emit_builder_failure(
+                    func="builder.build_session_cover_letter",
+                    identifier=identifier,
+                    message=msg,
+                    debug=debug,
+                )
+                raise ValueError(msg)
+            else:
+                normalized[key] = raw
+            continue
         if meta.get("required") and not raw.strip():
             msg = f"{key} is required"
             _emit_builder_failure(
@@ -548,25 +600,11 @@ def build_session_cover_letter(
             raise ValueError(msg)
         normalized[key] = raw
 
-    sig_src: Optional[str] = None
-    sig_image_status = "skipped_no_candidate"
-    cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
-    if cid:
-        row = candidate_mod.get_candidate(cid)
-        if not row:
-            msg = f"Candidate not found: {cid}"
-            _emit_builder_failure(
-                func="builder.build_session_cover_letter",
-                identifier=identifier,
-                message=msg,
-                debug=debug,
-            )
-            raise ValueError(msg)
-        profile = _coerce_candidate_blob(row).get("profile") or {}
-        sig_src = _safe_image_src(profile.get("cover_letter_signature_image"))
-        sig_image_status = "accepted" if sig_src else "absent_or_rejected"
+    token_status, sig_src, image_status = _signature_image_token_status(
+        normalized.get("signature") or "", candidate_root
+    )
 
-    html_out = _emit_session_cover_html_document(normalized, signature_image_src=sig_src)
+    html_out = _emit_somerset_cover_html_document(normalized, signature_image_src=sig_src)
     if debug:
         _log.debug_index(
             func="builder.build_session_cover_letter",
@@ -585,7 +623,11 @@ def build_session_cover_letter(
             f"subject={'present' if normalized['subject'].strip() else 'omitted'}"
         )
         _log.debug_detail(f"candidate_id={'used' if cid else 'not_used'}")
-        _log.debug_detail(f"signature_image={sig_image_status}")
+        _log.debug_detail(f"from_block_source={from_block_source}")
+        _log.debug_detail(f"from_block_chars={len(normalized['from_block'])}")
+        _log.debug_detail("document_path=somerset_cover")
+        _log.debug_detail(f"signature_image_token={token_status}")
+        _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
@@ -601,12 +643,40 @@ def _session_cover_letter_paragraphs(letter: str) -> List[str]:
     return chunks
 
 
-def _emit_session_cover_html_document(
+def _candidate_for_cover_from_block(cd: dict) -> dict:
+    """Shape coerced builder candidate blob for ``resolve_cover_from_block``."""
+    out: Dict[str, Any] = {
+        "full": cd.get("_full") or "",
+        "first": cd.get("_first") or "",
+        "last": cd.get("_last") or "",
+        "contact": cd.get("contact") or {},
+    }
+    if "astral_candidate_id" in cd:
+        out["astral_candidate_id"] = cd["astral_candidate_id"]
+    if "_astral_candidate_id" in cd:
+        out["_astral_candidate_id"] = cd["_astral_candidate_id"]
+    return out
+
+
+def _job_cover_somerset_fields(cover: dict, from_block_text: str) -> dict:
+    """Map normalized job cover + resolved from-block into session field keys."""
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    fields: Dict[str, str] = {
+        key: "" for key in BUILD_CONFIG["session_cover_letter"]["fields"]
+    }
+    for artifact_key, field_key in job_cfg["artifact_to_fields"].items():
+        fields[field_key] = str(cover.get(artifact_key) or "")
+    fields["from_block"] = from_block_text
+    return fields
+
+
+def _emit_somerset_cover_html_document(
     fields: dict,
     *,
     signature_image_src: Optional[str] = None,
+    document_title: Optional[str] = None,
 ) -> str:
-    """Standalone SomersetCover DOM/CSS (session-only; does not touch job cover emit)."""
+    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter)."""
     style = BUILD_CONFIG["default_style"]
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -621,7 +691,11 @@ def _emit_session_cover_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
-    doc_title = BUILD_CONFIG["session_cover_letter"]["document_title"]
+    doc_title = (
+        document_title
+        if document_title is not None
+        else BUILD_CONFIG["session_cover_letter"]["document_title"]
+    )
     sig_name = (fields.get("signature") or "").strip()
     meta_content = f"Cover Letter - {sig_name}" if sig_name else doc_title
     meta_tag = f'\n  <meta name="description" content="{html.escape(meta_content)}" />'
@@ -651,14 +725,27 @@ def _emit_session_cover_html_document(
     )
     blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
 
-    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
-    if signature_image_src:
-        src_esc = html.escape(signature_image_src, quote=True)
-        signoff_parts.append(
-            f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+    # AST-1126: image only where {$SIGNATURE_IMAGE} resolves — no auto-inject above name.
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if "cover_letter" not in tok.get("surfaces", []):
+        raise ValueError(
+            "SIGNATURE_IMAGE surfaces missing cover_letter — AST-1125 contract broken"
         )
-        signoff_parts.append("<br>")
-    signoff_parts.append(html.escape(sig_name))
+    raw_sig = fields.get("signature") or ""
+    token_status = "present" if tok["literal"] in raw_sig else "absent"
+    img_html = ""
+    if signature_image_src and token_status == "present":
+        src_esc = html.escape(signature_image_src, quote=True)
+        img_html = f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+    sig_fragment = _html_with_signature_image_token(
+        raw_sig,
+        safe_src=signature_image_src if token_status == "present" else None,
+        token_status=token_status,
+        img_html=img_html,
+    )
+    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
+    if sig_fragment:
+        signoff_parts.append(sig_fragment)
     blocks.append(
         "      <div class=\"letterSignoff\">\n        "
         + "\n        ".join(signoff_parts)
@@ -751,7 +838,7 @@ body {{
 .signature-img {{
   display: block;
   height: 61px;
-  margin: 8px 0 -25px 0;
+  margin: 8px 0 8px 0;
 }}
 @page {{
   margin-top: 1in;
@@ -1538,24 +1625,126 @@ def _safe_image_src(raw: Any) -> Optional[str]:
     return None
 
 
+def _lookup_dotted_path(root: Any, dotted: str) -> Any:
+    """Walk ``a.b.c`` on nested dicts; return ``None`` if any segment missing/non-dict."""
+    cur: Any = root
+    for part in (dotted or "").split("."):
+        if not part or not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _signature_image_token_status(
+    signature_text: str,
+    candidate_root: dict,
+) -> tuple[str, Optional[str], str]:
+    """Return ``(token_status, safe_src_or_None, image_status)``.
+
+    ``token_status``: ``present`` | ``absent``
+    ``image_status``: ``accepted`` | ``absent`` | ``rejected``
+    """
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    literal = tok["literal"]
+    token_status = "present" if literal in (signature_text or "") else "absent"
+    raw = _lookup_dotted_path(candidate_root, tok["path"])
+    if not isinstance(raw, str) or not raw.strip():
+        return token_status, None, "absent"
+    safe = _safe_image_src(raw)
+    if safe is None:
+        return token_status, None, "rejected"
+    return token_status, safe, "accepted"
+
+
+def _html_with_signature_image_token(
+    signature_text: str,
+    *,
+    safe_src: Optional[str],
+    token_status: str,
+    img_html: str,
+) -> str:
+    """Escape signature text; replace or omit ``SIGNATURE_IMAGE`` literal per contract."""
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if tok.get("absent_token_policy") != "omit" or tok.get(
+        "missing_or_rejected_image_policy"
+    ) != "omit":
+        raise ValueError(
+            "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
+        )
+
+    # AST-1165: authored newlines → <br> after escape (same as letter body).
+    def _esc_br(segment: str) -> str:
+        return html.escape((segment or "").replace("\r\n", "\n")).replace(
+            chr(10), "<br>"
+        )
+
+    if token_status == "absent":
+        return _esc_br(signature_text or "")
+    parts = (signature_text or "").split(tok["literal"])
+    sep = img_html if safe_src else ""
+    return sep.join(_esc_br(part) for part in parts)
+
+
 def _emit_cover_signoff_html(cover: dict, profile: dict) -> str:
-    """Cover sign-off: optional profile image (validated ``src``) then signature text."""
-    sig = (cover.get("signature") or "").strip()
-    safe_src = _safe_image_src((profile or {}).get("cover_letter_signature_image"))
-    if not sig and not safe_src:
+    """Cover sign-off: token-position image (AST-1126) + signature text — no auto-prepend."""
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if "cover_letter" not in tok.get("surfaces", []):
+        raise ValueError(
+            "SIGNATURE_IMAGE surfaces missing cover_letter — AST-1125 contract broken"
+        )
+    if tok.get("absent_token_policy") != "omit" or tok.get(
+        "missing_or_rejected_image_policy"
+    ) != "omit":
+        raise ValueError(
+            "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
+        )
+    # Call sites pass contact dict; wrap so tok["path"] (contact.…) resolves.
+    raw_sig = cover.get("signature") or ""
+    candidate_root = {"contact": profile or {}}
+    token_status, safe_src, _image_status = _signature_image_token_status(
+        raw_sig, candidate_root
+    )
+    # Image alone (no token / no text) must not create a signoff section.
+    if not (raw_sig or "").strip() and token_status == "absent":
         return ""
-    inner_lines: List[str] = []
+
+    literal = tok["literal"]
+    if token_status == "absent":
+        body_esc = html.escape(raw_sig)
+        if not body_esc.strip():
+            return ""
+        return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+      <p>{body_esc}</p>
+    </section>"""
+
+    parts = raw_sig.split(literal)
+    img_html = ""
     if safe_src:
         src_esc = html.escape(safe_src, quote=True)
-        inner_lines.append(
-            # Non-empty alt: Radia review (a11y); static label only (src is already escaped).
-            f'      <img src="{src_esc}" alt="Cover letter signature" style="max-width:240px;height:auto;" />'
+        img_html = (
+            f'<img src="{src_esc}" alt="Cover letter signature" '
+            f'style="max-width:240px;height:auto;" />'
         )
-    if sig:
-        inner_lines.append(f'      <p>{html.escape(sig)}</p>')
-    inner = "\n".join(inner_lines)
-    return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+        # Concrete shape: <p>before</p>{img}<p>after</p> (omit empty sides).
+        inner_chunks: List[str] = []
+        for i, part in enumerate(parts):
+            if (part or "").strip():
+                inner_chunks.append(f"      <p>{html.escape(part)}</p>")
+            if i < len(parts) - 1:
+                inner_chunks.append(f"      {img_html}")
+        if not inner_chunks:
+            return ""
+        inner = "\n".join(inner_chunks)
+        return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
 {inner}
+    </section>"""
+
+    # Token present, image omitted — one <p> with literal removed.
+    joined = "".join(html.escape(p) for p in parts)
+    if not joined.strip():
+        return ""
+    return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+      <p>{joined}</p>
     </section>"""
 
 

@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
@@ -23,6 +23,28 @@ type SessionCoverLastRender = {
   candidate_id: string | null
 } | null
 
+type CoverFromBlockUi = {
+  default_template: string
+  authoring_help: string
+  session_authoring_help: string
+}
+
+const EMPTY_COVER_FROM: CoverFromBlockUi = {
+  default_template: "",
+  authoring_help: "",
+  session_authoring_help: "",
+}
+
+// Fetch-failure fallback only — edit COVER_FROM_BLOCK_CONFIG["session_authoring_help"] for live copy.
+const SESSION_INTRO_FALLBACK =
+  "Enter cover-letter field values, then Open HTML to Print → PDF. " +
+  "Letter fields come from this form. When a candidate is selected, leave " +
+  "From block empty to use that candidate’s cover from-block text or the " +
+  "contact default (Name • City, ST / email • phone). Without a candidate, " +
+  "From block is required. If a candidate is selected and has a profile " +
+  "signature image, the server may include it in the sign-off; otherwise " +
+  "name-only. This tool does not save to the database."
+
 const EMPTY_FIELDS: SessionCoverFields = {
   from_block: "",
   letter_date: "",
@@ -46,11 +68,32 @@ export default function SessionCoverLetter() {
   const [opening, setOpening] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
+  const [coverFrom, setCoverFrom] = useState<CoverFromBlockUi>(EMPTY_COVER_FROM)
   const clearToast = useCallback(() => setToast(null), [])
 
-  const requiredComplete = SESSION_COVER_FIELDS.every(
-    f => !f.required || (fields[f.key] ?? "").trim() !== "",
-  )
+  useEffect(() => {
+    api("/api/ui_config")
+      .then(r => r.json())
+      .then(cfg => {
+        const block = cfg?.cover_from_block
+        if (!block || typeof block !== "object") return
+        setCoverFrom({
+          default_template: typeof block.default_template === "string" ? block.default_template : "",
+          authoring_help: typeof block.authoring_help === "string" ? block.authoring_help : "",
+          session_authoring_help:
+            typeof block.session_authoring_help === "string" ? block.session_authoring_help : "",
+        })
+      })
+      .catch(() => { /* keep EMPTY_COVER_FROM / intro fallback */ })
+  }, [])
+
+  // AST-1139: empty from_block OK when candidate selected (server resolves defaults).
+  const candidateSelected = Boolean(selectedId && selectedId.trim())
+  const requiredComplete = SESSION_COVER_FIELDS.every(f => {
+    if (!f.required) return true
+    if (f.key === "from_block" && candidateSelected) return true
+    return (fields[f.key] ?? "").trim() !== ""
+  })
 
   function setField(key: SessionCoverFieldKey, value: string) {
     setFields(prev => ({ ...prev, [key]: value }))
@@ -107,17 +150,18 @@ export default function SessionCoverLetter() {
     }
   }
 
+  const introHelp =
+    coverFrom.session_authoring_help.trim() || SESSION_INTRO_FALLBACK
+  const fromHelp = coverFrom.authoring_help.trim()
+  const fromPlaceholder = coverFrom.default_template.trim() || undefined
+
   return (
     <div style={{ padding: 24, maxWidth: 900 }}>
       <h1 style={{ margin: "0 0 8px", fontSize: 22, color: "var(--text-primary)" }}>
         Session Cover Letter
       </h1>
       <p style={{ margin: "0 0 16px", fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>
-        Enter cover-letter field values, then Open HTML to Print → PDF.
-        Letter fields come from this form. If a candidate is selected and has a
-        profile signature image, the server may include it in the sign-off;
-        otherwise name-only. Render works with no candidate selected.
-        This tool does not save to the database.
+        {introHelp}
       </p>
 
       {SESSION_COVER_FIELDS.map(f => (
@@ -145,6 +189,7 @@ export default function SessionCoverLetter() {
               rows={f.rows}
               spellCheck={false}
               disabled={opening}
+              placeholder={f.key === "from_block" ? fromPlaceholder : undefined}
               style={{
                 width: "100%",
                 boxSizing: "border-box",
@@ -155,6 +200,19 @@ export default function SessionCoverLetter() {
               }}
             />
           )}
+          {f.key === "from_block" && fromHelp ? (
+            <span
+              style={{
+                display: "block",
+                marginTop: 4,
+                fontSize: 13,
+                color: "#8b949e",
+                lineHeight: 1.5,
+              }}
+            >
+              {fromHelp}
+            </span>
+          ) : null}
         </label>
       ))}
 

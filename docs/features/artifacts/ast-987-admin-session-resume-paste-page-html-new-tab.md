@@ -1,3 +1,302 @@
+<!-- linear-archive: AST-987 archived 2026-08-05 -->
+
+## Linear archive (AST-987)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-987/admin-session-resume-paste-page-html-new-tab-save-resume-pdf  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-985 — Save resume pdf  
+**Blocked by / blocks / related:** parent: AST-985
+
+### Description
+
+## What this implements
+
+New Admin nav page + session retention for paste + last parse; call the session parse API sibling; open rendered HTML in a new tab via reused builder/HTML route family fed by session/in-memory JSON (no selected-candidate bind, no DB). Does not own parse agent prompts.
+
+## Acceptance criteria
+
+1. From the new **Admin** tool screen, Susan can paste resume text and run Parse; on success she receives structure-keyed resume JSON consistent with the existing base-resume parse contract (not a free-form blob).
+2. Parse and HTML render succeed **without** depending on which candidate is selected in the app chrome (detached from the selector).
+3. After a successful parse, a control opens a new browser tab showing HTML rendered with the existing resume HTML layout; Susan can Print → PDF from that tab; no job id is required.
+4. Closing and reopening the tool screen within the same browser session restores the last pasted text and last successful parse result (Data Management–style retention); a full browser clear of site data wipes them.
+5. Completing the flow does not create or update candidate `artifacts.base_resume` / `artifacts.resume_structure`, job artifacts, or any other durable store for this paste.
+6. The UI inventory above is reflected in the shipped UX: new Admin paste page + session retention; reused parse pipeline, HTML builder/route family, and new-tab open — not ArtifactEditor, JAR materials preview, or selected-candidate inputs.
+7. A failed parse surfaces a clear error on the paste screen and does not open a blank/broken HTML tab as if success occurred.
+
+## Boundaries
+
+* Does not own the non-persist parse backend — sibling **Session parse API (no persist, no candidate bind)**.
+* Does not bind to the selected candidate or any job.
+* Does not change Manage Tasks prompts or TASK_CONFIG registry shape.
+* Does not generate server-side PDF — HTML new tab; user Print → PDF.
+
+## Notes for planning
+
+* Nav under **Admin**. Session retention mirrors Admin Data Management SQL history (`localStorage`).
+* Reuse Toast and new-tab open pattern from Print Resume / materials preview.
+* Depends on AST-986 API contract.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent. Engineers publish to `origin/<sub-ref>` by committing on the epic worktree sub checkout then `git push origin HEAD:<publish-ref>` — never Linear `gitBranchName` when it disagrees.
+
+### Comments
+
+#### chuckles — 2026-07-27T22:27:13.871Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch 'origin/sub/…/AST-986…'` in the AST-987-only log. Rebase onto `origin/ftr/ast-985-save-resume-pdf` (AST-986 already on ftr), keep only AST-987 commits (no Merge remote-tracking), add `plan(AST-987): — sequence label for merge-child gate`, force-with-lease push publish ref. @Katherine Johnson
+
+— Chuckles
+
+#### radia — 2026-07-27T22:22:48.566Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-987
+**Publish ref:** `origin/sub/AST-985/AST-987-admin-session-resume-paste-page-html-new-tab` @ `e95ffa820399b831834e47f3fb0ca22fa4905c4a`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Tip includes single `merge-tests(AST-987)` SHA |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`code`/`test`/`merge-tests` + sibling merge vocab |
+| orch.git.flow-direction-inviolable | universal | conforms | Merged AST-986 sub into AST-987; no reverse-flow |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-985/AST-987-…` matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | Sibling sub merge is forward integration |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force on tip |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review on `astral-AST-985` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Blob-URL HTML open matches planned AC |
+| orch.pipeline.plan-is-bible | universal | conforms | Diff matches stages 1–3 + AST-986 call site |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Artifacts child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Tests/bible via Betty `test`/`merge-tests` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine stays implementer |
+| orch.roles.pre-commit-path-bans | universal | conforms | Role path bans respected on tip vocabulary |
+| astral.agent.confidence-bounds | scoped | conforms | No graded confidence task in this child |
+| astral.agent.do-task-delegation | scoped | conforms | No new do_task; parse via AST-986 API |
+| astral.agent.grade-vector-validation | scoped | conforms | Not graded-vector work |
+| astral.batch.batch-id-first | scoped | conforms | No new batch claim path in AST-987 delta |
+| astral.batch.batch-id-format | scoped | conforms | No new batch_id generation in AST-987 delta |
+| astral.batch.claim-process-release | scoped | conforms | Not a dispatch claim batch |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No entity agent_responses mutation here |
+| astral.config.config-source-of-truth | scoped | conforms | Nav label/path only in NAV_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring path |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No new secrets/env values |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature plans only; no spike notes under features |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One plan file per ticket (986 + 987) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty owns tests/bible; engineer owns src + features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code` commits omit tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Builder stays core; no external I/O |
+| astral.layers.import-direction | scoped | conforms | ui→core builder; frontend→admin API |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Nav from NAV_CONFIG; page thin client |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Not consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | `@require_admin` + `AdminRoute` |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths miss (no `src/data/**`) |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Builder raises ValueError; UI JSON errors |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D gated on builder `debug=True` |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Shares `_emit_html_document` / structure helpers |
+| astral.standards.in-scope-only | scoped | conforms | Parse owned by AST-986; this child is HTML+UI |
+| astral.standards.logging-via-utils | scoped | conforms | Builder uses `_log` debug helpers |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered src paths |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new state enums |
+| astral.standards.public-then-helpers | scoped | conforms | Public `build_session_base_resume` beside `build_base_resume` |
+| astral.standards.utils-data-late-import-only | scoped | conforms | NAV_CONFIG only; no utils→data invent |
+| astral.state.core-decides-transitions | scoped | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No run_next chain |
+| astral.ui.frontend-file-placement | scoped | conforms | Flat `pages/AdminSessionResumePaste.tsx` + routes |
+| astral.ui.naming-conventions | scoped | conforms | PascalCase page; snake_case admin paths |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No gunicorn changes |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Self-Assessment Scope `Single-Component` matches. Stages 1–3 delivered: session builder (no `get_candidate` / no profile overlay), Admin HTML POST, nav + paste page with `useLocalStorage` (`session_resume:*`), Open HTML only after successful parse + HTML POST (blob URL). AST-986 parse consumed only.
+
+## Findings
+
+**discuss** — straggler — Joan excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, and `astral.git.engineer-test-tree-ban`; three-dot tip brings `docs/features/**` + tests/bible in scope. Sweep scores all three **conforms**. No product fix required.
+
+## What’s solid
+
+- Detached HTML path; no selected-candidate bind; fail → no tab.
+- Debug Style D on builder; Betty manifest + `merge-tests(AST-987)`.
+
+**Docs:** `docs(AST-987): Radia review — findings` pushed to publish-ref.
+
+context_tokens≈48000
+
+#### betty — 2026-07-27T22:14:18.107Z
+## QA test manifest (AST-987)
+
+**Publish:** `origin/sub/AST-985/AST-987-admin-session-resume-paste-page-html-new-tab` @ `cbe3cbf` (`merge-tests(AST-987): origin/tests 1e242cdc40925c7b48cda198ad248d6b0981f7ad`)
+
+**Scope:** `build_session_base_resume` + `POST /api/admin/session_resume/html` + Admin Session Resume Paste page (nav/route/`useLocalStorage`). Parse API owned by AST-986 (consumed only).
+
+### Manifest (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/ui/api/test_api_admin.py::TestAst987SessionResumeHtmlApi \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx
+```
+
+1. **Builder** — `TestAst987BuildSessionBaseResume`: invalid structure/empty content → `ValueError`; success HTML from in-memory payload; **no** `get_candidate`; debug on/off.
+2. **Admin HTML API** — `TestAst987SessionResumeHtmlApi`: `@require_admin` 403; bad body / builder `ValueError` → 400; success `text/html` + `ui_llm_debug`.
+3. **Page (§6c)** — `test_AdminSessionResumePaste.test.tsx`: render + Parse success enables Open HTML (no auto-tab); parse fail error / no tab; Open HTML blob URL; HTML error / no tab; localStorage restore.
+
+**Broken / obsolete:** none.
+
+**Bible (on publish tip):**
+- `docs/test-bible/frontend/pages.md` shasum `6b2de34d1263352795ec6c284512a7964e1b441f`
+
+— Betty
+
+#### joan — 2026-07-27T22:00:12.729Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-987
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1. Admin paste + Parse → structure-keyed resume JSON | Stage 3 Parse handler → AST-986 `POST /api/admin/session_resume/parse` |
+| 2. Parse/HTML succeed without selected-candidate bind | Stages 1–3: synthetic `cd`, no `get_candidate` / `useCandidate` for parse/HTML |
+| 3. Control opens HTML new tab; Print → PDF; no job id | Stages 1–2 builder+HTML POST; Stage 3 Open HTML → blob URL tab |
+| 4. Session retention of paste + last successful parse | Stage 3 `useLocalStorage` keys; clear site data wipes |
+| 5. No durable candidate/job artifact writes | Stages 1–3: no persist endpoints; response/localStorage only |
+| 6. UI inventory (new Admin page + session; reused parse/HTML/new-tab) | Stage 3 nav/page; Stages 1–2 reuse builder emit; Stage 3 calls AST-986 parse |
+| 7. Failed parse clear error; no success-shaped blank HTML | Stage 3: non-success parse never opens tab; HTML POST failures never open tab |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 1–7 (same as parent AC list on child) | Mapped above; parse backend owned by AST-986 (blockedBy), consumed at Stage 3 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1. Session HTML builder | Purpose / Functional scope: render HTML from in-memory JSON; no candidate bind / no DB |
+| 2. Admin session HTML route | Reused HTML builder/route family adapted for session/in-memory JSON under Admin |
+| 3. Admin nav + paste page | New Admin screen, session retention, call #1 parse API, new-tab open control |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge/SHA invent |
+| orch.git.commit-vocabulary | conforms | Plan doc only; no rogue commit vocab |
+| orch.git.flow-direction-inviolable | conforms | Waits for AST-986 on ftr; no reverse-flow |
+| orch.git.ftr-sub-topology | conforms | Publish ref matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Mentions merge ftr after sibling land; no forbidden ops |
+| orch.git.no-cherry-pick-rebase-force | conforms | No cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-985/… |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree AST-985 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Blob-URL vs GET is implementation; matches AC control |
+| orch.pipeline.plan-is-bible | conforms | Detailed stages + AST-986 call contract |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Artifacts scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan path |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Katherine |
+| orch.roles.engineer-assignee-through-resolve | conforms | Katherine owns build after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded agent task in this child |
+| astral.agent.do-task-delegation | conforms | No new do_task; parse via AST-986 API |
+| astral.agent.grade-vector-validation | conforms | Not graded-vector work |
+| astral.batch.batch-id-first | conforms | No new batch claim path |
+| astral.batch.batch-id-format | conforms | No new batch_id generation here |
+| astral.batch.claim-process-release | conforms | Not a dispatch claim batch |
+| astral.batch.entity-agent-responses-latest-only | conforms | No entity agent_responses mutation |
+| astral.config.config-source-of-truth | conforms | Nav label/path only in NAV_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring path |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No new secrets/env values |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src + features plan |
+| astral.layers.core-vs-external-bright-line | conforms | Builder stays core; no external I/O invent |
+| astral.layers.import-direction | conforms | ui → core builder; frontend → admin API only |
+| astral.layers.ui-config-driven-business-logic | conforms | Nav from NAV_CONFIG; page is thin client |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Not consult |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | `@require_admin` on HTML POST; page under AdminRoute |
+| astral.standards.data-raises-caller-logs | conforms | UI returns JSON errors; core raises ValueError |
+| astral.standards.debug-contract-gated | conforms | Style D on builder when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | Shares `_emit_html_document` / structure helpers |
+| astral.standards.in-scope-only | conforms | Boundaries respect AST-986 ownership |
+| astral.standards.logging-via-utils | conforms | Uses builder debug helpers |
+| astral.standards.no-cross-contamination | conforms | Layered src paths only |
+| astral.standards.no-hardcoded-sets | conforms | No new state enums |
+| astral.standards.public-then-helpers | conforms | Public `build_session_base_resume` beside `build_base_resume` |
+| astral.standards.utils-data-late-import-only | conforms | NAV_CONFIG only in config.py; no utils→data invent |
+| astral.state.core-decides-transitions | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | conforms | No job state work |
+| astral.state.no-daisy-chain-in-run | conforms | No run_next chain |
+| astral.ui.frontend-file-placement | conforms | Flat `pages/AdminSessionResumePaste.tsx`; routes.tsx wiring |
+| astral.ui.naming-conventions | conforms | PascalCase page; snake_case `/admin/session_resume_paste` |
+| astral.ui.single-gunicorn-worker | conforms | No gunicorn changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss (docs)
+- astral.git.engineer-test-tree-ban — paths miss (tests/bible)
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss (scripts)
+- astral.standards.database-header-inventory — layers/paths miss (data)
+
+## Findings
+
+**discuss** — Retention uses `useLocalStorage` (Ad Hoc pattern) rather than Data Management’s raw `HISTORY_KEY` helper. Parent asks for Data Management–*style* browser retention; this still satisfies AC4. Keep keys namespaced (`session_resume:*`) as planned.
+
+**acceptable** — Conf high / Risk Medium matches candidate-bound print-route footgun + AST-986 ftr dependency. Skipping `_apply_profile_to_render_dict` is the right detach move vs `build_base_resume`.
+
+No fix-now findings. R1–R6 pass.
+
+— Joan
+
+context_tokens≈60000
+
+#### katherine — 2026-07-27T21:54:39.294Z
+Plan published for Joan (`validate-plan`).
+
+**Plan doc:** [docs/features/artifacts/ast-987-admin-session-resume-paste-page-html-new-tab.md](https://github.com/susansomerset/astral/blob/sub/AST-985/AST-987-admin-session-resume-paste-page-html-new-tab/docs/features/artifacts/ast-987-admin-session-resume-paste-page-html-new-tab.md) on `origin/sub/AST-985/AST-987-admin-session-resume-paste-page-html-new-tab` @ `d28d240`.
+
+**Self-assessment**
+- **Scope:** `Single-Component` — session HTML builder helper, admin HTML POST, nav/route, one Admin paste page; no persist/schema/registry work.
+- **Conf:** `high` — reuses `build_base_resume` emit path, Admin `api()` + `useLocalStorage`, and the AST-986 parse contract as the only parse call site.
+- **Risk:** `Medium` — mistaken candidate-bound print route or craft persist would violate AC; plan forbids those paths and keeps Open HTML behind successful parse + successful HTML POST. Build waits on AST-986 landing on `ftr`.
+
+**Approach notes:** HTML via `POST /api/admin/session_resume/html` → blob URL new tab (session JSON too large for GET `/candidate/resume/*`); contact/header from paste section strings, not selected-candidate profile.
+
+---
+
 # Admin Session Resume Paste page + HTML new tab (Save resume pdf)
 
 **Linear:** [AST-987](https://linear.app/astralcareermatch/issue/AST-987/admin-session-resume-paste-page-html-new-tab-save-resume-pdf)

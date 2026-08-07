@@ -20,6 +20,12 @@ from src.utils.config import METEORITE_CONFIG, TRACKER_CONFIG
 from src.utils.logging import get_logger
 
 
+def is_meteorite_company(short_name: Optional[str]) -> bool:
+    """True when company short_name is on the meteorite placeholder track (AST-1152)."""
+    prefix = METEORITE_CONFIG["short_name_prefix"]
+    return bool(short_name) and str(short_name).startswith(prefix)
+
+
 def ensure_meteorite_company(candidate_id: str, *, debug: bool = False) -> dict[str, Any]:
     """Ensure meteorite-<candidate_id> exists in IGNORE. Idempotent.
 

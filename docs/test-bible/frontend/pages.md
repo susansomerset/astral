@@ -518,6 +518,27 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Company Search Terms + Company Watch Criteria (via shared **`ArtifactEditor`**) hand off Generate/Regenerate to **`POST …/generate_artifacts`**. Primary component: **`docs/test-bible/frontend/components.md`** § AST-1253.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Search Terms Generate / Regenerate handoff | `ArtifactsCompanySearchTerms.tsx` | **`test_ArtifactsCompanySearchTerms.test.tsx`** — **`AST-1253:*`** (+ revised **AST-645** in-flight) |
+| Watch Criteria Regenerate Yes → handoff | `ArtifactsCompanyWatchCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsCompanyWatchCriteria.test.tsx`** — **`AST-1253: Regenerate Yes POSTs generate_artifacts`** (replaces AST-677 craft POST) |
+
+**Broken / obsolete:** AST-677 craft_prefilter_rubric ad-hoc generate assert; Search Terms populate-textarea-from-craft generate.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanyWatchCriteria.test.tsx
+```
+
+---
+
 ### AST-659 · AST-639
 
 **AST-639 (parent epic):** Replace production **`window.confirm`** in admin pages with shared **`useUserConfirm`** / **`UserPromptProvider`** (app-wide via **`renderWithProviders`**). Documented fallbacks remain only in **`UserPrompt.tsx`** and **`Modal.tsx`** when no provider is present.
@@ -1016,6 +1037,53 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1139 · AST-1124
+
+**Parent:** [AST-1124 — Cover Letter Header is incorrect](https://linear.app/astralcareermatch/issue/AST-1124/cover-letter-header-is-incorrect). **Publish:** `origin/sub/AST-1124/AST-1139-session-cover-letter-golden-parity`.
+
+Admin **Session Cover Letter** (§6c): empty From block does not block Open HTML when a candidate is selected (server resolves via AST-1137); without a candidate, From block stays required; help copy documents empty-from-block defaults (fetch-failure intro fallback kept by **AST-1149**). Core emit: **`docs/test-bible/core/builder.md`**. Config: **`docs/test-bible/utils/config.md`**. Live authoring chrome = **AST-1149**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty from-block gating + fallback help + POST body (§6c) | `AdminSessionCoverLetter.tsx` | **`test_AdminSessionCoverLetter.test.tsx`** — **`AdminSessionCoverLetter — AST-1139`** describe |
+
+**Broken / obsolete:** none — gating unchanged; config-driven intro = **AST-1149**.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+---
+
+
+### AST-1149 · AST-1145
+
+**Parent:** [AST-1145 — Allow contact info tokens and | chars in fromBlock](https://linear.app/astralcareermatch/issue/AST-1145/allow-contact-info-tokens-and-or-chars-in-fromblock). **Publish:** `origin/sub/AST-1145/AST-1149-from-block-authoring-help-profile-session`.
+
+Authoring help chrome (§6c): Candidate Profile **Cover Letter From** tab renders shapes `help` + `placeholder` (= default template); Admin Session Cover Letter loads `/api/ui_config` `cover_from_block` for intro / From help / placeholder. Config + ui_config: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Profile Cover Letter From tab (§6c) | `CandidateProfile.tsx` | **`test_CandidateProfile.test.tsx`** — **`CandidateProfile — AST-1149`** |
+| Session config-driven help (§6c) | `AdminSessionCoverLetter.tsx` | **`test_AdminSessionCoverLetter.test.tsx`** — **`AdminSessionCoverLetter — AST-1149`** |
+| Tab help rendering | `TabbedTextArea.tsx` | **`test_TabbedTextArea.test.tsx`** (help above textarea) |
+
+**Broken / obsolete:** AST-1137 profile section placement (config) — revised; AST-1139 gating kept (fallback intro when ui_config empty).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  ../../../tests/component/frontend/components/test_TabbedTextArea.test.tsx
+```
+
+---
+
 ### AST-1033 · AST-1031
 
 **Parent:** [AST-1031 — Receive email on gmail account for astral](https://linear.app/astralcareermatch/issue/AST-1031/receive-email-on-gmail-account-for-astral). **Publish:** `origin/sub/AST-1031/AST-1033-read-email-admin-screen`.
@@ -1111,13 +1179,13 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1049-strip-extract-create-job-matched-email-meteorite`.
 
-Manage Email **Create** wires `POST .../create-job` with success/error toast; matched gate from AST-1048 retained. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+Manage Email **Create** wired `POST .../create-job` with success/error toast (historical). **Retired by AST-1142** (Land Meteorite). API route may remain: **`docs/test-bible/ui/api/api_inbox.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Create POST + toast (§6c page) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** Create success/failure cases |
+| Create POST + toast (§6c page) | `AdminManageEmail.tsx` | historical — superseded by **AST-1142** Create retirement |
 
-**Broken / obsolete:** none — extends AST-1048 page suite.
+**Broken / obsolete:** Create POST cases — removed in **AST-1142** suite revision.
 
 **Integration:** none.
 
@@ -1126,13 +1194,13 @@ Manage Email **Create** wires `POST .../create-job` with success/error toast; ma
 
 **Parent:** [AST-1044 — Bind email to candidate](https://linear.app/astralcareermatch/issue/AST-1044/bind-email-to-candidate). **Publish:** `origin/sub/AST-1044/AST-1051-uat-create-button-on-manage-email-list-rows`.
 
-UAT: **Create** moves from HTML-preview modal to matched list-row **Actions** column; unmatched rows omit Create; Create does not open the modal; create-job POST + toast unchanged (AST-1049).
+UAT (historical): **Create** on matched list-row **Actions** column. **AST-1142** retires Actions/Create entirely.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| List-row Create + no modal Create (§6c) | `AdminManageEmail.tsx` + `App.css` | revised **`test_AdminManageEmail.test.tsx`** |
+| List-row Create + no modal Create (§6c) | `AdminManageEmail.tsx` + `App.css` | historical — **AST-1142** asserts Create absent |
 
-**Broken / obsolete:** AST-1048/1049 cases that asserted Create inside the modal / disabled Create on unmatched modal — revised for Actions column + omit Create on unmatched.
+**Broken / obsolete:** Actions/Create column cases — superseded by **AST-1142**.
 
 **Integration:** none.
 
@@ -1161,15 +1229,34 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`.
 
-Manage Email Create toasts use `created`/`skipped` arrays (`Created job …` / `Created N jobs` / `Skipped N (already known or empty)`).
+Manage Email Create toasts used `created`/`skipped` arrays (historical). **AST-1142** retires Create; Land Meteorite shows server `outcome` strings instead.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Multi-result toasts | `AdminManageEmail.tsx` | revised **`test_AdminManageEmail.test.tsx`** (+ all-skipped) |
+| Multi-result toasts | `AdminManageEmail.tsx` | historical Create toasts — superseded by **AST-1142** results panel |
 
-**Broken / obsolete:** toast assumed single `astral_job_id` only — still works as fallback; mocks now include `created`/`skipped`.
+**Broken / obsolete:** Create multi-result toast cases — removed in **AST-1142**.
 
 **Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+### AST-1142 · AST-1129
+
+**Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1142-manage-email-multi-select-land-meteorite-retire-create`. **Blocked by:** AST-1141.
+
+Manage Email (§6c): row + header multi-select; toolbar Select all / Clear / **Land Meteorite** (enabled only when selection non-empty); `POST /api/admin/inbox/land-meteorite` with selected ids; on-page **Land Meteorite results** (subject snapshot + raw `outcome` + candidate id); retire per-row **Create** / Actions column / `.manage-email-create`. Never calls `/create-job`. API: **`docs/test-bible/ui/api/api_inbox.md`** (**AST-1141**). Core: **`docs/test-bible/core/gaze_email.md`** (**AST-1140**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Multi-select + enablement + Land POST + outcomes + Create retired (§6c) | `AdminManageEmail.tsx` + `App.css` | **`test_AdminManageEmail.test.tsx`** — **`AdminManageEmail — AST-1142`** (+ revised Create-absent cases in older describe) |
+
+**Broken / obsolete (revised this pass):** AST-1049/1051/1061 list-row Create POST/toast cases; Actions column assertions.
+
+**Integration:** none — no existing scenario asserts Manage Email Land Meteorite; do not invent new coverage.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
@@ -1360,6 +1447,24 @@ cd src/ui/frontend && npm run test:component -- AdminManageSlack
 
 ---
 
+### AST-1208 · AST-1203
+
+**Parent:** [AST-1203 — Need to be able to set the "Debug" flag for Slack messages](https://linear.app/astralcareermatch/issue/AST-1203/need-to-be-able-to-set-the-debug-flag-for-slack-messages). **Publish:** `origin/sub/AST-1203/AST-1208-manage-slack-ui-debug-toggle`.
+
+Admin **Manage Slack** (§6c): Debug On/Off beside Listen via `GET`/`PUT` `/api/admin/contact/debug` (`debug_enabled`). Debug load failure toasts + shows `—` / disables Debug button — does **not** set page `error` or hide Listen / @Estelle activity. API foundation: **`docs/test-bible/ui/api/api_contact.md`** (AST-1206).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page Debug toggle + isolation (§6c) | `AdminManageSlack.tsx` | revised **`test_AdminManageSlack.test.tsx`** (AST-1208 cases + listen Off/On scoped) |
+
+**Broken / obsolete:** AST-1067/1094/1105 cases that assumed only one `"Off"`/`"On"` and no `/debug` GET — revised: default mock includes debug GET; listen assertions scoped to Listen label / Enable listen button.
+
+**Integration:** no existing Manage Slack debug scenario — no revision; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+
 ### AST-1104 · AST-1102
 
 **Parent:** [AST-1102 — Bug when select All candidates and All avail count](https://linear.app/astralcareermatch/issue/AST-1102/bug-when-select-all-candidates-and-all-avail-count). **Publish:** `origin/sub/AST-1102/AST-1104-fix-sa-blank-candidate-all-avail-all`.
@@ -1408,3 +1513,123 @@ cd src/ui/frontend && npx vitest run \
   --testNamePattern="AST-1106|AST-887|AST-894"
 ```
 
+### AST-1156 · AST-1150
+
+**Parent:** [AST-1150 — Technical fail for Do prompt](https://linear.app/astralcareermatch/issue/AST-1150/technical-fail-for-do-prompt). **Publish:** `origin/sub/AST-1150/AST-1156-skipped-retry-hop-correct-dispatchable-state`.
+
+Skipped Retry groups selection by current `job.state`, looks up `bulk_retry_to_state_by_from_state`, and POSTs one `/api/jobs/bulk_state` per destination (meteorite Do fail → `METEORITE_PASSED_JD`; regular Get fail → `PASSED_DO`). Config map: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hop-correct Retry grouping | `JobsSkipped.tsx`, `StateUiContext.tsx`, fixture | **`test_JobsSkipped.test.tsx`** — **AST-1156 hop-correct Skipped Retry**; revised fixture map; existing Retry toast row asserts `CULTURE_READY` |
+
+**Broken / obsolete:** fixture `bulk_retry_to_state: "NEW"` → map; Retry no longer assumes universal NEW.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```
+
+### AST-1195 · AST-1188
+
+**Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
+
+Shared `stateUiManifestFixture.ts` skipped `section_order` + `bulk_retry_to_state_by_from_state`: `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** (aligned with config rename). Primary config/schema: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fixture rename | `tests/component/frontend/fixtures/stateUiManifestFixture.ts` | Consumers via **`page-mocks.ts`** / StateUiContext (no new page cases) |
+
+**Broken / obsolete:** fixture pinned old bot scrape-fail id — revised this pass.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/contexts/test_StateUiContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx
+```
+
+---
+
+### AST-1200 · AST-1198
+
+**Parent:** [AST-1198 — Rubric criteria prompts are not appearing in UI Artifacts](https://linear.app/astralcareermatch/issue/AST-1198/rubric-criteria-prompts-are-not-appearing-in-ui-artifacts). **Publish:** `origin/sub/AST-1198/AST-1200-restore-rubric-criteria-prompts`.
+
+Primary coverage is shared **`ArtifactEditor`** (**`docs/test-bible/frontend/components.md`**). Additive Job List Criteria page smoke for AC1 (prompt textarea visible without expand). No page-file product diff — §6c new-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job List Criteria prompt visible on first paint | `ArtifactsJobListCriteria.tsx` → `ArtifactEditor` | **`test_ArtifactsJobListCriteria.test.tsx`** — **`AST-1200: criterion prompt textarea visible without expand click`** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsJobListCriteria.test.tsx \
+  --testNamePattern="AST-1200"
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrome; affirmative PUT `opt_in` with `accepted_version: dto.current_version`; **Not now** navigates `/jobs/recommended` with **no** PUT; `is_current` shows ok chrome without opt-out. Config: **`docs/test-bible/utils/config.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page — empty / disclosure / opt-in / decline / current-ok | `CandidateSurferConsent.tsx` | **`test_CandidateSurferConsent.test.tsx`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page — empty / on+opt-out / stale / cancel / off | `CandidateSurfer.tsx` | **`test_CandidateSurfer.test.tsx`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx
+```
+
+### AST-1215 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1215-admin-ui-grouping-honesty-alphabetical-dropdowns`.
+
+Admin React honesty: Scheduled Actions / Manage Tasks keep section headers + within-section order from `agent_task` grouping metadata; in-scope task-key dropdowns (SA Add/Edit, Manage Tasks run_next, Agent Ad Hoc Task Key + Save As) use shared lexicographic `taskKeySort` (match AST-1214 / Python `sorted` — not `localeCompare`). Helper unit tests: **`docs/test-bible/frontend/lib.md`** (**AST-1215**). Vector Feedback / Jobs UI out of scope.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions §6c Add Task option order | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1215 alphabetical task_key dropdown`** |
+| Manage Tasks §6c run_next option order | `AdminTaskPrompts.tsx` | **`test_AdminTaskPrompts.test.tsx`** — **`AST-1215 alphabetical run_next options`** |
+| Agent Ad Hoc §6c Task Key + Save As | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1215`** (+ api mock `importOriginal` fix for AuthContext) |
+
+**Broken / obsolete:** Ad Hoc `vi.mock(api)` without named auth exports — revised to `importOriginal` (AuthContext `setAuthTokenGetter` / `setUnauthorizedHandler`).
+
+**Integration:** none revised.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_taskKeySort.test.ts \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```

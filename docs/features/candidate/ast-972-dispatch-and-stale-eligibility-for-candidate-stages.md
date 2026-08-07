@@ -1,3 +1,474 @@
+<!-- linear-archive: AST-972 archived 2026-08-05 -->
+
+## Linear archive (AST-972)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-972/dispatch-and-stale-eligibility-for-candidate-stages-candidate-state  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-871 — Candidate state machine  
+**Blocked by / blocks / related:** parent: AST-871
+
+### Description
+
+## What this implements
+
+Wire REQUESTED_RESUME / REQUESTED_ARTIFACTS (and stale aging) so dispatch can claim and resolve to ready/retry/error; ACTIVE_SEARCH as the sole company/job search-ready gate.
+
+## Acceptance criteria
+
+5. REQUESTED_RESUME and REQUESTED_ARTIFACTS are claimable by dispatch and can move to ready, retry, or error companions as appropriate.
+6. ACTIVE_SEARCH is the only candidate state that qualifies a candidate for company/job search dispatch (replacing LIVE_PROMPTS).
+
+## Boundaries
+
+Does **not** own craft prompts, daisy-chain generation, Topic Menu, or bulk FK remaps (sibling: Legacy candidate migration).
+
+## Notes for planning
+
+Depends on AST-970 state vocabulary. ACTIVE_SEARCH replaces LIVE_PROMPTS for search dispatch eligibility.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-871-candidate-state-machine`, child `sub/AST-871/<this-id>-dispatch-stale-eligibility`. Created at dispatch-parent.
+
+### Comments
+
+#### betty — 2026-07-24T00:59:35.502Z
+[merge-child] blocked: git pull merge on sub — `Merge remote-tracking branch` in ftr..sub (aee8912). Rewrite tip onto `origin/ftr/AST-871-candidate-state-machine`, cherry-pick only AST-972 labeled commits, force-with-lease push `origin/sub/AST-871/AST-972-dispatch-stale-eligibility`. @Katherine Johnson
+
+— Chuckles
+
+#### radia — 2026-07-24T00:24:19.648Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-972
+**Publish ref:** `origin/sub/AST-871/AST-972-dispatch-stale-eligibility` @ `582b6501b433733dbc08342bdfe22bee6aabcfd0`
+**Overall:** FIX-NOW
+
+Diff: `origin/dev...origin/sub/AST-871/AST-972-dispatch-stale-eligibility` — layers `core`/`data`/`utils`/`ui`/`docs` (+ Betty tests/bible; blockedBy AST-970).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-972)` of `ceeb114` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` / merge blockedBy |
+| orch.git.flow-direction-inviolable | universal | conforms | Child publish on `sub/AST-871/…` |
+| orch.git.ftr-sub-topology | universal | conforms | Under parent AST-871 |
+| orch.git.merge-on-checkout | universal | conforms | `origin/dev` + blockedBy 970 merges on tip |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent long-lived branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree `astral-AST-871` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Craft fan-in + provision Decisions recorded |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–5 match plan bible |
+| orch.pipeline.project-scoped-queues | universal | conforms | Untouched |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty `test`/`merge-tests` own bible+tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Path ownership respected across commits |
+| astral.agent.confidence-bounds | scoped | conforms | No graded/confidence surface |
+| astral.agent.do-task-delegation | scoped | conforms | Craft via existing `do_task` |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | Single-candidate ctx claim model retained |
+| astral.batch.batch-id-format | scoped | conforms | No new mint rules |
+| astral.batch.claim-process-release | scoped | conforms | Claim gate + workers; no pool claim |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Untouched |
+| astral.config.config-source-of-truth | scoped | conforms | `CANDIDATE_STAGE_DISPATCH` + TASK_CONFIG keys |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env splits |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature plan under `docs/features/**` |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | AST-972 plan in `docs/features/candidate/` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits are test-tree only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code`/`docs` leave tests/bible to Betty |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No new external I/O |
+| astral.layers.import-direction | scoped | violates | `_tick_loop` late-imports `candidate.age_stale_candidate_states` with no cycle-break comment |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Tip UI/config from AST-970; no React rule duplication |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Routes stage workers via consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | No new open endpoints |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Count/eligibility stay in data; core decides hops |
+| astral.standards.database-header-inventory | scoped | conforms | No new tables/columns |
+| astral.standards.debug-contract-gated | scoped | conforms | Workers accept `debug` and pass through to `do_task` |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Reuses claim_states + AST-970 aging + persist helper |
+| astral.standards.in-scope-only | scoped | conforms | Vocabulary/prompts/daisy-chain/LIVE_PROMPTS remap left to siblings |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger`; provision failure logged |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered files only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Craft lists + triggers in config |
+| astral.standards.public-then-helpers | scoped | conforms | Public stage workers + ensure/provision helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | Config-only utils |
+| astral.state.core-decides-transitions | scoped | conforms | Workers call `transition_candidate_state` only |
+| astral.state.job-prior-states-enforced | scoped | conforms | Extends claim_states for candidate registry |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | One registered-state hop per claim; craft fan-in ≠ state daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | paths miss |
+| astral.ui.naming-conventions | scoped | conforms | No new frontend product files |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Tick + `start_scheduler` provision only |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stages 1–5 match: config + claim helpers; provision rows from `start_scheduler`; eligibility/claim gate; resume/artifacts workers + consult routes; tick aging. Self-Assessment Single-Component / high / Medium matches. Joan APPROVED @ `3e19b2d`.
+
+## Findings
+
+### fix-now
+1. **Location:** `src/core/dispatcher.py` `_tick_loop`
+   **Finding:** Late `from src.core.candidate import age_stale_candidate_states` has no in-code comment. Candidate already imports dispatcher at module top — late import is the right cycle break, but B1 / CODE_RULES require a short why comment on function-scoped imports.
+   **Recommendation:** Add e.g. `# late: avoid cycle with candidate → dispatcher` above the import (or hoist only if the cycle is proven gone).
+
+### discuss
+1. **C4 stragglers** — Joan Excluded at plan time; tip brings them in-scope: `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.patterns.require-auth-on-protected-endpoints`, `astral.ui.naming-conventions`. Scored **conforms**. Acknowledge on resolve.
+
+### advisory
+1. `start_scheduler` provision failure uses bare `except Exception` but logs via `_sched_log.exception` — acceptable mitigation.
+2. CREATE candidate `state … DEFAULT 'NEW'` remains for AST-973.
+
+## What’s solid
+
+- AC5/AC6 wiring: provisioned REQUESTED_* rows, claim gate, ready/retry/error workers, ACTIVE_SEARCH inflow gate from AST-970, tick-driven aging.
+
+## Notes
+
+Joan Excluded otherwise still `not-applicable`: `no-repo-root-artifacts-dir`, `scripts-exempt`, `frontend-file-placement`.
+
+— Radia
+context_tokens≈105000
+
+#### betty — 2026-07-23T23:55:05.898Z
+1. **Publish:** `origin/sub/AST-871/AST-972-dispatch-stale-eligibility` @ `5b69e41` (`merge-tests(AST-972): origin/tests ceeb114`)
+2. **Tests SHA:** `ceeb114` — `test(AST-972): stage dispatch eligibility, workers, and ACTIVE_SEARCH gate`
+3. **Coverage**
+   - Config: `CANDIDATE_STAGE_DISPATCH`, claim states (+ retry), trigger/entity helpers
+   - Dispatcher: ensure/provision idempotent; candidate claim gate; tick → `age_stale_candidate_states`; `start_scheduler` provision
+   - Workers: resume/artifacts success → ready; primary fail → retry; retry fail → error
+   - Consult routes `candidate_requested_*` to workers
+   - Data: stage-key eligibility 1/0; inflow still `ACTIVE_SEARCH` + `task_key=inflow_discovery`
+4. **Revised (broken by tip):** dispatcher + `test_dispatch_tasks` `LIVE_PROMPTS` → `ACTIVE_SEARCH`; invalid candidate fixture `NEW` → `NEW_CANDIDATE`; AST-525 missing `task_key`; AST-875 template key → `qualify_job_listings`; HOMEPAGE claim expects WFR union
+5. **Manifest**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestScheduler \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst525InflowDiscoveryEligible \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst802InflowDiscoveryEligible \
+  -q
+```
+6. **Bible shasums** (on publish tip)
+   - `d7ad6778d15f9b4c8f0f979ce03e0a094cdeb66569b8480531a9f03246978083` `docs/test-bible/core/candidate.md`
+   - `8bd0d0ace174fc7d2d5a6de504253971d8ab6be32539d4b1dacdc5103148fa17` `docs/test-bible/core/dispatcher.md`
+   - `236e7ae0ae3c7175a0e8d22874b3552354b6d35c490f7fde087c48ff6aeb40c4` `docs/test-bible/core/consult.md`
+   - `b6a084acd828b4b5436592cd63de587420e16259c32ef974ddd5e093341bf963` `docs/test-bible/utils/config.md`
+   - `e4b9fa710119dd409c3fcd69614eac31218bdef2e51507425fa665e41fa90a3b` `docs/test-bible/data/database/dispatch_tasks.md`
+
+— Betty
+
+#### joan — 2026-07-23T23:23:13.326Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-972
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-871/AST-972-dispatch-stale-eligibility` @ `3e19b2d`
+**Implementer:** Katherine Johnson
+**Plan Discuss:** round 1 completed (concern + reply); fix-now closed
+
+## Traceability
+
+### Parent / child AC → plan stages
+
+| AC | Coverage |
+| -- | -- |
+| **#5** REQUESTED_RESUME / REQUESTED_ARTIFACTS claimable; resolve ready/retry/error | Stage 1 config; Stage 2 `dispatch_task` provisioning; Stage 3 eligibility/claim gate; Stage 4 workers + consult route |
+| **#6** ACTIVE_SEARCH sole company/job search gate | Prerequisite AST-970 INFLOW flip + Stage 3 claim gate |
+| Stale aging invocation | Stage 5 tick → `age_stale_candidate_states` |
+| Parent AC 1–4, 7–10 | N/A — Boundaries |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 Config stage-dispatch + claim helpers | Dispatch-triggering stages; config SSoT |
+| 2 Provision REQUESTED_* dispatch_task rows | AC#5 claimability (DB SSOT) |
+| 3 Eligibility + claim gate | ACTIVE_SEARCH search gate; REQUESTED_* claim |
+| 4 Workers + consult routing | ready/retry/error; named craft helpers |
+| 5 Tick aging | Waiting-stage stale activation |
+| 6 Smoke / CC | Gate hygiene |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge SHA work |
+| orch.git.commit-vocabulary | conforms | Plan-only |
+| orch.git.flow-direction-inviolable | conforms | Child sub publish ref |
+| orch.git.ftr-sub-topology | conforms | Under ftr AST-871 |
+| orch.git.merge-on-checkout | conforms | Merge AST-970 prerequisite |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrites |
+| orch.git.no-dev-agent-branches | conforms | No agent branches |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Craft fan-in Decision clear; helpers named |
+| orch.pipeline.plan-is-bible | conforms | Plan on publish ref |
+| orch.pipeline.project-scoped-queues | conforms | Untouched |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready re-validate after discuss |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Katherine |
+| orch.roles.engineer-assignee-through-resolve | conforms | Returns to Katherine on APPROVED |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No grades |
+| astral.agent.do-task-delegation | conforms | Craft via `do_task` |
+| astral.agent.grade-vector-validation | conforms | N/A |
+| astral.batch.batch-id-first | conforms | Single-candidate ctx claim model |
+| astral.batch.batch-id-format | conforms | No new mint rules |
+| astral.batch.claim-process-release | conforms | Matches current candidate claim pattern |
+| astral.batch.entity-agent-responses-latest-only | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | CANDIDATE_STAGE_DISPATCH + TASK_CONFIG keys |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned |
+| astral.layers.core-vs-external-bright-line | conforms | No new external I/O |
+| astral.layers.import-direction | conforms | utils/data/core only |
+| astral.layers.ui-config-driven-business-logic | conforms | No React rule duplication |
+| astral.patterns.coat-check-never-store-empty | conforms | N/A |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Routes via consult |
+| astral.standards.data-raises-caller-logs | conforms | Count helpers stay data |
+| astral.standards.database-header-inventory | conforms | No new tables/columns |
+| astral.standards.debug-contract-gated | conforms | Workers accept debug flag |
+| astral.standards.dry-and-focused-functions | conforms | Reuses claim_states + AST-970 aging |
+| astral.standards.in-scope-only | conforms | No vocabulary/prompts/daisy-chain/nav remaps |
+| astral.standards.logging-via-utils | conforms | No print paths |
+| astral.standards.no-cross-contamination | conforms | Layered files |
+| astral.standards.no-hardcoded-sets | conforms | Craft lists + triggers in config |
+| astral.standards.public-then-helpers | conforms | Public stage workers + ensure helpers |
+| astral.standards.utils-data-late-import-only | conforms | Config-only utils |
+| astral.state.core-decides-transitions | conforms | Workers call transition_candidate_state only |
+| astral.state.job-prior-states-enforced | conforms | Extends claim_states for candidate registry |
+| astral.state.no-daisy-chain-in-run | conforms | One registered-state hop per claim |
+| astral.ui.single-gunicorn-worker | conforms | Tick + start_scheduler provision only |
+
+## Considered and excluded
+
+**Considered:** all rows above (48).
+
+**Excluded:**
+- `astral.debug.no-repo-root-artifacts-dir` — paths miss
+- `astral.debug.spikes-under-debug-dir` — paths miss
+- `astral.docs.features-single-file-per-ticket` — layers/paths miss (no docs in Files Changed)
+- `astral.git.engineer-test-tree-ban` — paths miss
+- `astral.layers.scripts-exempt-from-layer-rules` — layers/paths miss
+- `astral.patterns.require-auth-on-protected-endpoints` — layers/paths miss
+- `astral.ui.frontend-file-placement` — layers/paths miss
+- `astral.ui.naming-conventions` — layers/paths miss
+
+## Findings
+
+### fix-now
+None. Round-1 fix-now closed: Stage 2 provisions REQUESTED_* `dispatch_task` rows on template + existing schedules; AST-973 limited to retired-key remaps.
+
+### discuss (resolved — non-blocking)
+1. Craft helpers named (`do_task`, `split_craft_resume_base_payload`, persist from `run_candidate_artifact_generation`).
+2. Sequential artifacts fan-in remains an accepted Decision.
+
+### acceptable
+- `dispatch_claim_states` for CANDIDATE_STATES; tick-driven aging; Single-Component / high / Medium honest.
+
+**Self-assessment:** Single-Component / high / Medium — honest.
+
+— Joan
+context_tokens≈90000
+
+#### joan — 2026-07-23T23:20:04.981Z
+[validate-plan] blocked — assignee gate
+
+Status is **Plan Ready** (post Plan Discuss r1), but assignee is still **Katherine Johnson**, not Joan.
+
+Chuckles must assign **Joan** before re-validate. Prior note: revise @ `3e19b2d` (REQUESTED_* dispatch_task provisioning) is ready to score once assigned.
+
+— Joan
+context_tokens≈84000
+
+#### joan — 2026-07-23T23:18:52.086Z
+[validate-plan] blocked — assignee gate
+
+Status is **Plan Ready** (post Plan Discuss r1), but assignee is **Katherine Johnson**, not Joan.
+
+Chuckles must assign **Joan** before re-validate. Round-1 reply + plan revise @ `3e19b2d` (REQUESTED_* `dispatch_task` provisioning) look ready to score once assigned.
+
+— Joan
+context_tokens≈78000
+
+#### katherine — 2026-07-23T23:14:05.290Z
+[plan-discuss] round=1 reply
+
+Addressed Joan fix-now on `origin/sub/AST-871/AST-972-dispatch-stale-eligibility` @ `3e19b2d`.
+
+**Delta**
+- Added **Stage 2**: `ensure_candidate_stage_dispatch_tasks` + `provision_candidate_stage_dispatch_tasks` — idempotent upsert of `(candidate_requested_resume, REQUESTED_RESUME)` and `(candidate_requested_artifacts, REQUESTED_ARTIFACTS)` onto `template_candidate_id` first, then every candidate that already has ≥1 `dispatch_task` row; fields from `dispatch_task_admin_defaults` / `save_dispatch_task`; invoked from `start_scheduler`.
+- Clarified AST-973 owns **retired** trigger remaps only (LIVE_PROMPTS→ACTIVE_SEARCH), not creating these new orchestration rows.
+- Named concrete craft helpers in Stage 4 (`do_task`, `split_craft_resume_base_payload`, persist shape from `run_candidate_artifact_generation`; no `parse_candidate_resume` / no nested `asyncio.run`).
+- Renumbered stages; Revisions § Revision 1.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-871/AST-972-dispatch-stale-eligibility/docs/features/candidate/ast-972-dispatch-and-stale-eligibility-for-candidate-stages.md
+
+Moving back to Plan Ready for Joan re-validate.
+
+#### joan — 2026-07-23T23:08:58.744Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-972
+**Overall:** REVISE
+**Publish ref:** `origin/sub/AST-871/AST-972-dispatch-stale-eligibility`
+**Implementer:** Katherine Johnson
+
+## Traceability
+
+### Parent / child AC → plan stages
+
+| AC | Coverage |
+| -- | -- |
+| **#5** REQUESTED_RESUME / REQUESTED_ARTIFACTS claimable; resolve ready/retry/error | Stages 1–3 (config, eligibility/claim gate, workers + consult route) — **gap: no `dispatch_task` row provisioning** |
+| **#6** ACTIVE_SEARCH sole company/job search gate (replaces LIVE_PROMPTS) | Prerequisite (AST-970 INFLOW flip) + Stage 2 claim gate for candidate tasks |
+| Stale aging invocation (parent waiting stages; AST-970 helper) | Stage 4 tick hook |
+| Parent AC 1–4, 7–10 | N/A — vocabulary/history/migration Boundaries |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 Config stage-dispatch + claim helpers | Waiting vs dispatch-triggering stages; config SSoT |
+| 2 Eligibility + claim gate | ACTIVE_SEARCH search gate; REQUESTED_* claimability logic |
+| 3 Workers + consult routing | Claim → ready/retry/error; no craft prompt edits |
+| 4 Tick → `age_stale_candidate_states` | Stale aging activation |
+| 5 Smoke / CC note | Gate hygiene |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge SHA work |
+| orch.git.commit-vocabulary | conforms | Plan-only |
+| orch.git.flow-direction-inviolable | conforms | Child sub publish ref |
+| orch.git.ftr-sub-topology | conforms | Under ftr AST-871 |
+| orch.git.merge-on-checkout | conforms | Merge AST-970 prerequisite stated |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrites |
+| orch.git.no-dev-agent-branches | conforms | No agent branches |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Sequential craft fan-in is engineering; craft keys stop-rule present |
+| orch.pipeline.plan-is-bible | conforms | Plan on publish ref |
+| orch.pipeline.project-scoped-queues | conforms | Untouched |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Katherine |
+| orch.roles.engineer-assignee-through-resolve | conforms | Returns to Katherine on REVISE |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No grades |
+| astral.agent.do-task-delegation | conforms | Craft via existing do_task helpers |
+| astral.agent.grade-vector-validation | conforms | N/A |
+| astral.batch.batch-id-first | conforms | Keeps single-candidate ctx claim model |
+| astral.batch.batch-id-format | conforms | No new mint rules |
+| astral.batch.claim-process-release | conforms | Matches current candidate (no pool claim) pattern |
+| astral.batch.entity-agent-responses-latest-only | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | `CANDIDATE_STAGE_DISPATCH` + TASK_CONFIG orchestration keys |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned |
+| astral.layers.core-vs-external-bright-line | conforms | No new external I/O |
+| astral.layers.import-direction | conforms | utils/data/core only |
+| astral.layers.ui-config-driven-business-logic | conforms | No React rule duplication |
+| astral.patterns.coat-check-never-store-empty | conforms | N/A |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Routes via consult; not consult-grade |
+| astral.standards.data-raises-caller-logs | conforms | Count helpers stay data |
+| astral.standards.database-header-inventory | conforms | No new tables/columns; eligibility logic only |
+| astral.standards.debug-contract-gated | conforms | Workers accept `debug` flag |
+| astral.standards.dry-and-focused-functions | conforms | Reuses claim_states + AST-970 aging |
+| astral.standards.in-scope-only | conforms | No vocabulary/prompts/daisy-chain/nav remaps |
+| astral.standards.logging-via-utils | conforms | No print paths |
+| astral.standards.no-cross-contamination | conforms | Layered files |
+| astral.standards.no-hardcoded-sets | conforms | Craft lists + triggers in config |
+| astral.standards.public-then-helpers | conforms | Public stage workers |
+| astral.standards.utils-data-late-import-only | conforms | Config-only utils |
+| astral.state.core-decides-transitions | conforms | Workers call `transition_candidate_state` only |
+| astral.state.job-prior-states-enforced | conforms | Extends claim_states for candidate registry; jobs untouched |
+| astral.state.no-daisy-chain-in-run | conforms | One registered-state hop per claim; craft fan-in ≠ state daisy-chain |
+| astral.ui.single-gunicorn-worker | conforms | Tick hook only; no worker-count change |
+
+## Considered and excluded
+
+**Considered:** all rows above (48).
+
+**Excluded:**
+- `astral.debug.no-repo-root-artifacts-dir` — paths miss
+- `astral.debug.spikes-under-debug-dir` — paths miss
+- `astral.docs.features-single-file-per-ticket` — layers/paths miss (no docs in Files Changed)
+- `astral.git.engineer-test-tree-ban` — paths miss
+- `astral.layers.scripts-exempt-from-layer-rules` — layers/paths miss
+- `astral.patterns.require-auth-on-protected-endpoints` — layers/paths miss
+- `astral.ui.frontend-file-placement` — layers/paths miss
+- `astral.ui.naming-conventions` — layers/paths miss
+
+## Findings
+
+### fix-now
+1. **Location:** Out of scope / Stage 5 note vs child AC **#5**
+   **Finding:** `dispatch_tasks` DB is the sole source of truth for what the scheduler can run. Plan wires TASK_CONFIG + claim/eligibility/workers but **explicitly refuses** to create/upsert live `dispatch_task` rows for `candidate_requested_resume` / `candidate_requested_artifacts`, parking “adding REQUESTED_* rows to template candidates” on AST-973. AST-973’s charter is remapping **retired** state keys/FKs — not owning new REQUESTED_* orchestration rows. Without template (and existing-candidate) rows, AC#5 “are claimable by dispatch” is not met by this ticket’s deliverable; tick/`get_due_tasks` will never select the new keys.
+   **Recommendation:** Add a Stage (or Stage 1/2 step) that upserts the two new `dispatch_task` rows onto `template_candidate_id` via `dispatch_task_admin_defaults` (and states how existing candidates receive them — set-from-template / one-time upsert). Keep AST-973 for LIVE_PROMPTS→ACTIVE_SEARCH remaps of **existing** rows only.
+
+### discuss
+1. Name the concrete existing craft/persist helpers for resume + each artifact craft key (Conf already flags residual uncertainty).
+2. Artifacts sequential fan-in of ~7 crafts in one dispatch claim — acceptable vs one craft per cycle; Decision is clear, confirm with Archie/Susan only if runtime/cost is a product concern.
+
+### acceptable
+- Extending `dispatch_claim_states` for `CANDIDATE_STATES` (today candidate registry is ignored → no retry companion) is required for AC#5.
+- Not re-flipping INFLOW / not reimplementing aging matches AST-970 ownership.
+- Tick-driven aging (not a new dispatch task) is a sound Decision.
+- Self-assessment Single-Component / high / Medium is honest.
+
+Update plan on publish ref → Plan Ready + Joan re-validate.
+
+— Joan
+context_tokens≈62000
+
+#### joan — 2026-07-23T23:03:09.776Z
+[validate-plan] blocked — assignee gate
+
+Status is **Plan Ready**, but assignee is **Katherine Johnson**, not Joan.
+
+Chuckles must assign **Joan** (`susan+joan@susansomerset.com`) before validate-plan runs. No rubric pass until then.
+
+— Joan
+context_tokens≈16000
+
+#### katherine — 2026-07-23T22:59:07.824Z
+Plan published on `origin/sub/AST-871/AST-972-dispatch-stale-eligibility` @ `9b14341`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-871/AST-972-dispatch-stale-eligibility/docs/features/candidate/ast-972-dispatch-and-stale-eligibility-for-candidate-stages.md
+
+**Self-assessment**
+- **Scope:** Single-Component — config + dispatcher/consult/candidate claim/resolve for REQUESTED_* and tick hook for AST-970 aging; no UI, no job/company machine changes.
+- **Conf:** high — Ada’s AST-970 plan already defines `retry_state` / `error_state` / `stale_after_hours` / `stale_state`, flips INFLOW → ACTIVE_SEARCH, and ships `age_stale_candidate_states`; this ticket only wires claim, stage workers, eligibility split, and the tick call.
+- **Risk:** Medium — wrong claim gate could starve inflow or fire craft on the wrong state; wrong retry/error hop could strand candidates; mitigated by registry-only transitions and leaving live `dispatch_task` remaps to AST-973.
+
+Consumes AST-970 registry (blockedBy). Does not re-implement vocabulary, INFLOW flip, or aging helper.
+
+---
+
 # AST-972 — Dispatch and stale eligibility for candidate stages (Candidate state machine)
 
 **Linear:** [AST-972](https://linear.app/astralcareermatch/issue/AST-972/dispatch-and-stale-eligibility-for-candidate-stages-candidate-state)

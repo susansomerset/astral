@@ -62,3 +62,61 @@ Local dev: Flask `:5001` serves gitignored **`frontend/dist/`**; **`git pull`** 
 ```bash
 ./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_errors.py -q
 ```
+
+
+---
+
+### AST-1117 · AST-1091 (UAT)
+
+**Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1117-print-html-blobs`.
+
+Print Resume / Cover open `/candidate/resume|<job_id>` and `/candidate/cover/<job_id>`. Vite must proxy `/candidate` → Flask; Flask SPA catch-all must **404 JSON** for unmatched `candidate/*` instead of serving `index.html` (SPA `*` → recommended). HTML blueprints + pin resolve remain AST-605 / AST-1100.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| SPA catch-all guard | `src/ui/server.py` `serve_react` | **`TestAst1117CandidateSpaGuard`** |
+| Vite `/candidate` proxy | `src/ui/frontend/vite.config.ts` | **`TestAst1117ViteCandidateProxy`** |
+
+**Existing (bible-backed, not re-authored):** `TestResumeHtmlRoutes` / `TestAst581CoverRoute` (`docs/test-bible/ui/api/api_resume_html.md`); JAR Print `window.open('/candidate/…')` + pin visibility (`docs/test-bible/frontend/lib.md` AST-605 / AST-1100).
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_server.py::TestAst1117CandidateSpaGuard \
+  tests/component/ui/test_server.py::TestAst1117ViteCandidateProxy \
+  tests/component/ui/api/test_api_resume_html.py::TestResumeHtmlRoutes \
+  tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute \
+  -q
+```
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+Registers `surfer_bp` (`GET /api/surfer/pacing_config`). Route behavior: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blueprint registration | `src/ui/server.py` | import coverage via **`server_client`** / **`surfer_client`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+Registers `surfer_bp` (`GET`/`PUT /api/candidates/<id>/surfer/consent`). Route behavior: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Blueprint registration | `src/ui/server.py` | import coverage via **`surfer_consent_client`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.

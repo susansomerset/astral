@@ -5,6 +5,7 @@ from __future__ import annotations
 import inspect
 import json
 import logging
+from types import SimpleNamespace
 from typing import Any, Dict, List, Tuple
 from unittest.mock import AsyncMock, MagicMock
 
@@ -708,6 +709,48 @@ class TestResolveTaskPrompts:
         monkeypatch.setattr(agent_mod, "get_agent", lambda agent_id: None)
         with pytest.raises(ValueError, match="not found"):
             agent_mod._resolve_task_prompts("task")
+
+
+@pytest.mark.skipif(
+    not hasattr(agent_mod, "_is_strict_encoded_batch_consult")
+    or "meteorite_grade_do" not in getattr(cfg, "TASK_CONFIG", {}),
+    reason="AST-1221 alias prompt resolve not on this publish tip",
+)
+class TestAst1221RuntimeAliasAgent:
+    """AST-1221: prompt fetch via master; strict-envelope membership via resolve."""
+
+    def test_resolve_task_prompts_fetches_master_agent_task(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        fetched: list[str] = []
+
+        def _get_task(key: str):
+            fetched.append(key)
+            return {"agent_id": "agent-1", "user_prompt": "from-master"}
+
+        monkeypatch.setattr(agent_mod, "get_agent_task", _get_task)
+        monkeypatch.setattr(
+            agent_mod,
+            "get_agent",
+            lambda agent_id: {"agent_id": agent_id, "model_code": "claude-haiku-4-5"},
+        )
+        agent_row, task_row = agent_mod._resolve_task_prompts("meteorite_grade_do")
+        assert fetched == ["grade_do"]
+        assert task_row["user_prompt"] == "from-master"
+        assert agent_row["agent_id"] == "agent-1"
+
+    def test_resolve_missing_master_mentions_alias(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "get_agent_task", lambda task_key: None)
+        with pytest.raises(ValueError, match=r"alias 'meteorite_grade_do'"):
+            agent_mod._resolve_task_prompts("meteorite_grade_do")
+
+    def test_strict_encoded_batch_via_master_resolve(self) -> None:
+        assert agent_mod._is_strict_encoded_batch_consult("meteorite_grade_do") is True
+        assert agent_mod._is_strict_encoded_batch_consult("meteorite_grade_get") is True
+        assert agent_mod._is_strict_encoded_batch_consult("grade_do") is True
+        assert agent_mod._is_strict_encoded_batch_consult("prefilter_company") is False
 
 
 class TestChainContext:
@@ -5279,7 +5322,10 @@ class TestAst848DispatchChainDoTask:
         stub_agent_storage: Dict[str, MagicMock],
     ) -> None:
         transition = MagicMock()
+        release = MagicMock()
         monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        # Provider-failed path also releases claim (AST-1191); keep this hard-string case green.
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(
@@ -5301,6 +5347,7 @@ class TestAst848DispatchChainDoTask:
         )
         assert out["success"] is False
         transition.assert_called_once_with(["job-848"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-848")
 
     def test_dispatch_chain_ctx_reads_trigger_and_graduate_flag(self) -> None:
         trigger, graduate = agent_mod._dispatch_chain_ctx({
@@ -5584,6 +5631,308 @@ class TestAst897DoTaskBalanceDebug:
         assert out.get("failure_class") == fc
         detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
         assert any("provider_balance_refusal" in str(m) for m in detail_msgs)
+
+
+class TestAst1190DoTaskEmptyProviderError:
+    """AST-1190: do_task coerces blank provider error= and debug-details empty_response."""
+
+    @pytest.mark.asyncio
+    async def test_blank_error_coerced_non_empty_on_provider_failure(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "",
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        with caplog.at_level(logging.ERROR):
+            out = await agent_mod.do_task(
+                "evaluate_jd",
+                index="job-1",
+                ctx=_draft_job_resume_ctx(),
+                debug=False,
+            )
+        assert out["success"] is False
+        assert isinstance(out.get("error"), str) and out["error"].strip()
+        assert any(
+            "provider call failed" in r.message and "error=" in r.message
+            for r in caplog.records
+        )
+        failed_line = next(
+            r.message for r in caplog.records if "provider call failed" in r.message
+        )
+        # Must not end with a blank error= value
+        assert not failed_line.rstrip().endswith("error=")
+
+    @pytest.mark.asyncio
+    async def test_debug_detail_on_provider_empty_response(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        from src.utils.config import PROVIDER_EMPTY_RESPONSE
+
+        fc = PROVIDER_EMPTY_RESPONSE["failure_class"]
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": PROVIDER_EMPTY_RESPONSE["error"],
+                    "failure_class": fc,
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx=_draft_job_resume_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        assert out.get("failure_class") == fc
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any("provider_empty_response" in str(m) for m in detail_msgs)
+
+
+class TestAst1191ArtifactHopFailureRelease:
+    """AST-1191: provider hop failure → error_state + claim release + debug trail."""
+
+    def _dispatch_ctx(self) -> Dict[str, Any]:
+        return {
+            "candidate_data": {"artifacts": {}},
+            "batch_entities": _batch_entities("job-1191"),
+            "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+            "dispatch_chain_graduate_on_terminal": True,
+        }
+
+    def test_apply_provider_failed_transitions_and_releases(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="job",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Provider call exceeded per-call time budget (600s)",
+            debug=False,
+            provider_failed=True,
+            failure_class="provider_call_timeout",
+        )
+        assert out["apply_error_state"] is True
+        assert out["error_state"] == cfg.ERROR_BUILD_ARTIFACTS_STATE
+        assert out["batch_released"] is True
+        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1191")
+
+    def test_apply_balance_hold_skips_error_state_but_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import PROVIDER_BALANCE_REFUSAL
+
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="job",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Insufficient Balance",
+            debug=False,
+            provider_failed=True,
+            failure_class=PROVIDER_BALANCE_REFUSAL["failure_class"],
+        )
+        assert out["apply_error_state"] is False
+        assert out["error_state"] == ""
+        assert out["batch_released"] is True
+        transition.assert_not_called()
+        release.assert_called_once_with("job-1191")
+
+    def test_apply_non_dispatch_chain_returns_noop(self) -> None:
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="job",
+            index="job-1191",
+            ctx={},
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Provider call failed",
+            debug=False,
+            provider_failed=True,
+            failure_class="provider_call_timeout",
+        )
+        assert out == agent_mod._HOP_FAILURE_NOOP
+
+    @pytest.mark.asyncio
+    async def test_do_task_provider_timeout_releases_and_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider call exceeded per-call time budget (600s)",
+                    "failure_class": "provider_call_timeout",
+                    "api_response": None,
+                    "timesheet": {
+                        "duration": 610.0,
+                        "inputtotal": 0,
+                        "inputcached": 0,
+                        "outputtotal": 0,
+                        "cache_creation_tokens": 0,
+                    },
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            debug=False,
+        )
+        assert out["success"] is False
+        transition.assert_called_once_with(["job-1191"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1191")
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_emits_found_and_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", MagicMock())
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", MagicMock())
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Provider returned unusable response",
+                    "failure_class": "provider_empty_response",
+                    "api_response": SimpleNamespace(stop_reason="?"),
+                    "timesheet": {
+                        "duration": 1.5,
+                        "inputtotal": 10,
+                        "inputcached": 2,
+                        "outputtotal": 0,
+                        "cache_creation_tokens": 0,
+                    },
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
+        assert any(
+            m.startswith("found duration=")
+            and "stop=?" in m
+            and "tokens fresh=10" in m
+            and "cache_read=2" in m
+            and "failure_class=provider_empty_response" in m
+            for m in detail_msgs
+        )
+        assert any(
+            m.startswith("recorded error=")
+            and "error_state=ERROR_BUILD_ARTIFACTS" in m
+            and "batch_released=true" in m
+            for m in detail_msgs
+        )
+        assert any("chain_hop_failed apply_error_state=True" in m for m in detail_msgs)
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_false_skips_found_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", MagicMock())
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", MagicMock())
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "timeout",
+                    "failure_class": "provider_call_timeout",
+                    "api_response": None,
+                    "timesheet": {},
+                }
+            ),
+        )
+        await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1191",
+            ctx=self._dispatch_ctx(),
+            debug=False,
+        )
+        detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
+        assert not any(m.startswith("found ") for m in detail_msgs)
+        assert not any(m.startswith("recorded ") for m in detail_msgs)
 
 
 class TestAst903CraftRubricMaxTokensFloor:
@@ -6356,3 +6705,503 @@ class TestAst1083StoreResponseDebugResult:
         assert "agent_data_write" in combined
         assert "block_type=RESPONSE" in combined
         assert "outcome=new_content" in combined
+
+
+@pytest.mark.skipif(
+    "meteorite_email" not in TASK_CONFIG,
+    reason="AST-1212 meteorite_email not on this publish tip",
+)
+class TestAst1144ParseMeteoriteEmailMetadataDict:
+    """AST-1144 / AST-1212: realistic Ruth html_links payload with dict metadata validates."""
+
+    def _schema(self):
+        return TASK_CONFIG["meteorite_email"]["response_schema"]
+
+    def test_dict_metadata_validates(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "parse_mode": "html_links",
+                "jobs": [
+                    {
+                        "job_link": "https://www.dice.com/job-detail/abc",
+                        "job_title": "Engineer",
+                        "metadata": {"company": "Acme", "location": "Remote"},
+                    }
+                ],
+            }
+        }
+        assert agent_mod._validate_response_schema(
+            parsed, self._schema(), "meteorite_email"
+        ) is None
+
+    def test_str_metadata_rejected(self) -> None:
+        # Pre-AST-1144 contract — must not silently accept again.
+        parsed = {
+            "agent_payload": {
+                "parse_mode": "html_links",
+                "jobs": [
+                    {
+                        "job_link": "https://www.dice.com/job-detail/abc",
+                        "metadata": "company=Acme",
+                    }
+                ],
+            }
+        }
+        err = agent_mod._validate_response_schema(
+            parsed, self._schema(), "meteorite_email"
+        )
+        assert err is not None
+        assert "metadata" in err
+        assert "must be dict" in err
+
+    def test_omitted_metadata_still_ok(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "parse_mode": "html_links",
+                "jobs": [{"job_link": "https://jobs.example.com/a"}],
+            }
+        }
+        assert agent_mod._validate_response_schema(
+            parsed, self._schema(), "meteorite_email"
+        ) is None
+
+
+
+class TestAst1192TokenViewForDoTask:
+    """AST-1192: do_task feeds walkable candidate token view + name-token debug."""
+
+    def _row(self, *, first: str = "Ada", last: str = "Lovelace", full: str = "Ada Lovelace") -> dict:
+        return {
+            "astral_candidate_id": "cand-1192",
+            "first": first,
+            "last": last,
+            "full": full,
+            "pronouns": "she/her",
+            # Blob has no top-level first/last — pre-fix resolve path saw empty names.
+            "candidate_data": {
+                "contact": {"contact_email": "ada@example.com"},
+                "context": {},
+                "artifacts": {},
+            },
+        }
+
+    def test_loads_row_by_astral_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == "cand-1192" else None,
+        )
+        view = agent_mod._token_view_for_do_task(
+            {
+                "astral_candidate_id": "cand-1192",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+            },
+            None,
+        )
+        assert view["first"] == "Ada"
+        assert view["last"] == "Lovelace"
+        assert view["full"] == "Ada Lovelace"
+        assert view["contact"]["contact_email"] == "ada@example.com"
+
+    def test_full_row_ctx_without_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        ctx = self._row()
+        view = agent_mod._token_view_for_do_task(ctx, None)
+        assert view["first"] == "Ada"
+        assert view["last"] == "Lovelace"
+
+    def test_already_token_view_candidate_data(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        existing = {
+            "first": "Grace",
+            "last": "Hopper",
+            "full": "Grace Hopper",
+            "contact": {},
+            "context": {},
+            "artifacts": {},
+        }
+        view = agent_mod._token_view_for_do_task({}, existing)
+        assert view["first"] == "Grace"
+        assert view is not existing  # dict copy
+
+    def test_fallback_raw_blob_when_no_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("src.core.candidate.get_candidate", lambda cid: None)
+        blob = {"contact": {"contact_email": "x@y.z"}, "context": {}, "artifacts": {}}
+        view = agent_mod._token_view_for_do_task(
+            {"astral_candidate_id": "missing", "candidate_data": blob},
+            None,
+        )
+        assert view == blob
+        assert "first" not in view
+
+    @pytest.mark.asyncio
+    async def test_do_task_dispatch_raft_resolves_name_tokens(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        """Raft blob lacks name columns; load-by-id view fills {$FIRST_NAME}/{$LAST_NAME}."""
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == "cand-1192" else None,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.write_job_dispatch_hop_label",
+            MagicMock(return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"),
+        )
+        agent_row, task_row = _agent_rows(run_next="")
+        task_row = dict(task_row)
+        task_row["user_prompt"] = "Hello {$FIRST_NAME} {$LAST_NAME}"
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: (agent_row, task_row))
+        _patch_strict_batch_anthropic(monkeypatch)
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"title": "Role", "company": "Co"},
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1192",
+            ctx={
+                "astral_candidate_id": "cand-1192",
+                "candidate_data": {
+                    "contact": {},
+                    "context": {},
+                    "artifacts": {},
+                },
+                "batch_entities": _batch_entities("job-1192"),
+                "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "dispatch_chain_graduate_on_terminal": False,
+            },
+            debug=False,
+        )
+        assert out["success"] is True
+        # user_blocks arg position 0 — flatten text for token assert
+        user_blocks = send.await_args.args[0]
+        user_text = " ".join(
+            b.get("text", "") if isinstance(b, dict) else str(b) for b in (user_blocks or [])
+        )
+        assert "Hello Ada Lovelace" in user_text
+        assert "{$FIRST_NAME}" not in user_text
+        assert "{$LAST_NAME}" not in user_text
+
+    @pytest.mark.asyncio
+    async def test_do_task_debug_name_token_found_recorded(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        monkeypatch.setattr(
+            "src.core.candidate.get_candidate",
+            lambda cid: self._row() if cid == "cand-1192" else None,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(
+            "src.core.tracker.write_job_dispatch_hop_label",
+            MagicMock(return_value=f"{cfg.BUILD_ARTIFACTS_BASE_STATE}.anticipate_scan"),
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"title": "Role", "company": "Co"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        out = await agent_mod.do_task(
+            "anticipate_scan",
+            index="job-1192",
+            ctx={
+                "astral_candidate_id": "cand-1192",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+                "batch_entities": _batch_entities("job-1192"),
+                "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "dispatch_chain_graduate_on_terminal": False,
+            },
+            debug=True,
+        )
+        assert out["success"] is True
+        index_calls = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert any(
+            c.get("func") == "do_task.candidate_token_view"
+            and c.get("outcome") == "success — name tokens"
+            and c.get("identifier") == "cand-1192"
+            for c in index_calls
+        )
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any(
+            "found first=nonempty last=nonempty full=nonempty" in str(m) for m in detail_msgs
+        )
+        assert any(
+            "recorded FIRST_NAME='Ada' LAST_NAME='Lovelace' FULL_NAME='Ada Lovelace'" in str(m)
+            for m in detail_msgs
+        )
+
+class TestAst1193DebugJobContext:
+    """AST-1193: do_task threads debug into build_job_token_context."""
+
+    def test_job_context_for_call_passes_debug(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: Dict[str, Any] = {}
+
+        def _builder(job, cd, *, candidate_id="", debug=False):
+            captured["debug"] = debug
+            captured["job_id"] = job.get("astral_job_id")
+            return {"VISIBLE_JD": "x"}
+
+        monkeypatch.setattr(
+            "src.core.consult.build_job_token_context",
+            _builder,
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_job_row_from_ctx",
+            lambda ctx, index: {"astral_job_id": index, "job_data": {}},
+        )
+        monkeypatch.setattr(agent_mod, "_single_job_in_scope", lambda ctx, index: True)
+        out = agent_mod._job_context_for_call(
+            {"astral_candidate_id": "c1", "batch_entities": _batch_entities("job-1193")},
+            "job-1193",
+            {},
+            debug=True,
+        )
+        assert out == {"VISIBLE_JD": "x"}
+        assert captured["debug"] is True
+        assert captured["job_id"] == "job-1193"
+
+
+
+class TestAst1252PersistCandidateCraftHops:
+    """AST-1252: do_task persist_candidate_craft_hops hook (source + flag wiring)."""
+
+    def test_do_task_source_has_persist_hook(self) -> None:
+        src = inspect.getsource(agent_mod.do_task)
+        assert "persist_candidate_craft_hops" in src
+        assert "_persist_craft_dispatch_success" in src
+        assert "truncate_debug_content" in src
+
+    def test_persist_helper_supports_craft_get_rubric(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.core import candidate as candidate_mod
+
+        saved: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_candidate",
+            lambda *a, **k: saved.append(k) or None,
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "apply_rubric_vectors_save",
+            lambda cid, arts: saved.append({"cid": cid, "arts": arts}),
+        )
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", lambda arts: None)
+        candidate_mod._persist_craft_dispatch_success(
+            "cand-1",
+            "craft_get_rubric",
+            {"criteria": [{"criterion": "x", "grade_descriptions": {"A": "y"}}]},
+        )
+        assert any("arts" in (s or {}) for s in saved)
+
+
+
+class TestAst1264CandidateCraftSuccession:
+    """AST-1264: live CALLER re-inject + hydrate skip/fail-open for persist craft path."""
+
+    def test_do_task_source_has_caller_reinject_and_hydrate_gates(self) -> None:
+        src = inspect.getsource(agent_mod.do_task)
+        assert "AST-1264: re-inject" in src
+        assert "_live_caller" in src
+        assert "fail-open to live CALLER" in src
+        assert "persist_candidate_craft succession stopped" in src
+
+    def _stub_craft_llm(self, monkeypatch: pytest.MonkeyPatch, send: AsyncMock) -> None:
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "anthropic")
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", AsyncMock())
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        from src.core import candidate as candidate_mod
+        monkeypatch.setattr(candidate_mod, "_persist_craft_dispatch_success", MagicMock())
+
+    @pytest.mark.asyncio
+    async def test_persist_craft_skips_hydrate_when_live_caller(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        hydrate = MagicMock(return_value=({}, "hydrate should not run"))
+
+        def resolve(task_key: str):
+            agent, task = _agent_rows(run_next="")
+            task["user_prompt"] = "Continue from {CALLER_RESPONSE}"
+            return agent, task
+
+        monkeypatch.setattr(agent_mod, "_hydrate_caller_chain_context", hydrate)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: True)
+        monkeypatch.setattr(agent_mod, "_effective_entity_type", lambda *a, **k: "candidate")
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {
+                        "criteria": [
+                            {"code": "DO", "label": "Do", "content": "body", "importance": 5},
+                        ],
+                    },
+                },
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_craft_llm(monkeypatch, send)
+        out = await agent_mod.do_task(
+            "craft_do_rubric",
+            index="somerset",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "candidate_data": {"astral_candidate_id": "somerset"},
+            },
+            chain_context={
+                "_hop_parent_task_key": "craft_get_rubric",
+                "CALLER_RESPONSE": "live get payload",
+            },
+            debug=True,
+        )
+        assert out.get("success") is True
+        hydrate.assert_not_called()
+        assert send.await_count == 1
+
+    @pytest.mark.asyncio
+    async def test_persist_craft_hydrate_hard_fails_without_live_caller(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        hydrate = MagicMock(return_value=({}, "missing agent_data for parent"))
+
+        def resolve(task_key: str):
+            agent, task = _agent_rows(run_next="")
+            task["user_prompt"] = "Continue from {CALLER_RESPONSE}"
+            return agent, task
+
+        monkeypatch.setattr(agent_mod, "_hydrate_caller_chain_context", hydrate)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        monkeypatch.setattr(agent_mod, "_task_references_caller_tokens", lambda *a, **k: True)
+        monkeypatch.setattr(agent_mod, "_effective_entity_type", lambda *a, **k: "candidate")
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {},
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_craft_llm(monkeypatch, send)
+        out = await agent_mod.do_task(
+            "craft_do_rubric",
+            index="somerset",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "candidate_data": {"astral_candidate_id": "somerset"},
+            },
+            chain_context={"_hop_parent_task_key": "craft_get_rubric"},
+            debug=True,
+        )
+        assert out.get("success") is False
+        assert "missing agent_data" in (out.get("error") or "")
+        hydrate.assert_called_once()
+        assert send.await_count == 0
+
+    @pytest.mark.asyncio
+    async def test_persist_craft_reinjects_caller_on_recurse(
+        self, monkeypatch: pytest.MonkeyPatch, batch_token: Any,
+    ) -> None:
+        """Parent craft_get → child craft_do receives live CALLER via reinject."""
+        child_contexts: list = []
+
+        def resolve(task_key: str):
+            agent, task = _agent_rows(
+                run_next="craft_do_rubric" if task_key == "craft_get_rubric" else "",
+            )
+            task["user_prompt"] = (
+                "Use {CALLER_RESPONSE}" if task_key == "craft_do_rubric" else "Craft get"
+            )
+            return agent, task
+
+        real_do = agent_mod.do_task
+
+        async def wrap_do_task(task_key, *args, **kwargs):
+            if task_key == "craft_do_rubric":
+                child_contexts.append(dict(kwargs.get("chain_context") or {}))
+                return {
+                    "success": True,
+                    "parsed_response": {"criteria": []},
+                    "api_response": {},
+                    "timesheet": {},
+                }
+            return await real_do(task_key, *args, **kwargs)
+
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", resolve)
+        monkeypatch.setattr(
+            agent_mod,
+            "_hydrate_caller_chain_context",
+            MagicMock(return_value=({}, "should skip")),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_chain_tokens_for_next_hop",
+            lambda *a, **k: {"CALLER_RESPONSE": "from-get-hop", "CALLER_USER": "u"},
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {
+                        "criteria": [
+                            {"code": "GT", "label": "Get", "content": "body", "importance": 5},
+                        ],
+                    },
+                },
+                "api_response": _api_response("{}"),
+                "timesheet": {},
+            }
+        )
+        self._stub_craft_llm(monkeypatch, send)
+        monkeypatch.setattr(agent_mod, "do_task", wrap_do_task)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="somerset",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "candidate_data": {"astral_candidate_id": "somerset"},
+            },
+            debug=True,
+        )
+        assert out.get("success") is True
+        assert child_contexts, "expected recurse into craft_do_rubric"
+        assert (child_contexts[0].get("CALLER_RESPONSE") or "").strip() == "from-get-hop"

@@ -12,7 +12,7 @@ This is the reference to existing tests, including unit/component and integratio
 
 
 
-`docs/test-bible/` mirrors `tests/component/` (Python layer folders; React under `frontend/` with folder-level bible files).
+`docs/test-bible/` mirrors `tests/component/` (Python layer folders; React under `frontend/` and the WXT extension under `extension/` with folder-level bible files).
 
 Component files hold coverage maps and `### AST-NNN` manifest blocks for that module or folder.
 
@@ -40,6 +40,8 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 | Frontend | [`frontend/`](frontend/) | `tests/component/frontend/` |
 
+| Extension | [`extension/`](extension/) | `tests/component/extension/` |
+
 | Dev | [`dev/`](dev/) | `tests/component/dev/` |
 
 | Integration | [`integration/`](integration/) | `tests/integration/` |
@@ -57,6 +59,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 **Docs-only** (canon statute + proposed pattern + CODE_RULES pointer). Live edits on **`origin/sub/AST-1109/AST-1110-statute-run-next-is-chain-authority`**: `canon/statutes/astral/dispatch/astral.dispatch.run-next-is-chain-authority.md` (active, Archie-approved) + statutes README/HARVEST register (active count **58**); `canon/patterns/dispatch/pattern.dispatch.run-next-chain-authority.md` (`status: proposed`) + patterns README/HARVEST; `docs/ASTRAL_CODE_RULES.md` §2.6.0 statute pointer + clarifying sentence. No `src/**`, no frozenset deletes, no boot SQL (siblings AST-1111–AST-1113).
 
 **No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute active + Archie frontmatter; pattern `proposed`; CODE_RULES §2.6.0 cites `astral.dispatch.run-next-is-chain-authority`; statutes README/HARVEST count **58**) — no pytest / zero-arg harness / branch-lock gate. Sibling anomaly remediations under parent **AST-1109** are out of scope.
+
+### AST-1260 · AST-1257 (claim-process-release / candidate law)
+
+**Docs-only** (canon statute + pattern + CODE_RULES §2.4 + `CANDIDATE_DATA_MODEL`). Live edits on **`origin/sub/AST-1257/AST-1260-tighten-claim-process-release-remove-conflicting-candidate-law`**: `canon/statutes/astral/batch/astral.batch.claim-process-release.md` (active, Archie-approved — ENTITY_TYPES pool claim; zero-row release note); `canon/patterns/batch/pattern.batch.entity-claim-process-release.md` (candidate `canonical_refs` + pool-parity Solution); `docs/ASTRAL_CODE_RULES.md` §2.4 candidate/ENTITY_TYPES wording; `docs/features/candidate/CANDIDATE_DATA_MODEL.md` (`batch_id` / `batch_created_at`; no “no batch primitives”). No `src/**`, no pytest. Product claim/dispatch remains siblings **AST-1258** / **AST-1259**.
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute Statement has `ENTITY_TYPES` + pool + zero-row release; `approved_by: Archie`; pattern lists `claim_candidate_batch` / `get_new_candidate_batch`; CODE_RULES §2.4 names candidate claim-queue duty; `CANDIDATE_DATA_MODEL` has lock columns on table + Snake_case DB columns and no “No batch primitives” / “not batch-processed”) — no pytest / zero-arg harness / branch-lock gate.
 
 ### Retired monolith section map
 
@@ -303,7 +311,7 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 ## 2. Where tests live
 
-- **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`).
+- **Component tests:** `tests/component/` mirrors `src/` (Python under layer folders; React under `tests/component/frontend/`; WXT extension under `tests/component/extension/`).
 - **Integration tests:** `tests/integration/` — multi-layer in-process scenarios; see [`integration/README.md`](integration/README.md).
 - **Data layer carve-out (§4a):** `tests/component/data/database/` holds cluster files for `src/data/database.py`; see `tests/component/data/database/_README.md`.
 
@@ -322,12 +330,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 - When such a file reaches 100%, update **§7.12**, the **§7.13** tables (branch lock column), and **`LOCKED_AT_100`** in the same commit.
 - **`pragma: no cover`** is allowed only with a short in-file note and bible mention when a branch is impractical to hit in component tests (AST-390: `formatting.py` DOM sibling union + JSON heal edge paths; AST-391: `playwright.py` browser session/crawl paths and `anthropic.py` SDK/heal edge paths; AST-394: `api_admin.py` `update_dtask` `score_floor` elif false exit arc; **AST-471**: `roster.py` unreachable `job_ids` index guard after length parity — **AST-622** retired gazer board-batch legacy `_log.debug` stanza in favor of §1.5.1 contract lines).
 
-### 6b. Frontend (Vitest + RTL under `tests/component/frontend/`)
+### 6b. Frontend + extension (Vitest under `tests/component/frontend/` and `tests/component/extension/`)
 
 - **Risk-based**, not branch-count completeness: Prefer tests that anchor real regressions and user-visible flows over enforcing a percentage per source file (**AST-395**).
-- **No** mandated per-file 100% branch targets for `src/ui/frontend/src/**`. **`LOCKED_AT_100` in `scripts/testing/check_frontend_coverage.py` stays intentionally empty** unless Product adopts explicit frontend locks later.
-- `./scripts/testing/run_component_tests.sh` still runs Vitest with coverage and invokes `check_frontend_coverage.py`; the gate is **tests passing** plus the checker succeeding with **zero** locked files—not full branch saturation.
-- Detailed map: §7.13f.
+- **No** mandated per-file 100% branch targets for `src/ui/frontend/src/**` or `src/ui/extension/**`. **`LOCKED_AT_100` in `scripts/testing/check_frontend_coverage.py` stays intentionally empty** unless Product adopts explicit frontend locks later.
+- `./scripts/testing/run_component_tests.sh` still runs Vitest with coverage and invokes `check_frontend_coverage.py` for the SPA; the gate is **tests passing** plus the checker succeeding with **zero** locked files—not full branch saturation. The extension package runs `npm run test:component` on the same zero-arg path (**AST-1254**) with no separate branch-lock script.
+- Detailed map: §7.13f (SPA); **`docs/test-bible/extension/`** (WXT client).
 - **QA manifest rules (Betty — all UI tickets):** §6c.
 
 ### 6c. QA manifest rules — routed pages and filter UX (**AST-436** UAT lesson)
@@ -426,7 +434,7 @@ Requires **Python 3.10+** (creates `.venv` on first run). `ASTRAL_DB_DIR` defaul
 
 With zero arguments the harness selects **`tests/component`** wholesale. Passing paths, node IDs, or **`pytest`** flags after the script name forwards them verbatim as the **`pytest`** target list (narrow manifest runs without silently expanding to the full tree). Only the default full selection runs **`check_per_file_coverage.py`**.
 
-When `src/ui/frontend/package.json` is present, the script also runs Vitest component tests under `tests/component/frontend/` — **only** when invoked with **zero** trailing arguments (narrowed pytest paths skip Vitest).
+When `src/ui/frontend/package.json` is present, the script also runs Vitest component tests under `tests/component/frontend/` — **only** when invoked with **zero** trailing arguments (narrowed pytest paths skip Vitest). When `src/ui/extension/package.json` is present, the same zero-arg path also runs `cd src/ui/extension && npm run test:component` (**AST-1254**).
 
 ### AST-664 (parent AST-598)
 

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type MouseEvent } from "react"
+import { useCallback, useEffect, useState } from "react"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import api from "../lib/api"
@@ -18,6 +18,29 @@ type InboxMessage = {
   candidate_match?: CandidateMatch
 }
 
+type LandMeteoriteResultRow = {
+  message_id: string
+  outcome: string
+  astral_candidate_id: string | null
+}
+
+type LandMeteoriteResponse = {
+  results?: LandMeteoriteResultRow[]
+  total_processed?: number
+  total_passed?: number
+  total_failed?: number
+  total_errors?: number
+  total_skipped?: number
+  error?: string
+}
+
+function outcomeKind(outcome: string): "skip" | "fail" | "ok" {
+  const o = (outcome || "").trim()
+  if (o.startsWith("skipped-") || o === "skipped-other-candidate") return "skip"
+  if (o === "error" || o === "failed") return "fail"
+  return "ok"
+}
+
 export default function AdminManageEmail() {
   const [messages, setMessages] = useState<InboxMessage[]>([])
   const [loading, setLoading] = useState(true)
@@ -27,44 +50,62 @@ export default function AdminManageEmail() {
   const [bodyLoading, setBodyLoading] = useState(false)
   const [bodyError, setBodyError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
-  const [createBusyId, setCreateBusyId] = useState<string | null>(null)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [landBusy, setLandBusy] = useState(false)
+  const [landResults, setLandResults] = useState<LandMeteoriteResultRow[] | null>(null)
+  const [landError, setLandError] = useState<string | null>(null)
+  const [landSubjectById, setLandSubjectById] = useState<Record<string, string>>({})
   const clearToast = useCallback(() => setToast(null), [])
 
-  useEffect(() => {
-    let cancelled = false
-    ;(async () => {
-      setLoading(true)
-      setError(null)
-      try {
-        const r = await api("/api/admin/inbox/messages")
-        const data = await r.json().catch(() => ({} as Record<string, unknown>))
-        if (!r.ok) {
-          const msg =
-            (typeof data.error === "string" && data.error) || `HTTP ${r.status}`
-          if (!cancelled) {
-            setError(msg)
-            setToast({ text: msg, variant: "error" })
-          }
-          return
-        }
-        const rows = Array.isArray(data.messages) ? data.messages : []
-        if (!cancelled) {
-          setMessages(rows as InboxMessage[])
-        }
-      } catch (e) {
-        const msg = e instanceof Error ? e.message : "Failed to load inbox"
-        if (!cancelled) {
-          setError(msg)
-          setToast({ text: msg, variant: "error" })
-        }
-      } finally {
-        if (!cancelled) setLoading(false)
+  const selectionCount = selectedIds.size
+  const landEnabled = selectionCount > 0 && !landBusy
+  const allSelected =
+    messages.length > 0 && selectedIds.size === messages.length
+
+  function toggleSelect(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(messages.map(m => m.id)))
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set())
+  }
+
+  const loadMessages = useCallback(async () => {
+    setLoading(true)
+    setError(null)
+    try {
+      const r = await api("/api/admin/inbox/messages")
+      const data = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (!r.ok) {
+        const msg =
+          (typeof data.error === "string" && data.error) || `HTTP ${r.status}`
+        setError(msg)
+        setToast({ text: msg, variant: "error" })
+        return
       }
-    })()
-    return () => {
-      cancelled = true
+      const rows = Array.isArray(data.messages) ? data.messages : []
+      setMessages(rows as InboxMessage[])
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Failed to load inbox"
+      setError(msg)
+      setToast({ text: msg, variant: "error" })
+    } finally {
+      setLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void loadMessages()
+  }, [loadMessages])
 
   async function openMessage(row: InboxMessage) {
     setSelectedId(row.id)
@@ -102,64 +143,50 @@ export default function AdminManageEmail() {
       ? (selected.candidate_match.astral_candidate_id as string)
       : null
 
-  async function onCreateClick(row: InboxMessage, e: MouseEvent) {
-    e.stopPropagation()
-    const matched =
-      row.candidate_match?.matched === true &&
-      Boolean((row.candidate_match.astral_candidate_id || "").trim())
-    if (!matched || createBusyId !== null) return
-    setCreateBusyId(row.id)
+  async function onLandMeteorite() {
+    if (selectedIds.size === 0 || landBusy) return
+    const ordered = messages.filter(m => selectedIds.has(m.id)).map(m => m.id)
+    const orderedSet = new Set(ordered)
+    const leftovers = [...selectedIds].filter(id => !orderedSet.has(id))
+    const ids = [...ordered, ...leftovers]
+    const subjectById = Object.fromEntries(messages.map(m => [m.id, m.subject]))
+    setLandSubjectById(subjectById)
+    setLandBusy(true)
+    setLandError(null)
+    setLandResults(null)
     setToast(null)
     try {
-      const r = await api(
-        `/api/admin/inbox/messages/${encodeURIComponent(row.id)}/create-job`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: "{}",
-        },
-      )
-      const data = await r.json().catch(() => ({} as Record<string, unknown>))
+      const r = await api("/api/admin/inbox/land-meteorite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message_ids: ids }),
+      })
+      const data = (await r.json().catch(() => ({}))) as LandMeteoriteResponse
       if (!r.ok) {
         const msg =
           (typeof data.error === "string" && data.error) || `HTTP ${r.status}`
+        setLandError(msg)
         setToast({ text: msg, variant: "error" })
         return
       }
-      const createdRaw = data.created
-      const skippedRaw = data.skipped
-      const createdCount = Array.isArray(createdRaw) ? createdRaw.length : 0
-      const skippedCount = Array.isArray(skippedRaw) ? skippedRaw.length : 0
-      if (createdCount === 0 && skippedCount > 0) {
-        setToast({
-          text: `Skipped ${skippedCount} (already known or empty)`,
-          variant: "success",
-        })
-        return
+      setLandResults(Array.isArray(data.results) ? data.results : [])
+      clearSelection()
+      const parts = [
+        typeof data.total_passed === "number" ? `passed ${data.total_passed}` : null,
+        typeof data.total_skipped === "number" ? `skipped ${data.total_skipped}` : null,
+        typeof data.total_failed === "number" ? `failed ${data.total_failed}` : null,
+        typeof data.total_errors === "number" ? `errors ${data.total_errors}` : null,
+      ].filter(Boolean)
+      if (parts.length > 0) {
+        setToast({ text: `Land Meteorite: ${parts.join(", ")}`, variant: "success" })
       }
-      const jobId =
-        typeof data.astral_job_id === "string" ? data.astral_job_id : ""
-      const createdPart =
-        createdCount > 1
-          ? `Created ${createdCount} jobs`
-          : jobId
-            ? `Created job ${jobId}`
-            : createdCount === 1
-              ? "Created job"
-              : "Created job"
-      const skippedPart =
-        skippedCount > 0 ? `; skipped ${skippedCount}` : ""
-      setToast({
-        text: `${createdPart}${skippedPart}`,
-        variant: "success",
-      })
+      await loadMessages()
     } catch (err) {
-      setToast({
-        text: err instanceof Error ? err.message : "Create failed",
-        variant: "error",
-      })
+      const msg = err instanceof Error ? err.message : "Land Meteorite failed"
+      setLandError(msg)
+      setToast({ text: msg, variant: "error" })
     } finally {
-      setCreateBusyId(null)
+      setLandBusy(false)
     }
   }
 
@@ -185,53 +212,111 @@ export default function AdminManageEmail() {
         <p style={{ color: "var(--danger)", fontSize: 13 }}>{error}</p>
       )}
       {!loading && !error && (
-        <div className="list-page-table-wrap">
-          <table className="list-page-table">
-            <thead>
-              <tr>
-                <th>Subject</th>
-                <th>From</th>
-                <th>Candidate</th>
-                <th>Date</th>
-                <th>Status</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {messages.map(row => (
-                <tr
-                  key={row.id}
-                  style={{ cursor: "pointer" }}
-                  onClick={() => openMessage(row)}
-                >
-                  <td>{row.subject}</td>
-                  <td>{row.from_address}</td>
-                  {matchCell(row)}
-                  <td>{row.date}</td>
-                  <td>{row.unread ? "Unread" : "Read"}</td>
-                  <td onClick={e => e.stopPropagation()}>
-                    {row.candidate_match?.matched === true &&
-                    (row.candidate_match.astral_candidate_id || "").trim() ? (
-                      <button
-                        type="button"
-                        className="manage-email-create"
-                        disabled={createBusyId !== null}
-                        onClick={e => onCreateClick(row, e)}
-                      >
-                        Create
-                      </button>
-                    ) : null}
-                  </td>
-                </tr>
-              ))}
-              {messages.length === 0 && (
+        <>
+          <div className="manage-email-toolbar">
+            <button
+              type="button"
+              disabled={messages.length === 0}
+              onClick={selectAllVisible}
+            >
+              Select all
+            </button>
+            <button
+              type="button"
+              disabled={selectionCount === 0}
+              onClick={clearSelection}
+            >
+              Clear selection
+            </button>
+            <button
+              type="button"
+              disabled={!landEnabled}
+              onClick={onLandMeteorite}
+            >
+              Land Meteorite
+            </button>
+            <span>{selectionCount} selected</span>
+          </div>
+          {landError && (
+            <p style={{ color: "var(--danger)", fontSize: 13, margin: "0 0 12px" }}>
+              {landError}
+            </p>
+          )}
+          {landResults && (
+            <div className="manage-email-results">
+              <div className="manage-email-results-title">Land Meteorite results</div>
+              <ul>
+                {landResults.map(row => {
+                  const subject =
+                    (landSubjectById[row.message_id] || "").trim() || row.message_id
+                  const kind = outcomeKind(row.outcome)
+                  const cid =
+                    row.astral_candidate_id && String(row.astral_candidate_id).trim()
+                      ? String(row.astral_candidate_id).trim()
+                      : null
+                  return (
+                    <li
+                      key={row.message_id}
+                      className={`manage-email-outcome manage-email-outcome--${kind}`}
+                    >
+                      {subject} — {row.outcome}
+                      {cid ? ` (${cid})` : ""}
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+          )}
+          <div className="list-page-table-wrap">
+            <table className="list-page-table">
+              <thead>
                 <tr>
-                  <td colSpan={6}>No messages in inbox.</td>
+                  <th>
+                    <input
+                      type="checkbox"
+                      checked={allSelected}
+                      onChange={() =>
+                        allSelected ? clearSelection() : selectAllVisible()
+                      }
+                    />
+                  </th>
+                  <th>Subject</th>
+                  <th>From</th>
+                  <th>Candidate</th>
+                  <th>Date</th>
+                  <th>Status</th>
                 </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody>
+                {messages.map(row => (
+                  <tr
+                    key={row.id}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => openMessage(row)}
+                  >
+                    <td onClick={e => e.stopPropagation()}>
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.has(row.id)}
+                        onChange={() => toggleSelect(row.id)}
+                      />
+                    </td>
+                    <td>{row.subject}</td>
+                    <td>{row.from_address}</td>
+                    {matchCell(row)}
+                    <td>{row.date}</td>
+                    <td>{row.unread ? "Unread" : "Read"}</td>
+                  </tr>
+                ))}
+                {messages.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No messages in inbox.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Modal

@@ -288,3 +288,54 @@ class TestAst1049CreateMeteoriteJobFromInboxMessage:
         assert len(out["skipped"]) == 1
         outcomes = [c.kwargs.get("outcome") for c in dbg.call_args_list]
         assert outcomes == ["found", "matched", "extracted", "skipped"]
+
+
+# Branches: strip_extract runs paste normalize before subject wrap (AST-1131).
+class TestAst1131StripNormalizePastedList:
+    def test_strip_unwraps_nested_autolink_job_href(self) -> None:
+        from bs4 import BeautifulSoup
+
+        uid = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+        dice = f"https://www.dice.com/job-detail/{uid}"
+        raw = (
+            f'&lt;div xmlns="&lt;a href="http://www.w3.org/2000/svg"&gt;'
+            f'http://www.w3.org/2000/svg&lt;/a&gt;"&gt;'
+            f'&lt;a href="&lt;a href="{dice}"&gt;{dice}&lt;/a&gt;"&gt;Job&lt;/a&gt;'
+            f'&lt;/div&gt;'
+        )
+        out = inbox_mod.strip_extract_email_html(
+            "Saved jobs", f"<html><body><p>{raw}</p></body></html>"
+        )
+        hrefs = [
+            a.get("href")
+            for a in BeautifulSoup(out, "html.parser").find_all("a", href=True)
+        ]
+        assert hrefs == [dice]
+        assert "w3.org/2000/svg" not in hrefs
+        assert 'class="email-subject"' in out
+        assert 'class="email-body"' in out
+
+
+# AST-1135: live bind-filtered inbox counts (Avail source).
+class TestAst1135InboxBoundCounts:
+    def test_map_and_per_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        msgs = [
+            {"id": "1", "candidate_match": {"matched": True, "astral_candidate_id": "A"}},
+            {"id": "2", "candidate_match": {"matched": True, "astral_candidate_id": "A"}},
+            {"id": "3", "candidate_match": {"matched": True, "astral_candidate_id": "B"}},
+            {"id": "4", "candidate_match": {"matched": False, "astral_candidate_id": None}},
+            {"id": "5", "candidate_match": {"matched": True, "astral_candidate_id": "  "}},
+        ]
+        monkeypatch.setattr(inbox_mod, "list_inbox_messages", MagicMock(return_value=msgs))
+        assert inbox_mod.count_inbox_bound_by_candidate() == {"A": 2, "B": 1}
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("A") == 2
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("B") == 1
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("Z") == 0
+
+    def test_blank_candidate_skips_list(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        listed = MagicMock(return_value=[{"id": "1"}])
+        monkeypatch.setattr(inbox_mod, "list_inbox_messages", listed)
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("") == 0
+        assert inbox_mod.count_inbox_messages_bound_to_candidate("   ") == 0
+        listed.assert_not_called()
+

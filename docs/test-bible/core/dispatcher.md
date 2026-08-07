@@ -179,7 +179,7 @@ Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`do
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher: **`ensure_candidate_stage_dispatch_tasks`** / **`provision_candidate_stage_dispatch_tasks`**; candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** provisions stage rows. Revised **`LIVE_PROMPTS` → `ACTIVE_SEARCH`** in dispatcher fixtures; AST-875 template fixture uses **`qualify_job_listings`** (TASK_CONFIG tip).
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. Dispatcher: **`retire_candidate_requested_wrapper_dispatch_tasks`** (retire-only); candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** runs wrapper retire after meteorite provision.
 
 
 ### AST-1022 · AST-1018
@@ -210,7 +210,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 
 **Parent:** [AST-1052 — Processing meteorites](https://linear.app/astralcareermatch/issue/AST-1052/processing-meteorites). **Publish:** `origin/sub/AST-1052/AST-1054-meteorite-gdl-dispatch-rows-score-floor-0`.
 
-`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. **AST-1060** adds `retired` count + surgical delete of `evaluate_jd`@`METEORITE_NEW`. Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
+`ensure_meteorite_dispatch_tasks` / `provision_meteorite_dispatch_tasks` seed `METEORITE_DISPATCH_TASKS` rows (idempotent; twin keys `skipped_missing_config` until `TASK_CONFIG` has them); `start_scheduler` provisions after stage rows. Twin GDL entry insert is `evaluate_meteorite`@**METEORITE_QUALIFIED**; live retirement of `evaluate_jd`@`METEORITE_*` when twin present is **AST-1209** (not NEW-only). Config/consult primary: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/core/consult.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -232,13 +232,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 
 **Parent:** [AST-1058 — Qualify Meteorite](https://linear.app/astralcareermatch/issue/AST-1058/qualify-meteorite). **Publish:** `origin/sub/AST-1058/AST-1060-meteorite-qualified-qualify-meteorite-config-dispatch`.
 
-`ensure_meteorite_dispatch_tasks` retires live `evaluate_jd`@`METEORITE_NEW` after insert (`retired` in return; provision sums it). Config primary: **`docs/test-bible/utils/config.md`**.
+`ensure_meteorite_dispatch_tasks` retirement of live meteorite `evaluate_jd` rows is **AST-1209** (`METEORITE_*` when twin present — supersedes NEW-only). Config primary: **`docs/test-bible/utils/config.md`**. Twin insert/retire asserts: **AST-1209** / **AST-1210** section below.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Retire stale meteorite evaluate_jd row; insert counts | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (incl. `test_ensure_retires_stale_evaluate_jd_at_meteorite_new`) |
+| Retire meteorite evaluate_jd; insert twin counts | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (revised **AST-1209**) |
 
-**Broken / obsolete:** AST-1054 insert counts / trigger assert — see above.
+**Broken / obsolete:** NEW-only retire + insert-as-`evaluate_jd`@**METEORITE_QUALIFIED** asserts — see **AST-1209**.
 
 **Integration:** none.
 
@@ -302,6 +302,138 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  -q
+```
+
+
+### AST-1134 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1134-retire-null-shell-candidate-bound-config`.
+
+`ensure_gaze_email_dispatch_task(candidate_id)` inserts one bound row; `provision_gaze_email_dispatch_tasks()` retires null-`candidate_id` shells then coverage-joins every `list_candidates()` id. `_dispatch_one` ledger uses row `candidate_id` (skips unbound). Config / data: **`docs/test-bible/utils/config.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`**. Runner stamp / live Avail: **AST-1136** / **AST-1135**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Ensure / provision / scheduler hook | `src/core/dispatcher.py` | **`TestAst1134GazeEmailDispatchProvision`** (replaces **`TestAst1088GazeEmailDispatchProvision`**) |
+| Bound ledger cid + unbound skip | `src/core/dispatcher.py` | revised **`TestAst1090GazeEmailDispatchOne`** |
+| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised stubs → **`provision_gaze_email_dispatch_tasks`** |
+
+**Broken / obsolete (Betty revision):** null-shell ensure/provision wrapper; `_dispatch_one` null-cid runner path; singular `provision_gaze_email_dispatch_task` stubs.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1134GazeEmailDispatchProvision \
+  tests/component/core/test_dispatcher.py::TestAst1090GazeEmailDispatchOne \
+  -q
+```
+
+### AST-1135 · AST-1128
+
+**Parent:** [AST-1128 — gaze_email — candidate-bound dispatch (redesign)](https://linear.app/astralcareermatch/issue/AST-1128/gaze-email-candidate-bound-dispatch-redesign). **Publish:** `origin/sub/AST-1128/AST-1135-candidate-bound-avail-dispatch-eligibility`.
+
+`_gaze_email_due_tasks` merges AUTO candidate-bound gaze rows when live bind Avail ≥ `min_count` and `dispatch_task_freq_allows`; `_tick_loop` concatenates with `get_due_tasks()`. `run_task` enriches gaze `available_count` via inbox bind count. Inbox / data / admin: **`docs/test-bible/core/inbox.md`** · **`docs/test-bible/data/database/dispatch_tasks.md`** · **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| AUTO due merge + click enrich | `src/core/dispatcher.py` | **`TestAst1135GazeEmailDueTasks`** |
+
+**Broken / obsolete:** none — additive due path (data fake due retired under dispatch_tasks).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1135GazeEmailDueTasks \
+  -q
+```
+
+### AST-1209 · AST-1186
+
+**Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1209-evaluate-meteorite-twin-audit-conformance-fixes`.
+
+`ensure_meteorite_dispatch_tasks` retires **every** live `evaluate_jd` row whose `trigger_state` starts with `METEORITE_` (NEW + QUALIFIED eras), but **only when** twin `evaluate_meteorite`@`METEORITE_QUALIFIED` is already present or was just inserted. Keeps `evaluate_jd`@`JD_READY`. Insert loop seeds twin GDL entry (`evaluate_meteorite`, not classic `evaluate_jd`). Full twin bible/config/consult lock: sibling **AST-1210**. Fixture lockstep: **AST-1211**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Twin GDL insert key + trigger | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision::test_ensure_inserts_shared_gdl_and_twins_per_task_config`** |
+| Retire `evaluate_jd`@`METEORITE_*` when twin present; keep `@JD_READY` | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision::test_ensure_retires_evaluate_jd_on_meteorite_triggers_when_twin_present`** (replaces AST-1060 NEW-only retire) |
+| No retire when twin absent from `TASK_CONFIG` | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision::test_ensure_skips_retire_when_twin_absent`** |
+
+**Broken / obsolete:** AST-1060 `test_ensure_retires_stale_evaluate_jd_at_meteorite_new` (NEW-only + assert insert of `evaluate_jd`@`METEORITE_QUALIFIED`); insert assert that meteorite GDL entry is still `evaluate_jd`; `test_start_scheduler_invokes_meteorite_provision` stub of removed `provision_candidate_stage_dispatch_tasks` (scheduler tip is meteorite → gaze only).
+
+**Integration:** none — no existing scenarios assert meteorite dispatch retirement.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  -q
+```
+
+### AST-1221 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1221-runtime-alias-resolution-retire-do-get-overlay`.
+
+`meteorite_grade_do` / `meteorite_grade_get` join `_CHUNK_EXHAUST_CONSULT_JOB_KEYS` (explicit frozenset, same pattern as `meteorite_like`). Dispatch retarget / seed is **AST-1222**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias exhaust membership | `src/core/dispatcher.py` | **`TestAst1221AliasChunkExhaust`** |
+
+**Broken / obsolete:** none — additive frozenset keys.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1221AliasChunkExhaust \
+  -q
+```
+
+### AST-1222 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1222-meteorite-do-get-alias-seed-retarget-dispatch`.
+
+`METEORITE_DISPATCH_TASKS` Do/Get → alias keys; `ensure_meteorite_dispatch_tasks` retires shared-key meteorite triggers when aliases present (classic Gaze `PASSED_JD` / `PASSED_DO` kept). Catalog / fixture: **`docs/test-bible/core/repo_admin_json.md`** · config: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias insert + score_floor | `src/core/dispatcher.py` | revised **`TestAst1054MeteoriteDispatchProvision`** |
+| Retire shared-key meteorite Do/Get | same | **`TestAst1054MeteoriteDispatchProvision::test_ensure_retires_shared_key_meteorite_do_get_when_aliases_present`** |
+
+**Broken / obsolete:** AST-1054 `by_key["grade_do"]` / `grade_get` meteorite insert lookups.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  -q
+```
+
+### AST-1259 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity`.
+
+`_run_unified` for `entity_type=candidate` claims via `get_new_candidate_batch` (`dispatch_claim_states` + `batch_size`), forces per-entity process (`use_full_batch=False`), clears on empty early-exit and in `finally` (no unlocked `[ctx]` arm). Core wrappers: **`docs/test-bible/core/candidate.md`** § AST-1259. Data claim APIs: **AST-1258**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pool claim + clear; no job/company clear | `src/core/dispatcher.py` | revised **`TestRunUnified::test_ast505_candidate_entity_claims_without_company_clear`**; **`TestAst1259CandidatePoolClaim`** |
+| Empty claim clears; claimed → consult | same | revised **`TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate`**; **`::test_empty_batch_clears_candidate_batch`** |
+| `batch_size` / claim states; multi-row per-entity | same | **`TestAst1259CandidatePoolClaim::test_claim_honors_batch_size_and_claim_states`** |
+
+**Broken / obsolete (Betty revision):** unlocked-`[ctx]` asserts in `test_ast505_candidate_entity_routes_ctx_without_company_clear` and ctx-state-only `test_run_unified_candidate_claim_gate`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast505_candidate_entity_claims_without_company_clear \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate \
+  tests/component/core/test_dispatcher.py::TestAst1259CandidatePoolClaim \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
   -q
 ```
 

@@ -1,3 +1,324 @@
+<!-- linear-archive: AST-1025 archived 2026-08-05 -->
+
+## Linear archive (AST-1025)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1025/admin-session-cover-letter-page-session-retention-session-cover-letter  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1023 — Session Cover Letter  
+**Blocked by / blocks / related:** parent: AST-1023
+
+### Description
+
+## What this implements
+
+New Admin nav page (second item under Session Resume): field inputs for the cover-letter blocks, browser session retention, call sibling HTML API, open rendered HTML in a new tab (Session Resume Paste UX twin). Does **not** own core emit/CSS golden parity.
+
+## Citations
+
+`pattern.ui.admin-endpoint`, `pattern.config.config-block`, `astral.layers.ui-config-driven-business-logic`, `astral.config.config-source-of-truth`
+
+## Acceptance criteria
+
+1. From the new **Admin** Session Cover Letter screen, Susan can enter cover-letter field values and open a new tab showing styled cover-letter HTML.
+2. Susan can Print → PDF from that tab; no server-generated PDF file is required.
+3. Closing and reopening the tool within the same browser session restores the last entered field values (and last successful render inputs if retained); clearing site data wipes them.
+4. Completing the flow does not create or update candidate or job cover-letter artifacts or any other durable store for this session.
+5. Failed validation/render surfaces a clear error on the Admin screen and does not open a blank/broken HTML tab as success.
+
+## Boundaries
+
+Does **not** own core session cover emit or golden CSS. Does **not** upgrade job cover HTML. Does **not** merge into Session Resume Paste page (separate Admin nav item). After AST-1024.
+
+## Notes for planning
+
+Reuse Session Resume Paste UX patterns (localStorage, new-tab open, toast). Nav under Admin near Session Resume Paste.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/ast-1023-session-cover-letter`, child `sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-29T03:56:50.816Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1025
+**Publish ref:** `origin/sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention` @ `f7320b88` (product tip reviewed `f3061950`; this SHA is docs-only)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention`
+**Layers:** core, ui, utils, docs (+ Betty tests/bible; three-dot includes landed AST-1024)
+**Notes:** Joan plan-rubric APPROVED attached. AST-1025 `code()` = page + routes + NAV only. C4 stragglers from three-dot ancestry / Betty tests — substance conforms. No product fix-now.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | No confidence / agent scoring in AST-1025 |
+| astral.agent.do-task-delegation | scoped | conforms | No do_task (C4 straggler via AST-1024 in three-dot) |
+| astral.agent.grade-vector-validation | scoped | conforms | Untouched (C4 straggler) |
+| astral.batch.batch-id-first | scoped | conforms | Untouched (C4 straggler) |
+| astral.batch.batch-id-format | scoped | conforms | Untouched (C4 straggler) |
+| astral.batch.claim-process-release | scoped | conforms | Untouched (C4 straggler) |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Untouched (C4 straggler) |
+| astral.config.config-source-of-truth | scoped | conforms | Nav from `NAV_CONFIG`; field keys mirrored per Joan Decision |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No repo-root `artifacts/**` / `scripts/spikes/**` |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan under `docs/features/` (C4 straggler) |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One `ast-1025-…` features file (C4 straggler) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty tests/bible only; engineer owns page/nav |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code()` = frontend+NAV; tests via Betty (C4 straggler) |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | AST-1025 no core/external edit (C4 via 1024 ancestry) |
+| astral.layers.import-direction | scoped | conforms | React → frontend libs/contexts only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss — no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Nav config-driven; server validates fields |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | Untouched (C4 straggler) |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Untouched (C4 straggler) |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | `AdminRoute` + existing admin HTML API auth |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No new data-layer work; API errors surfaced in UI |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers/paths miss — no `src/data/**` |
+| astral.standards.debug-contract-gated | scoped | conforms | No React debug contract (backend owned by AST-1024) |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Reuses `useLocalStorage` / `api` / Toast / blob-tab |
+| astral.standards.in-scope-only | scoped | conforms | No builder/API rewrite; Session Resume Paste untouched |
+| astral.standards.logging-via-utils | scoped | conforms | No new backend logging |
+| astral.standards.no-cross-contamination | scoped | conforms | No artifact save APIs; optional `candidate_id` only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Nav in config; field mirror Joan Decision (no GET) |
+| astral.standards.public-then-helpers | scoped | conforms | Default-export page; helpers inline |
+| astral.standards.utils-data-late-import-only | scoped | conforms | NAV one-liner only — no utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | Untouched (C4 straggler) |
+| astral.state.job-prior-states-enforced | scoped | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Untouched (C4 straggler) |
+| astral.ui.frontend-file-placement | scoped | conforms | Flat `pages/AdminSessionCoverLetter.tsx` |
+| astral.ui.naming-conventions | scoped | conforms | PascalCase page; snake_case route |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Untouched |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1025)` @ `f3061950` |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`code`/`test`/`merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Child `sub/AST-1023/…` only |
+| orch.git.ftr-sub-topology | universal | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | `origin/ftr` ancestor of tip |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No rewrite ops in range |
+| orch.git.no-dev-agent-branches | universal | conforms | Ticket `sub/*` publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | `astral-AST-1023` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Separate Admin nav already parent-decided |
+| orch.pipeline.plan-is-bible | universal | conforms | Diff matches Stages 1–2; boundaries held |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Artifacts child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible on tip |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Assignee remains Katherine |
+| orch.roles.pre-commit-path-bans | universal | conforms | Engineer SHA avoids banned test paths |
+
+## Pattern conformance
+
+| cited | verdict |
+| -- | -- |
+| `pattern.ui.admin-endpoint` | conforms — consumes AST-1024 Admin HTML API via `api()` |
+| `pattern.config.config-block` | conforms — `NAV_CONFIG` item |
+| `astral.layers.ui-config-driven-business-logic` | conforms — covered in statutes |
+| `astral.config.config-source-of-truth` | conforms — covered in statutes |
+
+## Plan adherence
+
+Self-Assessment `Single-Component` matches: NAV + one React page/route + localStorage. No builder/CSS/API ownership. Field-mirror Decision matches Joan APPROVED. Cross-ticket: blockedBy AST-1024 consumed as call site only; Session Resume Paste not edited.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **C4 stragglers (14)** — Joan Excluded at plan time; in-scope on full three-dot (AST-1024 ancestry + features/tests): `astral.agent.do-task-delegation`, `astral.agent.grade-vector-validation`, `astral.batch.batch-id-first`, `astral.batch.batch-id-format`, `astral.batch.claim-process-release`, `astral.batch.entity-agent-responses-latest-only`, `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.core-vs-external-bright-line`, `astral.patterns.coat-check-never-store-empty`, `astral.patterns.render-verdict-orchestrates-consult`, `astral.state.core-decides-transitions`, `astral.state.no-daisy-chain-in-run`. All substance **conforms**.
+
+### advisory
+(none)
+
+## What’s solid
+
+Open HTML failure never opens a tab; empty HTML error; `last_render` only on success; popup-blocked Toast; optional `candidate_id` from `selectedId`.
+
+## Recommended actions
+
+Katherine: acknowledge C4 stragglers in resolve (no product change) → User Testing.
+
+context_tokens≈68000
+
+#### betty — 2026-07-29T03:54:01.382Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention` @ `f3061950`
+**merge-tests:** `merge-tests(AST-1025): origin/tests ab6e07a833077be1c8405e7696959a63e4dc7b6f`
+
+### Classification
+1. **Existing coverage:** AST-1024 HTML API / builder (sibling — do not re-run as this ticket’s primary gate).
+2. **Broken / obsolete:** none.
+3. **Gaps (this pass):** §6c Admin page Vitest + NAV_CONFIG order.
+
+### Manifest (test-child — narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx
+```
+
+1. `TestAst1025SessionCoverLetterNav` — Admin nav: Session Cover Letter immediately after Session Resume Paste.
+2. `test_AdminSessionCoverLetter.test.tsx` (§6c) — render page + helper; Open HTML disabled until required fields; success posts fields + `candidate_id` null → blob tab + `last_render`; 400 / empty HTML → error, no tab; selected candidate forwards `candidate_id`; localStorage field restore on remount.
+
+**Integration:** `test_candidate_nav_api.py` Jobs gates only — no revision; no new integration coverage.
+
+### Bible shasums (`origin/<publish-ref>`)
+- `docs/test-bible/frontend/pages.md` `856f7f6bcee7760c404df3eabc3c196c586be9dbffcfb928138a46803196cc3f`
+- `docs/test-bible/utils/config.md` `9e87d09eedd97e05a81f7020cb0e76606c6c4b45f8bb149c6ba75dbe96932b44`
+
+— Betty
+
+#### joan — 2026-07-29T03:47:34.004Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1025
+**Overall:** APPROVED
+
+**Notes:** First Plan Ready pass. Tip `f42b582b`. Blocked-by AST-1024 Plan Approved / landed HTML API acknowledged; page consumes call site only.
+**Implementer:** Katherine (plan author / parent Team table).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1 Admin screen enter fields + open SomersetCover HTML | Stages 1–2 |
+| 2 No job id; form fields; optional selected-candidate signature | Stage 2 (`candidate_id` from `selectedId` or null) |
+| 3 Print → PDF; no server PDF | Inherent (HTML blob tab) |
+| 4 Browser session retention of fields (+ last successful render inputs) | Stage 2 `useLocalStorage` |
+| 5 No durable candidate/job artifact write | Stage 2 hard rules |
+| 6 Clear error; no success blank/broken tab | Stage 2 Open HTML failure path |
+| 7 Style D backend debug | N/A — boundary: AST-1024 |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 1 Admin screen + Open HTML new tab | 1–2 |
+| 2 Print → PDF; no server PDF | 2 (HTML only) |
+| 3 Session restore of fields / last render inputs | 2 |
+| 4 No durable artifact writes | 2 hard rules |
+| 5 Failed validation → clear error; no success tab | 2 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 NAV_CONFIG + route under AdminRoute | Functional Admin workbench; Boundaries (separate nav item) |
+| 2 Page + localStorage + Open HTML API call | Parent/child AC1–6 UI/retention; twin of Session Resume Paste |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Plan `docs(AST-1025):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No skip of ftr merge |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-1023` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Separate Admin nav item already parent-decided |
+| orch.pipeline.plan-is-bible | conforms | Stages binding; core emit excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Artifacts |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Katherine |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Katherine on approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | Nav from NAV_CONFIG; server field spine remains BUILD_CONFIG; page mirrors keys for UX only (Decision) |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned src/features |
+| astral.layers.import-direction | conforms | React → frontend libs only; no ui→data |
+| astral.layers.ui-config-driven-business-logic | conforms | Nav config-driven; validation remains on server |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | AdminRoute + existing admin HTML API auth |
+| astral.standards.data-raises-caller-logs | conforms | No new data-layer work |
+| astral.standards.debug-contract-gated | conforms | No React debug contract |
+| astral.standards.dry-and-focused-functions | conforms | Reuses useLocalStorage / api / Toast / blob-tab pattern |
+| astral.standards.in-scope-only | conforms | Excludes builder, job cover, Session Resume Paste edits |
+| astral.standards.logging-via-utils | conforms | No new backend logging |
+| astral.standards.no-cross-contamination | conforms | No artifact save APIs |
+| astral.standards.no-hardcoded-sets | conforms | Nav in config; field mirror documented Decision (no new GET) |
+| astral.standards.public-then-helpers | conforms | N/A-ish for React page; helpers inline |
+| astral.standards.utils-data-late-import-only | conforms | Untouched |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+| astral.ui.frontend-file-placement | conforms | Flat `pages/AdminSessionCoverLetter.tsx` |
+| astral.ui.naming-conventions | conforms | PascalCase page; snake_case route |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.job-prior-states-enforced, astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.agent.do-task-delegation — layers/paths miss
+- astral.agent.grade-vector-validation — layers/paths miss
+- astral.batch.batch-id-first — layers/paths miss
+- astral.batch.batch-id-format — layers/paths miss
+- astral.batch.claim-process-release — layers/paths miss
+- astral.batch.entity-agent-responses-latest-only — layers/paths miss
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.core-vs-external-bright-line — layers/paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.patterns.coat-check-never-store-empty — layers/paths miss
+- astral.patterns.render-verdict-orchestrates-consult — layers/paths miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.state.core-decides-transitions — layers/paths miss
+- astral.state.no-daisy-chain-in-run — layers/paths miss
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### acceptable
+1. Page-local `SESSION_COVER_FIELDS` mirror of BUILD_CONFIG keys — explicit Decision; server remains validation SoT; matches Session Resume Paste client-shape pattern; no new GET config endpoint this ticket.
+2. `session_cover_letter:last_render` is a success snapshot; Open HTML uses live form fields (correct for fields-only tool). Field `localStorage` alone restores entered values for AC3; last_render is optional retained metadata (unlike resume `last_parse`, which is the Open HTML payload).
+3. Self-assessment Single-Component / high / Medium — honest.
+4. Failure path never opens a tab; empty HTML treated as error — meets AC5.
+5. Separate Admin nav item — matches parent Boundaries.
+
+— Joan
+context_tokens≈48000
+
+#### katherine — 2026-07-29T03:44:55.140Z
+Plan published.
+
+**Doc:** [docs/features/artifacts/ast-1025-admin-session-cover-letter-page-session-retention.md](https://github.com/susansomerset/astral/blob/sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention/docs/features/artifacts/ast-1025-admin-session-cover-letter-page-session-retention.md) on `origin/sub/AST-1023/AST-1025-admin-session-cover-letter-page-session-retention` @ `f42b582b`.
+
+**Self-assessment**
+- **Scope — Single-Component:** Admin `NAV_CONFIG` + one React route/page with `localStorage`; no core/data changes.
+- **Conf — high:** Twin of AST-987 Session Resume Paste against landed AST-1024 `POST /api/admin/session_cover_letter/html`.
+- **Risk — Medium:** Admin nav/routing surface; Open HTML must not open empty tabs on failure; Session Resume Paste stays untouched.
+
+---
+
 # Admin Session Cover Letter page + session retention (Session Cover Letter)
 
 **Linear:** [AST-1025](https://linear.app/astralcareermatch/issue/AST-1025/admin-session-cover-letter-page-session-retention-session-cover-letter)

@@ -1,3 +1,118 @@
+<!-- linear-archive: AST-960 archived 2026-08-02 -->
+
+## Linear archive (AST-960)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-960/drop-bootstrap-schedulable-frozenset-inventory-local-host-server  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-957 — Local host server doesn't load  
+**Blocked by / blocks / related:** parent: AST-957; related: AST-856
+
+### Description
+
+## What this implements
+
+Bootstrap no longer walks `DISPATCH_SCHEDULABLE_TASK_KEYS`; local boot is green; [AST-856](https://linear.app/astralcareermatch/issue/AST-856/check-cover-letter-not-recognized-as-a-valid-task-key) Save acceptance for registered catalog keys (e.g. `check_cover_letter`) stays unchanged; the frozenset is deleted or made non-gating for membership. Does not own gazer runtime fetch.
+
+## Acceptance criteria
+
+1. Clean local Flask launch stays up — no bootstrap error about a schedulable key missing from `TASK_CONFIG`.
+2. Bootstrap no longer fails because a key is in `DISPATCH_SCHEDULABLE_TASK_KEYS` but not in `TASK_CONFIG`.
+3. Scheduled Actions Save for `check_cover_letter` ([AST-856](https://linear.app/astralcareermatch/issue/AST-856/check-cover-letter-not-recognized-as-a-valid-task-key)) still succeeds.
+4. Automated coverage: boot/coupling green without requiring the gap keys (`fetch_jd`, etc.) to be forced into `TASK_CONFIG` for bootstrap’s sake; [AST-856](https://linear.app/astralcareermatch/issue/AST-856/check-cover-letter-not-recognized-as-a-valid-task-key) Save regression remains.
+
+## Boundaries
+
+* Does not reverse [AST-856](https://linear.app/astralcareermatch/issue/AST-856/check-cover-letter-not-recognized-as-a-valid-task-key) / [AST-955](https://linear.app/astralcareermatch/issue/AST-955/align-scheduled-actions-save-with-task-key-picker-check-cover-letter) Save acceptance for registered catalog keys.
+* Does not change gazer/roster/inflow runtime fetch behavior or retire/rename task keys.
+* Does not stuff `fetch_jd` into `TASK_CONFIG` solely to appease the leftover frozenset inventory.
+* Does not redesign Scheduled Actions UI beyond what removing the parallel inventory requires.
+
+## Notes for planning
+
+* [AST-955](https://linear.app/astralcareermatch/issue/AST-955/align-scheduled-actions-save-with-task-key-picker-check-cover-letter) plan Decision left `DISPATCH_SCHEDULABLE_TASK_KEYS` for bootstrap/form enrichment; this child finishes SoT cleanup — TASK_CONFIG is the membership rule.
+* Hot files: `src/core/bootstrap.py`, `src/utils/config.py`, `src/ui/api/api_admin.py` (form enrichment).
+* Config as source of truth (Code Rules §2.1).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-957-local-host-server-doesnt-load`, child `sub/AST-957/<child-segment>`. Created at dispatch-parent. Publish to `origin/<sub-ref>` only.
+
+### Comments
+
+#### chuckles — 2026-07-23T04:02:24.259Z
+[merge-child] blocked: missing plan(AST-960): on origin/sub/AST-957/AST-960-drop-bootstrap-schedulable-frozenset-inventory
+
+Plan landed as `docs(AST-960): plan — …`; validate-sub-log requires `plan(AST-960):`. Add a `plan(AST-960):` commit on the publish ref (empty commit OK if plan doc already present) and push. Stay User Testing.
+
+@Ada Lovelace
+
+— Chuckles
+
+#### radia — 2026-07-23T03:51:00.328Z
+### Radia review — AST-960
+
+**Diff:** `origin/dev...origin/sub/AST-957/AST-960-drop-bootstrap-schedulable-frozenset-inventory` (tip `c64566f`).
+
+**Doc:** [Radia review — clean](https://github.com/susansomerset/astral/blob/c64566fe70545437ac3ebe291f9fc72144eb7c51/docs/features/artifacts/ast-960-drop-bootstrap-schedulable-frozenset-inventory.md)
+
+**What’s solid:** Stages 1–3 match plan — bootstrap no longer inventories `DISPATCH_SCHEDULABLE_TASK_KEYS`; admin form/`task_keys` enrich from `TASK_CONFIG` + defaults only; frozenset deleted; scored-trigger helper walks scored `TASK_CONFIG`. Zero `DISPATCH_SCHEDULABLE_TASK_KEYS` under `src/`. Live Done-when: `NEW`/`PASSED_LIKE` True, `VALID_TITLE` False; `check_cover_letter` override intact; `fetch_jd ∉ TASK_CONFIG`.
+
+**fix-now:** none
+
+**discuss:** none
+
+**Advisory:** `except KeyError: pass` in `_dispatch_task_key_form_meta` is plan-mandated mid-chain fallthrough with comment — acceptable under §5b.
+
+#### betty — 2026-07-23T03:33:10.915Z
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_bootstrap.py -q`
+2. `./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst960DropSchedulableFrozensetInventory tests/component/utils/test_config.py::TestAst955RegisteredKeyDispatchAdminDefaults tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig tests/component/utils/test_config.py::TestAst506InflowResolveConfig tests/component/utils/test_config.py::TestAst471DispatchConfigHelpers -q`
+3. `./scripts/testing/run_component_tests.sh tests/component/ui/api/test_api_admin.py::TestAst796FetchJdRetiredDispatchKeys tests/component/ui/api/test_api_admin.py::TestAst960TaskKeysNoFrozensetInventory tests/component/ui/api/test_api_admin.py::TestAst955AlignScheduledActionsSave -q`
+
+Broken / obsolete revised this pass: bootstrap frozenset-missing RuntimeError + monkeypatches; all `DISPATCH_SCHEDULABLE_TASK_KEYS` membership asserts; `dispatch_task_admin_defaults(<gap_key>)` without KeyError; `task_keys` frozenset merge expecting `fetch_jd` without a DB row.
+
+`origin/sub/AST-957/AST-960-drop-bootstrap-schedulable-frozenset-inventory` @ `1658e32` (`merge-tests(AST-960): origin/tests 8bfe40fe1c6bc045d34e1fdbd5a05eaf716ef6a4`)
+
+Bible shasum on publish tip:
+- `docs/test-bible/README.md` `dbd34c82053978997ccd7bb1fea3c5e675f26e68544eb9141ff91ed610d6abfa`
+- `docs/test-bible/core/bootstrap.md` `c25f4acda7191b90fc7a8db75bb884f112f143fbd53a952e01847b36123502a3`
+- `docs/test-bible/ui/api/api_admin.md` `9017b9e1066e1df84b1d3eaa3f2c3f210d3074549056a6f1ce9602d8d10f2eec`
+- `docs/test-bible/ui/server.md` `cbb938aaa118bea62f0a3067b9211e80639bffca38cecb767f3da5e0d1571819`
+- `docs/test-bible/utils/config.md` `532b0c8839f2fd0c2b9ee04743568169dbf206b6fd9ed904c0170746ce5e882a`
+
+— Betty
+
+#### joan — 2026-07-23T02:58:13.593Z
+**Verdict: APPROVED**
+
+No `fix-now` findings. Plan is faithful to AST-957 / AST-960: delete `DISPATCH_SCHEDULABLE_TASK_KEYS`, stop bootstrap inventory over it, align admin form/`task_keys` enrichment with `TASK_CONFIG`, rewrite `trigger_state_used_by_scored_dispatch_task` to scored `TASK_CONFIG` keys. Boundaries honored (Save path untouched; no gap-key stuffing; no gazer runtime redesign; tests/bible left to Betty). Layer table and §2.1 SoT cleanup check out against live call sites. Self-assessment (Single-Component / high / Medium) matches the three coupled consumers and the latent scored-trigger KeyError on gap keys.
+
+**[discuss]** — Stage 2 picker — Gap keys that exist only on the old frozenset (not in `TASK_CONFIG`, not on a DB row) leave the picker map. Plan Decision + parent Boundaries already own this; no revise needed — Ada should not reintroduce a parallel catalog for catalog completeness.
+
+**[acceptable]** — AC4 / Betty handoff note — Automated coverage correctly deferred to Code Complete under engineer test-tree ban; parent Files-to-touch test rows are Betty’s, not Ada’s build scope.
+
+## Considered and excluded
+**Considered:** `astral.config.config-source-of-truth` — deletes second membership allowlist; TASK_CONFIG becomes sole catalog rule. `astral.standards.no-hardcoded-sets` — removes curated frozenset inventory used as required catalog. `astral.standards.in-scope-only` — stages stay on bootstrap / api_admin / config only. `astral.standards.dry-and-focused-functions` — single membership path, no replacement parallel set. `astral.layers.import-direction` — core/ui/utils edits respect import direction. `astral.layers.ui-config-driven-business-logic` — form enrichment stays in api_admin, config-driven. `astral.git.engineer-test-tree-ban` — product-only Files Changed; tests/bible to Betty. `orch.roles.betty-owns-test-tree` — AC4 handoff note correct. `astral.docs.features-single-file-per-ticket` — plan at docs/features/artifacts/ast-960-….md. `orch.pipeline.plan-is-bible` — execution contract present.
+
+**Excluded:** `orch.git.*` — no topology/publish work in this child. `astral.batch.*` — no claim/process/release changes. `astral.state.*` — no state-transition redesign. `astral.agent.*` — no do_task / grade-vector work. `astral.patterns.coat-check-never-store-empty` — N/A. `astral.ui.frontend-file-placement` — no frontend files. `astral.patterns.require-auth-on-protected-endpoints` — auth surface unchanged. `orch.roles.chuckles-never-ticket-assignee` — orchestration role, not plan content.
+
+context_tokens≈33500
+— Joan
+
+#### ada — 2026-07-23T02:48:32.464Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-957/AST-960-drop-bootstrap-schedulable-frozenset-inventory/docs/features/artifacts/ast-960-drop-bootstrap-schedulable-frozenset-inventory.md
+
+**Scope:** Single-Component — bootstrap + api_admin form/`task_keys` + config frozenset deletion / scored-trigger rewrite; one SoT leftover from AST-955.
+
+**Conf:** high — live gap list verified (`fetch_jd` and 8 other frozenset keys ∉ TASK_CONFIG); Save path already TASK_CONFIG-only.
+
+**Risk:** Medium — scored-trigger helper and picker enrichment change for gap keys; claim floor + AST-856 Save untouched; Betty owns test/bible AC4.
+
+---
+
 # AST-960 — Drop bootstrap schedulable-frozenset inventory (Local host server doesn't load)
 
 - **Linear:** [AST-960](https://linear.app/astralcareermatch/issue/AST-960/drop-bootstrap-schedulable-frozenset-inventory-local-host-server)

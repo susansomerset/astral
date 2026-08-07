@@ -5,6 +5,7 @@ import base64
 import json
 import re
 from typing import Any, Dict, List, Optional
+from urllib.parse import unquote, urlparse
 
 # Compact grades_encoded row: 000|DTA5|GCA4|…
 _ENCODED_GRADE_LINE = re.compile(r"^\d{3}\|")
@@ -127,6 +128,99 @@ def normalize_link(url: str) -> str:
             url = url[: -len(suffix)].rstrip("/")
             break
     return url
+
+
+_BARE_URL_RE = re.compile(r"(?P<url>https?://[^\s<>\"']+)", re.IGNORECASE)
+# Trailing punctuation commonly stuck to bare URLs in prose / lists.
+_BARE_URL_TRAIL_PUNCT = ",.;)]"
+
+
+def normalize_pasted_list_email_html(html: str) -> str:
+    """Unescape entity-escaped board pastes, unwrap Gmail nested auto-links in attrs,
+    and optionally promote bare http(s) URLs to anchors for link discovery.
+
+    Reads METEORITE_EMAIL_INGEST_CONFIG. Idempotent for already-clean HTML.
+    Late-imports config (this module must not import config at load — config imports us).
+    """
+    import html as html_module
+
+    # Late import: config.py imports formatting at module load (circular if top-level).
+    from src.utils.config import METEORITE_EMAIL_INGEST_CONFIG
+
+    text = html or ""
+    marker = METEORITE_EMAIL_INGEST_CONFIG["entity_unescape_marker"]
+    min_count = int(METEORITE_EMAIL_INGEST_CONFIG["entity_unescape_min_marker_count"])
+    max_passes = int(METEORITE_EMAIL_INGEST_CONFIG["entity_unescape_max_passes"])
+    if text.count(marker) >= min_count:
+        for _ in range(max_passes):
+            nxt = html_module.unescape(text)
+            if nxt == text:
+                break
+            text = nxt
+
+    attrs = tuple(METEORITE_EMAIL_INGEST_CONFIG["nested_autolink_attr_names"])
+    flags = re.IGNORECASE | re.DOTALL
+    for attr in attrs:
+        pat = re.compile(
+            rf'(?P<prefix>\b{re.escape(attr)}\s*=\s*)(?P<q>["\'])\s*'
+            rf'<a\b[^>]*\bhref\s*=\s*(?P<q2>["\'])(?P<url>https?://[^"\']+)(?P=q2)'
+            rf'[^>]*>.*?</a>\s*(?P=q)',
+            flags,
+        )
+        text = pat.sub(r"\g<prefix>\g<q>\g<url>\g<q>", text)
+
+    # Broken double-quote form: href="<a href="URL">URL</a>"
+    alt = "|".join(re.escape(a) for a in attrs)
+    broken = re.compile(
+        rf'(?P<prefix>\b(?:{alt})\s*=\s*)"\s*'
+        rf'<a\b[^>]*\bhref\s*=\s*"(?P<url>https?://[^"]+)"[^>]*>'
+        rf'\s*(?P=url)\s*</a>\s*"',
+        flags,
+    )
+    text = broken.sub(r'\g<prefix>"\g<url>"', text)
+
+    if not METEORITE_EMAIL_INGEST_CONFIG["promote_bare_http_urls"]:
+        return text
+
+    # B1 lazy import: bs4 only when deciding whether bare-URL promote is needed.
+    from bs4 import BeautifulSoup
+
+    schemes = {s.casefold() for s in METEORITE_EMAIL_INGEST_CONFIG["link_schemes"]}
+    soup = BeautifulSoup(text, "html.parser")
+    for tag in soup.find_all("a", href=True):
+        href = (tag.get("href") or "").strip()
+        if (urlparse(href).scheme or "").casefold() in schemes:
+            return text
+
+    seen: set[str] = set()
+    promoted: List[str] = []
+    for m in _BARE_URL_RE.finditer(text):
+        raw = m.group("url")
+        url = raw.rstrip(_BARE_URL_TRAIL_PUNCT)
+        if not url or url in seen:
+            continue
+        if f'href="{url}"' in text or f"href='{url}'" in text:
+            continue
+        seen.add(url)
+        promoted.append(f'<a href="{url}">{url}</a>')
+    if promoted:
+        text = text + ("\n" if text and not text.endswith("\n") else "") + "\n".join(promoted)
+    return text
+
+
+def uuid_path_segment_from_url(url: str, segment_pattern: str) -> Optional[str]:
+    """Return the rightmost path segment that fullmatches segment_pattern, else None."""
+    raw = (url or "").strip()
+    if not raw:
+        return None
+    # Path segments only — query/fragment never contribute to the external id.
+    for segment in reversed(urlparse(raw).path.split("/")):
+        if not segment:
+            continue
+        candidate = unquote(segment).strip()
+        if re.fullmatch(segment_pattern, candidate):
+            return candidate
+    return None
 
 
 def value_to_str(val: object) -> str:

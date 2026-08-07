@@ -78,10 +78,16 @@ class TestJobsRoutes:
         assert resp.status_code == 400
 
     def test_bulk_state_updates_jobs(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
-        save = MagicMock(side_effect=[None, ValueError("missing")])
-        monkeypatch.setattr(jobs_mod, "save_job", save)
-        resp = jobs_client.post("/api/jobs/bulk_state", json={"astral_job_ids": ["job-1", "job-2"], "to_state": "IGNORE"}, headers=auth_headers)
+        # AST-1156: bulk_state uses transition_job_state (priors + history), not save_job.
+        transition = MagicMock(side_effect=[None, ValueError("missing")])
+        monkeypatch.setattr(jobs_mod, "transition_job_state", transition)
+        resp = jobs_client.post(
+            "/api/jobs/bulk_state",
+            json={"astral_job_ids": ["job-1", "job-2"], "to_state": "PASSED_JD"},
+            headers=auth_headers,
+        )
         assert resp.get_json()["updated"] == 1
+        assert transition.call_args_list[0].args == (["job-1"], "PASSED_JD")
 
     def test_detail_not_found(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = jobs_client.get("/api/jobs/missing", headers=auth_headers)

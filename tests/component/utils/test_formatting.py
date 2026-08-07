@@ -43,6 +43,54 @@ class TestNormalizeLink:
         assert fmt.normalize_link("   ") == ""
 
 
+# Branches: empty url; Dice rightmost UUID; no match; query/fragment ignored; unquote; mixed case kept (AST-1120).
+class TestUuidPathSegmentFromUrl:
+    _PATTERN = (
+        r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
+        r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    )
+
+    def test_empty_and_whitespace_return_none(self) -> None:
+        assert fmt.uuid_path_segment_from_url("", self._PATTERN) is None
+        assert fmt.uuid_path_segment_from_url("   ", self._PATTERN) is None
+
+    def test_dice_company_profile_returns_uuid(self) -> None:
+        uid = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+        url = f"https://www.dice.com/company-profile/{uid}"
+        assert fmt.uuid_path_segment_from_url(url, self._PATTERN) == uid
+
+    def test_rightmost_uuid_wins(self) -> None:
+        left = "11111111-1111-1111-1111-111111111111"
+        right = "22222222-2222-2222-2222-222222222222"
+        url = f"https://example.com/{left}/jobs/{right}"
+        assert fmt.uuid_path_segment_from_url(url, self._PATTERN) == right
+
+    def test_no_uuid_segment_returns_none(self) -> None:
+        assert (
+            fmt.uuid_path_segment_from_url(
+                "https://example.com/jobs/no-uuid-here", self._PATTERN
+            )
+            is None
+        )
+
+    def test_query_and_fragment_ignored(self) -> None:
+        uid = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+        url = f"https://example.com/jobs/{uid}?ref={uid}#{uid}"
+        assert fmt.uuid_path_segment_from_url(url, self._PATTERN) == uid
+        assert (
+            fmt.uuid_path_segment_from_url(
+                f"https://example.com/jobs/plain?id={uid}", self._PATTERN
+            )
+            is None
+        )
+
+    def test_percent_decoded_segment_and_case_preserved(self) -> None:
+        uid = "AbCdEf01-2345-6789-AbCd-Ef0123456789"
+        url = f"https://example.com/jobs/{uid.replace('-', '%2D')}"
+        # unquote restores hyphens; fullmatch keeps mixed case as returned.
+        assert fmt.uuid_path_segment_from_url(url, self._PATTERN) == uid
+
+
 # Branches: blank lines; bad prefix; non-int index; happy path.
 class TestParseEnumerateArray:
     def test_parses_numbered_lines(self) -> None:
@@ -260,3 +308,48 @@ class TestHealAgentPayloadEnvelopeEdges:
         healed = fmt.heal_agent_payload_envelope(raw)
         assert healed is not None
         assert json.loads(healed)["agent_payload"] == "line\n"
+
+
+# Branches: entity-unescape + nested autolink unwrap; bare-URL promote; clean HTML noop (AST-1131).
+class TestNormalizePastedListEmailHtml:
+    _UID = "9f704ad3-7a18-506a-bd5e-6a84e73b7c00"
+    _DICE = f"https://www.dice.com/job-detail/{_UID}"
+
+    def _escaped_nested_autolink_paste(self) -> str:
+        # UAT shape: entity-escaped board HTML + Gmail nested auto-links in href/xmlns.
+        return (
+            f'&lt;div xmlns="&lt;a href="http://www.w3.org/2000/svg"&gt;'
+            f'http://www.w3.org/2000/svg&lt;/a&gt;"&gt;'
+            f'&lt;a href="&lt;a href="{self._DICE}"&gt;{self._DICE}&lt;/a&gt;"&gt;Job&lt;/a&gt;'
+            f'&lt;/div&gt;'
+        )
+
+    def test_unescapes_and_unwraps_nested_autolinks_clean_job_href(self) -> None:
+        from bs4 import BeautifulSoup
+
+        out = fmt.normalize_pasted_list_email_html(self._escaped_nested_autolink_paste())
+        soup = BeautifulSoup(out, "html.parser")
+        hrefs = [a.get("href") for a in soup.find_all("a", href=True)]
+        assert hrefs == [self._DICE]
+        div = soup.find("div")
+        assert div is not None
+        assert div.get("xmlns") == "http://www.w3.org/2000/svg"
+        # Nested auto-link markup must not remain inside attribute values or as job_link shape.
+        assert f'href="<a' not in out
+        assert "w3.org/2000/svg" not in hrefs
+
+    def test_promotes_newline_delimited_bare_urls(self) -> None:
+        from bs4 import BeautifulSoup
+
+        other = "https://jobs.example.com/role/two"
+        out = fmt.normalize_pasted_list_email_html(f"{self._DICE}\n{other}")
+        hrefs = [a.get("href") for a in BeautifulSoup(out, "html.parser").find_all("a", href=True)]
+        assert hrefs == [self._DICE, other]
+
+    def test_clean_anchored_html_unchanged_preserves_amp_entities(self) -> None:
+        clean = f'<p>Hello &amp; goodbye</p><a href="{self._DICE}">Job</a>'
+        assert fmt.normalize_pasted_list_email_html(clean) == clean
+
+    def test_empty_input_returns_empty(self) -> None:
+        assert fmt.normalize_pasted_list_email_html("") == ""
+        assert fmt.normalize_pasted_list_email_html(None) == ""  # type: ignore[arg-type]

@@ -59,10 +59,58 @@ Roster handoff + parse dispatch: **`docs/test-bible/core/roster.md`** (**AST-827
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
 
+### AST-1120 · AST-1119
+
+**Parent:** [AST-1119 — Fallback for company job id](https://linear.app/astralcareermatch/issue/AST-1119/fallback-for-company-job-id). **Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`.
+
+`uuid_path_segment_from_url(url, segment_pattern)` — rightmost path segment that fullmatches the pattern (query/fragment ignored; case preserved). Apply surface: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| UUID path extract | `src/utils/formatting.py` | **`TestUuidPathSegmentFromUrl`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestUuidPathSegmentFromUrl \
+  -q
+```
+
 **AST-713** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh tests/component/utils/test_formatting.py::TestCollapseConsecutiveBlankLines -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+---
+
+### AST-1131 · AST-1130
+
+**Parent:** [AST-1130 — Manage Email create button for job lists isn't working](https://linear.app/astralcareermatch/issue/AST-1130/manage-email-create-button-for-job-lists-isnt-working). **Publish:** `origin/sub/AST-1130/AST-1131-normalize-pasted-list-email-html`.
+
+`normalize_pasted_list_email_html(html)` — gated entity-unescape → unwrap Gmail nested auto-links in configured attrs → promote bare http(s) URLs when no anchors remain. Wire surfaces: **`docs/test-bible/core/inbox.md`** · **`docs/test-bible/core/gazer.md`**; knobs: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Paste/list HTML normalize | `src/utils/formatting.py` | **`TestNormalizePastedListEmailHtml`** |
+
+**Broken / obsolete:** none — additive helper; existing `TestNormalizeLink` / AST-1061 ingest paths stay valid (idempotent on clean HTML).
+
+**Integration:** none revised (no existing Manage Email create / paste-normalize scenario).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_formatting.py::TestNormalizePastedListEmailHtml \
+  tests/component/utils/test_config.py::TestAst1131MeteoriteEmailIngestPasteNormalizeConfig \
+  tests/component/core/test_inbox.py::TestAst1131StripNormalizePastedList \
+  tests/component/core/test_gazer.py::TestAst1131NormalizePastedListEmailIngest \
+  tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
+  -q
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.

@@ -6,17 +6,17 @@ Candidate table schema, JSON blob structure, token resolution, and implementatio
 
 - **astral_candidate_id** — Primary key. Lowercase last name (e.g. `somerset`), same convention as company `short_name`.
 - **state** — UPPERCASE; one of `CANDIDATE_STATES` (see state machine below).
-- **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` may be null until candidate batch claim exists; readers treat null as no batch.
+- **state_history** — JSON array of `{from_state, to_state, timestamp, batch_id}`; appended by core on successful `transition_candidate_state` (and create seed) (AST-971). `batch_id` on a history entry may be null when the transition was not batch-anchored; row lock columns are separate (claim/clear).
 - **first**, **last**, **full**, **pronouns** — High-frequency identity columns (AST-1014). Not nested in any blob. `full` is recomputed from first+last on save when omitted or empty/whitespace; a non-empty value is an explicit override. `pronouns` holds a `PRONOUN_PREFERENCE_OPTIONS` value (default `they/them`).
 - **candidate_data** — One JSON blob; see below (three library sections + meta).
 - **candidate_api_key** — Fernet-encrypted Anthropic API key. Encrypted at rest via `ASTRAL_ENCRYPTION_KEY`; decrypted inline by `_parse_candidate_row` so callers receive plaintext.
+- **batch_id** — Golden-ticket lock for dispatch claim → process → release (AST-1258). Null or empty means unclaimed. Same pool-claim role as job/company `batch_id`.
+- **batch_created_at** — Timestamp set when the row is claimed; cleared with `batch_id` on release.
 - **created_at**, **updated_at**, **state_changed_at** — Timestamps.
-
-No batch primitives on candidate — candidates are not batch-processed.
 
 ## candidate_data (library + meta)
 
-Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`, `topic_menu`) are **siblings** of the three library blobs — not inside them.
+Top-level library sections: `contact`, `context`, `artifacts` (AST-1014). Config vocabulary: `CANDIDATE_LIBRARY_CONFIG`. Writes use deep merge (default) or full overwrite via `save_candidate(merge=False)`. Meta keys (`lifecycle`, `pending_craft_generations`, `intakes_old`, `topic_menu`, `surfer_consent`) are **siblings** of the three library blobs — not inside them.
 
 Do **not** store first/last/full/pronouns inside contact/context/artifacts. Do **not** write a `profile` key (renamed to `contact`; writers refuse shadow copies).
 
@@ -109,6 +109,22 @@ candidate_data.topic_menu = {
 
 Revising keeps prior topics: dropped ids become `status: "retired"` rather than deleted from the list. Default save path is revise-by-id (`save_topic_menu(..., revise=True)`). Optional `preamble_confirmed_at` is stamped by `mark_topic_menu_preamble_confirmed` when Estelle confirm accepts (AST-1075); normalize/validate/revise preserve it.
 
+### surfer_consent (AST-1235 / AST-1173)
+
+Server-side Surfer install disclosure consent (opt-in / opt-out + accepted wording version). Config: `SURFER_CONSENT_CONFIG` in `src/utils/config.py` (`current_version`, `disclosure_copy`, plus AST-1237 chrome: `disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`). Core: `get_surfer_consent` / `is_surfer_consent_current` / `opt_in_surfer_consent` / `opt_out_surfer_consent` / `surfer_consent_dto` in `src/core/candidate.py`. API: `GET`/`PUT /api/candidates/<id>/surfer/consent` (`src/ui/api/api_surfer.py`).
+
+```text
+candidate_data.surfer_consent = {
+  "status": "none" | "opted_in" | "opted_out",
+  "accepted_version": "<str matching a SURFER_CONSENT_CONFIG current_version at opt-in>" | null,
+  "updated_at": "<UTC YYYY-MM-DD HH:MM:SS>" | null
+}
+```
+
+`surfer_consent_dto` also exposes config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) for display — those fields are **not** persisted under `candidate_data.surfer_consent`.
+
+`is_current` is true only when `status == opted_in` and `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Bumping `current_version` requires re-consent before capture may resume (enforced by siblings reading `is_current`). Survives extension reinstall because the record is server-side under the candidate, not extension storage. Install disclosure UI (web + extension lib) = **AST-1237**; off-switch + capture no-op = **AST-1238**. Do **not** place Surfer consent under `contact` / `context` / `artifacts`.
+
 ## Token resolution
 
 Prompt tokens (`{$TOKEN_NAME}`) resolve via `TOKEN_SOURCES` in `config.py`. Name/pronoun tokens read **columns** via `build_candidate_token_view(candidate_row)`. Contact/context/artifacts tokens walk the library blobs on that view.
@@ -169,7 +185,7 @@ Jobs do not have a direct `candidate_id` column; they are scoped via their paren
 
 ## Snake_case
 
-- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, created_at, updated_at, state_changed_at.
+- **DB columns:** astral_candidate_id, state, state_history, first, last, full, pronouns, candidate_data, candidate_api_key, batch_id, batch_created_at, created_at, updated_at, state_changed_at.
 - **candidate_data keys:** contact, context, artifacts, and all nested keys above; meta siblings as listed.
 - **Config keys:** `CANDIDATE_STATES`, `CANDIDATE_CONFIG`, `CANDIDATE_LIBRARY_CONFIG`, etc.
 
