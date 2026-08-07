@@ -5,9 +5,10 @@ import api from "../../../../src/ui/frontend/src/lib/api"
 import AnthropicAdHoc from "../../../../src/ui/frontend/src/pages/AdminAnthropicAdHoc"
 import { installBaseApiMocks, renderWithProviders } from "../test-utils"
 
-vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
-  default: vi.fn(),
-}))
+vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
+  return { ...actual, default: vi.fn() }
+})
 
 const mockedApi = vi.mocked(api)
 
@@ -74,5 +75,54 @@ describe("AdminAnthropicAdHoc", () => {
     await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Preview Prompt" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "▶ Test" })).toBeDisabled()
+  }, 15000)
+
+  it("AST-1215: Task Key select and Save As list are lexicographic despite unsorted /tasks", async () => {
+    const unsortedTasks = [
+      { task_key: "zebra", user_prompt_len: 0, cache_prompt_len: 0, nocache_prompt_len: 0 },
+      { task_key: "alpha", user_prompt_len: 1, cache_prompt_len: 0, nocache_prompt_len: 0 },
+      { task_key: "mid", user_prompt_len: 0, cache_prompt_len: 0, nocache_prompt_len: 0 },
+    ]
+    installBaseApiMocks(mockedApi, async (url: string) => {
+      if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
+      if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
+      if (url === "/api/admin/tasks") return { json: async () => unsortedTasks } as Response
+      if (url.startsWith("/api/admin/adhoc/entities")) {
+        return {
+          ok: true,
+          json: async () => ({
+            entity_type: "job",
+            trigger_state: "NEW",
+            batch_mode: false,
+            entities: [{ id: "job-1", label: "Job 1" }],
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [
+            { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { first: "Jane", last: "Doe" } },
+          ],
+        } as Response
+      }
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    const taskSelect = screen.getAllByRole("combobox")[0]
+    const selectValues = Array.from(taskSelect.querySelectorAll("option"))
+      .map(o => (o as HTMLOptionElement).value)
+      .filter(Boolean)
+    expect(selectValues).toEqual(["alpha", "mid", "zebra"])
+
+    // Save As stays disabled until a prompt has content.
+    fireEvent.change(screen.getByPlaceholderText("User prompt content..."), {
+      target: { value: "draft content" },
+    })
+    await userEvent.click(screen.getByRole("button", { name: "Save As" }))
+    const saveGroup = screen.getByRole("button", { name: "Save As" }).parentElement as HTMLElement
+    const menuKeys = Array.from(saveGroup.querySelectorAll("div"))
+      .map(d => (d.textContent || "").replace(/\s*●\s*$/, "").trim())
+      .filter(t => t === "alpha" || t === "mid" || t === "zebra")
+    expect(menuKeys).toEqual(["alpha", "mid", "zebra"])
   }, 15000)
 })

@@ -1609,3 +1609,27 @@ Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx
 ```
+
+### AST-1215 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1215-admin-ui-grouping-honesty-alphabetical-dropdowns`.
+
+Admin React honesty: Scheduled Actions / Manage Tasks keep section headers + within-section order from `agent_task` grouping metadata; in-scope task-key dropdowns (SA Add/Edit, Manage Tasks run_next, Agent Ad Hoc Task Key + Save As) use shared lexicographic `taskKeySort` (match AST-1214 / Python `sorted` — not `localeCompare`). Helper unit tests: **`docs/test-bible/frontend/lib.md`** (**AST-1215**). Vector Feedback / Jobs UI out of scope.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions §6c Add Task option order | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1215 alphabetical task_key dropdown`** |
+| Manage Tasks §6c run_next option order | `AdminTaskPrompts.tsx` | **`test_AdminTaskPrompts.test.tsx`** — **`AST-1215 alphabetical run_next options`** |
+| Agent Ad Hoc §6c Task Key + Save As | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1215`** (+ api mock `importOriginal` fix for AuthContext) |
+
+**Broken / obsolete:** Ad Hoc `vi.mock(api)` without named auth exports — revised to `importOriginal` (AuthContext `setAuthTokenGetter` / `setUnauthorizedHandler`).
+
+**Integration:** none revised.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_taskKeySort.test.ts \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```
