@@ -52,7 +52,12 @@ export interface StateUiManifest {
       }
     }
   }
-  candidate: { artifact_generate_states: string[] }
+  candidate: {
+    artifact_generate_states: string[]
+    artifacts_chain_task_keys: string[]
+    artifacts_chain_hop_labels: string[]
+    artifacts_chain_artifact_keys: string[]
+  }
   company: {
     watch_readonly_states: string[]
     bulk_transitions: Record<string, string>

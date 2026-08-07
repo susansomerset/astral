@@ -62,6 +62,23 @@ function criteriaToTabs(
   }))
 }
 
+/** Non-empty rubric list / dict / string stored under artifacts. */
+function artifactBlobHasContent(raw: unknown): boolean {
+  if (Array.isArray(raw)) {
+    return raw.some(v => {
+      if (v && typeof v === "object" && "content" in (v as object)) {
+        return String((v as { content?: unknown }).content ?? "").trim() !== ""
+      }
+      return String(v ?? "").trim() !== ""
+    })
+  }
+  if (typeof raw === "string") return raw.trim() !== ""
+  if (raw && typeof raw === "object") {
+    return Object.values(raw as Record<string, unknown>).some(v => String(v ?? "").trim() !== "")
+  }
+  return false
+}
+
 export default function ArtifactEditor({
   title,
   artifactKey,
@@ -72,7 +89,7 @@ export default function ArtifactEditor({
   jobPersistence,
 }: ArtifactEditorProps) {
   const { manifest, loadState } = useStateUi()
-  const { selectedId, candidates } = useCandidate()
+  const { selectedId, candidates, refresh: refreshCandidate } = useCandidate()
   const [shapeFields, setShapeFields] = useState<ShapeField[] | null>(shapesKey ? null : [])
   const [shapeError, setShapeError] = useState(false)
   const [jobLoadError, setJobLoadError] = useState(false)
@@ -97,6 +114,7 @@ export default function ArtifactEditor({
   snapshotRef.current = snapshot
   const [generating, setGenerating] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  const [hasChainData, setHasChainData] = useState(false)
   const [expandedTabId, setExpandedTabId] = useState("")
   const [editingId, setEditingId] = useState<string | null>(null)
 
@@ -185,8 +203,17 @@ export default function ArtifactEditor({
     () => new Set(manifest?.candidate.artifact_generate_states ?? []),
     [manifest?.candidate.artifact_generate_states],
   )
+  const chainTaskKeys = useMemo(
+    () => new Set(manifest?.candidate.artifacts_chain_task_keys ?? []),
+    [manifest?.candidate.artifacts_chain_task_keys],
+  )
+  const chainHopLabels = manifest?.candidate.artifacts_chain_hop_labels ?? []
+  const chainArtifactKeys = manifest?.candidate.artifacts_chain_artifact_keys ?? []
+  // AST-1253: craft-chain pages hand off to REQUESTED_ARTIFACTS (not per-artifact generate)
+  const isChainHandoff = !jobPersistence && chainTaskKeys.has(taskKey)
   const canGenerate = !jobPersistence && generateStates.has(candidateState)
   const hasData = useMemo(() => tabs.some(t => t.content.trim() !== ""), [tabs])
+  const showAsRegenerate = isChainHandoff ? hasChainData : hasData
 
   // Fetch shape definitions for fixed-tab mode (global DATA_SHAPES)
   useEffect(() => {
@@ -301,10 +328,15 @@ export default function ArtifactEditor({
           setTabs([{ id: "v_0", code: undefined, label: "New Criterion", content: "", importance: RUBRIC_DEFAULT_IMPORTANCE }])
         }
       }
+      // Chain Generate vs Regenerate: rubric blobs and/or top-level company_search_terms
+      const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
+      const terms = c.company_search_terms
+      const termsHit = typeof terms === "string" && terms.trim() !== ""
+      setHasChainData(rubricHit || termsHit)
       setLoaded(true)
       setDirty(false)
     })
-  }, [jobPersistence, selectedId, artifactKey, fixedFields, shapesKey, structureMode])
+  }, [jobPersistence, selectedId, artifactKey, fixedFields, shapesKey, structureMode, chainArtifactKeys])
 
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
@@ -506,11 +538,44 @@ export default function ArtifactEditor({
   // --- Generate / Regenerate ---
 
   function handleGenerateClick() {
+    if (isChainHandoff) {
+      if (hasChainData) {
+        setConfirmRegen(true)
+        return
+      }
+      void doRequestArtifacts()
+      return
+    }
     if (hasData) {
       setConfirmRegen(true)
       return
     }
-    doGenerate()
+    void doGenerate()
+  }
+
+  /** AST-1253: handoff to REQUESTED_ARTIFACTS (dispatch chain). */
+  async function doRequestArtifacts() {
+    if (!selectedId) return
+    setConfirmRegen(false)
+    setGenerating(true)
+    try {
+      const resp = await api(`/api/candidates/${selectedId}/generate_artifacts`, { method: "POST" })
+      if (!mountedRef.current) return
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
+        throw new Error(err.error || "Request failed")
+      }
+      const data = await resp.json()
+      if (!mountedRef.current) return
+      if (!data.ok) throw new Error(data.error || "Request failed")
+      setToast({ text: "Artifacts build requested — watch Execution History", variant: "success" })
+      refreshCandidate()
+    } catch (e) {
+      if (!mountedRef.current) return
+      setToast({ text: (e as Error).message || "Request failed", variant: "error" })
+    } finally {
+      if (mountedRef.current) setGenerating(false)
+    }
   }
 
   async function doGenerate() {
@@ -616,7 +681,9 @@ export default function ArtifactEditor({
                 disabled={generating}
                 style={{ marginRight: 8 }}
               >
-                {generating ? "Generating..." : hasData ? "Regenerate" : "Generate"}
+                {generating
+                  ? (isChainHandoff ? "Requesting..." : "Generating...")
+                  : showAsRegenerate ? "Regenerate" : "Generate"}
               </button>
             )}
             {(fixedFields || inReview || jobPersistence) ? (
@@ -732,20 +799,51 @@ export default function ArtifactEditor({
             background: "var(--bg-elevated)", border: "2px solid #ff6b6b",
             borderRadius: 8, padding: 24, maxWidth: 460, width: "90%",
           }}>
-            <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate {title}?</h3>
-            <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
-              This will replace the current content with a new AI-generated version.
-              You can review the result and <strong>Cancel</strong> to restore your previous version,
-              or <strong>Save</strong> to keep it. Saving cannot be undone.
-            </p>
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button className="dep-btn cancel" onClick={() => setConfirmRegen(false)}>
-                Cancel
-              </button>
-              <button className="dep-btn save" onClick={doGenerate} style={{ background: "#ff6b6b" }}>
-                Regenerate
-              </button>
-            </div>
+            {isChainHandoff ? (
+              <>
+                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>
+                  Reset all artifact rubrics?
+                </h3>
+                <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
+                  This rebuilds the full craft chain and resets all of these rubrics:{" "}
+                  <strong>{chainHopLabels.join(", ") || "all chain hops"}</strong>.
+                  History is kept, but regeneration is expensive. Default is No.
+                </p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button
+                    className="dep-btn cancel"
+                    autoFocus
+                    onClick={() => setConfirmRegen(false)}
+                  >
+                    No
+                  </button>
+                  <button
+                    className="dep-btn save"
+                    onClick={() => void doRequestArtifacts()}
+                    style={{ background: "#ff6b6b" }}
+                  >
+                    Yes
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate {title}?</h3>
+                <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
+                  This will replace the current content with a new AI-generated version.
+                  You can review the result and <strong>Cancel</strong> to restore your previous version,
+                  or <strong>Save</strong> to keep it. Saving cannot be undone.
+                </p>
+                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
+                  <button className="dep-btn cancel" onClick={() => setConfirmRegen(false)}>
+                    Cancel
+                  </button>
+                  <button className="dep-btn save" onClick={() => void doGenerate()} style={{ background: "#ff6b6b" }}>
+                    Regenerate
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}

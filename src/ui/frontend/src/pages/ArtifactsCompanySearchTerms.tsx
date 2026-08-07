@@ -8,9 +8,26 @@ import api from "../lib/api"
 const AUTOSAVE_MS = 2000
 const TASK_KEY = "craft_company_search_terms"
 
+/** Rubric / dict / string under candidate_data.artifacts (AST-1253 hasChainData). */
+function artifactBlobHasContent(raw: unknown): boolean {
+  if (Array.isArray(raw)) {
+    return raw.some(v => {
+      if (v && typeof v === "object" && "content" in (v as object)) {
+        return String((v as { content?: unknown }).content ?? "").trim() !== ""
+      }
+      return String(v ?? "").trim() !== ""
+    })
+  }
+  if (typeof raw === "string") return raw.trim() !== ""
+  if (raw && typeof raw === "object") {
+    return Object.values(raw as Record<string, unknown>).some(v => String(v ?? "").trim() !== "")
+  }
+  return false
+}
+
 export default function CompanySearchTerms() {
   const { manifest, loadState } = useStateUi()
-  const { selectedId, candidates } = useCandidate()
+  const { selectedId, candidates, refresh: refreshCandidate } = useCandidate()
   const [text, setText] = useState("")
   const [loaded, setLoaded] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -27,6 +44,7 @@ export default function CompanySearchTerms() {
   const [snapshot, setSnapshot] = useState<string | null>(null)
   const [generating, setGenerating] = useState(false)
   const [confirmRegen, setConfirmRegen] = useState(false)
+  const [hasChainData, setHasChainData] = useState(false)
 
   const inReview = snapshot !== null
 
@@ -38,8 +56,14 @@ export default function CompanySearchTerms() {
     () => new Set(manifest?.candidate.artifact_generate_states ?? []),
     [manifest?.candidate.artifact_generate_states],
   )
+  const chainTaskKeys = useMemo(
+    () => new Set(manifest?.candidate.artifacts_chain_task_keys ?? []),
+    [manifest?.candidate.artifacts_chain_task_keys],
+  )
+  const chainHopLabels = manifest?.candidate.artifacts_chain_hop_labels ?? []
+  const chainArtifactKeys = manifest?.candidate.artifacts_chain_artifact_keys ?? []
+  const isChainHandoff = chainTaskKeys.has(TASK_KEY)
   const canGenerate = generateStates.has(candidateState)
-  const hasData = text.trim() !== ""
 
   useEffect(() => {
     if (!selectedId) return
@@ -48,11 +72,15 @@ export default function CompanySearchTerms() {
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
       const raw = c.company_search_terms
       setText(typeof raw === "string" ? raw : "")
+      const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
+      const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
+      const termsHit = typeof raw === "string" && raw.trim() !== ""
+      setHasChainData(rubricHit || termsHit)
       setLoaded(true)
       setDirty(false)
       setEverSaved(typeof raw === "string" && raw.trim() !== "")
     })
-  }, [selectedId])
+  }, [selectedId, chainArtifactKeys])
 
   const doSave = useCallback(async (value: string) => {
     if (!selectedId) return
@@ -103,43 +131,37 @@ export default function CompanySearchTerms() {
   }, [])
 
   function handleGenerateClick() {
-    if (hasData) {
+    if (isChainHandoff) {
+      if (hasChainData) {
+        setConfirmRegen(true)
+        return
+      }
+      void doRequestArtifacts()
+      return
+    }
+    // Non-chain fallback (should not happen for this page once manifest is live)
+    if (text.trim() !== "") {
       setConfirmRegen(true)
       return
     }
-    doGenerate()
+    void doRequestArtifacts()
   }
 
-  async function doGenerate() {
+  async function doRequestArtifacts() {
     if (!selectedId) return
     setConfirmRegen(false)
     setGenerating(true)
-    setSnapshot(text)
-
     try {
-      const resp = await api(`/api/candidates/${selectedId}/generate/${TASK_KEY}`, { method: "POST" })
+      const resp = await api(`/api/candidates/${selectedId}/generate_artifacts`, { method: "POST" })
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
-        throw new Error(err.error || "Generation failed")
+        throw new Error(err.error || "Request failed")
       }
       const data = await resp.json()
-      if (!data.success) throw new Error(data.error || "Generation failed")
-
-      const parsed = data.parsed_response
-      if (!parsed) throw new Error("No content returned")
-
-      const terms = parsed.search_terms
-      setText(
-        typeof terms === "string"
-          ? terms
-          : Array.isArray(terms)
-            ? terms.map((t) => String(t).trim()).filter(Boolean).join("\n")
-            : String(terms ?? "")
-      )
-      setDirty(true)
-      setToast({ text: "Generated — review and Save or Cancel", variant: "success" })
+      if (!data.ok) throw new Error(data.error || "Request failed")
+      setToast({ text: "Artifacts build requested — watch Execution History", variant: "success" })
+      refreshCandidate()
     } catch (e) {
-      setSnapshot(null)
       setToast({ text: (e as Error).message, variant: "error" })
     } finally {
       setGenerating(false)
@@ -174,7 +196,7 @@ export default function CompanySearchTerms() {
                 disabled={generating}
                 style={{ marginRight: 8 }}
               >
-                {generating ? "Generating..." : hasData ? "Regenerate" : "Generate"}
+                {generating ? "Requesting..." : hasChainData ? "Regenerate" : "Generate"}
               </button>
             )}
             {inReview ? (
@@ -211,18 +233,28 @@ export default function CompanySearchTerms() {
             background: "var(--bg-elevated)", border: "2px solid #ff6b6b",
             borderRadius: 8, padding: 24, maxWidth: 460, width: "90%",
           }}>
-            <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>Regenerate Company Search Terms?</h3>
+            <h3 style={{ margin: "0 0 12px", color: "#ff6b6b", fontSize: 16 }}>
+              Reset all artifact rubrics?
+            </h3>
             <p style={{ margin: "0 0 16px", color: "var(--text-secondary)", fontSize: 13, lineHeight: 1.5 }}>
-              This will replace the current content with a new AI-generated version.
-              You can review the result and <strong>Cancel</strong> to restore your previous version,
-              or <strong>Save</strong> to keep it. Saving cannot be undone.
+              This rebuilds the full craft chain and resets all of these rubrics:{" "}
+              <strong>{chainHopLabels.join(", ") || "all chain hops"}</strong>.
+              History is kept, but regeneration is expensive. Default is No.
             </p>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button className="dep-btn cancel" onClick={() => setConfirmRegen(false)}>
-                Cancel
+              <button
+                className="dep-btn cancel"
+                autoFocus
+                onClick={() => setConfirmRegen(false)}
+              >
+                No
               </button>
-              <button className="dep-btn save" onClick={doGenerate} style={{ background: "#ff6b6b" }}>
-                Regenerate
+              <button
+                className="dep-btn save"
+                onClick={() => void doRequestArtifacts()}
+                style={{ background: "#ff6b6b" }}
+              >
+                Yes
               </button>
             </div>
           </div>
