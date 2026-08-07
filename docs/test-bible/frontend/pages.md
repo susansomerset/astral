@@ -1568,3 +1568,23 @@ Routed **`CandidateSurferConsent`** (`/candidate/surfer_consent`): GET DTO chrom
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx
 ```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+Routed **`CandidateSurfer`** (`/candidate/surfer`): GET status (on / stale / off); off-switch when `status === opted_in` via `useUserConfirm` then PUT `opt_out`; always shows `uninstall_guidance`; no disclosure/opt-in chrome. Config: **`docs/test-bible/utils/config.md`**. Extension gate: **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| §6c page — empty / on+opt-out / stale / cancel / off | `CandidateSurfer.tsx` | **`test_CandidateSurfer.test.tsx`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx
+```

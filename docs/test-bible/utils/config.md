@@ -2663,3 +2663,24 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
   -q
 ```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/frontend/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Off-switch copy + Surfer nav | `src/utils/config.py` | **`TestAst1238SurferOffSwitchConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```

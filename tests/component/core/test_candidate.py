@@ -4043,3 +4043,43 @@ class TestAst1237SurferConsentDtoChrome:
         assert dto["current_ok_title"] == SURFER_CONSENT_CONFIG["current_ok_title"]
         assert dto["current_ok_body"] == SURFER_CONSENT_CONFIG["current_ok_body"]
         assert dto["is_current"] is False
+
+
+class TestAst1238SurferConsentGate:
+    """AST-1238: require_current_surfer_consent + off-switch DTO chrome."""
+
+    def test_require_raises_when_not_current(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {"astral_candidate_id": cid, "candidate_data": {}},
+        )
+        with pytest.raises(ValueError, match="not enabled"):
+            candidate_mod.require_current_surfer_consent("c1")
+        assert SURFER_CONSENT_CONFIG["capture_denied_message"]
+
+    def test_require_returns_dto_when_current(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import SURFER_CONSENT_CONFIG
+
+        ver = SURFER_CONSENT_CONFIG["current_version"]
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "candidate_data": {
+                    "surfer_consent": {
+                        "status": "opted_in",
+                        "accepted_version": ver,
+                        "updated_at": "2026-08-07 12:00:00",
+                    }
+                },
+            },
+        )
+        dto = candidate_mod.require_current_surfer_consent("c1")
+        assert dto["is_current"] is True
+        assert dto["off_switch_heading"] == SURFER_CONSENT_CONFIG["off_switch_heading"]
+        assert dto["status_stale_label"] == SURFER_CONSENT_CONFIG["status_stale_label"]
+        assert dto["capture_denied_message"] == SURFER_CONSENT_CONFIG["capture_denied_message"]
