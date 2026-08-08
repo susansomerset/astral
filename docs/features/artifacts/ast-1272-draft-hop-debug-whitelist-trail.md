@@ -168,3 +168,10 @@ The plan is binding. The agent:
 - §2.2 / `astral.agent.do-task-delegation`: no new Anthropic assembly; only `debug=` into existing helpers.
 - §3.3 imports: core already imports logging helpers; no new layer violations.
 - Boundaries: no AST-1270 rule changes; no AST-1271 retention; no test-tree edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`  
+**Tip:** `199381dd`
+
+Stages landed: normalize unwrap Style D + agent `debug=` → validate whitelist/accepted/rejected Style D + agent `debug=`.
