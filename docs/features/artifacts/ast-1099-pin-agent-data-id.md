@@ -1,3 +1,346 @@
+<!-- linear-archive: AST-1099 archived 2026-08-07 -->
+
+## Linear archive (AST-1099)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1099/pin-agent-data-id-on-job-artifact-slots-after-chain-hops-job-resume  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data  
+**Blocked by / blocks / related:** parent: AST-1091; blocks: AST-1100
+
+### Description
+
+## What this implements
+
+After successful `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, core (existing before/after-`do_task` persist style — not a new TASK_CONFIG field) writes `job_data.artifacts.job_resume` / `cover_letter` / `proposed_answers` as that hop's RESPONSE `agent_data_id`, including mid-chain when `run_next` continues. Debug found/recorded. Does not own JAR/UI resolve (sibling Katherine ticket).
+
+## In scope
+
+- [X] `pattern.batch.entity-agent-responses` — RESPONSE rows in `agent_data` remain the content store; pin writes pointer ids only
+- [X] `astral.batch.entity-agent-responses-latest-only` — pin by RESPONSE `agent_data_id`; do not revive entity-row `agent_responses` JSON
+- [X] `astral.patterns.coat-check-never-store-empty` — blank/empty id skips write; prior pointer preserved
+- [X] `astral.standards.debug-contract-gated` — Style D key + `agent_data_id` (or skip reason) only when `debug=True`
+- [X] `astral.standards.dry-and-focused-functions` — one tracker pin helper + config map; extend post-RESPONSE persist, no parallel framework
+- [X] `astral.standards.logging-via-utils` — pin debug via `get_logger` / `debug_detail`
+- [X] `astral.config.config-source-of-truth` — task_key → slot map in `config.py` (no TASK_CONFIG `persist_in`)
+- [X] `astral.layers.import-direction` — core (`agent` / `tracker`) writes; data via existing `save_job_data`
+
+## Considered but excluded
+
+- [X] JAR / Materials Preview / API body resolve from pinned ids — AST-1100 (`src/ui/`, builder readers)
+- [X] `JOBS_RECOMMENDED_ARTIFACT_TABS` `artifact_key` remaps — AST-1100
+- [X] TASK_CONFIG `persist_in` (or any new task-level destination dialect) — parent forbids
+- [X] `save_prefix` grade writes, candidate craft persists, `analysis_upshot` one-offs — parent Boundaries
+- [X] Copy full hop JSON into `job_data.artifacts` for the three pin slots — pointer only
+- [X] `tests/` / `docs/test-bible/**` — Betty
+
+## Acceptance criteria
+
+- [X] 1. After a successful `finalize_job_resume` hop (chain may continue), `job_data.artifacts.job_resume` equals that hop's RESPONSE `agent_data_id` and that id loads the hop body from `agent_data`.
+- [X] 2. After a successful `finalize_cover_letter` hop (chain may continue), `job_data.artifacts.cover_letter` equals that hop's RESPONSE `agent_data_id` and that id loads the hop body from `agent_data`.
+- [X] 3. After a successful `propose_application_responses` hop, `job_data.artifacts.proposed_answers` equals that hop's RESPONSE `agent_data_id` and that id loads the hop body from `agent_data`.
+- [X] 4. When `debug=True` on the touched persist path, each pin attempt logs key + `agent_data_id` (or skip reason); no new ungated `[DEBUG]` spam.
+- [X] 5. Failed or empty hops do not overwrite a good prior pointer with a blank value.
+
+## Boundaries
+
+Does not own JAR/UI resolve of pinned ids (sibling). Does not add TASK_CONFIG `persist_in`. Does not copy full hop JSON into job_data. Does not migrate grade/craft/analysis_upshot persists.
+
+## Notes for planning
+
+Pin pointers only; body stays in `agent_data`. Mid-chain hops with `run_next` must still pin.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/ast-1091-job-artifact-agent-data-pins`, child `sub/AST-1091/AST-1099-pin-agent-data-id`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-31T04:58:24.616Z
+[merge-child] blocked: git pull merge on sub — use: `git fetch && git merge origin/ftr/ast-1091-job-artifact-agent-data-pins` (no `Merge remote-tracking branch 'origin/dev'|origin/sub…` on publish ref).
+
+`validate-sub-log.sh` failed for `origin/sub/AST-1091/AST-1099-pin-agent-data-id`. Offending subjects include:
+- `Merge remote-tracking branch 'origin/sub/AST-1091/AST-1099-pin-agent-data-id' into …`
+- `Merge remote-tracking branch 'origin/dev' into …`
+
+@Ada Lovelace — republish a clean sub tip (merge `origin/ftr/…` / `origin/dev` per orientation § Merge integration line; no pull-merge commit subjects), then Chuckles retries merge-child.
+
+— Chuckles
+
+#### chuckles — 2026-07-31T04:58:20.288Z
+[merge-child] blocked: git pull merge on sub — use: `git fetch && git merge origin/ftr/ast-1091-job-artifact-agent-data-pins` (no `Merge remote-tracking branch 'origin/dev'|origin/sub…` on publish ref).
+
+`validate-sub-log.sh` failed for `origin/sub/AST-1091/AST-1099-pin-agent-data-id`. Offending subjects include:
+- `Merge remote-tracking branch 'origin/sub/AST-1091/AST-1099-pin-agent-data-id' into …`
+- `Merge remote-tracking branch 'origin/dev' into …`
+
+@Ada Lovelace — republish a clean sub tip (merge `origin/ftr/…` / `origin/dev` per orientation § Merge integration line; no pull-merge commit subjects), then Chuckles retries merge-child.
+
+— Chuckles
+
+#### radia — 2026-07-31T04:55:52.910Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1099
+**Publish ref:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id` @ `3c6d9ff0` (code `76928f73`; merge-tests `fe09931b`)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1099)` → `449c61cc` |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | Publish forward on origin/sub only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1091/AST-1099-…` matches Git table |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe in ticket commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in AST-1099 history |
+| orch.git.no-dev-agent-branches | universal | conforms | Child sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in astral-AST-1091 |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No open product fork in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 implemented as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-child review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty test + merge-tests commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Implementer path was Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | No assignee change by this review |
+| orch.roles.pre-commit-path-bans | universal | conforms | Doc-only Radia commit; engineer stayed off bans |
+| astral.agent.confidence-bounds | scoped | conforms | No graded confidence path touched |
+| astral.agent.do-task-delegation | scoped | conforms | Pin extends post-RESPONSE path inside `do_task` |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade-vector changes |
+| astral.batch.batch-id-first | scoped | conforms | No claim/batch API signature changes |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | scoped | conforms | No claim/release changes |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Pin by RESPONSE id; body stays in `agent_data` |
+| astral.config.config-source-of-truth | scoped | conforms | `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` in config.py |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | No scoring/threshold changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no `artifacts/**` / spikes paths |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan under `docs/features/` (not misplaced spike) |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/artifacts/ast-1099-….md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty did not edit src/features; engineer owns those |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer code commit left tests/bible to Betty |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core persist only; no external I/O |
+| astral.layers.import-direction | scoped | conforms | Core→tracker/config; lazy import; data via `save_job_data` |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` in ticket change set |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Config map only; no UI business logic |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | Blank/None/whitespace id skips write |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult/`render_verdict` changes |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | no `src/ui/**` in ticket change set |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Existing `save_job_data`; core owns pin/debug |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` in ticket change set |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D `debug_detail` only when `debug=True` |
+| astral.standards.dry-and-focused-functions | scoped | conforms | One helper + one map; extend existing persist |
+| astral.standards.in-scope-only | scoped | conforms | Three pin slots + write path; AST-1100 excluded |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` / `debug_detail` |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in core/utils (+ Betty tests) |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Task keys/slots in config map |
+| astral.standards.public-then-helpers | scoped | conforms | Pin helper beside existing artifact saves |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | scoped | conforms | No state-machine transition changes |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job prior-state changes |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Mid-chain pin under existing `run_next`; no new daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | not-applicable | no `src/ui/**` |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Config touch is pin map only; no worker changes |
+
+## Pattern conformance
+
+| cited | verdict |
+|-------|---------|
+| pattern.batch.entity-agent-responses | conforms |
+| astral.batch.entity-agent-responses-latest-only | conforms |
+| astral.patterns.coat-check-never-store-empty | conforms |
+| astral.standards.debug-contract-gated | conforms |
+| astral.standards.dry-and-focused-functions | conforms |
+| astral.standards.logging-via-utils | conforms |
+| astral.config.config-source-of-truth | conforms |
+| astral.layers.import-direction | conforms |
+
+## Plan adherence
+
+Stages 1–3 match the combined plan: config map + clear keys, tracker pin helper (never-store-empty + Style D), `do_task` pin before `run_next`, terminal body-copy removed for finalize hops. Self-Assessment Single-Component / high / Medium still fits the footprint. Sibling AST-1100 (JAR/UI resolve) untouched.
+
+## Findings
+
+**discuss (C4 straggler):** Joan excluded `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, and `astral.debug.spikes-under-debug-dir`; ticket-scoped diff brings them in-scope. All three **conform** (single features file; Betty owns tests/bible; plan under `docs/features/`). No product fix-now.
+
+**advisory:** Stopping terminal `persist_job_artifact_from_parsed` for finalize hops leaves pointer-string `artifacts.cover_letter` / `job_resume` until AST-1100 — intentional Medium risk already in plan/Joan.
+
+## Notes
+
+- Change set for applies_when + product judgment: AST-1099 commits on publish tip (formal `origin/dev...` three-dot is epic-ancestry polluted / multiple merge bases).
+- Plan-rubric verdict attached (Joan APPROVED).
+- Docs append: `docs/features/artifacts/ast-1099-pin-agent-data-id.md` @ `3c6d9ff0`.
+
+context_tokens≈42000
+
+— Radia
+
+#### betty — 2026-07-31T04:51:02.394Z
+## QA test manifest
+
+`origin/sub/AST-1091/AST-1099-pin-agent-data-id` @ `fe09931b` (`merge-tests(AST-1099): origin/tests 449c61ccdfa86241eadf4f3798504e4d50fab3fc`)
+
+### 1. Existing coverage (bible-backed)
+
+None sufficient alone for the new pin helper / mid-chain path.
+
+### 2. Broken / obsolete
+
+- Any expectation that terminal `do_task` body-copies `finalize_job_resume` / `finalize_cover_letter` into `artifacts.resume_content` / dict `cover_letter` — superseded by pointer pin (AST-1100 remaps readers). No existing component assertion required a rewrite beyond the new suites.
+
+### 3. Gaps (this pass)
+
+1. Config pin map + cancel clear keys — `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+2. Tracker pin helper (write / never-store-empty / debug / clear pin slots) — `tests/component/core/test_tracker.py::TestAst1099PinJobArtifactAgentDataId`
+3. `do_task` mid-chain + terminal pins; failure skip; store-fail debug skip; no `persist_job_artifact_from_parsed` on finalize hops — `tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin`
+
+**Integration:** none (revise-existing only; JAR resolve = AST-1100).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig \
+  tests/component/core/test_tracker.py::TestAst1099PinJobArtifactAgentDataId \
+  tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  -q
+```
+
+### Bible shasums on publish tip
+
+- `docs/test-bible/core/tracker.md` `7c44a935637153dc6f94f57ce39d0ceae83e514d3924d0adf1f9cfa6febfb244`
+- `docs/test-bible/core/agent.md` `53781b3e97157fe46f9fc95c641dfa7fd749644d37fb03405d3175ab6e428a95`
+- `docs/test-bible/utils/config.md` `af82f09b8d97bb3a53a0fa057befff62483b0a0e739c770c81ff5716aa7b29ba`
+
+— Betty
+
+#### joan — 2026-07-31T04:44:01.910Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1099
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 `finalize_job_resume` → `artifacts.job_resume` = RESPONSE id; id loads body | Stages 1–3 (pin); load via existing `agent_data` by id |
+| AC2 `finalize_cover_letter` → `artifacts.cover_letter` = RESPONSE id | Stages 1–3; stop terminal body-copy so pointer not overwritten |
+| AC3 `propose_application_responses` → `artifacts.proposed_answers` = RESPONSE id | Stages 1–3 (no existing body-copy for this key) |
+| AC4 full chain leaves three pointers; UAT surfaces resolve via ids | Pointers: Stages 1–3. Surface resolve: N/A — boundary (AST-1100) |
+| AC5 `debug=True` pin attempt logs key + id or skip; no ungated spam | Stage 2 Style D `debug_detail` |
+| AC6 failed/empty hops do not blank a good prior pointer | Stage 2 never-store-empty; Stage 3 no pin on failure stores |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 config pin map + clear keys | Purpose/Architectural — config/convention map; no `persist_in` |
+| Stage 2 tracker pin helper | Functional scope core write + coat-check + debug found/recorded |
+| Stage 3 do_task pin before run_next; stop finalize body-copy | Functional scope mid-chain pin; Boundaries pointer-only |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Publish on sub via plan/code vocabulary |
+| orch.git.flow-direction-inviolable | conforms | origin/sub only; no reverse flow |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | sub/AST-1091/AST-1099-… only |
+| orch.git.one-epic-worktree-per-parent | conforms | astral-AST-1091 epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Explicit Decisions; no open product fork |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed |
+| orch.pipeline.project-scoped-queues | conforms | Single-child scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate only |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/ out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Ada) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Implementer path after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded confidence path touched |
+| astral.agent.do-task-delegation | conforms | Extends post-RESPONSE persist inside `do_task`; no bypass |
+| astral.agent.grade-vector-validation | conforms | No grade-vector changes |
+| astral.batch.batch-id-first | conforms | No claim/batch API signature changes |
+| astral.batch.batch-id-format | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | conforms | No claim/release changes |
+| astral.batch.entity-agent-responses-latest-only | conforms | Pin by RESPONSE `agent_data_id`; body stays in `agent_data` |
+| astral.config.config-source-of-truth | conforms | Task→slot map in `config.py`; no TASK_CONFIG `persist_in` |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring/threshold changes |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env literals |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src; Betty excluded |
+| astral.layers.core-vs-external-bright-line | conforms | Core persist only; no external I/O |
+| astral.layers.import-direction | conforms | Core→tracker/config; lazy import for cycle; data via `save_job_data` |
+| astral.layers.ui-config-driven-business-logic | conforms | Config map only; no UI logic |
+| astral.patterns.coat-check-never-store-empty | conforms | Blank id skips write; prior pointer preserved |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult/`render_verdict` changes |
+| astral.standards.data-raises-caller-logs | conforms | Data via existing save; core owns pin/debug |
+| astral.standards.debug-contract-gated | conforms | Style D only when `debug=True` |
+| astral.standards.dry-and-focused-functions | conforms | One helper + one map; extend existing persist |
+| astral.standards.in-scope-only | conforms | Three pin slots + write path; AST-1100 excluded |
+| astral.standards.logging-via-utils | conforms | `get_logger` / `debug_detail` |
+| astral.standards.no-cross-contamination | conforms | Stays in core/utils |
+| astral.standards.no-hardcoded-sets | conforms | Task keys/slots in config map |
+| astral.standards.public-then-helpers | conforms | Pin helper beside existing artifact saves |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | conforms | No state-machine transitions |
+| astral.state.job-prior-states-enforced | conforms | No job state transition changes |
+| astral.state.no-daisy-chain-in-run | conforms | Pin mid-chain under existing `run_next`; no new state daisy-chain |
+| astral.ui.single-gunicorn-worker | conforms | No gunicorn/worker changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — layers {docs} ∩ plan {utils,core} empty
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers {scripts} ∩ plan empty
+- astral.patterns.require-auth-on-protected-endpoints — layers {ui} ∩ plan empty
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty
+- astral.ui.frontend-file-placement — layers {ui} ∩ plan empty
+- astral.ui.naming-conventions — layers {ui} ∩ plan empty
+
+## Findings
+
+None fix-now.
+
+**discuss (non-blocking):** Stopping terminal `persist_job_artifact_from_parsed` for finalize hops intentionally changes `artifacts.cover_letter` (and stops `resume_content` body-copy from that path) to pointer-string semantics until AST-1100 remaps readers — already called out as Medium risk and blockedBy; not a definition mismatch.
+
+**acceptable:** Self-assessment Single-Component / high / Medium matches plan; mid-chain pin-before-`run_next` is the critical correctness detail and is explicit.
+
+**R6:** Definition fidelity pass (pointer-only, no `persist_in`, no UI). Layer/import pass. Config map in `config.py`. Coat-check + debug-gated pass. DRY pass. Sibling AST-1100 correctly excluded.
+
+context_tokens≈48000
+
+— Joan
+
+#### ada — 2026-07-31T04:41:42.179Z
+Plan published on `origin/sub/AST-1091/AST-1099-pin-agent-data-id` @ `2cc10e72`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1091/AST-1099-pin-agent-data-id/docs/features/artifacts/ast-1099-pin-agent-data-id.md
+
+**Approach:** Config map `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` → tracker `pin_job_artifact_agent_data_id` (never store empty) → `do_task` pins after successful RESPONSE store **before** `run_next` (fixes mid-chain gap: `finalize_job_resume`→`draft_cover_letter`, `finalize_cover_letter`→`propose_application_responses`). Stops terminal body-copy for those finalize hops so `cover_letter` is not overwritten by a dict after the pointer string.
+
+**Self-assessment**
+- **Scope — Single-Component:** config map + tracker pin helper + `do_task` post-RESPONSE persist only.
+- **Conf — high:** reuses `_store_response_block` id + `save_job_data` deep-merge; mid-chain gap is explicit in `agent_task.json` / terminal-only guard.
+- **Risk — Medium:** `artifacts.cover_letter` becomes an `agent_data_id` string for chain-written jobs until AST-1100 remaps readers (blockedBy this ticket).
+
+---
+
 # AST-1099 — Pin agent_data_id on job artifact slots after chain hops
 
 **Linear:** [AST-1099](https://linear.app/astralcareermatch/issue/AST-1099/pin-agent-data-id-on-job-artifact-slots-after-chain-hops-job-resume)

@@ -55,6 +55,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    TASK_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
@@ -2144,7 +2145,6 @@ def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
             payload["resume_structure"] = default_resume_structure()
 
 
-_DRAFT_JOB_RESUME_METADATA_KEYS = frozenset({"astral_job_id", "company", "title", "task_success"})
 _DRAFT_JOB_RESUME_CONSULT_KEYS = frozenset(
     {"grades", "dealbreakers", "clarifications", "overall_assessment", "ja_notes"}
 )
@@ -2154,17 +2154,22 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 }
 
 
-def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
-    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
-        if alias not in inner:
-            continue
-        alias_val = inner.pop(alias)
-        if canonical not in inner or inner.get(canonical) in (None, ""):
-            inner[canonical] = alias_val
+def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
+    """Section keys from artifacts.base_resume ∩ RESUME_STRUCTURE_KNOWN_SECTION_IDS."""
+    cd = candidate_data if isinstance(candidate_data, dict) else {}
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    base = artifacts.get("base_resume")
+    if not isinstance(base, dict):
+        return []
+    known = set(RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+    return sorted(k for k in base if k in known)
 
 
-def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
-    """Before draft_job_resume validation: flatten nested/wrapped section strings (AST-594)."""
+def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = False) -> None:
+    """Before draft_job_resume validation: unwrap nested resume + flatten section strings (AST-594 / AST-1270).
+
+    When ``debug=True``, emit Style D unwrap trail (AST-1272) before the nest pop.
+    """
     if not isinstance(parsed, dict):
         return
     payload = parsed.get("agent_payload")
@@ -2174,10 +2179,40 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
         inner = parsed
     else:
         return
+    task_cfg = TASK_CONFIG["draft_job_resume"]
+    nest_key = task_cfg["nested_resume_key"]
+    meta = set(task_cfg["payload_metadata_keys"])
+    # Style D unwrap trail before pop — agent passes debug= on first do_task call only.
+    logger.set_debug_flag(debug)
+    nested = inner.get(nest_key)
+    if isinstance(nested, dict):
+        unwrap_outcome = "popped"
+        nested_section_count = len(nested)
+    elif nest_key in inner:
+        unwrap_outcome = "invalid"
+        nested_section_count = 0
+    else:
+        unwrap_outcome = "flat"
+        nested_section_count = 0
+    if debug:
+        logger.debug_index(
+            func="candidate.normalize_draft_job_resume_agent_payload",
+            index=1,
+            total=1,
+            identifier=str(inner.get("astral_job_id") or ""),
+            outcome=f"unwrap {unwrap_outcome}",
+        )
+        logger.debug_detail(f"found nest_key={nest_key!r} unwrap={unwrap_outcome}")
+        logger.debug_detail(f"found nested_section_count={nested_section_count}")
+    # Nested envelope: promote section bodies onto agent_payload; drop nest key.
+    if isinstance(nested, dict):
+        block = inner.pop(nest_key)
+        for sid, val in block.items():
+            inner[sid] = val
     if "resume_structure" in inner:
         _flatten_craft_resume_section_strings(inner)
-    for nest_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
-        block = inner.get(nest_key)
+    for promote_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
+        block = inner.get(promote_key)
         if not isinstance(block, dict):
             continue
         for sid, val in block.items():
@@ -2189,7 +2224,7 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
             if text:
                 inner[sid] = text
     for key, val in list(inner.items()):
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        if key in meta or key == "resume_structure":
             continue
         if key == "experience" and _is_experience_job_array(val):
             continue
@@ -2241,44 +2276,115 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
                 job[field] = ""
 
 
-def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Optional[str]:
-    """Catalog whitelist for draft_job_resume section keys; all sections optional."""
+def validate_draft_job_resume_payload(
+    parsed: dict, candidate_data: dict, *, debug: bool = False
+) -> Optional[str]:
+    """Whitelist draft_job_resume section keys against artifacts.base_resume (AST-1270).
+
+    When ``debug=True``, emit Style D whitelist / accepted / rejected trail (AST-1272).
+    """
+    # Second normalize stays quiet — unwrap Style D already fired on agent's first call.
     normalize_draft_job_resume_agent_payload(parsed)
+    logger.set_debug_flag(debug)
     payload = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
+    accepted: list[str] = []
+    rejected: list[str] = []
+    allowed: set = set()
+    err: Optional[str] = None
+
     if not isinstance(payload, dict):
-        return "agent_payload must be a dict"
-    structure = resolve_resume_structure(candidate_data)
-    allowed = set(enabled_resume_section_ids(structure))
-    if not allowed:
-        return "candidate has no enabled resume sections"
-    for key, val in payload.items():
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        err = "agent_payload must be a dict"
+    else:
+        task_cfg = TASK_CONFIG["draft_job_resume"]
+        nest_key = task_cfg["nested_resume_key"]
+        meta = set(task_cfg["payload_metadata_keys"])
+        if nest_key in payload and not isinstance(payload.get(nest_key), dict):
+            err = f"{nest_key!r} must be an object of resume sections"
+        else:
+            allowed = set(draft_job_resume_allowed_section_keys(candidate_data))
+            if not allowed:
+                err = "candidate has no base_resume section keys"
+            else:
+                for key, val in payload.items():
+                    if key in meta or key == "resume_structure":
+                        continue
+                    if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
+                        rejected.append(key)
+                        err = f"Unknown or disallowed field '{key}' on draft_job_resume"
+                        break
+                    if key not in allowed:
+                        rejected.append(key)
+                        err = (
+                            f"Unknown resume section key '{key}' "
+                            f"(not in candidate base_resume keys: {sorted(allowed)})"
+                        )
+                        break
+                    if val is None or val == "":
+                        accepted.append(key)
+                        continue
+                    if key == "experience":
+                        if _is_experience_job_array(val):
+                            bad_job = False
+                            for job in val:
+                                if not isinstance(job, dict):
+                                    rejected.append(key)
+                                    err = "Section 'experience' must be a job array or prose string"
+                                    bad_job = True
+                                    break
+                                if not isinstance(job.get("location"), str):
+                                    job["location"] = (
+                                        ""
+                                        if job.get("location") is None
+                                        else str(job.get("location") or "")
+                                    )
+                            if bad_job or err is not None:
+                                break
+                            accepted.append(key)
+                            continue
+                        if isinstance(val, str):
+                            accepted.append(key)
+                            continue
+                        if isinstance(val, (list, dict)):
+                            rejected.append(key)
+                            err = "Section 'experience' must be a job array or prose string"
+                            break
+                    text = _coerce_resume_section_string(val)
+                    if text is None:
+                        rejected.append(key)
+                        err = f"Section '{key}' must be prose text (string or coercible list)"
+                        break
+                    if text != val:
+                        payload[key] = text
+                    accepted.append(key)
+                if err is None:
+                    pin_experience_job_facts_from_base(payload, candidate_data)
+
+    if debug:
+        ident = str(payload.get("astral_job_id") or "") if isinstance(payload, dict) else ""
+        outcome = "ok" if err is None else "reject"
+        logger.debug_index(
+            func="candidate.validate_draft_job_resume_payload",
+            index=1,
+            total=1,
+            identifier=ident,
+            outcome=outcome,
+        )
+        logger.debug_detail(
+            f"found whitelist_source=base_resume keys={sorted(allowed)}"
+        )
+        logger.debug_detail(f"recorded accepted_keys={sorted(accepted)}")
+        logger.debug_detail(f"recorded rejected_keys={sorted(rejected)}")
+        logger.debug_detail(f"recorded error={err if err is not None else 'none'}")
+    return err
+
+
+def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
+    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
+        if alias not in inner:
             continue
-        if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
-            return f"Unknown or disallowed field '{key}' on draft_job_resume"
-        if key not in allowed:
-            return f"Unknown resume section key '{key}' (not in candidate catalog: {sorted(allowed)})"
-        if val is None or val == "":
-            continue
-        if key == "experience":
-            if _is_experience_job_array(val):
-                for job in val:
-                    if not isinstance(job, dict):
-                        return "Section 'experience' must be a job array or prose string"
-                    if not isinstance(job.get("location"), str):
-                        job["location"] = "" if job.get("location") is None else str(job.get("location") or "")
-                continue
-            if isinstance(val, str):
-                continue
-            if isinstance(val, (list, dict)):
-                return "Section 'experience' must be a job array or prose string"
-        text = _coerce_resume_section_string(val)
-        if text is None:
-            return f"Section '{key}' must be prose text (string or coercible list)"
-        if text != val:
-            payload[key] = text
-    pin_experience_job_facts_from_base(payload, candidate_data)
-    return None
+        alias_val = inner.pop(alias)
+        if canonical not in inner or inner.get(canonical) in (None, ""):
+            inner[canonical] = alias_val
 
 
 def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
