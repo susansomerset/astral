@@ -356,7 +356,7 @@ class TestAst978BackfillAgentDataRefs:
 
 
 class TestAst1274ResolveNullBlockDataRef:
-    """AST-1274: null/empty local + populated ref resolves; local body preferred when present."""
+    """AST-1274: null/empty local + populated ref resolves; populated ref always follows chain."""
 
     def test_empty_string_block_data_with_ref_resolves(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -388,7 +388,9 @@ class TestAst1274ResolveNullBlockDataRef:
         by_ids = db.get_agent_data_for_ids(["alias-empty"])
         assert by_ids["alias-empty"]["block_data"] == "canonical-body"
 
-    def test_local_body_preferred_over_ref(self, sqlite_in_memory) -> None:
+
+    def test_populated_ref_follows_chain_even_with_local_body(self, sqlite_in_memory) -> None:
+        # Resolve discuss: product dropped has_local — populated ref always wins (plan Stage 1).
         db = sqlite_in_memory
         db.save_agent_data(
             "canon-1", "company", "t", "batch-1274b", "SYSTEM", "from-ref",
@@ -403,5 +405,5 @@ class TestAst1274ResolveNullBlockDataRef:
         )
         row = db.get_agent_data("alias-local")
         assert row is not None
-        assert row["block_data"] == "from-local"
+        assert row["block_data"] == "from-ref"
         assert row["ref_agent_data_id"] == "canon-1"
