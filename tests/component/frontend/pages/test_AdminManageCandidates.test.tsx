@@ -321,4 +321,133 @@ describe("AdminManageCandidates", () => {
     await userEvent.click(within(dialog).getByRole("button", { name: "Set tasks" }))
     await waitFor(() => expect(screen.getByText("Candidate not found: doe_jane")).toBeInTheDocument())
   }, 15000)
+
+  // AST-1288: illegal-hop are-you-sure → confirm_state_override retry (AST-1287 contract)
+  const hopCandidate = {
+    ...candidate,
+    state: "NEW_CANDIDATE",
+  }
+
+  function mockIllegalHopApi(opts: {
+    onIllegal?: (body: Record<string, unknown>) => void
+    confirmOk?: boolean
+  } = {}) {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/shapes/candidates") return { json: async () => shapes } as Response
+      if (url === "/api/candidates/states") {
+        return { json: async () => ["NEW_CANDIDATE", "ACTIVE_SEARCH", "NOT_A_STATE"] } as Response
+      }
+      if (url === "/api/candidates?include_deleted=true") {
+        return { json: async () => [hopCandidate] } as Response
+      }
+      if (url === "/api/admin/dispatch_tasks/counts") {
+        return { ok: true, json: async () => ({ counts: { doe_jane: 0 } }) } as Response
+      }
+      if (url === "/api/candidates/doe_jane/data" && init?.method === "PUT") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>
+        if (body.confirm_state_override === true) {
+          return { ok: opts.confirmOk !== false, json: async () => (opts.confirmOk === false ? { error: "force failed" } : {}) } as Response
+        }
+        if (body.state === "ACTIVE_SEARCH") {
+          opts.onIllegal?.(body)
+          return {
+            ok: false,
+            json: async () => ({
+              error: "Invalid candidate state transition: NEW_CANDIDATE -> ACTIVE_SEARCH",
+              code: "illegal_candidate_transition",
+              from_state: "NEW_CANDIDATE",
+              to_state: "ACTIVE_SEARCH",
+            }),
+          } as Response
+        }
+        if (body.state === "NOT_A_STATE") {
+          return { ok: false, json: async () => ({ error: "Unknown candidate state: NOT_A_STATE" }) } as Response
+        }
+        return { ok: true, json: async () => ({}) } as Response
+      }
+    })
+  }
+
+  it("AST-1288: illegal hop shows from→to confirm; confirm retries with override", async () => {
+    const firstBodies: Record<string, unknown>[] = []
+    mockIllegalHopApi({ onIllegal: b => firstBodies.push(b) })
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)"), {
+      target: { value: "ACTIVE_SEARCH" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirm illegal state change" })
+    expect(dialog).toHaveTextContent("NEW_CANDIDATE → ACTIVE_SEARCH")
+    expect(firstBodies[0]?.confirm_state_override).toBeUndefined()
+    await userEvent.click(within(dialog).getByRole("button", { name: "Change state" }))
+    await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    const puts = mockedApi.mock.calls.filter(
+      c => c[0] === "/api/candidates/doe_jane/data" && (c[1] as RequestInit)?.method === "PUT",
+    )
+    expect(puts).toHaveLength(2)
+    const retry = JSON.parse(String((puts[1][1] as RequestInit).body))
+    expect(retry.state).toBe("ACTIVE_SEARCH")
+    expect(retry.confirm_state_override).toBe(true)
+  }, 20000)
+
+  it("AST-1288: cancel illegal confirm leaves state unchanged and does not send override", async () => {
+    mockIllegalHopApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)"), {
+      target: { value: "ACTIVE_SEARCH" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    const dialog = await screen.findByRole("alertdialog", { name: "Confirm illegal state change" })
+    await userEvent.click(within(dialog).getByRole("button", { name: "Cancel" }))
+    await waitFor(() =>
+      expect(screen.getByText("State unchanged; other fields saved if they were.")).toBeInTheDocument(),
+    )
+    // Modal stays open; state select reset to from_state
+    expect(screen.getByText(/Edit: doe_jane/)).toBeInTheDocument()
+    expect(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)")).toHaveValue("NEW_CANDIDATE")
+    const puts = mockedApi.mock.calls.filter(
+      c => c[0] === "/api/candidates/doe_jane/data" && (c[1] as RequestInit)?.method === "PUT",
+    )
+    expect(puts).toHaveLength(1)
+    expect(JSON.parse(String((puts[0][1] as RequestInit).body)).confirm_state_override).toBeUndefined()
+  }, 20000)
+
+  it("AST-1288: legal hop saves without illegal-state confirm", async () => {
+    mockIllegalHopApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(textboxByFieldLabel(editModal as HTMLElement, "First Name"), {
+      target: { value: "Janet" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Candidate updated")).toBeInTheDocument())
+    expect(screen.queryByRole("alertdialog", { name: "Confirm illegal state change" })).toBeNull()
+    const puts = mockedApi.mock.calls.filter(
+      c => c[0] === "/api/candidates/doe_jane/data" && (c[1] as RequestInit)?.method === "PUT",
+    )
+    expect(puts).toHaveLength(1)
+    expect(JSON.parse(String((puts[0][1] as RequestInit).body)).confirm_state_override).toBeUndefined()
+  }, 20000)
+
+  it("AST-1288: unknown-state 400 does not open illegal confirm", async () => {
+    mockIllegalHopApi()
+    renderWithProviders(<ManageCandidates />)
+    await waitFor(() => expect(screen.getByText("Manage Candidates")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Edit" }))
+    const editModal = screen.getByText(/Edit: doe_jane/).closest(".modal-card")!
+    fireEvent.change(comboboxByFieldLabel(editModal as HTMLElement, "State (admin override)"), {
+      target: { value: "NOT_A_STATE" },
+    })
+    await userEvent.click(within(editModal as HTMLElement).getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText(/Unknown candidate state/)).toBeInTheDocument())
+    expect(screen.queryByRole("alertdialog", { name: "Confirm illegal state change" })).toBeNull()
+  }, 20000)
 })
