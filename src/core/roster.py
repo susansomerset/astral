@@ -3531,7 +3531,18 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
     else:
         return []
 
-    entries = list_entity_latest_agent_refs(entity_type, entity_id)
+    # AST-1274: secondary soft-fail — data still raises on corrupt refs; detail must open.
+    try:
+        entries = list_entity_latest_agent_refs(entity_type, entity_id)
+    except Exception as exc:
+        logger.exception(
+            "get_entity_agent_story: list_entity_latest_agent_refs failed "
+            "entity_type=%s entity_id=%s: %s",
+            entity_type,
+            entity_id,
+            exc,
+        )
+        return []
     if not entries:
         return []
 
@@ -3541,7 +3552,17 @@ def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
         for b in (e.get("prompt_blocks") or [])
         if isinstance(b, dict) and "id" in b
     ]
-    data_map = get_agent_data_for_ids(all_ids)
+    try:
+        data_map = get_agent_data_for_ids(all_ids)
+    except Exception as exc:
+        logger.exception(
+            "get_entity_agent_story: get_agent_data_for_ids failed "
+            "entity_type=%s entity_id=%s: %s",
+            entity_type,
+            entity_id,
+            exc,
+        )
+        data_map = {}
 
     entity_job_id = entity.get("astral_job_id")  # None for companies
 
