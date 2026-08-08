@@ -176,3 +176,11 @@ Diff `origin/dev...origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allow
 `context_tokens≈` see Linear comment.
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** [code-rubric] revision=2 — **CLEAN** (no fix-now, no discuss).  
+**Action:** No product changes. Appended this section; tip advanced with `resolve(AST-1278): — clean`.  
+**Publish:** `origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` (post-resolve tip).  
+**§9a:** dry-run into `origin/dev` clean; dry-run into `origin/ftr/AST-1275-remove-pass-threshold-from-task-config` clean.
