@@ -54,9 +54,11 @@ After **AST-1270**, nested `agent_payload.resume` unwraps and `deviations` is al
    Implementation rules:
    - Resolve `body` the same way `_resume_payload_body` does (`agent_payload` dict or `parsed`).
    - If `body` is not a dict, return `None`.
-   - Read `meta_key = "deviations"` from membership in `TASK_CONFIG["draft_job_resume"]["payload_metadata_keys"]` — do **not** hardcode a second parallel set; look up the string that is already in that tuple (use the literal `"deviations"` only as the known metadata field name already declared in Stage 1 / AST-1270).
-   - Prefer nested envelope when present: if `body.get(nest_key)` is a dict, read `deviations` from the **outer** `body` (sibling of nest), not from inside the nest.
-   - If `"deviations" not in body`: return `None` (caller must not wipe a prior value).
+   - Resolve the payload field name from config only:
+     `meta_key = TASK_CONFIG["draft_job_resume"]["deviations_artifact_key"]`
+     (Stage 1 sets this to the same string as the model’s sibling metadata field; do **not** hardcode `"deviations"` in `tracker.py`).
+   - Prefer nested envelope when present: if `body.get(nest_key)` is a dict, read `body.get(meta_key)` from the **outer** `body` (sibling of nest), not from inside the nest.
+   - If `meta_key not in body`: return `None` (caller must not wipe a prior value).
    - If present: coerce to `list[str]`:
      - `None` → `[]`
      - `str` → `[that string]` if non-empty after strip else `[]`
@@ -93,8 +95,9 @@ After **AST-1270**, nested `agent_payload.resume` unwraps and `deviations` is al
    - Keep existing string / experience-job-array inclusion rules for remaining keys.
    - This hardens the flat-unwrapped path so a string-typed `deviations` can never enter resume body.
 
-5. Update `persist_job_artifact_from_parsed`:
-   - After the existing resume branch writes `resume_content` (or even when resume does not match — still try deviations when present), call `persist_draft_job_resume_deviations(astral_job_id, parsed)` when `allow_resume` is True.
+5. Update `persist_job_artifact_from_parsed` (defense-in-depth for manual/API callers only — AST-1099 removed the live `do_task` terminal body-copy; **AC2’s production path is Stage 3**):
+   - After the existing resume / cover branches (regardless of `allow_resume` / whether resume matched), call `persist_draft_job_resume_deviations(astral_job_id, parsed)`.
+   - Do **not** gate this call on `allow_resume` (that flag is resume-body only; deviations are sibling metadata).
    - Do **not** put deviations into `filtered` / `save_job_artifact_resume_content`.
    - If deviations persist returns True, count that as `wrote = True` (same as cover/resume writes).
 
@@ -136,9 +139,15 @@ The plan is binding. The agent:
 
 ## Code rules check
 
-- §1.3 DRY: one extract + one save helper; agent and `persist_job_artifact_from_parsed` both call the wrapper.
-- §1.4 / §2.1 / `astral.config.config-source-of-truth`: artifact key on `TASK_CONFIG["draft_job_resume"]`; clear-keys tuple updated with the same literal; no new inline frozenset of metadata names in core.
+- §1.3 DRY: one extract + one save helper; Stage 3 `do_task` is the live caller; `persist_job_artifact_from_parsed` reuses the same wrapper for manual/API defense-in-depth only.
+- §1.4 / §2.1 / `astral.config.config-source-of-truth`: artifact key on `TASK_CONFIG["draft_job_resume"]`; extract reads `deviations_artifact_key` (no literal field name in core); clear-keys tuple updated with the same literal as Stage 1.
 - §1.5.1 / `astral.standards.debug-contract-gated`: no new Style D lines (AST-1272).
 - `astral.standards.in-scope-only`: no AST-1205 UI, no prompt/normalize changes, no test-tree edits.
 - §3.3 imports: agent → tracker via lazy import only (existing cycle-break pattern).
 - Boundaries: siblings AST-1270 / AST-1272 untouched beyond reading their contracts.
+
+## Revisions
+
+Revision 1 — 2026-08-08  
+Driven by: Joan `[plan-rubric] revision=1` discuss (APPROVED) — Stage 2 step 1 meta_key ambiguity; Stage 2 step 5 `allow_resume` gate / dual-path DRY claim.  
+Changes: extract reads `deviations_artifact_key` only; `persist_job_artifact_from_parsed` deviations write is ungated on `allow_resume` and documented as non-production path; Code rules DRY line corrected.
