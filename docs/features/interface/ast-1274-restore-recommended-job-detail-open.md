@@ -130,3 +130,11 @@ Changes: Full rewrite — primary data-layer ref resolve; dropped soft-fail-prim
 Revision 3 — 2026-08-08
 Driven by: Joan `[plan-discuss] round=1 concern` on revision 2 @ `503795bd` (fix-now: missing-target `None` is wrong-layer; restore secondary caller catch; reword AC4 skip).
 Changes: Keep data `ValueError` for missing target/cycle; restore `roster.get_entity_agent_story` + `api_jobs.detail` secondary soft-fail; clarify AC4 zero-row skip instruction; update Files Changed / In-scope framing.
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `355f0cda4cb62f2affd645e21a52d7daac027967`
+
+Stages 1–2: `_resolve_agent_data_block_data` follows null/empty `block_data` + populated `ref_agent_data_id` (spike alias→canonical + dangling `ValueError`); secondary soft-fail in `get_entity_agent_story` / `detail`; `JobAnalysisReportModal` 404 vs non-404 copy. Stage 3: soft-fail GET 200 + `agent_story: []` proven; AC4 skipped (zero RECOMMENDED in shared DB). AC5 N/A. Tests deferred to Betty.
