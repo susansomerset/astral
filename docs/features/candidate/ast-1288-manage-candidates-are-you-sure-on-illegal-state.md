@@ -68,3 +68,12 @@ When an admin on Manage Candidates chooses a registered target state that the ca
 | `pattern.ui.admin-endpoint` / require-auth | Existing admin page + `api()` client; no new route |
 | §3.3 imports | Frontend → HTTP API only; no new core/data imports |
 | Boundaries | No core force path; no graph repair; no company/job transition UI; no test-tree edits |
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1285/AST-1288-manage-candidates-are-you-sure`  
+**Tip:** `b4770bcb`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `b4770bcb` | Illegal-hop confirm + `confirm_state_override` retry on Manage Candidates edit save |
