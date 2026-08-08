@@ -138,3 +138,27 @@ Changes: Keep data `ValueError` for missing target/cycle; restore `roster.get_en
 **Built:** `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `355f0cda4cb62f2affd645e21a52d7daac027967`
 
 Stages 1–2: `_resolve_agent_data_block_data` follows null/empty `block_data` + populated `ref_agent_data_id` (spike alias→canonical + dangling `ValueError`); secondary soft-fail in `get_entity_agent_story` / `detail`; `JobAnalysisReportModal` 404 vs non-404 copy. Stage 3: soft-fail GET 200 + `agent_story: []` proven; AC4 skipped (zero RECOMMENDED in shared DB). AC5 N/A. Tests deferred to Betty.
+
+---
+
+## Review (code-rubric.v2)
+
+`[code-rubric] revision=2` — **Publish ref @** `e2b2b2aed1c8c0bf5867960e1caed2e12fb603a2`
+
+**Overall: DISCUSS**
+
+Full active-set swept in-session (65 active statutes: 18 universal, 47 scoped). No fix-now findings. Primary/secondary layering (`data` raises `ValueError` on missing ref target / cycle, `core`+`ui` catch-and-log per `astral.standards.data-raises-caller-logs`), `@require_auth` retained, `pattern.ui.admin-endpoint` and `pattern.layers.import-discipline` both conform, no cross-ticket scope smuggling in the product diff (the AST-1277/AST-1278/AST-1279 hunks in `tests/component/**` and `docs/test-bible/**` ride in via the shared `origin/tests` merge-tests SHA, not new work on this ticket — expected per `orch.git.betty-merge-tests-one-sha`, not a boundary violation).
+
+**Discuss:** `_resolve_agent_data_block_data` now prefers local `block_data` over a populated `ref_agent_data_id` when both are non-blank (`has_local` branch, `src/data/database.py`). Susan's stated contract (AST-1276) only describes the null-local + populated-ref case; the old code always followed the ref when populated, regardless of local content. The new "local wins" branch is defensive and covered by `test_local_body_preferred_over_ref`, and it doesn't disturb the documented dedup-write contract (dedup rows write `block_data=NULL` alongside `ref_agent_data_id`), but it is a behavior change for a case outside the literal bug report. Worth a one-line confirmation from Susan/Archie that "local wins" is the intended tie-break, not just an implementer default.
+
+**Pattern conformance**
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | `GET /api/jobs/<id>` keeps `@require_auth`; story-resolve soft-fail lives in API/core, not React |
+| pattern.layers.import-discipline | conforms | `api_jobs.py` adds only `src.utils.logging` (ui→utils); no new ui→data/external import |
+
+**Frame diff:** (none) — AC4 already unchecked in the description, matching the documented zero-RECOMMENDED-rows skip; no other description drift found.
+
+context_tokens≈45000
+— Radia
