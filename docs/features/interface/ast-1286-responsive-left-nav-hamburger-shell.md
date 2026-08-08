@@ -183,3 +183,18 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 
 **Publish ref:** `origin/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell`  
 **Product commits:** `74304164` (hamburger overlay drawer + CSS shell), `ac099886` (narrow checked candidate list)
+
+## Radia review — [code-rubric] revision=2
+
+**Publish ref tip:** `8441b2257d324973e7e8737b4d5c2283ac52c9b4`
+**Overall:** DISCUSS
+
+Full active statute set scored in-session (64 active leaves; 4 retired ignored) — conforms across the board on the applicable subset (frontend layer + config/naming/import/DRY/in-scope/test-tree-ownership statutes); everything else not-applicable to a shell/CSS-only diff. Linear comment carries the full `## Statutes checked` table per code-rubric.v2.
+
+**Pattern conformance:** `pattern.ui.responsive-nav-shell` — discuss. No file under `canon/patterns/**` yet; the ticket already self-discloses this ("Considered but excluded: Canon file... Archie approval before catalog law"), so it isn't a false catalog claim, but C5 still flags a missing id. Resolution is Archie authoring + approving the canon file (or dropping the citation until it lands) — not a code change.
+
+**Plan adherence:** Stage 1 + Stage 2 land exactly as specced — single shared `<nav>` tree, `matchMedia` listener resets drawer/candidate-menu state on resize-to-wide, wide `<select>` behavior untouched. No scope creep into `NAV_CONFIG`, `AdminDeployFooter.tsx`, auth, or page layouts.
+
+Full verdict + statute table: Linear comment on AST-1286.
+
+— Radia
