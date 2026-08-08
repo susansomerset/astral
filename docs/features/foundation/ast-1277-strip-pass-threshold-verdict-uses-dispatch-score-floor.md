@@ -173,3 +173,9 @@ Parent keeps NULL→`1.0` for **claim**; this child applies the **same** normali
 Revision 1 — 2026-08-08  
 Driven by: Joan `[plan-discuss] round=1 concern` (plan-rubric REVISE) — fix-now wrong prefilter dispatch lookup key (`prefilter_company` vs `prefilter`); fix-now inverted tie-break order claim (`id ASC` vs tracker/`list_dispatch_tasks` `id DESC`); discuss NULL→1.0 verdict semantics / Susan floor action; discuss active-law interval vs AST-1279; discuss DRY trigger match via tracker helper; discuss pattern citation status.  
 Changes: Added `dispatch_row_task_key`; Stage 2 lookup uses tracker `trigger_state=` + newest-first tie-break; prefilter resolves through that map to dispatch key `prefilter`; documented post-land floor expectations and accepted statute-interval contradiction; Conf → Medium; self-review updated for DRY / idiom id.
+
+## Review
+
+- **Branch:** `sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor`
+- **Tip:** `3e8a7c8c` (`3e8a7c8c21619f6e77a7be519909dd386a2d8161`)
+- **Stages:** Stage 1 `8c1aea8b` (config/helpers/dispatcher); Stage 2 `3e8a7c8c` (consult + roster)
