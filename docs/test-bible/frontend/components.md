@@ -617,3 +617,28 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
   --testNamePattern="AST-1253|AST-904"
 ```
+
+### AST-1286 · AST-1284
+
+**Parent:** [AST-1284 — Make left nav responsive](https://linear.app/astralcareermatch/issue/AST-1284/make-left-nav-responsive). **Publish:** `origin/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell`.
+
+`NavigationShell` collapses below 1024px into hamburger + overlay drawer (backdrop dismiss, close on pathname change); narrow mode uses a checked candidate list; wide mode keeps the native `<select>`. Admin deploy footer gate unchanged. jsdom `matchMedia` stub lives in `tests/component/frontend/test-utils.tsx` (`stubNavViewport`) — default wide so existing shell mounts keep the combobox. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Wide native select + existing nav/footer | `NavigationShell.tsx` | **`test_NavigationShell.test.tsx`** — existing cases + **`AST-1286 responsive shell` → wide viewport keeps native candidate select** |
+| Narrow drawer open / backdrop dismiss | same + `App.css` | **`narrow: hamburger opens drawer; backdrop dismisses without route change`** |
+| Close on navigate | same | **`narrow: enabled nav destination navigates and closes drawer`** |
+| Narrow checked candidate list (admin) | same | **`narrow: admin checked candidate list selects and marks current`** |
+| Narrow non-admin lock + no deploy footer | same | **`narrow: non-admin cannot change candidate; deploy footer omitted`** |
+| AST-709 nav-escape (shell mount) | `NavigationShell` under routes | **`test_AdminAgentTimesheets.test.tsx`** — **`nav click away from Agent Timesheets stays on destination`** (revised via `stubNavViewport` default) |
+
+**Broken / obsolete:** prior `test_NavigationShell` + AST-709 shell mount crashed on missing `window.matchMedia` after product Stage 1 — fixed by `stubNavViewport` in test-utils (wide default) + narrow overrides in AST-1286 cases.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` asserts API nav_config/candidates only — no shell/CSS contract; no revision. Do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx
+```
