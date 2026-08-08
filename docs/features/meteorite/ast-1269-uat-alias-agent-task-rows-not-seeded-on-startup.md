@@ -199,3 +199,32 @@ PY
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `df7b6bb6` | restore meteorite_grade_do/get agent_task seed rows |
+
+## Radia review — [code-rubric] revision=1
+
+**Rubric:** code-rubric.v1 · **Publish ref tip:** `2639368d`
+
+**Overall: CLEAN**
+
+**What's solid:**
+
+- Structural diff confirms exactly two rows added (`meteorite_grade_do` seq 5, `meteorite_grade_get` seq 6, both `Meteorite Review` / `"4500"`), zero rows removed, zero non-prompt field diffs, and zero real content diffs on any existing row's prompt fields — verified by decoding both `origin/dev` and this tip's JSON and comparing every row/field programmatically. The large raw-text diff (~300 lines across dozens of unrelated rows) is exactly the "necessary re-serialize" the plan called out: `ensure_ascii=False` unescaped pre-existing `\u2014` sequences to literal em-dashes file-wide, matching AST-1252's advisory direction — not a content change.
+- Both new rows byte-match the plan's field tables and AST-1222's pinned UUIDs (`47e47cc0…`, `357b56de…`); `agent_id: "n/a"`, empty `run_next`, all seven prompt fields empty; fixture (`docs/uat-fixtures/AST-756/expected-agent_task.json`) already lockstep for those two keys (verify-only per plan, confirmed no fixture edit in this diff).
+- Ran the plan's own Stage 1 precondition + verify scripts live at tip: alias contract still live (`is_task_alias`, `resolve_task_key_for_content`, `METEORITE_DISPATCH_TASKS` trigger membership), catalog count is exactly 52, catalog↔fixture lockstep for the two alias keys, masters (`grade_do`/`grade_get`) still carry real prompt bodies, `dispatch_task_grouping_catalog_key`/`get_task_keys()` include the aliases. All pass.
+- Scope discipline: `code(AST-1269)` touches only `data/admin/agent_task.json` (no `src/utils/config.py`, `dispatcher.py`, `agent.py`, `consult.py`, or UI — exactly the plan's "out of ticket's file list"); `test(AST-1269)`/`merge-tests(AST-1269)` touch only `tests/`/`docs/test-bible/**`. `astral.git.engineer-test-tree-ban` and `astral.git.betty-no-src-or-features` both hold. Trailing newline preserved.
+- Betty's test diff is honest about wipe drift: revises pinned counts (50→52), skips (with a shared, descriptive reason constant) the eight classes that still encode pre-AST-1239-wipe Gaze/Meteorite Review membership assumptions rather than silently leaving them red or forcing an out-of-scope reshuffle, and adds a scoped `TestAst1269AliasAgentTaskSeedRestore` plus a revised `TestAst1222MeteoriteGradeAliasCatalogRows`. Ran the new/revised classes (`TestAst1269AliasAgentTaskSeedRestore`, `TestAst1222MeteoriteGradeAliasCatalogRows`, `TestAst786AgentTaskRepoJsonSeed`, `TestAst1055MeteoriteCatalogRows`) live — 9 passed.
+- Git hygiene: this ticket's own 5 commits on `origin/sub/...` (`plan → code → docs → test → merge-tests`) carry no `Merge remote-tracking branch` subjects. (Found and discarded stray local-only self-merge commits in my own epic-worktree checkout before reviewing — confirmed empty diff vs origin, reset to the clean origin tip; not part of this ticket's published history.)
+- `python3 -m py_compile src/utils/config.py` clean (only `src/` file in the transitive precondition/verify scripts, unchanged by this ticket).
+- **No plan-rubric verdict attached** (straggler check, C4) — this bug ticket went Todo → Plan Ready → Plan Approved with no Joan comment. Not a block; noting per rubric.
+
+**Full active-set sweep** (66 active statutes: 18 universal + 48 scoped total; this diff's touched paths are `data/admin/agent_task.json`, `docs/features/**`, `docs/test-bible/**`, `tests/**` — no `src/**`, so `src/**`-scoped statutes are not-applicable by path regardless of layer tag): scoped-applicable = `astral.seed.agent-tables-in-repo-json` (conforms — repo JSON is the seed SoT, no live-DB hand seed), `astral.seed.archie-catalog-wins` (conforms — lasting change via committed catalog, not live DB), `astral.seed.define-approved` (conforms — restores AST-1222's already-approved seed shape, invents nothing new), `astral.docs.features-single-file-per-ticket` (conforms — one plan file), `astral.debug.spikes-under-debug-dir` (not-applicable — no spike content), `astral.git.betty-no-src-or-features` (conforms, verified above). Zero `violates`, zero `needs-discussion`.
+
+**Pattern conformance:** none cited (ticket description lists only `astral.*` statute ids, no `pattern.*` ids).
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈62000
+
+— Radia
