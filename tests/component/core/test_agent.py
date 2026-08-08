@@ -114,8 +114,17 @@ def enable_debug_log(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _draft_job_resume_ctx() -> dict[str, Any]:
-    """Truthy candidate_data so AST-594 catalog validation runs (empty {} skips it)."""
-    return {"candidate_data": {"artifacts": {}}}
+    """Truthy candidate_data with base_resume keys so draft whitelist validation runs (AST-1270)."""
+    return {
+        "candidate_data": {
+            "artifacts": {
+                "base_resume": {
+                    "professional_summary": "Seasoned engineer.",
+                    "experience": "Built things.",
+                }
+            }
+        }
+    }
 
 
 # Branches: X grade conf 0 (inner loop continue), empty job.grades skip (89->85), CRX0 decode segment

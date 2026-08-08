@@ -155,6 +155,23 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
   -q
 ```
 
+---
+
+### AST-1270 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
+
+`_resume_payload_body` prefers nested **`agent_payload.resume`** when present so envelope keys (`deviations`, nest key) never appear as section content. Primary normalize/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1270.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nested body prefer + deviations excluded | `src/core/tracker.py` | **`TestAst1270NestedResumePayloadBody`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  -q
+```
 
 ---
 

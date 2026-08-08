@@ -1056,3 +1056,33 @@ class TestAst1116HydrateCoverLetterNormalize:
             {"cover_letter": {"re_line": "Re", "body": "Hi"}}
         )
         assert saved == []
+
+
+class TestAst1270NestedResumePayloadBody:
+    """AST-1270: _resume_payload_body prefers nested resume; ignores deviations envelope."""
+
+    def test_prefers_nested_resume_dict(self) -> None:
+        body = tracker_mod._resume_payload_body(
+            {
+                "agent_payload": {
+                    "resume": {
+                        "professional_summary": "from-nest",
+                        "experience": "nested-jobs",
+                    },
+                    "professional_summary": "flat-should-lose",
+                    "deviations": ["skip note"],
+                }
+            }
+        )
+        assert body == {
+            "professional_summary": "from-nest",
+            "experience": "nested-jobs",
+        }
+        assert "deviations" not in body
+        assert "resume" not in body
+
+    def test_flat_unwrapped_payload_unchanged(self) -> None:
+        body = tracker_mod._resume_payload_body(
+            {"agent_payload": {"professional_summary": "S", "experience": "E"}}
+        )
+        assert body == {"professional_summary": "S", "experience": "E"}
