@@ -188,3 +188,14 @@ PY
 - **`astral.standards.in-scope-only`:** no resolve-helper / overlay / UI / full section reshuffle.
 - **`astral.git.engineer-test-tree-ban`:** no `tests/` / bible edits on this ticket.
 - **§1.3 DRY:** reuse AST-1222 row shape; do not invent a second seed mechanism.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup`  
+**Plan path:** `docs/features/meteorite/ast-1269-uat-alias-agent-task-rows-not-seeded-on-startup.md`
+
+**Built tip:** `df7b6bb685d287e084f86e39486ee5d20c7dfe12` (`df7b6bb6`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `df7b6bb6` | restore meteorite_grade_do/get agent_task seed rows |
