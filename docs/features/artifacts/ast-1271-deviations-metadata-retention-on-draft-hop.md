@@ -1,0 +1,144 @@
+# AST-1271 — Deviations metadata retention on draft hop
+
+**Linear:** https://linear.app/astralcareermatch/issue/AST-1271/deviations-metadata-retention-on-draft-hop-draft-job-resume-response  
+**Parent:** https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong  
+**Publish ref:** `sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`
+
+After **AST-1270**, nested `agent_payload.resume` unwraps and `deviations` is allowlisted as sibling metadata — but a successful `draft_job_resume` hop still drops that list for the artifacts cycle: `_resume_payload_body` / `resume_content` never copy it (correct for render), and nothing writes it to durable job artifact metadata. This ticket persists `deviations` under `job_data.artifacts` as a sibling of `resume_content`, keeps resume body paths free of envelope metadata, and clears the slot on cancel-build with the other build artifacts. Does **not** own nested contract / prompt / normalize (**AST-1270**), debug whitelist trail (**AST-1272**), or approve-artifacts UI (**AST-1205**).
+
+⚠️ **Decision:** Persist as `job_data.artifacts.deviations` (string list), not as an agent_data pin and not inside `resume_content`. Pinning the whole RESPONSE (AST-1099 style) would retain the envelope only opaquely; operators need first-class decision-drift notes for the artifacts cycle without inventing AST-1205 UI. Same key name as the payload metadata field so inspectable job_data matches the model contract.
+
+## Files Changed (planned)
+
+| File | Change | Layer |
+|------|--------|-------|
+| `src/utils/config.py` | `deviations_artifact_key` on `TASK_CONFIG["draft_job_resume"]`; include that key in `JOB_BUILD_ARTIFACT_CLEAR_KEYS` | utils |
+| `src/core/tracker.py` | Extract + save deviations helpers; skip metadata keys in `_resume_payload_body`; persist beside resume in `persist_job_artifact_from_parsed` | core |
+| `src/core/agent.py` | On successful `draft_job_resume`, persist deviations to job artifacts after RESPONSE store | core |
+
+**Out of files (siblings / boundaries):**
+
+| File / area | Owner |
+|-------------|-------|
+| Nested unwrap / base_resume whitelist / Manage Tasks seed | AST-1270 (done) |
+| Style D debug whitelist / unwrap / accept-reject trail | AST-1272 |
+| Approve-artifacts UI / JAR panels for deviations | AST-1205 (out) |
+| HTML builders / cover-letter hops | out of epic |
+| `tests/`, `docs/test-bible/**` | Betty |
+
+## Stage 1: Config — artifact slot + clear-key
+
+**Done when:** `TASK_CONFIG["draft_job_resume"]` names the job-artifact slot for deviations, and cancel-build’s clear tuple includes that same key. No behavior change until Stages 2–3 read them.
+
+1. In `src/utils/config.py`, inside `TASK_CONFIG["draft_job_resume"]` (keep AST-1270 `nested_resume_key` / `payload_metadata_keys`), add:
+
+   ```python
+   "deviations_artifact_key": "deviations",
+   ```
+
+2. In `JOB_BUILD_ARTIFACT_CLEAR_KEYS`, add `"deviations"` (same literal as `deviations_artifact_key` / the `payload_metadata_keys` entry). Do **not** invent a parallel module frozenset for the key name.
+
+3. Do **not** add BUILD_CONFIG `artifact_shapes` for deviations (not a resume/cover shape; list metadata only). Do **not** add UI/DATA_SHAPES entries (AST-1205).
+
+## Stage 2: Tracker — extract, save, keep resume body clean
+
+**Done when:** A parsed draft envelope with `deviations: ["…"]` (nested or already-unwrapped) yields a string list via the extract helper; `save_job_artifact_deviations` merges that list under `job_data.artifacts[deviations_artifact_key]`; `_resume_payload_body` never returns metadata keys (including `deviations`) even if a value is a string; `persist_job_artifact_from_parsed` still writes only section bodies to `resume_content` and also persists deviations when present on the same parsed object.
+
+1. In `src/core/tracker.py`, next to the other job-artifact save helpers (`save_job_artifact_resume_content` / `save_job_artifact_cover_letter`), add:
+
+   ```python
+   def extract_draft_job_resume_deviations(parsed: Any) -> Optional[List[str]]:
+       """Normalize deviations from nested or flat draft payload; None if key absent."""
+   ```
+
+   Implementation rules:
+   - Resolve `body` the same way `_resume_payload_body` does (`agent_payload` dict or `parsed`).
+   - If `body` is not a dict, return `None`.
+   - Read `meta_key = "deviations"` from membership in `TASK_CONFIG["draft_job_resume"]["payload_metadata_keys"]` — do **not** hardcode a second parallel set; look up the string that is already in that tuple (use the literal `"deviations"` only as the known metadata field name already declared in Stage 1 / AST-1270).
+   - Prefer nested envelope when present: if `body.get(nest_key)` is a dict, read `deviations` from the **outer** `body` (sibling of nest), not from inside the nest.
+   - If `"deviations" not in body`: return `None` (caller must not wipe a prior value).
+   - If present: coerce to `list[str]`:
+     - `None` → `[]`
+     - `str` → `[that string]` if non-empty after strip else `[]`
+     - `list` → `[str(item) for item in list if str(item).strip()]` (drop blank strings)
+     - any other type → `[str(value)]` if `str(value).strip()` else `[]`
+   - Return the coerced list (including empty).
+
+2. Add:
+
+   ```python
+   def save_job_artifact_deviations(astral_job_id: str, deviations: List[str]) -> None:
+       """Merge deviations list into job_data.artifacts (AST-1271)."""
+   ```
+
+   - `key = TASK_CONFIG["draft_job_resume"]["deviations_artifact_key"]`
+   - `save_job_data(astral_job_id, {"artifacts": {key: list(deviations)}})` — same merge pattern as `save_job_artifact_cover_letter`.
+   - No-op / early return if `astral_job_id` is empty (match pin helper’s missing-id skip style without debug noise unless an existing helper already logs — prefer silent return).
+
+3. Add a thin public wrapper used by agent + persist:
+
+   ```python
+   def persist_draft_job_resume_deviations(astral_job_id: str, parsed: Any) -> bool:
+       """Extract deviations from parsed draft response and save when the key is present."""
+   ```
+
+   - Call `extract_draft_job_resume_deviations(parsed)`.
+   - If return is `None`, return `False` (key absent — leave prior artifacts untouched).
+   - Else call `save_job_artifact_deviations(astral_job_id, extracted)` and return `True`.
+
+4. Update `_resume_payload_body(parsed)`:
+   - After resolving `body` (and after preferring nested resume dict when present), build `out` as today **but skip**:
+     - `nest_key`
+     - every key in `TASK_CONFIG["draft_job_resume"]["payload_metadata_keys"]`
+   - Keep existing string / experience-job-array inclusion rules for remaining keys.
+   - This hardens the flat-unwrapped path so a string-typed `deviations` can never enter resume body.
+
+5. Update `persist_job_artifact_from_parsed`:
+   - After the existing resume branch writes `resume_content` (or even when resume does not match — still try deviations when present), call `persist_draft_job_resume_deviations(astral_job_id, parsed)` when `allow_resume` is True.
+   - Do **not** put deviations into `filtered` / `save_job_artifact_resume_content`.
+   - If deviations persist returns True, count that as `wrote = True` (same as cover/resume writes).
+
+6. Do **not** change HTML builders, API PUT handlers, or pin maps in this stage.
+
+## Stage 3: Agent — retain on successful draft hop
+
+**Done when:** A successful `do_task("draft_job_resume", …)` with `deviations` on the validated payload writes `job_data.artifacts.deviations` for that job id; failed validation / failed hop does not write; missing `deviations` key leaves any prior value alone.
+
+1. In `src/core/agent.py`, immediately after the AST-1099 pin block (`pin_job_artifact_agent_data_id` / skipped-pin debug), add an AST-1271 block:
+
+   - Condition: `task_key == "draft_job_resume"` and `result.get("success")` and truthy `index`.
+   - Lazy-import `persist_draft_job_resume_deviations` from `src.core.tracker` (same cycle-break style as the pin / craft-persist lazy imports).
+   - Call `persist_draft_job_resume_deviations(index, parsed)` where `parsed` is the post-validate dict still in scope (envelope or payload — extract helper accepts both).
+   - Do **not** require `resp_id` / `_should_store` (metadata retention is independent of agent_data pin; draft is not in `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK`).
+   - Do **not** add Style D debug lines here (AST-1272 owns debug trail).
+   - On exception: log with existing `logger.debug` / `logger.error` pattern used by neighboring persist blocks; do **not** fail the hop solely because deviations save failed (resume chain must still succeed — log and continue). Prefer: try/except around the persist call, `logger.error("persist_draft_job_resume_deviations failed …")`, no ledger failure.
+
+2. Do **not** add `draft_job_resume` to `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK`.
+3. Do **not** reintroduce terminal `persist_job_artifact_from_parsed` body-copy for draft (AST-1099 removed that for finalize; draft never owned it).
+
+## Execution contract
+
+The plan is binding. The agent:
+
+- Executes steps in order within a stage, and stages in order.
+- Does not skip, reorder, combine, or expand steps.
+- Does not add files, modules, configs, or dependencies that aren't in the plan.
+- When a step is ambiguous, contradicts another step, references something that doesn't exist, or fails when executed literally — **stops, comments on the Linear parent issue, and waits.**
+- Completes each stage on the epic worktree, commits, publishes to `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`, then continues.
+
+## Self-Assessment
+
+**Scope:** `Single-Component` — config slot + tracker artifact helpers (resume-body harden) + one `do_task` success hook; no UI.
+
+**Conf:** `high` — AST-1270 already leaves `deviations` on the payload and keeps it out of `_resume_payload_body`; this ticket only adds the missing durable write path using the existing `save_job_data` artifacts merge pattern.
+
+**Risk:** `Medium` — wrong slot / writing into `resume_content` would poison render; failing the hop on a metadata save error would regress draft success. Plan keeps resume body extraction meta-aware and treats deviations persist as best-effort on the hop.
+
+## Code rules check
+
+- §1.3 DRY: one extract + one save helper; agent and `persist_job_artifact_from_parsed` both call the wrapper.
+- §1.4 / §2.1 / `astral.config.config-source-of-truth`: artifact key on `TASK_CONFIG["draft_job_resume"]`; clear-keys tuple updated with the same literal; no new inline frozenset of metadata names in core.
+- §1.5.1 / `astral.standards.debug-contract-gated`: no new Style D lines (AST-1272).
+- `astral.standards.in-scope-only`: no AST-1205 UI, no prompt/normalize changes, no test-tree edits.
+- §3.3 imports: agent → tracker via lazy import only (existing cycle-break pattern).
+- Boundaries: siblings AST-1270 / AST-1272 untouched beyond reading their contracts.
