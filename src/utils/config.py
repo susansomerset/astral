@@ -915,6 +915,8 @@ TASK_CONFIG = {
             "task_success",
             "deviations",
         ),
+        # AST-1271: job_data.artifacts slot for decision-drift list (sibling of resume_content).
+        "deviations_artifact_key": "deviations",
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
@@ -2785,6 +2787,7 @@ JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "application_responses",
     "job_resume",
     "proposed_answers",
+    "deviations",  # AST-1271: same literal as TASK_CONFIG draft_job_resume.deviations_artifact_key
 )
 
 # AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
