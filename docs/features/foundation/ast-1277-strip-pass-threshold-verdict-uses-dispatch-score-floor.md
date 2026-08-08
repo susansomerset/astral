@@ -179,3 +179,40 @@ Changes: Added `dispatch_row_task_key`; Stage 2 lookup uses tracker `trigger_sta
 - **Branch:** `sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor`
 - **Tip:** `3e8a7c8c` (`3e8a7c8c21619f6e77a7be519909dd386a2d8161`)
 - **Stages:** Stage 1 `8c1aea8b` (config/helpers/dispatcher); Stage 2 `3e8a7c8c` (consult + roster)
+
+## Review (Radia)
+
+[code-rubric] revision=2 — **Overall: DISCUSS**
+
+Diff `origin/dev...origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `106c74fa` (post `merge-resume` sync of the advanced `ftr/AST-1275` tip — AST-1278 landed + resolved while this review was in flight). Full active-set (64 statutes) scored in-session per code-rubric.v2 §5.0. No fix-now. One straggler discuss, three trivial path-match stragglers, both round-1 Joan fix-nows verified closed against source.
+
+**What's solid:**
+
+- Both of Joan's round-1 fix-nows verified against the shipped diff, not just the plan text: `dispatch_row_task_key` correctly maps `prefilter_company` → dispatch row key `prefilter` (`config.py`), and `_dispatch_score_floor_for_task` takes newest-first (`tracker.list_dispatch_tasks_for_candidate` walks `database.list_dispatch_tasks()` = `ORDER BY id DESC`) with a single documented fallback when `trigger_state=` yields zero rows.
+- `rg pass_threshold src/` returns no matches on this branch — Stage 1/2 done-when criteria fully met, exactly the seven enumerated `TASK_CONFIG` keys stripped.
+- Shared `effective_dispatch_score_floor` used by both claim (`dispatcher.py`) and verdict (`consult.py`/`roster.py`) — one NULL→1.0 / keep-`0` normalizer, no drift risk (`astral.standards.dry-and-focused-functions`, `astral.standards.no-hardcoded-sets` conform).
+- Binary qualify/evaluate call sites (`_render_score(..., 0.0)`, informational-only) untouched, exactly per plan step 5 — only one `_render_score(` call site changed in `consult.py` (the scored verdict path).
+- `roster.py`'s soft-fail block sets `verdict_state = cfg["fail_state"]` *before* the decomposed/legacy `new_state` branching, so numeric soft-fail parks the same way as dealbreaker fail — verified by reading the full function, not just the diff hunk.
+- Test-tree boundary held: `test(AST-1277)` + `merge-tests(AST-1277)` are the only commits touching `tests/` / `docs/test-bible/**`; both `code(AST-1277)` commits are `src/`-only.
+
+**Straggler (C4) — discuss, no reply needed (already resolved at plan/parent level):**
+
+- `astral.config.pass-threshold-vs-score-floor` is still `status: active` and its text forbids exactly this wiring ("Do not feed `dispatch_task.score_floor` into this path"). The plan's own "Considered but excluded" list named it (owned by AST-1279), so this sweep's mechanical belt-and-suspenders check (C4) surfaces it as a straggler — and on the merits it does score `violates`, by design. This is not a code defect: parent AST-1275 AC4/AC5 explicitly orders retirement of this statute in the blocking sibling AST-1279, and Joan's `[plan-rubric] revision=1` **APPROVED** verdict reviewed this exact "law sequencing" interval and accepted it on parent authority. Nothing for this ticket (or Ada) to fix — flagged here only so the interval is visible in both the plan bible and this review, per Joan's own framing of the same finding.
+- Three more excluded-list ids matched the diff's `src/core/**` / `src/utils/config.py` paths generically (`astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`, `astral.layers.ui-config-driven-business-logic`) but all score `conforms` — no new cross-layer edges, no UI logic added to `config.py`. Noted for C4 completeness only.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `pass_threshold` keys deleted in place from existing `TASK_CONFIG` blocks; new helpers added beside sibling score-floor helpers — no re-invented catalog. |
+| `pattern.batch.entity-claim-process-release` | conforms | Claim/process/release shape untouched; only the floor value computation inside the existing claim path was swapped to the shared normalizer. |
+| `pattern.state.entity-state-transitions` | conforms | Core (`roster.py`) still decides `verdict_state`/`new_state` and hands the target to `transition_company_state`; no daisy-chaining introduced. |
+| `pattern.dispatch.score-floor` (proposed) | not-applicable | Not yet under `canon/patterns/**` (AST-1279 owns authoring). Plan explicitly conforms to the parent's plain-language rule instead of building against an unapproved id — correctly deferred, not an invalid citation. |
+
+## Frame diff
+
+(none) — no scope drift; description checkboxes already match delivered behavior.
+
+context_tokens≈52000
+
+— Radia
