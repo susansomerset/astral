@@ -60,7 +60,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-594 · AST-592
 
-Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-only **`TASK_CONFIG`** with **`resume_section_payload: True`**; runtime catalog whitelist via **`normalize_draft_job_resume_agent_payload`** / **`validate_draft_job_resume_payload`** (**AST-536**-style flatten); hop failures surface **`Validation failed:`** RESPONSE bodies + ERROR logs (**AST-531** ledger unchanged).
+Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-only **`TASK_CONFIG`** with **`resume_section_payload: True`**; runtime section whitelist via **`normalize_draft_job_resume_agent_payload`** / **`validate_draft_job_resume_payload`** (**AST-536**-style flatten); hop failures surface **`Validation failed:`** RESPONSE bodies + ERROR logs (**AST-531** ledger unchanged). **AST-1270** moved the whitelist source to **`artifacts.base_resume`** keys (fixtures revised — see **`### AST-1270`**).
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -962,5 +962,42 @@ Core `get_new_candidate_batch` / `clear_candidate_batch` wrappers (batch_id-firs
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
   -q
+```
+
+---
+
+### AST-1270 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
+
+Nested hop contract: normalize unwraps **`agent_payload.resume`** before section checks; whitelist = candidate **`artifacts.base_resume`** keys ∩ **`RESUME_STRUCTURE_KNOWN_SECTION_IDS`** (no persisted **`resume_structure`** required); **`deviations`** is sibling metadata (retention = **AST-1271**; Style D trail = **AST-1272**). Manage Tasks seed keeps nested envelope + experience value-type wording. Flat (no nest) payloads remain accepted.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unwrap + base_resume whitelist + prompt | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst1270NestedDraftJobResumeContract`** |
+| TASK_CONFIG nest/metadata keys | `src/utils/config.py` | **`TestAst1270DraftJobResumeNestConfig`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Nested body path ignores envelope | `src/core/tracker.py` | **`TestAst1270NestedResumePayloadBody`** (primary: **`docs/test-bible/core/tracker.md`**) |
+| Hop wiring (revised ctx fixtures) | `src/core/agent.py` | **`tests/component/core/test_agent.py`** — `-k "draft_job_resume"` |
+
+**Broken / obsolete this pass (revised):**
+
+- **`TestAst594DraftJobResumePayload`** — empty `{}` candidate_data no longer valid; fixtures supply **`artifacts.base_resume`**.
+- **`TestAst997JobTailoredExperience._base_cd`** — includes every section key payloads may send (whitelist = base keys).
+- **`TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`** — draft seed now nested envelope + experience value-type wording; pin policy stays in validate/pin unit tests.
+- **`_draft_job_resume_ctx`** in **`test_agent.py`** — empty artifacts → no base keys; now seeds matching base_resume sections.
+
+**Integration:** none — no existing `tests/integration/` scenario for this hop; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema \
+  -q
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py -k "draft_job_resume" -q
 ```
 

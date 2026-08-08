@@ -381,6 +381,17 @@ class TestAst594DraftJobResumeSchema:
         assert entry.get("resume_section_payload") is True
 
 
+class TestAst1270DraftJobResumeNestConfig:
+    """AST-1270: nest unwrap key + payload metadata (incl. deviations) on TASK_CONFIG."""
+
+    def test_nested_resume_key_and_metadata_include_deviations(self) -> None:
+        entry = cfg.TASK_CONFIG["draft_job_resume"]
+        assert entry["nested_resume_key"] == "resume"
+        meta = set(entry["payload_metadata_keys"])
+        assert "deviations" in meta
+        assert {"astral_job_id", "company", "title", "task_success"}.issubset(meta)
+
+
 class TestAst520AnticipateScanTaskKey:
     """AST-520: tenth Phase E key; non-dispatch hop (AST-740: no config phase/seq)."""
 
