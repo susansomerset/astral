@@ -202,7 +202,7 @@ export default function ManageCandidates() {
     setEditOpen(true)
   }
 
-  function handleEditSave() {
+  async function handleEditSave() {
     if (!editTarget) return
     const { first, last, contact_email, pronouns, state, api_key } = editForm
     const payload: Record<string, unknown> = {
@@ -216,24 +216,71 @@ export default function ManageCandidates() {
     }
     if (clearKey) payload.api_key = ""
     else if (api_key.trim()) payload.api_key = api_key.trim()
-    api(`/api/candidates/${editTarget.astral_candidate_id}/data`, {
+    const url = `/api/candidates/${editTarget.astral_candidate_id}/data`
+    const putOpts = {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
-    })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Update failed") })
-        return r.json()
+    }
+    const finishOk = () => {
+      setEditOpen(false)
+      setEditTarget(null)
+      setToast({ text: "Candidate updated", variant: "success" })
+      loadAll()
+      loadDispatchTaskCounts()
+      refresh()
+    }
+    try {
+      const r = await api(url, putOpts)
+      const body = await r.json().catch(() => ({} as Record<string, unknown>))
+      if (r.ok) {
+        finishOk()
+        return
+      }
+      // AST-1287: illegal hop → confirm; unknown-state 400 has no this code
+      if ((body as { code?: string }).code === "illegal_candidate_transition") {
+        const from_state = String(
+          (body as { from_state?: string }).from_state ?? editTarget.state ?? "",
+        )
+        const to_state = String(
+          (body as { to_state?: string }).to_state ?? payload.state ?? "",
+        )
+        const ok = await confirm(
+          `This state change is not allowed by the transition rules: ${from_state} → ${to_state}. Proceed anyway?`,
+          { title: "Confirm illegal state change", confirmLabel: "Change state", variant: "danger" },
+        )
+        if (!ok) {
+          // Cancel = skip state only; non-state fields may already be on the server
+          loadAll()
+          loadDispatchTaskCounts()
+          setEditForm(p => ({ ...p, state: from_state }))
+          setEditTarget(t => (t ? { ...t, state: from_state } : t))
+          setToast({ text: "State unchanged; other fields saved if they were.", variant: "info" })
+          return
+        }
+        const confirmR = await api(url, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...payload, confirm_state_override: true }),
+        })
+        const confirmBody = await confirmR.json().catch(() => ({} as Record<string, unknown>))
+        if (confirmR.ok) {
+          finishOk()
+          return
+        }
+        setToast({
+          text: String((confirmBody as { error?: string }).error || "Update failed"),
+          variant: "error",
+        })
+        return
+      }
+      setToast({
+        text: String((body as { error?: string }).error || "Update failed"),
+        variant: "error",
       })
-      .then(() => {
-        setEditOpen(false)
-        setEditTarget(null)
-        setToast({ text: "Candidate updated", variant: "success" })
-        loadAll()
-        loadDispatchTaskCounts()
-        refresh()
-      })
-      .catch(e => setToast({ text: e.message, variant: "error" }))
+    } catch (e) {
+      setToast({ text: e instanceof Error ? e.message : "Update failed", variant: "error" })
+    }
   }
 
   async function handleDelete(c: Candidate) {
@@ -392,7 +439,7 @@ export default function ManageCandidates() {
       </Modal>
 
       {/* Edit modal */}
-      <Modal open={editOpen} onClose={() => { setEditOpen(false); setEditTarget(null) }} title={editTarget ? `Edit: ${editTarget.astral_candidate_id}` : ""} onSave={handleEditSave}>
+      <Modal open={editOpen} onClose={() => { setEditOpen(false); setEditTarget(null) }} title={editTarget ? `Edit: ${editTarget.astral_candidate_id}` : ""} onSave={() => { void handleEditSave() }}>
         <div className="dep-field">
           <label className="dep-field-label">First Name</label>
           <input className="dep-input" type="text" value={editForm.first} onChange={e => setEditForm(p => ({ ...p, first: e.target.value }))} />
