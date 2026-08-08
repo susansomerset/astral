@@ -216,3 +216,13 @@ Diff `origin/dev...origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-use
 context_tokens≈52000
 
 — Radia
+
+## Resolution
+
+Revision 1 — 2026-08-08  
+Driven by: Radia `[code-rubric] revision=2` Overall **DISCUSS** @ `0cdf1e97`.
+
+- **fix-now:** none.
+- **discuss (straggler C4 / active `astral.config.pass-threshold-vs-score-floor`):** no product change — already documented under plan Post-land / Law sequencing and Considered but excluded; retirement owned by AST-1279; Joan APPROVED the interval. Acknowledged; nothing to land on this tip.
+- **advisory:** layer-match ids score conforms — no action.
+- **Frame diff:** none.
