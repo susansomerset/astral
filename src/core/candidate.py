@@ -2165,8 +2165,11 @@ def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
     return sorted(k for k in base if k in known)
 
 
-def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
-    """Before draft_job_resume validation: unwrap nested resume + flatten section strings (AST-594 / AST-1270)."""
+def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = False) -> None:
+    """Before draft_job_resume validation: unwrap nested resume + flatten section strings (AST-594 / AST-1270).
+
+    When ``debug=True``, emit Style D unwrap trail (AST-1272) before the nest pop.
+    """
     if not isinstance(parsed, dict):
         return
     payload = parsed.get("agent_payload")
@@ -2179,8 +2182,29 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
     task_cfg = TASK_CONFIG["draft_job_resume"]
     nest_key = task_cfg["nested_resume_key"]
     meta = set(task_cfg["payload_metadata_keys"])
-    # Nested envelope: promote section bodies onto agent_payload; drop nest key.
+    # Style D unwrap trail before pop — agent passes debug= on first do_task call only.
+    logger.set_debug_flag(debug)
     nested = inner.get(nest_key)
+    if isinstance(nested, dict):
+        unwrap_outcome = "popped"
+        nested_section_count = len(nested)
+    elif nest_key in inner:
+        unwrap_outcome = "invalid"
+        nested_section_count = 0
+    else:
+        unwrap_outcome = "flat"
+        nested_section_count = 0
+    if debug:
+        logger.debug_index(
+            func="candidate.normalize_draft_job_resume_agent_payload",
+            index=1,
+            total=1,
+            identifier=str(inner.get("astral_job_id") or ""),
+            outcome=f"unwrap {unwrap_outcome}",
+        )
+        logger.debug_detail(f"found nest_key={nest_key!r} unwrap={unwrap_outcome}")
+        logger.debug_detail(f"found nested_section_count={nested_section_count}")
+    # Nested envelope: promote section bodies onto agent_payload; drop nest key.
     if isinstance(nested, dict):
         block = inner.pop(nest_key)
         for sid, val in block.items():

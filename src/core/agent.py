@@ -2559,7 +2559,7 @@ async def do_task(
             if task_key == "draft_job_resume":
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
-                normalize_draft_job_resume_agent_payload(parsed)
+                normalize_draft_job_resume_agent_payload(parsed, debug=debug)
             _coerce_schema_str_fields_from_list(parsed, schema)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
@@ -2748,7 +2748,7 @@ async def do_task(
             if task_key == "draft_job_resume":
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
-                normalize_draft_job_resume_agent_payload(parsed)
+                normalize_draft_job_resume_agent_payload(parsed, debug=debug)
             _coerce_schema_str_fields_from_list(parsed, schema)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
@@ -2901,6 +2901,20 @@ async def do_task(
             )
             _do_task_debug_logger(debug).debug_detail(
                 f"artifact_pin key={pin_slot} skipped reason={reason}"
+            )
+
+    # AST-1271: retain draft deviations as job artifact metadata (best-effort; do not fail hop).
+    if task_key == "draft_job_resume" and result.get("success") and index:
+        try:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import persist_draft_job_resume_deviations
+            persist_draft_job_resume_deviations(index, parsed)
+        except Exception as persist_err:
+            logger.error(
+                "persist_draft_job_resume_deviations failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
             )
 
     # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).
