@@ -932,6 +932,39 @@ class TestAst750DispatchScoreFloorCatalog:
         assert len(labels) == 21
 
 
+
+
+# AST-1277 — strip pass_threshold; shared score_floor normalizer + row key map.
+@pytest.mark.skipif(
+    not hasattr(cfg, "effective_dispatch_score_floor"),
+    reason="AST-1277 score_floor helpers not on this branch",
+)
+class TestAst1277ScoreFloorHelpers:
+    def test_no_pass_threshold_on_scored_task_config(self) -> None:
+        keys = (
+            "prefilter_company",
+            "grade_do",
+            "grade_get",
+            "grade_like",
+            "meteorite_grade_do",
+            "meteorite_grade_get",
+            "meteorite_like",
+        )
+        for tk in keys:
+            assert "pass_threshold" not in cfg.TASK_CONFIG[tk]
+
+    def test_effective_dispatch_score_floor_null_and_zero(self) -> None:
+        assert cfg.effective_dispatch_score_floor(None) == 1.0
+        assert cfg.effective_dispatch_score_floor(0) == 0.0
+        assert cfg.effective_dispatch_score_floor(0.0) == 0.0
+        assert cfg.effective_dispatch_score_floor(6) == 6.0
+
+    def test_dispatch_row_task_key_prefilter_and_identity(self) -> None:
+        assert cfg.dispatch_row_task_key("prefilter_company") == "prefilter"
+        assert cfg.dispatch_row_task_key("prefilter") == "prefilter"
+        assert cfg.dispatch_row_task_key("grade_do") == "grade_do"
+        assert cfg.dispatch_row_task_key("meteorite_grade_do") == "meteorite_grade_do"
+
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:
     def test_primary_job_includes_companion_retry(self) -> None:

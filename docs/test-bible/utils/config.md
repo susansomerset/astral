@@ -22,7 +22,7 @@
 
 ### AST-468 · AST-376
 
-**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **`pass_threshold`** vs **`score_floor`**: **`docs/ASTRAL_CODE_RULES.md`** subsection under §2.1; claim gating vs grading metadata: **§7.13zv** (**AST-586**).
+**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **AST-1277:** **`pass_threshold`** stripped from **`TASK_CONFIG`**; **`effective_dispatch_score_floor`** + **`dispatch_row_task_key`** shared by claim + scored verdict (primary: **`docs/test-bible/core/consult.md`** § AST-1277). Claim gating vs grading metadata: **§7.13zv** (**AST-586**). Statute/Code Rules rewrite: **AST-1279**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
