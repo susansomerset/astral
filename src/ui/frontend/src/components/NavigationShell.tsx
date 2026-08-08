@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { NavLink, Outlet, useLocation } from "react-router-dom"
 import { UserPromptProvider } from "./UserPrompt"
 import { useAuth } from "../contexts/AuthContext"
-import { useCandidate } from "../contexts/CandidateContext"
+import { useCandidate, type CandidateInfo } from "../contexts/CandidateContext"
 import api from "../lib/api"
 import AdminDeployFooter from "./AdminDeployFooter"
 import astralLogo from "../assets/astral_logo.png"
@@ -28,6 +28,10 @@ function saveExpanded(expanded: Set<string>) {
   } catch { /* quota */ }
 }
 
+function candidateLabel(c: CandidateInfo): string {
+  return [c.first, c.last].filter(Boolean).join(" ") || c.astral_candidate_id
+}
+
 export default function NavigationShell() {
   const [navGroups, setNavGroups] = useState<NavGroup[]>([])
   // Store which groups are EXPANDED (default: all collapsed)
@@ -35,6 +39,7 @@ export default function NavigationShell() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [candidateMenuOpen, setCandidateMenuOpen] = useState(false)
   const [isWide, setIsWide] = useState(() =>
     typeof window !== "undefined"
       ? window.matchMedia(`(min-width: ${NAV_WIDE_MIN_PX}px)`).matches
@@ -71,7 +76,10 @@ export default function NavigationShell() {
     const mq = window.matchMedia(`(min-width: ${NAV_WIDE_MIN_PX}px)`)
     const onChange = () => {
       setIsWide(mq.matches)
-      if (mq.matches) setDrawerOpen(false)
+      if (mq.matches) {
+        setDrawerOpen(false)
+        setCandidateMenuOpen(false)
+      }
     }
     onChange()
     mq.addEventListener("change", onChange)
@@ -82,6 +90,10 @@ export default function NavigationShell() {
     setDrawerOpen(false)
   }, [location.pathname])
 
+  useEffect(() => {
+    if (!drawerOpen) setCandidateMenuOpen(false)
+  }, [drawerOpen])
+
   function toggleGroup(label: string) {
     setExpanded(prev => {
       const next = new Set(prev)
@@ -91,6 +103,11 @@ export default function NavigationShell() {
       return next
     })
   }
+
+  const selectedCandidate = candidates.find(c => c.astral_candidate_id === selectedId)
+  const selectedLabel = selectedCandidate
+    ? candidateLabel(selectedCandidate)
+    : (selectedId ?? "")
 
   return (
     <UserPromptProvider>
@@ -120,18 +137,55 @@ export default function NavigationShell() {
           <img src={astralLogo} alt="Astral" />
         </div>
         {candidates.length > 0 && (
-          <div className="sidebar-candidate-select">
-            <select
-              value={selectedId ?? ""}
-              disabled={!isAdmin}
-              onChange={e => isAdmin && setSelectedId(e.target.value)}
-            >
-              {candidates.map(c => {
-                const label = [c.first, c.last].filter(Boolean).join(" ") || c.astral_candidate_id
-                return <option key={c.astral_candidate_id} value={c.astral_candidate_id}>{label}</option>
-              })}
-            </select>
-          </div>
+          isWide ? (
+            <div className="sidebar-candidate-select">
+              <select
+                value={selectedId ?? ""}
+                disabled={!isAdmin}
+                onChange={e => isAdmin && setSelectedId(e.target.value)}
+              >
+                {candidates.map(c => (
+                  <option key={c.astral_candidate_id} value={c.astral_candidate_id}>
+                    {candidateLabel(c)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ) : (
+            <div className="sidebar-candidate-menu">
+              <button
+                type="button"
+                className="sidebar-candidate-menu-toggle"
+                aria-expanded={candidateMenuOpen}
+                onClick={() => setCandidateMenuOpen(o => !o)}
+              >
+                {selectedLabel}
+              </button>
+              {candidateMenuOpen && (
+                <ul className="sidebar-candidate-menu-list">
+                  {candidates.map(c => {
+                    const selected = c.astral_candidate_id === selectedId
+                    return (
+                      <li key={c.astral_candidate_id}>
+                        <button
+                          type="button"
+                          className={"sidebar-candidate-menu-item" + (selected ? " is-selected" : "")}
+                          disabled={!isAdmin}
+                          onClick={() => {
+                            if (!isAdmin) return
+                            setSelectedId(c.astral_candidate_id)
+                            setCandidateMenuOpen(false)
+                          }}
+                        >
+                          {selected ? "✓ " : ""}{candidateLabel(c)}
+                        </button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              )}
+            </div>
+          )
         )}
         {loading ? (
           <p className="sidebar-loading">Loading...</p>
