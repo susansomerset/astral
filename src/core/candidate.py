@@ -55,6 +55,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    TASK_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
@@ -2144,7 +2145,6 @@ def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
             payload["resume_structure"] = default_resume_structure()
 
 
-_DRAFT_JOB_RESUME_METADATA_KEYS = frozenset({"astral_job_id", "company", "title", "task_success"})
 _DRAFT_JOB_RESUME_CONSULT_KEYS = frozenset(
     {"grades", "dealbreakers", "clarifications", "overall_assessment", "ja_notes"}
 )
@@ -2154,17 +2154,19 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 }
 
 
-def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
-    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
-        if alias not in inner:
-            continue
-        alias_val = inner.pop(alias)
-        if canonical not in inner or inner.get(canonical) in (None, ""):
-            inner[canonical] = alias_val
+def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
+    """Section keys from artifacts.base_resume ∩ RESUME_STRUCTURE_KNOWN_SECTION_IDS."""
+    cd = candidate_data if isinstance(candidate_data, dict) else {}
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    base = artifacts.get("base_resume")
+    if not isinstance(base, dict):
+        return []
+    known = set(RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+    return sorted(k for k in base if k in known)
 
 
 def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
-    """Before draft_job_resume validation: flatten nested/wrapped section strings (AST-594)."""
+    """Before draft_job_resume validation: unwrap nested resume + flatten section strings (AST-594 / AST-1270)."""
     if not isinstance(parsed, dict):
         return
     payload = parsed.get("agent_payload")
@@ -2174,10 +2176,19 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
         inner = parsed
     else:
         return
+    task_cfg = TASK_CONFIG["draft_job_resume"]
+    nest_key = task_cfg["nested_resume_key"]
+    meta = set(task_cfg["payload_metadata_keys"])
+    # Nested envelope: promote section bodies onto agent_payload; drop nest key.
+    nested = inner.get(nest_key)
+    if isinstance(nested, dict):
+        block = inner.pop(nest_key)
+        for sid, val in block.items():
+            inner[sid] = val
     if "resume_structure" in inner:
         _flatten_craft_resume_section_strings(inner)
-    for nest_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
-        block = inner.get(nest_key)
+    for promote_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
+        block = inner.get(promote_key)
         if not isinstance(block, dict):
             continue
         for sid, val in block.items():
@@ -2189,7 +2200,7 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
             if text:
                 inner[sid] = text
     for key, val in list(inner.items()):
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        if key in meta or key == "resume_structure":
             continue
         if key == "experience" and _is_experience_job_array(val):
             continue
@@ -2242,22 +2253,26 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
 
 
 def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Optional[str]:
-    """Catalog whitelist for draft_job_resume section keys; all sections optional."""
+    """Whitelist draft_job_resume section keys against artifacts.base_resume (AST-1270)."""
     normalize_draft_job_resume_agent_payload(parsed)
     payload = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
     if not isinstance(payload, dict):
         return "agent_payload must be a dict"
-    structure = resolve_resume_structure(candidate_data)
-    allowed = set(enabled_resume_section_ids(structure))
+    task_cfg = TASK_CONFIG["draft_job_resume"]
+    nest_key = task_cfg["nested_resume_key"]
+    meta = set(task_cfg["payload_metadata_keys"])
+    if nest_key in payload and not isinstance(payload.get(nest_key), dict):
+        return f"{nest_key!r} must be an object of resume sections"
+    allowed = set(draft_job_resume_allowed_section_keys(candidate_data))
     if not allowed:
-        return "candidate has no enabled resume sections"
+        return "candidate has no base_resume section keys"
     for key, val in payload.items():
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        if key in meta or key == "resume_structure":
             continue
         if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
             return f"Unknown or disallowed field '{key}' on draft_job_resume"
         if key not in allowed:
-            return f"Unknown resume section key '{key}' (not in candidate catalog: {sorted(allowed)})"
+            return f"Unknown resume section key '{key}' (not in candidate base_resume keys: {sorted(allowed)})"
         if val is None or val == "":
             continue
         if key == "experience":
@@ -2279,6 +2294,15 @@ def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Opt
             payload[key] = text
     pin_experience_job_facts_from_base(payload, candidate_data)
     return None
+
+
+def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
+    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
+        if alias not in inner:
+            continue
+        alias_val = inner.pop(alias)
+        if canonical not in inner or inner.get(canonical) in (None, ""):
+            inner[canonical] = alias_val
 
 
 def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
