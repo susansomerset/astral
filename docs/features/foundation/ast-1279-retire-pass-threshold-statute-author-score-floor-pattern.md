@@ -200,3 +200,39 @@ Retire active statute `astral.config.pass-threshold-vs-score-floor`, author appr
 - Stage 3 `01da708f` — Code Rules §2.1 sole-floor subsection + TASK_CONFIG/§2.2 prose drop of `pass_threshold`
 
 **Note:** Pattern `## Notes` cites AST-1281 for the Archie approval stamp (Joan discuss on APPROVED pass).
+
+## Review (Radia)
+
+[code-rubric] revision=2 — **Overall: CLEAN**
+
+Diff `origin/dev...origin/sub/AST-1275/AST-1279-retire-pass-threshold-statute-author-score-floor-pattern` @ tip. This child's own authored commits (`code(AST-1279)` ×3 + the `docs(AST-1279)` bible entry merged via Betty's line) touch only `canon/statutes/**`, `canon/patterns/**`, `docs/ASTRAL_CODE_RULES.md`, and `docs/test-bible/**` — genuinely docs-only, no `src/**`. The `src/core/**` / `src/ui/**` content mechanically present in this three-dot diff arrived via the routine pre-coding `ftr/AST-1275` sync merge and is AST-1277/AST-1278's already-reviewed work (CLEAN / DISCUSS-no-action-needed), not new AST-1279 content.
+
+Full active-set scored in-session per code-rubric.v2 §5.0 — corpus is **64** `status: active` statutes (down from 65; this ticket's own retirement of `astral.config.pass-threshold-vs-score-floor` removed the 65th). No fix-now, no discuss.
+
+**What's solid:**
+
+- **Approval chain verified independently, not just cited.** Fetched [AST-1281](https://linear.app/astralcareermatch/issue/AST-1281/unblock-ast-1279-approve-patterndispatchscore-floor-or-reword-ac4) directly: Susan's comment reads verbatim "`pattern.dispatch.score-floor` is approved. proceed." (2026-08-08T02:54:35Z) — exact id match, timestamp precedes and matches the pattern file's `approved_at: "2026-08-08"`. `orch.pipeline.call-susan-for-product-decisions` and `orch.roles.archie-approves-statutes` (both universal) conform on the merits, not on trust.
+- **`pattern.dispatch.score-floor.md` is fully SCHEMA-compliant:** all 10 required frontmatter keys, no undeclared keys, body in required order (`# Problem` / `# Solution shape` / `## When not to use` / `## Notes`), `canonical_refs` ≥1 with all 3 code symbols real on the merged tree (`effective_dispatch_score_floor`, `DISPATCH_SCORE_FLOOR_VALUES` in `config.py`; `_dispatch_score_floor_for_task` in `consult.py` — all confirmed during the AST-1277/1278 passes).
+- **Retired statute stub matches SCHEMA + existing corpus precedent:** `status: retired`, original `approved_by`/`approved_at` kept (flip-status-only, same shape as the three retired `astral.patterns.*` statutes), `superseded_by: null` correctly typed (successor is a *pattern*, not a statute — recorded in prose instead, exactly as SCHEMA requires).
+- **Index honesty checked, not assumed:** `canon/patterns/README.md`'s "Seven catalog entries ... approved" — counted the table, seven is correct. `rg pass_threshold canon/patterns` on this tip returns no live hits. Statutes README drops the row; HARVEST crosswalks on both sides annotated `retired (AST-1279)` / `create (AST-1279)`.
+- **Parent boundary honored:** the new package lives under `canon/patterns/dispatch/`, not `canon/statutes/**` — this ticket did not turn score-floor into a coding statute, exactly as the parent's boundary required, and the pattern's own `## When not to use` carries that as an explicit anti-trigger.
+- **Test-tree boundary held:** the only `docs/test-bible/**` change arrives via Betty's `merge-tests(AST-1279)` line (docs-acceptance, no pytest/Vitest); none of Hedy's `code(AST-1279)` commits touch it.
+- Nice real-world statute validation, noted for the record rather than as a finding: Joan's first spawn attempt on this ticket correctly bounced with \"not run — entry gate\" while status was `Todo` (`orch.pipeline.status-gates-skill-entry` working as designed), and the pattern-approval question correctly routed to Susan via a gate ticket rather than being self-stamped (`orch.pipeline.call-susan-for-product-decisions` working as designed).
+
+**Not-applicable (layer/path miss, noted for completeness):** the ~40 `src/**`/`scripts/**`-scoped statutes (agent/batch/state/standards/ui/most seed/layers families) don't match this diff's own layer set (`docs` only) — correctly not scored as violations, just outside scope for a docs-only child.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.dispatch.score-floor` | conforms | The pattern this ticket authors — verified `status: approved` with a real, independently-checked Archie/Susan approval (AST-1281), SCHEMA-complete frontmatter, canonical_refs real on tree. |
+
+**Carryover advisory (Joan, non-blocking, still true):** `canonical_refs` includes one docs pointer (`docs/ASTRAL_CODE_RULES.md` §2.1) in a field SCHEMA describes as "real implementations" — the three code refs satisfy the ≥1 requirement on their own. Not this ticket's to fix; noted for a future pattern-schema pass.
+
+## Frame diff
+
+(none) — no scope drift; description checkboxes already match delivered behavior.
+
+context_tokens≈46000
+
+— Radia
