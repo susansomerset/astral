@@ -5849,21 +5849,17 @@ def _resolve_agent_data_block_data(
 ) -> Optional[str]:
     """Return plain-text block_data for an agent_data row.
 
-    When local block_data is null/empty and ref_agent_data_id is populated,
-    return that ref's decompressed content (follow the chain). Missing targets
-    and cycles raise ValueError — callers decide (data does not log).
+    When ref_agent_data_id is populated, follow the ref chain to canonical
+    content (covers null/empty local + ref — AST-1274). No ref → return local
+    as-is. Missing targets and cycles raise ValueError — callers decide.
     """
     local = _decompress_payload(row_dict.get("block_data"))
     ref = row_dict.get("ref_agent_data_id")
-    has_local = isinstance(local, str) and bool(local.strip())
     has_ref = ref is not None and str(ref).strip() != ""
-    # Prefer local body when present.
-    if has_local:
-        return local
-    # No ref → return local as-is (None or blank).
+    # No ref → return local as-is (None, blank, or body).
     if not has_ref:
         return local
-    # Null/empty local + populated ref → follow to canonical content (AST-1274).
+    # Populated ref → follow chain (plan Stage 1; restores pre-AST-1274 tie-break).
     visited = set()
     current_id = str(ref)
     start_id = row_dict.get("agent_data_id")

@@ -162,3 +162,13 @@ Full active-set swept in-session (65 active statutes: 18 universal, 47 scoped). 
 
 context_tokens≈45000
 — Radia
+
+---
+
+## Resolution
+
+**Resolved:** 2026-08-08 — Radia `[code-rubric] revision=2` **Discuss** (local-wins tie-break).
+
+Dropped the `has_local` early return in `_resolve_agent_data_block_data`. Plan Stage 1 and pre-AST-1274 behavior: when `ref_agent_data_id` is populated, follow the ref chain; when it is not, return local `block_data`. Null/empty local + populated ref still resolves (primary bug). Both-present rows keep following the ref (no new tie-break invent).
+
+Betty's `test_local_body_preferred_over_ref` asserted the removed branch — `[qa-handoff]` for test/bible update; stay Review Posted until she republishes.
