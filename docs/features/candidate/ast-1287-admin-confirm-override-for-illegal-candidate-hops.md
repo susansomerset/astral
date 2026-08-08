@@ -210,3 +210,15 @@ Changes: Removed core same-state early-return; skip same-state only in `update_c
 context_tokens≈58000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** Radia `[code-rubric] revision=2` — Overall DISCUSS; no fix-now.
+
+| Finding | Action |
+|---------|--------|
+| discuss — C4 stragglers (job-prior-states, claim-process-release, ui-config-driven) | No product change — Radia scored each `conforms` on inspection |
+| advisory — `IllegalCandidateTransition` import order in `api_candidate.py` | Alphabetized in the `src.core.candidate` import block |
+
+No test-tree changes. Ready for User Testing.

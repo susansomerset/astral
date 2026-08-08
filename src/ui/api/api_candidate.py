@@ -22,6 +22,7 @@ from src.core.candidate import (
     get_candidate,
     get_pending_craft_generation,
     hydrate_rubric_artifacts_for_response,
+    IllegalCandidateTransition,
     initiate_candidate,
     list_candidates as core_list_candidates,
     normalize_resume_structure,
@@ -31,7 +32,6 @@ from src.core.candidate import (
     save_candidate_admin,
     save_candidate_data,
     start_requested_artifacts,
-    IllegalCandidateTransition,
     transition_candidate_state,
 )
 from src.utils.config import (
