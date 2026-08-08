@@ -569,6 +569,21 @@ After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_lett
   -q
 ```
 
+### AST-1271 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`.
+
+On successful `do_task("draft_job_resume")`, best-effort `persist_draft_job_resume_deviations(index, parsed)` (does not fail the hop). Tracker extract/save + resume-body skip: **`docs/test-bible/core/tracker.md`** § AST-1271.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Success persist / validation skip | `src/core/agent.py` | **`TestAst1271DoTaskDeviationsPersist`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1271DoTaskDeviationsPersist \
+  -q
+```
 
 ### AST-1252 · AST-1243
 
