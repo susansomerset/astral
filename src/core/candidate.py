@@ -1659,6 +1659,17 @@ def delete_candidate(candidate_id: str) -> None:
     transition_candidate_state(candidate_id, "DELETED")
 
 
+class IllegalCandidateTransition(ValueError):
+    """prior_states rejected this hop; API maps to illegal_candidate_transition."""
+
+    def __init__(self, from_state: str, to_state: str):
+        self.from_state = from_state
+        self.to_state = to_state
+        super().__init__(
+            f"Invalid candidate state transition: {from_state} -> {to_state}"
+        )
+
+
 def _candidate_prior_states(to_state: str):
     cfg = CANDIDATE_STATES.get(to_state)
     if cfg is None:
@@ -1754,18 +1765,31 @@ def purge_reap_due_candidates(*, now: Optional[datetime] = None) -> int:
     return n
 
 
-def transition_candidate_state(candidate_id: str, to_state: str) -> None:
+def transition_candidate_state(
+    candidate_id: str,
+    to_state: str,
+    *,
+    force: bool = False,
+) -> None:
     """Validate prior_states on CANDIDATE_STATES, then update state.
-    Raises ValueError if the hop is disallowed."""
+    Raises IllegalCandidateTransition if the hop is disallowed (unless force).
+    Unknown states raise ValueError even when force=True."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
     if to_state not in CANDIDATE_STATES:
         raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
-    if not _candidate_state_allowed(from_state, to_state):
-        raise ValueError(
-            f"Invalid candidate state transition: {from_state} -> {to_state}"
+    # One prior_states check: gate when not force; INFO when force bypasses.
+    allowed = _candidate_state_allowed(from_state, to_state)
+    if not force and not allowed:
+        raise IllegalCandidateTransition(from_state, to_state)
+    if force and not allowed:
+        logger.info(
+            "forced candidate state transition: %s %s -> %s",
+            candidate_id,
+            from_state,
+            to_state,
         )
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     history = _append_candidate_state_history(candidate, from_state, to_state, now)
