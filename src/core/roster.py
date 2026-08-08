@@ -1838,6 +1838,7 @@ def _apply_prefilter_decoded_company_outcome(
     from src.core.consult import (
         _render_pass_fail,
         _render_score,
+        _dispatch_score_floor_for_task,
         _hydrate_grade_reasons_from_rubric,
         _require_complete_grade_set,
         _debug_incomplete_grade_set,
@@ -1865,6 +1866,16 @@ def _apply_prefilter_decoded_company_outcome(
                 )
             raise
     verdict_state = _render_pass_fail("prefilter_company", grades)
+    prefilter_score = None
+    # Soft-fail against dispatch row score_floor before pass/fail → new_state branching.
+    if verdict_state == cfg["pass_state"] and rubric_list:
+        task_cfg = TASK_CONFIG.get("prefilter_company") or {}
+        floor = _dispatch_score_floor_for_task(candidate_id, "prefilter_company")
+        score_state, score = _render_score(task_cfg, rubric_list, grades, floor)
+        if score is not None:
+            prefilter_score = float(score)
+        if score_state == cfg["fail_state"]:
+            verdict_state = cfg["fail_state"]
     link_indices = flat.get("possible_job_links") or []
     on_decomposed = _company_on_decomposed_pjl_path(
         short_name, input_state=cfg.get("input_state") or ""
@@ -1891,11 +1902,6 @@ def _apply_prefilter_decoded_company_outcome(
     notes = " | ".join(
         f"{g['vector']}={g['grade']}: {g['reason']}" for g in grades if g.get("reason")
     )
-    prefilter_score = None
-    if verdict_state == cfg["pass_state"] and rubric_list:
-        task_cfg = TASK_CONFIG.get("prefilter_company") or {}
-        _, score = _render_score(task_cfg, rubric_list, grades, 0.0)
-        prefilter_score = float(score)
     data_to_save: Dict[str, Any] = {
         "prefilter_grades": grades,
         "prefilter_company_notes": notes or "",
