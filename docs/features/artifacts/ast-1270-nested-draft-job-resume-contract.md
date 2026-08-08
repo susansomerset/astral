@@ -161,6 +161,6 @@ The plan is binding. The agent:
 ## Review (build stub)
 
 **Publish ref:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`  
-**Tip:** `1c9bfee2`
+**Tip:** `9ef3f920`
 
 Stages landed: TASK_CONFIG nest/metadata → unwrap + `base_resume` whitelist → `_resume_payload_body` nest prefer → Manage Tasks seed wording.
