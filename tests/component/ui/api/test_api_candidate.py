@@ -223,7 +223,8 @@ class TestCandidateRoutes:
         )
         assert resp.status_code == 200
         save_data.assert_called_once()
-        transition.assert_called_once_with("cand-1", "ACTIVE_SEARCH")
+        # AST-1287: keyword-only force= (default false) on every transition call
+        transition.assert_called_once_with("cand-1", "ACTIVE_SEARCH", force=False)
         save_admin.assert_any_call("cand-1", candidate_api_key="new-key")
         clear = candidate_client.put("/api/candidates/cand-1/data", json={"api_key": "   "}, headers=auth_headers)
         assert clear.status_code == 200
@@ -772,11 +773,18 @@ class TestAst970AdminStateOverride:
     def test_illegal_hop_returns_400(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "NEW_CANDIDATE"},
+        )
+        # AST-1287: core raises IllegalCandidateTransition; API maps to structured 400
         monkeypatch.setattr(
             candidate_mod,
             "transition_candidate_state",
-            MagicMock(side_effect=ValueError("Invalid candidate state transition: NEW_CANDIDATE -> ACTIVE_SEARCH")),
+            MagicMock(
+                side_effect=candidate_mod.IllegalCandidateTransition("NEW_CANDIDATE", "ACTIVE_SEARCH")
+            ),
         )
         resp = candidate_client.put(
             "/api/candidates/cand-1/data",
@@ -784,13 +792,21 @@ class TestAst970AdminStateOverride:
             headers=auth_headers,
         )
         assert resp.status_code == 400
-        assert "Invalid candidate state transition" in resp.get_json()["error"]
+        body = resp.get_json()
+        assert "Invalid candidate state transition" in body["error"]
+        assert body["code"] == "illegal_candidate_transition"
+        assert body["from_state"] == "NEW_CANDIDATE"
+        assert body["to_state"] == "ACTIVE_SEARCH"
 
     def test_legal_hop_calls_transition(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         transition = MagicMock()
-        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "NEW_CANDIDATE"},
+        )
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
         resp = candidate_client.put(
             "/api/candidates/cand-1/data",
@@ -798,4 +814,106 @@ class TestAst970AdminStateOverride:
             headers=auth_headers,
         )
         assert resp.status_code == 200
-        transition.assert_called_once_with("cand-1", "INTAKE_INITIATED")
+        transition.assert_called_once_with("cand-1", "INTAKE_INITIATED", force=False)
+
+
+class TestAst1287AdminConfirmOverride:
+    """AST-1287: confirm_state_override + same-state skip + structured illegal hop."""
+
+    def test_confirm_forces_illegal_hop(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "NEW_CANDIDATE"},
+        )
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        resp = candidate_client.put(
+            "/api/candidates/cand-1/data",
+            json={"state": "ACTIVE_SEARCH", "confirm_state_override": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        transition.assert_called_once_with("cand-1", "ACTIVE_SEARCH", force=True)
+
+    def test_same_state_skips_transition_and_saves_non_state(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save_data = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "state": "ACTIVE_SEARCH",
+                "candidate_data": {},
+            },
+        )
+        resp = candidate_client.put(
+            "/api/candidates/cand-1/data",
+            json={"state": "ACTIVE_SEARCH", "note": "name-only edit"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        save_data.assert_called_once()
+        transition.assert_not_called()
+
+    def test_non_admin_cannot_send_confirm_flag(
+        self,
+        candidate_client: FlaskClient,
+        non_admin_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", MagicMock())
+        resp = candidate_client.put(
+            "/api/candidates/cand-x/data",
+            json={"confirm_state_override": True, "note": "x"},
+            headers=non_admin_headers,
+        )
+        assert resp.status_code == 403
+
+    def test_unknown_state_400_without_illegal_code(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "NEW_CANDIDATE"},
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "transition_candidate_state",
+            MagicMock(side_effect=ValueError("Unknown candidate state: LIVE_PROMPTS")),
+        )
+        resp = candidate_client.put(
+            "/api/candidates/cand-1/data",
+            json={"state": "LIVE_PROMPTS", "confirm_state_override": True},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        body = resp.get_json()
+        assert "Unknown candidate state" in body["error"]
+        assert "code" not in body
+
+    def test_string_true_confirm_does_not_force(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id, "state": "NEW_CANDIDATE"},
+        )
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
+        resp = candidate_client.put(
+            "/api/candidates/cand-1/data",
+            json={"state": "INTAKE_INITIATED", "confirm_state_override": "true"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        transition.assert_called_once_with("cand-1", "INTAKE_INITIATED", force=False)

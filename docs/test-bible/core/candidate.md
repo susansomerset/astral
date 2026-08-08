@@ -1025,3 +1025,33 @@ After **AST-1270**: when `debug=True`, Style D found/recorded trails for nest un
   -q
 ```
 
+---
+
+### AST-1287 · AST-1285
+
+**Parent:** [AST-1285 — State transition validation for candidates is broken](https://linear.app/astralcareermatch/issue/AST-1285/state-transition-validation-for-candidates-is-broken). **Publish:** `origin/sub/AST-1285/AST-1287-admin-confirm-override`.
+
+Admin confirm-override for illegal candidate hops: `IllegalCandidateTransition` + keyword-only `force=` on `transition_candidate_state` (force skips prior_states only; unknown states still `ValueError`); admin `PUT …/data` accepts `confirm_state_override: true`, returns structured `code=illegal_candidate_transition` + `from_state`/`to_state` without confirm, skips transition when PUT `state` equals current (API-only — automation stays fail-closed). Does **not** own Manage Candidates are-you-sure UI (**AST-1288**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Force path + typed illegal hop | `src/core/candidate.py` | **`TestAst1287ForceTransition`**; revised **`TestTransitionCandidateState`**, **`TestAst970CandidateStateMachine`**, **`TestAst971CandidateTransitionHistory`** (raise type) |
+| Confirm flag + same-state skip + structured 400 | `src/ui/api/api_candidate.py` | **`TestAst1287AdminConfirmOverride`**; revised **`TestAst970AdminStateOverride`** + **`TestCandidateRoutes::test_update_merges_data_state_and_api_key`** (`force=` kwarg) |
+
+**Broken / obsolete this pass:** AST-970 admin override mocks/`assert_called_once_with` that assumed positional-only `transition_candidate_state(id, state)` and plain `ValueError` without `code` — revised above.
+
+**Integration:** none — existing `tests/integration/scenarios/test_candidate_nav_api.py` is nav visibility only; do not invent confirm-override integration coverage (UI confirm = **AST-1288**).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1287ForceTransition \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine::test_error_state_has_no_forward_happy_path \
+  tests/component/core/test_candidate.py::TestAst971CandidateTransitionHistory::test_illegal_hop_writes_nothing \
+  tests/component/ui/api/test_api_candidate.py::TestAst1287AdminConfirmOverride \
+  tests/component/ui/api/test_api_candidate.py::TestAst970AdminStateOverride \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_merges_data_state_and_api_key \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
+  -q
+```
+
