@@ -236,3 +236,12 @@ Full active-set scored in-session per code-rubric.v2 §5.0 — corpus is **64** 
 context_tokens≈46000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** [code-rubric] revision=2 — **CLEAN** (no fix-now, no discuss).  
+**Action:** No product changes. Appended this section; tip advanced with `resolve(AST-1279): — clean`.  
+**Publish:** `origin/sub/AST-1275/AST-1279-retire-pass-threshold-statute-author-score-floor-pattern` (post-resolve tip).  
+**§9a:** dry-run into `origin/dev` / `origin/ftr/AST-1275-remove-pass-threshold-from-task-config` (run at resolve).  
+**Advisory carryover:** Joan/Radia docs `canonical_refs` note — left as-is (non-blocking; not this ticket).
