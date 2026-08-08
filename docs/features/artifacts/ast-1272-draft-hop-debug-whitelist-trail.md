@@ -227,3 +227,10 @@ Clean single-exit refactor of `validate_draft_job_resume_payload` — every bran
 
 context_tokens≈95000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** Radia `[code-rubric] revision=2` — **CLEAN** (no fix-now, no discuss). Publish tip at review: `366be114` / plan append `e0cbb2b2`.
+
+No product changes on resolve. Joan’s three plan-time discuss items were already resolved in the build (unconditional `set_debug_flag(debug)`, outer-loop `bad_job` break, unwrap-on-normalize by design) and confirmed by Radia. §9a dry-run vs `origin/dev` and `origin/ftr/AST-1268-draft-job-resume-response-schema-is-wrong` before User Testing.
