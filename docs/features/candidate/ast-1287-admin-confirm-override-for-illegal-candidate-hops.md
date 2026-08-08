@@ -172,3 +172,41 @@ Changes: Removed core same-state early-return; skip same-state only in `update_c
 |-------|--------|---------|
 | 1 | `8cec790b` | `IllegalCandidateTransition` + `force=` on `transition_candidate_state` |
 | 2 | `117f64c4` | Admin `confirm_state_override` + structured illegal-hop 400 |
+
+## Radia review
+
+[code-rubric] revision=2
+
+**Rubric:** code-rubric.v2
+**Publish ref tip:** `0f994ea4`
+**Overall:** DISCUSS
+
+**Full-set sweep:** all 64 active statutes scored in-session (17 universal + 47 scoped) against `git diff origin/dev...origin/sub/AST-1285/AST-1287-admin-confirm-override`. No `violates`. Three benign stragglers (C4) below — all resolve to `conforms` on inspection, none block.
+
+**What's solid:** `IllegalCandidateTransition(ValueError)` replaces the round-1 message-prefix contract per Joan's plan-discuss finding, and the API catches the subclass before the bare `ValueError` (correct order — `except IllegalCandidateTransition` before `except ValueError`). `force=True` still routes through `transition_candidate_state` and the same history/save/reap path — no raw data poke (`pattern.state.entity-state-transitions` intact). Unknown `to_state` raises plain `ValueError` even with `force=True`, so AST-1288 can't confirm-to-invent (`code` key absent from that response body per the new test). The admin gate (`is_admin`) now also covers `confirm_state_override`, so non-admins can't force a hop by sending the flag alone. Same-state skip lives only in `update_candidate_data` (API boundary), matching Joan's fix-now resolution — core stays fail-closed for every other caller (dispatch/stale/`start_requested_artifacts`/`delete_candidate`), confirmed by `TestAst1287ForceTransition::test_same_state_illegal_without_force`. The forced-bypass `logger.info` line is gated correctly (`force and not allowed` only — silent on already-legal hops) and ties to the in-code comment + Joan's plan-rubric sign-off (justification chain per C6 §5b). `python3 -m py_compile` clean on both touched backend modules. Engineer/Betty test-tree boundary holds — `code(AST-1287)` commits touch only `src/`; the `test(AST-1287)` commit (merged in via the single `merge-tests(AST-1287)` SHA) touches only `tests/` + `docs/test-bible/`. Test coverage matches every plan "Done when" branch (force+history, default-reject, unknown-state-even-with-force, same-state-illegal-without-force, force-on-legal-hop, confirm-forces, same-state-skip, non-admin-403, unknown-state-400-no-code, string-`"true"`-does-not-force).
+
+**Findings**
+
+- **discuss — straggler (C4), `astral.state.job-prior-states-enforced`:** Ticket's Considered-but-excluded list marks this out of scope ("jobs untouched; candidate-only override"), but the sweep's `applies_when.paths: ["src/core/**", ...]` glob matches on `src/core/candidate.py` alone, so it scores in-scope rather than `not-applicable`. On inspection: no job-transition code touched — `conforms`, no action needed.
+- **discuss — straggler (C4), `astral.batch.claim-process-release`:** Same shape — ticket excludes it ("no batch force switch; `dispatcher.py` untouched"), sweep's broad `src/core/**` glob still matches. On inspection: no batch/dispatch code touched — `conforms`, no action needed.
+- **discuss — straggler (C4), `astral.layers.ui-config-driven-business-logic`:** Ticket excludes the React confirm UX (AST-1288's territory), sweep's `src/ui/**` glob matches on the backend `api_candidate.py` change alone. On inspection: this *is* the API layer the rule wants business logic resolved in, and no React file changed — `conforms`, no action needed.
+- **advisory — import ordering:** `IllegalCandidateTransition` is inserted between `start_requested_artifacts` and `transition_candidate_state` in the `src.core.candidate` import block in `api_candidate.py`, breaking the otherwise-alphabetical order (capital `I` out of sequence with the surrounding lowercase names). Cosmetic only; not a statute violation.
+
+**Pattern conformance:**
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.state.entity-state-transitions` | conforms | Force still resolved + written via `transition_candidate_state`; data/history path unchanged |
+| `pattern.ui.admin-endpoint` | conforms | Confirm signal added to the existing `@require_auth` admin-gated `PUT …/data`; no new route, no frontend business rules |
+
+**Plan adherence:** Diff matches the Files Changed table and both stages exactly, including the Revision 1 delta (typed exception, API-boundary same-state skip, forced-hop INFO line) that Joan's round-1 `[plan-discuss]` concern required. Self-Assessment `Scope: Single-Component` / `Conf: high` matches the diff's real footprint; no `!!-NONE` conflict. Joan's plan-rubric verdict (`[plan-rubric] revision=1`, **Overall: APPROVED**) is attached on the Linear issue — its round-1 `fix-now` and both `discuss` items are cured in the shipped diff (verified above), and its remaining `discuss` (uncatalogued "admin confirmed prior-states override" pattern) is Archie's corpus call, not a block here.
+
+**Cross-ticket boundary:** No Manage Candidates React edits (AST-1288 untouched as planned); no job/company transition code; no `prior_states` graph repair; no batch/dispatch skip-validation switch.
+
+## Frame diff
+
+(none — ticket description AC/scope table already accurate)
+
+context_tokens≈58000
+
+— Radia
