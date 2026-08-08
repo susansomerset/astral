@@ -2594,7 +2594,7 @@ async def do_task(
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
-            cat_err = validate_draft_job_resume_payload(parsed, cd)
+            cat_err = validate_draft_job_resume_payload(parsed, cd, debug=debug)
             if cat_err:
                 logger.error("do_task validation failed. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
@@ -2772,7 +2772,7 @@ async def do_task(
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
-            cat_err = validate_draft_job_resume_payload(parsed, cd)
+            cat_err = validate_draft_job_resume_payload(parsed, cd, debug=debug)
             if cat_err:
                 logger.error("do_task validation failed after decode. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
