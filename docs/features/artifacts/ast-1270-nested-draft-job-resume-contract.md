@@ -157,3 +157,10 @@ The plan is binding. The agent:
 - §1.5.1: no new debug-contract lines (AST-1272).
 - §3.3 imports: core → utils only for config; no ui/data import changes.
 - Boundaries: no deviations retention, no debug trail, no test-tree edits.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`  
+**Tip:** `1c9bfee2`
+
+Stages landed: TASK_CONFIG nest/metadata → unwrap + `base_resume` whitelist → `_resume_payload_body` nest prefer → Manage Tasks seed wording.
