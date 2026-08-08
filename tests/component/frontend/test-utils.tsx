@@ -2,6 +2,7 @@ import { render, type RenderOptions } from '@testing-library/react'
 import { MemoryRouter, type MemoryRouterProps } from 'react-router-dom'
 import type { ReactElement, ReactNode } from 'react'
 import { StytchProvider } from '@stytch/react'
+import { vi } from 'vitest'
 import { UserPromptProvider } from '../../../src/ui/frontend/src/components/UserPrompt'
 import { AuthProvider } from '../../../src/ui/frontend/src/contexts/AuthContext'
 import { CandidateProvider } from '../../../src/ui/frontend/src/contexts/CandidateContext'
@@ -11,6 +12,27 @@ import { resetStytchTestState } from './stytchMock'
 type WrapperOptions = {
   router?: MemoryRouterProps
 }
+
+/** jsdom has no matchMedia — NavigationShell (AST-1286) needs it. Default = wide (≥1024). */
+export function stubNavViewport(isWide: boolean) {
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: vi.fn().mockImplementation((query: string) => ({
+      matches: isWide,
+      media: query,
+      onchange: null,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn(),
+    })),
+  })
+}
+
+// Install before any NavigationShell mount (including files that only import renderWithProviders).
+stubNavViewport(true)
 
 function AllProviders({ children, router }: { children: ReactNode } & WrapperOptions) {
   return (
