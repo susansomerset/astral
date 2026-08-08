@@ -77,3 +77,40 @@ When an admin on Manage Candidates chooses a registered target state that the ca
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `b4770bcb` | Illegal-hop confirm + `confirm_state_override` retry on Manage Candidates edit save |
+
+## Radia review
+
+[code-rubric] revision=2
+
+**Rubric:** code-rubric.v2
+**Publish ref tip:** `a2a274ac`
+**Overall:** DISCUSS
+
+**Full-set sweep:** all 64 active statutes scored in-session (17 universal + 47 scoped) against this ticket's own contribution. `origin/dev...origin/sub/AST-1285/AST-1288-manage-candidates-are-you-sure` also carries AST-1287's not-yet-landed diff (`src/core/candidate.py`, `src/ui/api/api_candidate.py`, their tests/bible) — confirmed byte-identical between `origin/sub/AST-1285/AST-1287-admin-confirm-override` (current tip, post-`resolve-child`) and this branch, so that content is not re-scored here; only `AdminManageCandidates.tsx` + its test + this ticket's plan/bible entries are this ticket's diff. No `violates`.
+
+**What's solid:** No frontend `prior_states` mirror or preflight endpoint — legality is decided purely by the API's `code: "illegal_candidate_transition"` (matches `astral.layers.ui-config-driven-business-logic` / `astral.standards.no-hardcoded-sets`, both cited "In scope"). `useUserConfirm()` is the same hook already wired for delete / set-tasks / clear-key on this page — no new confirm component. `from_state`/`to_state` read from the response body with a narrow fallback only when a field is missing (no state invention). The retry path re-sends the full payload with `confirm_state_override: true` rather than a partial PUT, so an API-key edit in the same save self-heals on confirm. Unknown-state 400s (no `code` field) correctly fall through to the plain error toast with no confirm dialog — verified by the dedicated `NOT_A_STATE` test. `Modal.onSave={() => { void handleEditSave() }}` matches the existing async wrapper style used by `handleDelete` / `handleSetDispatchTasks`. `npx eslint` and `npx tsc -b --noEmit` both clean on the touched file. Engineer/Betty test-tree boundary holds — `code(AST-1288)` touches only `AdminManageCandidates.tsx`; `test(AST-1288)` (merged via the single `merge-tests(AST-1288)` SHA) touches only the test file + bible. Test coverage matches all 4 plan branches (confirm-retry, cancel, legal-quiet, unknown-state-quiet).
+
+**Findings**
+
+- **discuss — carried from Joan's plan-rubric verdict, unresolved by design:** on cancel, an `api_key` edit submitted in the same save as the illegal state is dropped (the AST-1287 illegal-hop 400 returns before the key-write block in `update_candidate_data`) and the cancel toast ("other fields saved if they were") doesn't surface that. Joan scored this `discuss`/non-blocking and gave two remediation paths (re-PUT minus `state` on cancel here, or reorder the key-write in AST-1287's file — the latter needs Chuckles/parent). Shipped code matches the approved plan exactly; flagging forward per C6 §5c rather than re-litigating — no new finding beyond Joan's.
+- **discuss — carried from Joan's plan-rubric verdict:** leaving the edit modal open after cancel means `Modal`'s dirty-tracking can produce a second "discard changes?" prompt on close even though the non-state fields already saved. Same status as above — Joan flagged, plan approved anyway, shipped code unchanged from what she reviewed.
+
+No fix-now findings; no new stragglers (this ticket's Considered-but-excluded list — `pattern.state.entity-state-transitions` / core force path, `prior_states` graph repair, company/job UI, preflight endpoint, test-tree — all correctly stayed untouched in the diff).
+
+**Pattern conformance:**
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.ui.admin-endpoint` | conforms | Confirm UX added to the existing admin-gated page/`api()` client; no new route; legality stays server-resolved |
+
+**Plan adherence:** Diff matches the Files Changed table and the single stage exactly, including both `⚠️ Decision` notes (detect via first-save 400, not preflight; reload + reset state select on cancel but leave modal open). Self-Assessment `Scope: Single-Component` / `Conf: high` matches the diff's real footprint. Joan's attached `[plan-rubric] revision=1` verdict is **APPROVED** with the two discuss items carried forward above; no round 2 was required and none is introduced by this review.
+
+**Cross-ticket boundary:** No core/API changes (AST-1287's file untouched by this ticket, confirmed identical to its own tip); no company/job transition UI; no `tests/`/`docs/test-bible/**` edits by the engineer commit.
+
+## Frame diff
+
+(none — ticket description AC/scope table already accurate)
+
+context_tokens≈54000
+
+— Radia
