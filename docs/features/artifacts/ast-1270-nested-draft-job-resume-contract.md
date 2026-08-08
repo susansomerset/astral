@@ -164,3 +164,102 @@ The plan is binding. The agent:
 **Tip:** `9ef3f920`
 
 Stages landed: TASK_CONFIG nest/metadata → unwrap + `base_resume` whitelist → `_resume_payload_body` nest prefer → Manage Tasks seed wording.
+
+## Radia review — code-rubric.v2
+
+`[code-rubric] revision=2`
+**Overall:** DISCUSS
+**Diff:** `origin/dev...origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract` (product files: `src/utils/config.py`, `src/core/candidate.py`, `src/core/tracker.py`, `data/admin/agent_task.json` — matches plan Files Changed exactly)
+
+### Statutes checked (full active set, in-session)
+
+`id | tier | verdict | one-line`
+
+- `orch.roles.betty-owns-test-tree | universal | conforms | test()/merge-tests commits own tests/ + docs/test-bible/**; no engineer code() commit touches them`
+- `orch.roles.archie-approves-statutes | universal | conforms | no canon/statutes/** changed`
+- `orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee is Ada (engineer), not Chuckles`
+- `orch.roles.pre-commit-path-bans | universal | conforms | each commit stayed in its role's lane`
+- `orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada stays assignee through Tests Passed`
+- `orch.git.three-permanent-branches | universal | conforms | no new permanent branch`
+- `orch.git.flow-direction-inviolable | universal | conforms | tests→sub via merge-tests, dev→sub merge only`
+- `orch.git.no-cherry-pick-rebase-force | universal | conforms | no rebase/force-push/cherry-pick in the commit sequence`
+- `orch.git.betty-merge-tests-one-sha | universal | conforms | exactly one merge-tests(AST-1270) commit, SHA a07a3db9`
+- `orch.git.merge-on-checkout | universal | conforms | sub carries ftr ancestry; no stale-seed evidence`
+- `orch.git.one-epic-worktree-per-parent | universal | conforms | single astral-AST-1268/ worktree`
+- `orch.git.ftr-sub-topology | universal | conforms | sub/AST-1268/AST-1270-… naming, Chuckles-created`
+- `orch.git.commit-vocabulary | universal | conforms | docs()/code()/test()/merge-tests() only`
+- `orch.git.no-dev-agent-branches | universal | conforms | no dev-<agent> branch`
+- `orch.pipeline.call-susan-for-product-decisions | universal | needs-discussion | Joan's plan-rubric flagged the base_resume-hard-fail behavior (no persisted structure + no base_resume) as a product call needing Susan confirmation; no Susan comment found — build proceeded on Joan's "defensible" read without escalation`
+- `orch.pipeline.status-gates-skill-entry | universal | conforms | stateHistory shows in-order Todo→…→Tests Passed`
+- `orch.pipeline.project-scoped-queues | universal | conforms | explicit-id review, no queue behavior`
+- `orch.pipeline.plan-is-bible | universal | conforms | Stages 1–4 executed in order, no skip/reorder/expand`
+- `astral.agent.do-task-delegation | scoped | conforms | no new do_task call assembly`
+- `astral.agent.grade-vector-validation | scoped | conforms | vector validation untouched`
+- `astral.agent.confidence-bounds | scoped | conforms | confidence handling untouched`
+- `astral.batch.claim-process-release | scoped | conforms | claim/process/release untouched`
+- `astral.batch.batch-id-first | scoped | conforms | no new batch APIs`
+- `astral.batch.entity-agent-responses-latest-only | scoped | conforms | agent_data write path untouched`
+- `astral.batch.batch-id-format | scoped | conforms | batch_id construction untouched`
+- `astral.config.config-source-of-truth | scoped | conforms | nest key + metadata keys land on TASK_CONFIG (cited pattern.config.config-block)`
+- `astral.config.pass-threshold-vs-score-floor | scoped | conforms | pass_threshold/score_floor untouched`
+- `astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env literals added`
+- `astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no artifacts/** or scripts/spikes/** paths in diff`
+- `astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features addition is the proper plan doc, not spike notes`
+- `astral.dispatch.run-next-is-chain-authority | scoped | conforms | new TASK_CONFIG keys are payload contract, not a run_next-shadowing membership set`
+- `astral.dispatch.seed-auto-false | scoped | conforms | no dispatch_task/auto_mode touched`
+- `astral.docs.features-single-file-per-ticket | scoped | conforms | one file, docs/features/artifacts/ast-1270-…md`
+- `astral.git.betty-no-src-or-features | scoped | conforms | Betty's commits touch only tests/ + docs/test-bible/**`
+- `astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits never touch tests/ or docs/test-bible`
+- `astral.idioms.coat-check-never-store-empty | scoped | conforms | no coat-check handler touched`
+- `astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | render_verdict/consult path untouched`
+- `astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no src/ui/** changes`
+- `astral.layers.core-vs-external-bright-line | scoped | conforms | no I/O added to core`
+- `astral.layers.import-direction | scoped | conforms | TASK_CONFIG import is core→utils; no new cross-layer import`
+- `astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** changes`
+- `astral.layers.ui-config-driven-business-logic | scoped | conforms | no UI files touched`
+- `astral.seed.agent-tables-in-repo-json | scoped | conforms | agent_task.json stays non-empty; targeted wording edit only`
+- `astral.seed.archie-catalog-wins | scoped | conforms | change committed to repo JSON, not a live-DB-only edit`
+- `astral.seed.boot-only-not-hot-path | scoped | conforms | TASK_CONFIG addition is a static dict literal, no new hot-path seed code`
+- `astral.seed.define-approved | scoped | conforms | parent Architectural definition names the nest/metadata config need + cites pattern.config.config-block`
+- `astral.seed.operator-rows-stay-deleted | scoped | conforms | no dispatch_task insert/reconcile logic touched`
+- `astral.seed.other-via-coverage-join | scoped | conforms | no new seed/provision path added`
+- `astral.standards.database-header-inventory | scoped | not-applicable | no src/data/** changes`
+- `astral.standards.data-raises-caller-logs | scoped | conforms | validate/normalize keep returning Optional[str]; no new raise/log`
+- `astral.standards.debug-contract-gated | scoped | conforms | no new debug=True surface; Style D trail explicitly deferred to AST-1272`
+- `astral.standards.dry-and-focused-functions | scoped | conforms | one unwrap path in normalize; one whitelist helper shared by validate`
+- `astral.standards.in-scope-only | scoped | conforms | diff = exactly the plan's 4 Files Changed`
+- `astral.standards.logging-via-utils | scoped | conforms | no new logging added`
+- `astral.standards.names-not-ticket-ids | scoped | conforms | draft_job_resume_allowed_section_keys is domain language`
+- `astral.standards.no-cross-contamination | scoped | conforms | no out-of-layer import added`
+- `astral.standards.no-hardcoded-sets | scoped | conforms | _DRAFT_JOB_RESUME_METADATA_KEYS frozenset deleted, replaced by TASK_CONFIG; no new inline set added`
+- `astral.standards.public-then-helpers | scoped | conforms | new public helper grouped with public draft helpers; private alias helper relocated after the public validate fn`
+- `astral.standards.utils-data-late-import-only | scoped | conforms | config.py edit is dict literals only, no utils→data import`
+- `astral.state.core-decides-transitions | scoped | conforms | no transition logic touched`
+- `astral.state.job-prior-states-enforced | scoped | conforms | no job state transition touched`
+- `astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch run-loop touched`
+- `astral.ui.frontend-file-placement | scoped | not-applicable | no src/ui/frontend/** changes`
+- `astral.ui.naming-conventions | scoped | not-applicable | no src/ui/** changes`
+- `astral.ui.single-gunicorn-worker | scoped | conforms | config.py edit unrelated to worker/scheduler settings`
+
+**Straggler (C4):** Joan's plan-rubric.v1 verdict (attached, APPROVED) reports counts only ("9 scoped excluded") without itemized ids — no itemized Excluded list to cross-check against this sweep's `not-applicable` rows. No contradiction identified.
+
+### Pattern conformance
+
+`id | verdict | one-line`
+
+- `pattern.config.config-block | conforms | TASK_CONFIG["draft_job_resume"] extended with nest key + metadata keys; old inline frozenset deleted, not duplicated`
+
+### Findings
+
+**discuss** — `orch.pipeline.call-susan-for-product-decisions` / plan Stage 2 step 3. Joan's plan-rubric already flagged this: a candidate with no persisted `artifacts.resume_structure` **and** no `artifacts.base_resume` now hard-fails (`"candidate has no base_resume section keys"`) instead of falling back to the 10-id default catalog. Defensible (a hop that tailors the base resume is meaningless without one), but it's a behavior flip decided inside the plan rather than confirmed by Susan. Recommend a short Linear confirmation before this reaches production traffic.
+
+**discuss** — `src/core/tracker.py` persist path (carried from Joan's plan-rubric, still true on the built diff). `validate_draft_job_resume_payload` now whitelists via `base_resume` keys ∩ `RESUME_STRUCTURE_KNOWN_SECTION_IDS`, while `persist_job_artifact_from_parsed` still filters through `filter_content_to_resume_structure(body, resolve_resume_structure(cd))` (enabled catalog ids). A candidate with a persisted structure that disables a section could now validate a section that then silently drops at persist. Harmless while the default catalog enables all 10 known ids; worth a QA watch note since it's a live divergence, not a hypothetical.
+
+**discuss** — merge hygiene, not a product defect. `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`'s previous tip (`ee481251`) carried `docs/test-bible/core/repo_admin_json.md` + `tests/component/core/test_repo_admin_json.py` changes for **AST-1269** (a sibling of parent **AST-1184**, unrelated to AST-1268) via the shared `origin/tests` branch — that content predated and diverged from `origin/dev`'s own (separately resolved) AST-1269 landing. Ran the epic worktree's merge-clean gate (`git merge origin/dev`) before this docs() commit per review-child §4; the merge resolved cleanly with no conflicts and the AST-1269 divergence is gone from the tip this review publishes. No product code in `src/` was affected either way — verified identical across both tips.
+
+### What's solid
+
+Implementation follows Stages 1–4 exactly: `TASK_CONFIG["draft_job_resume"]` carries the nest key + metadata keys (including `deviations`); `normalize_draft_job_resume_agent_payload` unwraps before the legacy flatten/promote/alias logic; `validate_draft_job_resume_payload` whitelists against `base_resume` ∩ `RESUME_STRUCTURE_KNOWN_SECTION_IDS` and gives a clear error when the nest key survives as a non-dict; `_resume_payload_body` prefers the nested body so `deviations` never leaks into resume content; the Manage Tasks seed wording fix is surgical. `no-hardcoded-sets` conformance is a clean textbook example — one frozenset deleted, zero added.
+
+context_tokens≈145000
+— Radia
