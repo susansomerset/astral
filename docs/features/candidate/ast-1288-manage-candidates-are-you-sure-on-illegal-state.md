@@ -114,3 +114,12 @@ No fix-now findings; no new stragglers (this ticket's Considered-but-excluded li
 context_tokens≈54000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review tip:** `32037232` (`docs(AST-1288): Radia review — discuss`)
+
+- **fix-now:** none — no product changes.
+- **discuss (api_key drop on cancel + toast):** deferred per Radia recommended actions — Joan/Radia scored non-blocking; remediation is parent/AST-1287 key-write order or a future UI follow-up, not required for this child. Plan toast and cancel path left as approved.
+- **discuss (modal dirty after cancel):** deferred same way — plan deliberately keeps the modal open; second discard prompt accepted for UAT awareness, not changed here.
