@@ -178,3 +178,8 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 | `astral.standards.in-scope-only` | No page mobile redesigns; no NAV_CONFIG edits |
 | `astral.layers.ui-config-driven-business-logic` | No new business rules in React |
 | Proposed `pattern.ui.responsive-nav-shell` | Behavior implemented; canon file not added |
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell`  
+**Product commits:** `74304164` (hamburger overlay drawer + CSS shell), `ac099886` (narrow checked candidate list)
