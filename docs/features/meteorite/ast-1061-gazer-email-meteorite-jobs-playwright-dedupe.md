@@ -1,3 +1,352 @@
+<!-- linear-archive: AST-1061 archived 2026-08-07 -->
+
+## Linear archive (AST-1061)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1061/gazer-email-meteorite-jobs-playwright-dedupe-qualify-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1058 — Qualify Meteorite  
+**Blocked by / blocks / related:** parent: AST-1058; blocks: AST-1062
+
+### Description
+
+## What this implements
+
+Owns gazer email→meteorite create: interpret JD body / recruiter forward / single link / link list; Playwright visible-text fetch for links; post-fetch external job-id dedupe (skip known); insert into **METEORITE_NEW**. Introduces the **gazer reads email** new-pattern (Archie-flagged). Does **not** own Ruth qualify apply or GDL.
+
+## Acceptance criteria
+
+- [X] 1. Gazer can create meteorite jobs from email contents that are a JD body, a recruiter forward, a single job link, or a list of job links; when links are present, Playwright fetches visible text **before** create.
+- [X] 2. After Playwright (when used), create is **skipped** when a known external job-id pattern match hits — no second job row for that id.
+- [X] 3. New jobs from this path land on **METEORITE_NEW** with JD text and without Ruth metadata (pre-AI).
+- [X] 4. Non-meteorite `qualify_job_listings` / scrape / GDL paths unchanged (smoke).
+- [X] 5. With `debug=True` on touched ingest/qualify paths, Style D index + `|` detail shows found vs recorded; with `debug=False`, no new debug-contract lines from those paths. (ingest half)
+
+## Boundaries
+
+Does **not** own Ruth qualify apply or GDL. After AST-1060. Sibling Hedy owns qualify_meteorite batch apply.
+
+## In scope
+
+- [X] `pattern.layers.import-discipline` — gazer/inbox/meteorite/core vs ui/api edges
+- [X] `astral.layers.core-vs-external-bright-line` — Playwright only via `src.external.playwright.get_visible_text`; Gmail stays inbox/external
+- [X] `astral.standards.debug-contract-gated` — Style D on gazer + inbox ingest when `debug=True` only
+- [X] `astral.config.config-source-of-truth` — `METEORITE_EMAIL_INGEST_CONFIG` owns link filters / concurrency / min JD length
+- [X] gazer-reads-email (new-pattern) — classify + Playwright + dedupe live in `src/core/gazer.py`
+- [X] Data helpers: global inverted `company_job_id` match + exact `job_link` existence
+- [X] Optional `job_link=` on `create_meteorite_job`; Manage Email Create multi-result API/UI
+
+## Considered but excluded
+
+- [X] Ruth `qualify_meteorite` apply / UUID persist — AST-1062 (`consult` / apply)
+- [X] METEORITE_QUALIFIED / qualify TASK_CONFIG / dispatch — AST-1060 (already landed)
+- [X] Writing `company_job_id` on create from URL parsers — Ruth enrichment owns UUID
+- [X] New dispatcher AUTO unread-mail poll — Create is the operator entry
+- [X] `tests/` / `docs/test-bible/**` — Betty after Code Complete
+- [X] Non-meteorite `process_gazer_batch` / listing scrape / GDL priors — AC4 smoke = no edits
+
+## Notes for planning
+
+Plan: `docs/features/meteorite/ast-1061-gazer-email-meteorite-jobs-playwright-dedupe.md` on publish ref.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1058-qualify-meteorite`, child `sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-31T00:13:04.217Z
+[check-linear] answered
+
+There is no `gaze_email` dispatch task — by design. Roster `gaze` is company culture gaze only. Meteorite email ingest is **operator Create** on Admin → **Manage Email**: `POST /api/admin/inbox/messages/<id>/create-job` → strip/extract → `ingest_meteorite_jobs_from_email_html` → `METEORITE_NEW` (Playwright + dedupe). No AUTO unread-mail poll / no new TASK_CONFIG key.
+
+Gmail is **not** labeled, archived, or marked processed after Create — that was explicitly out of scope on the Create ticket. Deduping is on job identity (`company_job_id` / `job_link`), not on the email message.
+
+— Chuckles
+
+#### susan — 2026-07-31T00:01:04.821Z
+@chuckles How does gaze_email get set up?  It should be a task that can be added to dispatch, right?  I only see "gaze".  Also, how does an email get modified to indicate that the system has already processed it?
+
+#### radia — 2026-07-30T01:53:56.830Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1061
+**Publish ref:** `b6f80a7e5015513dd6f3cf0c8429035fabb1958f` (`origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe` — layers `{core, data, docs, ui, utils}` (includes stacked AST-1060).
+**This ticket owns:** `METEORITE_EMAIL_INGEST_CONFIG`; `text_matches_known_company_job_id` / `job_link_exists`; optional `job_link` on `create_meteorite_job`; gazer email ingest (Playwright + dedupe); inbox/API/Manage Email multi-result Create + Style D ingest half.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| `astral.agent.confidence-bounds` | scoped | conforms | No graded consult / confidence path |
+| `astral.agent.do-task-delegation` | scoped | conforms | Playwright via external only; no do_task/Ruth |
+| `astral.agent.grade-vector-validation` | scoped | conforms | No grade vectors |
+| `astral.batch.batch-id-first` | scoped | conforms | Create/ingest; no new claim APIs |
+| `astral.batch.batch-id-format` | scoped | conforms | Untouched |
+| `astral.batch.claim-process-release` | scoped | conforms | Create/ingest not claim→process→release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | Untouched |
+| `astral.config.config-source-of-truth` | scoped | conforms | Link filters/concurrency/min JD in METEORITE_EMAIL_INGEST_CONFIG |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | No score_floor/pass_threshold on 1061 path |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss (artifacts/**, scripts/spikes/**) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Plan under docs/features/; no spikes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single AST-1061 plan (+ stacked 1060 plan) |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test()/merge-tests; engineer code() owns src+features |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | test() owns tests/bible; engineer code() product only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Playwright only via get_visible_text; no new PW in core |
+| `astral.layers.import-direction` | scoped | conforms | UI→core inbox; gazer→external/data; no UI→data |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers/paths miss (scripts) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Toast counts from API created/skipped; no React business rules |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | Untouched |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | Untouched |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | conforms | Existing Create endpoint auth unchanged |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | Data helpers query-only; logging in core |
+| `astral.standards.database-header-inventory` | scoped | conforms | Existing job columns only; no new tables |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Style D on gazer+inbox when debug=True only |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Reuses create_meteorite_job / get_visible_text / AST-80 LIKE |
+| `astral.standards.in-scope-only` | scoped | conforms | No qualify apply / GDL; boundaries held |
+| `astral.standards.logging-via-utils` | scoped | conforms | get_logger + Style D helpers |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Meteorite email ingest isolated from listing scrape |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Exclude substrings / schemes / caps in config |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public ingest + private helpers match gazer style |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | Config-only utils; no utils→data |
+| `astral.state.core-decides-transitions` | scoped | conforms | Create still lands METEORITE_NEW via create path |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | No JOB_STATES edits on 1061 path |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | No multi-state hop in one run |
+| `astral.ui.frontend-file-placement` | scoped | conforms | Edits flat AdminManageEmail.tsx |
+| `astral.ui.naming-conventions` | scoped | conforms | No new routes/components rename |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | Untouched |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1061) onto tip |
+| `orch.git.commit-vocabulary` | universal | conforms | docs/code/test/merge-tests vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Work on sub/* only |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub/AST-1058/AST-1061-… |
+| `orch.git.merge-on-checkout` | universal | conforms | No conflicting checkout rewrite |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No rewrite ops |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Ticket sub publish-ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | astral-AST-1058 |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | False-positive Medium risk disclosed; no open blocker |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–4 match tip |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty owns tests/bible |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Katherine |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Assignee remains Katherine |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Role-appropriate paths per vocabulary |
+
+## Pattern conformance
+
+- `pattern.layers.import-discipline` — conforms (gazer/inbox/meteorite/core vs ui/api)
+- gazer-reads-email (new-pattern) — conforms (classify + Playwright + dedupe in gazer.py)
+- Cited statutes covered in Statutes checked
+
+## Plan adherence
+
+Stages 1–4 match tip: config + dedupe helpers; optional job_link; gazer ingest; inbox/API/UI multi-result. Self-Assessment MAJOR-CHANGE matches footprint. Boundaries held vs AST-1062 qualify apply / AST-1060 (stacked, not re-owned). Non-meteorite process_gazer_batch untouched.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **straggler ×3** — Joan excluded at plan time; in-scope on three-dot vs `origin/dev` via plan docs + Betty tests/bible (all substance **conforms**):
+   - `astral.debug.spikes-under-debug-dir`
+   - `astral.docs.features-single-file-per-ticket`
+   - `astral.git.engineer-test-tree-ban`
+
+### advisory
+- Joan’s non-blocking global inverted-id false-positive risk remains a watch item (plan Self-Assessment Medium); exact `job_link` gate mitigates re-ingest.
+
+### What’s solid
+- Config-driven link filters; Style D gated; Playwright only via external; Create 201/200 + multi-result toasts.
+
+### Recommended actions
+- Katherine: acknowledge stragglers → resolve-child → User Testing.
+
+**Notes:** Joan plan-rubric APPROVED. Docs append @ `b6f80a7e`. Product tip before docs: `259ebb33`.
+
+context_tokens≈32000
+
+#### betty — 2026-07-30T01:47:53.405Z
+## QA test manifest — AST-1061
+
+**Publish:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe` @ `259ebb336d4265633f7f21e4ee47071d3a5bbcde`
+**Betty delivery:** `merge-tests(AST-1061): origin/tests 598760d9da2956bd8b9dd06cdaf4cefc9fd7346f`
+**FIX-UAT:** ftr bible delta vs `origin/tests` was `core/tracker.md` only (−2) — no full bible re-read; component greps + additive `### AST-1061` blocks.
+
+### 1. Covered paths
+1. `METEORITE_EMAIL_INGEST_CONFIG` — `TestAst1061MeteoriteEmailIngestConfig`
+2. `text_matches_known_company_job_id` / `job_link_exists` — `TestAst1061MeteoriteEmailDedupeHelpers`
+3. `create_meteorite_job(..., job_link=)` persist + `company_job_id is None` — `TestAst1042CreateMeteoriteJob`
+4. Gazer ingest body/links/Playwright mock/dedupe/Style D — `TestAst1061MeteoriteEmailIngest`
+5. Inbox Create → `ingest_meteorite_jobs_from_email_html_sync` — revised `TestAst1049CreateMeteoriteJobFromInboxMessage`
+6. API 201 created / 200 all-skipped — revised `TestAst1049InboxCreateJobApi`
+7. Manage Email multi-result toasts — revised `test_AdminManageEmail.test.tsx`
+
+### 2. Broken / obsolete (revised)
+- AST-1049 inbox mocks of `create_meteorite_job` → gazer ingest sync
+- Create-job API single-job payload → `created`/`skipped`/`mode` + 200 skip path
+- Manage Email toast mocks include `created`/`skipped` (+ all-skipped case)
+
+### 3. Run
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1061MeteoriteEmailIngestConfig \
+  tests/component/data/database/test_jobs.py::TestAst1061MeteoriteEmailDedupeHelpers \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  tests/component/core/test_gazer.py::TestAst1061MeteoriteEmailIngest \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+### 4. Bible shasums on publish tip
+- `docs/test-bible/utils/config.md` `c42ee2f731a5247a4f41028d2cd3f032f128973a`
+- `docs/test-bible/data/database/jobs.md` `83343cf05286e8026fa87a95e98d317b39832151`
+- `docs/test-bible/core/meteorite.md` `a4accbfc2b3e467bc2616c7be864ed833fd9688e`
+- `docs/test-bible/core/gazer.md` `2beea5e51c6a2d20abe7ae073435369b4e44b7a2`
+- `docs/test-bible/core/inbox.md` `2a1ba94d2d6fb68b94fcc29e9074cfef10aadbb0`
+- `docs/test-bible/ui/api/api_inbox.md` `7cf7e26f6646b4a4210d376c94649ba0361b450e`
+- `docs/test-bible/frontend/pages.md` `aa02b0892aa8f958a8cb31bb96a1c479934d2ed8`
+
+#### joan — 2026-07-30T01:36:11.014Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1061
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe`
+**Plan:** `docs/features/meteorite/ast-1061-gazer-email-meteorite-jobs-playwright-dedupe.md`
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC (AST-1058) | Plan coverage |
+| --- | --- |
+| 1. Gazer create from JD body / forward / single link / link list; Playwright before create when links | Stages 3–4 (classify link vs body; links path Playwright; inbox Create wire) |
+| 2. After Playwright, skip create on known external job-id | Stages 1 + 3 (`text_matches_known_company_job_id` + `job_link_exists`; skip reasons) |
+| 3. Survivors land METEORITE_NEW with JD text, no Ruth metadata | Stages 2–3 (`create_meteorite_job` keeps `company_job_id=None`; optional `job_link`) |
+| 4. `qualify_meteorite` batch → METEORITE_QUALIFIED | N/A — boundary (AST-1062; child Boundaries / Out of scope) |
+| 5. Meteorite `evaluate_jd` from METEORITE_QUALIFIED only | N/A — boundary (AST-1060) |
+| 6. Bogus extracts → METEORITE_FAILED_QUALIFY | N/A — boundary (AST-1062) |
+| 7. Non-meteorite qualify/scrape/GDL unchanged | Stage 3 §7 + Stage 4 smoke + Out of scope (no edits) |
+| 8. Style D debug gated (ingest/qualify) | Stages 3–4 Style D on gazer + inbox ingest; qualify half N/A (AST-1062) |
+
+### Plan stage → definition
+
+| Stage | Maps to |
+| --- | --- |
+| 1 Config + data dedupe helpers | Purpose/Functional scope dedupe; child AC2; `METEORITE_EMAIL_INGEST_CONFIG` |
+| 2 Optional `job_link` on create | AC3 pre-AI create; link-sourced rows without Ruth UUID |
+| 3 Gazer ingest orchestration | Purpose gazer-reads-email; AC1–3; AC5 ingest debug |
+| 4 Inbox + API + Manage Email UI | Operator Create entry; multi-result; AC1/4/5 ingest surface |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| --- | --- | --- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge / tests SHA work in this plan |
+| orch.git.commit-vocabulary | conforms | Plan-only; commit vocab deferred to engineer build |
+| orch.git.flow-direction-inviolable | conforms | Uses dispatched `sub/AST-1058/AST-1061-…` publish ref |
+| orch.git.ftr-sub-topology | conforms | Child sub under parent ftr topology |
+| orch.git.merge-on-checkout | conforms | No git ops in plan; topology assumed |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite/cherry-pick proposed |
+| orch.git.no-dev-agent-branches | conforms | No agent-named origin branches proposed |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree AST-1058; one child scope |
+| orch.git.three-permanent-branches | conforms | Does not invent permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Residual Medium risk disclosed; no open product blocker |
+| orch.pipeline.plan-is-bible | conforms | Stages are implementable bible for this child |
+| orch.pipeline.project-scoped-queues | conforms | Meteorite project child; no queue invention |
+| orch.pipeline.status-gates-skill-entry | conforms | Validated at Plan Ready via validate-plan |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | Explicitly excludes tests/bible (Betty after CC) |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Plan does not assign Chuckles to child |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer-owned build after approve |
+| orch.roles.pre-commit-path-bans | conforms | No tests/bible/src bans violated by planned paths |
+| astral.agent.confidence-bounds | conforms | No graded consult / confidence path touched |
+| astral.agent.do-task-delegation | conforms | No `do_task` / Ruth I/O; Playwright via external only |
+| astral.agent.grade-vector-validation | conforms | No grade vectors / TASK_CONFIG grades |
+| astral.batch.batch-id-first | conforms | No batch claim helpers added |
+| astral.batch.batch-id-format | conforms | No batch_id generation |
+| astral.batch.claim-process-release | conforms | Create/ingest path, not claim→process→release |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data RESPONSE / entity refs |
+| astral.config.config-source-of-truth | conforms | Link filters/concurrency/min JD in `METEORITE_EMAIL_INGEST_CONFIG` |
+| astral.config.pass-threshold-vs-score-floor | conforms | No score_floor / pass_threshold changes |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets or env-specific literals added |
+| astral.git.betty-no-src-or-features | conforms | Engineer src/features plan; not Betty edits |
+| astral.layers.core-vs-external-bright-line | conforms | Playwright only via `get_visible_text`; no new PW in core |
+| astral.layers.import-direction | conforms | utils/data/core/ui edges respected; UI→core only |
+| astral.layers.ui-config-driven-business-logic | conforms | Toast counts from API; no React business rules |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check keys / empty store |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | Existing Create endpoint auth unchanged |
+| astral.standards.data-raises-caller-logs | conforms | Data helpers query-only; logging in core |
+| astral.standards.database-header-inventory | conforms | Uses existing `job` table columns; no new tables |
+| astral.standards.debug-contract-gated | conforms | Style D only when `debug=True`; no data-layer contract lines |
+| astral.standards.dry-and-focused-functions | conforms | Reuses create/get_visible_text/AST-80 LIKE shape |
+| astral.standards.in-scope-only | conforms | Boundaries/out-of-scope exclude qualify/GDL/tests |
+| astral.standards.logging-via-utils | conforms | Plan cites `get_logger` / Style D helpers |
+| astral.standards.no-cross-contamination | conforms | Stays in layered src paths |
+| astral.standards.no-hardcoded-sets | conforms | Exclude substrings / schemes / caps in config |
+| astral.standards.public-then-helpers | conforms | Public ingest entry + private helpers; match gazer style |
+| astral.standards.utils-data-late-import-only | conforms | Config-only utils touch; no utils→data |
+| astral.state.core-decides-transitions | conforms | Create still lands METEORITE_NEW via existing create path |
+| astral.state.job-prior-states-enforced | conforms | No JOB_STATES / prior_states edits |
+| astral.state.no-daisy-chain-in-run | conforms | No multi-state hop in one run |
+| astral.ui.frontend-file-placement | conforms | Edits existing flat `AdminManageEmail.tsx` |
+| astral.ui.naming-conventions | conforms | No new routes/components rename |
+| astral.ui.single-gunicorn-worker | conforms | No gunicorn / RAILWAY_CONFIG changes |
+
+## Considered and excluded
+
+**Considered:** all rows in Statute verdicts (18 universal + 33 scoped matches).
+
+**Excluded:**
+- `astral.debug.no-repo-root-artifacts-dir` — paths `artifacts/**`, `scripts/spikes/**` miss plan Files Changed
+- `astral.debug.spikes-under-debug-dir` — paths `debug/**`, `docs/features/**`, `scripts/spikes/**` miss plan Files Changed
+- `astral.docs.features-single-file-per-ticket` — layers `docs` miss plan layers; paths miss Files Changed
+- `astral.git.engineer-test-tree-ban` — paths `tests/**` / bible miss plan Files Changed
+- `astral.layers.scripts-exempt-from-layer-rules` — layers `scripts` / paths `scripts/**` miss plan
+
+## Findings
+
+None fix-now.
+
+- **discuss** (non-blocking): Global inverted `company_job_id` substring match can false-positive on short ids — already called out in Self-Assessment Medium risk/conf; exact `job_link` gate mitigates re-ingest. Accept as implementer watch item, not a plan rewrite.
+- **acceptable:** Link-vs-body classify by surviving http(s) hrefs (no NLP forward detector) matches parent shapes and Archie-flagged new pattern already in approved parent definition.
+
+## Checklist (R6)
+
+Definition fidelity: pass. Layer/config/placement/pattern/DRY/self-assessment: pass (MAJOR-CHANGE / Medium / Medium honest).
+
+— Joan
+context_tokens≈45000
+
+#### katherine — 2026-07-30T01:33:27.312Z
+Plan ready on publish ref.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1058/AST-1061-gazer-email-meteorite-jobs-playwright-dedupe/docs/features/meteorite/ast-1061-gazer-email-meteorite-jobs-playwright-dedupe.md
+**SHA:** `58b09a7358a03d381d91b452a72709db0470399d`
+**Path:** `docs/features/meteorite/ast-1061-gazer-email-meteorite-jobs-playwright-dedupe.md`
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — new gazer email-ingest path + data dedupe helpers + meteorite `job_link` kwarg + inbox/API/UI multi-result Create wiring.
+- **Conf:** `Medium` — reuses `create_meteorite_job` / `get_visible_text` / AST-80 inverted match; residual uncertainty is false-positive risk on short global id substrings (mitigated by exact `job_link` gate).
+- **Risk:** `Medium` — bad dedupe skips a legitimate create; Playwright per-link failures skip that URL only; non-meteorite gazer paths untouched.
+
+---
+
 # AST-1061 — Gazer email → meteorite jobs (Playwright + dedupe)
 
 **Linear:** [AST-1061](https://linear.app/astralcareermatch/issue/AST-1061/gazer-email-meteorite-jobs-playwright-dedupe-qualify-meteorite)

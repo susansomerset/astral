@@ -1,3 +1,323 @@
+<!-- linear-archive: AST-1062 archived 2026-08-07 -->
+
+## Linear archive (AST-1062)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1062/qualify-meteorite-batch-apply-meteorite-qualified-qualify-meteorite  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1058 — Qualify Meteorite  
+**Blocked by / blocks / related:** parent: AST-1058
+
+### Description
+
+## What this implements
+
+Owns core/consult wiring so the `qualify_meteorite` batch (same claim/process shape as `qualify_job_listings`) writes UUID → `company_job_id`, title, `job_link`, visible JD, transitions **METEORITE_NEW → METEORITE_QUALIFIED** or **METEORITE_FAILED_QUALIFY**, Style D debug. After AST-1060; needs AST-1061 producing claimable **METEORITE_NEW** rows for full-path UAT. Does **not** author gazer ingest.
+
+## In scope
+
+- [X] `pattern.batch.entity-claim-process-release` — `qualify_meteorite` claim → `_run_batch_consult` → process → release (mirror `qualify_job_listings`)
+- [X] `pattern.batch.entity-agent-responses` / `astral.batch.entity-agent-responses-latest-only` — RESPONSE tagging via existing `_run_batch_consult` `agent_ref` path
+- [X] `astral.agent.do-task-delegation` — Ruth I/O via `do_task`; core `process_fn` persists + transitions
+- [X] `astral.state.core-decides-transitions` — pass/fail/error only in consult apply
+- [X] `astral.standards.debug-contract-gated` — Style D on apply path only when `debug=True`
+- [X] `astral.config.config-source-of-truth` — content-gate mins on `TASK_CONFIG["qualify_meteorite"]` only (schema/states already AST-1060)
+
+## Considered but excluded
+
+- [X] `pattern.config.config-block` / new JOB_STATES — Ada AST-1060 (already on ftr tip)
+- [X] Gazer email ingest / Playwright / dedupe — Katherine AST-1061
+- [X] New Ruth batch pattern / grades-encoded decode — not this ticket; `output_type: "fields"`
+- [X] `qualify_job_listings` / roster scrape / GDL rubric changes — smoke-only; no edits
+- [X] Frontend / Jobs skipped section labels — AST-1060 manifests; apply only lands states
+- [X] `tests/` / test-bible — Betty after Code Complete
+
+## Acceptance criteria
+
+- [X] 4. Batch task `qualify_meteorite` claims **METEORITE_NEW**, returns external job UUID, job title, `job_link`, and visible JD content; on success the job is on **METEORITE_QUALIFIED** with those fields as authoritative content.
+- [X] 5. Meteorite `evaluate_jd` claims/grades from **METEORITE_QUALIFIED** only — not from unenriched **METEORITE_NEW**. (verify retained; retarget owned by AST-1060)
+- [X] 6. Bogus / 404 / unusable extracts land on **METEORITE_FAILED_QUALIFY** (visible in Jobs skipped manifests).
+- [X] 7. Non-meteorite `qualify_job_listings` / scrape / GDL paths unchanged (smoke).
+- [X] 8. With `debug=True` on touched ingest/qualify paths, Style D index + `|` detail shows found vs recorded; with `debug=False`, no new debug-contract lines from those paths.
+
+## Boundaries
+
+- [X] Does **not** author gazer ingest. After AST-1060; pairs with AST-1061 for claimable rows. Sibling Ada owns states/config/dispatch shells.
+
+## Notes for planning
+
+Citations migrated into In scope / Excluded. Mirror `qualify_job_listings` claim/process exactly under key `qualify_meteorite` — no new Ruth batch pattern. Content fails via apply gates on blank/short fields (not grade vectors).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1058-qualify-meteorite`, child `sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`.
+
+### Comments
+
+#### radia — 2026-07-30T02:18:32.797Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1062
+**Publish ref:** `3a05d08edc852060a1100ed5873d05f3dad1fd1b` (`origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified`)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified` — layers `{core, data, docs, ui, utils}` (includes stacked AST-1060/1061).
+**This ticket owns:** `TASK_CONFIG["qualify_meteorite"]` min_* gates; `consult.qualify_meteorite` + `run_consult_task` branch; `_CHUNK_EXHAUST_CONSULT_JOB_KEYS`; Ad Hoc `METEORITE JOBS:` assemble.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| `astral.agent.confidence-bounds` | scoped | conforms | fields output; no grade confidence math |
+| `astral.agent.do-task-delegation` | scoped | conforms | Ruth via do_task in _run_batch_consult; core process_fn persists |
+| `astral.agent.grade-vector-validation` | scoped | conforms | Not grades-encoded; stays off strict-encoded frozenset |
+| `astral.batch.batch-id-first` | scoped | conforms | Consult takes batch_id first; claim surface unchanged |
+| `astral.batch.batch-id-format` | scoped | conforms | No new batch_id scheme |
+| `astral.batch.claim-process-release` | scoped | conforms | Mirrors qualify_job_listings claim→_run_batch_consult→release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | Existing _run_batch_consult agent_ref RESPONSE path |
+| `astral.config.config-source-of-truth` | scoped | conforms | min_* on TASK_CONFIG[qualify_meteorite]; states from AST-1060 |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | Content mins are apply gates, not score_floor mix-up |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss (artifacts/**, scripts/spikes/**) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Plan under docs/features/; no spikes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single AST-1062 plan (+ stacked sibling plans) |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test()/merge-tests; engineer code() owns src+features |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | test() owns tests/bible; engineer code() product only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Ruth I/O via agent/external; core owns persist/transitions |
+| `astral.layers.import-direction` | scoped | conforms | core/utils/ui Ad Hoc; no new UI→core invent path |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers/paths miss (scripts) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Thin Ad Hoc live-content parity only |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | Fail skips initialize_job; pass remaps jd_text→job_description |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | Pattern A qualify_* batch (not graded render_verdict) |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | conforms | Ad Hoc on existing admin surface |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | No data-layer authorship on 1062 path |
+| `astral.standards.database-header-inventory` | scoped | conforms | Stacked helpers use existing job columns |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Style D only when debug=True |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | One wrapper; shared _run_batch_consult/initialize_job |
+| `astral.standards.in-scope-only` | scoped | conforms | No gazer/GDL/qualify_job_listings edits on 1062 code |
+| `astral.standards.logging-via-utils` | scoped | conforms | logger.info + debug_index/detail via utils logging |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Meteorite qualify branch isolated from listing qualify |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Thresholds/states in config |
+| `astral.standards.public-then-helpers` | scoped | conforms | New public qualify_meteorite + nested assemble/process |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data load-time import |
+| `astral.state.core-decides-transitions` | scoped | conforms | Transitions only in process_fn / batch error paths |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | Uses _transition_job_state_for_task; priors from AST-1060 |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | Single qualify dispatch cycle; GDL separate |
+| `astral.ui.frontend-file-placement` | scoped | conforms | Stacked AdminManageEmail only; 1062 no frontend |
+| `astral.ui.naming-conventions` | scoped | conforms | No new frontend routes/components on 1062 |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | Untouched |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1062) onto tip |
+| `orch.git.commit-vocabulary` | universal | conforms | docs/code/test/merge-tests vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Work on sub/* only |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub/AST-1058/AST-1062-… |
+| `orch.git.merge-on-checkout` | universal | conforms | No conflicting checkout rewrite |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No rewrite ops |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Ticket sub publish-ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | astral-AST-1058 |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Content-fail vs error split documented |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 match tip |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty owns tests/bible |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Hedy |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Assignee remains Hedy |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Role-appropriate paths per vocabulary |
+
+## Pattern conformance
+
+- `pattern.batch.entity-claim-process-release` — conforms (mirror qualify_job_listings)
+- `pattern.batch.entity-agent-responses` — conforms (existing _run_batch_consult agent_ref)
+- Cited statutes covered in Statutes checked
+
+## Plan adherence
+
+Stages 1–2 match tip: min_* thresholds; qualify_meteorite wrapper + run_consult_task + chunk-exhaust + Ad Hoc assemble. Self-Assessment Single-Component matches. Boundaries held vs gazer (AST-1061) / config shells (AST-1060). qualify_job_listings untouched on 1062 code commits.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **straggler ×5** — Joan excluded at plan time; in-scope on three-dot vs `origin/dev` via stacked siblings + Betty tests/docs (all substance **conforms**):
+   - `astral.debug.spikes-under-debug-dir`
+   - `astral.docs.features-single-file-per-ticket`
+   - `astral.git.engineer-test-tree-ban`
+   - `astral.standards.database-header-inventory`
+   - `astral.ui.frontend-file-placement`
+
+### advisory
+(none)
+
+### What’s solid
+- Content gates → FAILED_QUALIFY without initialize_job; pass remaps jd_text→job_description; Style D found vs recorded; chunk-exhaust parity with listing qualify.
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
+
+**Notes:** Joan plan-rubric APPROVED. Docs append @ `3a05d08e`. Product tip before docs: `748ffd39`.
+
+context_tokens≈30000
+
+#### betty — 2026-07-30T02:15:10.219Z
+## QA test manifest — AST-1062
+
+**Publish:** `origin/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified` @ `748ffd39bc1454b5cd7cd93f64e2642f06ed680d`
+**Betty delivery:** `merge-tests(AST-1062): origin/tests e116905571d3474d5113c79db1f0c803629352c1`
+
+### 1. Covered paths
+1. `min_job_title_length` / `min_jd_chars` — `TestAst1062QualifyMeteoriteThresholds`
+2. Chunk-exhaust membership — `TestAst1062QualifyMeteoriteChunkExhaust`
+3. Pass persist (`initialize_job` + QUALIFIED), content gates → FAILED_QUALIFY, identity collision, Style D off, not strict-encoded — `TestAst1062QualifyMeteorite`
+4. `run_consult_task` route — revised `TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches`
+5. Ad Hoc `METEORITE JOBS:` assemble — `TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite`
+
+### 2. Broken / obsolete (revised)
+- Route test lacked `qualify_meteorite` arm (revised)
+
+### 3. Run
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1062QualifyMeteoriteThresholds \
+  tests/component/core/test_dispatcher.py::TestAst1062QualifyMeteoriteChunkExhaust \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestRunConsultTaskRoutes::test_routes_qualify_and_evaluate_batches \
+  tests/component/ui/api/test_api_admin.py::TestAdhocHelpers::test_build_adhoc_live_content_qualify_meteorite \
+  -q
+```
+
+### 4. Bible shasums on publish tip
+- `docs/test-bible/utils/config.md` `25f4c84d398346ccd2cf2cd547a298b9db91a131`
+- `docs/test-bible/core/consult.md` `7f3a40ee3231a3c5b4f048f7ede8f53b5b7b77de`
+- `docs/test-bible/core/dispatcher.md` `95e4a35cdeb079aa48ee7bb08d08e1b15514f75d`
+- `docs/test-bible/ui/api/api_admin.md` `c40398febee7f9c9ec6a5128b959e7683e875ac3`
+
+#### joan — 2026-07-30T02:05:55.485Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1062
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 gazer create from email shapes + Playwright before create | N/A — boundary (AST-1061) |
+| AC2 post-Playwright external job-id dedupe skip | N/A — boundary (AST-1061) |
+| AC3 survivors land METEORITE_NEW pre-AI | N/A — boundary (AST-1061 / create); this child claims METEORITE_NEW only |
+| AC4 qualify_meteorite claims METEORITE_NEW; UUID/title/job_link/JD; success → METEORITE_QUALIFIED | Stages 1–2 (thresholds + consult wrapper / process_fn / initialize_job + pass_state) |
+| AC5 meteorite evaluate_jd claims METEORITE_QUALIFIED only | Stage 2 §5 — verify retained; retarget owned by AST-1060; no evaluate_jd edits |
+| AC6 bogus/404/unusable → METEORITE_FAILED_QUALIFY | Stage 1 Decision + Stage 2 process content gates → fail_state |
+| AC7 non-meteorite qualify_job_listings / scrape / GDL unchanged | Stage 2 §5 — do not edit qualify_job_listings; smoke branch isolation |
+| AC8 Style D debug=True found vs recorded; debug=False silent | Stage 2 assemble/process debug_index/debug_detail gated on debug |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 TASK_CONFIG min_* thresholds | Functional scope qualify failures via apply gates; `astral.config.config-source-of-truth` |
+| Stage 2 qualify_meteorite wrapper + run_consult_task + chunk-exhaust + Ad Hoc assemble | Purpose/Functional scope `qualify_meteorite` batch + METEORITE_QUALIFIED after Ruth; Pattern A claim/process; child AC4–AC8 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Sub publish-ref plan()/code() path |
+| orch.git.flow-direction-inviolable | conforms | Publish only to child sub ref |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | sub/AST-1058/AST-1062-… only |
+| orch.git.one-epic-worktree-per-parent | conforms | astral-AST-1058 epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Explicit Decisions; content-fail vs error split documented |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Meteorite scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan only |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible; Betty after CC |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Hedy engineer build path |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer implementer after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | fields output; no grade confidence math |
+| astral.agent.do-task-delegation | conforms | Ruth via do_task inside _run_batch_consult; core process_fn persists/transitions |
+| astral.agent.grade-vector-validation | conforms | Not grades-encoded; stays out of strict-encoded frozenset |
+| astral.batch.batch-id-first | conforms | Dispatcher claim surface unchanged; consult takes batch_id first |
+| astral.batch.batch-id-format | conforms | No new batch_id scheme |
+| astral.batch.claim-process-release | conforms | Mirrors qualify_job_listings claim→_run_batch_consult→release |
+| astral.batch.entity-agent-responses-latest-only | conforms | Existing _run_batch_consult agent_ref RESPONSE path |
+| astral.config.config-source-of-truth | conforms | min_* on TASK_CONFIG[qualify_meteorite]; states from AST-1060 |
+| astral.config.pass-threshold-vs-score-floor | conforms | Content mins are apply gates, not score_floor/pass_threshold mix-up |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env introduced |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src; Betty excluded |
+| astral.layers.core-vs-external-bright-line | conforms | Ruth I/O via agent/external; core owns persist/transitions |
+| astral.layers.import-direction | conforms | core/utils/ui only; Ad Hoc assemble mirrors existing listing qualify |
+| astral.layers.ui-config-driven-business-logic | conforms | No React business rules; thin Ad Hoc live-content parity only |
+| astral.patterns.coat-check-never-store-empty | conforms | Fail path skips initialize_job; pass remaps jd_text→job_description key |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Correct Pattern A qualify_* batch (not graded render_verdict) |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | Ad Hoc on existing admin surface; no new open routes |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer authorship; tracker calls from core |
+| astral.standards.debug-contract-gated | conforms | Style D only when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | One wrapper; shared _run_batch_consult/initialize_job |
+| astral.standards.in-scope-only | conforms | No gazer/GDL/qualify_job_listings edits |
+| astral.standards.logging-via-utils | conforms | logger.info + debug_index/detail via utils logging |
+| astral.standards.no-cross-contamination | conforms | Stays in consult/dispatcher/config/admin Ad Hoc |
+| astral.standards.no-hardcoded-sets | conforms | Thresholds/states in config; no inline state lists |
+| astral.standards.public-then-helpers | conforms | New public qualify_meteorite + nested assemble/process |
+| astral.standards.utils-data-late-import-only | conforms | No utils→data load-time import |
+| astral.state.core-decides-transitions | conforms | Transitions only in process_fn / batch error paths |
+| astral.state.job-prior-states-enforced | conforms | Uses _transition_job_state_for_task; priors from AST-1060 |
+| astral.state.no-daisy-chain-in-run | conforms | Single qualify dispatch cycle; GDL separate |
+| astral.ui.naming-conventions | conforms | No new frontend routes/components |
+| astral.ui.single-gunicorn-worker | conforms | No worker/config change |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — layers {docs} ∩ plan {utils,ui,core} empty
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers {scripts} ∩ plan empty
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty
+- astral.ui.frontend-file-placement — paths src/ui/frontend/** match none
+
+## Findings
+
+None fix-now.
+
+**acceptable:** Self-assessment Single-Component / Conf high / Risk Medium is honest; Medium risk mitigation (mirror listing qualify; leave qualify_job_listings untouched; content gates → fail_state) is specific.
+
+**R6 checklist:** Definition fidelity pass for child #3 (apply only). Layer/import pass. Config thresholds on TASK_CONFIG. Batch Pattern A + core transitions + debug-gated Style D pass. No gazer/GDL/scope creep.
+
+context_tokens≈58000
+
+— Joan
+
+#### hedy — 2026-07-30T02:03:08.044Z
+Plan published on publish-ref tip `3013c13b`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1058/AST-1062-qualify-meteorite-batch-apply-meteorite-qualified/docs/features/meteorite/ast-1062-qualify-meteorite-batch-apply-meteorite-qualified.md
+
+**Self-assessment**
+- **Scope:** Single-Component — consult `qualify_meteorite` wrapper + `run_consult_task` / chunk-exhaust / Ad Hoc assemble + two TASK_CONFIG min thresholds; no gazer or new batch pattern.
+- **Conf:** high — AST-1060 already shipped states/schema/dispatch/agent_task; apply mirrors `qualify_job_listings` → `_run_batch_consult` with a fields `process_fn`.
+- **Risk:** Medium — bad persist/transition stalls meteorite GDL entry or identity columns; roster `qualify_job_listings` left untouched by construction.
+
+Deps AST-1060 / AST-1061 are User Testing on ftr tip — plan assumes that shell; build stays on this publish-ref only.
+
+---
+
 # AST-1062 — qualify_meteorite batch apply → METEORITE_QUALIFIED
 
 **Linear:** [AST-1062](https://linear.app/astralcareermatch/issue/AST-1062/qualify-meteorite-batch-apply-meteorite-qualified-qualify-meteorite)

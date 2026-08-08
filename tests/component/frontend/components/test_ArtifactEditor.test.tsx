@@ -442,6 +442,7 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-904: Save failure shows server error and keeps review mode", async () => {
+    // Non-chain craft_rubric keeps ad-hoc regenerate → review → Save (chain keys hand off).
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
@@ -455,12 +456,12 @@ describe("ArtifactEditor", () => {
         return {
           json: async () => ({
             candidate_data: {
-              artifacts: { get_rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
+              artifacts: { rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
             },
           }),
         } as Response
       }
-      if (url === "/api/candidates/c1/generate/craft_get_rubric" && init?.method === "POST") {
+      if (url === "/api/candidates/c1/generate/craft_rubric" && init?.method === "POST") {
         return {
           ok: true,
           status: 200,
@@ -482,7 +483,7 @@ describe("ArtifactEditor", () => {
       throw new Error(url)
     })
     renderWithProviders(
-      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+      <ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />,
     )
     await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
     await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
@@ -794,5 +795,80 @@ describe("ArtifactEditor", () => {
     await waitFor(() =>
       expect(screen.getByDisplayValue("Summary body").closest(".collapsible-panel-body")).not.toHaveAttribute("hidden"),
     )
+  })
+
+  it("AST-1253: empty chain Generate POSTs generate_artifacts without modal", async () => {
+    const posts: string[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return { json: async () => ({ candidate_data: { artifacts: { get_rubric: [] } } }) } as Response
+      }
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
+        posts.push(url)
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Generate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Generate" }))
+    expect(screen.queryByText(/Reset all artifact rubrics/i)).not.toBeInTheDocument()
+    await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
+    await waitFor(() =>
+      expect(screen.getByText("Artifacts build requested — watch Execution History")).toBeInTheDocument(),
+    )
+  })
+
+  it("AST-1253: Regenerate lists hop labels; Yes posts generate_artifacts; No cancels", async () => {
+    const posts: string[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { get_rubric: [{ label: "Fit", content: "Body", importance: 5 }] },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate_artifacts" && init?.method === "POST") {
+        posts.push(url)
+        return { ok: true, json: async () => ({ ok: true, state: "REQUESTED_ARTIFACTS" }) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor title="Get Job Criteria" artifactKey="get_rubric" taskKey="craft_get_rubric" />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    expect(screen.getByRole("heading", { name: /Reset all artifact rubrics/i })).toBeInTheDocument()
+    expect(screen.getByText(/Job Description Criteria/)).toBeInTheDocument()
+    expect(screen.getByText(/Like Job Criteria/)).toBeInTheDocument()
+    expect(screen.getByText(/Do Job Criteria/)).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "No" }))
+    expect(posts).toEqual([])
+    expect(screen.queryByRole("heading", { name: /Reset all artifact rubrics/i })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getByRole("button", { name: "Yes" }))
+    await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
   })
 })

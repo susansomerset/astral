@@ -9,6 +9,7 @@ import TokenTextarea from "../components/TokenTextarea"
 import Time from "../components/Time"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
+import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 
 interface AgentTask {
   task_key: string
@@ -230,7 +231,7 @@ export default function TaskPrompts() {
           const as_ = a.task_seq ?? 999
           const bs_ = b.task_seq ?? 999
           if (as_ !== bs_) return as_ - bs_
-          return a.task_key.localeCompare(b.task_key)
+          return compareTaskKeys(a.task_key, b.task_key)
         }),
       }))
   }, [tasks])
@@ -255,7 +256,7 @@ export default function TaskPrompts() {
   }, [sectionKeys, expandedKeys, setExpandedKeys])
 
   const taskKeyOptions = useMemo(
-    () => [...new Set(tasks.map(t => t.task_key))].sort((a, b) => a.localeCompare(b)),
+    () => sortedTaskKeys(new Set(tasks.map(t => t.task_key))),
     [tasks],
   )
 

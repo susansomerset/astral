@@ -43,6 +43,7 @@ from src.utils.config import (
     is_dispatch_chain_trigger,
     template_candidate_id,
     CANDIDATE_STAGE_DISPATCH,
+    DISPATCH_RETIRED_TASK_KEYS,
 )
 from src.utils.network import check_internet_reachable
 from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
@@ -277,6 +278,37 @@ def provision_meteorite_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+# AST-1252: wrapper subset of DISPATCH_RETIRED_TASK_KEYS (not a second literal set).
+_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS = frozenset(
+    k for k in DISPATCH_RETIRED_TASK_KEYS if k.startswith("candidate_requested_")
+)
+
+
+def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:
+    """Delete live dispatch_task rows for retired candidate_requested_* keys (AST-1252).
+
+    Retire-only — does not insert craft_get_rubric rows (operators create those).
+    """
+    template_id = template_candidate_id()
+    if not template_id:
+        raise ValueError("ASTRAL_CONFIG template_candidate_id is empty")
+    cids = set(database.list_candidate_ids_with_dispatch_tasks())
+    cids.add(str(template_id).strip())
+    retired = 0
+    for cid in sorted(cids):
+        if not cid:
+            continue
+        for row in database.list_dispatch_tasks_for_candidate(cid):
+            tk = (row.get("task_key") or "").strip()
+            if tk in _RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS:
+                delete_dispatch_task(int(row["id"]))
+                retired += 1
+    return {
+        "template_candidate_id": template_id,
+        "candidates_scanned": len(cids),
+        "retired": retired,
+    }
+
 
 def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
     """Idempotent insert of candidate-bound gaze_email dispatch_task (AST-1134)."""
@@ -421,6 +453,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     from src.core import consult
     from src.core.tracker import get_new_job_batch, clear_job_batch
     from src.core.roster import get_new_company_batch, clear_company_batch
+    from src.core.candidate import get_new_candidate_batch, clear_candidate_batch
 
     entity_type     = task.get("entity_type", "")
     input_state     = task.get("trigger_state", "")
@@ -433,6 +466,9 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     bid             = ctx.get("entity_batch_id") or log_batch_id.get()
     dispatch_task_key = (task.get("task_key") or "").strip()
     use_full_batch = batch_call_mode or (dispatch_task_key == "parse_job_list")
+    # Candidate consult reads entities[0] only — force per-row gather for pool claims (AST-1259).
+    if entity_type == "candidate":
+        use_full_batch = False
     s               = dict(_SUMMARY_ZERO)
     if debug:
         logger.set_debug_flag(True)
@@ -441,8 +477,13 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
-        cur = (ctx.get("state") or "").strip() if ctx else ""
-        entities = [ctx] if ctx and cur in claim_states else []
+        bid, entities = get_new_candidate_batch(
+            input_state,
+            limit=limit,
+            sort_by=sort_by,
+            batch_id=bid,
+            states=claim_states,
+        )
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
@@ -504,6 +545,8 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     if not entities:
         if entity_type == "job" and bid:
             clear_job_batch(bid)
+        elif entity_type == "candidate" and bid:
+            clear_candidate_batch(bid)
         if debug:
             logger.debug_index(
                 func="dispatcher._run_unified",
@@ -617,7 +660,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
         if entity_type == "job":
             clear_job_batch(bid)
         elif entity_type == "candidate":
-            pass
+            clear_candidate_batch(bid)
         else:
             clear_company_batch(bid)
     return s
@@ -1240,6 +1283,11 @@ def _tick_loop() -> None:
             # late: avoid cycle with candidate → dispatcher (module-top import)
             from src.core.candidate import age_stale_candidate_states
             age_stale_candidate_states()
+            # AST-1122: run due admin Scheduled Queries (interval_hours cadence)
+            try:
+                database.run_due_scheduled_queries()
+            except Exception:
+                _sched_log.exception("Scheduled query tick error")
             # Claim-queue AUTO rows from data; gaze_email AUTO merged via live bind Avail (AST-1135).
             due = list(database.get_due_tasks()) + _gaze_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
@@ -1287,6 +1335,17 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    try:
+        rstats = retire_candidate_requested_wrapper_dispatch_tasks()
+        _sched_log.info(
+            "AST-1252 candidate_requested_* wrapper retire template=%s "
+            "candidates_scanned=%s retired=%s",
+            rstats.get("template_candidate_id"),
+            rstats.get("candidates_scanned"),
+            rstats.get("retired"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
     try:
         gstats = provision_gaze_email_dispatch_tasks()
         _sched_log.info(

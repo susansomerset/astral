@@ -844,7 +844,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Config cov
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. **`CANDIDATE_STAGE_DISPATCH`** + claim/trigger/entity helpers for **`candidate_requested_*`**.
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`CANDIDATE_STAGE_DISPATCH`** artifacts entry (`craft_get_rubric`) + claim/trigger helpers; wrappers retired.
 
 ### AST-1022 · AST-1018
 
@@ -1987,6 +1987,34 @@ Retires `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["craft_task_keys"]` as 
   -q
 ```
 
+**AST-1264:** craft run_next migration neutered — see **`docs/test-bible/data/database/agent_tasks.md`** § AST-1264.
+
+
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: wrappers in `DISPATCH_RETIRED_TASK_KEYS`; `CANDIDATE_STAGE_DISPATCH` artifacts-only with `task_key=craft_get_rubric`; trigger/entity helpers; AC2 `REQUESTED_RESUME` remains selectable.
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+`REQUESTED_ARTIFACTS.prior_states` adds regenerate re-entry (`ARTIFACTS_READY` / stale / `ACTIVE_SEARCH` / `PAUSE_SEARCH`); `artifact_generate_states` expanded; unordered `CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH` (no hop sequencing list). Core walk / UI: **`docs/test-bible/core/candidate.md`** / **`frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Priors + path map + generate states | `src/utils/config.py` | **`TestAst1253GenerateRegenerateHandoffConfig`**; revised **`TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab`** |
+
+**Broken / obsolete:** prior `artifact_generate_states == ["RESUME_READY", "ACTIVE_SEARCH"]` assert.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1253GenerateRegenerateHandoffConfig \
+  tests/component/utils/test_config.py::TestAst970CandidateStateRegistry::test_nav_and_gen_states_use_new_vocab \
+  -q
+```
+
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
 **Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.
@@ -2578,5 +2606,138 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1222MeteoriteAliasDispatchAndSeed \
   tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
   tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  -q
+```
+
+
+### AST-1236 · AST-1174
+
+**Parent:** [AST-1174 — Human-paced fan-out over the batch worklist](https://linear.app/astralcareermatch/issue/AST-1174/human-paced-fan-out-over-the-batch-worklist). **Publish:** `origin/sub/AST-1174/AST-1236-pacing-config`.
+
+`SURFER_PACING_CONFIG` — dwell centre/spread (10 ± 5 seconds), `max_tabs` (1), named `mv3_idle_ceiling_seconds` (30). Module-load asserts keep the dwell window under the MV3 idle ceiling (ordinary timers, not `chrome.alarms`). GET + extension helpers: **`docs/test-bible/ui/api/api_surfer.md`**, **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Defaults + MV3 window contract | `src/utils/config.py` | **`TestAst1236SurferPacingConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer pacing scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1236SurferPacingConfig \
+  -q
+```
+
+### AST-1229 · AST-1169
+
+**Parent:** [AST-1169 — Surfer batch — durable worklist state and batch-scoped intake](https://linear.app/astralcareermatch/issue/AST-1169/surfer-batch-durable-worklist-state-and-batch-scoped-intake). **Publish:** `origin/sub/AST-1169/AST-1229-surfer-batch-entity`.
+
+`SURFER_BATCH_CONFIG` — batch statuses (`requires_all_urls_terminal` on COMPLETED only), URL outcomes (`pending`/`delivered` non-terminal), id prefix `surfer`, lifecycle pointer key `active_surfer_batch_id`. No staleness keys. Core: **`docs/test-bible/core/surfer.md`**. Data: **`docs/test-bible/data/database/surfer_batches.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Vocab + flag contract | `src/utils/config.py` | **`TestAst1229SurferBatchConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1229SurferBatchConfig \
+  -q
+```
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`SURFER_CONSENT_CONFIG` — `candidate_data_key` `surfer_consent`, opaque `current_version`, provisional `disclosure_copy`, closed `statuses` (`none`/`opted_in`/`opted_out`), `default_status` `none`. Core helpers + API: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Key / version / copy / statuses contract | `src/utils/config.py` | **`TestAst1235SurferConsentConfig`** |
+
+**Broken / obsolete:** none — new config block.
+
+**Integration:** none revised (no existing Surfer consent scenarios).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`SURFER_CONSENT_CONFIG` — `current_version` `"2"`, off-store-weight `disclosure_copy`, chrome keys (`disclosure_title` / `opt_in_label` / `decline_label` / `current_ok_*`); Candidate nav **Surfer Consent** → `/candidate/surfer_consent`. DTO chrome: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension lib: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome + version + copy weight + nav | `src/utils/config.py` | **`TestAst1237SurferConsentDisclosureConfig`** |
+
+**Broken / obsolete:** none — AST-1235 contract still holds (opaque non-empty version).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`SURFER_CONSENT_CONFIG` — off-switch / stale / uninstall / `capture_denied_message` chrome; Candidate nav **Surfer** → `/candidate/surfer`. Gate + DTO: **`docs/test-bible/core/candidate.md`**. Page: **`docs/test-bible/frontend/pages.md`**. Extension: **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Off-switch copy + Surfer nav | `src/utils/config.py` | **`TestAst1238SurferOffSwitchConfig`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```
+
+### AST-1214 · AST-1185
+
+**Parent:** [AST-1185 — UI groupings/sequences + alphabetical task key/alias dropdowns](https://linear.app/astralcareermatch/issue/AST-1185/ui-groupingssequences-alphabetical-task-keyalias-dropdowns-data-driven). **Publish:** `origin/sub/AST-1185/AST-1214-admin-catalog-api-hardcode-audit-alphabetical-task-key-lists`.
+
+`dispatch_task_admin_defaults` widens beyond `TASK_CONFIG`: helper-resolvable hops (`fetch_*`, `gaze`, `inflow_discovery`, `recheck_no_openings`, plus writer-capable `prefilter` / `inflow_resolve_website`) resolve via `_dispatch_*` helpers; meteorite mailbox fold via `METEORITE_EMAIL_PARSE_CONFIG` (`legacy_agent_task_key`, `admin_entity_type`) + `is_meteorite_email_mailbox_task_key`. Admin picker/validator/Avail: **`docs/test-bible/ui/api/api_admin.md`** (**AST-1214**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper-resolvable + mailbox defaults | `src/utils/config.py` | revised gap-key classes (**`TestAst796…`**, **`TestAst702…`**, **`TestAst719…`**, **`TestAst701…`**, **`TestAst874…`**, **`TestAst505…`**, **`TestAst506…`**); **`TestAst1214DispatchAdminDefaultsWidened`** |
+| Mailbox fold config fields | same | revised **`TestAst1089ParseMeteoriteEmailConfig`** |
+
+**Broken / obsolete (Betty revision this pass):** `dispatch_task_admin_defaults(<gap_key>)` expecting `unknown task_key` KeyError for helper-resolvable / prefilter / inflow_resolve_website keys.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst796FetchJdSchedulableCutover::test_fetch_jd_gazer_hop_not_task_config_catalog \
+  tests/component/utils/test_config.py::TestAst702PrefilterBatchConfig::test_prefilter_dispatch_batch_mode_and_defaults \
+  tests/component/utils/test_config.py::TestAst719FetchJobPagesConfig::test_dispatch_registry_and_pjl_data_keys \
+  tests/component/utils/test_config.py::TestAst701FetchWebsiteConfig::test_dispatch_registry_and_homepage_text_key \
+  tests/component/utils/test_config.py::TestAst874FetchCulturePagesConfig::test_gazer_and_dispatch_registry \
+  tests/component/utils/test_config.py::TestAst505InflowDiscoveryConfig::test_inflow_discovery_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst506InflowResolveConfig::test_inflow_resolve_website_dispatch_admin_defaults \
+  tests/component/utils/test_config.py::TestAst1089ParseMeteoriteEmailConfig \
+  tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
   -q
 ```

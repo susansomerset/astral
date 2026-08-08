@@ -258,3 +258,49 @@ class TestAst1116ShapesCoverLetter:
         assert resp.status_code == 200
         cover = resp.get_json()["detail"]["cover_letter"]
         assert [f["key"] for f in cover] == ["Subject", "Letter", "signature"]
+
+
+class TestAst1253StateUiManifestChainFields:
+    """AST-1253: GET /state_ui_manifest merges live chain arrays from core."""
+
+    def test_manifest_includes_chain_fields(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_task_keys",
+            lambda: ["craft_get_rubric", "craft_do_rubric"],
+        )
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_hop_labels",
+            lambda: ["Get Job Criteria", "Do Job Criteria"],
+        )
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_artifact_keys",
+            lambda: ["get_rubric", "do_rubric"],
+        )
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidate"]
+        assert cand["artifacts_chain_task_keys"] == ["craft_get_rubric", "craft_do_rubric"]
+        assert cand["artifacts_chain_hop_labels"] == ["Get Job Criteria", "Do Job Criteria"]
+        assert cand["artifacts_chain_artifact_keys"] == ["get_rubric", "do_rubric"]
+        assert "ARTIFACTS_READY" in cand["artifact_generate_states"]
+
+    def test_manifest_degrades_chain_on_walk_failure(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            system_mod,
+            "requested_artifacts_chain_task_keys",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidate"]
+        assert cand["artifacts_chain_task_keys"] == []
+        assert cand["artifacts_chain_hop_labels"] == []
+        assert cand["artifacts_chain_artifact_keys"] == []
+        assert "artifact_generate_states" in cand

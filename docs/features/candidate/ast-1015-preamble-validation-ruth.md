@@ -1,3 +1,538 @@
+<!-- linear-archive: AST-1015 archived 2026-08-07 -->
+
+## Linear archive (AST-1015)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1015/preamble-valid-try-again-escalate-via-ruth-candidate-profile-preamble  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-952 — Candidate Profile Preamble to Intake  
+**Blocked by / blocks / related:** parent: AST-952; blocks: AST-1017
+
+### Description
+
+## What this implements
+
+New **agent_task** only, using **Ruth (Little Brain)**: “Does this response look like a valid answer to this question?” → Valid / Try Again / Escalate. Callable for every preamble intake answer.
+
+## Acceptance criteria
+
+- [X] 2. Ruth agent_task validation returns Valid / Try Again / Escalate; Try Again does not advance; Escalate ≠ Valid; no new agent persona shipped.
+- [X] 3. Touched backend `debug=True` validation/write paths emit per-step found/recorded debug lines per the contract above.
+
+## Boundaries
+
+- [X] Does **not** own the data library (AST-1014), PREAMBLE_CONFIG (#3), or intake UI (#4). No new agents or agent patterns — Ruth + one new agent_task only.
+
+## Notes for planning
+
+After AST-1014. Config-driven task key (§2.1).
+
+## Git branch (authoritative)
+
+`sub/AST-952/<this-id>-preamble-validation-ruth`. Publish to `origin/<publish-ref>` only.
+
+### Comments
+
+#### chuckles — 2026-07-30T01:24:17.536Z
+[merge-child] blocked:
+
+`validate-sub-log` fails: `git pull merge on sub` — six `Merge remote-tracking branch` commits appear in `origin/sub/AST-952/AST-1015-preamble-validation-ruth --not origin/ftr/…` but they are already on `origin/dev` (brought in by Hedy’s proper `merge(AST-1015): resolve origin/dev conflicts`). Not a local `git pull` on this sub.
+
+Tried `refresh-ftr AST-952-candidate-profile-preamble-to-intake` to absorb `origin/dev` into ftr so those SHAs leave the validate range — **CONFLICT files:**
+- `src/core/candidate.py`
+- `src/ui/api/api_admin.py`
+- `src/utils/config.py`
+
+`origin/ftr/AST-952-candidate-profile-preamble-to-intake` unchanged @ `e10d0f9c`. Blocker AST-1014 tip also still `NOT_ON_FTR` (one commit: `merge(AST-1014): origin/dev`).
+
+@Hedy Lamarr — resolve refresh-ftr product conflicts on epic worktree / ftr for those three paths (or republish stacking), then Chuckles re-runs merge-child. @Ada Lovelace — roll AST-1014 onto ftr when ready (blockedBy order).
+
+— Chuckles
+
+#### radia — 2026-07-30T01:20:28.040Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1015
+**Publish ref:** `sub/AST-952/AST-1015-preamble-validation-ruth` @ `f90fdf6cd78b28f08a102c545a9e1a45fd5b6185` (product tip `7ff0ac90`; docs append `f90fdf6c`)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests on tip; follow-up `test(AST-1015)` after qa-handoff (no second merge-tests) |
+| orch.git.commit-vocabulary | universal | conforms | docs/code/test/merge/merge-tests/resolve vocab |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub tip ahead of origin/dev; no reverse-flow |
+| orch.git.ftr-sub-topology | universal | conforms | Child on `sub/AST-952/AST-1015-preamble-validation-ruth` |
+| orch.git.merge-on-checkout | universal | conforms | Tip merges origin/dev + ftr before finalize |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in tip history |
+| orch.git.no-dev-agent-branches | universal | conforms | Named sub/ only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in astral-AST-952 |
+| orch.git.three-permanent-branches | universal | conforms | No fourth permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Revision 1 closed key-clash without new product ask |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–4 match Revision 1 ship |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Candidate only |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute authorship |
+| orch.roles.betty-owns-test-tree | universal | conforms | Catalog/bible locks via Betty; engineer code commits exclude tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Hedy |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Engineer code = config/agent_task/intake/api only |
+| astral.agent.confidence-bounds | scoped | conforms | Confidence math untouched |
+| astral.agent.do-task-delegation | scoped | conforms | Core calls do_task with config task_key |
+| astral.agent.grade-vector-validation | scoped | conforms | Not a graded-vector task |
+| astral.batch.batch-id-first | scoped | conforms | No claim-signature change |
+| astral.batch.batch-id-format | scoped | conforms | `preamble-{task_key}-{uuid}` ledger ids |
+| astral.batch.claim-process-release | scoped | conforms | On-demand ledger; no entity claim batch |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Relies on existing do_task storage |
+| astral.config.config-source-of-truth | scoped | conforms | task_key + outcomes in PREAMBLE_VALIDATION_CONFIG; asserted == PREAMBLE_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | Literals only |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths artifacts/** / scripts/spikes/** miss diff |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan under docs/features/; not a spike dump |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single plan file ast-1015-…md |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits exclude src/features product |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer code commits have no tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | External only via do_task |
+| astral.layers.import-direction | scoped | conforms | ui→core; core→do_task/utils/data |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths scripts miss diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Thin API; no React rules |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Untouched |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | `@require_auth` on POST preamble/validate |
+| astral.standards.database-header-inventory | scoped | conforms | Header intact on ancestor data touch |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Core raises ValueError; API maps 400/404 |
+| astral.standards.debug-contract-gated | scoped | conforms | Style-D only when debug=True; truncate Q/A |
+| astral.standards.dry-and-focused-functions | scoped | conforms | One epic task_key; ledger mirrors intake pattern |
+| astral.standards.in-scope-only | scoped | conforms | AST-1015 delta = validation only (no UI/PREAMBLE_CONFIG ownership) |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger / truncate_debug_content |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered paths + repo admin JSON |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Outcomes from PREAMBLE_VALIDATION_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | Public validate_preamble_answer before private helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | No candidate transitions |
+| astral.state.job-prior-states-enforced | scoped | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No daisy-chain |
+| astral.ui.frontend-file-placement | scoped | conforms | AST-1015 code does not edit frontend |
+| astral.ui.naming-conventions | scoped | conforms | snake_case POST …/preamble/validate |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Worker count untouched |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Revision 1 bible matched: `preamble_validate_response` everywhere (callable name stays `validate_preamble_answer`); Ruth-only row; no library writes; unrecognized outcome ≠ Valid; debug gated; thin authenticated API. Self-Assessment Single-Component / high / Medium still fits. Sibling AST-1016 key contract asserted at import.
+
+## Findings
+
+### discuss
+1. **C4 stragglers** — Joan excluded at plan time, in-scope on three-dot tip (ancestor AST-1014/1016 + tests/frontend): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.standards.database-header-inventory`, `astral.ui.frontend-file-placement`. All **conform**; topology-only — no AST-1015 product fix.
+
+## What’s solid
+
+Closed three-outcome parse, no coerce-to-Valid, no save_candidate_data, Ruth `college_intern_ruth` only, catalog/fixture locked after qa-handoff.
+
+## Recommended actions
+
+No fix-now. Engineer may proceed via resolve-child / User Testing.
+
+## Notes
+
+Joan plan-rubric APPROVED (post Plan Discuss Revision 1). Docs append @ `f90fdf6c`.
+
+context_tokens≈78000
+
+#### betty — 2026-07-30T01:12:19.836Z
+[check-linear]
+
+Cleared `[qa-handoff]`: AST-786 catalog locks now expect **42** keys including `preamble_validate_response` (tip product after `merge origin/dev`).
+
+- Publish tip: `origin/sub/AST-952/AST-1015-preamble-validation-ruth` @ `7ff0ac90` (`test(AST-1015): AST-786 catalog 42 includes preamble row`) — no second `merge-tests` (one already on tip).
+- Bible: `agent_tasks.md` / `repo_admin_json.md` updated for 42-row catalog.
+- Manifest: AST-786 count **41→42**; stay Tests Ready; Hedy for `test-child`.
+
+Bible shasums @ tip:
+- `docs/test-bible/data/database/agent_tasks.md` `989459c087fed099feb63c6609b913026c578f8f`
+- `docs/test-bible/core/repo_admin_json.md` `8bf0682c5151e1c815955c8482a4c8de0832e912`
+
+#### hedy — 2026-07-30T01:05:58.484Z
+[qa-handoff]
+
+@Betty White
+
+**Command (Betty manifest):**
+```
+pytest \
+  tests/component/utils/test_config.py::TestAst1015PreambleValidationConfig \
+  tests/component/core/test_intake.py::TestAst1015ValidatePreambleAnswer \
+  tests/component/ui/api/test_api_intake.py::TestAst1015PreambleValidateRoute \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1015PreambleValidateCatalogRow
+```
+**Result:** 16 passed, **2 failed** (product AST-1015 items green).
+
+**Failures (test layer):**
+- `TestAst786AgentTaskRepoJsonSeed::test_repo_json_has_41_current_catalog_keys` — `assert 42 == 41`
+- `…::test_startup_apply_loads_all_41_current_rows` — same
+
+**Why test/manifest, not product:** After mandatory `git merge origin/dev` on the epic worktree, `data/admin/agent_task.json` correctly unions origin/dev’s 41-key catalog (`simple_resume_parse` / `meteorite_like` / `meteorite_upshot` …) **plus** this ticket’s `preamble_validate_response` → **42** current rows. Fixture is byte-identical to tip (`docs/uat-fixtures/AST-756/expected-agent_task.json`).
+
+`AST786_EXPECTED_TASK_KEYS` on the merged tip still omits `preamble_validate_response` on purpose (`Parallel AST-1015 … is not on that base yet`), so the AST-786 count/frozenset lock fails against the combined product. `TestAst1015PreambleValidateCatalogRow` already green for the Ruth row.
+
+**Betty fix:** Update AST-786 expected frozenset/count **41→42** to include `preamble_validate_response` (and any fixture-lock text), republish merge-tests onto `origin/sub/AST-952/AST-1015-preamble-validation-ruth`, reassign Hedy.
+
+**Publish tip (product merge):** `origin/sub/AST-952/AST-1015-preamble-validation-ruth` @ `489c8c56` (`merge(AST-1015): resolve origin/dev conflicts — keep preamble + meteorite catalog`).
+
+Status left **Tests Ready**.
+
+#### betty — 2026-07-28T19:22:40.145Z
+## QA test manifest
+
+Publish: `origin/sub/AST-952/AST-1015-preamble-validation-ruth` @ `0807ed95` (`merge-tests(AST-1015): origin/tests 409e7c68`)
+
+1. `tests/component/utils/test_config.py::TestAst1015PreambleValidationConfig` — PREAMBLE_VALIDATION_CONFIG outcomes + TASK_CONFIG + key equality vs PREAMBLE_CONFIG when present
+2. `tests/component/core/test_intake.py::TestAst1015ValidatePreambleAnswer` — Valid/Try Again/Escalate; empty answer; unknown ≠ Valid; no library writes; debug found|outcome
+3. `tests/component/ui/api/test_api_intake.py::TestAst1015PreambleValidateRoute` — POST `/api/candidates/<id>/preamble/validate` auth/200/404/400/structured failure
+4. `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` — catalog **39** + fixture byte-identity (revised)
+5. `tests/component/core/test_repo_admin_json.py::TestAst1015PreambleValidateCatalogRow` — Ruth `preamble_validate_response` row
+
+Broken / revised: AST-786 expected keys/count 38→39 for new Ruth task.
+
+Bible shasums on publish tip:
+- `docs/test-bible/utils/config.md` `33994a843f16553b6825a6999058b17dca52adff`
+- `docs/test-bible/core/intake.md` `cbd92688a1b7b347d909fbb1a14036ab8c28f874`
+- `docs/test-bible/ui/api/api_intake.md` `a206472f4dee0c59e2b70d9b7b9808c4784e9928`
+- `docs/test-bible/data/database/agent_tasks.md` `09f9160bfd355a7c5d0c8da61812bbe0cce9e570`
+- `docs/test-bible/core/repo_admin_json.md` `0267f838f16f7cef26faf7b3deb31e3e7476e1fc`
+
+Run on epic worktree after merge-on-checkout of the publish tip.
+
+#### betty — 2026-07-28T19:15:37.140Z
+Product bug — holding **Code Complete** (no Tests Ready / no merge-tests).
+
+Stage 2 added `preamble_validate_response` to `data/admin/agent_task.json` (39 current rows on tip) but did **not** sync `docs/uat-fixtures/AST-756/expected-agent_task.json` (still 38 rows, missing that key). Tip bytes diverge → existing catalog locks fail against this publish tip:
+
+1. `TestAst786AgentTaskRepoJsonSeed::test_repo_json_matches_uat_fixture_byte_for_byte`
+2. `…::test_repo_json_has_38_current_catalog_keys`
+3. `…::test_startup_apply_loads_all_38_current_rows`
+
+**Fix (product):** copy tip `data/admin/agent_task.json` → `docs/uat-fixtures/AST-756/expected-agent_task.json` (or otherwise make them byte-identical) and push `origin/sub/AST-952/AST-1015-preamble-validation-ruth`. After that, Betty revises the AST-786 expected frozenset/count to **39** + `preamble_validate_response`, and adds AST-1015 coverage for config / `validate_preamble_answer` / `POST …/preamble/validate`.
+
+Tip checked: `01d62d5c` / build `3a6444b1`.
+
+— Betty
+
+#### joan — 2026-07-28T19:06:54.125Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1015
+**Overall:** APPROVED
+
+**Plan tip:** `origin/sub/AST-952/AST-1015-preamble-validation-ruth` @ `b7283c57` (Revision 1 after Plan Discuss round=1).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 library + columns | N/A — boundary (AST-1014) |
+| AC2 Ruth Valid / Try Again / Escalate; Try Again does not advance; Escalate ≠ Valid; no new persona | Stages 1–4; no library writes; Ruth `college_intern_ruth` only |
+| AC3 PREAMBLE_CONFIG | N/A — boundary (AST-1016); outcomes stay in `PREAMBLE_VALIDATION_CONFIG`; task_key asserted equal when both present |
+| AC4 mechanical UI | N/A — boundary (AST-1017); no React |
+| AC5–AC7 | N/A — boundaries / siblings |
+| AC8 debug on touched validation paths | Stage 3 `debug=` style-D on `validate_preamble_answer` |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+|----------|--------|
+| (parent) AC2 three outcomes; no advance; Escalate ≠ Valid; Ruth only | 1–4 |
+| (parent) AC8 debug on validation path | Stage 3 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| 1 `PREAMBLE_VALIDATION_CONFIG` + `TASK_CONFIG["preamble_validate_response"]` + equality assert | §2.1; closed outcomes; aligned epic task_key |
+| 2 Ruth `agent_task` row | Functional scope Ruth + one new agent_task |
+| 3 Core callable + debug + no writes | AC2 semantics; AC8 |
+| 4 Thin authenticated API | Callable for AST-1017 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge path |
+| orch.git.commit-vocabulary | conforms | No forbidden git ops |
+| orch.git.flow-direction-inviolable | conforms | Publish ref `sub/AST-952/AST-1015-preamble-validation-ruth` |
+| orch.git.ftr-sub-topology | conforms | Child `sub/` under parent `ftr/` |
+| orch.git.merge-on-checkout | conforms | Merge ftr tip before build noted |
+| orch.git.no-cherry-pick-rebase-force | conforms | None planned |
+| orch.git.no-dev-agent-branches | conforms | Named `sub/` only |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic AST-952 |
+| orch.git.three-permanent-branches | conforms | No fourth permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | conforms | No open product decision |
+| orch.pipeline.plan-is-bible | conforms | Stages bind build after Revision 1 |
+| orch.pipeline.project-scoped-queues | conforms | Astral Candidate only |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready after completed discuss round |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No test-tree edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | N/A to plan body |
+| orch.roles.engineer-assignee-through-resolve | conforms | Joan does not reassign |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.config.config-source-of-truth | conforms | Task key `preamble_validate_response` shared with AST-1016; outcomes in validation config |
+| astral.config.secrets-and-env-specific-from-environ | conforms | Literals only |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.standards.in-scope-only | conforms | Validation only; library/PREAMBLE_CONFIG/UI excluded |
+| astral.standards.no-cross-contamination | conforms | Layered paths + repo admin JSON |
+| astral.standards.dry-and-focused-functions | conforms | One epic task_key string; callable name ≠ task_key by design |
+| astral.standards.public-then-helpers | conforms | Public callable placement noted |
+| astral.standards.no-hardcoded-sets | conforms | Outcomes in `PREAMBLE_VALIDATION_CONFIG` |
+| astral.standards.logging-via-utils | conforms | `get_logger` / truncate |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer logging |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.standards.debug-contract-gated | conforms | Style-D only when `debug=True` |
+| astral.layers.import-direction | conforms | ui→core; core→do_task |
+| astral.layers.core-vs-external-bright-line | conforms | External via `do_task` only |
+| astral.layers.ui-config-driven-business-logic | conforms | Thin API; no React rules |
+| astral.ui.naming-conventions | conforms | snake_case route |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns paths |
+| astral.agent.do-task-delegation | conforms | Core calls `do_task` with config task_key |
+| astral.agent.grade-vector-validation | conforms | Not a graded vectors task |
+| astral.agent.confidence-bounds | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | On-demand ledger; no entity claim batch |
+| astral.batch.batch-id-format | conforms | `preamble-{task_key}-{uuid}` |
+| astral.batch.batch-id-first | conforms | N/A claim signature |
+| astral.batch.entity-agent-responses-latest-only | conforms | Relies on existing `do_task` storage |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Untouched |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | `@require_auth` on new route |
+| astral.state.core-decides-transitions | conforms | Explicitly no candidate transitions |
+| astral.state.no-daisy-chain-in-run | conforms | No daisy-chain |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.config.config-source-of-truth, astral.config.secrets-and-env-specific-from-environ, astral.config.pass-threshold-vs-score-floor, astral.standards.in-scope-only, astral.standards.no-cross-contamination, astral.standards.dry-and-focused-functions, astral.standards.public-then-helpers, astral.standards.no-hardcoded-sets, astral.standards.logging-via-utils, astral.standards.data-raises-caller-logs, astral.standards.utils-data-late-import-only, astral.standards.debug-contract-gated, astral.layers.import-direction, astral.layers.core-vs-external-bright-line, astral.layers.ui-config-driven-business-logic, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker, astral.git.betty-no-src-or-features, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.agent.confidence-bounds, astral.batch.claim-process-release, astral.batch.batch-id-format, astral.batch.batch-id-first, astral.batch.entity-agent-responses-latest-only, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.state.core-decides-transitions, astral.state.no-daisy-chain-in-run, astral.state.job-prior-states-enforced
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss (plan file not in Files Changed table)
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.standards.database-header-inventory — paths miss (`data/admin/**` ≠ `src/data/**`)
+- astral.ui.frontend-file-placement — paths miss
+
+**Notes:** Layer cell `data (repo admin JSON)` mapped to `data`. Plan Discuss round=1 completed (concern + reply); fix-now task_key clash closed.
+
+## Findings
+
+### resolved (was fix-now round=1)
+- Task key now `preamble_validate_response` across `PREAMBLE_VALIDATION_CONFIG` / `TASK_CONFIG` / `agent_task.json` / `do_task`, with equality assert vs `PREAMBLE_CONFIG["validation_task_key"]` when present. Python callable remains `validate_preamble_answer`.
+
+### acceptable
+- Dual config homes for the same literal (AST-1016 `validation_task_key` + this ticket’s `task_key`) with assert — consumer has one string.
+- No library writes; empty answer → Ruth Try Again; unrecognized outcome never coerced to Valid.
+- Ruth-only; on-demand (no `dispatch_tasks` row); debug style-D when `debug=True`.
+
+**Self-assessment:** Single-Component / Conf high / Risk Medium — honest; key-clash risk closed by Revision 1.
+
+— Joan
+context_tokens≈86000
+
+#### joan — 2026-07-28T19:04:32.695Z
+[validate-plan] **STOP — assignee still Hedy**
+
+Re-checked `get_issue` AST-1015: assignee=`Hedy Lamarr` (`c12a27a1-…`), status=Plan Ready. Spawn claimed Joan; Linear does not.
+
+Joan identity + `AGENTS.md` OK. Revised plan tip `b7283c57` already uses `preamble_validate_response`.
+
+Chuckles: `save_issue` assignee → Joan, then re-spawn validate-plan. Joan does not self-assign.
+
+— Joan
+context_tokens≈84000
+
+#### joan — 2026-07-28T19:03:46.857Z
+[validate-plan] **STOP — assignee is not Joan**
+
+Linear identity is Joan; epic `AGENTS.md` is Joan; AST-1015 is **Plan Ready**.
+
+Assignee is currently **Hedy Lamarr**, not Joan. Round=1 concern/reply is complete (`[plan-discuss] round=1 reply` present); revised plan tip uses `preamble_validate_response`.
+
+Per validate-plan identity gate: Chuckles must assign Joan on AST-1015, then re-spawn/resume validate-plan. I will not run the rubric or flip status while assignee is the implementer.
+
+Status left **Plan Ready**. No assignee change from Joan.
+
+— Joan
+context_tokens≈82000
+
+#### hedy — 2026-07-28T19:01:42.999Z
+[plan-discuss] round=1 reply
+
+**Delta:** Aligned this ticket’s agent/`TASK_CONFIG`/`PREAMBLE_VALIDATION_CONFIG` task_key to approved AST-1016 `PREAMBLE_CONFIG["validation_task_key"]` = **`preamble_validate_response`** (dropped invented `validate_preamble_answer` as a task_key). Python callable stays `validate_preamble_answer`. Added sibling-contract note + module assert equality when `PREAMBLE_CONFIG` is present. Outcomes remain in `PREAMBLE_VALIDATION_CONFIG` only.
+
+Plan tip: `origin/sub/AST-952/AST-1015-preamble-validation-ruth` @ `b7283c57` — [`ast-1015-preamble-validation-ruth.md`](https://github.com/susansomerset/astral/blob/sub/AST-952/AST-1015-preamble-validation-ruth/docs/features/candidate/ast-1015-preamble-validation-ruth.md)
+
+**Self-assessment (unchanged axes):** Scope Single-Component · Conf high · Risk Medium (key-clash closed by this revise).
+
+#### joan — 2026-07-28T18:55:55.069Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1015
+**Overall:** REVISE
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 library + columns | N/A — boundary (AST-1014) |
+| AC2 Ruth Valid / Try Again / Escalate; Try Again does not advance; Escalate ≠ Valid; no new persona | Stages 1–4 (config + Ruth `agent_task` + core + API); no library writes; no persona JSON |
+| AC3 PREAMBLE_CONFIG | N/A — boundary (AST-1016); plan Decision keeps outcomes/task_key out of that block |
+| AC4 mechanical UI | N/A — boundary (AST-1017); no React |
+| AC5–AC7 | N/A — boundaries / siblings |
+| AC8 debug on touched validation/write paths | Stage 3 `debug=` contract on `validate_preamble_answer` |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+|----------|--------|
+| (parent) AC2 Ruth three outcomes; no advance; Escalate ≠ Valid; Ruth only | 1–4 |
+| (parent) AC8 debug lines on touched validation path | Stage 3 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| 1 `PREAMBLE_VALIDATION_CONFIG` + `TASK_CONFIG` | Config-driven task key (§2.1); closed outcome set |
+| 2 Ruth `agent_task` row | Functional scope Ruth + one new agent_task |
+| 3 Core callable + debug + no writes | AC2 semantics; AC8 debug |
+| 4 Thin authenticated API | Callable for AST-1017; no UI |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge path |
+| orch.git.commit-vocabulary | conforms | No forbidden git ops |
+| orch.git.flow-direction-inviolable | conforms | Publish ref `sub/AST-952/AST-1015-preamble-validation-ruth` |
+| orch.git.ftr-sub-topology | conforms | Child `sub/` under parent `ftr/` |
+| orch.git.merge-on-checkout | conforms | Merge ftr tip before build noted |
+| orch.git.no-cherry-pick-rebase-force | conforms | None planned |
+| orch.git.no-dev-agent-branches | conforms | Named `sub/` only |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic AST-952 |
+| orch.git.three-permanent-branches | conforms | No fourth permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Key clash is engineer fix vs approved sibling, not new product intent |
+| orch.pipeline.plan-is-bible | needs-discussion | Stages are buildable but task_key conflicts with approved AST-1016 contract |
+| orch.pipeline.project-scoped-queues | conforms | Astral Candidate only |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready gate |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No test-tree edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | N/A to plan body |
+| orch.roles.engineer-assignee-through-resolve | conforms | Joan does not reassign |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.config.config-source-of-truth | violates | Task key invented as `validate_preamble_answer` while approved AST-1016 already sets `PREAMBLE_CONFIG.validation_task_key` = `preamble_validate_response` — dual homes / broken consumer contract |
+| astral.config.secrets-and-env-specific-from-environ | conforms | Literals only |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.standards.in-scope-only | conforms | Validation only; library/PREAMBLE_CONFIG/UI excluded |
+| astral.standards.no-cross-contamination | conforms | Layered paths + repo admin JSON |
+| astral.standards.dry-and-focused-functions | violates | Same epic needs one task_key string; plan forks a second name instead of aligning to approved sibling |
+| astral.standards.public-then-helpers | conforms | Public callable placement noted |
+| astral.standards.no-hardcoded-sets | conforms | Outcomes in `PREAMBLE_VALIDATION_CONFIG` |
+| astral.standards.logging-via-utils | conforms | `get_logger` / truncate helpers |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer logging |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.standards.debug-contract-gated | conforms | Style-D only when `debug=True` |
+| astral.layers.import-direction | conforms | ui→core; core→do_task |
+| astral.layers.core-vs-external-bright-line | conforms | External via `do_task` only |
+| astral.layers.ui-config-driven-business-logic | conforms | Thin API; no React rules |
+| astral.ui.naming-conventions | conforms | snake_case route |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns paths |
+| astral.agent.do-task-delegation | conforms | Core calls `do_task` with config task_key |
+| astral.agent.grade-vector-validation | conforms | Not a graded vectors task |
+| astral.agent.confidence-bounds | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | On-demand ledger; no entity claim batch |
+| astral.batch.batch-id-format | conforms | `preamble-{task_key}-{uuid}` |
+| astral.batch.batch-id-first | conforms | N/A claim signature |
+| astral.batch.entity-agent-responses-latest-only | conforms | Relies on existing `do_task` storage |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Untouched |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | `@require_auth` on new route |
+| astral.state.core-decides-transitions | conforms | Explicitly no candidate transitions |
+| astral.state.no-daisy-chain-in-run | conforms | No daisy-chain |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.config.config-source-of-truth, astral.config.secrets-and-env-specific-from-environ, astral.config.pass-threshold-vs-score-floor, astral.standards.in-scope-only, astral.standards.no-cross-contamination, astral.standards.dry-and-focused-functions, astral.standards.public-then-helpers, astral.standards.no-hardcoded-sets, astral.standards.logging-via-utils, astral.standards.data-raises-caller-logs, astral.standards.utils-data-late-import-only, astral.standards.debug-contract-gated, astral.layers.import-direction, astral.layers.core-vs-external-bright-line, astral.layers.ui-config-driven-business-logic, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker, astral.git.betty-no-src-or-features, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.agent.confidence-bounds, astral.batch.claim-process-release, astral.batch.batch-id-format, astral.batch.batch-id-first, astral.batch.entity-agent-responses-latest-only, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.state.core-decides-transitions, astral.state.no-daisy-chain-in-run, astral.state.job-prior-states-enforced
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss (plan file not in Files Changed table)
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.standards.database-header-inventory — paths miss (`data/admin/**` ≠ `src/data/**`)
+- astral.ui.frontend-file-placement — paths miss
+
+**Notes:** Layer cell `data (repo admin JSON)` mapped to `data`.
+
+## Findings
+
+### fix-now
+1. **Task key diverges from approved AST-1016.** This plan uses `PREAMBLE_VALIDATION_CONFIG["task_key"]` / `TASK_CONFIG` / `agent_task` key **`validate_preamble_answer`**. Approved AST-1016 plan (Plan Approved) already binds `PREAMBLE_CONFIG["validation_task_key"]` = **`preamble_validate_response`** and states AST-1015 must register that exact key (or stop on parent and update AST-1016). Dual names break §2.1 / DRY and will strand AST-1017. **Fix:** set this ticket’s task_key (config + TASK_CONFIG + agent_task.json + core) to `preamble_validate_response`, **or** open parent coordination and revise AST-1016 first — do not ship a silent second key.
+
+### discuss
+1. Prefer a single config home for the string (AST-1016 `validation_task_key` as the consumer-facing literal; this ticket’s block can re-export/assert equality) so AST-1017 has one read path.
+
+### acceptable
+- No library writes; empty answer allowed → Ruth Try Again; unrecognized outcome never coerced to Valid.
+- Ruth-only persona; no new agent JSON; on-demand (no `dispatch_tasks` row).
+- Debug style-D on the validation callable when `debug=True`.
+
+**Self-assessment:** Single-Component / Conf high / Risk Medium — honest; Risk Medium correctly flags coerce-to-Valid, which the plan mitigates.
+
+— Joan
+context_tokens≈78000
+
+#### joan — 2026-07-28T18:53:34.314Z
+[validate-plan] **STOP — worktree AGENTS.md corruption**
+
+Linear identity is Joan (`susan+joan@susansomerset.com`); AST-1015 is **Plan Ready** and assigned to Joan.
+
+Epic worktree `/home/susan/astral-AST-952/AGENTS.md` header is **`# Ada — Dev Agent`**, not `# Joan — Statute Validator`.
+
+Per validate-plan identity gate: I do **not** run the rubric while the worktree is seeded for another persona. Chuckles must `seed-agents-md` Joan (`joan-AGENTS.md`) into this epic worktree, then re-spawn/resume validate-plan for AST-1015.
+
+Status left **Plan Ready**. No assignee change. No plan-rubric verdict.
+
+— Joan
+context_tokens≈72000
+
+#### hedy — 2026-07-28T18:10:44.979Z
+Plan: [`docs/features/candidate/ast-1015-preamble-validation-ruth.md`](https://github.com/susansomerset/astral/blob/sub/AST-952/AST-1015-preamble-validation-ruth/docs/features/candidate/ast-1015-preamble-validation-ruth.md) on `origin/sub/AST-952/AST-1015-preamble-validation-ruth` @ `34930846`.
+
+**Scope:** Single-Component — Ruth `validate_preamble_answer` agent_task + `PREAMBLE_VALIDATION_CONFIG`/`TASK_CONFIG` + intake core callable + one `POST .../preamble/validate` route; no UI, library, or PREAMBLE_CONFIG.
+
+**Conf:** high — reuses `do_task` envelope, existing `college_intern_ruth`, intake ledger pattern, and repo `agent_task.json` apply-at-startup; closed three-string outcome set with exact-match parse (no coerce-to-Valid).
+
+**Risk:** Medium — a wrong Valid coerce would let bad answers persist once AST-1017 wires writes; mitigated by membership check and zero library writes in this ticket.
+
+Note: publish tip dropped an accidental sibling `ast-1016` plan file that landed when the epic worktree was on the wrong sub during commit; AST-1016 keeps its own plan on its publish ref.
+
+---
+
 # AST-1015 — Preamble Valid / Try Again / Escalate via Ruth
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1015/preamble-valid-try-again-escalate-via-ruth-candidate-profile-preamble  

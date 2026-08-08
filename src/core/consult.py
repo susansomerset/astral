@@ -2469,7 +2469,6 @@ async def run_consult_task(
         from src.utils.config import CANDIDATE_STAGE_DISPATCH, INFLOW_CONFIG
         from src.core.candidate import (
             run_requested_artifacts_dispatch,
-            run_requested_resume_dispatch,
         )
         tk = (dispatch_task_key or "").strip()
         cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
@@ -2477,8 +2476,6 @@ async def run_consult_task(
             return await roster.run_inflow_discovery_batch(
                 entities[0], batch_id, ctx, debug,
             )
-        if tk == CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"]:
-            return await run_requested_resume_dispatch(cid, debug=debug)
         if tk == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
             return await run_requested_artifacts_dispatch(cid, debug=debug)
         logger.warning(

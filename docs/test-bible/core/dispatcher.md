@@ -179,7 +179,7 @@ Primary roster / consult manifest: **`docs/test-bible/core/roster.md`** · **`do
 
 ### AST-972 · AST-871
 
-Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher: **`ensure_candidate_stage_dispatch_tasks`** / **`provision_candidate_stage_dispatch_tasks`**; candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** provisions stage rows. Revised **`LIVE_PROMPTS` → `ACTIVE_SEARCH`** in dispatcher fixtures; AST-875 template fixture uses **`qualify_job_listings`** (TASK_CONFIG tip).
+Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. Dispatcher: **`retire_candidate_requested_wrapper_dispatch_tasks`** (retire-only); candidate claim gate in **`_run_unified`**; tick calls **`age_stale_candidate_states`**; **`start_scheduler`** runs wrapper retire after meteorite provision.
 
 
 ### AST-1022 · AST-1018
@@ -411,3 +411,29 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972. Dispatcher
   tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
   -q
 ```
+
+### AST-1259 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity`.
+
+`_run_unified` for `entity_type=candidate` claims via `get_new_candidate_batch` (`dispatch_claim_states` + `batch_size`), forces per-entity process (`use_full_batch=False`), clears on empty early-exit and in `finally` (no unlocked `[ctx]` arm). Core wrappers: **`docs/test-bible/core/candidate.md`** § AST-1259. Data claim APIs: **AST-1258**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Pool claim + clear; no job/company clear | `src/core/dispatcher.py` | revised **`TestRunUnified::test_ast505_candidate_entity_claims_without_company_clear`**; **`TestAst1259CandidatePoolClaim`** |
+| Empty claim clears; claimed → consult | same | revised **`TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate`**; **`::test_empty_batch_clears_candidate_batch`** |
+| `batch_size` / claim states; multi-row per-entity | same | **`TestAst1259CandidatePoolClaim::test_claim_honors_batch_size_and_claim_states`** |
+
+**Broken / obsolete (Betty revision):** unlocked-`[ctx]` asserts in `test_ast505_candidate_entity_routes_ctx_without_company_clear` and ctx-state-only `test_run_unified_candidate_claim_gate`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_ast505_candidate_entity_claims_without_company_clear \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_run_unified_candidate_claim_gate \
+  tests/component/core/test_dispatcher.py::TestAst1259CandidatePoolClaim \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
+  -q
+```
+

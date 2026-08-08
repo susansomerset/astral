@@ -26,7 +26,7 @@ interface LedgerRow {
 }
 
 interface LogEntry {
-  id: string
+  id: number
   level: string
   logger_name: string
   message: string

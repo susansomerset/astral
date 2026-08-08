@@ -44,6 +44,39 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(dispatcher_mod.database, "list_dispatch_tasks", lambda: [])
 
 
+def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep start_scheduler unit tests DB-free across meteorite / AST-1252 retire / gaze hooks."""
+    monkeypatch.setattr(
+        dispatcher_mod,
+        "provision_meteorite_dispatch_tasks",
+        MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
+    )
+    if hasattr(dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks"):
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "retire_candidate_requested_wrapper_dispatch_tasks",
+            MagicMock(
+                return_value={
+                    "template_candidate_id": "tmpl",
+                    "candidates_scanned": 0,
+                    "retired": 0,
+                }
+            ),
+        )
+    _gaze = MagicMock(
+        return_value={
+            "task_key": "gaze_email",
+            "retired_null": 0,
+            "candidates_touched": 0,
+            "added": 0,
+            "skipped": 0,
+            "skipped_missing_config": 0,
+        }
+    )
+    if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
+        monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _gaze)
+
+
 class TestDispatchWrappers:
     def test_list_dispatch_ledger_enriches_costs(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -296,30 +329,44 @@ class TestRunUnified:
         clear.assert_called_once_with(batch_id)
 
     @pytest.mark.asyncio
-    async def test_ast505_candidate_entity_routes_ctx_without_company_clear(
+    async def test_ast505_candidate_entity_claims_without_company_clear(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:
+        # AST-1259: pool claim via get_new_candidate_batch; clear_candidate_batch in finally (not job/company).
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claimed = [{"astral_candidate_id": "c505", "state": "ACTIVE_SEARCH", "candidate_data": {}}]
+        claim = MagicMock(return_value=(batch_id, claimed))
+        clear_cand = MagicMock()
         clear_co = MagicMock()
         clear_job = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear_cand)
         monkeypatch.setattr("src.core.roster.clear_company_batch", clear_co)
         monkeypatch.setattr("src.core.tracker.clear_job_batch", clear_job)
         consult_out = {"total_processed": 1, "total_passed": 2, "total_failed": 0, "total_errors": 0}
         run = AsyncMock(return_value=consult_out)
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
         ctx = {"astral_candidate_id": "c505", "state": "ACTIVE_SEARCH", "candidate_data": {}}
         task = {
             "entity_type": "candidate",
             "trigger_state": "ACTIVE_SEARCH",
             "task_key": "inflow_discovery",
+            "batch_size": 1,
             "batch_call_mode": 0,
         }
         out = await dispatcher_mod._run_unified(task, ctx, False)
         assert out == consult_out
+        claim.assert_called_once()
+        clear_cand.assert_called_once_with(batch_id)
         clear_co.assert_not_called()
         clear_job.assert_not_called()
         run.assert_awaited_once_with(
-            "candidate", "ACTIVE_SEARCH", [ctx], batch_id, ctx, False, dispatch_task_key="inflow_discovery",
+            "candidate", "ACTIVE_SEARCH", claimed, batch_id, ctx, False, dispatch_task_key="inflow_discovery",
         )
 
     @pytest.mark.asyncio
@@ -1296,6 +1343,7 @@ class TestScheduler:
         dispatcher_mod._tick_thread = None
         stale = MagicMock(return_value=2)
         monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", stale)
+        _stub_scheduler_boot_provisions(monkeypatch)
         started: list[threading.Thread] = []
 
         class _Thread:
@@ -1319,6 +1367,7 @@ class TestScheduler:
         dispatcher_mod._tick_thread = None
         stale = MagicMock(return_value=0)
         monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", stale)
+        _stub_scheduler_boot_provisions(monkeypatch)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -1478,91 +1527,198 @@ class TestAst875SetCandidateDispatchTasksFromTemplate:
             dispatcher_mod.set_candidate_dispatch_tasks_from_template("tgt")
 
 
-@pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "ensure_candidate_stage_dispatch_tasks"),
-    reason="AST-972 product not on this publish tip",
-)
-class TestAst972CandidateStageDispatch:
-    """AST-972: provision rows, claim gate, tick aging."""
+class TestAst1259CandidatePoolClaim:
+    """AST-1259: dispatcher candidate pool claim → per-entity process → clear (empty + finally)."""
 
-    def test_ensure_stage_tasks_idempotent(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        existing = [
-            {"task_key": "candidate_requested_resume", "trigger_state": "REQUESTED_RESUME"},
+    @pytest.mark.asyncio
+    async def test_claim_honors_batch_size_and_claim_states(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        rows = [
+            {"astral_candidate_id": "c1259a", "state": "REQUESTED_ARTIFACTS"},
+            {"astral_candidate_id": "c1259b", "state": "REQUESTED_ARTIFACTS_RETRY"},
         ]
-        saves: list[dict] = []
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "list_dispatch_tasks_for_candidate",
-            lambda cid: list(existing),
+        claim = MagicMock(return_value=(batch_id, rows))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "task_key": "craft_get_rubric",
+            "batch_size": 2,
+            "batch_call_mode": 1,  # forced False for candidate — still per-entity
+        }
+        await dispatcher_mod._run_unified(task, {"astral_candidate_id": "owner"}, False)
+        claim.assert_called_once()
+        assert claim.call_args.args[0] == "REQUESTED_ARTIFACTS"
+        assert claim.call_args.kwargs["limit"] == 2
+        assert claim.call_args.kwargs["batch_id"] == batch_id
+        assert claim.call_args.kwargs["states"] == cfg.dispatch_claim_states(
+            "REQUESTED_ARTIFACTS", "candidate"
         )
+        assert run.await_count == 2
+        assert run.await_args_list[0].args[2] == [rows[0]]
+        assert run.await_args_list[1].args[2] == [rows[1]]
+        clear.assert_called_once_with(batch_id)
 
-        def _save(**kwargs):
-            saves.append(kwargs)
-            existing.append({"task_key": kwargs["task_key"], "trigger_state": kwargs["trigger_state"]})
+    @pytest.mark.asyncio
+    async def test_empty_batch_clears_candidate_batch(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claim = MagicMock(return_value=(batch_id, []))
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
+        run = AsyncMock()
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
+        clear_job = MagicMock()
+        clear_co = MagicMock()
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", clear_job)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear_co)
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "task_key": "craft_get_rubric",
+            "batch_size": 5,
+        }
+        out = await dispatcher_mod._run_unified(task, {"astral_candidate_id": "c"}, False)
+        assert out == dispatcher_mod._SUMMARY_ZERO
+        run.assert_not_awaited()
+        clear.assert_called_once_with(batch_id)
+        clear_job.assert_not_called()
+        clear_co.assert_not_called()
 
-        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
-        first = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
-        assert first["added"] == 1 and first["skipped"] == 1
-        second = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
-        assert second["added"] == 0 and second["skipped"] == 2
-        assert {s["task_key"] for s in saves} == {"candidate_requested_artifacts"}
+    @pytest.mark.asyncio
+    async def test_finally_clears_and_skips_job_company_clear(
+        self, monkeypatch: pytest.MonkeyPatch, batch_id: str
+    ) -> None:
+        monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        rows = [{"astral_candidate_id": "c1259f", "state": "REQUESTED_ARTIFACTS"}]
+        claim = MagicMock(return_value=(batch_id, rows))
+        clear = MagicMock()
+        clear_job = MagicMock()
+        clear_co = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
+        monkeypatch.setattr("src.core.tracker.clear_job_batch", clear_job)
+        monkeypatch.setattr("src.core.roster.clear_company_batch", clear_co)
+        run = AsyncMock(return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0})
+        monkeypatch.setattr("src.core.consult.run_consult_task", run)
 
-    def test_provision_requires_template_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
-        monkeypatch.setattr(dispatcher_mod.database, "get_candidate", lambda cid: None)
-        with pytest.raises(LookupError, match="Template candidate"):
-            dispatcher_mod.provision_candidate_stage_dispatch_tasks()
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
 
-    def test_provision_touches_scheduled_candidates(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "get_candidate",
-            lambda cid: {"astral_candidate_id": cid, "state": "ACTIVE_SEARCH"},
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
+        await dispatcher_mod._run_unified(
+            {
+                "entity_type": "candidate",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "task_key": "craft_get_rubric",
+                "batch_size": 1,
+            },
+            {"astral_candidate_id": "c"},
+            False,
         )
+        clear.assert_called_once_with(batch_id)
+        clear_job.assert_not_called()
+        clear_co.assert_not_called()
+
+
+@pytest.mark.skipif(
+    not hasattr(dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks"),
+    reason="AST-1252 wrapper retire not on this publish tip",
+)
+
+class TestAst972CandidateStageDispatch:
+    """AST-972 → AST-1252: retire wrappers; claim gate; tick aging; scheduler retire hook."""
+
+    def test_retire_wrapper_rows_only(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        rows_by_cid = {
+            "tmpl": [
+                {"id": 1, "task_key": "candidate_requested_resume"},
+                {"id": 2, "task_key": "craft_get_rubric"},
+            ],
+            "c2": [
+                {"id": 3, "task_key": "candidate_requested_artifacts"},
+                {"id": 4, "task_key": "gaze_email"},
+            ],
+        }
+        deleted: list[int] = []
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "tmpl")
         monkeypatch.setattr(
             dispatcher_mod.database,
             "list_candidate_ids_with_dispatch_tasks",
             lambda: ["tmpl", "c2"],
         )
-        calls: list[str] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database,
+            "list_dispatch_tasks_for_candidate",
+            lambda cid: list(rows_by_cid.get(cid, [])),
+        )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "delete_dispatch_task",
+            lambda tid: deleted.append(int(tid)),
+        )
+        out = dispatcher_mod.retire_candidate_requested_wrapper_dispatch_tasks()
+        assert out["retired"] == 2
+        assert sorted(deleted) == [1, 3]
+        assert out["candidates_scanned"] == 2
 
-        def _ensure(cid):
-            calls.append(cid)
-            return {"candidate_id": cid, "added": 0, "skipped": 2}
-
-        monkeypatch.setattr(dispatcher_mod, "ensure_candidate_stage_dispatch_tasks", _ensure)
-        out = dispatcher_mod.provision_candidate_stage_dispatch_tasks()
-        assert calls[0] == "tmpl"
-        assert "tmpl" in calls and "c2" in calls
-        assert out["candidates_touched"] == 2
+    def test_retire_requires_template_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "template_candidate_id", lambda: "")
+        with pytest.raises(ValueError, match="template_candidate_id"):
+            dispatcher_mod.retire_candidate_requested_wrapper_dispatch_tasks()
 
     @pytest.mark.asyncio
     async def test_run_unified_candidate_claim_gate(
         self, monkeypatch: pytest.MonkeyPatch, batch_id: str
     ) -> None:
+        # AST-1259: gate is pool claim (empty → no consult; claimed row → per-entity consult).
         monkeypatch.setattr(dispatcher_mod, "check_internet_reachable", lambda: True)
+        claimed = {"astral_candidate_id": "c1", "state": "REQUESTED_ARTIFACTS"}
+        claim = MagicMock(side_effect=[(batch_id, []), (batch_id, [claimed])])
+        clear = MagicMock()
+        monkeypatch.setattr("src.core.candidate.get_new_candidate_batch", claim)
+        monkeypatch.setattr("src.core.candidate.clear_candidate_batch", clear)
         run = AsyncMock(return_value=dict(dispatcher_mod._SUMMARY_ZERO))
         monkeypatch.setattr("src.core.consult.run_consult_task", run)
+
+        async def _immediate_warm(one_fn, entities, zero):
+            return [await one_fn(e) for e in entities]
+
+        monkeypatch.setattr(dispatcher_mod, "_warm_then_gather", _immediate_warm)
         task = {
             "id": 1,
-            "task_key": "candidate_requested_resume",
-            "trigger_state": "REQUESTED_RESUME",
+            "task_key": "craft_get_rubric",
+            "trigger_state": "REQUESTED_ARTIFACTS",
             "entity_type": "candidate",
             "batch_size": 1,
             "batch_call_mode": 0,
         }
-        bad = {"astral_candidate_id": "c1", "state": "ACTIVE_SEARCH"}
-        await dispatcher_mod._run_unified(task, bad, False)
+        ctx = {"astral_candidate_id": "c1", "state": "ACTIVE_SEARCH"}
+        await dispatcher_mod._run_unified(task, ctx, False)
         run.assert_not_called()
-        good = {"astral_candidate_id": "c1", "state": "REQUESTED_RESUME"}
-        out = await dispatcher_mod._run_unified(task, good, False)
+        clear.assert_called_with(batch_id)
+        clear.reset_mock()
+        out = await dispatcher_mod._run_unified(task, ctx, False)
         assert out == dispatcher_mod._SUMMARY_ZERO
         run.assert_awaited_once()
         assert run.await_args.args[0] == "candidate"
-        assert run.await_args.args[1] == "REQUESTED_RESUME"
-        assert run.await_args.args[2] == [good]
-        assert run.await_args.kwargs["dispatch_task_key"] == "candidate_requested_resume"
+        assert run.await_args.args[1] == "REQUESTED_ARTIFACTS"
+        assert run.await_args.args[2] == [claimed]
+        assert run.await_args.kwargs["dispatch_task_key"] == "craft_get_rubric"
+        clear.assert_called_once_with(batch_id)
 
     def test_tick_loop_invokes_stale_aging(self, monkeypatch: pytest.MonkeyPatch) -> None:
         aged = MagicMock(return_value=0)
@@ -1573,18 +1729,17 @@ class TestAst972CandidateStageDispatch:
             dispatcher_mod._tick_loop()
         aged.assert_called_once_with()
 
-    def test_start_scheduler_invokes_stage_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_start_scheduler_invokes_wrapper_retire(self, monkeypatch: pytest.MonkeyPatch) -> None:
         dispatcher_mod._tick_thread = None
         monkeypatch.setattr(dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0))
-        provision = MagicMock(
+        retire = MagicMock(
             return_value={
                 "template_candidate_id": "tmpl",
-                "candidates_touched": 1,
-                "added": 2,
-                "skipped": 0,
+                "candidates_scanned": 1,
+                "retired": 2,
             }
         )
-        monkeypatch.setattr(dispatcher_mod, "provision_candidate_stage_dispatch_tasks", provision)
+        monkeypatch.setattr(dispatcher_mod, "retire_candidate_requested_wrapper_dispatch_tasks", retire)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -1602,7 +1757,6 @@ class TestAst972CandidateStageDispatch:
             "provision_meteorite_dispatch_tasks",
             MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
         )
-        # AST-1134: gaze_email coverage provision after meteorite — stub so stage test stays DB-free.
         _stub = MagicMock(
             return_value={
                 "task_key": "gaze_email",
@@ -1615,10 +1769,8 @@ class TestAst972CandidateStageDispatch:
         )
         if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
             monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _stub)
-        elif hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
-            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_task", _stub)
         dispatcher_mod.start_scheduler()
-        provision.assert_called_once_with()
+        retire.assert_called_once_with()
 
 
 @pytest.mark.skipif(
@@ -1892,7 +2044,7 @@ class TestAst1054MeteoriteDispatchProvision:
         monkeypatch.setattr(
             dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
         )
-        # start_scheduler provision order on tip: meteorite then gaze (no stage provision hook).
+        # start_scheduler boot order: meteorite → AST-1252 wrapper retire → gaze.
         mprovision = MagicMock(
             return_value={
                 "template_candidate_id": "tmpl",
@@ -1903,6 +2055,17 @@ class TestAst1054MeteoriteDispatchProvision:
             }
         )
         monkeypatch.setattr(dispatcher_mod, "provision_meteorite_dispatch_tasks", mprovision)
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "retire_candidate_requested_wrapper_dispatch_tasks",
+            MagicMock(
+                return_value={
+                    "template_candidate_id": "tmpl",
+                    "candidates_scanned": 0,
+                    "retired": 0,
+                }
+            ),
+        )
         _stub = MagicMock(
             return_value={
                 "task_key": "gaze_email",
@@ -2047,6 +2210,17 @@ class TestAst1134GazeEmailDispatchProvision:
             "provision_meteorite_dispatch_tasks",
             MagicMock(return_value={"template_candidate_id": "tmpl", "candidates_touched": 0}),
         )
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "retire_candidate_requested_wrapper_dispatch_tasks",
+            MagicMock(
+                return_value={
+                    "template_candidate_id": "tmpl",
+                    "candidates_scanned": 0,
+                    "retired": 0,
+                }
+            ),
+        )
         gprovision = MagicMock(
             return_value={
                 "task_key": "gaze_email",
@@ -2079,72 +2253,18 @@ class TestAst1134GazeEmailDispatchProvision:
     reason="AST-1022 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022: stage seed AUTO off; ensure insert-only; tick Style D AUTO-off skips."""
+    """AST-1022 → AST-1252: stage AUTO-off Style D uses craft_get_rubric stage key."""
 
-    def test_ensure_seeds_auto_mode_false(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        saves: list[dict] = []
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "list_dispatch_tasks_for_candidate",
-            lambda cid: [],
-        )
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "save_dispatch_task",
-            lambda **kwargs: saves.append(kwargs),
-        )
-        out = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
-        assert out["added"] == 2 and out["skipped"] == 0
-        assert {s["task_key"] for s in saves} == {
-            "candidate_requested_resume",
-            "candidate_requested_artifacts",
-        }
-        assert all(s["auto_mode"] is False for s in saves)
-
-    def test_ensure_does_not_rewrite_existing_auto_mode(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # Operator left resume AUTO on; artifacts already off — second ensure must not touch either.
-        existing = [
-            {
-                "task_key": "candidate_requested_resume",
-                "trigger_state": "REQUESTED_RESUME",
-                "auto_mode": 1,
-            },
-            {
-                "task_key": "candidate_requested_artifacts",
-                "trigger_state": "REQUESTED_ARTIFACTS",
-                "auto_mode": 0,
-            },
-        ]
-        saves: list[dict] = []
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "list_dispatch_tasks_for_candidate",
-            lambda cid: list(existing),
-        )
-        monkeypatch.setattr(
-            dispatcher_mod.database,
-            "save_dispatch_task",
-            lambda **kwargs: saves.append(kwargs),
-        )
-        out = dispatcher_mod.ensure_candidate_stage_dispatch_tasks("c1")
-        assert out["added"] == 0 and out["skipped"] == 2
-        assert saves == []
+    def test_stage_auto_mode_false_in_config(self) -> None:
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert arts["auto_mode"] is False
+        assert arts["task_key"] == "craft_get_rubric"
 
     def test_debug_log_auto_off_stage_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [
             {
                 "id": 1,
-                "task_key": "candidate_requested_resume",
-                "auto_mode": 0,
-                "debug": 1,
-                "entity_type": "candidate",
-                "trigger_state": "REQUESTED_RESUME",
-                "candidate_id": "c1",
-                "min_count": 1,
-            },
-            {
-                "id": 2,
-                "task_key": "candidate_requested_artifacts",
+                "task_key": "craft_get_rubric",
                 "auto_mode": 0,
                 "debug": 1,
                 "entity_type": "candidate",
@@ -2152,7 +2272,6 @@ class TestAst1022HonorAutoOffStageDispatch:
                 "candidate_id": "c1",
                 "min_count": 1,
             },
-            # Non-stage / wrong gates — must not emit
             {
                 "id": 3,
                 "task_key": "evaluate_jd",
@@ -2164,23 +2283,13 @@ class TestAst1022HonorAutoOffStageDispatch:
                 "min_count": 1,
             },
             {
-                "id": 4,
-                "task_key": "candidate_requested_resume",
+                "id": 6,
+                "task_key": "candidate_requested_artifacts",
                 "auto_mode": 0,
-                "debug": 0,
-                "entity_type": "candidate",
-                "trigger_state": "REQUESTED_RESUME",
-                "candidate_id": "c2",
-                "min_count": 1,
-            },
-            {
-                "id": 5,
-                "task_key": "candidate_requested_resume",
-                "auto_mode": 1,
                 "debug": 1,
                 "entity_type": "candidate",
-                "trigger_state": "REQUESTED_RESUME",
-                "candidate_id": "c3",
+                "trigger_state": "REQUESTED_ARTIFACTS",
+                "candidate_id": "c4",
                 "min_count": 1,
             },
         ]
@@ -2197,28 +2306,18 @@ class TestAst1022HonorAutoOffStageDispatch:
         dispatcher_mod._debug_log_auto_off_stage_skips()
         run.assert_not_called()
         log.set_debug_flag.assert_called_once_with(True)
-        assert log.debug_index.call_count == 2
-        kwargs_list = [c.kwargs for c in log.debug_index.call_args_list]
-        assert kwargs_list[0]["index"] == 1 and kwargs_list[0]["total"] == 2
-        assert kwargs_list[1]["index"] == 2 and kwargs_list[1]["total"] == 2
-        assert kwargs_list[0]["func"] == "dispatcher._tick_loop"
-        assert kwargs_list[0]["outcome"] == "skipped — AUTO off"
-        assert {k["identifier"] for k in kwargs_list} == {
-            "candidate_requested_resume",
-            "candidate_requested_artifacts",
-        }
-        details = [str(c.args[0]) for c in log.debug_detail.call_args_list]
-        assert any("candidate_id='c1'" in d and "auto_mode=0" in d for d in details)
+        assert log.debug_index.call_count == 1
+        assert log.debug_index.call_args.kwargs["identifier"] == "craft_get_rubric"
 
     def test_debug_log_skips_when_below_min_count(self, monkeypatch: pytest.MonkeyPatch) -> None:
         rows = [
             {
                 "id": 9,
-                "task_key": "candidate_requested_resume",
+                "task_key": "craft_get_rubric",
                 "auto_mode": 0,
                 "debug": 1,
                 "entity_type": "candidate",
-                "trigger_state": "REQUESTED_RESUME",
+                "trigger_state": "REQUESTED_ARTIFACTS",
                 "candidate_id": "c1",
                 "min_count": 2,
             },
@@ -2233,7 +2332,6 @@ class TestAst1022HonorAutoOffStageDispatch:
         monkeypatch.setattr(dispatcher_mod, "logger", log)
         dispatcher_mod._debug_log_auto_off_stage_skips()
         log.set_debug_flag.assert_not_called()
-        log.debug_index.assert_not_called()
 
     def test_tick_loop_calls_auto_off_debug_helper_before_spawn(
         self, monkeypatch: pytest.MonkeyPatch

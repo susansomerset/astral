@@ -1341,61 +1341,105 @@ class TestAst962SaveDispatchTaskCoverLetterDefaults:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst972CandidateStageEligibility:
-    """AST-972: count_eligible for REQUESTED_* stage keys; ACTIVE_SEARCH for inflow only."""
+    """AST-972 → AST-1258: stage claim states + list ids; non-inflow Avail is unclaimed pool (not inflow-only)."""
 
-    def test_stage_resume_eligible_when_state_matches(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("c972", state="REQUESTED_RESUME", candidate_data={})
-        task = {
-            "entity_type": "candidate",
-            "trigger_state": "REQUESTED_RESUME",
-            "candidate_id": "c972",
-            "task_key": "candidate_requested_resume",
-        }
-        assert db.count_eligible_for_dispatch_task(task) == 1
-        db.save_candidate("c972", state="ACTIVE_SEARCH", candidate_data={})
-        assert db.count_eligible_for_dispatch_task(task) == 0
+    def test_stage_claim_states_include_retry(self) -> None:
+        from src.utils.config import dispatch_claim_states
 
-    def test_stage_artifacts_eligible_includes_retry(self, sqlite_in_memory) -> None:
+        assert dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate") == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+        assert dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
+            "REQUESTED_RESUME",
+            "REQUESTED_RESUME_RETRY",
+        ]
+
+    def test_candidate_row_state_matches_artifacts_retry(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("c972a", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        row = db.get_candidate("c972a")
+        assert row is not None
+        assert row["state"] == "REQUESTED_ARTIFACTS_RETRY"
+        # Claim companions (config) still include retry for primary trigger.
+        from src.utils.config import dispatch_claim_states
+        assert "REQUESTED_ARTIFACTS_RETRY" in dispatch_claim_states("REQUESTED_ARTIFACTS", "candidate")
+
+    def test_candidate_stage_avail_is_unclaimed_pool(self, sqlite_in_memory) -> None:
+        # AST-1258: non-inflow candidate stage Avail = unclaimed pool in claim states (not inflow helper).
+        db = sqlite_in_memory
+        db.save_candidate("c972", state="REQUESTED_ARTIFACTS", candidate_data={})
         task = {
             "entity_type": "candidate",
             "trigger_state": "REQUESTED_ARTIFACTS",
-            "candidate_id": "c972a",
-            "task_key": "candidate_requested_artifacts",
+            "candidate_id": "c972",
+            "task_key": "craft_get_rubric",
         }
         assert db.count_eligible_for_dispatch_task(task) == 1
 
-    def test_unknown_candidate_task_key_returns_zero(self, sqlite_in_memory) -> None:
-        db = sqlite_in_memory
-        db.save_candidate("c972b", state="ACTIVE_SEARCH", candidate_data={})
-        task = {
-            "entity_type": "candidate",
-            "trigger_state": "ACTIVE_SEARCH",
-            "candidate_id": "c972b",
-            "task_key": "not_a_real_candidate_task",
-        }
-        assert db.count_eligible_for_dispatch_task(task) == 0
-
     def test_list_candidate_ids_with_dispatch_tasks(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
-        # AST-1000 / AC4: empty DISTINCT set is a list, not AttributeError
         assert db.list_candidate_ids_with_dispatch_tasks() == []
         db.save_candidate("c972c", state="ACTIVE_SEARCH", candidate_data={})
         db.save_dispatch_task(
             candidate_id="c972c",
-            task_key="candidate_requested_resume",
+            task_key="craft_get_rubric",
             min_count=1,
             auto_mode=True,
-            trigger_state="REQUESTED_RESUME",
+            trigger_state="REQUESTED_ARTIFACTS",
             batch_size=1,
             freq_hrs=0,
         )
         assert "c972c" in db.list_candidate_ids_with_dispatch_tasks()
 
-# Branches: gaze_email save requires bound candidate_id (AST-1134 retires null shell).
-# Schema remains nullable + partial unique for residual rows deleted at provision.
+
+
+class TestAst1258CandidatePoolEligibility:
+    """AST-1258: stage Avail pool count + locked rows; inflow_discovery path unchanged."""
+
+    def test_pool_count_zero_when_all_matching_rows_locked(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c1258e1", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c1258e2", state="REQUESTED_ARTIFACTS_RETRY", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c1258e1",
+            "task_key": "craft_get_rubric",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 2
+        n = db.claim_candidate_batch(
+            "lock-all-1258",
+            "REQUESTED_ARTIFACTS",
+            10,
+            states=["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"],
+        )
+        assert n == 2
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
+    def test_inflow_discovery_still_uses_inflow_helper(self, sqlite_in_memory) -> None:
+        # Non-ACTIVE_SEARCH candidate must not get pool count for inflow_discovery.
+        db = sqlite_in_memory
+        db.save_candidate("c1258inf", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.sync_company_search_terms("c1258inf", ["term"])
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "ACTIVE_SEARCH",
+            "candidate_id": "c1258inf",
+            "task_key": "inflow_discovery",
+            "freq_hrs": 168,
+        }
+        # Wrong state → inflow helper returns 0 (pool would be 1 if stage path were used).
+        assert db.count_eligible_for_dispatch_task(task) == 0
+        # Stage key on same rows still sees the unclaimed pool.
+        stage = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c1258inf",
+            "task_key": "craft_get_rubric",
+        }
+        assert db.count_eligible_for_dispatch_task(stage) == 1
+
 class TestAst1088NullCandidateGazeEmail:
     """AST-1134: save_dispatch_task rejects null candidate_id for gaze_email too."""
 

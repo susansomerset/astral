@@ -256,7 +256,7 @@ Wire **`REQUESTED_RESUME` / `REQUESTED_ARTIFACTS`** claim workers (ready / retry
 
 **Parent:** [AST-1109 — Hard-coded daisy chain in config.py](https://linear.app/astralcareermatch/issue/AST-1109/hard-coded-daisy-chain-in-configpy). **Publish:** `origin/sub/AST-1109/AST-1113-anomaly-craft-task-keys-boot-run-next`.
 
-Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/data/database/agent_tasks.md`** AST-1113. Candidate walk: `run_requested_artifacts_dispatch` uses singular `craft_task_key` + `_current_agent_task_run_next` with `suppress_run_next=True` per hop; UI generate also suppresses auto-recurse.
+Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/data/database/agent_tasks.md`** AST-1113. **Superseded for dispatch walk by AST-1252:** native `run_next` + `persist_candidate_craft_hops` (no per-hop `suppress_run_next` walk). UI generate still suppresses auto-recurse.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -265,6 +265,70 @@ Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/te
 **Broken / obsolete (Betty revision):** **`test_artifacts_dispatch_success_runs_all_crafts`** reading `craft_task_keys`.
 
 
+### AST-1252 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.
+
+`REQUESTED_ARTIFACTS` opens at `craft_get_rubric` with native `do_task` `run_next` (no `suppress_run_next`); per-hop persist via `persist_candidate_craft_hops` in agent; wrappers `candidate_requested_*` retired; resume stage worker removed. UI generate keeps `suppress_run_next=True`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Native run_next worker + fail targets | `src/core/candidate.py` | revised **`TestAst972RequestedStageDispatch`** |
+| Persist hook | `src/core/agent.py` / persist helper | **`TestAst1252PersistCandidateCraftHops`** |
+| Stage map / retired keys / AC2 selectability | `src/utils/config.py` | revised **`TestAst972CandidateStageDispatch`**; **`TestAst1252ArtifactsDispatchChainConfig`**; revised **`TestAst1113CraftTaskKeysShadowDeleted`** |
+| Consult route on stage `task_key` | `src/core/consult.py` | revised **`TestAst972CandidateStageConsultRouting`** |
+| Retire-only wrapper rows + AUTO-off Style D | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch`**; revised **`TestAst1022HonorAutoOffStageDispatch`** |
+| Admin JSON seed absence | `data/admin/agent_task.json` | **`TestAst1252RetiredWrapperTaskKeysAbsent`** (narrow — not whole `test_repo_admin_json.py`) |
+| Stage claim states + list ids | `src/data/database.py` | revised **`TestAst972CandidateStageEligibility`** |
+
+**Broken / obsolete (Betty revision):** resume worker tests; manual multi-hop `suppress_run_next` walk; stage ensure/provision; wrapper consult/dispatch fixtures; `craft_task_key` asserts; Avail-via-`count_eligible` for stage states as inflow-only (superseded by **AST-1258** unclaimed-pool Avail for non-inflow keys — see **`docs/test-bible/data/database/dispatch_tasks.md`**).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  -q
+```
+
+### AST-1253 · AST-1243
+
+**Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
+
+Generate/Regenerate hand off via `start_requested_artifacts` → `REQUESTED_ARTIFACTS`. Live `run_next` walk supplies hop order + NAV labels; chain keys rejected from ad-hoc UI `run_candidate_artifact_generation` (409). UI: **`docs/test-bible/frontend/components.md`** / **`pages.md`**. Config priors + path map: **`docs/test-bible/utils/config.md`**. API: **`docs/test-bible/ui/api/api_candidate.md`** / **`api_system.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Start handoff + walk helpers + chain UI reject | `src/core/candidate.py` | **`TestAst1253RequestedArtifactsHandoff`**; revised **`TestAst901CraftRubricGenerateDelivery`** (chain generate → 409) |
+
+**Broken / obsolete (Betty revision):** AST-901 craft_get_rubric success-stash via UI generate (chain keys no longer open ledger/stash on that path).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1253RequestedArtifactsHandoff \
+  tests/component/core/test_candidate.py::TestAst901CraftRubricGenerateDelivery \
+  -q
+```
+
+
+
+
+### AST-1264 · AST-1243
+
+**Publish:** `origin/sub/AST-1243/AST-1264-uat-craft-get-run-next`.
+
+UAT succession fix (`craft_get` → `craft_do` via live `run_next`). Primary: **`docs/test-bible/core/agent.md`** / **`data/database/agent_tasks.md`** § AST-1264. No candidate.py product diff this ticket.
 
 ### AST-973 · AST-871
 
@@ -810,6 +874,93 @@ Shared email uniqueness pool: root `email_paths` + `email_list_paths` (`extra_em
   tests/component/core/test_candidate.py::TestAst1148ExpandCoverFromBlock \
   tests/component/core/test_candidate.py::TestAst1137ResolveCoverFromBlock \
   tests/component/core/test_builder.py::TestAst1148SessionTypedFromBlockExpand \
+  -q
+```
+
+
+
+### AST-1235 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1235-versioned-consent-record-and-api`.
+
+`candidate_data.surfer_consent` meta sibling: `empty_surfer_consent` / `normalize_surfer_consent` / `get_surfer_consent` / `is_surfer_consent_current` / `surfer_consent_dto` / `opt_in_surfer_consent` / `opt_out_surfer_consent` (preserve last `accepted_version` on opt-out; Style D when `debug=True`). `is_current` only when `opted_in` **and** `accepted_version == SURFER_CONSENT_CONFIG["current_version"]`. Config: **`docs/test-bible/utils/config.md`**. API: **`docs/test-bible/ui/api/api_surfer.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Normalize / is_current / get / opt-in / opt-out / Style D | `src/core/candidate.py` | **`TestAst1235SurferConsent`** |
+
+**Broken / obsolete:** none — additive Surfer consent helpers.
+
+**Integration:** no existing scenario asserts `surfer_consent` — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1235SurferConsent \
+  tests/component/utils/test_config.py::TestAst1235SurferConsentConfig \
+  -q
+```
+
+
+### AST-1237 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1237-install-disclosure-and-affirmative-opt-in`.
+
+`surfer_consent_dto` adds config chrome (`disclosure_title`, `opt_in_label`, `decline_label`, `current_ok_title`, `current_ok_body`) alongside AST-1235 fields. Config/nav: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DTO chrome keys | `src/core/candidate.py` | **`TestAst1237SurferConsentDtoChrome`** |
+
+**Broken / obsolete:** none — AST-1235 helpers still apply (version read from config).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1237SurferConsentDtoChrome \
+  tests/component/utils/test_config.py::TestAst1237SurferConsentDisclosureConfig \
+  -q
+```
+
+
+### AST-1238 · AST-1173
+
+**Parent:** [AST-1173 — Consent — install disclosure, affirmative opt-in, and off-switch](https://linear.app/astralcareermatch/issue/AST-1173/consent-install-disclosure-affirmative-opt-in-and-off-switch). **Publish:** `origin/sub/AST-1173/AST-1238-off-switch-and-pre-consent-no-op`.
+
+`require_current_surfer_consent` raises `ValueError(capture_denied_message)` when not `is_current`; `surfer_consent_dto` adds off-switch / stale / uninstall / denied chrome. Config: **`docs/test-bible/utils/config.md`**. Page + extension: **`docs/test-bible/frontend/pages.md`**, **`docs/test-bible/extension/lib.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Gate + DTO off-switch chrome | `src/core/candidate.py` | **`TestAst1238SurferConsentGate`** |
+
+**Broken / obsolete:** none — AST-1235/1237 helpers still apply.
+
+**Integration:** none (no page_intake capture route yet to revise).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1238SurferConsentGate \
+  tests/component/utils/test_config.py::TestAst1238SurferOffSwitchConfig \
+  -q
+```
+
+### AST-1259 · AST-1257
+
+**Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1259-dispatcher-and-core-candidate-pool-claim-parity`.
+
+Core `get_new_candidate_batch` / `clear_candidate_batch` wrappers (batch_id-first; cross-candidate pool; no score_floor / candidate_id scope). Dispatcher wiring: **`docs/test-bible/core/dispatcher.md`** § AST-1259.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Wrapper claim / clear / validation | `src/core/candidate.py` | **`TestAst1259CandidateBatchApi`** |
+
+**Broken / obsolete:** none in this module — wrappers are additive.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
   -q
 ```
 

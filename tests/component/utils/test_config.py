@@ -583,8 +583,8 @@ class TestAst471DispatchConfigHelpers:
 class TestAst796FetchJdSchedulableCutover:
     """AST-796: fetch_jd gazer hop; scrape_jd / validate_title / gaze_board retired.
 
-    AST-960: fetch_jd is not a TASK_CONFIG catalog key (gazer runtime only) — admin
-    defaults membership is TASK_CONFIG; derivation helpers remain for runtime wiring.
+    AST-960: fetch_jd is not a TASK_CONFIG catalog key (gazer runtime only).
+    AST-1214: helper-resolvable hops are first-class for dispatch_task_admin_defaults.
     """
 
     def test_fetch_jd_gazer_hop_not_task_config_catalog(self) -> None:
@@ -599,8 +599,10 @@ class TestAst796FetchJdSchedulableCutover:
         assert "gaze_board" in cfg.DISPATCH_RETIRED_TASK_KEYS
         assert _dispatch_trigger_state_for_task_key("fetch_jd") == "PASSED_JOBLIST"
         assert _dispatch_entity_type_for_task_key("fetch_jd") == "job"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_jd")
+        d = cfg.dispatch_task_admin_defaults("fetch_jd")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_JOBLIST"
+        assert d["batch_call_mode"] == 0
 
     def test_gazer_config_fetch_jd_without_transitional_alias(self) -> None:
         """AST-797 removed AST-796 read alias — runtime uses fetch_jd only."""
@@ -729,13 +731,14 @@ class TestAst1112ResumeHopTaskKeysShadowDeleted:
 
 
 class TestAst1113CraftTaskKeysShadowDeleted:
-    """AST-1113: craft_task_keys list gone; singular craft_task_key entry only."""
+    """AST-1113 → AST-1252: no craft hop list; stage entry is craft_get_rubric via task_key only."""
 
     def test_requested_artifacts_entry_key_only(self) -> None:
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
         assert "craft_task_keys" not in arts
-        assert arts["craft_task_key"] == "craft_company_search_terms"
-        assert arts["craft_task_key"] in cfg.TASK_CONFIG
+        assert "craft_task_key" not in arts
+        assert arts["task_key"] == "craft_get_rubric"
+        assert arts["task_key"] in cfg.TASK_CONFIG
 
 
 class TestAst848DispatchHopLabels:
@@ -1070,13 +1073,15 @@ class TestAst702PrefilterBatchConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: prefilter is roster runtime (not TASK_CONFIG) — helpers stay; defaults gate.
+        # AST-960: prefilter is roster runtime (not TASK_CONFIG). AST-1214: defaults via helpers.
         assert "prefilter" not in cfg.TASK_CONFIG
         assert _dispatch_batch_call_mode_for("prefilter") == 1
         assert _dispatch_trigger_state_for_task_key("prefilter") == "HOMEPAGE_READY"
         assert _dispatch_entity_type_for_task_key("prefilter") == "company"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("prefilter")
+        d = cfg.dispatch_task_admin_defaults("prefilter")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "HOMEPAGE_READY"
+        assert d["batch_call_mode"] == 1
 
 
 class TestAst707EmbeddedPrefilterConfig:
@@ -1179,7 +1184,7 @@ class TestAst719FetchJobPagesConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: fetch_job_pages is gazer runtime — not TASK_CONFIG catalog.
+        # AST-960: fetch_job_pages is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_job_pages" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_job_pages") == "PREFILTER_PASSED"
         assert _dispatch_entity_type_for_task_key("fetch_job_pages") == "company"
@@ -1187,8 +1192,9 @@ class TestAst719FetchJobPagesConfig:
         assert keys["pjl_scrape_pages"] == "pjl_scrape_pages"
         assert keys["pjl_assembled_content"] == "pjl_assembled_content"
         assert keys["pjl_nav_links"] == "pjl_nav_links"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_job_pages")
+        d = cfg.dispatch_task_admin_defaults("fetch_job_pages")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "PREFILTER_PASSED"
 
 
 class TestAst701FetchWebsiteConfig:
@@ -1215,13 +1221,14 @@ class TestAst701FetchWebsiteConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: fetch_website is gazer runtime — not TASK_CONFIG catalog.
+        # AST-960: fetch_website is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_website" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_website") == "WEBSITE_FOUND"
         assert _dispatch_entity_type_for_task_key("fetch_website") == "company"
         assert cfg.ROSTER_CONFIG["company_data_keys"]["homepage_text"] == "homepage_text"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_website")
+        d = cfg.dispatch_task_admin_defaults("fetch_website")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "WEBSITE_FOUND"
 
 
 class TestAst874FetchCulturePagesConfig:
@@ -1251,12 +1258,13 @@ class TestAst874FetchCulturePagesConfig:
         assert entry["fail_state"] == "NEED_CULTURE_CONTENT"
         assert entry["no_links_state"] == "NO_CULTURE_LINKS"
         assert entry["fallback_batch_size"] == 10
-        # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG catalog.
+        # AST-960: fetch_culture_pages is gazer runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "fetch_culture_pages" not in cfg.TASK_CONFIG
         assert _dispatch_trigger_state_for_task_key("fetch_culture_pages") == "PASSED_GET"
         assert _dispatch_trigger_state_for_task_key("grade_like") == "CULTURE_READY"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("fetch_culture_pages")
+        d = cfg.dispatch_task_admin_defaults("fetch_culture_pages")
+        assert d["entity_type"] == "job"
+        assert d["trigger_state"] == "PASSED_GET"
         like_defaults = cfg.dispatch_task_admin_defaults("grade_like")
         assert like_defaults["trigger_state"] == "CULTURE_READY"
 
@@ -1411,12 +1419,13 @@ class TestAst505InflowDiscoveryConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG catalog.
+        # AST-960: inflow_discovery is inflow runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "inflow_discovery" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_discovery") == "candidate"
         assert _dispatch_trigger_state_for_task_key("inflow_discovery") == "ACTIVE_SEARCH"
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("inflow_discovery")
+        d = cfg.dispatch_task_admin_defaults("inflow_discovery")
+        assert d["entity_type"] == "candidate"
+        assert d["trigger_state"] == "ACTIVE_SEARCH"
 
     def test_vet_inflow_discovery_dispatch_admin_defaults(self) -> None:
         d = cfg.dispatch_task_admin_defaults("vet_inflow_discovery")
@@ -1444,13 +1453,15 @@ class TestAst506InflowResolveConfig:
             _dispatch_trigger_state_for_task_key,
         )
 
-        # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG catalog.
+        # AST-960: inflow_resolve_website is inflow runtime — not TASK_CONFIG. AST-1214: defaults resolve.
         assert "inflow_resolve_website" not in cfg.TASK_CONFIG
         assert _dispatch_entity_type_for_task_key("inflow_resolve_website") == "company"
         assert _dispatch_trigger_state_for_task_key("inflow_resolve_website") == "NEW"
         assert _dispatch_batch_call_mode_for("inflow_resolve_website") == 0
-        with pytest.raises(KeyError, match="unknown task_key"):
-            cfg.dispatch_task_admin_defaults("inflow_resolve_website")
+        d = cfg.dispatch_task_admin_defaults("inflow_resolve_website")
+        assert d["entity_type"] == "company"
+        assert d["trigger_state"] == "NEW"
+        assert d["batch_call_mode"] == 0
 
 
 class TestAst508InflowLocateConfig:
@@ -2105,7 +2116,15 @@ class TestAst970CandidateStateRegistry:
         assert companies["visible"] == "ACTIVE_SEARCH"
         assert artifacts["visible"] == "RESUME_READY"
         gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
-        assert gen == ["RESUME_READY", "ACTIVE_SEARCH"]
+        # AST-1253: Generate/Regenerate available through search states (not while chain claimed).
+        assert gen == [
+            "RESUME_READY",
+            "RESUME_READY_STALE",
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+        ]
         assert all(s in cfg.CANDIDATE_STATES for s in gen)
 
     def test_retired_four_step_names_absent(self) -> None:
@@ -2118,25 +2137,19 @@ class TestAst970CandidateStateRegistry:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst972CandidateStageDispatch:
-    """AST-972: CANDIDATE_STAGE_DISPATCH + claim/trigger helpers for REQUESTED_*."""
+    """AST-972 → AST-1252: CANDIDATE_STAGE_DISPATCH artifacts entry + claim/trigger helpers."""
 
     def test_stage_dispatch_map_and_task_config(self) -> None:
-        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
+        assert "requested_resume" not in cfg.CANDIDATE_STAGE_DISPATCH
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert resume["task_key"] == "candidate_requested_resume"
-        assert resume["trigger_state"] == "REQUESTED_RESUME"
-        assert resume["pass_state"] == "RESUME_READY"
-        assert resume["craft_task_key"] == "craft_resume_base"
-        assert arts["task_key"] == "candidate_requested_artifacts"
+        assert arts["task_key"] == "craft_get_rubric"
         assert arts["trigger_state"] == "REQUESTED_ARTIFACTS"
         assert arts["pass_state"] == "ARTIFACTS_READY"
-        assert "craft_resume_base" in cfg.TASK_CONFIG
-        assert resume["task_key"] in cfg.TASK_CONFIG
-        assert arts["task_key"] in cfg.TASK_CONFIG
-        # AST-1113: singular entry key — hop order is agent_task.run_next, not craft_task_keys.
-        assert arts["craft_task_key"] == "craft_company_search_terms"
+        assert "craft_task_key" not in arts
         assert "craft_task_keys" not in arts
-        assert arts["craft_task_key"] in cfg.TASK_CONFIG
+        assert arts["task_key"] in cfg.TASK_CONFIG
+        assert "candidate_requested_resume" not in cfg.TASK_CONFIG
+        assert "candidate_requested_artifacts" not in cfg.TASK_CONFIG
 
     def test_claim_states_include_retry_companions(self) -> None:
         assert cfg.dispatch_claim_states("REQUESTED_RESUME", "candidate") == [
@@ -2155,13 +2168,11 @@ class TestAst972CandidateStageDispatch:
             _dispatch_trigger_state_for_task_key,
         )
 
-        assert _dispatch_trigger_state_for_task_key("candidate_requested_resume") == "REQUESTED_RESUME"
-        assert _dispatch_trigger_state_for_task_key("candidate_requested_artifacts") == "REQUESTED_ARTIFACTS"
-        assert _dispatch_entity_type_for_task_key("candidate_requested_resume") == "candidate"
-        assert _dispatch_entity_type_for_task_key("candidate_requested_artifacts") == "candidate"
-        d = cfg.dispatch_task_admin_defaults("candidate_requested_resume")
+        assert _dispatch_trigger_state_for_task_key("craft_get_rubric") == "REQUESTED_ARTIFACTS"
+        assert _dispatch_entity_type_for_task_key("craft_get_rubric") == "candidate"
+        d = cfg.dispatch_task_admin_defaults("craft_get_rubric")
         assert d["entity_type"] == "candidate"
-        assert d["trigger_state"] == "REQUESTED_RESUME"
+        assert d["trigger_state"] == "REQUESTED_ARTIFACTS"
 
 
 
@@ -2170,13 +2181,77 @@ class TestAst972CandidateStageDispatch:
     reason="AST-972 product not on this publish tip",
 )
 class TestAst1022HonorAutoOffStageDispatch:
-    """AST-1022: CANDIDATE_STAGE_DISPATCH seeds AUTO off for new stage rows."""
+    """AST-1022 → AST-1252: remaining stage entry seeds AUTO off."""
 
     def test_stage_dispatch_auto_mode_seed_false(self) -> None:
-        resume = cfg.CANDIDATE_STAGE_DISPATCH["requested_resume"]
         arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-        assert resume["auto_mode"] is False
         assert arts["auto_mode"] is False
+
+
+class TestAst1252ArtifactsDispatchChainConfig:
+    """AST-1252: wrappers retired; craft_get_rubric stage entry; REQUESTED_RESUME selectable."""
+
+    def test_wrappers_retired_and_messaged(self) -> None:
+        from src.utils.config import dispatch_task_key_retired_message
+
+        for tk in ("candidate_requested_resume", "candidate_requested_artifacts"):
+            assert tk in cfg.DISPATCH_RETIRED_TASK_KEYS
+            assert tk not in cfg.TASK_CONFIG
+            msg = dispatch_task_key_retired_message(tk)
+            assert "craft_get_rubric" in msg
+            assert "REQUESTED_ARTIFACTS" in msg
+
+    def test_craft_get_rubric_defaults_and_resume_trigger_allowed(self) -> None:
+        # AC2: registry membership only — REQUESTED_RESUME stays valid for craft_get_rubric create.
+        from src.utils.config import CANDIDATE_STATES, TASK_CONFIG
+        assert "REQUESTED_RESUME" in CANDIDATE_STATES
+        assert "craft_get_rubric" in TASK_CONFIG
+        # Mirror admin helper predicate without importing Flask-bound api_admin.
+        assert "REQUESTED_RESUME" in CANDIDATE_STATES
+        assert "REQUESTED_ARTIFACTS" in CANDIDATE_STATES
+
+    def test_no_hop_order_list_in_stage_or_config_assert(self) -> None:
+        arts = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        assert set(arts.keys()) == {"task_key", "trigger_state", "pass_state", "auto_mode"}
+        assert arts["task_key"] == "craft_get_rubric"
+
+
+class TestAst1253GenerateRegenerateHandoffConfig:
+    """AST-1253: REQUESTED_ARTIFACTS re-entry priors + unordered NAV path map (no hop list)."""
+
+    def test_requested_artifacts_priors_include_regenerate_states(self) -> None:
+        priors = cfg.CANDIDATE_STATES["REQUESTED_ARTIFACTS"]["prior_states"] or []
+        for state in (
+            "RESUME_READY",
+            "RESUME_READY_STALE",
+            "REQUESTED_ARTIFACTS_RETRY",
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+        ):
+            assert state in priors
+        assert "REQUESTED_ARTIFACTS_ERROR" not in priors
+
+    def test_chain_nav_path_map_covers_live_hops_without_ordering_list(self) -> None:
+        path_map = cfg.CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH
+        expected = {
+            "craft_get_rubric": "/artifacts/get_job_criteria",
+            "craft_do_rubric": "/artifacts/do_job_criteria",
+            "craft_like_rubric": "/artifacts/like_job_criteria",
+            "craft_jobdesc_rubric": "/artifacts/job_description_criteria",
+            "craft_evaluate_meteorite_rubric": "/artifacts/meteorite_criteria",
+            "craft_joblist_rubric": "/artifacts/job_list_criteria",
+            "craft_prefilter_rubric": "/artifacts/company_watch_criteria",
+            "craft_company_search_terms": "/artifacts/company_search_terms",
+        }
+        assert path_map == expected
+        # Membership map is not CRAFT_RUBRIC_UI_TASK_KEYS (search terms is chain-only).
+        assert "craft_company_search_terms" in path_map
+        assert "craft_company_search_terms" not in cfg.CRAFT_RUBRIC_UI_TASK_KEYS
+        # No sequencing frozenset / ordered hop list beside the unordered path map.
+        assert not hasattr(cfg, "CRAFT_ARTIFACTS_CHAIN_HOP_ORDER")
+        assert not hasattr(cfg, "REQUESTED_ARTIFACTS_CHAIN_TASK_KEYS")
 
 
 class TestAst973LegacyCandidateRemap:
@@ -3604,7 +3679,11 @@ class TestAst1089ParseMeteoriteEmailConfig:
         parse_cfg = cfg.METEORITE_EMAIL_PARSE_CONFIG
         assert parse_cfg["task_key"] == "meteorite_email"
         assert set(parse_cfg["parse_modes"]) == {"html_links", "subject_body"}
-        # Old live key must be gone (no compat shim).
+        # AST-1214: live seed name until AST-1182 rename — Admin fold key, not TASK_CONFIG.
+        assert parse_cfg["legacy_agent_task_key"] == "parse_meteorite_email"
+        assert parse_cfg["admin_entity_type"] == "candidate"
+        assert cfg.is_meteorite_email_mailbox_task_key("parse_meteorite_email")
+        assert cfg.is_meteorite_email_mailbox_task_key("meteorite_email")
         assert "parse_meteorite_email" not in cfg.TASK_CONFIG
 
         tc = cfg.TASK_CONFIG["meteorite_email"]
@@ -4201,3 +4280,129 @@ class TestAst1222MeteoriteAliasDispatchAndSeed:
         # Classic Gaze still masters (not aliases).
         assert cfg.is_task_alias("grade_do") is False
         assert cfg.TASK_CONFIG["grade_do"]["pass_state"] == "PASSED_DO"
+# Branches: SURFER_PACING_CONFIG defaults + MV3 idle window contract (AST-1236).
+class TestAst1236SurferPacingConfig:
+    def test_surfer_pacing_defaults_and_mv3_window(self) -> None:
+        s = cfg.SURFER_PACING_CONFIG
+        assert s["dwell_center_seconds"] == 10
+        assert s["dwell_spread_seconds"] == 5
+        assert s["max_tabs"] == 1
+        assert s["mv3_idle_ceiling_seconds"] == 30
+        floor = s["dwell_center_seconds"] - s["dwell_spread_seconds"]
+        ceiling = s["dwell_center_seconds"] + s["dwell_spread_seconds"]
+        assert floor > 0
+        assert ceiling < s["mv3_idle_ceiling_seconds"]
+
+# Branches: SURFER_BATCH_CONFIG vocab + auto-complete flag contract (AST-1229).
+class TestAst1229SurferBatchConfig:
+    def test_surfer_batch_config_vocab_and_flags(self) -> None:
+        s = cfg.SURFER_BATCH_CONFIG
+        assert s["batch_id_prefix"] == "surfer"
+        assert s["candidate_data_lifecycle_key"] == "active_surfer_batch_id"
+        assert s["initial_status"] == "RUNNING"
+        assert s["initial_url_outcome"] == "pending"
+        assert set(s["statuses"]) == {"RUNNING", "COMPLETED", "CANCELLED"}
+        assert set(s["url_outcomes"]) == {"pending", "delivered", "success", "failed"}
+        assert s["statuses"]["RUNNING"]["terminal"] is False
+        assert s["statuses"]["COMPLETED"]["terminal"] is True
+        assert s["statuses"]["COMPLETED"]["requires_all_urls_terminal"] is True
+        assert s["statuses"]["CANCELLED"]["terminal"] is True
+        assert s["statuses"]["CANCELLED"]["requires_all_urls_terminal"] is False
+        assert s["url_outcomes"]["pending"]["terminal"] is False
+        assert s["url_outcomes"]["delivered"]["terminal"] is False
+        assert s["url_outcomes"]["success"]["terminal"] is True
+        assert s["url_outcomes"]["failed"]["terminal"] is True
+        auto = [
+            name for name, v in s["statuses"].items() if v["requires_all_urls_terminal"]
+        ]
+        assert auto == ["COMPLETED"]
+        assert "stale_after_hours" not in s
+
+# Branches: SURFER_CONSENT_CONFIG key / version / copy / statuses (AST-1235).
+class TestAst1235SurferConsentConfig:
+    def test_surfer_consent_config_contract(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        assert s["candidate_data_key"] == "surfer_consent"
+        assert isinstance(s["current_version"], str) and s["current_version"].strip()
+        assert isinstance(s["disclosure_copy"], str) and s["disclosure_copy"].strip()
+        assert s["statuses"] == ("none", "opted_in", "opted_out")
+        assert s["default_status"] == "none"
+        assert s["default_status"] in s["statuses"]
+        assert len(s["statuses"]) == len(set(s["statuses"]))
+
+# Branches: chrome strings, version bump to 2, copy weight, Candidate nav (AST-1237).
+class TestAst1237SurferConsentDisclosureConfig:
+    def test_chrome_version_copy_and_nav(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        assert s["current_version"] == "2"
+        for key in (
+            "disclosure_title",
+            "opt_in_label",
+            "decline_label",
+            "current_ok_title",
+            "current_ok_body",
+        ):
+            assert isinstance(s[key], str) and s[key].strip()
+        copy = s["disclosure_copy"]
+        assert "logged-in session" in copy
+        assert "terms of service" in copy
+        assert "account-level consequence" in copy
+        assert "optional" in copy.lower()
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        paths = [i["path"] for i in cand["items"]]
+        assert "/candidate/surfer_consent" in paths
+        assert any(i["label"] == "Surfer Consent" for i in cand["items"])
+
+# Branches: off-switch / stale / uninstall / capture-denied copy + Surfer nav (AST-1238).
+class TestAst1238SurferOffSwitchConfig:
+    def test_off_switch_copy_and_nav(self) -> None:
+        s = cfg.SURFER_CONSENT_CONFIG
+        for key in (
+            "off_switch_heading",
+            "off_switch_button_label",
+            "off_switch_confirm",
+            "status_on_label",
+            "status_off_label",
+            "status_stale_label",
+            "uninstall_guidance",
+            "capture_denied_message",
+        ):
+            assert isinstance(s[key], str) and s[key].strip()
+        assert "extension disclosure" in s["capture_denied_message"].lower()
+        assert "Astral Surfer page" not in s["capture_denied_message"]
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        paths = [i["path"] for i in cand["items"]]
+        assert "/candidate/surfer" in paths
+        assert any(i["label"] == "Surfer" for i in cand["items"])
+
+
+# Branches: AST-1214 helper-resolvable + meteorite mailbox admin defaults.
+class TestAst1214DispatchAdminDefaultsWidened:
+    """AST-1214: helper-resolvable hops + meteorite mailbox fold for admin defaults."""
+
+    def test_helper_resolvable_and_mailbox_defaults(self) -> None:
+        expected = {
+            "fetch_jd": ("job", "PASSED_JOBLIST"),
+            "fetch_job_pages": ("company", "PREFILTER_PASSED"),
+            "fetch_website": ("company", "WEBSITE_FOUND"),
+            "fetch_culture_pages": ("job", "PASSED_GET"),
+            "inflow_discovery": ("candidate", "ACTIVE_SEARCH"),
+            "gaze": ("company", "WATCH"),
+            "recheck_no_openings": ("company", "NO_OPENINGS"),
+            "prefilter": ("company", "HOMEPAGE_READY"),
+            "inflow_resolve_website": ("company", "NEW"),
+        }
+        for tk, (et, ts) in expected.items():
+            d = cfg.dispatch_task_admin_defaults(tk)
+            assert d["entity_type"] == et
+            assert d["trigger_state"] == ts
+        mailbox = {
+            "entity_type": "candidate",
+            "trigger_state": None,
+            "sort_by": None,
+            "batch_call_mode": 0,
+        }
+        assert cfg.dispatch_task_admin_defaults("parse_meteorite_email") == mailbox
+        assert cfg.dispatch_task_admin_defaults("meteorite_email") == mailbox
+        with pytest.raises(KeyError, match="unknown task_key"):
+            cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
