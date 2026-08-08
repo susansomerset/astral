@@ -263,3 +263,16 @@ Implementation follows Stages 1–4 exactly: `TASK_CONFIG["draft_job_resume"]` c
 
 context_tokens≈145000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** `[code-rubric] revision=2` Overall DISCUSS @ `e748483d` — zero **fix-now**.
+
+| Finding | Disposition |
+|---------|-------------|
+| **discuss** — hard-fail when truthy candidate has no `artifacts.base_resume` section keys | **Accepted as planned.** Plan Decision + Stage 2 step 3: whitelist = `base_resume` ∩ known section ids; empty whitelist → `"candidate has no base_resume section keys"`. Matches parent Functional scope (draft whitelist is base_resume keys, not structure fallback). No product change. Susan can reverse on parent UAT if the flip is wrong. |
+| **discuss** — validate (`base_resume`) vs persist (`resolve_resume_structure` enabled catalog) divergence | **Out of scope this child** (Boundaries / siblings). Documented for AST-1271 / AST-1272 / future watch. No product change. |
+| **discuss** — AST-1269 test-tree content via `origin/tests` | **Already cleared** on tip by Radia's merge-clean gate before `docs(AST-1270)`. No further action. |
+
+No product code changes in resolve. Commit: `resolve(AST-1270): — clean`.
