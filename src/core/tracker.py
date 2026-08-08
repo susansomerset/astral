@@ -22,6 +22,7 @@ from src.utils.config import (
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_STATES,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    TASK_CONFIG,
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
     dispatch_hop_label,
@@ -304,6 +305,11 @@ def _resume_payload_body(parsed: Any) -> Dict[str, Any]:
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
     if not isinstance(body, dict):
         return {}
+    # AST-1270: prefer nested resume body so envelope keys never look like sections.
+    nest_key = TASK_CONFIG["draft_job_resume"]["nested_resume_key"]
+    nested = body.get(nest_key)
+    if isinstance(nested, dict):
+        body = nested
     out: Dict[str, Any] = {}
     for k, v in body.items():
         if isinstance(v, str):
