@@ -99,6 +99,34 @@ class TestJobsRoutes:
         resp = jobs_client.get("/api/jobs/job-1", headers=auth_headers)
         assert resp.get_json()["agent_story"][0]["task_key"] == "x"
 
+    def test_detail_soft_fails_agent_story(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1274: story hydrate failure must not 500 detail.
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda job_id: {
+                "astral_job_id": job_id,
+                "job_title": "Analyst",
+                "company": "Globex",
+                "job_data": {},
+            },
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_entity_agent_story",
+            MagicMock(side_effect=ValueError("ref target missing")),
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False: art or {},
+        )
+        resp = jobs_client.get("/api/jobs/job-1274", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["astral_job_id"] == "job-1274"
+        assert body["agent_story"] == []
+
     def test_skip_job_updates_state(self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(jobs_mod, "get_job", lambda job_id: {"astral_job_id": job_id, "state": "CANDIDATE_REVIEW", "state_history": []})
         transition = MagicMock()

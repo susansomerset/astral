@@ -354,3 +354,54 @@ class TestAst978BackfillAgentDataRefs:
         assert result["errors"] == 1
         assert result["skipped_already_ref"] == 1
 
+
+class TestAst1274ResolveNullBlockDataRef:
+    """AST-1274: null/empty local + populated ref resolves; local body preferred when present."""
+
+    def test_empty_string_block_data_with_ref_resolves(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_data(
+            "canon-1", "company", "t", "batch-1274", "SYSTEM", "canonical-body",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_data_schema(conn)
+            # Empty BLOB (not NULL) + populated ref — must follow, not return blank.
+            conn.execute(
+                """INSERT INTO agent_data
+                   (agent_data_id, entity_type, task_key, batch_id, created_at,
+                    block_type, block_data, token_size, ref_agent_data_id)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    "alias-empty", "company", "t", "batch-1274",
+                    "2026-01-02T00:00:00+00:00", "RESPONSE", "", 0, "canon-1",
+                ),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+
+        by_id = db.get_agent_data("alias-empty")
+        assert by_id is not None
+        assert by_id["block_data"] == "canonical-body"
+        by_ids = db.get_agent_data_for_ids(["alias-empty"])
+        assert by_ids["alias-empty"]["block_data"] == "canonical-body"
+
+    def test_local_body_preferred_over_ref(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_agent_data(
+            "canon-1", "company", "t", "batch-1274b", "SYSTEM", "from-ref",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        _insert_content_row(
+            db,
+            agent_data_id="alias-local",
+            plain="from-local",
+            created_at="2026-01-02T00:00:00+00:00",
+            ref_agent_data_id="canon-1",
+        )
+        row = db.get_agent_data("alias-local")
+        assert row is not None
+        assert row["block_data"] == "from-local"
+        assert row["ref_agent_data_id"] == "canon-1"

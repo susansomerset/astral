@@ -7,6 +7,11 @@ export const baseCandidate = {
   astral_candidate_id: candidateId,
   state: "ACTIVE",
   candidate_data: {
+    // AST-1014 shape — JAR reads candidate_data.contact (keep profile for older pages).
+    contact: {
+      contact_email: "ada@example.com",
+      linkedin_url: "https://linkedin.com/in/ada",
+    },
     profile: {
       contact_email: "ada@example.com",
       linkedin_url: "https://linkedin.com/in/ada",
