@@ -158,3 +158,48 @@ Changes: extract reads `deviations_artifact_key` only; `persist_job_artifact_fro
 **Tip:** `a7d2d38e`
 
 Stages landed: config artifact slot + clear-keys → tracker extract/save + resume-body meta skip → `do_task` success persist.
+
+## Radia review — code-rubric.v2
+
+**[code-rubric] revision=1**
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1271
+**Overall:** CLEAN
+**Diff:** `origin/dev...origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` @ `7ecf8cd5`
+
+### Full-set sweep
+
+68 active statutes considered (18 universal + 50 scoped). 17 scoped statutes apply on the touched layers/paths (core: `agent.py`, `tracker.py`; utils: `config.py`) and all conform. 33 scoped excluded on layer/path predicate (batch, seed, ui, state, agent-grade, debug-contract-gated — no new debug lines, correctly deferred to AST-1272 per plan). Zero `violates`, zero new `discuss`.
+
+Notable conformances:
+- `astral.config.config-source-of-truth` — `deviations_artifact_key` lives once on `TASK_CONFIG["draft_job_resume"]`; `extract_draft_job_resume_deviations` reads only that key (no hardcoded `"deviations"` literal in `tracker.py`).
+- `astral.standards.no-hardcoded-sets` — the `"deviations"` literal in `JOB_BUILD_ARTIFACT_CLEAR_KEYS` is the same config-module tuple pattern already used for `job_resume` / `cover_letter` / `application_responses`; no parallel core frozenset invented.
+- `astral.idioms.coat-check-never-store-empty` — extract helper's absent→`None` (no write, prior value untouched) vs present-but-empty→`[]` (written, "model said none" recorded) distinction is exactly this idiom.
+- `astral.standards.data-raises-caller-logs` — `save_job_data` raises on unknown job id; the Stage 3 `do_task` call wraps it in try/except + `logger.error`, matching the plan's explicit "best-effort, do not fail the hop" instruction.
+- `astral.standards.no-cross-contamination` — `git log origin/dev..origin/sub/.../AST-1271` confirms Hedy's `code()` commits touch only `src/utils/config.py`, `src/core/tracker.py`, `src/core/agent.py`; `candidate.py` in the diff is entirely AST-1270's own inherited commits via the `ftr` merge, not re-touched here.
+- `astral.git.engineer-test-tree-ban` — Hedy's `code()` commits (`749160d0`, `3aecabd4`, `199f09c5`) touch no `tests/` or `docs/test-bible/` paths.
+
+### Pattern conformance
+
+None cited in the plan's Self-Assessment; none found unintentionally matched.
+
+### Plan adherence
+
+Stages 1–3 landed in order, no scope expansion:
+- Stage 1: `deviations_artifact_key` on `TASK_CONFIG["draft_job_resume"]` + `"deviations"` added to `JOB_BUILD_ARTIFACT_CLEAR_KEYS`, literal match.
+- Stage 2: `extract_draft_job_resume_deviations` / `save_job_artifact_deviations` / `persist_draft_job_resume_deviations` added next to the sibling artifact-save helpers; `_resume_payload_body` now skips `nest_key` and every `payload_metadata_keys` entry, matching the plan's literal skip list; `persist_job_artifact_from_parsed`'s deviations call sits outside the `allow_resume` gate, ungated as Revision 1 requires.
+- Stage 3: `do_task` hook placed immediately after the AST-1099 pin block, gated on `task_key == "draft_job_resume" and result.get("success") and index`, lazy-imports `persist_draft_job_resume_deviations`, try/except logs and continues without failing the hop — matches literally.
+
+Both `discuss` findings from Joan's `plan-rubric.v1` (Revision 1) verified resolved in the built code:
+1. `meta_key` ambiguity — resolved to `deviations_artifact_key`-only lookup, no literal in `tracker.py`.
+2. `persist_job_artifact_from_parsed` `allow_resume` gate — the deviations write is unconditional, outside that gate, as landed.
+
+### Findings
+
+None. Zero fix-now, zero discuss, zero advisory.
+
+### Frame diff
+
+No frame changes from Joan's plan-rubric verdict — both discuss items were resolved in code exactly as recommended, no new architectural surface introduced beyond the plan's three files.
+
+— Radia
