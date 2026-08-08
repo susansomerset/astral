@@ -203,3 +203,11 @@ None. Zero fix-now, zero discuss, zero advisory.
 No frame changes from Joan's plan-rubric verdict — both discuss items were resolved in code exactly as recommended, no new architectural surface introduced beyond the plan's three files.
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** Radia `[code-rubric] revision=1` — **Overall: CLEAN** (`origin/.../AST-1271-...` @ `36ef32c8` / product tip `7ecf8cd5`).
+
+No fix-now, discuss, or advisory items. Joan's plan-rubric discuss items were already closed in build (Revision 1 + Stages 1–3). Resolution is clean sign-off only — no product delta.
+
