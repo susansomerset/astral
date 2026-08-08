@@ -162,3 +162,13 @@ return jsonify({
 Revision 1 — 2026-08-08
 Driven by: Joan `[plan-discuss] round=1 concern` — fix-now: same-state no-op in core loosens automation fail-closed (AC4); discuss: typed exception vs message-prefix contract; discuss: INFO on forced hop.
 Changes: Removed core same-state early-return; skip same-state only in `update_candidate_data` before calling transition; raise/catch `IllegalCandidateTransition` instead of string-prefix matching; add INFO log when a forced apply bypasses prior_states.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1285/AST-1287-admin-confirm-override`  
+**Tip:** `117f64c4`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `8cec790b` | `IllegalCandidateTransition` + `force=` on `transition_candidate_state` |
+| 2 | `117f64c4` | Admin `confirm_state_override` + structured illegal-hop 400 |
