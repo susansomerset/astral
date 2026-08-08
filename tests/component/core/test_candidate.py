@@ -127,7 +127,7 @@ class TestTransitionCandidateState:
         monkeypatch.setattr(
             candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
         )
-        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+        with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
 
     def test_rejects_unknown_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1576,7 +1576,7 @@ class TestAst970CandidateStateMachine:
             "get_candidate",
             lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
         )
-        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+        with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
 
     def test_deleted_starts_reap_timer(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1692,7 +1692,7 @@ class TestAst971CandidateTransitionHistory:
             lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+        with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
         save.assert_not_called()
 
@@ -4353,4 +4353,65 @@ class TestAst1272DraftHopDebugWhitelistTrail:
         )
         idx.assert_not_called()
         detail.assert_not_called()
+
+
+class TestAst1287ForceTransition:
+    """AST-1287: keyword-only force= on transition_candidate_state."""
+
+    def test_force_applies_illegal_hop_and_appends_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH", force=True)
+        assert save.call_args.kwargs["state"] == "ACTIVE_SEARCH"
+        hist = save.call_args.kwargs["state_history"]
+        assert hist[-1]["from_state"] == "NEW_CANDIDATE"
+        assert hist[-1]["to_state"] == "ACTIVE_SEARCH"
+
+    def test_default_force_false_still_rejects_illegal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        with pytest.raises(candidate_mod.IllegalCandidateTransition) as ei:
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+        assert ei.value.from_state == "NEW_CANDIDATE"
+        assert ei.value.to_state == "ACTIVE_SEARCH"
+
+    def test_force_cannot_invent_unknown_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        with pytest.raises(ValueError, match="Unknown candidate state") as ei:
+            candidate_mod.transition_candidate_state("somerset", "LIVE_PROMPTS", force=True)
+        assert not isinstance(ei.value, candidate_mod.IllegalCandidateTransition)
+
+    def test_same_state_illegal_without_force(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # No core same-state no-op — ACTIVE_SEARCH is not in its own prior_states
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "ACTIVE_SEARCH", "state_history": []},
+        )
+        with pytest.raises(candidate_mod.IllegalCandidateTransition):
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+
+    def test_force_on_legal_hop_still_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED", force=True)
+        assert save.call_args.kwargs["state"] == "INTAKE_INITIATED"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INTAKE_INITIATED"
 
