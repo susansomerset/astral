@@ -22,7 +22,7 @@
 
 ### AST-468 · AST-376
 
-**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **`pass_threshold`** vs **`score_floor`**: **`docs/ASTRAL_CODE_RULES.md`** subsection under §2.1; claim gating vs grading metadata: **§7.13zv** (**AST-586**).
+**`resolve_dispatch_task_config_key`**, **`dispatch_task_key_is_scored`**, **`dispatch_claim_uses_score_floor`**, **`trigger_state_used_by_scored_dispatch_task`**, **`dispatch_task_admin_defaults`** centralize **`consult_*` → `grade_*`** indirection and admin form defaults for **`dispatcher.py`**, **`database.py`**, and **`api_admin.py`**. **AST-960** deleted **`DISPATCH_SCHEDULABLE_TASK_KEYS`** — catalog membership is **`TASK_CONFIG`** only (gazer/roster/inflow gap keys stay on derivation helpers, not admin defaults). **AST-1277:** **`pass_threshold`** stripped from **`TASK_CONFIG`**; **`effective_dispatch_score_floor`** + **`dispatch_row_task_key`** shared by claim + scored verdict (primary: **`docs/test-bible/core/consult.md`** § AST-1277). Claim gating vs grading metadata: **§7.13zv** (**AST-586**). Statute/Code Rules rewrite: **AST-1279**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -535,24 +535,25 @@ Removes legacy `phase` / `seq` from every `TASK_CONFIG` entry. **AST-740** origi
 
 ### AST-750 · AST-743
 
-**`DISPATCH_SCORE_FLOOR_VALUES`** (0.0–10.0 in 0.5 steps) and **`dispatch_score_floor_option_labels()`** are the single source of truth for the admin Edit Dispatch Task **Score Floor** `<select>`. **`GET /api/admin/dispatch_tasks/score_floor_options`** exposes the label list; **`AdminScheduledActions.tsx`** fetches options on load and persists **0.00** via `Number.isFinite` save coercion (not `parseFloat(...) || 1`).
+**`DISPATCH_SCORE_FLOOR_VALUES`** (0.0–10.0 in 0.5 steps) and **`dispatch_score_floor_option_labels()`** are the single source of truth for the admin Edit Dispatch Task **Score Floor** `<select>`. **`GET /api/admin/dispatch_tasks/score_floor_options`** exposes the label list; **`AdminScheduledActions.tsx`** fetches options on load and persists **0.00** via `Number.isFinite` save coercion (not falsy `parseFloat` → **1**). §6c zero-save case restored under **AST-1278**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Catalog tuple + label helper | `src/utils/config.py` | `TestAst750DispatchScoreFloorCatalog` (`test_config.py`) |
 | Admin metadata endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (score_floor_options assertion) |
-| Scheduled Actions modal (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-750: edit save sends score_floor 0 when 0.00 selected`** |
+| Scheduled Actions modal (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | `test_AdminScheduledActions.test.tsx` — **`AST-1278: edit save sends score_floor 0 when 0.00 selected`** |
 
-**AST-750** narrowed run:
+**AST-750** / **AST-1278** narrowed run:
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
   tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor \
   -q
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
-  -t "AST-750"
+  -t "AST-1278"
 ```
 
 
