@@ -151,3 +151,10 @@ The plan is binding. The agent:
 Revision 1 — 2026-08-08  
 Driven by: Joan `[plan-rubric] revision=1` discuss (APPROVED) — Stage 2 step 1 meta_key ambiguity; Stage 2 step 5 `allow_resume` gate / dual-path DRY claim.  
 Changes: extract reads `deviations_artifact_key` only; `persist_job_artifact_from_parsed` deviations write is ungated on `allow_resume` and documented as non-production path; Code rules DRY line corrected.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`
+**Tip:** `199f09c5`
+
+Stages landed: config artifact slot + clear-keys → tracker extract/save + resume-body meta skip → `do_task` success persist.
