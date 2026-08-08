@@ -1,3 +1,356 @@
+<!-- linear-archive: AST-1133 archived 2026-08-07 -->
+
+## Linear archive (AST-1133)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1133/qualify-meteorite-for-list-created-meteorites-manage-email-create  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1130 — Manage Email create button for job lists isn't working  
+**Blocked by / blocks / related:** parent: AST-1130
+
+### Description
+
+## What this implements
+
+After #1 and #2 produce clean **METEORITE_NEW** Dice (or ATS) rows, owns restoring end-to-end qualify so usable extracts reach **METEORITE_QUALIFIED** with title + `company_job_id` (investigate remaining **METEORITE_ERROR_QUALIFY** vs content **FAILED_QUALIFY**). Does **not** widen gaze_email Ruth parse (AST-1089) or change GDL.
+
+## In scope
+
+- [X] `pattern.batch.entity-claim-process-release` — keep claim → `_run_batch_consult` → process → release; harden id reconciliation only
+- [X] `pattern.state.entity-state-transitions` — outcomes stay **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** / **METEORITE_ERROR_QUALIFY**
+- [X] `astral.agent.do-task-delegation` — Ruth still via `do_task` / consult; no UI LLM
+- [X] `astral.state.core-decides-transitions` — core owns QUALIFIED vs FAILED vs ERROR landings
+- [X] `astral.standards.debug-contract-gated` — Style D bind/link-source detail only when `debug=True`
+- [X] `astral.standards.in-scope-only` — `src/core/consult.py` only; no gazer / gaze_email / GDL
+- [X] `astral.layers.import-direction` — `normalize_link` from utils into core
+- [X] `astral.standards.dry-and-focused-functions` — second bind helper; leave AST-1076 digit rules intact
+
+## Considered but excluded
+
+* Paste HTML normalize / nested autolink unwrap — **AST-1131** (`src/utils/formatting.py`, inbox/gazer wire)
+* Link exclude/allow / non-job Playwright skip / candidate-scoped dedupe — **AST-1132** (`gazer.py`, ingest config)
+* `gaze_email` Ruth parse widen (AST-1089) / gaze_email dispatch redesign (AST-1087 / AST-1128) — out of epic boundary
+* GDL / Recommended meteorites UI / new job states — parent Boundaries
+* Force `batch_size=1` or per-job `do_task` fan-out — invents parallel batch shape; parent forbids
+* Widen AST-1076 multi-job non-digit UUID remap for all `_run_batch_consult` callers — listing grades stay digit/empty-only; this ticket adds qualify-only `job_link` bind
+* Loosen `job_title` / `jd_text` schema `required` or input-JD title fallback — content FAILED stays content FAILED
+* `tests/` / bible — Betty after Code Complete
+
+## Acceptance criteria
+
+- [X] After Create of only the real postings from that email, running `qualify_meteorite` moves each usable job to **METEORITE_QUALIFIED** with non-empty `job_title` and non-empty `company_job_id`; none of those usable rows end on **METEORITE_ERROR_QUALIFY**.
+- [X] Multi-job batches where Ruth echoes non-claimed non-digit `astral_job_id` but matching `job_link` still bind and can QUALIFY (not blanket ERROR).
+- [X] When Ruth omits/non-http `job_link` but Create stored a clean http(s) ATS URL, process uses the Create link for http gate + UUID resolve + persist (not content FAILED solely for empty Ruth link).
+- [X] True content/bogus failures (short title, short jd, no resolvable `company_job_id`) still land **METEORITE_FAILED_QUALIFY**.
+- [X] Whole-batch `do_task` envelope/schema failures still land **METEORITE_ERROR_QUALIFY**.
+
+## Boundaries
+
+Does **not** own HTML normalize (AST-1131) or link hygiene create skip (AST-1132). Does not widen gaze_email Ruth parse or change GDL.
+
+## Notes for planning
+
+Plan: `docs/features/meteorite/ast-1133-qualify-meteorite-for-list-created-meteorites.md` on publish ref below. Related prior: AST-1076 id-bind UAT, AST-1120/1127 company_job_id fallback.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1130-manage-email-create-button-for-job-lists-isnt-working`, child `sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-02T20:56:47.530Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1133
+**Publish ref:** origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites @ `a38f2a1bd1c497585547ba2daec20bbc96665108`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | No grade confidence path changes |
+| `astral.agent.do-task-delegation` | scoped | conforms | Still one do_task via _run_batch_consult |
+| `astral.agent.grade-vector-validation` | scoped | conforms | No grade vector schema changes |
+| `astral.batch.batch-id-first` | scoped | conforms | No claim helper signature changes |
+| `astral.batch.batch-id-format` | scoped | conforms | No batch_id format changes |
+| `astral.batch.claim-process-release` | scoped | conforms | Batch shape unchanged; bind + process field harden only |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | No agent_data RESPONSE inventory changes |
+| `astral.config.config-source-of-truth` | scoped | conforms | No new qualify knobs; rollup config from siblings only |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | No scoring threshold changes |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env values |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss diff (['artifacts/**', 'scripts/spikes/**']) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Combined plans under docs/features — not spike notes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | No dispatch/run_next changes |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | No seed/dispatch_task AUTO changes in this tip |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | One docs/features plan file for AST-1133 |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test/bible only; merge-tests exception ok |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Product code() is consult.py; tests from Betty |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Core-only consult harden; no new I/O |
+| `astral.layers.import-direction` | scoped | conforms | normalize_link from utils into core |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ∩ diff empty (['scripts']); paths miss diff (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No UI rules; config rollup not UI business logic |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | No coat-check keys |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | qualify_meteorite stays on _run_batch_consult path |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | No seed JSON work |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | No catalog seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | No boot seed path |
+| `astral.seed.define-approved` | scoped | conforms | No seed define work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | No operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | No coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | No data-layer edits in AST-1133 code() |
+| `astral.standards.database-header-inventory` | scoped | conforms | Rollup uses existing job/company tables only |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Bind/link_source detail only when debug=True |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Second bind helper; AST-1076 digit rules intact |
+| `astral.standards.in-scope-only` | scoped | conforms | AST-1133 code() is consult.py only |
+| `astral.standards.logging-via-utils` | scoped | conforms | Style D via existing consult debug helpers |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | _bind_response_jobs_by_job_link product-shaped |
+| `astral.standards.no-cross-contamination` | scoped | conforms | qualify_meteorite-only call site; listings bind unchanged |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | No new host/state sets; existing http prefix gate |
+| `astral.standards.public-then-helpers` | scoped | conforms | New bind helper next to existing bind helper |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data import |
+| `astral.state.core-decides-transitions` | scoped | conforms | Core still QUALIFIED / FAILED_QUALIFY / ERROR_QUALIFY |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | No JOB_STATES registry edits |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | No run_next / daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers ∩ diff empty (['ui']); paths miss diff (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No gunicorn/worker config changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1133) SHA on sub tip |
+| `orch.git.commit-vocabulary` | universal | needs-discussion | Two docs-only tip stubs used code() not docs() |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Publish stays on origin/sub/AST-1130/AST-1133-… |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child sub under AST-1130 parent topology |
+| `orch.git.merge-on-checkout` | universal | conforms | No illegal merge-on-checkout recipe |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No cherry-pick/rebase/force on publish ref |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Uses sub/AST-1130/AST-1133-… only |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in astral-AST-1130 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branch invented |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | No product-decision fork; plan decisions shipped |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 match Files Changed and consult.py diff |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Entered at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via test()+merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee remains Katherine |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Implementer stays assignee through review |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path product commits |
+
+## Pattern conformance
+
+- `pattern.batch.entity-claim-process-release` — **conforms**
+- `pattern.state.entity-state-transitions` — **conforms**
+
+## Plan adherence
+
+Three-dot vs origin/dev matches Stages 1–2 in consult.py: job-link claim bind (qualify_meteorite-only) + Create http(s) job_link fallback with link_source Style D. Self-Assessment Single-Component holds. AST-1131/1132 / gaze_email / GDL boundaries held. Sibling epic rollup in three-dot is expected, not scope smuggle in AST-1133 product commits.
+
+## Findings
+
+**discuss:** `orch.git.commit-vocabulary` — `59ec6ce3` / `8d01c0c7` are docs-only plan tip fills committed as `code()`. Prefer `docs()` next time. No history rewrite required — ack only.
+
+**discuss (C4 straggler):** `astral.debug.spikes-under-debug-dir` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.dispatch.seed-auto-false` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.docs.features-single-file-per-ticket` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.git.engineer-test-tree-ban` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.layers.ui-config-driven-business-logic` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.seed.agent-tables-in-repo-json` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.seed.archie-catalog-wins` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.seed.operator-rows-stay-deleted` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.seed.other-via-coverage-join` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.standards.database-header-inventory` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.standards.utils-data-late-import-only` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**discuss (C4 straggler):** `astral.ui.single-gunicorn-worker` — Joan excluded; in-scope on three-dot vs origin/dev (epic rollup). Scores **conforms**. No product action — ack only.
+
+**fix-now:** none
+
+### What's solid
+
+- Unique normalize_link bind map; never overwrites claimed ids; AST-1076 digit bind intact.
+- Ruth http link preferred; Create ATS URL fallback for gate + UUID resolve + persist.
+- One merge-tests(AST-1133) SHA; product code() is consult.py only.
+
+### Notes
+
+Joan plan-rubric verdict attached (APPROVED). Docs append on plan file.
+
+context_tokens≈48000
+
+#### betty — 2026-08-02T20:53:48.293Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites` @ `3e01f3dc` (`merge-tests(AST-1133): origin/tests bbb598e4ab9e74627bbb2b72dee8e9e2e523926c`)
+
+### Classification
+
+1. **Existing coverage (bible-backed):** `TestAst1062QualifyMeteorite`, `TestAst1076QualifyMeteoritePlaceholderId`, `TestAst1120CompanyJobIdFallback`, `TestAst1121CompanyJobIdDebugSource` — regression.
+2. **Broken / obsolete (revised this pass):** `TestAst1062QualifyMeteorite::test_content_gates_fail_state` relative-link case — Create http input would pass under new fallback; input link cleared for that row.
+3. **Gaps (this pass):** `_bind_response_jobs_by_job_link` + multi-job qualify bind + Create `job_link` fallback + `link_source` Style D.
+
+### Manifest (run these)
+
+1. `tests/component/core/test_consult.py::TestAst1133BindResponseJobsByJobLink`
+2. `tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated`
+3. `tests/component/core/test_consult.py::TestAst1062QualifyMeteorite`
+4. `tests/component/core/test_consult.py::TestAst1076QualifyMeteoritePlaceholderId`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1133BindResponseJobsByJobLink \
+  tests/component/core/test_consult.py::TestAst1133QualifyMeteoriteListCreated \
+  tests/component/core/test_consult.py::TestAst1062QualifyMeteorite \
+  tests/component/core/test_consult.py::TestAst1076QualifyMeteoritePlaceholderId \
+  -q
+```
+
+### Bible shasums on publish-ref
+
+- `8f81d684578d0db145afb469e50e5d305336b28d03c048c3509f01a74cf0b322` `docs/test-bible/core/consult.md`
+
+— Betty
+
+#### joan — 2026-08-02T20:47:18.268Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1133
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Create only real job-detail postings; zero SVG/namespace | N/A — boundary (AST-1131 / AST-1132) |
+| AC2 Clean ATS `job_link` (no nested auto-link markup) | N/A — boundary (AST-1131); Stage 2 consumes Create-stored clean link |
+| AC3 Re-Create candidate-scoped dedupe | N/A — boundary (AST-1132) |
+| AC4 After clean Create, `qualify_meteorite` → QUALIFIED with title + `company_job_id`; no usable row on ERROR_QUALIFY | Stages 1–2 — link bind closes multi-job ERROR; Create `job_link` fallback closes false FAILED |
+| AC5 `debug=True` Style D found/skipped/recorded on Create/ingest | N/A for ingest — child adds qualify-path Style D bind/`link_source` detail under `debug=True` |
+| AC6 Single-link / single-JD Create still succeeds | Stage 2 — Ruth http link still preferred; Create path unchanged |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 `_bind_response_jobs_by_job_link` | Functional scope qualify after clean Create; child AC multi-job non-digit bind |
+| Stage 2 Create-time `job_link` fallback | Child AC http gate + UUID resolve from Create link; content FAILED vs technical ERROR preserved |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Publish on sub ref with plan()/code() vocabulary |
+| orch.git.flow-direction-inviolable | conforms | Publish only to origin/sub/AST-1130/AST-1133-… |
+| orch.git.ftr-sub-topology | conforms | Child ref matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | No cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-1130/AST-1133-… only |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree astral-AST-1130 |
+| orch.git.three-permanent-branches | conforms | Does not invent permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions documented; no product fork needing Archie |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed present |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Meteorite scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate-plan gate only |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Katherine) owns build |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer implementer path after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned-path edits |
+| astral.agent.confidence-bounds | conforms | No grade confidence path changes |
+| astral.agent.do-task-delegation | conforms | Still one do_task via _run_batch_consult; no UI LLM |
+| astral.agent.grade-vector-validation | conforms | No grade vector schema changes |
+| astral.batch.batch-id-first | conforms | No claim helper signature changes |
+| astral.batch.batch-id-format | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | conforms | Batch shape unchanged; harden bind + process field selection only |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data RESPONSE inventory changes |
+| astral.config.config-source-of-truth | conforms | No new config knobs; existing qualify thresholds untouched |
+| astral.config.pass-threshold-vs-score-floor | conforms | No scoring threshold changes |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env values |
+| astral.dispatch.run-next-is-chain-authority | conforms | No dispatch/run_next changes |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src; Betty excluded |
+| astral.layers.core-vs-external-bright-line | conforms | Core-only; no new I/O |
+| astral.layers.import-direction | conforms | normalize_link from utils into core — allowed |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | qualify_meteorite stays on _run_batch_consult / do_task path |
+| astral.seed.boot-only-not-hot-path | conforms | No seed/boot path |
+| astral.seed.define-approved | conforms | No seed define work |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer edits |
+| astral.standards.debug-contract-gated | conforms | New bind/link_source detail only when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | Second bind helper; AST-1076 digit rules left intact |
+| astral.standards.in-scope-only | conforms | consult.py only; no gazer/gaze_email/GDL/normalize |
+| astral.standards.logging-via-utils | conforms | Style D via existing consult debug helpers |
+| astral.standards.names-not-ticket-ids | conforms | Helper names product-shaped (_bind_response_jobs_by_job_link) |
+| astral.standards.no-cross-contamination | conforms | qualify_meteorite-only call site; listings bind unchanged |
+| astral.standards.no-hardcoded-sets | conforms | No new host/state sets; uses existing http prefix gate |
+| astral.standards.public-then-helpers | conforms | New bind helper next to existing bind helper |
+| astral.state.core-decides-transitions | conforms | Core still maps pass→QUALIFIED, content→FAILED, technical→ERROR |
+| astral.state.job-prior-states-enforced | conforms | No JOB_STATES registry edits; registered outcomes only |
+| astral.state.no-daisy-chain-in-run | conforms | No run_next / daisy-chain |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.dispatch.run-next-is-chain-authority, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.seed.boot-only-not-hot-path, astral.seed.define-approved, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.names-not-ticket-ids, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.dispatch.seed-auto-false — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — layers {docs} ∩ plan {core} empty
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers {scripts} ∩ plan {core} empty
+- astral.layers.ui-config-driven-business-logic — layers {ui,utils} ∩ plan {core} empty
+- astral.patterns.require-auth-on-protected-endpoints — layers {ui} ∩ plan {core} empty
+- astral.seed.agent-tables-in-repo-json — paths match none of plan paths
+- astral.seed.archie-catalog-wins — paths match none of plan paths
+- astral.seed.operator-rows-stay-deleted — paths match none of plan paths
+- astral.seed.other-via-coverage-join — paths match none of plan paths
+- astral.standards.database-header-inventory — layers {data} ∩ plan {core} empty
+- astral.standards.utils-data-late-import-only — layers {utils} ∩ plan {core} empty
+- astral.ui.frontend-file-placement — layers {ui} ∩ plan {core} empty
+- astral.ui.naming-conventions — layers {ui} ∩ plan {core} empty
+- astral.ui.single-gunicorn-worker — layers {ui,scripts,utils} ∩ plan {core} empty
+
+## Findings
+
+None fix-now.
+
+**discuss (non-blocking):** Stage 1 drops ambiguous duplicate normalized claim links from the bind map. Correct conservative choice; if Ruth echoes identical links for two claims, those rows still follow existing MISSING/FABRICATED accounting.
+
+**acceptable:** Self-assessment Single-Component / Conf high / Risk Medium matches mis-pair risk; mitigations (unique map, never overwrite claimed ids, qualify_meteorite-only) are specific. Does not force `batch_size=1` or widen AST-1076 digit remap.
+
+**R6 checklist:** Definition fidelity pass for child #3. Layers/import pass. No new config. Batch claim→process→release shape preserved. State outcomes stay registered. Boundaries vs AST-1131/1132 / gaze_email / GDL respected.
+
+context_tokens≈38000
+
+— Joan
+
+#### katherine — 2026-08-02T20:45:12.438Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites/docs/features/meteorite/ast-1133-qualify-meteorite-for-list-created-meteorites.md
+
+`origin/sub/AST-1130/AST-1133-qualify-meteorite-for-list-created-meteorites` @ `6965f9bf`
+
+**Scope:** Single-Component — `src/core/consult.py` only (job-link claim bind + Create-time `job_link` fallback in `qualify_meteorite` process).
+
+**Conf:** high — tip already has AST-1062 apply, AST-1076 digit bind, AST-1120/1127 UUID resolve; remaining usable-row ERROR/FAILED paths are the two gaps in the plan diagnosis.
+
+**Risk:** Medium — link bind could mis-pair if Ruth returns wrong links; mitigated by unique `normalize_link` map, never overwriting claimed ids, and qualify_meteorite-only call site.
+
+---
+
 # AST-1133 — qualify_meteorite for list-created meteorites
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1133/qualify-meteorite-for-list-created-meteorites-manage-email-create  
