@@ -3359,6 +3359,55 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is True
 
+    async def test_draft_job_resume_passes_debug_flag_to_normalize_and_validate(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # AST-1272: do_task forwards debug= into draft normalize + validate call sites.
+        import src.core.candidate as candidate_mod
+
+        captured: dict[str, list[bool]] = {"normalize": [], "validate": []}
+        real_norm = candidate_mod.normalize_draft_job_resume_agent_payload
+        real_val = candidate_mod.validate_draft_job_resume_payload
+
+        def _norm(parsed, *, debug=False):
+            captured["normalize"].append(debug)
+            return real_norm(parsed, debug=debug)
+
+        def _val(parsed, cd, *, debug=False):
+            captured["validate"].append(debug)
+            return real_val(parsed, cd, debug=debug)
+
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(candidate_mod, "normalize_draft_job_resume_agent_payload", _norm)
+        monkeypatch.setattr(candidate_mod, "validate_draft_job_resume_payload", _val)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_payload": {
+                            "professional_summary": "Seasoned engineer.",
+                            "experience": "Built things.",
+                        }
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task(
+            "draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx(), debug=True
+        )
+        assert out["success"] is True
+        assert True in captured["normalize"]
+        assert True in captured["validate"]
+
     async def test_draft_job_resume_rejects_unknown_section_key(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -7214,3 +7263,76 @@ class TestAst1264CandidateCraftSuccession:
         assert out.get("success") is True
         assert child_contexts, "expected recurse into craft_do_rubric"
         assert (child_contexts[0].get("CALLER_RESPONSE") or "").strip() == "from-get-hop"
+
+
+class TestAst1271DoTaskDeviationsPersist:
+    """AST-1271: successful draft_job_resume retains deviations via tracker persist helper."""
+
+    @pytest.mark.asyncio
+    async def test_success_persists_deviations(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_payload": {
+                            "resume": {
+                                "professional_summary": "Seasoned engineer.",
+                                "experience": "Built things.",
+                            },
+                            "deviations": ["Skipped UAT claim."],
+                        }
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task(
+            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+        )
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[0] == "job-1271"
+        parsed_arg = persist.call_args.args[1]
+        assert isinstance(parsed_arg, dict)
+
+    @pytest.mark.asyncio
+    async def test_validation_failure_does_not_persist_deviations(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": {"bogus_section": "x", "deviations": ["n"]}},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task(
+            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+        )
+        assert out["success"] is False
+        persist.assert_not_called()

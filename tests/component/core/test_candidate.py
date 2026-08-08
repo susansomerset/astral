@@ -363,6 +363,46 @@ class TestPreviewTaskPrompt:
         assert "helping Ada find" in out["system"]
         assert "{$FIRST_NAME}" not in out["system"]
 
+    def test_preview_resolves_names_from_columns_not_blob(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1192: preview uses build_candidate_token_view — columns win when blob lacks names."""
+        from src.core import agent as agent_mod
+
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "Ada Lovelace",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "agent"},
+                {
+                    "system_prompt": "",
+                    "user_prompt": "Scan for {$FIRST_NAME} {$LAST_NAME}",
+                    "cache_prompt": "",
+                    "nocache_prompt": "",
+                },
+            ),
+        )
+        out = candidate_mod.preview_task_prompt("anticipate_scan", candidate_id="cand-1192")
+        assert "Scan for Ada Lovelace" in out["user"]
+        assert "{$FIRST_NAME}" not in out["user"]
+        assert "{$LAST_NAME}" not in out["user"]
+
     def test_chain_sim_parent_only_merges_simulated_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
             candidate_mod.database,
@@ -4197,4 +4237,120 @@ class TestAst1270NestedDraftJobResumeContract:
         assert "prose string or job array" in draft
         # Nested envelope example only (no flat-only agent_payload section-key sample).
         assert '"agent_payload": {\n    "resume"' in draft
+
+
+class TestAst1272DraftHopDebugWhitelistTrail:
+    """AST-1272: Style D unwrap + whitelist/accept/reject trails when debug=True."""
+
+    def _cd(self) -> dict[str, Any]:
+        return {
+            "artifacts": {
+                "base_resume": {
+                    "professional_summary": "base summary",
+                    "experience": "base experience",
+                }
+            }
+        }
+
+    def _patch_debug(self, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        return idx, detail
+
+    def _detail_msgs(self, detail: Any) -> list[str]:
+        return [c.args[0] for c in detail.call_args_list]
+
+    def test_normalize_debug_popped_emits_unwrap_trail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "S", "experience": "E"},
+                "astral_job_id": "job-1272",
+            }
+        }
+        candidate_mod.normalize_draft_job_resume_agent_payload(parsed, debug=True)
+        assert "resume" not in parsed["agent_payload"]
+        idx.assert_called_once()
+        kwargs = idx.call_args.kwargs
+        assert kwargs["func"] == "candidate.normalize_draft_job_resume_agent_payload"
+        assert kwargs["outcome"] == "unwrap popped"
+        assert kwargs["identifier"] == "job-1272"
+        msgs = self._detail_msgs(detail)
+        assert any("unwrap=popped" in m for m in msgs)
+        assert any("nested_section_count=2" in m for m in msgs)
+
+    def test_normalize_debug_flat_and_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        candidate_mod.normalize_draft_job_resume_agent_payload(
+            {"agent_payload": {"professional_summary": "S"}}, debug=True
+        )
+        assert idx.call_args.kwargs["outcome"] == "unwrap flat"
+        assert any("unwrap=flat" in m for m in self._detail_msgs(detail))
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.normalize_draft_job_resume_agent_payload(
+            {"agent_payload": {"resume": "not-a-dict"}}, debug=True
+        )
+        assert idx.call_args.kwargs["outcome"] == "unwrap invalid"
+        assert any("unwrap=invalid" in m for m in self._detail_msgs(detail))
+
+    def test_normalize_debug_false_is_silent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        candidate_mod.normalize_draft_job_resume_agent_payload(
+            {"agent_payload": {"resume": {"professional_summary": "S"}}}, debug=False
+        )
+        idx.assert_not_called()
+        detail.assert_not_called()
+
+    def test_validate_debug_ok_records_whitelist_and_accepted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        # Flat payload — validate's internal normalize stays quiet (debug=False).
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"agent_payload": {"professional_summary": "S", "experience": "E"}},
+            self._cd(),
+            debug=True,
+        )
+        assert err is None
+        # Only validate trail (no unwrap index from internal normalize).
+        assert idx.call_count == 1
+        assert idx.call_args.kwargs["func"] == "candidate.validate_draft_job_resume_payload"
+        assert idx.call_args.kwargs["outcome"] == "ok"
+        msgs = self._detail_msgs(detail)
+        assert any("whitelist_source=base_resume" in m and "experience" in m for m in msgs)
+        assert any("recorded accepted_keys=" in m and "experience" in m for m in msgs)
+        assert any("recorded rejected_keys=[]" in m for m in msgs)
+        assert any("recorded error=none" in m for m in msgs)
+
+    def test_validate_debug_reject_records_unknown_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"agent_payload": {"bogus_section": "x"}},
+            self._cd(),
+            debug=True,
+        )
+        assert err is not None
+        assert "bogus_section" in err
+        assert idx.call_args.kwargs["outcome"] == "reject"
+        msgs = self._detail_msgs(detail)
+        assert any("recorded rejected_keys=" in m and "bogus_section" in m for m in msgs)
+        assert any("recorded error=" in m and "bogus_section" in m for m in msgs)
+
+    def test_validate_debug_false_is_silent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"professional_summary": "S", "experience": "E"},
+                self._cd(),
+                debug=False,
+            )
+            is None
+        )
+        idx.assert_not_called()
+        detail.assert_not_called()
 

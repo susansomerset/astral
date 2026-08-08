@@ -1001,3 +1001,27 @@ Nested hop contract: normalize unwraps **`agent_payload.resume`** before section
   tests/component/core/test_agent.py -k "draft_job_resume" -q
 ```
 
+---
+
+### AST-1272 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`.
+
+After **AST-1270**: when `debug=True`, Style D found/recorded trails for nest unwrap (normalize) and base_resume whitelist + accepted/rejected keys (validate). `do_task` passes `debug=` into both helpers; validate’s internal normalize stays quiet. Does **not** change allowlist rules. Deviations retention = **AST-1271**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unwrap + whitelist Style D on/off | `src/core/candidate.py` | **`TestAst1272DraftHopDebugWhitelistTrail`** |
+| Agent `debug=` passthrough | `src/core/agent.py` | **`TestDoTaskShouldStoreBranches::test_draft_job_resume_passes_debug_flag_to_normalize_and_validate`** |
+
+**Broken / obsolete this pass:** none — `debug=` defaults False; existing AST-594 / AST-1270 callers unchanged.
+
+**Integration:** none — observe-only debug; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_agent.py::TestDoTaskShouldStoreBranches::test_draft_job_resume_passes_debug_flag_to_normalize_and_validate \
+  -q
+```
+
