@@ -45,7 +45,6 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.batch.claim-process-release` | scoped | judgment | `astral/batch/astral.batch.claim-process-release.md` |
 | `astral.batch.entity-agent-responses-latest-only` | scoped | judgment | `astral/batch/astral.batch.entity-agent-responses-latest-only.md` |
 | `astral.config.config-source-of-truth` | scoped | judgment | `astral/config/astral.config.config-source-of-truth.md` |
-| `astral.config.pass-threshold-vs-score-floor` | scoped | judgment | `astral/config/astral.config.pass-threshold-vs-score-floor.md` |
 | `astral.config.secrets-and-env-specific-from-environ` | scoped | ci | `astral/config/astral.config.secrets-and-env-specific-from-environ.md` |
 | `astral.debug.no-repo-root-artifacts-dir` | scoped | hook | `astral/debug/astral.debug.no-repo-root-artifacts-dir.md` |
 | `astral.debug.spikes-under-debug-dir` | scoped | hook | `astral/debug/astral.debug.spikes-under-debug-dir.md` |

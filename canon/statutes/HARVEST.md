@@ -14,7 +14,7 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `astral.batch.claim-process-release` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/batch/astral.batch.claim-process-release.md` |
 | create (AST-921) | `astral.batch.entity-agent-responses-latest-only` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/batch/astral.batch.entity-agent-responses-latest-only.md` |
 | create (AST-921) | `astral.config.config-source-of-truth` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.config-source-of-truth.md` |
-| create (AST-921) | `astral.config.pass-threshold-vs-score-floor` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.pass-threshold-vs-score-floor.md` |
+| create (AST-921), retired (AST-1279) | `astral.config.pass-threshold-vs-score-floor` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.pass-threshold-vs-score-floor.md` |
 | create (AST-921) | `astral.config.secrets-and-env-specific-from-environ` | scoped | ci | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.secrets-and-env-specific-from-environ.md` |
 | create (AST-921) | `astral.debug.no-repo-root-artifacts-dir` | scoped | hook | docs/ASTRAL_CODE_RULES.md | `astral/debug/astral.debug.no-repo-root-artifacts-dir.md` |
 | create (AST-921) | `astral.debug.spikes-under-debug-dir` | scoped | hook | docs/ASTRAL_CODE_RULES.md | `astral/debug/astral.debug.spikes-under-debug-dir.md` |
