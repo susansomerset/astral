@@ -1660,3 +1660,25 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
   -t "AST-1278"
 ```
+
+---
+
+### AST-1288 · AST-1285
+
+**Parent:** [AST-1285 — State transition validation for candidates is broken](https://linear.app/astralcareermatch/issue/AST-1285/state-transition-validation-for-candidates-is-broken). **Publish:** `origin/sub/AST-1285/AST-1288-manage-candidates-are-you-sure`.
+
+Manage Candidates edit-save are-you-sure on API `code=illegal_candidate_transition` (from → to); confirm retries PUT with `confirm_state_override: true` (**AST-1287**); cancel skips state-only (modal stays open, state select reset); legal / same-state / unknown-state 400 stay quiet (no illegal dialog). Does **not** own core/API force path.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) illegal-hop confirm | `src/ui/frontend/src/pages/AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1288:`** confirm retry / cancel / legal quiet / unknown-state no dialog |
+
+**Broken / obsolete this pass:** none — existing Manage Candidates PUT mocks still return 200; new cases use dedicated illegal-hop mock.
+
+**Integration:** none — UI confirm only; do not invent integration coverage (API contract covered under **AST-1287**).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  -t "AST-1288"
+```
