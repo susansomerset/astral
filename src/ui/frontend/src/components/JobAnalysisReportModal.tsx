@@ -78,7 +78,15 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setCompanyNotes(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
-      if (!res.ok) throw new Error("Job not found")
+      if (!res.ok) {
+        if (res.status === 404) throw new Error("Job not found")
+        const errBody = (await res.json().catch(() => ({}))) as { error?: string }
+        const msg =
+          typeof errBody.error === "string" && errBody.error.trim()
+            ? errBody.error.trim()
+            : `Load failed (HTTP ${res.status})`
+        throw new Error(msg)
+      }
       const data = (await res.json()) as JobDetail
       setJob(data)
       if (data.company) {

@@ -23,8 +23,10 @@ from src.core.tracker import (
     transition_job_state,
 )
 from src.utils.config import IN_REVIEW_STATES, RECOMMENDED_JOB_STATES, SKIPPED_STATES
+from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
+logger = get_logger(__name__)
 
 
 def _flatten_grades(job: dict) -> dict:
@@ -117,7 +119,16 @@ def detail(astral_job_id):
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
     job["job_data"] = {**jd, "artifacts": art}
-    job["agent_story"] = get_entity_agent_story(job)
+    # AST-1274: secondary soft-fail — primary fix is data-layer ref resolve.
+    try:
+        job["agent_story"] = get_entity_agent_story(job)
+    except Exception as exc:
+        logger.exception(
+            "detail: get_entity_agent_story failed astral_job_id=%s: %s",
+            astral_job_id,
+            exc,
+        )
+        job["agent_story"] = []
     return jsonify(job)
 
 
