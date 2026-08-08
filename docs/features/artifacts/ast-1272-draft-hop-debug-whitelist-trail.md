@@ -175,3 +175,55 @@ The plan is binding. The agent:
 **Tip:** `199381dd`
 
 Stages landed: normalize unwrap Style D + agent `debug=` → validate whitelist/accepted/rejected Style D + agent `debug=`.
+
+## Radia review — code-rubric.v2
+
+`[code-rubric] revision=2`
+**Overall:** CLEAN
+**Diff:** `origin/dev...origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail` (new-to-this-child: `src/core/agent.py` (4 call sites), `src/core/candidate.py` (`debug=` params + Style D trails); `src/utils/config.py` / `src/core/tracker.py` / `data/admin/agent_task.json` diffs are inherited AST-1270 content, already reviewed under that ticket — byte-identical here)
+
+### Joan's plan-rubric discuss items vs the built code
+
+Joan's plan-rubric (attached, APPROVED) flagged three `discuss` items at plan time. Checked all three against the actual diff:
+
+1. **Sticky debug flag** — plan text said `if debug: logger.set_debug_flag(True)`; Joan recommended the unconditional `logger.set_debug_flag(debug)` form instead (matches 11 other sites in the file; a `debug=False` run then actively clears any inherited sticky flag). The built code uses the unconditional form in both `normalize_draft_job_resume_agent_payload` and `validate_draft_job_resume_payload`. **Resolved** — a justified micro-deviation from the literal plan text, directly responsive to the reviewer's own recommendation (§5b justification chain satisfied).
+2. **break hazard on the experience job-array loop** — Joan flagged that a bare `break` inside `for job in val` would only exit the inner loop, falling through to the coercion path and silently rewriting the error string. The built code uses a `bad_job` flag plus `if bad_job or err is not None: break` to break the **outer** key loop, preserving `"Section 'experience' must be a job array or prose string"` as the returned error. **Resolved.**
+3. **Unwrap trail invisible for non-`do_task` `validate(debug=True)` callers** — by design; `do_task` is the only production path (verified both call-site pairs at `agent.py`). No action needed; carried forward as inherited context, not a new finding.
+
+### Statutes checked (full active set, in-session)
+
+Same 65-statute active corpus as AST-1270's sweep (unchanged since that review). Verdicts unchanged for all statutes whose relevant files are the inherited AST-1270 content (`config.py`, `tracker.py`, `agent_task.json`, universal git/pipeline/roles statutes). Re-scored fresh against the incremental `agent.py` + `candidate.py` debug diff:
+
+- `astral.standards.debug-contract-gated | scoped | conforms | full §5f pass: gated behind debug=True (double-gated — debug_detail also checks _debug_flag internally); found/recorded vocabulary; index 1/1 (single-job hop, not a batch loop); no body text logged, only keys/counts; no logger.info("[DEBUG]…") added; no data-layer logging`
+- `astral.agent.do-task-delegation | scoped | conforms | no new Anthropic call assembly; do_task only forwards debug= into existing normalize/validate hooks (cited in ticket In scope)`
+- `astral.standards.dry-and-focused-functions | scoped | conforms | single shared debug-emit path at the end of validate (all early-return branches fall through to one block) rather than 4 duplicated emit blocks — matches Joan's own "acceptable" DRY read of plan step 5`
+- `astral.standards.in-scope-only | scoped | conforms | diff = exactly the plan's 2 Files Changed (candidate.py, agent.py); build even self-corrected a caught AST-1271 persist-call bleed in agent.py via a dedicated d4d3d366 commit before publish`
+- `astral.standards.public-then-helpers | scoped | conforms | new public draft_job_resume_allowed_section_keys stays with public draft helpers; private alias helper stays after the public validate fn (same ordering as AST-1270)`
+- `astral.standards.names-not-ticket-ids | scoped | conforms | no AST-1272-style identifiers added; comments cite the ticket, not names`
+- `astral.standards.no-hardcoded-sets | scoped | conforms | no new inline set; reads nest/meta from TASK_CONFIG as before`
+- `astral.standards.data-raises-caller-logs | scoped | conforms | normalize/validate still return Optional[str]; debug emission is observability only, not error handling`
+- `astral.standards.logging-via-utils | scoped | conforms | logger.debug_index/debug_detail via src/utils/logging.py facade`
+- `astral.layers.import-direction | scoped | conforms | no new cross-layer import; core still core→utils`
+- `astral.layers.core-vs-external-bright-line | scoped | conforms | no I/O added`
+- `astral.standards.no-cross-contamination | scoped | conforms | no out-of-layer import; the AST-1271 bleed was caught and reverted pre-publish`
+- `orch.pipeline.call-susan-for-product-decisions | universal | conforms | pure observability ticket, no product-behavior decision in scope — unlike AST-1270, nothing here needed Susan`
+- `orch.pipeline.plan-is-bible | universal | conforms | Stages 1-2 executed in order; the two literal-text deviations (unconditional set_debug_flag, bad_job break) are justified fixes for reviewer-flagged risks, not improvisation — §5b chain satisfied via Joan's own recommendation text`
+
+All other statutes (universal git/roles/pipeline set, and the scoped seed/batch/state/dispatch/ui/idioms/config set whose applicability is driven by the inherited `config.py`/`tracker.py`/`agent_task.json` content) score identically to AST-1270's sweep: conforms or not-applicable, no violates, no new needs-discussion.
+
+**Straggler (C4):** Joan's AST-1272 plan-rubric verdict reports counts only ("17 scoped excluded") without itemized ids — no itemized Excluded list to cross-check. No contradiction identified.
+
+### Pattern conformance
+
+`none cited` — AST-1272's own ticket citations are statute ids only (`astral.standards.debug-contract-gated`); the parent's `pattern.config.config-block` citation was fully consumed by AST-1270 (this child reads `TASK_CONFIG["draft_job_resume"]` but does not extend it).
+
+### Findings
+
+No fix-now, no discuss. All three items Joan flagged at plan time were addressed in the built code with justified, narrow deviations from the literal plan text.
+
+### What's solid
+
+Clean single-exit refactor of `validate_draft_job_resume_payload` — every branch (three early-return failure modes plus the main loop) now funnels through one debug-emit block before `return err`, which is both the DRY reading of the plan and the only way to guarantee Style D fires on every exit path. The mid-build self-catch of the AST-1271 persist-call bleed (dedicated `d4d3d366` commit, cleanly reverted, no residue) is exactly the scope discipline `astral.standards.in-scope-only` wants.
+
+context_tokens≈95000
+— Radia
