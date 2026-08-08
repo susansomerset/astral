@@ -77,6 +77,7 @@ from src.utils.config import (
     is_meteorite_email_mailbox_task_key,
     get_task_keys,
     dispatch_claim_uses_score_floor,
+    dispatch_score_floor_option_labels,
     is_dispatch_chain_trigger,
     parse_dispatch_hop_label,
     get_active_llm_provider,
@@ -1007,6 +1008,13 @@ def dispatch_task_state_options():
         "company": list(COMPANY_STATES.keys()),
         "candidate": list(CANDIDATE_STATES.keys()),
     })
+
+
+@admin_bp.route("/dispatch_tasks/score_floor_options")
+@require_admin
+def dispatch_task_score_floor_options():
+    # pattern.ui.admin-endpoint — options catalog from config (AST-1278 / AST-750)
+    return jsonify({"values": dispatch_score_floor_option_labels()})
 
 
 @admin_bp.route("/dispatch_tasks/counts")
