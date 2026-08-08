@@ -2741,3 +2741,40 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
   -q
 ```
+
+---
+
+### AST-1270 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
+
+`TASK_CONFIG["draft_job_resume"]` declares **`nested_resume_key`** + **`payload_metadata_keys`** (includes **`deviations`**). Primary unwrap/whitelist/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1270.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nest key + metadata tuple | `src/utils/config.py` | **`TestAst1270DraftJobResumeNestConfig`**; reuse **`TestAst594DraftJobResumeSchema`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema \
+  -q
+```
+
+---
+
+### AST-1271 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`.
+
+`TASK_CONFIG["draft_job_resume"]["deviations_artifact_key"]` + same literal in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary retention coverage: **`docs/test-bible/core/tracker.md`** § AST-1271.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact slot + clear-keys | `src/utils/config.py` | **`TestAst1271DeviationsArtifactConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
