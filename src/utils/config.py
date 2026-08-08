@@ -370,7 +370,6 @@ TASK_CONFIG = {
         "scored": True,
         "grades_key": "prefilter_grades",
         "rubric_artifact": "company_prefilter",
-        "pass_threshold": 0.0,
         "pass_state": "PREFILTER_PASSED",
         "fail_state": "PREFILTER_FAILED",
         "response_schema": {
@@ -637,7 +636,6 @@ TASK_CONFIG = {
         "fail_state": "FAILED_DO",
         "error_state": "FAILED_TECHNICAL_DO",
         "save_prefix": "do",
-        "pass_threshold": 6.0,
         "grading_mode": "scored",
         "context_format": "grade_do_{index}",
         "entity_type": "job",
@@ -663,7 +661,6 @@ TASK_CONFIG = {
         "fail_state": "FAILED_GET",
         "error_state": "FAILED_TECHNICAL_GET",
         "save_prefix": "get",
-        "pass_threshold": 6.0,
         "grading_mode": "scored",
         "context_format": "grade_get_{index}",
         "entity_type": "job",
@@ -692,7 +689,6 @@ TASK_CONFIG = {
         "fail_state": "METEORITE_FAILED_DO",
         "error_state": "METEORITE_FAILED_TECHNICAL_DO",
         "save_prefix": "do",
-        "pass_threshold": 6.0,
         "grading_mode": "scored",
         "context_format": "meteorite_grade_do_{index}",
         "entity_type": "job",
@@ -718,7 +714,6 @@ TASK_CONFIG = {
         "fail_state": "METEORITE_FAILED_GET",
         "error_state": "METEORITE_FAILED_TECHNICAL_GET",
         "save_prefix": "get",
-        "pass_threshold": 6.0,
         "grading_mode": "scored",
         "context_format": "meteorite_grade_get_{index}",
         "entity_type": "job",
@@ -744,7 +739,6 @@ TASK_CONFIG = {
         "fail_state": "FAILED_LIKE",
         "error_state": "FAILED_TECHNICAL_LIKE",
         "save_prefix": "like",
-        "pass_threshold": 6.0,
         "requires_company": True,
         "grading_mode": "scored",
         "context_format": "grade_like_{index}",
@@ -810,7 +804,6 @@ TASK_CONFIG = {
         "fail_state": "METEORITE_FAILED_LIKE",
         "error_state": "METEORITE_FAILED_TECHNICAL_LIKE",
         "save_prefix": "like",
-        "pass_threshold": 6.0,
         "requires_company": False,
         "grading_mode": "scored",
         "context_format": "meteorite_like_{index}",
@@ -2909,6 +2902,17 @@ def dispatch_score_floor_option_labels() -> list[str]:
     return [f"{v:.2f}" for v in DISPATCH_SCORE_FLOOR_VALUES]
 
 
+def effective_dispatch_score_floor(raw_score_floor: Optional[float]) -> float:
+    """Normalize dispatch_task.score_floor for claim + scored soft-fail.
+
+    Explicit 0 / 0.0 is valid (no numeric soft-fail / no claim exclusion by floor).
+    NULL / missing → 1.0 (same claim rule dispatcher already applies on scored rows).
+    """
+    if raw_score_floor is None:
+        return 1.0
+    return float(raw_score_floor)
+
+
 def dispatch_claim_uses_score_floor(trigger_state: Optional[str]) -> bool:
     """True when job claim should filter latest_score >= dispatch_task.score_floor.
 
@@ -2993,6 +2997,19 @@ def dispatch_task_grouping_catalog_key(task_key: str) -> str:
     tk = (task_key or "").strip()
     if tk == "prefilter":
         return ROSTER_CONFIG["prefilter"]["task_key"]
+    return tk
+
+
+def dispatch_row_task_key(task_key: str) -> str:
+    """Map consult/catalog task_key to dispatch_task.task_key when they differ.
+
+    ROSTER_CONFIG['prefilter']['task_key'] (`prefilter_company`) and the bare
+    dispatch key `prefilter` both resolve to `prefilter` (AST-823 migrated rows).
+    All other keys (including meteorite_grade_* aliases) are identity.
+    """
+    tk = (task_key or "").strip()
+    if tk == "prefilter" or tk == ROSTER_CONFIG["prefilter"]["task_key"]:
+        return "prefilter"
     return tk
 
 
