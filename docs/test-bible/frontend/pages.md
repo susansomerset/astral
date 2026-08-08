@@ -678,7 +678,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Builds on:** **AST-634** (Candidate filter), **AST-739** (DB grouping sections), **AST-746** (phase table on expand).
 
-**Note:** Full-file run excludes **AST-750** score-floor edit test until sibling `AST-750` ships on publish tip (product still hardcodes `1.00…10.00` options).
+**Note:** Score-floor **0.00** option + zero-save: **AST-1278** (restores prior **AST-750** UX). Catalog/API: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_admin.md`**.
 
 ### AST-768 · AST-572
 
@@ -1632,4 +1632,31 @@ cd src/ui/frontend && npx tsc -b --noEmit && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```
+
+### AST-1278 · AST-1275
+
+**Parent:** [AST-1275 — Remove pass_threshold from task_config](https://linear.app/astralcareermatch/issue/AST-1275/remove-pass-threshold-from-task-config). **Publish:** `origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0`.
+
+Scheduled Actions Edit Dispatch Task: Score Floor options from **`GET /api/admin/dispatch_tasks/score_floor_options`** (config catalog; first **`0.00`**); save uses **`Number.isFinite`** so selecting **`0.00`** sends JSON **`score_floor: 0`**. Restores the **AST-750** zero-save case that was held out while product hardcoding mins at **1.00**. Catalog + admin GET + API zero-persist: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_admin.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Scheduled Actions routed page (**§6c**) | `src/ui/frontend/src/pages/AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1278: edit save sends score_floor 0 when 0.00 selected`** |
+| Catalog (existing) | `src/utils/config.py` | **`TestAst750DispatchScoreFloorCatalog`** |
+| Admin GET + zero persist (existing) | `src/ui/api/api_admin.py` | **`TestDispatchTasks::test_scheduler_and_run_controls`** (floors); **`TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor`** |
+
+**Broken / obsolete:** none — mocks already called `score_floor_options`; product regression was hardcoded React **1.00–10.00** plus falsy `parseFloat` coercion to **1**.
+
+**Integration:** none revised (admin UI only).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1278"
 ```
