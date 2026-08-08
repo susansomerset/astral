@@ -149,3 +149,30 @@ No conflicts requiring `conf-!!-NONE`.
 **Product:** Stage 1 — `GET /api/admin/dispatch_tasks/score_floor_options` via `dispatch_score_floor_option_labels()` (`pattern.ui.admin-endpoint`). Stage 2 — Scheduled Actions loads options from that API; `Number.isFinite` save so **0.00** persists. Config catalog already had **0.0** (no `config.py` edit).
 
 **Out of build scope (Betty / qa-child):** Stage 3 table — catalog / GET / zero-save assertions.
+
+## Review (Radia)
+
+[code-rubric] revision=2 — **Overall: CLEAN**
+
+Diff `origin/dev...origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` @ `f409edb3`. Full active-set (64 statutes) scored in-session per code-rubric.v2 §5.0 — no fix-now, no discuss.
+
+**What's solid:**
+
+- Stage 1 + Stage 2 match the plan exactly: route placed immediately after `dispatch_task_state_options`, `Number.isFinite` replaces the falsy `parseFloat(...) || 1` coercion, no resurrected hardcoded 1.00–10.00 array (`astral.standards.no-hardcoded-sets`, `astral.layers.ui-config-driven-business-logic` both conform).
+- New route wraps `@require_admin` → `@require_auth` (`astral.idioms.require-auth-on-protected-endpoints` conforms); imports stay `ui → utils` only (`astral.layers.import-direction` conforms).
+- Engineer's own commits never touch `tests/` or `docs/test-bible/**` — that content arrives via a single `merge-tests(AST-1278)` SHA from Betty's `origin/tests` line (`astral.git.engineer-test-tree-ban`, `orch.git.betty-merge-tests-one-sha` conform).
+- Boundaries held: no `pass_threshold` / `render_verdict` / `config.py` touch (sibling AST-1277/AST-1279 territory).
+
+**Pattern conformance:**
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | Options sourced from `dispatch_score_floor_option_labels()`; no re-invented catalog. |
+| `pattern.ui.admin-endpoint` | conforms | New route cites it in-code; `@require_admin` auth + thin JSON shape, business rule (catalog) resolved server-side. |
+| `pattern.dispatch.score-floor` (proposed) | not-applicable | Cited on the parent's "New patterns proposed" list but not yet under `canon/patterns/**` / Archie-approved. Parent text gates on this explicitly ("Archie approval required before implementation depends on the catalog id") — diff does not build against it; code cites the already-approved `pattern.ui.admin-endpoint` instead. Advisory only, not a fix-now invalid citation. |
+
+**Notes:** No Joan plan-rubric verdict attachment on this ticket — noted per C4, not a block.
+
+`context_tokens≈` see Linear comment.
+
+— Radia
