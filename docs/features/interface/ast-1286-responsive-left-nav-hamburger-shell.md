@@ -198,3 +198,14 @@ Full active statute set scored in-session (64 active leaves; 4 retired ignored) 
 Full verdict + statute table: Linear comment on AST-1286.
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-08  
+**Review:** [code-rubric] revision=2 — Overall DISCUSS; zero fix-now.
+
+| Finding | Action |
+|---------|--------|
+| **discuss** — `pattern.ui.responsive-nav-shell` missing under `canon/patterns/**` | Closed by Radia's alternate path: **drop the citation until Archie lands the canon file**. Linear **In scope** no longer lists the proposed pattern id; **Considered but excluded** records the citation deferral. Product behavior (hamburger/drawer/backdrop/checked list) unchanged — no code change required. |
+
+No product files touched on resolve. Tip after this commit includes Radia's `docs(AST-1286): Radia review — discuss` (`999d4796`) plus this Resolution.
