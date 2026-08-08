@@ -141,3 +141,11 @@ Engineer smoke only: Scheduled Actions → edit a scored row → **0.00** is fir
 | Engineer test-tree ban | Stages do not touch `tests/` ✓ |
 
 No conflicts requiring `conf-!!-NONE`.
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` @ `8680fe3e` (+ Review stub commit)
+
+**Product:** Stage 1 — `GET /api/admin/dispatch_tasks/score_floor_options` via `dispatch_score_floor_option_labels()` (`pattern.ui.admin-endpoint`). Stage 2 — Scheduled Actions loads options from that API; `Number.isFinite` save so **0.00** persists. Config catalog already had **0.0** (no `config.py` edit).
+
+**Out of build scope (Betty / qa-child):** Stage 3 table — catalog / GET / zero-save assertions.
