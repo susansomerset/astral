@@ -189,3 +189,14 @@ Retire active statute `astral.config.pass-threshold-vs-score-floor`, author appr
 - **§3.3 imports / §3.5 naming:** N/A (docs/canon only).
 - **Test-tree ban:** Plan does not touch `tests/` or `docs/test-bible/**`.
 - **No conflict requiring `conf-!!-NONE`.**
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1275/AST-1279-retire-pass-threshold-statute-author-score-floor-pattern` @ `01da708f`
+
+**Stages:**
+- Stage 1 `32ddaace` — soft-retire `astral.config.pass-threshold-vs-score-floor`; statutes README/HARVEST index cleanup
+- Stage 2 `c7477da0` — approved `pattern.dispatch.score-floor` (Archie via AST-1281); patterns README/HARVEST
+- Stage 3 `01da708f` — Code Rules §2.1 sole-floor subsection + TASK_CONFIG/§2.2 prose drop of `pass_threshold`
+
+**Note:** Pattern `## Notes` cites AST-1281 for the Archie approval stamp (Joan discuss on APPROVED pass).
