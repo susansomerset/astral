@@ -2903,6 +2903,20 @@ async def do_task(
                 f"artifact_pin key={pin_slot} skipped reason={reason}"
             )
 
+    # AST-1271: retain draft deviations as job artifact metadata (best-effort; do not fail hop).
+    if task_key == "draft_job_resume" and result.get("success") and index:
+        try:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import persist_draft_job_resume_deviations
+            persist_draft_job_resume_deviations(index, parsed)
+        except Exception as persist_err:
+            logger.error(
+                "persist_draft_job_resume_deviations failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
+            )
+
     # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).
     candidate_craft_persisted = False
     if result.get("success") and (ctx or {}).get("persist_candidate_craft_hops") and index:
