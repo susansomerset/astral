@@ -228,3 +228,12 @@ PY
 context_tokens≈62000
 
 — Radia
+
+## Resolution — 2026-08-08
+
+**Review tip:** `1eb01cf2` (`docs(AST-1269): Radia review — clean`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none requiring product change.
+- **Advisory:** none.
+- **Product / plan code:** unchanged this pass (resolve clean).
