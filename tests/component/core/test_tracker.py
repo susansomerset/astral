@@ -1086,3 +1086,133 @@ class TestAst1270NestedResumePayloadBody:
             {"agent_payload": {"professional_summary": "S", "experience": "E"}}
         )
         assert body == {"professional_summary": "S", "experience": "E"}
+
+
+class TestAst1271DeviationsMetadataRetention:
+    """AST-1271: extract/save deviations; resume body never includes metadata keys."""
+
+    def test_extract_nested_envelope_reads_outer_sibling(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "S"},
+                "deviations": ["skipped UAT claim"],
+            }
+        }
+        assert tracker_mod.extract_draft_job_resume_deviations(parsed) == ["skipped UAT claim"]
+
+    def test_extract_absent_returns_none(self) -> None:
+        assert (
+            tracker_mod.extract_draft_job_resume_deviations(
+                {"agent_payload": {"professional_summary": "S"}}
+            )
+            is None
+        )
+
+    def test_extract_coerces_string_and_drops_blanks(self) -> None:
+        assert tracker_mod.extract_draft_job_resume_deviations(
+            {"agent_payload": {"deviations": "  one note  "}}
+        ) == ["one note"]
+        assert tracker_mod.extract_draft_job_resume_deviations(
+            {"agent_payload": {"deviations": ["keep", "  ", ""]}}
+        ) == ["keep"]
+
+    def test_persist_saves_under_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, payload: saved.append({"jid": jid, **payload}),
+        )
+        ok = tracker_mod.persist_draft_job_resume_deviations(
+            "job-1271",
+            {"agent_payload": {"deviations": ["a", "b"], "professional_summary": "S"}},
+        )
+        assert ok is True
+        assert saved == [{"jid": "job-1271", "artifacts": {"deviations": ["a", "b"]}}]
+
+    def test_persist_absent_key_leaves_prior(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
+        assert (
+            tracker_mod.persist_draft_job_resume_deviations(
+                "job-1271", {"agent_payload": {"professional_summary": "S"}}
+            )
+            is False
+        )
+        assert saved == []
+
+    def test_resume_body_skips_string_typed_deviations(self) -> None:
+        body = tracker_mod._resume_payload_body(
+            {
+                "agent_payload": {
+                    "professional_summary": "S",
+                    "deviations": "looks-like-a-section",
+                }
+            }
+        )
+        assert body == {"professional_summary": "S"}
+        assert "deviations" not in body
+
+    def test_persist_job_artifact_writes_deviations_not_resume_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        saved: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, payload: saved.append(payload),
+        )
+        monkeypatch.setattr(
+            tracker_mod,
+            "_candidate_data_for_job",
+            lambda jid: {
+                "artifacts": {
+                    "base_resume": {"professional_summary": "base"},
+                    "resume_structure": candidate_mod.default_resume_structure(),
+                }
+            },
+        )
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "tailored"},
+                "deviations": ["note"],
+            }
+        }
+        assert tracker_mod.persist_job_artifact_from_parsed("job-1271", parsed) is True
+        arts = [p.get("artifacts") for p in saved]
+        resume_writes = [a for a in arts if a and "resume_content" in a]
+        dev_writes = [a for a in arts if a and "deviations" in a]
+        assert resume_writes
+        assert "deviations" not in resume_writes[0]["resume_content"]
+        assert "professional_summary" in resume_writes[0]["resume_content"]
+        assert dev_writes and dev_writes[0]["deviations"] == ["note"]
+
+    def test_clear_job_build_artifacts_removes_deviations(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: list[tuple[str, dict, bool]] = []
+
+        def _save(jid: str, payload: dict, replace: bool = False) -> None:
+            saved.append((jid, payload, replace))
+
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job",
+            lambda jid: {
+                "job_data": {
+                    "artifacts": {
+                        "resume_content": {"professional_summary": "draft"},
+                        "deviations": ["old note"],
+                        "analysis_upshot": {"summary": "keep"},
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", _save)
+        tracker_mod.clear_job_build_artifacts("job-1271")
+        art = saved[0][1]["artifacts"]
+        assert "deviations" not in art
+        assert "resume_content" not in art
+        assert art["analysis_upshot"] == {"summary": "keep"}

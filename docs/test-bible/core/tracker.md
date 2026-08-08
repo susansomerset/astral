@@ -175,6 +175,27 @@ Primary manifest: **`docs/test-bible/core/agent.md`** AST-848.
 
 ---
 
+### AST-1271 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`.
+
+Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_content`); `_resume_payload_body` skips nest + `payload_metadata_keys` even when string-typed; cancel clears via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Live hop path: **`docs/test-bible/core/agent.md`** § AST-1271. Config slot: **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Extract / save / body skip / persist + clear | `src/core/tracker.py` | **`TestAst1271DeviationsMetadataRetention`**; reuse **`TestAst1270NestedResumePayloadBody`** |
+
+**Integration:** none — do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1271DeviationsMetadataRetention \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  -q
+```
+
+---
+
 ### AST-1099 · AST-1091
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
