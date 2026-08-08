@@ -270,6 +270,7 @@ export default function ScheduledActions() {
 
   const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[]; candidate: string[] }>({ job: [], company: [], candidate: [] })
+  const [scoreFloorOptions, setScoreFloorOptions] = useState<string[]>([])
   const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -317,10 +318,6 @@ export default function ScheduledActions() {
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
   const [maxRunsFilter, setMaxRunsFilter] = useState("")
-  const scoreFloorOptions = useMemo(
-    () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
-    [],
-  )
   const inputStateOptions = useMemo(
     () => (
       form.entity_type === "company"
@@ -335,10 +332,11 @@ export default function ScheduledActions() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [tasksRes, keysRes, statesRes] = await Promise.all([
+      const [tasksRes, keysRes, statesRes, floorsRes] = await Promise.all([
         api("/api/admin/dispatch_tasks"),
         api("/api/admin/dispatch_tasks/task_keys"),
         api("/api/admin/dispatch_tasks/state_options"),
+        api("/api/admin/dispatch_tasks/score_floor_options"),
       ])
       if (tasksRes.ok) setData(await tasksRes.json())
       else setToast({ text: `Failed to load dispatch tasks (${tasksRes.status})`, variant: "error" })
@@ -353,6 +351,10 @@ export default function ScheduledActions() {
           company: Array.isArray(states?.company) ? states.company : [],
           candidate: Array.isArray(states?.candidate) ? states.candidate : [],
         })
+      }
+      if (floorsRes.ok) {
+        const floors = await floorsRes.json()
+        setScoreFloorOptions(Array.isArray(floors?.values) ? floors.values : [])
       }
     } finally {
       setLoading(false)
@@ -616,7 +618,12 @@ export default function ScheduledActions() {
             task_key: form.task_key,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
+            score_floor: form.is_scored
+              ? (() => {
+                  const n = parseFloat(form.score_floor)
+                  return Number.isFinite(n) ? n : 1
+                })()
+              : null,
             auto_mode: form.auto_mode,
             debug: form.debug,
           }),
@@ -641,7 +648,12 @@ export default function ScheduledActions() {
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
+            score_floor: form.is_scored
+              ? (() => {
+                  const n = parseFloat(form.score_floor)
+                  return Number.isFinite(n) ? n : 1
+                })()
+              : null,
             auto_mode: form.auto_mode,
           }),
         })
