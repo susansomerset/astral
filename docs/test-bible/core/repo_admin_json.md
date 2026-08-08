@@ -433,3 +433,28 @@ Grouping-only `meteorite_grade_do` / `meteorite_grade_get` under **Meteorite Rev
   tests/component/core/test_repo_admin_json.py::TestAst1211EvaluateCraftFixtureLockstep \
   -q
 ```
+
+### AST-1269 · AST-1184
+
+**Parent:** [AST-1184 — Task config aliases via master_task_key](https://linear.app/astralcareermatch/issue/AST-1184/task-config-aliases-via-master-task-key). **Publish:** `origin/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup`.
+
+UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows back in `data/admin/agent_task.json` after AST-1239 wipe (catalog **50 → 52**). Aliases stay under **Meteorite Review** / `"4500"` / seq `5`/`6` with AST-1222 pinned UUIDs; fixture lockstep for those two keys only. Does **not** re-run full Gaze/Meteorite Review membership or `meteorite_email` rename.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Alias seed restore + MR-only membership on tip | `data/admin/agent_task.json` | **`TestAst1269AliasAgentTaskSeedRestore`**; revised **`TestAst1222MeteoriteGradeAliasCatalogRows`** (masters keep prompts; no Gaze pin) |
+| Catalog count 50→52 + frozenset (`parse_meteorite_email`, no `meteorite_email` / `propose_application_responses`) | same | revised **`TestAst786AgentTaskRepoJsonSeed`** |
+| like/upshot remain Job Review seq `10`/`11` on wipe tip | same | revised **`TestAst1055MeteoriteCatalogRows`** |
+
+**Broken / obsolete (skipped pending broader seed-repair UAT):** full Gaze/Meteorite membership + `meteorite_email` rename classes — **`TestAst1218…`**, **`TestAst1219…`**, **`TestAst1089…`**, **`TestAst1106…`**, **`TestAst1144…`**, **`TestAst1213…`**, qualify/evaluate fixture lockstep under pre-wipe grouping (**`TestAst1196…`**, **`TestAst1060…`**, **`TestAst1211…`**, **`TestAst878…`**, **`TestAst1015…`**).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1269AliasAgentTaskSeedRestore \
+  tests/component/core/test_repo_admin_json.py::TestAst1222MeteoriteGradeAliasCatalogRows \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  -q
+```
