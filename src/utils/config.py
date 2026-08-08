@@ -906,6 +906,15 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "resume_section_payload": True,
+        # AST-1270: nested agent_payload.resume + sibling metadata (deviations).
+        "nested_resume_key": "resume",
+        "payload_metadata_keys": (
+            "astral_job_id",
+            "company",
+            "title",
+            "task_success",
+            "deviations",
+        ),
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
