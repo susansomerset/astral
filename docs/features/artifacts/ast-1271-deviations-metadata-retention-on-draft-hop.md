@@ -155,6 +155,6 @@ Changes: extract reads `deviations_artifact_key` only; `persist_job_artifact_fro
 ## Review (build stub)
 
 **Publish ref:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`
-**Tip:** `76cc4f22`
+**Tip:** `e5e6a3d4`
 
 Stages landed: config artifact slot + clear-keys → tracker extract/save + resume-body meta skip → `do_task` success persist.
