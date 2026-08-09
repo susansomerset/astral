@@ -68,3 +68,12 @@ No `src/utils/config.py` edits — declared schema types stay `str`.
 - §2.1 / config-source-of-truth: schema types remain `str` in config; no type flips.
 - §2.3 schema validation: type checks stay strict; soft-coerce is pre-validate only.
 - §3.3 imports: no new imports required (`get_logger` / `_do_task_debug_logger` already in module).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings`
+**Tip (pre-review):** `080e1ca4`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `080e1ca4` | Extend `_coerce_schema_str_fields_from_list` for int→str + nested `items_schema`; pass `debug` at both `do_task` pre-validate sites; Style D when `debug=True` |
