@@ -77,3 +77,18 @@ No `src/utils/config.py` edits — declared schema types stay `str`.
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `080e1ca4` | Extend `_coerce_schema_str_fields_from_list` for int→str + nested `items_schema`; pass `debug` at both `do_task` pre-validate sites; Style D when `debug=True` |
+
+## Radia review — CLEAN
+
+`[code-rubric] revision=2` · tip pre-docs `1cfe278a` · `origin/dev...origin/sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings`
+
+**Overall:** CLEAN — full active statute set (64) scored in-session; no fix-now / discuss.
+
+**What’s solid**
+- Extends shared `_coerce_schema_str_fields_from_list` (int→str + `items_schema` recursion) without parallel walker or config type flips.
+- `type(val) is int` keeps bool hard-fail; Style D found→recorded only when `debug=True`.
+- Both `do_task` pre-validate call sites pass `debug=debug`; Betty coverage matches AC1–AC5.
+
+**Pattern conformance:** `pattern.config.config-block` | conforms | TASK_CONFIG slot-id types left `str`.
+
+**Notes:** Joan plan-rubric APPROVED (no Excluded list → no C4 straggler). §5f applied; §5g N/A.
