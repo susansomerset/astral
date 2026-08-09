@@ -1631,24 +1631,56 @@ def _store_response_block(
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-def _coerce_schema_str_fields_from_list(parsed: Dict[str, Any], schema: Dict[str, Dict]) -> None:
-    """Join list-of-strings into newline text before str validation (common LLM JSON habit)."""
+def _coerce_schema_str_fields_from_list(
+    parsed: Dict[str, Any], schema: Dict[str, Dict], *, debug: bool = False
+) -> None:
+    """Soft-coerce schema-str fields before type validation (list→join, int→str; nested items_schema)."""
     payload = _inner_task_payload(parsed)
     if not isinstance(payload, dict):
         return
-    for field_name, field_spec in schema.items():
-        if not isinstance(field_spec, dict) or field_spec.get("type", "str") != "str":
-            continue
-        val = payload.get(field_name)
-        if isinstance(val, list):
-            lines = [str(item).strip() for item in val if item is not None and str(item).strip()]
-            payload[field_name] = "\n".join(lines)
-            if log_batch_id.get():
-                logger.info(
-                    "do_task: coerced field %r from list (%d items) to newline string",
-                    field_name,
-                    len(val),
-                )
+    # Collect int→str events; emit Style D once after the walk (index/total stable).
+    int_coerce_events: list[tuple[str, int, str]] = []
+
+    def _walk(obj: Dict[str, Any], fields_schema: Dict[str, Dict], path_prefix: str) -> None:
+        for field_name, field_spec in fields_schema.items():
+            if not isinstance(field_spec, dict):
+                continue
+            type_spec = field_spec.get("type", "str")
+            val = obj.get(field_name)
+            field_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
+            if type_spec == "str" and isinstance(val, list):
+                lines = [str(item).strip() for item in val if item is not None and str(item).strip()]
+                obj[field_name] = "\n".join(lines)
+                if log_batch_id.get():
+                    logger.info(
+                        "do_task: coerced field %r from list (%d items) to newline string",
+                        field_name,
+                        len(val),
+                    )
+            elif type_spec == "str" and type(val) is int:
+                # type() is int — bool is a subclass of int; isinstance would soft-accept True/False.
+                coerced = str(val)
+                obj[field_name] = coerced
+                int_coerce_events.append((field_path, val, coerced))
+            elif type_spec == "list" and field_spec.get("items_schema") and isinstance(val, list):
+                items_schema = field_spec["items_schema"]
+                for idx, item in enumerate(val):
+                    if isinstance(item, dict):
+                        _walk(item, items_schema, f"{field_path}[{idx}]")
+
+    _walk(payload, schema, "")
+    if debug and int_coerce_events:
+        dbg = _do_task_debug_logger(True)
+        total = len(int_coerce_events)
+        for i, (identifier, raw, coerced) in enumerate(int_coerce_events, start=1):
+            dbg.debug_index(
+                func="_coerce_schema_str_fields_from_list",
+                index=i,
+                total=total,
+                identifier=identifier,
+                outcome="coerced int→str",
+            )
+            dbg.debug_detail(f"found={raw!r} ({type(raw).__name__}) recorded={coerced!r}")
 
 
 def _validate_schema_object_fields(
@@ -2560,7 +2592,7 @@ async def do_task(
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
                 normalize_draft_job_resume_agent_payload(parsed, debug=debug)
-            _coerce_schema_str_fields_from_list(parsed, schema)
+            _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task validation failed. task_key=%r error=%s", task_key, err)
@@ -2749,7 +2781,7 @@ async def do_task(
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
                 normalize_draft_job_resume_agent_payload(parsed, debug=debug)
-            _coerce_schema_str_fields_from_list(parsed, schema)
+            _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task schema validation failed after decode. task_key=%r error=%s", task_key, err)
