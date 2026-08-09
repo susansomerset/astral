@@ -92,3 +92,7 @@ No `src/utils/config.py` edits — declared schema types stay `str`.
 **Pattern conformance:** `pattern.config.config-block` | conforms | TASK_CONFIG slot-id types left `str`.
 
 **Notes:** Joan plan-rubric APPROVED (no Excluded list → no C4 straggler). §5f applied; §5g N/A.
+
+## Resolution
+
+**2026-08-09** — Radia `[code-rubric] revision=2` **CLEAN** (no fix-now / discuss / Frame diff). No product changes after review. Publish tip before resolve commit: `160a211b` (`docs(AST-1293): Radia review — clean`). Advancing to User Testing.
