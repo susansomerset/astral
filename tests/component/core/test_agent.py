@@ -7336,3 +7336,88 @@ class TestAst1271DoTaskDeviationsPersist:
         )
         assert out["success"] is False
         persist.assert_not_called()
+
+
+class TestAst1293SoftCoerceNumericSchemaStrings:
+    """AST-1293: pre-validate int→str soft-coerce on schema-str fields (nested items_schema)."""
+
+    # Minimal jobs[] schema mirroring qualify_meteorite slot-echo shape.
+    _JOBS_SCHEMA = {
+        "jobs": {
+            "type": "list",
+            "required": True,
+            "items_schema": {
+                "astral_job_id": {"type": "str", "required": True},
+                "job_title": {"type": "str", "required": False},
+            },
+        },
+    }
+
+    def test_nested_int_slot_id_coerces_then_validates(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "jobs": [{"astral_job_id": 0, "job_title": "Engineer"}],
+            },
+        }
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA)
+        assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] == "0"
+        assert agent_mod._validate_response_schema(parsed, self._JOBS_SCHEMA, "qualify_meteorite") is None
+
+    def test_list_join_regression_still_coerces(self) -> None:
+        # Existing list→str habit must survive the recursive walk rewrite.
+        schema = {"search_terms": {"type": "str", "required": True}}
+        parsed = {"agent_payload": {"search_terms": ["alpha", "beta"]}}
+        agent_mod._coerce_schema_str_fields_from_list(parsed, schema)
+        assert parsed["agent_payload"]["search_terms"] == "alpha\nbeta"
+
+    def test_bool_and_dict_on_str_still_reject(self) -> None:
+        # type(val) is int excludes bool; dict never enters the coerce gate.
+        for bad in (True, False, {"echo": 0}):
+            parsed = {"agent_payload": {"jobs": [{"astral_job_id": bad}]}}
+            agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA)
+            assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] is bad
+            err = agent_mod._validate_response_schema(parsed, self._JOBS_SCHEMA, "qualify_meteorite")
+            assert err is not None and "must be str" in err
+
+    def test_float_on_str_not_coerced(self) -> None:
+        parsed = {"agent_payload": {"jobs": [{"astral_job_id": 1.5}]}}
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA)
+        assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] == 1.5
+        err = agent_mod._validate_response_schema(parsed, self._JOBS_SCHEMA, "qualify_meteorite")
+        assert err is not None and "must be str" in err
+
+    def test_debug_true_emits_style_d_for_int_coerce(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        parsed = {
+            "agent_payload": {
+                "jobs": [
+                    {"astral_job_id": 0},
+                    {"astral_job_id": 1},
+                ],
+            },
+        }
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA, debug=True)
+        index_calls = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert len(index_calls) == 2
+        assert index_calls[0]["func"] == "_coerce_schema_str_fields_from_list"
+        assert index_calls[0]["outcome"] == "coerced int→str"
+        assert index_calls[0]["identifier"] == "jobs[0].astral_job_id"
+        assert index_calls[0]["index"] == 1 and index_calls[0]["total"] == 2
+        assert index_calls[1]["identifier"] == "jobs[1].astral_job_id"
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any("found=0 (int) recorded='0'" in str(m) for m in detail_msgs)
+
+    def test_debug_false_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        parsed = {"agent_payload": {"jobs": [{"astral_job_id": 0}]}}
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA, debug=False)
+        assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] == "0"
+        dbg.debug_index.assert_not_called()
+        dbg.debug_detail.assert_not_called()
+
+    def test_config_slot_id_schema_type_remains_str(self) -> None:
+        # AC3: no TASK_CONFIG type flips — coerce is pre-validate only.
+        item = TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert item["astral_job_id"]["type"] == "str"

@@ -718,3 +718,25 @@ Artifact hop `do_task` + Manage Tasks `preview_task_prompt` feed `build_candidat
   tests/component/core/test_agent.py::TestAst1221RuntimeAliasAgent \
   -q
 ```
+
+### AST-1293 · AST-1289
+
+**Parent:** [AST-1289 — Handling datatype issues in responses](https://linear.app/astralcareermatch/issue/AST-1289/handling-datatype-issues-in-responses). **Publish:** `origin/sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings`.
+
+Pre-validate soft-coerce on shared `do_task` path: `_coerce_schema_str_fields_from_list` joins list→str (unchanged) and now int→str (`type(val) is int`, bool excluded) including nested `items_schema` (e.g. `jobs[].astral_job_id`). Style D found→recorded only when `debug=True`. Schema field types in `TASK_CONFIG` stay `str`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nested int slot echo + validate; list regression; bool/dict/float hard-fail; Style D gate; config type | `src/core/agent.py` | **`TestAst1293SoftCoerceNumericSchemaStrings`** |
+| Existing list→str habit | `src/core/agent.py` | **`TestResponseSchemaBranches::test_coerce_schema_str_list_to_newlines_before_validate`** |
+
+**Broken / obsolete:** none — additive coerce gate; validator type checks unchanged (ints never reach them on the happy path).
+
+**Integration:** no existing scenario asserts integer slot-id rejection — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1293SoftCoerceNumericSchemaStrings \
+  tests/component/core/test_agent.py::TestResponseSchemaBranches::test_coerce_schema_str_list_to_newlines_before_validate \
+  -q
+```
