@@ -106,3 +106,35 @@ parsed["jobs"] = jobs
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `f75e80e1` | `_ensure_html_links_jobs_complete` + html_links call site; Style D found/recorded/missing when incomplete |
+
+## Radia review
+
+[code-rubric] revision=2
+
+**Rubric:** code-rubric.v2
+**Publish ref tip:** `2321dfb9`
+**Overall:** CLEAN
+
+**Full-set sweep:** all 64 active statutes scored in-session (18 universal + 46 scoped) against `git diff origin/dev...origin/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land`. Diff layers: `core`, `docs`. No `violates`, no `discuss`.
+
+**What's solid:** `_ensure_html_links_jobs_complete` keeps Ruth rows verbatim (order preserved, extras kept) and only appends null-title stubs for payload hrefs `normalize_link` can't match to a kept row — same key already used for PJL/consult `job_link` binding (`roster.py`, `consult.py`), so scheme/trailing-slash variants don't double-stub. Stub `job_link` keeps the **original** payload enumeration string (not the normalized form), matching the plan's Decision so Playwright ingest sees the href Ruth was shown. Style D (`astral.standards.debug-contract-gated`) fires exactly once — one `debug_index` + one `debug_detail` — only when `debug` is True **and** `missing` is non-empty; `found`/`recorded`/`missing` counts match the plan's formula and `missing_ids` correctly falls back to the full URL when the path-tail split is empty. `logger.set_debug_flag(True)` is already applied by every entry point (`process_gaze_email_messages`, `run_gaze_email_selected_ids`, `run_gaze_email`) before `_handle_bound` runs, so the new helper's direct `debug_index`/`debug_detail` calls are correctly gated without re-deriving the flag. `func="gaze_email._ensure_html_links_jobs_complete"` matches the hardcoded-literal-label convention used everywhere else in this file and in `roster.py`/`meteorite.py`/`inbox.py` — not a `no-hardcoded-sets` concern (labels, not domain data). No `src/utils/config.py` edit — `METEORITE_EMAIL_INGEST_CONFIG`/`METEORITE_EMAIL_PARSE_CONFIG` untouched, matching `pattern.config.config-block`. `subject_url`/`subject_body` branches, `_finalize_archive`, scrape/dedupe/archive rules, and `_ruth_parse`/`_ruth_candidate_links`/`_format_ruth_live_body` are all byte-unchanged. Helper is grouped with the other Ruth-payload private helpers immediately above `_ruth_parse`, matching the plan's explicit placement instruction and the file's existing private-helpers-then-public-entrypoints shape (pre-existing structure, not a new violation). Commit hygiene is clean: `code(AST-1294)` touches only `src/core/gaze_email.py`; the single `merge-tests(AST-1294)` SHA carries Betty's `test(AST-1294)` commit touching only `tests/` + `docs/test-bible/` (`orch.git.betty-merge-tests-one-sha`, `astral.git.engineer-test-tree-ban`, `astral.git.betty-no-src-or-features` all conform). `~/astral/.venv/bin/python -m py_compile src/core/gaze_email.py` clean; `pytest tests/component/core/test_gaze_email.py` — 29 passed, including the new `TestAst1294HtmlLinksJobsComplete` suite (UAT 34→34, normalize dedupe, junk/extras, Style D on/off, call-site stub ingest) and both AST-1213 cases Betty revised for the new ingest-stub isolation.
+
+No fix-now findings. No discuss findings. No stragglers — Joan's `[plan-rubric] revision=1` verdict (**APPROVED**) lists no Excluded statutes to cross-check.
+
+**Pattern conformance:**
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | No new inline magic set; existing `METEORITE_EMAIL_*_CONFIG` blocks untouched |
+
+**Plan adherence:** Diff matches the Files Changed table and the single stage exactly, including all three `⚠️ Decision` notes (post-parse reconcile not a Ruth prompt rewrite; `normalize_link` coverage with original-href stubs; `html_links` branch only). Self-Assessment `Scope: Single-Component` / `Conf: high` matches the diff's real footprint; `Risk: Medium` mitigation (normalize_link coverage, Ruth excludes already filtering non-job noise) holds — no stub-duplication or over-ingest observed in the UAT/junk-row tests. All 5 parent AC map to Stage 1 per Joan's traceability; AC5 (AST-1282/AST-1289 unchanged) confirmed — this diff touches only `gaze_email.py`.
+
+**Cross-ticket boundary:** Relations: none. No `src/utils/config.py`, `agent_task` prompt, `subject_url`/`subject_body`, Avail/dispatch (AST-1282), int→str coerce (AST-1289), or seed-rename edits — matches parent Boundaries exactly.
+
+## Frame diff
+
+(none — ticket description AC/scope table already accurate)
+
+context_tokens≈62000
+
+— Radia
