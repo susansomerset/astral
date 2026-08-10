@@ -156,3 +156,14 @@ No `src/external/**`, no `src/data/**`, no `src/utils/config.py`, no `dispatcher
 Revision 1 — 2026-08-10
 Driven by: Joan `[plan-discuss] round=1 concern` — “Root cause does not match the in-scope job-artifacts dispatch path… Branch A only changes hop-label-false… Stage 1 Branch B is keep AST-1191.”
 Changes: Retracted hop-label-false as the AC1 root cause. Re-staged hop-label-true hardening: helper `try`/`finally` release after transition attempt; consult per-job release when `do_task` raises; Files Changed adds `consult.py`; Conf `high` → `Medium`; optional hop-label-false release kept only as defense-in-depth and labeled as non-AC.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error`
+**Tip:** `c74972b7`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `91c81ba2` | Helper `try`/`finally` provider release + hop-label-false defense-in-depth |
+| 2 | `c74972b7` | Consult per-job release when `do_task` raises |
+| 3 | _(verify)_ | Call chain: BUILD_ARTIFACTS ctx → hop-label-true `finally` + consult except/failure release; no new debug strings |
