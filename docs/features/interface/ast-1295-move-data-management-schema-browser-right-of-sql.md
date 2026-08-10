@@ -74,3 +74,35 @@ No API, config, CSS module, routes, upsert modal, or other Admin page files.
 
 **Publish ref:** `origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql`  
 **Product commits:** `d2f2e1a9` (schema browser sibling reorder — right of SQL)
+
+## Radia review
+
+[code-rubric] revision=2
+
+**Rubric:** code-rubric.v2
+**Publish ref tip:** `df604923`
+**Overall:** CLEAN
+
+**Full-set sweep:** all 64 active statutes scored in-session (18 universal + 46 scoped) against `git diff origin/dev...origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql`. No `violates`, no `needs-discussion`. Scoped statutes outside `ui`/`docs` layers (batch, dispatch, state, seed, config, debug, agent, data) score `not-applicable` — diff touches no matching paths. No plan-rubric verdict attached (Notes, not a block).
+
+**What's solid:** Diff is exactly the planned sibling reorder — Main query panel div moved before the Schema browser panel div inside the same unchanged flex-row parent; no other JSX, styles, handlers, `useEffect`s, or state touched (verified by reading the full surrounding render block). Commit provenance is clean and matches `orch.git.commit-vocabulary` / `astral.git.engineer-test-tree-ban` / `astral.git.betty-no-src-or-features`: `code(AST-1295)` touches only `src/ui/frontend/src/pages/AdminDataManagement.tsx`; `test(AST-1295)` + the single `merge-tests(AST-1295)` SHA touch only `tests/component/**` and `docs/test-bible/**`; the plan/review `docs(AST-1295)` commits touch only this file under `docs/features/`. New component test asserts DOM order via `compareDocumentPosition` against the SQL textarea, matching the plan's "Done when." No API, config, CSS module, or other Admin page files touched, matching the epic's placement-only boundary.
+
+**Findings:** none.
+
+**Pattern conformance:**
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan cites no `pattern.*` id; diff shape (pure sibling JSX reorder) doesn't match any approved catalog `# Problem` (checked `pattern.ui.admin-endpoint` — that pattern governs new admin HTTP surfaces, not layout order; not a match) |
+
+**Plan adherence:** Diff matches the Files Changed table and Stage 1 steps exactly, including the explicit "Decision" to keep a sibling reorder (no `row-reverse`, no new wrapper component). Self-Assessment `Scope: minor` / `Conf: high` / `Risk: low` matches the diff's real footprint — one file, one JSX move.
+
+**Cross-ticket boundary:** Relations: none. No smuggled scope from AST-1291 siblings; schema-browser state/handlers, SQL history, Run, result grid, Copy Output, and Table Upsert are all byte-identical to pre-diff.
+
+## Frame diff
+
+(none — ticket description AC/scope table already accurate)
+
+context_tokens≈45000
+
+— Radia
