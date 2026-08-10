@@ -69,3 +69,8 @@ No API, config, CSS module, routes, upsert modal, or other Admin page files.
 - **§3.5 naming / frontend-file-placement:** Stay in `src/ui/frontend/src/pages/AdminDataManagement.tsx`; no rename.
 - **`astral.layers.ui-config-driven-business-logic`:** No new frontend business rules; selection + discovery SQL unchanged.
 - **`astral.standards.in-scope-only`:** Layout adjacency only; upsert / SQL execution / other Admin pages excluded.
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql`  
+**Product commits:** `d2f2e1a9` (schema browser sibling reorder — right of SQL)
