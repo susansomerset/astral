@@ -38,6 +38,7 @@ from src.utils.config import (
     METEORITE_EMAIL_INGEST_CONFIG,
     METEORITE_EMAIL_PARSE_CONFIG,
 )
+from src.utils.formatting import normalize_link
 from src.utils.logging import get_logger, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -176,6 +177,60 @@ def _format_ruth_live_body(text: str, links: list[str]) -> str:
     return "\n".join(parts)
 
 
+def _ensure_html_links_jobs_complete(
+    jobs: list,
+    payload_links: list[str],
+    *,
+    debug: bool,
+) -> list:
+    """Ensure every Ruth --- LINKS --- href appears in jobs used for ingest.
+
+    Keeps Ruth rows (order preserved). Appends stub rows ``{job_link, job_title: None}``
+    for payload links not covered under ``normalize_link``. Style D only when
+    ``debug`` and at least one payload link was missing from Ruth's list.
+    """
+    out: list = []
+    covered: set[str] = set()
+    for job in jobs or []:
+        if not isinstance(job, dict):
+            continue
+        link = (job.get("job_link") or "").strip()
+        if not link:
+            continue
+        out.append(job)
+        norm = normalize_link(link)
+        if norm:
+            covered.add(norm)
+
+    missing: list[str] = []
+    for href in payload_links or []:
+        norm = normalize_link(href)
+        if not norm or norm in covered:
+            continue
+        missing.append(href)
+        covered.add(norm)
+        out.append({"job_link": href, "job_title": None})
+
+    if debug and missing:
+        # Path-tail ids for UAT scan (Dice UUID); fall back to full URL if empty.
+        missing_ids = ",".join(
+            ((u.rstrip("/").rsplit("/", 1)[-1]) if u.rstrip("/") else u) or u
+            for u in missing
+        )
+        logger.debug_index(
+            func="gaze_email._ensure_html_links_jobs_complete",
+            index=1,
+            total=1,
+            identifier="html_links",
+            outcome="reconciled",
+        )
+        logger.debug_detail(
+            f"found={len(payload_links)} recorded={len(payload_links) - len(missing)} "
+            f"missing={missing_ids}"
+        )
+    return out
+
+
 async def _ruth_parse(
     *,
     mode: str,
@@ -293,6 +348,8 @@ async def _handle_bound(
             index_dbg(debug, index=index, total=total, mid=mid, outcome="error")
             return (1, 0, 0, 1, "error")
         jobs = parsed.get("jobs") if isinstance(parsed.get("jobs"), list) else []
+        jobs = _ensure_html_links_jobs_complete(jobs, links, debug=debug)
+        parsed["jobs"] = jobs
         for job in jobs:
             if not isinstance(job, dict):
                 continue
