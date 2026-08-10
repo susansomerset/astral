@@ -2392,7 +2392,6 @@ async def _run_dispatch_chain_job_batch(
             )
         except BaseException:
             tracker.release_job_dispatch_claim(aid)
-            errors += 1
             raise
         if not result.get("success"):
             tracker.release_job_dispatch_claim(aid)

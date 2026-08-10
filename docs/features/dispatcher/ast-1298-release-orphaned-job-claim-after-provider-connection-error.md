@@ -29,7 +29,9 @@ On tip after `sync-child` (AST-1191 already on `origin/dev`):
 | File | Change | Layer |
 |------|--------|-------|
 | `src/core/agent.py` | `_apply_dispatch_chain_hop_failure` hop-label-true branch: wrap transition + release so `provider_failed` release runs in `finally` (transition attempt still first); optional defense-in-depth release on hop-label-false for job+provider_failed only; keep found/recorded consumers unchanged | core |
-| `src/core/consult.py` | `_run_dispatch_chain_job_batch`: per-job `try`/`finally` around `do_task` so `release_job_dispatch_claim(aid)` runs on both `success=False` returns and exceptions | core |
+| `src/core/consult.py` | `_run_dispatch_chain_job_batch`: per-job `try`/`except` around `do_task` so `release_job_dispatch_claim(aid)` runs on both `success=False` returns and exceptions | core |
+
+**Pattern:** `pattern.batch.entity-claim-process-release` (`canon/patterns/batch/pattern.batch.entity-claim-process-release.md`) — both Files Changed rows instantiate claim → process → release on provider failure / raised `do_task` (paired with statute `astral.batch.claim-process-release`).
 
 No `src/external/**`, no `src/data/**`, no `src/utils/config.py`, no `dispatcher.py`, no `tests/` / bible (Betty).
 
@@ -146,7 +148,7 @@ No `src/external/**`, no `src/data/**`, no `src/utils/config.py`, no `dispatcher
 
 - §1.3 DRY — still one helper for hop failure side effects; consult only adds exception-safe dual clear, not a third design.
 - §2.1 config — no new config keys.
-- §2.4 batch / claim-process-release — clear on every early-exit path where the job was claimed and provider/consult failed or raised.
+- §2.4 batch / claim-process-release — clear on every early-exit path where the job was claimed and provider/consult failed or raised. Pattern `pattern.batch.entity-claim-process-release` + statute `astral.batch.claim-process-release`.
 - §2.6 state machine — core still decides `error_state`; `finally` release does not move state on its own.
 - §3.3 imports — late `tracker` import in helper preserved; consult already imports `tracker`.
 - §1.5.1 debug — found/recorded remain `debug=True` only.
@@ -268,3 +270,15 @@ Diff matches the Files Changed table exactly for engineer scope (`src/core/agent
 - Style nit (advisory, not fix-now): in `consult.py`'s new `except BaseException:` arm, `errors += 1` runs immediately before `raise` — the function always exits via the exception on that path, so the incremented counter is never read from a returned dict. Harmless; a future cleanup could drop it.
 
 context_tokens≈60000
+
+## Resolution
+
+**Date:** 2026-08-10  
+**Review:** [code-rubric] revision=2 — DISCUSS (no fix-now)
+
+| Item | Action |
+|------|--------|
+| **discuss** — uncited `pattern.batch.entity-claim-process-release` | Cited under Files Changed + Self-review §2.4 (Linear In scope already listed the pattern id). |
+| **advisory** — dead `errors += 1` before `raise` in consult except arm | Dropped the unused increment; release + re-raise unchanged. |
+
+No product behavior change beyond the advisory cleanup. §9a dry-run vs `origin/dev` at resolve tip.
