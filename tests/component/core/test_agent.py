@@ -5833,10 +5833,32 @@ class TestAst1191ArtifactHopFailureRelease:
         transition.assert_not_called()
         release.assert_called_once_with("job-1191")
 
-    def test_apply_non_dispatch_chain_returns_noop(self) -> None:
+    def test_apply_hop_label_false_job_provider_failed_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1298: hop-label-false no longer returns bare NOOP for job+provider_failed —
+        # defense-in-depth claim release (no error_state write).
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
         out = agent_mod._apply_dispatch_chain_hop_failure(
             entity_type="job",
             index="job-1191",
+            ctx={},
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Provider call failed",
+            debug=False,
+            provider_failed=True,
+            failure_class="provider_call_timeout",
+        )
+        assert out["apply_error_state"] is False
+        assert out["error_state"] == ""
+        assert out["batch_released"] is True
+        release.assert_called_once_with("job-1191")
+
+    def test_apply_hop_label_false_non_job_returns_noop(self) -> None:
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="candidate",
+            index="cand-1191",
             ctx={},
             task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
             error="Provider call failed",
@@ -5991,6 +6013,106 @@ class TestAst1191ArtifactHopFailureRelease:
         detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
         assert not any(m.startswith("found ") for m in detail_msgs)
         assert not any(m.startswith("recorded ") for m in detail_msgs)
+
+
+class TestAst1298OrphanedJobClaimRelease:
+    """AST-1298: hop-label-true finally + Connection-error path clear job claim."""
+
+    def _dispatch_ctx(self) -> Dict[str, Any]:
+        ctx = _draft_job_resume_ctx()
+        ctx.update(
+            {
+                "batch_entities": _batch_entities("job-1298"),
+                "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "dispatch_chain_graduate_on_terminal": True,
+            }
+        )
+        return ctx
+
+    def test_apply_transition_non_value_error_still_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Non-ValueError from transition must not skip finally release (Stage 1).
+        transition = MagicMock(side_effect=RuntimeError("transition blew up"))
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        with pytest.raises(RuntimeError, match="transition blew up"):
+            agent_mod._apply_dispatch_chain_hop_failure(
+                entity_type="job",
+                index="job-1298",
+                ctx=self._dispatch_ctx(),
+                task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+                error="Connection error.",
+                debug=False,
+                provider_failed=True,
+                failure_class="provider_connection_error",
+            )
+        transition.assert_called_once_with(["job-1298"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1298")
+
+    @pytest.mark.asyncio
+    async def test_do_task_draft_job_resume_connection_error_releases_and_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC1/AC2 shape: draft_job_resume + BUILD_ARTIFACTS ctx + Connection error.
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_deepseek",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Connection error.",
+                    "failure_class": "provider_connection_error",
+                    "api_response": None,
+                    "timesheet": {
+                        "duration": 60.7,
+                        "inputtotal": 0,
+                        "inputcached": 0,
+                        "outputtotal": 0,
+                        "cache_creation_tokens": 0,
+                    },
+                }
+            ),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        out = await agent_mod.do_task(
+            "draft_job_resume",
+            index="job-1298",
+            ctx=self._dispatch_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        assert out.get("error") == "Connection error."
+        transition.assert_called_once_with(["job-1298"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1298")
+        detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
+        assert any(
+            m.startswith("recorded error=")
+            and "error_state=ERROR_BUILD_ARTIFACTS" in m
+            and "batch_released=true" in m
+            for m in detail_msgs
+        )
 
 
 class TestAst903CraftRubricMaxTokensFloor:

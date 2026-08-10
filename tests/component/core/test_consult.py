@@ -689,6 +689,38 @@ class TestAst371ResumeArtifactDispatch:
         assert released == ["job-1"]
 
     @pytest.mark.asyncio
+    async def test_dispatch_chain_batch_do_task_raise_releases_claim(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1298 Stage 2: exception exit still clears the per-job claim before re-raise.
+        released: list[str] = []
+        monkeypatch.setattr(
+            "src.core.consult.do_task",
+            AsyncMock(side_effect=RuntimeError("Connection error.")),
+        )
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "release_job_dispatch_claim",
+            lambda aid: released.append(aid),
+        )
+        with pytest.raises(RuntimeError, match="Connection error"):
+            await consult_mod._run_dispatch_chain_job_batch(
+                "batch-1298",
+                [{"astral_job_id": "job-1298"}],
+                {},
+                False,
+                "draft_job_resume",
+                cfg.BUILD_ARTIFACTS_BASE_STATE,
+            )
+        assert released == ["job-1298"]
+
+    @pytest.mark.asyncio
     async def test_dispatch_chain_batch_missing_candidate_releases_claim(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
