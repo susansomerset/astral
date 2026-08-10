@@ -522,7 +522,7 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
             job_description: "JD",
             analysis_upshot: fullUpshot(),
             artifacts: {
-              resume_content: { professional_summary: "Draft text" },
+              job_resume: { professional_summary: "Draft text" },
               cover_letter: { Letter: "Cover body" },
             },
           },
@@ -561,3 +561,44 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     expect(screen.queryByRole("button", { name: /Regenerate/i })).not.toBeInTheDocument()
   })
 })
+
+describe("JobAnalysisReportModal — AST-1274 load error honesty", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("shows Job not found only for HTTP 404", async () => {
+    installBaseApiMocks(mockedApi, (url) => {
+      if (url === "/api/jobs/j-404") {
+        return jsonResponse({ error: "Not found" }, { ok: false, status: 404 })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-404" onClose={() => {}} />)
+    expect(await screen.findByText("Job not found")).toBeInTheDocument()
+    expect(screen.queryByText(/Load failed/i)).not.toBeInTheDocument()
+  })
+
+  it("shows JSON error for non-404 failures", async () => {
+    installBaseApiMocks(mockedApi, (url) => {
+      if (url === "/api/jobs/j-500") {
+        return jsonResponse({ error: "story hydrate blew up" }, { ok: false, status: 500 })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-500" onClose={() => {}} />)
+    expect(await screen.findByText("story hydrate blew up")).toBeInTheDocument()
+    expect(screen.queryByText("Job not found")).not.toBeInTheDocument()
+  })
+
+  it("falls back to Load failed (HTTP status) when body has no error", async () => {
+    installBaseApiMocks(mockedApi, (url) => {
+      if (url === "/api/jobs/j-503") {
+        return jsonResponse({}, { ok: false, status: 503 })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-503" onClose={() => {}} />)
+    expect(await screen.findByText("Load failed (HTTP 503)")).toBeInTheDocument()
+    expect(screen.queryByText("Job not found")).not.toBeInTheDocument()
+  })
+})
+

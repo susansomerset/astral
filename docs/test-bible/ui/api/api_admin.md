@@ -111,13 +111,14 @@ Routed pages: **`docs/test-bible/frontend/pages.md`** (**AST-739**).
 
 ### AST-750 · AST-743
 
-**`GET /api/admin/dispatch_tasks/score_floor_options`** returns `{"values": ["0.00", …, "10.00"]}` from **`dispatch_score_floor_option_labels()`** — mirrors **`state_options`** metadata pattern for the Scheduled Actions edit modal.
+**`GET /api/admin/dispatch_tasks/score_floor_options`** returns `{"values": ["0.00", …, "10.00"]}` from **`dispatch_score_floor_option_labels()`** — mirrors **`state_options`** metadata pattern for the Scheduled Actions edit modal. Zero-persist update: **`test_update_dispatch_task_scored_zero_score_floor`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Score floor catalog endpoint | `src/ui/api/api_admin.py` | `TestDispatchTasks::test_scheduler_and_run_controls` (floors GET) |
+| Zero persist on update | same | `TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor` |
 
-Routed page + zero-save UX: **`docs/test-bible/frontend/pages.md`** (**AST-750**).
+Routed page + zero-save UX restored on **AST-1278**: **`docs/test-bible/frontend/pages.md`** (**AST-1278**).
 
 ### AST-740 · AST-734
 

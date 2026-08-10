@@ -23,7 +23,7 @@
 
 ### AST-466 · AST-467 · AST-468 · AST-376
 
-Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title` inline-only, **`fetch_jd`**, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`pass_threshold`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. **`pass_threshold`** vs **`dispatch_task.score_floor`**: see **`docs/ASTRAL_CODE_RULES.md`** §2.1 (different lifecycle — not a numeric override).
+Orchestration literals for gazer steps live in **`GAZER_CONFIG`** (`validate_title` inline-only, **`fetch_jd`**, **`gaze`** error_state). Job consult scored steps carry pass/fail/error, **`save_prefix`**, **`requires_company`**, JD/qualify thresholds, and **`fallback_batch_size`** on **`TASK_CONFIG`** (`qualify_job_listings`, **`evaluate_jd`**, **`grade_do`**, **`grade_get`**, **`grade_like`**). **`pass_threshold`** removed from **`TASK_CONFIG`** (**AST-1277**) — scored soft-fail reads **`dispatch_task.score_floor`**. **`src/core/consult.py`** and **`src/core/gazer.py`** read **`TASK_CONFIG` / `GAZER_CONFIG` directly** — dispatch and catalog share **`grade_*`** strings (**AST-736** / **AST-748**; **`_consult_orchestration`** is direct **`TASK_CONFIG`** lookup). **`CONSULT_CONFIG`** removed (AST-468 Stage 6). **`RUBRIC_ARTIFACT_KEYS`** derives from the five **`TASK_CONFIG`** **`rubric_artifact`** fields. Law: **`pattern.dispatch.score-floor`** + CODE_RULES §2.1 (**AST-1279** retires `astral.config.pass-threshold-vs-score-floor`).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1025,5 +1025,32 @@ Locks standalone twin consult contract: Analysis-JD meteorite override via `_ent
   tests/component/core/test_consult.py::TestEvaluateMeteoriteStandaloneTwin \
   tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
   tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers \
+  -q
+```
+
+### AST-1277 · AST-1275
+
+**Parent:** [AST-1275 — Remove pass_threshold from task_config](https://linear.app/astralcareermatch/issue/AST-1275/remove-pass-threshold-from-task-config). **Publish:** `origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor`.
+
+Strip every **`TASK_CONFIG` `pass_threshold`**. Scored soft-fail / pass uses **`effective_dispatch_score_floor`** on the candidate’s matching **`dispatch_task`** row (`_dispatch_score_floor_for_task` via tracker `trigger_state=` + **`dispatch_row_task_key`** for `prefilter_company` → `prefilter`). Explicit **`0`** = no numeric soft-fail; NULL → **`1.0`**. Dealbreaker / technical-error paths unchanged. Config helpers: **`docs/test-bible/utils/config.md`**. Admin `0` dropdown: **AST-1278**. Statute retire + score_floor pattern + CODE_RULES: **AST-1279** (**`docs/test-bible/README.md`**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helpers + strip keys | `src/utils/config.py` | **`TestAst1277ScoreFloorHelpers`** |
+| Floor lookup + soft-fail / zero floor | `src/core/consult.py` | **`TestAst1277DispatchScoreFloorVerdict`** |
+| Scored `render_verdict` fixtures | same | revised **`TestRenderVerdict`** (4 scored cases) + **`TestAst726…::test_apply_render_verdict_always_persists_notes_including_empty`** |
+| Claim normalizer reuse | `src/core/dispatcher.py` | existing **`TestRunUnified::test_uses_default_score_floor_for_scored_states`** |
+
+**Broken / obsolete:** scored `render_verdict` / apply paths that relied on empty table rubric + artifact `{rubric}_threshold` / `cfg["pass_threshold"]` — revised to table-backed rubric mock + dispatch row floor.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers \
+  tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict \
+  tests/component/core/test_consult.py::TestRenderVerdict \
+  tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes::test_apply_render_verdict_always_persists_notes_including_empty \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states \
   -q
 ```

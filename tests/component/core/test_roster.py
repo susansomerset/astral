@@ -3555,6 +3555,40 @@ class TestEntityAgentStoryBranches:
         assert story[0]["blocks"][0]["content"] == ""
 
 
+class TestAst1274AgentStorySoftFail:
+    """AST-1274: corrupt ref graphs must not raise out of get_entity_agent_story."""
+
+    def test_list_refs_failure_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            MagicMock(side_effect=ValueError("ref target missing")),
+        )
+        assert roster_mod.get_entity_agent_story({"astral_job_id": "job-1274"}) == []
+
+    def test_get_agent_data_failure_yields_empty_block_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            roster_mod,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "qualify_job_listings",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            roster_mod,
+            "get_agent_data_for_ids",
+            MagicMock(side_effect=ValueError("ref cycle detected")),
+        )
+        story = roster_mod.get_entity_agent_story({"astral_job_id": "job-1274"})
+        assert len(story) == 1
+        assert story[0]["blocks"][0]["content"] == ""
+
+
 class TestRosterCoverageGaps:
     def test_derive_shortname_uses_single_part_domain(self) -> None:
         assert roster_mod._derive_shortname_from_url("https://localhost/jobs") == "localhost"

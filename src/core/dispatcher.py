@@ -36,6 +36,7 @@ from src.utils.config import (
     METEORITE_DISPATCH_TASKS,
     GAZE_EMAIL_CONFIG,
     dispatch_claim_uses_score_floor,
+    effective_dispatch_score_floor,
     dispatch_claim_states,
     dispatch_chain_claim_states_for_row,
     dispatch_chain_row_matches_job,
@@ -487,7 +488,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     elif entity_type == "job":
         task_key_run = task.get("task_key", "")
         is_scored = _trigger_state_scored(input_state, task_key_run)
-        floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
+        floor = effective_dispatch_score_floor(task.get("score_floor")) if is_scored else None
         if batch_call_mode and task_key_run in _CHUNK_EXHAUST_CONSULT_JOB_KEYS:
             if task.get("batch_size") is None:
                 raise ValueError(

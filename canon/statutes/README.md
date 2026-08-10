@@ -45,7 +45,6 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.batch.claim-process-release` | scoped | judgment | `astral/batch/astral.batch.claim-process-release.md` |
 | `astral.batch.entity-agent-responses-latest-only` | scoped | judgment | `astral/batch/astral.batch.entity-agent-responses-latest-only.md` |
 | `astral.config.config-source-of-truth` | scoped | judgment | `astral/config/astral.config.config-source-of-truth.md` |
-| `astral.config.pass-threshold-vs-score-floor` | scoped | judgment | `astral/config/astral.config.pass-threshold-vs-score-floor.md` |
 | `astral.config.secrets-and-env-specific-from-environ` | scoped | ci | `astral/config/astral.config.secrets-and-env-specific-from-environ.md` |
 | `astral.debug.no-repo-root-artifacts-dir` | scoped | hook | `astral/debug/astral.debug.no-repo-root-artifacts-dir.md` |
 | `astral.debug.spikes-under-debug-dir` | scoped | hook | `astral/debug/astral.debug.spikes-under-debug-dir.md` |
@@ -58,9 +57,9 @@ Scope fields on universals do not exclude them from that set. Plan consumers mat
 | `astral.layers.import-direction` | scoped | judgment | `astral/layers/astral.layers.import-direction.md` |
 | `astral.layers.scripts-exempt-from-layer-rules` | scoped | judgment | `astral/layers/astral.layers.scripts-exempt-from-layer-rules.md` |
 | `astral.layers.ui-config-driven-business-logic` | scoped | judgment | `astral/layers/astral.layers.ui-config-driven-business-logic.md` |
-| `astral.patterns.coat-check-never-store-empty` | scoped | judgment | `astral/patterns/astral.patterns.coat-check-never-store-empty.md` |
-| `astral.patterns.render-verdict-orchestrates-consult` | scoped | judgment | `astral/patterns/astral.patterns.render-verdict-orchestrates-consult.md` |
-| `astral.patterns.require-auth-on-protected-endpoints` | scoped | judgment | `astral/patterns/astral.patterns.require-auth-on-protected-endpoints.md` |
+| `astral.idioms.coat-check-never-store-empty` | scoped | judgment | `astral/idioms/astral.idioms.coat-check-never-store-empty.md` |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | judgment | `astral/idioms/astral.idioms.render-verdict-orchestrates-consult.md` |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | judgment | `astral/idioms/astral.idioms.require-auth-on-protected-endpoints.md` |
 | `astral.seed.agent-tables-in-repo-json` | scoped | judgment | `astral/seed/astral.seed.agent-tables-in-repo-json.md` |
 | `astral.seed.archie-catalog-wins` | scoped | judgment | `astral/seed/astral.seed.archie-catalog-wins.md` |
 | `astral.seed.boot-only-not-hot-path` | scoped | judgment | `astral/seed/astral.seed.boot-only-not-hot-path.md` |

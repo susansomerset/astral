@@ -66,6 +66,12 @@ The monolith `docs/ASTRAL_TEST_BIBLE.md` remains until Radia **review-child** co
 
 **No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — statute Statement has `ENTITY_TYPES` + pool + zero-row release; `approved_by: Archie`; pattern lists `claim_candidate_batch` / `get_new_candidate_batch`; CODE_RULES §2.4 names candidate claim-queue duty; `CANDIDATE_DATA_MODEL` has lock columns on table + Snake_case DB columns and no “No batch primitives” / “not batch-processed”) — no pytest / zero-arg harness / branch-lock gate.
 
+### AST-1279 · AST-1275 (retire pass-threshold statute; score_floor pattern)
+
+**Docs-only** (canon statute soft-retire + approved pattern + CODE_RULES §2.1). Live edits on **`origin/sub/AST-1275/AST-1279-retire-pass-threshold-statute-author-score-floor-pattern`**: `canon/statutes/astral/config/astral.config.pass-threshold-vs-score-floor.md` (`status: retired`; Statement points at successor pattern); statutes README drops the active harvested row; statutes HARVEST crosswalk `retired (AST-1279)`; `canon/patterns/dispatch/pattern.dispatch.score-floor.md` (`status: approved`, `approved_by: Archie` via AST-1281) + patterns README (**seven** approved) / HARVEST; `docs/ASTRAL_CODE_RULES.md` §2.1 sole-floor subsection cites **`pattern.dispatch.score-floor`** (no live `pass_threshold` TASK_CONFIG teaching; §2.2 parenthetical drops `pass_threshold`). No `src/**` in this child’s stages (runtime: **AST-1277** / admin `0`: **AST-1278**).
+
+**No new component or integration tests.** **`test-child`:** docs-acceptance (grep/read on publish tip — retired statute `status: retired` + Statement names `pattern.dispatch.score-floor`; pattern `approved` + `approved_by: Archie`; patterns README lists the id as approved; CODE_RULES §2.1 cites the pattern and does not teach `pass_threshold` as a live TASK_CONFIG key; `rg pass_threshold canon/patterns` only anti-trigger / HARVEST wording) — no pytest / zero-arg harness / branch-lock gate. Component score_floor / strip coverage stays under **AST-1277** / **AST-1278** manifests.
+
 ### Retired monolith section map
 
 

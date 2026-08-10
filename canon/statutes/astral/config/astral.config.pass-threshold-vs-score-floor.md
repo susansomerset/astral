@@ -3,7 +3,7 @@ id: astral.config.pass-threshold-vs-score-floor
 title: pass_threshold vs score_floor
 tier: scoped
 checkable: judgment
-status: active
+status: retired
 applies_when:
   layers: ["core", "data", "utils"]
   paths: ["src/core/**", "src/data/**", "src/utils/config.py"]
@@ -18,18 +18,18 @@ approved_at: "2026-07-23"
 
 # Statement
 
-`pass_threshold` (TASK_CONFIG) decides pass vs fail from model output after a run. `score_floor` on `dispatch_task` rows gates dispatch eligibility only. Neither replaces the other.
+**Retired (AST-1279).** Former rule that split `TASK_CONFIG.pass_threshold` (post-run grading) from `dispatch_task.score_floor` (claim gating only) is withdrawn. Authority for the numeric floor is pattern `pattern.dispatch.score-floor` — sole floor on the candidate’s `dispatch_task` row for both eligibility and scored soft-fail. Do not resurrect `pass_threshold` on `TASK_CONFIG`.
 
 ## Rationale
 
-Mixing grading math with dispatch gating breaks consult scoring and eligibility in opposite directions.
+Kept for citation history only. Active consumers must not treat this file as binding.
 
 ## Examples
 
 ### Conforming
 
-- Dispatcher filters with `score_floor`; `render_verdict` uses `pass_threshold`.
+- (retired — see `pattern.dispatch.score-floor`)
 
 ### Violating
 
-- Dispatch eligibility reads `pass_threshold` instead of the row's `score_floor`.
+- (retired — see `pattern.dispatch.score-floor`)

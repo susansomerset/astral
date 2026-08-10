@@ -1103,10 +1103,26 @@ def _apply_dispatch_chain_hop_failure(
     failure_class: Optional[str] = None,
 ) -> Dict[str, Any]:
     trigger_state, _ = _dispatch_chain_ctx(ctx)
+    from src.core import tracker as tracker_mod
+    # Hop-label-false: no error_state write; defense-in-depth claim release only (AST-1298).
     if not _should_write_dispatch_hop_label(
         entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
     ):
-        return dict(_HOP_FAILURE_NOOP)
+        batch_released = False
+        if provider_failed and index and entity_type == "job":
+            tracker_mod.release_job_dispatch_claim(index)
+            batch_released = True
+        if debug:
+            _do_task_debug_logger(debug).debug_detail(
+                f"chain_hop_failed apply_error_state=False "
+                f"error_state= batch_released={batch_released} "
+                f"failure_class={failure_class!r} error={error!r}"
+            )
+        return {
+            "apply_error_state": False,
+            "error_state": "",
+            "batch_released": batch_released,
+        }
     err_state = (task_config.get("error_state") or "").strip()
     balance_hold = provider_failed and is_provider_balance_refusal(
         {"failure_class": failure_class}
@@ -1118,17 +1134,19 @@ def _apply_dispatch_chain_hop_failure(
     )
     apply_error_state = False
     batch_released = False
-    from src.core import tracker as tracker_mod
-    if hard and err_state and index:
-        try:
-            tracker_mod.transition_job_state([index], err_state)
-            apply_error_state = True
-        except ValueError as exc:
-            logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
-    # Release after transition so state_history still stamps the in-flight batch_id.
-    if provider_failed and index:
-        tracker_mod.release_job_dispatch_claim(index)
-        batch_released = True
+    # Transition first (history stamps in-flight batch_id); release in finally so
+    # non-ValueError from transition cannot skip claim clear (AST-1298 / AST-1191).
+    try:
+        if hard and err_state and index:
+            try:
+                tracker_mod.transition_job_state([index], err_state)
+                apply_error_state = True
+            except ValueError as exc:
+                logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
+    finally:
+        if provider_failed and index:
+            tracker_mod.release_job_dispatch_claim(index)
+            batch_released = True
     if debug:
         _do_task_debug_logger(debug).debug_detail(
             f"chain_hop_failed apply_error_state={apply_error_state} "
@@ -1631,24 +1649,56 @@ def _store_response_block(
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-def _coerce_schema_str_fields_from_list(parsed: Dict[str, Any], schema: Dict[str, Dict]) -> None:
-    """Join list-of-strings into newline text before str validation (common LLM JSON habit)."""
+def _coerce_schema_str_fields_from_list(
+    parsed: Dict[str, Any], schema: Dict[str, Dict], *, debug: bool = False
+) -> None:
+    """Soft-coerce schema-str fields before type validation (list→join, int→str; nested items_schema)."""
     payload = _inner_task_payload(parsed)
     if not isinstance(payload, dict):
         return
-    for field_name, field_spec in schema.items():
-        if not isinstance(field_spec, dict) or field_spec.get("type", "str") != "str":
-            continue
-        val = payload.get(field_name)
-        if isinstance(val, list):
-            lines = [str(item).strip() for item in val if item is not None and str(item).strip()]
-            payload[field_name] = "\n".join(lines)
-            if log_batch_id.get():
-                logger.info(
-                    "do_task: coerced field %r from list (%d items) to newline string",
-                    field_name,
-                    len(val),
-                )
+    # Collect int→str events; emit Style D once after the walk (index/total stable).
+    int_coerce_events: list[tuple[str, int, str]] = []
+
+    def _walk(obj: Dict[str, Any], fields_schema: Dict[str, Dict], path_prefix: str) -> None:
+        for field_name, field_spec in fields_schema.items():
+            if not isinstance(field_spec, dict):
+                continue
+            type_spec = field_spec.get("type", "str")
+            val = obj.get(field_name)
+            field_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
+            if type_spec == "str" and isinstance(val, list):
+                lines = [str(item).strip() for item in val if item is not None and str(item).strip()]
+                obj[field_name] = "\n".join(lines)
+                if log_batch_id.get():
+                    logger.info(
+                        "do_task: coerced field %r from list (%d items) to newline string",
+                        field_name,
+                        len(val),
+                    )
+            elif type_spec == "str" and type(val) is int:
+                # type() is int — bool is a subclass of int; isinstance would soft-accept True/False.
+                coerced = str(val)
+                obj[field_name] = coerced
+                int_coerce_events.append((field_path, val, coerced))
+            elif type_spec == "list" and field_spec.get("items_schema") and isinstance(val, list):
+                items_schema = field_spec["items_schema"]
+                for idx, item in enumerate(val):
+                    if isinstance(item, dict):
+                        _walk(item, items_schema, f"{field_path}[{idx}]")
+
+    _walk(payload, schema, "")
+    if debug and int_coerce_events:
+        dbg = _do_task_debug_logger(True)
+        total = len(int_coerce_events)
+        for i, (identifier, raw, coerced) in enumerate(int_coerce_events, start=1):
+            dbg.debug_index(
+                func="_coerce_schema_str_fields_from_list",
+                index=i,
+                total=total,
+                identifier=identifier,
+                outcome="coerced int→str",
+            )
+            dbg.debug_detail(f"found={raw!r} ({type(raw).__name__}) recorded={coerced!r}")
 
 
 def _validate_schema_object_fields(
@@ -2559,8 +2609,8 @@ async def do_task(
             if task_key == "draft_job_resume":
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
-                normalize_draft_job_resume_agent_payload(parsed)
-            _coerce_schema_str_fields_from_list(parsed, schema)
+                normalize_draft_job_resume_agent_payload(parsed, debug=debug)
+            _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task validation failed. task_key=%r error=%s", task_key, err)
@@ -2594,7 +2644,7 @@ async def do_task(
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
-            cat_err = validate_draft_job_resume_payload(parsed, cd)
+            cat_err = validate_draft_job_resume_payload(parsed, cd, debug=debug)
             if cat_err:
                 logger.error("do_task validation failed. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
@@ -2748,8 +2798,8 @@ async def do_task(
             if task_key == "draft_job_resume":
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
-                normalize_draft_job_resume_agent_payload(parsed)
-            _coerce_schema_str_fields_from_list(parsed, schema)
+                normalize_draft_job_resume_agent_payload(parsed, debug=debug)
+            _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task schema validation failed after decode. task_key=%r error=%s", task_key, err)
@@ -2772,7 +2822,7 @@ async def do_task(
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
-            cat_err = validate_draft_job_resume_payload(parsed, cd)
+            cat_err = validate_draft_job_resume_payload(parsed, cd, debug=debug)
             if cat_err:
                 logger.error("do_task validation failed after decode. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
@@ -2901,6 +2951,20 @@ async def do_task(
             )
             _do_task_debug_logger(debug).debug_detail(
                 f"artifact_pin key={pin_slot} skipped reason={reason}"
+            )
+
+    # AST-1271: retain draft deviations as job artifact metadata (best-effort; do not fail hop).
+    if task_key == "draft_job_resume" and result.get("success") and index:
+        try:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import persist_draft_job_resume_deviations
+            persist_draft_job_resume_deviations(index, parsed)
+        except Exception as persist_err:
+            logger.error(
+                "persist_draft_job_resume_deviations failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
             )
 
     # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).

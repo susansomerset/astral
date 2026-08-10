@@ -381,6 +381,27 @@ class TestAst594DraftJobResumeSchema:
         assert entry.get("resume_section_payload") is True
 
 
+class TestAst1270DraftJobResumeNestConfig:
+    """AST-1270: nest unwrap key + payload metadata (incl. deviations) on TASK_CONFIG."""
+
+    def test_nested_resume_key_and_metadata_include_deviations(self) -> None:
+        entry = cfg.TASK_CONFIG["draft_job_resume"]
+        assert entry["nested_resume_key"] == "resume"
+        meta = set(entry["payload_metadata_keys"])
+        assert "deviations" in meta
+        assert {"astral_job_id", "company", "title", "task_success"}.issubset(meta)
+
+
+class TestAst1271DeviationsArtifactConfig:
+    """AST-1271: deviations job-artifact slot + cancel clear-keys."""
+
+    def test_deviations_artifact_key_and_clear_keys(self) -> None:
+        entry = cfg.TASK_CONFIG["draft_job_resume"]
+        assert entry["deviations_artifact_key"] == "deviations"
+        assert entry["deviations_artifact_key"] in entry["payload_metadata_keys"]
+        assert "deviations" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+
+
 class TestAst520AnticipateScanTaskKey:
     """AST-520: tenth Phase E key; non-dispatch hop (AST-740: no config phase/seq)."""
 
@@ -910,6 +931,39 @@ class TestAst750DispatchScoreFloorCatalog:
         assert labels[-1] == "10.00"
         assert len(labels) == 21
 
+
+
+
+# AST-1277 — strip pass_threshold; shared score_floor normalizer + row key map.
+@pytest.mark.skipif(
+    not hasattr(cfg, "effective_dispatch_score_floor"),
+    reason="AST-1277 score_floor helpers not on this branch",
+)
+class TestAst1277ScoreFloorHelpers:
+    def test_no_pass_threshold_on_scored_task_config(self) -> None:
+        keys = (
+            "prefilter_company",
+            "grade_do",
+            "grade_get",
+            "grade_like",
+            "meteorite_grade_do",
+            "meteorite_grade_get",
+            "meteorite_like",
+        )
+        for tk in keys:
+            assert "pass_threshold" not in cfg.TASK_CONFIG[tk]
+
+    def test_effective_dispatch_score_floor_null_and_zero(self) -> None:
+        assert cfg.effective_dispatch_score_floor(None) == 1.0
+        assert cfg.effective_dispatch_score_floor(0) == 0.0
+        assert cfg.effective_dispatch_score_floor(0.0) == 0.0
+        assert cfg.effective_dispatch_score_floor(6) == 6.0
+
+    def test_dispatch_row_task_key_prefilter_and_identity(self) -> None:
+        assert cfg.dispatch_row_task_key("prefilter_company") == "prefilter"
+        assert cfg.dispatch_row_task_key("prefilter") == "prefilter"
+        assert cfg.dispatch_row_task_key("grade_do") == "grade_do"
+        assert cfg.dispatch_row_task_key("meteorite_grade_do") == "meteorite_grade_do"
 
 # AST-641 — primary + companion *_RETRY union for dispatch claim/count (parent AST-630).
 class TestAst641DispatchClaimStates:

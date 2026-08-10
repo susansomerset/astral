@@ -603,6 +603,9 @@ class TestAst1213RuthLivePayload:
             return {"success": True, "parsed_response": {"jobs": []}}
 
         monkeypatch.setattr(ge, "do_task", _do_task)
+        # AST-1294: empty Ruth jobs + payload links → reconcile stubs then ingest; keep this
+        # case on live_content shape only (no real Playwright scrape).
+        monkeypatch.setattr(ge, "_ingest_link", AsyncMock(return_value="skipped"))
         monkeypatch.setattr(ge, "archive_message", MagicMock())
         await ge.run_gaze_email({"candidate_id": "c1"}, debug=False)
         live = captured["live_content"]
@@ -675,6 +678,8 @@ class TestAst1213RuthLivePayload:
             "do_task",
             AsyncMock(return_value={"success": True, "parsed_response": {"jobs": []}}),
         )
+        # AST-1294: reconcile stubs missing payload links before ingest — isolate Style D payload lines.
+        monkeypatch.setattr(ge, "_ingest_link", AsyncMock(return_value="skipped"))
         monkeypatch.setattr(ge, "archive_message", MagicMock())
         detail = MagicMock()
         monkeypatch.setattr(ge.logger, "debug_detail", detail)
@@ -684,3 +689,184 @@ class TestAst1213RuthLivePayload:
         lines = [c.args[0] for c in detail.call_args_list if c.args]
         assert any(isinstance(s, str) and s.startswith("ruth_payload visible_chars=") for s in lines)
         assert any(isinstance(s, str) and "PARSE_MODE: html_links" in s for s in lines)
+
+
+@pytest.mark.skipif(
+    not hasattr(ge, "_ensure_html_links_jobs_complete"),
+    reason="AST-1294 html_links completeness helper not on this publish tip",
+)
+class TestAst1294HtmlLinksJobsComplete:
+    """AST-1294: payload-link completeness reconcile + Style D found/recorded/missing."""
+
+    _MISSING_A = "https://www.dice.com/job-detail/3628bf85-8915-4525-93ff-2f05e09f9e39"
+    _MISSING_B = "https://www.dice.com/job-detail/add50803-2af1-4f26-aba5-3997c9db8905"
+    # Parent UAT enumeration (34 Dice job-detail links); Ruth historically dropped the last two.
+    _UAT_PAYLOAD = [
+        "https://www.dice.com/job-detail/801012b1-1801-42dc-a784-fecd2ae4f871",
+        "https://www.dice.com/job-detail/fe9ffb32-07bb-4fbc-beff-99c45969e423",
+        "https://www.dice.com/job-detail/6210dbdf-304e-400f-b73a-3e1dfc5993d4",
+        "https://www.dice.com/job-detail/711e4efd-04ca-428a-9d15-954aa9d4850a",
+        "https://www.dice.com/job-detail/1f5c5c4c-a427-48aa-8f3c-4168ee3f22e7",
+        "https://www.dice.com/job-detail/f00dcb10-f309-42cc-ab4a-aaaffd6a90c4",
+        "https://www.dice.com/job-detail/c375529b-543c-48e7-a87c-39fb762e402c",
+        "https://www.dice.com/job-detail/a740e541-f52e-4fa6-b522-a10d6845f0a4",
+        "https://www.dice.com/job-detail/42f5e734-b1eb-45d3-8493-f18e03107211",
+        "https://www.dice.com/job-detail/8e6f94dc-df8b-47b6-a96f-2c10b61e965d",
+        "https://www.dice.com/job-detail/5edf3075-df3b-4538-8013-b23a3499eac2",
+        "https://www.dice.com/job-detail/cc5614d4-6ff1-4673-8571-e59bdb455736",
+        "https://www.dice.com/job-detail/04dd50e5-7829-4187-997e-753a8f1114ad",
+        "https://www.dice.com/job-detail/cf1b0f6b-df72-4267-9882-8df914eb31f8",
+        "https://www.dice.com/job-detail/0f4fd8c7-3032-47de-9f06-c1602d5a1617",
+        "https://www.dice.com/job-detail/1c6049e1-27c4-4a42-b9c8-3e3be446d4e8",
+        "https://www.dice.com/job-detail/238439a6-65f4-4c03-99b1-449e21fbc882",
+        "https://www.dice.com/job-detail/f97e3e2f-79cc-4217-a8ca-ea07be3cc44b",
+        "https://www.dice.com/job-detail/50ac44a4-ca09-4a0e-8297-cbdbe058b9d8",
+        "https://www.dice.com/job-detail/68e6f5a7-a112-4ded-b81f-7bbe427f7d97",
+        "https://www.dice.com/job-detail/e4a8ade2-7394-41c1-83c6-32e8484edf44",
+        "https://www.dice.com/job-detail/5056150a-47c5-483e-8943-ba06fa880d2e",
+        "https://www.dice.com/job-detail/b87017d4-f536-40ef-bac1-c9980a4c075d",
+        "https://www.dice.com/job-detail/e118abab-d44f-4284-8773-a31de4409586",
+        "https://www.dice.com/job-detail/e2bf7ac5-ead5-4d9f-867c-176835f43381",
+        "https://www.dice.com/job-detail/3465ba33-4099-4b94-9ebe-f100ff59b843",
+        "https://www.dice.com/job-detail/4b9727f4-ddc0-4aab-ab6e-dd7f42d9888e",
+        "https://www.dice.com/job-detail/e5536776-23c8-4c86-b9a3-60c29d32ce69",
+        "https://www.dice.com/job-detail/62749deb-b3a9-4372-b1fe-ebe0e8be619e",
+        "https://www.dice.com/job-detail/c797094a-2fea-406c-8c58-ad2d19471685",
+        "https://www.dice.com/job-detail/cd599298-c4ce-418a-9a68-9efc1ecc56f6",
+        "https://www.dice.com/job-detail/fc812fa4-8436-4e0e-93eb-931c52c67193",
+        _MISSING_A,
+        _MISSING_B,
+    ]
+
+    def test_uat_34_payload_stubs_two_missing_null_titles(self) -> None:
+        # AC1/AC2: 34 payload links + Ruth 32 → 34 jobs including the two UAT UUID tails.
+        ruth = [{"job_link": u, "job_title": f"t{i}"} for i, u in enumerate(self._UAT_PAYLOAD[:32])]
+        out = ge._ensure_html_links_jobs_complete(ruth, self._UAT_PAYLOAD, debug=False)
+        assert len(out) == 34
+        assert out[:32] == ruth
+        assert out[32] == {"job_link": self._MISSING_A, "job_title": None}
+        assert out[33] == {"job_link": self._MISSING_B, "job_title": None}
+        links = {j["job_link"] for j in out}
+        assert self._MISSING_A in links and self._MISSING_B in links
+
+    def test_normalize_link_avoids_duplicate_stub(self) -> None:
+        # Ruth echoes scheme/slash variant of a payload href — one row, no second stub.
+        payload = ["https://www.dice.com/job-detail/abc/"]
+        ruth = [{"job_link": "http://www.dice.com/job-detail/abc", "job_title": "Lead"}]
+        out = ge._ensure_html_links_jobs_complete(ruth, payload, debug=False)
+        assert len(out) == 1
+        assert out[0]["job_title"] == "Lead"
+
+    def test_preserves_ruth_extras_and_drops_junk_rows(self) -> None:
+        payload = ["https://jobs.example.com/a"]
+        ruth: List[Any] = [
+            "not-a-dict",
+            {"job_link": "", "job_title": "empty"},
+            {"job_link": "https://jobs.example.com/extra-not-in-payload", "job_title": "keep"},
+            {"job_link": "https://jobs.example.com/a", "job_title": "covered"},
+        ]
+        out = ge._ensure_html_links_jobs_complete(ruth, payload, debug=False)
+        assert [j["job_link"] for j in out] == [
+            "https://jobs.example.com/extra-not-in-payload",
+            "https://jobs.example.com/a",
+        ]
+
+    def test_debug_true_emits_found_recorded_missing_ids(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        index = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(ge.logger, "debug_index", index)
+        monkeypatch.setattr(ge.logger, "debug_detail", detail)
+        payload = [
+            "https://www.dice.com/job-detail/keep-me",
+            self._MISSING_A,
+            self._MISSING_B,
+        ]
+        ruth = [{"job_link": payload[0], "job_title": "Kept"}]
+        out = ge._ensure_html_links_jobs_complete(ruth, payload, debug=True)
+        assert len(out) == 3
+        index.assert_called_once_with(
+            func="gaze_email._ensure_html_links_jobs_complete",
+            index=1,
+            total=1,
+            identifier="html_links",
+            outcome="reconciled",
+        )
+        detail_msgs = [c.args[0] for c in detail.call_args_list if c.args]
+        assert detail_msgs == [
+            "found=3 recorded=1 missing="
+            "3628bf85-8915-4525-93ff-2f05e09f9e39,add50803-2af1-4f26-aba5-3997c9db8905"
+        ]
+
+    def test_debug_false_or_complete_skips_style_d(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        index = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(ge.logger, "debug_index", index)
+        monkeypatch.setattr(ge.logger, "debug_detail", detail)
+        payload = [self._MISSING_A]
+        ruth = [{"job_link": self._MISSING_A, "job_title": None}]
+        # Complete coverage → no Style D even with debug=True.
+        ge._ensure_html_links_jobs_complete(ruth, payload, debug=True)
+        index.assert_not_called()
+        detail.assert_not_called()
+        # Incomplete + debug=False → stubs still, silence on Style D.
+        out = ge._ensure_html_links_jobs_complete([], payload, debug=False)
+        assert out == [{"job_link": self._MISSING_A, "job_title": None}]
+        index.assert_not_called()
+        detail.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_html_links_call_site_ingests_stubbed_links(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Call site: incomplete Ruth jobs still feed stubbed payload links into _ingest_link.
+        monkeypatch.setattr(ge, "update_candidate_last_email_check", MagicMock())
+        monkeypatch.setattr(
+            ge, "list_inbox_messages", MagicMock(return_value=[_msg("m-complete", matched=True)])
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_candidate",
+            MagicMock(return_value={"astral_candidate_id": "c1", "candidate_api_key": "k"}),
+        )
+        html = (
+            f'<a href="{self._MISSING_A}">one</a>'
+            f'<a href="{self._MISSING_B}">two</a>'
+            '<a href="https://www.dice.com/job-detail/covered-uuid">three</a>'
+        )
+        monkeypatch.setattr(
+            ge,
+            "get_message_html",
+            MagicMock(return_value={"subject": "", "html_body": html, "from_address": "a"}),
+        )
+        monkeypatch.setattr(
+            ge,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "job_link": "https://www.dice.com/job-detail/covered-uuid",
+                                "job_title": "Covered",
+                            }
+                        ],
+                    },
+                }
+            ),
+        )
+        ingest = AsyncMock(return_value="created")
+        monkeypatch.setattr(ge, "_ingest_link", ingest)
+        monkeypatch.setattr(ge, "archive_message", MagicMock())
+        out = await ge.run_gaze_email({"candidate_id": "c1"}, debug=False)
+        assert out["total_passed"] == 1 and out["total_errors"] == 0
+        ingested = [c.args[1] if c.args else c.kwargs.get("url") for c in ingest.call_args_list]
+        # _ingest_link(cid, url, jd_suffix=..., debug=...) — URL is positional arg 1.
+        assert self._MISSING_A in ingested
+        assert self._MISSING_B in ingested
+        assert "https://www.dice.com/job-detail/covered-uuid" in ingested
+        assert len(ingested) == 3

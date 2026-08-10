@@ -3,7 +3,7 @@ Core business logic for job consulting/analysis.
 
 render_verdict(task_type, astral_job_id): single orchestrator for per-job consult tasks.
   Fetches job/company internally, preps live content, calls agent, audits, derives verdict.
-  Per-job orchestration (pass/fail/error, thresholds, rubric refs) from TASK_CONFIG[task_type] — dispatch and catalog share one string (AST-736).
+  Per-job orchestration (pass/fail/error, rubric refs) from TASK_CONFIG[task_type] — soft-fail floor from dispatch_task.score_floor; dispatch and catalog share one string (AST-736).
 _render_pass_fail: binary grading (PASS/F) for qualify_job_listings and evaluate_jd_batch.
 _render_score: scored grading (AST-358 importance × universal grade values × confidence) for batch qualify/evaluate_jd and grade_get/do/like.
 When TASK_CONFIG[task_key].scored, transitions persist latest_score only when a numeric score exists.
@@ -38,6 +38,8 @@ from src.utils.config import (
     METEORITE_CONFIG,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
+    dispatch_row_task_key,
+    effective_dispatch_score_floor,
     grade_value,
     importance_multiplier,
     is_dispatch_chain_trigger,
@@ -148,6 +150,31 @@ def _find_rubric_criterion(rubric_criteria: list, vector_label: str):
 
 def _candidate_id_from_ctx(ctx: Optional[Dict[str, Any]]) -> str:
     return str((ctx or {}).get("astral_candidate_id") or "")
+
+
+def _dispatch_score_floor_for_task(
+    candidate_id: str,
+    task_key: str,
+    trigger_state: Optional[str] = None,
+) -> float:
+    """Resolve effective score_floor from the candidate's matching dispatch_task row."""
+    cid = (candidate_id or "").strip()
+    dispatch_tk = dispatch_row_task_key((task_key or "").strip())
+    if not cid or not dispatch_tk:
+        return effective_dispatch_score_floor(None)
+    ts = (trigger_state or "").strip() or None
+    if ts is not None:
+        rows = tracker.list_dispatch_tasks_for_candidate(cid, trigger_state=ts)
+    else:
+        rows = tracker.list_dispatch_tasks_for_candidate(cid)
+    matched = [r for r in rows if (r.get("task_key") or "").strip() == dispatch_tk]
+    if not matched and ts is not None:
+        rows = tracker.list_dispatch_tasks_for_candidate(cid)
+        matched = [r for r in rows if (r.get("task_key") or "").strip() == dispatch_tk]
+    if not matched:
+        return effective_dispatch_score_floor(None)
+    # First match = newest id (tracker walks list_dispatch_tasks ORDER BY id DESC).
+    return effective_dispatch_score_floor(matched[0].get("score_floor"))
 
 
 def _rubric_criteria_for_cfg(candidate_id: str, cfg: dict) -> list:
@@ -671,7 +698,7 @@ def _render_score(
     consult_cfg: dict,
     rubric_criteria: list,
     grades: list,
-    pass_threshold: float,
+    score_floor: float,
 ) -> Tuple[str, Optional[float]]:
     """Scored grading (AST-358): base × grade density × importance × confidence (AST-357).
     F with confidence 2–5 = instant fail. X / conf-1 / F1 excluded from V. Score normalized 0–10 vs RUBRIC_TOTAL."""
@@ -707,15 +734,15 @@ def _render_score(
             )
     score = (rubric_score / float(RUBRIC_TOTAL)) * 10.0
     logger.debug_detail(
-        f"rubric_score={rubric_score} score={score} threshold={pass_threshold} v={v}"
+        f"rubric_score={rubric_score} score={score} score_floor={score_floor} v={v}"
     )
-    if score < pass_threshold:
+    if score < score_floor:
         logger.debug_detail(
-            f"branch=below_threshold -> fail score={score} threshold={pass_threshold}"
+            f"branch=below_score_floor -> fail score={score} score_floor={score_floor}"
         )
         return (consult_cfg["fail_state"], score)
     logger.debug_detail(
-        f"branch=pass -> {consult_cfg['pass_state']} score={score} threshold={pass_threshold}"
+        f"branch=pass -> {consult_cfg['pass_state']} score={score} score_floor={score_floor}"
     )
     return (consult_cfg["pass_state"], score)
 
@@ -1082,8 +1109,8 @@ def _apply_render_verdict_decoded_job(
     nt = response_job.get("notes")
     notes_tail = nt.strip() if isinstance(nt, str) and nt.strip() else ""
 
+    job_row = tracker.get_job(astral_job_id) or {}
     if mode == "binary":
-        job_row = tracker.get_job(astral_job_id) or {}
         to_state = _render_pass_fail(
             dispatch_task_key, grades, entity_state=job_row.get("state"),
         )
@@ -1095,11 +1122,17 @@ def _apply_render_verdict_decoded_job(
             raise ValueError(f"TASK_CONFIG[{orch_key}] missing rubric_artifact")
         if not rubric_criteria:
             raise ValueError(f"Candidate missing rubric artifact: {rubric_key}")
-        artifacts = (ctx or {}).get("candidate_data", {}).get("artifacts", {})
-        threshold = artifacts.get(f"{rubric_key}_threshold", cfg.get("pass_threshold", 6.0))
+        candidate_id = _candidate_id_from_ctx(ctx)
+        if not candidate_id:
+            candidate_id = str(
+                job_row.get("astral_candidate_id") or job_row.get("candidate_id") or ""
+            )
+        floor = _dispatch_score_floor_for_task(
+            candidate_id, dispatch_task_key, (job_row.get("state") or None),
+        )
         # Exact set match before score math — incompleteness retries via caller (AST-1155).
         _require_complete_grade_set(rubric_criteria, grades)
-        to_state, score = _render_score(cfg, rubric_criteria, grades, float(threshold))
+        to_state, score = _render_score(cfg, rubric_criteria, grades, floor)
     else:
         raise ValueError(f"Unknown grading_mode: {mode}")
 
@@ -2349,12 +2382,17 @@ async def _run_dispatch_chain_job_batch(
                 task_ctx["astral_candidate_id"] = str(co["candidate_id"])
         if "vector_labels" not in task_ctx:
             task_ctx["vector_labels"] = {}
-        result = await do_task(
-            dispatch_task_key,
-            index=aid,
-            ctx=task_ctx,
-            debug=debug,
-        )
+        # AST-1298: release on raise as well as success=False (dispatcher finally is third belt).
+        try:
+            result = await do_task(
+                dispatch_task_key,
+                index=aid,
+                ctx=task_ctx,
+                debug=debug,
+            )
+        except BaseException:
+            tracker.release_job_dispatch_claim(aid)
+            raise
         if not result.get("success"):
             tracker.release_job_dispatch_claim(aid)
             errors += 1

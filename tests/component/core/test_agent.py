@@ -114,8 +114,17 @@ def enable_debug_log(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _draft_job_resume_ctx() -> dict[str, Any]:
-    """Truthy candidate_data so AST-594 catalog validation runs (empty {} skips it)."""
-    return {"candidate_data": {"artifacts": {}}}
+    """Truthy candidate_data with base_resume keys so draft whitelist validation runs (AST-1270)."""
+    return {
+        "candidate_data": {
+            "artifacts": {
+                "base_resume": {
+                    "professional_summary": "Seasoned engineer.",
+                    "experience": "Built things.",
+                }
+            }
+        }
+    }
 
 
 # Branches: X grade conf 0 (inner loop continue), empty job.grades skip (89->85), CRX0 decode segment
@@ -3350,6 +3359,55 @@ class TestDoTaskShouldStoreBranches:
         out = await agent_mod.do_task("draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx())
         assert out["success"] is True
 
+    async def test_draft_job_resume_passes_debug_flag_to_normalize_and_validate(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # AST-1272: do_task forwards debug= into draft normalize + validate call sites.
+        import src.core.candidate as candidate_mod
+
+        captured: dict[str, list[bool]] = {"normalize": [], "validate": []}
+        real_norm = candidate_mod.normalize_draft_job_resume_agent_payload
+        real_val = candidate_mod.validate_draft_job_resume_payload
+
+        def _norm(parsed, *, debug=False):
+            captured["normalize"].append(debug)
+            return real_norm(parsed, debug=debug)
+
+        def _val(parsed, cd, *, debug=False):
+            captured["validate"].append(debug)
+            return real_val(parsed, cd, debug=debug)
+
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(candidate_mod, "normalize_draft_job_resume_agent_payload", _norm)
+        monkeypatch.setattr(candidate_mod, "validate_draft_job_resume_payload", _val)
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_payload": {
+                            "professional_summary": "Seasoned engineer.",
+                            "experience": "Built things.",
+                        }
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task(
+            "draft_job_resume", index="job-1", ctx=_draft_job_resume_ctx(), debug=True
+        )
+        assert out["success"] is True
+        assert True in captured["normalize"]
+        assert True in captured["validate"]
+
     async def test_draft_job_resume_rejects_unknown_section_key(
         self,
         monkeypatch: pytest.MonkeyPatch,
@@ -5775,10 +5833,32 @@ class TestAst1191ArtifactHopFailureRelease:
         transition.assert_not_called()
         release.assert_called_once_with("job-1191")
 
-    def test_apply_non_dispatch_chain_returns_noop(self) -> None:
+    def test_apply_hop_label_false_job_provider_failed_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1298: hop-label-false no longer returns bare NOOP for job+provider_failed —
+        # defense-in-depth claim release (no error_state write).
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
         out = agent_mod._apply_dispatch_chain_hop_failure(
             entity_type="job",
             index="job-1191",
+            ctx={},
+            task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+            error="Provider call failed",
+            debug=False,
+            provider_failed=True,
+            failure_class="provider_call_timeout",
+        )
+        assert out["apply_error_state"] is False
+        assert out["error_state"] == ""
+        assert out["batch_released"] is True
+        release.assert_called_once_with("job-1191")
+
+    def test_apply_hop_label_false_non_job_returns_noop(self) -> None:
+        out = agent_mod._apply_dispatch_chain_hop_failure(
+            entity_type="candidate",
+            index="cand-1191",
             ctx={},
             task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
             error="Provider call failed",
@@ -5933,6 +6013,106 @@ class TestAst1191ArtifactHopFailureRelease:
         detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
         assert not any(m.startswith("found ") for m in detail_msgs)
         assert not any(m.startswith("recorded ") for m in detail_msgs)
+
+
+class TestAst1298OrphanedJobClaimRelease:
+    """AST-1298: hop-label-true finally + Connection-error path clear job claim."""
+
+    def _dispatch_ctx(self) -> Dict[str, Any]:
+        ctx = _draft_job_resume_ctx()
+        ctx.update(
+            {
+                "batch_entities": _batch_entities("job-1298"),
+                "dispatch_trigger_state": cfg.BUILD_ARTIFACTS_BASE_STATE,
+                "dispatch_chain_graduate_on_terminal": True,
+            }
+        )
+        return ctx
+
+    def test_apply_transition_non_value_error_still_releases(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Non-ValueError from transition must not skip finally release (Stage 1).
+        transition = MagicMock(side_effect=RuntimeError("transition blew up"))
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        with pytest.raises(RuntimeError, match="transition blew up"):
+            agent_mod._apply_dispatch_chain_hop_failure(
+                entity_type="job",
+                index="job-1298",
+                ctx=self._dispatch_ctx(),
+                task_config={"error_state": cfg.ERROR_BUILD_ARTIFACTS_STATE},
+                error="Connection error.",
+                debug=False,
+                provider_failed=True,
+                failure_class="provider_connection_error",
+            )
+        transition.assert_called_once_with(["job-1298"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1298")
+
+    @pytest.mark.asyncio
+    async def test_do_task_draft_job_resume_connection_error_releases_and_errors(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC1/AC2 shape: draft_job_resume + BUILD_ARTIFACTS ctx + Connection error.
+        transition = MagicMock()
+        release = MagicMock()
+        monkeypatch.setattr("src.core.tracker.transition_job_state", transition)
+        monkeypatch.setattr("src.core.tracker.release_job_dispatch_claim", release)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job",
+            lambda jid: {"astral_job_id": jid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next=""))
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {"vendor_model": "deepseek-v4-flash", "thinking": False},
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_deepseek",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Connection error.",
+                    "failure_class": "provider_connection_error",
+                    "api_response": None,
+                    "timesheet": {
+                        "duration": 60.7,
+                        "inputtotal": 0,
+                        "inputcached": 0,
+                        "outputtotal": 0,
+                        "cache_creation_tokens": 0,
+                    },
+                }
+            ),
+        )
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        out = await agent_mod.do_task(
+            "draft_job_resume",
+            index="job-1298",
+            ctx=self._dispatch_ctx(),
+            debug=True,
+        )
+        assert out["success"] is False
+        assert out.get("error") == "Connection error."
+        transition.assert_called_once_with(["job-1298"], cfg.ERROR_BUILD_ARTIFACTS_STATE)
+        release.assert_called_once_with("job-1298")
+        detail_msgs = [str(c.args[0]) for c in dbg.debug_detail.call_args_list if c.args]
+        assert any(
+            m.startswith("recorded error=")
+            and "error_state=ERROR_BUILD_ARTIFACTS" in m
+            and "batch_released=true" in m
+            for m in detail_msgs
+        )
 
 
 class TestAst903CraftRubricMaxTokensFloor:
@@ -7205,3 +7385,161 @@ class TestAst1264CandidateCraftSuccession:
         assert out.get("success") is True
         assert child_contexts, "expected recurse into craft_do_rubric"
         assert (child_contexts[0].get("CALLER_RESPONSE") or "").strip() == "from-get-hop"
+
+
+class TestAst1271DoTaskDeviationsPersist:
+    """AST-1271: successful draft_job_resume retains deviations via tracker persist helper."""
+
+    @pytest.mark.asyncio
+    async def test_success_persists_deviations(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_payload": {
+                            "resume": {
+                                "professional_summary": "Seasoned engineer.",
+                                "experience": "Built things.",
+                            },
+                            "deviations": ["Skipped UAT claim."],
+                        }
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task(
+            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+        )
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[0] == "job-1271"
+        parsed_arg = persist.call_args.args[1]
+        assert isinstance(parsed_arg, dict)
+
+    @pytest.mark.asyncio
+    async def test_validation_failure_does_not_persist_deviations(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": {"bogus_section": "x", "deviations": ["n"]}},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task(
+            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+        )
+        assert out["success"] is False
+        persist.assert_not_called()
+
+
+class TestAst1293SoftCoerceNumericSchemaStrings:
+    """AST-1293: pre-validate int→str soft-coerce on schema-str fields (nested items_schema)."""
+
+    # Minimal jobs[] schema mirroring qualify_meteorite slot-echo shape.
+    _JOBS_SCHEMA = {
+        "jobs": {
+            "type": "list",
+            "required": True,
+            "items_schema": {
+                "astral_job_id": {"type": "str", "required": True},
+                "job_title": {"type": "str", "required": False},
+            },
+        },
+    }
+
+    def test_nested_int_slot_id_coerces_then_validates(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "jobs": [{"astral_job_id": 0, "job_title": "Engineer"}],
+            },
+        }
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA)
+        assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] == "0"
+        assert agent_mod._validate_response_schema(parsed, self._JOBS_SCHEMA, "qualify_meteorite") is None
+
+    def test_list_join_regression_still_coerces(self) -> None:
+        # Existing list→str habit must survive the recursive walk rewrite.
+        schema = {"search_terms": {"type": "str", "required": True}}
+        parsed = {"agent_payload": {"search_terms": ["alpha", "beta"]}}
+        agent_mod._coerce_schema_str_fields_from_list(parsed, schema)
+        assert parsed["agent_payload"]["search_terms"] == "alpha\nbeta"
+
+    def test_bool_and_dict_on_str_still_reject(self) -> None:
+        # type(val) is int excludes bool; dict never enters the coerce gate.
+        for bad in (True, False, {"echo": 0}):
+            parsed = {"agent_payload": {"jobs": [{"astral_job_id": bad}]}}
+            agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA)
+            assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] is bad
+            err = agent_mod._validate_response_schema(parsed, self._JOBS_SCHEMA, "qualify_meteorite")
+            assert err is not None and "must be str" in err
+
+    def test_float_on_str_not_coerced(self) -> None:
+        parsed = {"agent_payload": {"jobs": [{"astral_job_id": 1.5}]}}
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA)
+        assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] == 1.5
+        err = agent_mod._validate_response_schema(parsed, self._JOBS_SCHEMA, "qualify_meteorite")
+        assert err is not None and "must be str" in err
+
+    def test_debug_true_emits_style_d_for_int_coerce(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        parsed = {
+            "agent_payload": {
+                "jobs": [
+                    {"astral_job_id": 0},
+                    {"astral_job_id": 1},
+                ],
+            },
+        }
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA, debug=True)
+        index_calls = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert len(index_calls) == 2
+        assert index_calls[0]["func"] == "_coerce_schema_str_fields_from_list"
+        assert index_calls[0]["outcome"] == "coerced int→str"
+        assert index_calls[0]["identifier"] == "jobs[0].astral_job_id"
+        assert index_calls[0]["index"] == 1 and index_calls[0]["total"] == 2
+        assert index_calls[1]["identifier"] == "jobs[1].astral_job_id"
+        detail_msgs = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args]
+        assert any("found=0 (int) recorded='0'" in str(m) for m in detail_msgs)
+
+    def test_debug_false_skips_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(agent_mod, "_do_task_debug_logger", lambda debug: dbg)
+        parsed = {"agent_payload": {"jobs": [{"astral_job_id": 0}]}}
+        agent_mod._coerce_schema_str_fields_from_list(parsed, self._JOBS_SCHEMA, debug=False)
+        assert parsed["agent_payload"]["jobs"][0]["astral_job_id"] == "0"
+        dbg.debug_index.assert_not_called()
+        dbg.debug_detail.assert_not_called()
+
+    def test_config_slot_id_schema_type_remains_str(self) -> None:
+        # AC3: no TASK_CONFIG type flips — coerce is pre-validate only.
+        item = TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert item["astral_job_id"]["type"] == "str"

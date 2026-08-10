@@ -13,7 +13,7 @@ canonical_refs:
   - path: docs/ASTRAL_CODE_RULES.md
     symbol: "§2.9"
 related_statutes:
-  - astral.patterns.require-auth-on-protected-endpoints
+  - astral.idioms.require-auth-on-protected-endpoints
   - astral.layers.ui-config-driven-business-logic
 supersedes: null
 superseded_by: null

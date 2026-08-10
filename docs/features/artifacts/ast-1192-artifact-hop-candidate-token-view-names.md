@@ -1,3 +1,183 @@
+<!-- linear-archive: AST-1192 archived 2026-08-07 -->
+
+## Linear archive (AST-1192)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1192/artifact-hop-candidate-token-view-names-issues-while-running  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1163 — Issues while running anticipate_scan  
+**Blocked by / blocks / related:** parent: AST-1163
+
+### Description
+
+## What this implements
+
+Ensure artifact `do_task` / preview resolve paths feed the walkable candidate token view (name columns + library blobs) so `{$FIRST_NAME}` / `{$LAST_NAME}` (and siblings) resolve for `anticipate_scan` and shared hops; include debug found/recorded for name-token outcomes on the touched path. Does **not** own ANALYSIS formatter matching (sibling).
+
+## Acceptance criteria
+
+- [X] For a candidate with non-empty first/last name columns, running `anticipate_scan` (or Manage Tasks preview for that task with the same candidate) substitutes non-empty `{$FIRST_NAME}` and `{$LAST_NAME}` — no empty-token warnings for those names on that run.
+- [X] A debug-gated run of the fixed path shows per-index found/recorded lines for candidate identity (name-token outcomes).
+- [X] Susan can reproduce: after this child lands, a Generate Artifacts / `anticipate_scan` run on a candidate with names no longer logs empty `{$FIRST_NAME}` / `{$LAST_NAME}` from missing token-view wiring.
+
+## Boundaries
+
+Does **not** own ANALYSIS_* vector↔rubric match parity (sibling). Does **not** harden provider timeouts / blank errors (**AST-1164**). Does **not** re-author prompt prose.
+
+## In scope
+
+- [X] `pattern.config.config-block` — TOKEN_SOURCES / existing token registry remain config authority; no parallel token maps
+- [X] `astral.config.config-source-of-truth` — name paths stay on TOKEN_SOURCES; no hardcoded path sets in core
+- [X] `astral.agent.do-task-delegation` — prompt assembly / resolve stays in `do_task` (token-view cutover at resolve boundary)
+- [X] `astral.standards.debug-contract-gated` — Style D found/recorded for name-token outcomes only when `debug=True`
+- [X] `astral.standards.in-scope-only` — only artifact hop + Manage Tasks preview resolve wiring for names
+- [X] `astral.standards.dry-and-focused-functions` — reuse `build_candidate_token_view`; one private helper for row-vs-raft
+- [X] `astral.standards.logging-via-utils` — debug via `_PrefixedLogger` helpers
+- [X] `astral.layers.import-direction` — lazy candidate import inside `agent.py` (existing cycle break)
+- [X] `astral.standards.no-cross-contamination` — do not convert `_candidate_data_for_job` blob consumers to token view
+
+## Considered but excluded
+
+- [X] `astral.agent.grade-vector-validation` — ANALYSIS formatter match parity is AST-1193 (`src/core/consult.py` `_format_analysis_phase_text`)
+- [X] `astral.patterns.coat-check-never-store-empty` — hollow ANALYSIS / provider failure persistence is AST-1193 / AST-1164
+- [X] `astral.batch.claim-process-release` — no new dispatch lifecycle; hop claim path unchanged
+- [X] `astral.dispatch.run-next-is-chain-authority` — `run_next` / hop order unchanged
+- [X] `astral.debug.no-repo-root-artifacts-dir` — no spike/debug file output in this ticket
+- [X] `astral.git.engineer-test-tree-ban` — no `tests/` or bible edits (Betty)
+
+## Notes for planning
+
+Name columns + `build_candidate_token_view` cutover (AST-1014) is the baseline — wire artifact hops to that view. Root cause: `do_task` and `preview_task_prompt` still pass raw `candidate_data` blobs; dispatch rafts set `astral_candidate_id` without copying `first`/`last` onto ctx.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: `sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-05T23:29:10.872Z
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1192
+**Publish ref:** `64125186` → doc-only `18338efe` (`origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names`)
+**Overall:** DISCUSS
+
+## Plan adherence
+
+- Implementation matches the plan doc literally: `_token_view_for_do_task` branch order (id-load → full-row ctx → already-view → raw fallback), overlay sequencing preserved, Style D `do_task.candidate_token_view` found/recorded gated under the existing `if debug:` block, `preview_task_prompt` one-line swap with no new import.
+- `src/` footprint is exactly the two planned files (`agent.py` +57/-1, `candidate.py` +2/-1); `_candidate_data_for_job` / `tracker.py` correctly untouched per the plan's stated boundary. Role boundaries clean per commit (`code()` → `src/` only, `test()` → `tests/`+`docs/test-bible/` only, `docs()` → `docs/features/` only).
+- Joan's `plan-rubric.v1` verdict (r1, APPROVED) is attached; her 3 `discuss` items are carried forward below since the shipped code still exhibits them as described (her 4th point, DB-read-per-hop, she marked `acceptable` — concur).
+
+**Findings:**
+
+- **discuss** — `requires_candidate_key` guard goes quiet. Branches (c)/(d) of `_token_view_for_do_task` always return the full 8-key view shape once a row loads, so `if task_config.get("requires_candidate_key") and not cd:` can no longer fire even when every value in that view is empty. Consider testing a meaningful field (`first`/`contact`/`context` non-empty) instead of dict truthiness.
+- **discuss** — No branch tag on the debug `found` line. `do_task.candidate_token_view`'s `debug_detail` reports name-token emptiness but not which of the helper's 4 branches produced the view, so a future `astral_candidate_id`/`candidate_data` divergence would silently fall to the raw-blob branch with no signal beyond "empty — name tokens."
+- **discuss** — Branches (d)/(e) hardcode `build_candidate_token_view`'s key names (`"first" in ctx`, `"contact" in candidate_data`, `"candidate_data" not in candidate_data`) to detect shape at a distance. A small is-view predicate beside the helper in `candidate.py` would keep the shape contract in one place.
+
+**Pattern conformance:** cited ids (`astral.config.config-source-of-truth`, `astral.agent.do-task-delegation`, `astral.standards.debug-contract-gated`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.standards.logging-via-utils`, `astral.layers.import-direction`, `astral.standards.no-cross-contamination`) all score `conforms` via the full sweep. `pattern.config.config-block` (also cited) does not resolve to any id in the active corpus — stale shorthand, advisory only.
+
+**What's solid:** Debug contract is textbook (gated, `index 1/1` correctly not inventing a batch counter, `found`/`recorded` via `DEBUG_DETAIL_PREFIX` helpers, no full-blob logging). Cycle-break comment on the lazy `candidate` import is accurate. `_candidate_data_for_job` boundary honored exactly as planned.
+
+## Frame diff
+
+(none) — implementation matches the plan doc's Files Changed / Stage 1 / Stage 2 as written; no adds or moves applied to this description.
+
+Full active corpus (63 leaves — 18 universal + 45 scoped) swept in-session; zero violations, zero stragglers vs Joan's plan-rubric attachment. Doc-only verdict appended to the plan doc under `## Review` on `origin/<publish-ref>` (not pasted here per C1 note — full checked-list stays off-ticket).
+
+context_tokens≈58000
+
+— Radia
+
+#### betty — 2026-08-05T23:20:18.724Z
+## QA test manifest — AST-1192
+
+**Publish:** `origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names` @ `64125186`
+**Betty SHA:** `origin/tests` `8d2ea872` (`merge-tests(AST-1192): origin/tests 8d2ea872…`)
+
+### Classification
+
+1. **Existing coverage (bible-backed):** AST-1014 token-view / library (`TestAst1014CandidateLibrary`) remains the baseline for `build_candidate_token_view` itself — not re-run as this ticket's acceptance.
+2. **Broken / obsolete:** none — additive resolve-boundary cutover; `_candidate_data_for_job` blob consumers unchanged. No existing integration scenario asserts artifact-hop name-token wiring.
+3. **Gaps (this pass):** helper branches + `do_task` name resolve on dispatch raft + Style D found/recorded + Manage Tasks preview columns→names.
+
+### Manifest (test-child)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1192TokenViewForDoTask \
+  tests/component/core/test_candidate.py::TestPreviewTaskPrompt::test_preview_resolves_names_from_columns_not_blob \
+  -q
+```
+
+1. **`TestAst1192TokenViewForDoTask`** — `_token_view_for_do_task` load-by-id / full-row ctx / already-view / raw-blob fallback; `anticipate_scan` dispatch raft substitutes `{$FIRST_NAME}`/`{$LAST_NAME}`; `debug=True` Style D `do_task.candidate_token_view` found/recorded.
+2. **`test_preview_resolves_names_from_columns_not_blob`** — `preview_task_prompt` resolves names from columns when blob has none.
+
+**Pass criterion:** pytest green on the two paths above — not zero-arg harness / branch-lock gate.
+
+### Bible (publish-ref shasum)
+
+- `docs/test-bible/core/agent.md` — `04a061bba871fdddce61c0df9908d76d51acf3db`
+
+— Betty
+
+#### joan — 2026-08-05T23:13:58.509Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1192
+**Overall:** APPROVED
+**Publish ref tip:** `origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names` @ `1b9a5383`
+
+## Traceability
+
+AC1→S1 (`do_task`) + S2 (`preview_task_prompt`) — both surfaces AC1 names; AC2→S1 step 4 (Style D found/recorded for candidate identity); AC3→S1+S2 (Susan's replay). Parent AC2 and the ANALYSIS half of parent AC3/AC4 are N/A–boundary ("Does not own ANALYSIS_* vector↔rubric match parity (sibling)"). No orphan stages: S1→parent Functional scope bullets 1 and 3, S2→AC1's "or Manage Tasks preview" clause.
+
+**Considered:** full active corpus swept (65 leaves — 18 universal + 30 scoped considered, 17 scoped excluded on layer/path predicates). All considered statutes score `conforms`. Recorded in-session per R7.
+
+## Verification notes
+
+The cutover's central risk is that `build_candidate_token_view` returns a **narrow** 8-key dict (`src/core/candidate.py:70-84`: `first`, `last`, `full`, `pronouns`, `contact`, `context`, `artifacts`, `_astral_candidate_id`), so replacing the raw blob as `cd` could blank tokens on every agent hop — which the parent forbids ("Must not break other artifact hops that share the same token resolve / job_context builders"). I checked every candidate-source consumer against that key set:
+
+- Every `TOKEN_SOURCES` candidate dot-path resolves under `contact.*`, `context.*`, or `artifacts.*`, plus top-level `first` / `last` / `full` (`src/utils/config.py:5102-5138`). Nothing walks a top-level blob key the view drops.
+- `format_base_resume_for_token` reads `artifacts.base_resume` and `resolve_resume_structure` reads `artifacts.resume_structure` / `artifacts.base_resume` — both view-safe.
+- `build_job_token_context` (`src/core/consult.py:840-865`) uses only `cd["_astral_candidate_id"]`, `_format_analysis_phase_text(..., cd)`, and `resolve_resume_structure(cd)` — view-safe, and the view supplies `_astral_candidate_id` natively rather than relying on the overlay.
+
+So the change is **strictly additive** for token resolution: it fixes the empty names and regresses nothing. It also fixes a second live bug as a side effect — `_pronoun_preference_key` reads top-level `pronouns` (`src/utils/config.py:5272-5278`, moved to a column by AST-1014), which the raw blob no longer carries, so `{$THEY}` / `{$THEIR}` / etc. have been silently falling back to the default on every `do_task` path. That is inside this child's "(and siblings)" identity-token scope and the parent's "related candidate identity tokens," not scope creep — flagging it so Betty and Radia expect the change.
+
+Root cause and the two edit sites match the plan exactly: `src/core/agent.py:1856` `cd = (ctx.get("candidate_data") or {}) if ctx else (candidate_data or {})`, then the `requires_candidate_key` check at 1858 and the `company_search_terms` overlay at 1862-1870 — the sequencing plan step 3 assumes; and `src/core/candidate.py:1392` `cd = candidate.get("candidate_data") or {}` with the overlay at 1402-1408 already doing `cd = dict(cd)`. `build_candidate_token_view` is in that same module, so Stage 2 genuinely needs no new import.
+
+The load-bearing assumption — that `ctx` carries `astral_candidate_id` on the artifact dispatch path — holds, and not by luck. `src/core/consult.py:2198-2199` derives `candidate_data` via `tracker._candidate_data_for_job(aid)`, which itself resolves job→company→`candidate_id`→row (`src/core/tracker.py:129-147`) and returns `{}` when that chain breaks, and the caller skips the job on empty. Lines 2214-2218 then set `astral_candidate_id` from the same derivation, so any job that actually reaches `do_task` has it — branch (c) fires. Branch (f) correctly preserves today's behavior for the deliberately synthetic ctx at `src/core/candidate.py:2362` ("no astral_candidate_id — do not load a real candidate"), and branch (c) re-loading by id matches the refresh-per-hop intent already at line 2319.
+
+## Findings
+
+- `discuss` — **The `requires_candidate_key` guard goes quiet.** Branches (c) and (d) always return a populated-shape dict, so `if task_config.get("requires_candidate_key") and not cd` (`src/core/agent.py:1858`) can no longer fire once a row loads — even when that row's blob is empty, i.e. an all-empty view. Losing that warning in the exact failure family this epic exists to surface is worth avoiding: consider testing a meaningful field (any of `first` / `contact` / `context` non-empty) rather than dict truthiness.
+- `discuss` — **Make the chosen branch visible at UAT.** The debug line reports whether names came out empty but not which of (c)–(f) produced the view. `astral_candidate_id` (from the batch `row`'s `company`) and `candidate_data` (from a re-fetched job inside `_candidate_data_for_job`) are derived independently; they agree today, but if they ever diverge — a batch row without `company` — the helper silently falls back to (f) and names stay empty with no signal. One branch tag on the `found` detail line makes that a one-line diagnosis instead of a re-run.
+- `discuss` — **Branches (d)/(e) hardcode the view's key names.** The `"first" in ctx` / `"contact" in candidate_data` / `"candidate_data" not in candidate_data` probes encode `build_candidate_token_view`'s contract at a distance, so if its keys change these branches misroute silently. A tiny is-view predicate beside the helper in `candidate.py` would keep the shape contract in one place (§1.3).
+- `acceptable` — Loading the candidate row per `do_task` adds a DB read per hop, including each `run_next` hop. Deliberate, mirrors the existing refresh-per-hop pattern, and negligible beside an LLM call — recording it so it does not read as accidental at code review.
+
+Self-assessment is honest and I can affirm the mitigation it claims: `Risk: Medium` for touching shared `do_task` is right, and "leaving `_candidate_data_for_job` blob consumers untouched" is the correct call — that helper feeds resume-structure paths that need blob shape. `Conf: high` is earned; the empty-name warnings name `path=first` / `path=last` against a blob that structurally cannot carry them.
+
+context_tokens≈126000
+
+— Joan
+
+#### ada — 2026-08-05T23:08:58.821Z
+Plan published on `origin/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names` @ `1b9a5383`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1163/AST-1192-artifact-hop-candidate-token-view-names/docs/features/artifacts/ast-1192-artifact-hop-candidate-token-view-names.md)
+
+**Scope:** Single-Component — `do_task` + `preview_task_prompt` cut over to `build_candidate_token_view`; load full candidate row by `astral_candidate_id` because dispatch rafts inject the blob without name columns.
+
+**Conf:** high — empty-token warnings already show `path=first`/`path=last` against a blob with no top-level names; admin preview already uses the correct view.
+
+**Risk:** Medium — shared `do_task` resolve path; mitigated by reusing AST-1014 helper and leaving `_candidate_data_for_job` blob consumers alone.
+
+---
+
 # AST-1192 — Artifact hop candidate token view (names)
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1192/artifact-hop-candidate-token-view-names-issues-while-running  

@@ -14,7 +14,7 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | create (AST-921) | `astral.batch.claim-process-release` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/batch/astral.batch.claim-process-release.md` |
 | create (AST-921) | `astral.batch.entity-agent-responses-latest-only` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/batch/astral.batch.entity-agent-responses-latest-only.md` |
 | create (AST-921) | `astral.config.config-source-of-truth` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.config-source-of-truth.md` |
-| create (AST-921) | `astral.config.pass-threshold-vs-score-floor` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.pass-threshold-vs-score-floor.md` |
+| create (AST-921), retired (AST-1279) | `astral.config.pass-threshold-vs-score-floor` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.pass-threshold-vs-score-floor.md` |
 | create (AST-921) | `astral.config.secrets-and-env-specific-from-environ` | scoped | ci | docs/ASTRAL_CODE_RULES.md | `astral/config/astral.config.secrets-and-env-specific-from-environ.md` |
 | create (AST-921) | `astral.debug.no-repo-root-artifacts-dir` | scoped | hook | docs/ASTRAL_CODE_RULES.md | `astral/debug/astral.debug.no-repo-root-artifacts-dir.md` |
 | create (AST-921) | `astral.debug.spikes-under-debug-dir` | scoped | hook | docs/ASTRAL_CODE_RULES.md | `astral/debug/astral.debug.spikes-under-debug-dir.md` |
@@ -27,9 +27,9 @@ Crosswalk of every enforceable mapping from the astral law docs into `canon/stat
 | already-landed (AST-920) | `astral.layers.import-direction` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/layers/astral.layers.import-direction.md` |
 | create (AST-921) | `astral.layers.scripts-exempt-from-layer-rules` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/layers/astral.layers.scripts-exempt-from-layer-rules.md` |
 | create (AST-921) | `astral.layers.ui-config-driven-business-logic` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/layers/astral.layers.ui-config-driven-business-logic.md` |
-| create (AST-921) | `astral.patterns.coat-check-never-store-empty` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.coat-check-never-store-empty.md` |
-| create (AST-921) | `astral.patterns.render-verdict-orchestrates-consult` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.render-verdict-orchestrates-consult.md` |
-| create (AST-921) | `astral.patterns.require-auth-on-protected-endpoints` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/patterns/astral.patterns.require-auth-on-protected-endpoints.md` |
+| create (AST-921), renamed (AST-1115) | `astral.idioms.coat-check-never-store-empty` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/idioms/astral.idioms.coat-check-never-store-empty.md` |
+| create (AST-921), renamed (AST-1115) | `astral.idioms.render-verdict-orchestrates-consult` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/idioms/astral.idioms.render-verdict-orchestrates-consult.md` |
+| create (AST-921), renamed (AST-1115) | `astral.idioms.require-auth-on-protected-endpoints` | scoped | judgment | docs/ASTRAL_CODE_RULES.md | `astral/idioms/astral.idioms.require-auth-on-protected-endpoints.md` |
 | create (AST-1108) | `astral.seed.agent-tables-in-repo-json` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.agent-tables-in-repo-json.md` |
 | create (AST-1108) | `astral.seed.archie-catalog-wins` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.archie-catalog-wins.md` |
 | create (AST-1108) | `astral.seed.boot-only-not-hot-path` | scoped | judgment | AST-1108 / seed discussion | `astral/seed/astral.seed.boot-only-not-hot-path.md` |

@@ -1181,6 +1181,43 @@ describe("AdminScheduledActions", () => {
     }, 20000)
   })
 
+  // AST-1278 restores AST-750 zero-save UX (product loads score_floor_options; Number.isFinite save).
+  describe("AST-1278 score floor 0", () => {
+    it("AST-1278: edit save sends score_floor 0 when 0.00 selected", async () => {
+      let putBody: Record<string, unknown> | null = null
+      mockApi(false, { tasks: [dispatchTask], taskKeysPayload: taskKeysConfig, threads: {} })
+      // Capture edit PUT body without replacing the rest of mockApi handlers.
+      const prior = mockedApi.getMockImplementation()!
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.startsWith("/api/admin/dispatch_tasks/") && init?.method === "PUT") {
+          putBody = JSON.parse(String(init.body))
+          return { ok: true, json: async () => ({}) } as Response
+        }
+        return prior(url, init)
+      })
+      renderWithProviders(<ScheduledActions />)
+      await expandFirstPhaseSection()
+      // Section header text (not Section/Group filter option)
+      const jobPanel = screen.getByText(/D\. Job Analysis \(0 \/ 1 AUTO\)/).closest(".collapsible-panel") as HTMLElement
+      await ensureSectionExpanded(jobPanel)
+      await userEvent.click(within(jobPanel).getByText("scan_jobs"))
+      await waitFor(() => expect(screen.getByText("Edit Task")).toBeInTheDocument())
+      const modal = screen.getByText("Edit Task").closest(".modal-card") as HTMLElement
+      const floorRow = within(modal).getByText("Score Floor").closest(".modal-detail-row") as HTMLElement
+      const floorSelect = within(floorRow).getByRole("combobox")
+      const optionValues = Array.from(floorSelect.querySelectorAll("option")).map(
+        (o) => (o as HTMLOptionElement).value,
+      )
+      expect(optionValues[0]).toBe("0.00")
+      expect(optionValues).toHaveLength(21)
+      await userEvent.selectOptions(floorSelect, "0.00")
+      await userEvent.click(within(modal).getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(putBody).not.toBeNull())
+      // Number.isFinite path — must not coerce 0 → 1 via falsy parseFloat
+      expect(putBody!.score_floor).toBe(0)
+    }, 20000)
+  })
+
   describe("AST-1215 alphabetical task_key dropdown", () => {
     it("Add Task modal options follow lexicographic catalog order (unsorted API keys)", async () => {
       // Deliberately unsorted object insertion — UI must not rely on Object.keys order alone.

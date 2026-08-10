@@ -1,3 +1,197 @@
+<!-- linear-archive: AST-1190 archived 2026-08-07 -->
+
+## Linear archive (AST-1190)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1190/empty-unusable-provider-response-surfacing-anticipate-scan-jobs  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1164 — anticipate_scan jobs failing  
+**Blocked by / blocks / related:** parent: AST-1164; blocks: AST-1191
+
+### Description
+
+## What this implements
+
+When the provider returns `stop=?` / zero tokens / no usable content, fail `do_task` with a non-empty error (never blank `error=`) and do not log that outcome as a healthy LLM summary. Does **not** own timeout budget (sibling Provider call budget + timeout failure class).
+
+## Acceptance criteria
+
+- [X] 2. A provider outcome that yields `stop=?` and zero in/out tokens with no usable content causes `do_task` to return failure with a non-empty error string visible in the `provider call failed … error=` log line.
+- [X] 3. A healthy DeepSeek (or mirrored Anthropic) response with normal stop reason and token counts still completes `anticipate_scan` successfully when prompt context is otherwise valid.
+
+## Boundaries
+
+* Does not own provider call time budget / timeout failure class (Ada sibling AST-1189 — `provider_call_timeout`).
+* Does not own artifact hop batch release / error-state / debug trail (Katherine sibling AST-1191).
+* Does not fix hollow name/ANALYSIS tokens (AST-1163).
+
+## In scope
+
+- [X] `astral.agent.do-task-delegation` — hollow classification at external `send_to_*`; core only coerces blank `error=` for log/return
+- [X] `astral.standards.logging-via-utils` — `log_llm_batch_summary` ERROR path for provided empty `error`; `do_task` provider-failed ERROR line
+- [X] `astral.patterns.coat-check-never-store-empty` — do not treat empty/unusable provider payloads as successful hop output
+- [X] `astral.standards.dry-and-focused-functions` — shared hollow predicate + error normalize in `llm_external`
+- [X] `astral.config.config-source-of-truth` — `PROVIDER_EMPTY_RESPONSE` owns `failure_class` + canonical error string
+- [X] `astral.layers.core-vs-external-bright-line` — provider I/O classification stays in external
+- [X] `astral.standards.in-scope-only` — no timeout budget, no hop release/topology, no AST-1163 token work
+- [X] `astral.standards.no-cross-contamination` — no sibling plan files or timeout ownership on this publish ref
+
+## Considered but excluded
+
+* `astral.batch.claim-process-release` / `astral.batch.batch-id-first` — AST-1191 hop release
+* `astral.dispatch.run-next-is-chain-authority` — chain topology untouched
+* `astral.standards.debug-contract-gated` — full found/recorded trail is AST-1191; this ticket only adds a small `do_task` debug_detail when tagged
+* `astral.standards.data-raises-caller-logs` — no data-layer changes
+* `pattern.config.config-block` for call budget — AST-1189 `PROVIDER_CALL_BUDGET`
+
+## Notes for planning
+
+Shares provider path with Ada AST-1189; vocabulary: `provider_empty_response` (this) vs `provider_call_timeout` (1189) vs shipped `provider_balance_refusal` / `max_tokens`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: `sub/AST-1164/AST-1190-empty-unusable-provider-response`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-05T23:26:54.964Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1190
+**Publish ref:** `0f4469e1` (+ doc-only `2311dbca` this pass) — `origin/sub/AST-1164/AST-1190-empty-unusable-provider-response`
+**Overall:** DISCUSS
+
+## Plan adherence
+
+- Stage 1–3 all landed exactly per the combined plan: `PROVIDER_EMPTY_RESPONSE` config block mirrors `PROVIDER_BALANCE_REFUSAL`; `normalize_provider_error` / `is_unusable_provider_response` / `is_provider_empty_response` live in `llm_external.py` (shared, no cross-external import); `log_llm_batch_summary` now branches on `error is not None` instead of truthiness.
+- Hollow-response gate sits after timesheet-kwargs build and before the healthy `log_llm_batch_summary(...)` call in both `send_to_anthropic` / `send_to_deepseek` — matches Stage 2's required ordering exactly, mirrored structurally in both files with no refactor-into-one.
+- `do_task` coercion is defense-in-depth only (classification stays external); Self-Assessment Scope/Conf/Risk still matches the diff's real footprint. Confirmed isolated from sibling AST-1189 (branch still runs pre-budget `asyncio.wait_for` timeout, no `provider_call_timeout` vocabulary) and AST-1191 (no hop/release topology touched).
+
+**discuss:** Commit `0f4469e1` (`test(AST-1190): import hollow-response helpers in provider clients`) touches only `src/external/anthropic.py` + `src/external/deepseek.py` — a pure product-code import fixup, not a test-tree change — but carries the `test(...)` commit-vocabulary prefix instead of `code(...)`. Not fix-now: already pushed, and correcting it would need rebase/force-push (both banned). Flagging for the next post-merge-tests fixup on this lineage to use `code(...)`.
+
+**Pattern conformance:** `astral.patterns.coat-check-never-store-empty` — conforms (this ticket is the positive instance: a hollow provider payload is never stored/treated as a success).
+
+## Frame diff
+
+(none — ticket description accurately reflects the shipped diff; no scope drift from the `## Files Changed` table.)
+
+**What's solid:** blank-`TimeoutError` → fake-healthy-INFO bug is fixed at its root (`error is not None`); AC5 healthy path (`end_turn`, real tokens) verified still returns `success=True` in both provider test suites; git separation is clean (`code()` commits touch only `src/`, Betty's `test()` + `merge-tests()` touch only `tests/`+`docs/test-bible/`).
+
+context_tokens≈9
+
+— Radia
+
+#### hedy — 2026-08-05T23:18:36.536Z
+Manifest green after product fix for missing Stage 2 imports (Betty’s NameError note).
+
+```bash
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1190ProviderEmptyResponseConfig \
+  tests/component/utils/test_llm_external.py::TestAst1190EmptyResponseHelpers \
+  tests/component/utils/test_logging_batch.py \
+  tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse \
+  tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  -q
+```
+
+**Result:** 18 passed
+**Publish:** `origin/sub/AST-1164/AST-1190-empty-unusable-provider-response` @ `0f4469e1` (`test(AST-1190): import hollow-response helpers in provider clients`)
+
+#### betty — 2026-08-05T23:16:36.023Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1164/AST-1190-empty-unusable-provider-response` @ `e5ca8ec9`
+**merge-tests:** `merge-tests(AST-1190): origin/tests 748a57252fbd6b96daf96dd5c8e61bfb14007a0b`
+
+### Product bug (fix in `test-child` — do not weaken tests)
+
+Stage 2 uses `is_unusable_provider_response`, `normalize_provider_error`, and `PROVIDER_EMPTY_RESPONSE` in `src/external/deepseek.py` and `src/external/anthropic.py` but **never imports them**. Manifest lines 4–5 fail with `NameError` on the publish tip. Stage 1 helpers + Stage 3 `do_task` coerce are green (12/18). Import the three names in both external modules (mirror AST-897 balance-refusal import style).
+
+### Manifest
+
+1. `tests/component/utils/test_config.py::TestAst1190ProviderEmptyResponseConfig`
+2. `tests/component/utils/test_llm_external.py::TestAst1190EmptyResponseHelpers`
+3. `tests/component/utils/test_logging_batch.py` (blank `error=""` → ERROR `(empty error)`; omitted `error` keeps healthy INFO)
+4. `tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse`
+5. `tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse`
+6. `tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError`
+
+**Broken / obsolete:** none.
+**Integration:** no existing scenario revision.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1190ProviderEmptyResponseConfig \
+  tests/component/utils/test_llm_external.py::TestAst1190EmptyResponseHelpers \
+  tests/component/utils/test_logging_batch.py \
+  tests/component/external/test_deepseek.py::TestAst1190EmptyUnusableProviderResponse \
+  tests/component/external/test_anthropic.py::TestAst1190EmptyUnusableProviderResponse \
+  tests/component/core/test_agent.py::TestAst1190DoTaskEmptyProviderError \
+  -q
+```
+
+### Bible shasums on publish tip
+
+- `docs/test-bible/utils/llm_external.md` `564a074592e547bb59a0e583df07eccad9e8ec8bb4ded69494e3b53b07c8ddf8`
+- `docs/test-bible/utils/logging_batch.md` `bf73b4ceba323232f4bb9f8ee2d4546eccf82c9e53380175cc060238937ae1ac`
+- `docs/test-bible/utils/config.md` `ddadc196209269c20e12878de5cf7fbef2a799c966b0a7585f076aab3ad2983b`
+- `docs/test-bible/external/deepseek.md` `407ba1051f28ec5e32113f7a1352190999173192008ad4c23defbcf173a308af`
+- `docs/test-bible/external/anthropic.md` `1788d737b2730b0c4679a0c1a192d19a813257f6dec2dd027f48556ebb9b936c`
+- `docs/test-bible/core/agent.md` `a0deeefdcf46a041c58991063267191122cb8ee8ef1cf2713e0a60b9a7809195`
+
+— Betty
+
+#### joan — 2026-08-05T23:07:06.123Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1190
+**Overall:** APPROVED
+**Publish ref tip:** `origin/sub/AST-1164/AST-1190-empty-unusable-provider-response` @ `347bf506`
+
+## Traceability
+
+AC2→S1+S2+S3 (config/predicate/logging truthiness → external fail-closed → `do_task` non-empty `error=`); AC3→S2+S3 (healthy stop reason + non-zero tokens stays on the existing success return). No unmapped child AC, no orphan stage; S1–S3 all map to parent Functional scope bullet 2 and parent AC2 / AC5.
+
+**Considered:** full active corpus swept — 65 active leaf statutes, 56 considered (18 universal + 38 scoped), 9 scoped excluded on layer/path predicates. All considered statutes score `conforms`. Recorded in-session per R7.
+
+## Findings
+
+- `discuss` — Merge-time DRY with sibling AST-1189. Both plans edit the same inner/outer `except Exception as e` returns in `deepseek.py` and `anthropic.py`. This plan sets prose precedence ("do not overwrite a non-empty error Ada already assigned") which is the right call for authorship, but ftr rollup should converge on this ticket's single `normalize_provider_error` helper rather than carrying two blank-error normalizers on the same path. Flagging for merge-child / Radia, not blocking this plan.
+- `acceptable` — Stage 2 step 2 relocates an existing call, not just adds one. In `deepseek.py` the healthy `log_llm_batch_summary` (line 251) currently sits *above* `_timesheet_kwargs` (282) and `timesheet` (304); `anthropic.py` has the same shape (272 / 296 / 318). The plan's stated "Preferred order: compute usage → build timesheet + kwargs → hollow check → else healthy summary" resolves this determinately, so `orch.pipeline.plan-is-bible` is satisfied — but the engineer should expect to move that log call, and Betty should expect the healthy-summary line to shift position.
+- `acceptable` — Child AC checkbox numbering inherits parent numbers: child checkbox `2` = parent AC2, child checkbox `3` = parent **AC5**. The plan consistently uses parent numbering (AC2 / AC5). Downstream readers should not read child checkbox 3 as parent AC3 (that is Katherine's AST-1191 batch-release criterion).
+
+## Verification notes
+
+- Diagnosis confirmed exactly in tree: `src/utils/logging.py:169` is `if error:` — truthiness, not `is not None`. With `str(TimeoutError()) == ""` and `response=None`, control falls to the INFO branch, where `stop` defaults to `"?"` and both token counts default to `0`. That reproduces Susan's pasted `stop=? tokens in=0 out=0` line followed by blank `error=` from `agent.py:2208`. The plan is fixing the actual mechanism, not the symptom.
+- Provider token-sense asymmetry is correct, and this is the sharpest part of the plan. `deepseek.py:246–248` sets `input_total = cache_miss` and `input_cached = cache_read`, so summing both is required or a cache-heavy response would look zero-token; `anthropic.py:267` sets `input_total = usage.input_tokens` directly, so summing there would double-count. Each branch matches what its own log line's `in=` actually reports.
+- Layer placement follows shipped precedent, not invention: `classify_provider_balance_refusal` / `is_provider_balance_refusal` / `extract_api_response_text` already live in `src/utils/llm_external.py` (AST-897). A pure predicate in utils with the fail-closed decision and return at the external boundary keeps `astral.layers.core-vs-external-bright-line` intact; imports stay utils←utils, external←utils, core←utils.
+- Hollowness gate is narrow by construction — `stop_missing` **and** `zero_tokens` **and** `no_content`. A real response with a genuine stop reason and content cannot be caught even on an odd token shape, which is what keeps the `Medium` risk self-assessment honest and protects AC3/AC5.
+- Cross-contamination cleared and verified: commit `347bf506` removed the sibling AST-1189 plan file that raced onto this ref. This ref now carries only `ast-1190-...md` for the 118x/119x range, and diff vs `origin/ftr/AST-1164-...` is that one doc file with zero `src/` changes — clean plan-only publish.
+- Boundaries respected: no `asyncio.wait_for` / budget values (AST-1189), no batch release or error/hold state or hop topology (AST-1191), no `{$FIRST_NAME}` / `{$ANALYSIS_*}` token work (AST-1163). The one debug_detail line in `do_task` is explicitly sanctioned by this child's own In-scope carve-out.
+
+context_tokens≈95000
+
+— Joan
+
+#### hedy — 2026-08-05T23:03:32.208Z
+Plan on publish ref:
+https://github.com/susansomerset/astral/blob/sub/AST-1164/AST-1190-empty-unusable-provider-response/docs/features/artifacts/ast-1190-empty-unusable-provider-response-surfacing.md
+
+**Scope:** Single-Component — `PROVIDER_EMPTY_RESPONSE` + `llm_external` hollow/blank helpers, `log_llm_batch_summary` empty-`error` ERROR path, DeepSeek/Anthropic fail-closed before healthy INFO, `do_task` non-empty `error=` coerce.
+
+**Conf:** high — same `success=False` + `failure_class` envelope as AST-897/903; blank `str(TimeoutError())` is why today’s healthy `stop=? tokens in=0 out=0` + empty `error=` pair appears.
+
+**Risk:** Medium — wrong hollowness predicate could fail closed on an edge shape; AC conjunction (missing stop ∧ zero tokens ∧ no content) keeps the gate narrow; AC5 healthy path unchanged.
+
+Sibling vocab locked to Ada’s published AST-1189: her `provider_call_timeout` / ours `provider_empty_response`. Sibling plan file accidentally landed on this ref during a shared-worktree race and was removed in a follow-up plan commit.
+
+---
+
 # AST-1190: Empty / unusable provider response surfacing (anticipate_scan jobs failing)
 
 **Linear:** [AST-1190](https://linear.app/astralcareermatch/issue/AST-1190/empty-unusable-provider-response-surfacing-anticipate-scan-jobs)

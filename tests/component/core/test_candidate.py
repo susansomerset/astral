@@ -127,7 +127,7 @@ class TestTransitionCandidateState:
         monkeypatch.setattr(
             candidate_mod.database, "get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"}
         )
-        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+        with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
 
     def test_rejects_unknown_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -362,6 +362,46 @@ class TestPreviewTaskPrompt:
         out = candidate_mod.preview_task_prompt("craft_resume_base", candidate_id="c1")
         assert "helping Ada find" in out["system"]
         assert "{$FIRST_NAME}" not in out["system"]
+
+    def test_preview_resolves_names_from_columns_not_blob(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """AST-1192: preview uses build_candidate_token_view — columns win when blob lacks names."""
+        from src.core import agent as agent_mod
+
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "astral_candidate_id": candidate_id,
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "Ada Lovelace",
+                "candidate_data": {"contact": {}, "context": {}, "artifacts": {}},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "company_search_terms_joined_text",
+            lambda cid: "",
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: (
+                {"content": "agent"},
+                {
+                    "system_prompt": "",
+                    "user_prompt": "Scan for {$FIRST_NAME} {$LAST_NAME}",
+                    "cache_prompt": "",
+                    "nocache_prompt": "",
+                },
+            ),
+        )
+        out = candidate_mod.preview_task_prompt("anticipate_scan", candidate_id="cand-1192")
+        assert "Scan for Ada Lovelace" in out["user"]
+        assert "{$FIRST_NAME}" not in out["user"]
+        assert "{$LAST_NAME}" not in out["user"]
 
     def test_chain_sim_parent_only_merges_simulated_context(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(
@@ -1107,20 +1147,31 @@ class TestAst607BaseResumeToken:
 
 
 class TestAst594DraftJobResumePayload:
-    """AST-594: normalize + catalog validation for draft_job_resume section payloads."""
+    """AST-594: normalize + section validation for draft_job_resume (whitelist = base_resume; AST-1270)."""
+
+    def _base_cd(self, **sections: Any) -> dict[str, Any]:
+        # AST-1270: draft whitelist reads artifacts.base_resume keys (not resume_structure catalog).
+        base = {
+            "professional_summary": "Summary",
+            "experience": "Jobs",
+            "candidate_contact_detail": "ada@example.com",
+        }
+        base.update(sections)
+        return {"artifacts": {"base_resume": base}}
 
     def test_validate_accepts_structure_keyed_subset(self) -> None:
         payload = {"professional_summary": "Summary", "experience": "Jobs"}
-        assert candidate_mod.validate_draft_job_resume_payload(payload, {}) is None
+        assert candidate_mod.validate_draft_job_resume_payload(payload, self._base_cd()) is None
 
     def test_validate_rejects_unknown_section_key(self) -> None:
-        err = candidate_mod.validate_draft_job_resume_payload({"made_up_section": "x"}, {})
+        err = candidate_mod.validate_draft_job_resume_payload({"made_up_section": "x"}, self._base_cd())
         assert err is not None
         assert "Unknown resume section key" in err
         assert "made_up_section" in err
+        assert "base_resume keys" in err
 
     def test_validate_rejects_grades_field(self) -> None:
-        err = candidate_mod.validate_draft_job_resume_payload({"grades": []}, {})
+        err = candidate_mod.validate_draft_job_resume_payload({"grades": []}, self._base_cd())
         assert err is not None
         assert "grades" in err
 
@@ -1146,7 +1197,7 @@ class TestAst594DraftJobResumePayload:
         ap = parsed["agent_payload"]
         assert "candidate_contact" not in ap
         assert ap["candidate_contact_detail"] == "ada@example.com"
-        assert candidate_mod.validate_draft_job_resume_payload(ap, {}) is None
+        assert candidate_mod.validate_draft_job_resume_payload(ap, self._base_cd()) is None
 
 
 class TestAst723RubricVectorsCutover:
@@ -1525,7 +1576,7 @@ class TestAst970CandidateStateMachine:
             "get_candidate",
             lambda _cid: {"state": "REQUESTED_RESUME_ERROR", "state_history": []},
         )
-        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+        with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "RESUME_READY")
 
     def test_deleted_starts_reap_timer(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1641,7 +1692,7 @@ class TestAst971CandidateTransitionHistory:
             lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
         )
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
-        with pytest.raises(ValueError, match="Invalid candidate state transition"):
+        with pytest.raises(candidate_mod.IllegalCandidateTransition, match="Invalid candidate state transition"):
             candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
         save.assert_not_called()
 
@@ -2301,8 +2352,11 @@ class TestAst1030CraftResumeBaseNoBulletPreserve:
 class TestAst997JobTailoredExperience:
     """AST-997: draft/finalize experience job-array accept + pin by (company, title)."""
 
-    def _base_cd(self, jobs: list[dict[str, str]]) -> dict[str, Any]:
-        return {"artifacts": {"base_resume": {"experience": jobs}, "resume_structure": _three_section_structure()}}
+    def _base_cd(self, jobs: list[dict[str, str]], **extra_sections: Any) -> dict[str, Any]:
+        # AST-1270: whitelist = base_resume keys; include every section the payload may send.
+        base: dict[str, Any] = {"experience": jobs, "professional_summary": "S"}
+        base.update(extra_sections)
+        return {"artifacts": {"base_resume": base, "resume_structure": _three_section_structure()}}
 
     def test_normalize_preserves_experience_job_array(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
@@ -2415,19 +2469,16 @@ class TestAst997JobTailoredExperience:
     def test_tailor_hop_prompts_teach_job_array_and_pin_policy(self) -> None:
         from pathlib import Path
 
+        # AST-1270: draft seed teaches nested resume + experience value types (string or job array).
+        # Pin-by-(company, title) remains covered by validate/pin unit tests above; obsolete
+        # literal prompt phrases from the AST-997 seed era are not re-asserted here.
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
         draft = by_key["draft_job_resume"]["user_prompt"]
-        assert "ordered array of job objects" in draft
-        assert "**Do not** change `company`, `title`, `dates`, or `location`" in draft
-        fin = by_key["finalize_job_resume"]["user_prompt"]
-        assert "ordered array of job objects" in fin
-        assert "restore factual metadata" in fin
-        advise = by_key["advise_job_resume"]["user_prompt"]
-        assert "**forbid** rewriting company, title, dates, or location" in advise
-        check = by_key["check_job_resume"]["user_prompt"]
-        assert "Experience metadata drift" in check
-        assert "company, title, dates, or location" in check
+        assert '"resume":' in draft
+        assert '"deviations"' in draft
+        assert "prose string or job array" in draft
+        assert "experience remains a single string" not in draft
 
 
 class TestAst1005FalseMissingCandidateName:
@@ -4065,4 +4116,302 @@ class TestAst1259CandidateBatchApi:
         monkeypatch.setattr(candidate_mod.database, "clear_candidate_batch", clear)
         assert candidate_mod.clear_candidate_batch("b-1") == 3
         clear.assert_called_once_with("b-1")
+
+
+class TestAst1270NestedDraftJobResumeContract:
+    """AST-1270: unwrap agent_payload.resume; whitelist base_resume keys; deviations metadata."""
+
+    # Parent brief sample keys (subset) — enough to prove nest + whitelist without full prose dump.
+    _BASE_SECTIONS = {
+        "candidate_name": "Susan Somerset",
+        "candidate_title": "Senior Technical PM",
+        "candidate_tagline": "Cloud Platforms",
+        "candidate_contact_detail": "hire@example.com",
+        "professional_summary": "Summary prose",
+        "core_competencies": "Skills",
+        "experience": "Experience prose block",
+        "prior_experience": "Prior",
+        "education_certifications": "CSM",
+        "technical_skills": "Python",
+    }
+
+    def _cd(self, *, with_structure: bool = False) -> dict[str, Any]:
+        arts: dict[str, Any] = {"base_resume": dict(self._BASE_SECTIONS)}
+        if with_structure:
+            arts["resume_structure"] = candidate_mod.default_resume_structure()
+        return {"artifacts": arts}
+
+    def test_allowed_section_keys_intersect_known_ids(self) -> None:
+        cd = {
+            "artifacts": {
+                "base_resume": {
+                    "professional_summary": "S",
+                    "experience": "E",
+                    "accent_color": "#fff",
+                    "not_a_section": "x",
+                }
+            }
+        }
+        assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
+            "experience",
+            "professional_summary",
+        ]
+
+    def test_nested_envelope_validates_and_unwraps_resume(self) -> None:
+        # Nested sample shape from parent AST-1268 — resume body + sibling deviations.
+        resume_body = {k: f"tailored-{k}" if k != "experience" else "tailored experience" for k in self._BASE_SECTIONS}
+        parsed: dict[str, Any] = {
+            "agent_performance": {"status": "success", "failure_note": ""},
+            "agent_payload": {
+                "resume": resume_body,
+                "deviations": ["Skipped UAT claim — not confirmed in materials."],
+            },
+        }
+        err = candidate_mod.validate_draft_job_resume_payload(parsed, self._cd())
+        assert err is None
+        ap = parsed["agent_payload"]
+        assert "resume" not in ap
+        assert ap["professional_summary"] == "tailored-professional_summary"
+        assert ap["deviations"] == ["Skipped UAT claim — not confirmed in materials."]
+
+    def test_unknown_key_inside_resume_still_fails(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "ok", "bogus_section": "nope"},
+                "deviations": [],
+            }
+        }
+        err = candidate_mod.validate_draft_job_resume_payload(parsed, self._cd())
+        assert err is not None
+        assert "bogus_section" in err
+        assert "base_resume keys" in err
+
+    def test_resume_never_reported_as_unknown_section_after_normalize(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "ok", "experience": "jobs"},
+            }
+        }
+        candidate_mod.normalize_draft_job_resume_agent_payload(parsed)
+        assert "resume" not in parsed["agent_payload"]
+        err = candidate_mod.validate_draft_job_resume_payload(parsed, self._cd())
+        assert err is None
+
+    def test_no_persisted_resume_structure_still_passes(self) -> None:
+        payload = {
+            "professional_summary": "S",
+            "experience": "E",
+        }
+        # Explicitly no artifacts.resume_structure — whitelist is base_resume only.
+        assert candidate_mod.validate_draft_job_resume_payload(payload, self._cd(with_structure=False)) is None
+
+    def test_empty_base_resume_fails_clearly(self) -> None:
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"professional_summary": "S"},
+            {"artifacts": {}},
+        )
+        assert err == "candidate has no base_resume section keys"
+
+    def test_non_dict_resume_nest_fails_explicitly(self) -> None:
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"agent_payload": {"resume": "not-an-object", "professional_summary": "S"}},
+            self._cd(),
+        )
+        assert err is not None
+        assert "must be an object of resume sections" in err
+
+    def test_flat_payload_still_accepted(self) -> None:
+        # AST-594-era callers: section keys flat on agent_payload (no nest).
+        payload = {"professional_summary": "S", "experience": "E"}
+        assert candidate_mod.validate_draft_job_resume_payload(payload, self._cd()) is None
+
+    def test_manage_tasks_prompt_nested_contract(self) -> None:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
+        draft = by_key["draft_job_resume"]["user_prompt"]
+        assert '"resume":' in draft
+        assert '"deviations"' in draft
+        assert "experience remains a single string" not in draft
+        assert "prose string or job array" in draft
+        # Nested envelope example only (no flat-only agent_payload section-key sample).
+        assert '"agent_payload": {\n    "resume"' in draft
+
+
+class TestAst1272DraftHopDebugWhitelistTrail:
+    """AST-1272: Style D unwrap + whitelist/accept/reject trails when debug=True."""
+
+    def _cd(self) -> dict[str, Any]:
+        return {
+            "artifacts": {
+                "base_resume": {
+                    "professional_summary": "base summary",
+                    "experience": "base experience",
+                }
+            }
+        }
+
+    def _patch_debug(self, monkeypatch: pytest.MonkeyPatch) -> tuple[Any, Any]:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        return idx, detail
+
+    def _detail_msgs(self, detail: Any) -> list[str]:
+        return [c.args[0] for c in detail.call_args_list]
+
+    def test_normalize_debug_popped_emits_unwrap_trail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        parsed = {
+            "agent_payload": {
+                "resume": {"professional_summary": "S", "experience": "E"},
+                "astral_job_id": "job-1272",
+            }
+        }
+        candidate_mod.normalize_draft_job_resume_agent_payload(parsed, debug=True)
+        assert "resume" not in parsed["agent_payload"]
+        idx.assert_called_once()
+        kwargs = idx.call_args.kwargs
+        assert kwargs["func"] == "candidate.normalize_draft_job_resume_agent_payload"
+        assert kwargs["outcome"] == "unwrap popped"
+        assert kwargs["identifier"] == "job-1272"
+        msgs = self._detail_msgs(detail)
+        assert any("unwrap=popped" in m for m in msgs)
+        assert any("nested_section_count=2" in m for m in msgs)
+
+    def test_normalize_debug_flat_and_invalid(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        candidate_mod.normalize_draft_job_resume_agent_payload(
+            {"agent_payload": {"professional_summary": "S"}}, debug=True
+        )
+        assert idx.call_args.kwargs["outcome"] == "unwrap flat"
+        assert any("unwrap=flat" in m for m in self._detail_msgs(detail))
+
+        idx.reset_mock()
+        detail.reset_mock()
+        candidate_mod.normalize_draft_job_resume_agent_payload(
+            {"agent_payload": {"resume": "not-a-dict"}}, debug=True
+        )
+        assert idx.call_args.kwargs["outcome"] == "unwrap invalid"
+        assert any("unwrap=invalid" in m for m in self._detail_msgs(detail))
+
+    def test_normalize_debug_false_is_silent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        candidate_mod.normalize_draft_job_resume_agent_payload(
+            {"agent_payload": {"resume": {"professional_summary": "S"}}}, debug=False
+        )
+        idx.assert_not_called()
+        detail.assert_not_called()
+
+    def test_validate_debug_ok_records_whitelist_and_accepted(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        # Flat payload — validate's internal normalize stays quiet (debug=False).
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"agent_payload": {"professional_summary": "S", "experience": "E"}},
+            self._cd(),
+            debug=True,
+        )
+        assert err is None
+        # Only validate trail (no unwrap index from internal normalize).
+        assert idx.call_count == 1
+        assert idx.call_args.kwargs["func"] == "candidate.validate_draft_job_resume_payload"
+        assert idx.call_args.kwargs["outcome"] == "ok"
+        msgs = self._detail_msgs(detail)
+        assert any("whitelist_source=base_resume" in m and "experience" in m for m in msgs)
+        assert any("recorded accepted_keys=" in m and "experience" in m for m in msgs)
+        assert any("recorded rejected_keys=[]" in m for m in msgs)
+        assert any("recorded error=none" in m for m in msgs)
+
+    def test_validate_debug_reject_records_unknown_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"agent_payload": {"bogus_section": "x"}},
+            self._cd(),
+            debug=True,
+        )
+        assert err is not None
+        assert "bogus_section" in err
+        assert idx.call_args.kwargs["outcome"] == "reject"
+        msgs = self._detail_msgs(detail)
+        assert any("recorded rejected_keys=" in m and "bogus_section" in m for m in msgs)
+        assert any("recorded error=" in m and "bogus_section" in m for m in msgs)
+
+    def test_validate_debug_false_is_silent(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx, detail = self._patch_debug(monkeypatch)
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"professional_summary": "S", "experience": "E"},
+                self._cd(),
+                debug=False,
+            )
+            is None
+        )
+        idx.assert_not_called()
+        detail.assert_not_called()
+
+
+class TestAst1287ForceTransition:
+    """AST-1287: keyword-only force= on transition_candidate_state."""
+
+    def test_force_applies_illegal_hop_and_appends_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH", force=True)
+        assert save.call_args.kwargs["state"] == "ACTIVE_SEARCH"
+        hist = save.call_args.kwargs["state_history"]
+        assert hist[-1]["from_state"] == "NEW_CANDIDATE"
+        assert hist[-1]["to_state"] == "ACTIVE_SEARCH"
+
+    def test_default_force_false_still_rejects_illegal(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        with pytest.raises(candidate_mod.IllegalCandidateTransition) as ei:
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+        assert ei.value.from_state == "NEW_CANDIDATE"
+        assert ei.value.to_state == "ACTIVE_SEARCH"
+
+    def test_force_cannot_invent_unknown_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        with pytest.raises(ValueError, match="Unknown candidate state") as ei:
+            candidate_mod.transition_candidate_state("somerset", "LIVE_PROMPTS", force=True)
+        assert not isinstance(ei.value, candidate_mod.IllegalCandidateTransition)
+
+    def test_same_state_illegal_without_force(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # No core same-state no-op — ACTIVE_SEARCH is not in its own prior_states
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "ACTIVE_SEARCH", "state_history": []},
+        )
+        with pytest.raises(candidate_mod.IllegalCandidateTransition):
+            candidate_mod.transition_candidate_state("somerset", "ACTIVE_SEARCH")
+
+    def test_force_on_legal_hop_still_succeeds(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda _cid: {"state": "NEW_CANDIDATE", "state_history": []},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED", force=True)
+        assert save.call_args.kwargs["state"] == "INTAKE_INITIATED"
+        assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INTAKE_INITIATED"
 

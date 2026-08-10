@@ -5847,10 +5847,19 @@ def _resolve_agent_data_block_data(
     conn: sqlite3.Connection,
     row_dict: Dict[str, Any],
 ) -> Optional[str]:
-    """Return plain-text block_data, following ref_agent_data_id to the canonical row."""
+    """Return plain-text block_data for an agent_data row.
+
+    When ref_agent_data_id is populated, follow the ref chain to canonical
+    content (covers null/empty local + ref — AST-1274). No ref → return local
+    as-is. Missing targets and cycles raise ValueError — callers decide.
+    """
+    local = _decompress_payload(row_dict.get("block_data"))
     ref = row_dict.get("ref_agent_data_id")
-    if ref is None or str(ref).strip() == "":
-        return _decompress_payload(row_dict.get("block_data"))
+    has_ref = ref is not None and str(ref).strip() != ""
+    # No ref → return local as-is (None, blank, or body).
+    if not has_ref:
+        return local
+    # Populated ref → follow chain (plan Stage 1; restores pre-AST-1274 tie-break).
     visited = set()
     current_id = str(ref)
     start_id = row_dict.get("agent_data_id")

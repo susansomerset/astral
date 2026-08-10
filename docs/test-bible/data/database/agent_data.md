@@ -65,3 +65,38 @@ One-time `backfill_agent_data_refs` — dry-run + live UPDATE of `ref_agent_data
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1274 · AST-1273
+
+**Parent:** [AST-1273](https://linear.app/astralcareermatch/issue/AST-1273/job-isnt-loading-on-recommended-page). **Publish:** `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open`.
+
+Complete fetch-side `ref_agent_data_id` resolve when local `block_data` is null/empty; secondary soft-fail in `get_entity_agent_story` / `GET /api/jobs/<id>` so corrupt graphs do not HTTP 500; `JobAnalysisReportModal` maps 404 → "Job not found" and other non-OK to honest copy.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty local + ref → canonical plain text; populated ref always follows chain | `src/data/database.py` (`_resolve_agent_data_block_data`) | **`TestAst1274ResolveNullBlockDataRef`**; existing **`TestAst977AgentDataSelfRefDedupe::{test_reads_resolve_ref_to_plain_text,test_resolve_raises_on_missing_ref_and_cycle}`** |
+| Story soft-fail (list / get_agent_data_for_ids) | `src/core/roster.py` | **`TestAst1274AgentStorySoftFail`** |
+| Detail soft-fail → 200 + `agent_story: []` | `src/ui/api/api_jobs.py` | **`TestJobsRoutes::test_detail_soft_fails_agent_story`**; regression **`test_detail_not_found`**, **`test_detail_returns_agent_story`** |
+| Modal 404 vs non-404 load copy | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1274 load error honesty`** |
+
+**Broken / obsolete:** JAR fixture drift revised on first pass (`contact` / `job_resume`). **Return pass:** dropped `test_local_body_preferred_over_ref` — product follows populated `ref_agent_data_id` (no `has_local`); assert ref-target content when both body and ref set.
+
+**Integration:** none — existing integration map has no job-detail scenario to revise (`docs/test-bible/integration/README.md` job-entity gap). Do not invent new integration coverage.
+
+**AST-1274** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1274ResolveNullBlockDataRef \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_reads_resolve_ref_to_plain_text \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_resolve_raises_on_missing_ref_and_cycle \
+  tests/component/core/test_roster.py::TestAst1274AgentStorySoftFail \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_not_found \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

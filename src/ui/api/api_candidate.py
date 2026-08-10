@@ -22,6 +22,7 @@ from src.core.candidate import (
     get_candidate,
     get_pending_craft_generation,
     hydrate_rubric_artifacts_for_response,
+    IllegalCandidateTransition,
     initiate_candidate,
     list_candidates as core_list_candidates,
     normalize_resume_structure,
@@ -181,7 +182,10 @@ def update_candidate_data(candidate_id):
     try:
         state_override = body.pop("state", None)
         api_key = body.pop("api_key", None)
-        if not g.user.get("is_admin") and (state_override is not None or api_key is not None):
+        confirm_override = body.pop("confirm_state_override", False)
+        if not g.user.get("is_admin") and (
+            state_override is not None or api_key is not None or confirm_override is True
+        ):
             return jsonify({"error": "Admin access required"}), 403
         if body:
             arts = body.get("artifacts")
@@ -230,11 +234,27 @@ def update_candidate_data(candidate_id):
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:
                         _clear_pending_craft_generation(candidate_id, craft_task_key)
+        # AST-1287 / AST-1288: illegal hops return code=illegal_candidate_transition
+        # with from_state/to_state; admin retry with confirm_state_override=true forces.
+        # Same-state in the PUT body is skipped here (not a core no-op).
         if state_override is not None:
-            try:
-                transition_candidate_state(candidate_id, state_override)
-            except ValueError as e:
-                return jsonify({"error": str(e)}), 400
+            current = get_candidate(candidate_id)
+            if state_override != (current or {}).get("state"):
+                try:
+                    transition_candidate_state(
+                        candidate_id,
+                        state_override,
+                        force=(confirm_override is True),
+                    )
+                except IllegalCandidateTransition as e:
+                    return jsonify({
+                        "error": str(e),
+                        "code": "illegal_candidate_transition",
+                        "from_state": e.from_state,
+                        "to_state": e.to_state,
+                    }), 400
+                except ValueError as e:
+                    return jsonify({"error": str(e)}), 400
         if api_key is not None:
             if api_key.strip():
                 save_candidate_admin(candidate_id, candidate_api_key=api_key.strip())

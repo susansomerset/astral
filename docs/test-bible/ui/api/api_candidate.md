@@ -62,6 +62,12 @@ PUT **`artifacts.get_rubric`** with craft-shaped literal `\n` criteria coerces v
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. Admin PUT state → **`transition_candidate_state`** (**`TestAst970AdminStateOverride`**).
 
+### AST-1287 · AST-1285
+
+**Publish:** `origin/sub/AST-1285/AST-1287-admin-confirm-override`.
+
+Admin `confirm_state_override` + structured illegal-hop 400 + same-state skip. Primary: **`docs/test-bible/core/candidate.md`** § AST-1287 — **`TestAst1287AdminConfirmOverride`** (+ revised **`TestAst970AdminStateOverride`**).
+
 ### AST-1253 · AST-1243
 
 **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.

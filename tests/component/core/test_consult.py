@@ -36,7 +36,28 @@ def _rubric_item(label: str = "fit", code: str = "CR") -> Dict[str, Any]:
             {"grade": "A", "description": "one"},
             {"grade": "F", "description": "fail"},
         ],
+        "importance": 5,
     }
+
+
+def _patch_scored_render_verdict_fixtures(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    rubric: List[Dict[str, Any]],
+    score_floor: float = 0.0,
+    task_key: str = "grade_do",
+) -> None:
+    """AST-1277: table-backed rubric + dispatch score_floor for scored render_verdict paths."""
+    monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric)
+    monkeypatch.setattr(
+        consult_mod.tracker,
+        "list_dispatch_tasks_for_candidate",
+        MagicMock(
+            return_value=[
+                {"id": 1, "task_key": task_key, "score_floor": score_floor, "trigger_state": "PASSED_JD"},
+            ]
+        ),
+    )
 
 
 @pytest.fixture
@@ -668,6 +689,38 @@ class TestAst371ResumeArtifactDispatch:
         assert released == ["job-1"]
 
     @pytest.mark.asyncio
+    async def test_dispatch_chain_batch_do_task_raise_releases_claim(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1298 Stage 2: exception exit still clears the per-job claim before re-raise.
+        released: list[str] = []
+        monkeypatch.setattr(
+            "src.core.consult.do_task",
+            AsyncMock(side_effect=RuntimeError("Connection error.")),
+        )
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda aid: {"astral_job_id": aid, "state": cfg.BUILD_ARTIFACTS_BASE_STATE},
+        )
+        monkeypatch.setattr(consult_mod.tracker, "_candidate_data_for_job", lambda aid: {"artifacts": {}})
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "release_job_dispatch_claim",
+            lambda aid: released.append(aid),
+        )
+        with pytest.raises(RuntimeError, match="Connection error"):
+            await consult_mod._run_dispatch_chain_job_batch(
+                "batch-1298",
+                [{"astral_job_id": "job-1298"}],
+                {},
+                False,
+                "draft_job_resume",
+                cfg.BUILD_ARTIFACTS_BASE_STATE,
+            )
+        assert released == ["job-1298"]
+
+    @pytest.mark.asyncio
     async def test_dispatch_chain_batch_missing_candidate_releases_claim(
         self, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
@@ -938,8 +991,14 @@ class TestRenderVerdict:
 
     @pytest.mark.asyncio
     async def test_runs_scored_consult_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}}
-        rubric = [{"label": "Fit", "code": "CR", "content": "a\nA = one\nB = two"}]
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "job_data": {},
+            "astral_candidate_id": "c1",
+            "state": "PASSED_JD",
+        }
+        rubric = [_rubric_item("Fit")]
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
         monkeypatch.setattr(
@@ -955,10 +1014,11 @@ class TestRenderVerdict:
         )
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
         out = await consult_mod.render_verdict(
             "grade_do",
             "job-1",
-            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+            ctx={"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
         assert out["success"] is True
 
@@ -1019,7 +1079,13 @@ class TestRenderVerdict:
 
     @pytest.mark.asyncio
     async def test_uses_matching_job_row_and_notes(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}}
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "job_data": {},
+            "astral_candidate_id": "c1",
+            "state": "PASSED_JD",
+        }
         rubric = [_rubric_item("Fit")]
         save = MagicMock()
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
@@ -1045,10 +1111,11 @@ class TestRenderVerdict:
         )
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
         out = await consult_mod.render_verdict(
             "grade_do",
             "job-1",
-            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+            ctx={"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
         assert out["success"] is True
         save.assert_called_once()
@@ -1056,7 +1123,13 @@ class TestRenderVerdict:
 
     @pytest.mark.asyncio
     async def test_falls_back_to_single_job_row(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}}
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "job_data": {},
+            "astral_candidate_id": "c1",
+            "state": "PASSED_JD",
+        }
         rubric = [_rubric_item("Fit")]
         monkeypatch.setattr(consult_mod.tracker, "get_job", lambda astral_job_id: job)
         monkeypatch.setattr(consult_mod, "_prep_live_content", AsyncMock(return_value="live"))
@@ -1075,10 +1148,11 @@ class TestRenderVerdict:
         )
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
         out = await consult_mod.render_verdict(
             "grade_do",
             "job-1",
-            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+            ctx={"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
         assert out["success"] is True
 
@@ -1275,7 +1349,13 @@ class TestRenderVerdict:
 
     @pytest.mark.asyncio
     async def test_saves_score_for_non_scored_task(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        job = {"astral_job_id": "job-1", "company": "co", "job_data": {}}
+        job = {
+            "astral_job_id": "job-1",
+            "company": "co",
+            "job_data": {},
+            "astral_candidate_id": "c1",
+            "state": "PASSED_JD",
+        }
         rubric = [_rubric_item("Fit")]
         save = MagicMock()
         monkeypatch.setitem(TASK_CONFIG["grade_do"], "scored", False)
@@ -1294,10 +1374,11 @@ class TestRenderVerdict:
         )
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
         out = await consult_mod.render_verdict(
             "grade_do",
             "job-1",
-            ctx={"candidate_data": {"artifacts": {"do_rubric": rubric}}},
+            ctx={"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}},
         )
         assert out["success"] is True
         assert save.call_args.args[1]["do_score"] == out["score"]
@@ -3435,8 +3516,19 @@ class TestAst726LatestOnlyConsultOutcomes:
         save = MagicMock()
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda astral_job_id: {
+                "astral_job_id": astral_job_id,
+                "astral_candidate_id": "c1",
+                "state": "PASSED_JD",
+            },
+        )
+        rubric = [_rubric_item("fit")]
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
         cfg = consult_mod._consult_orchestration("grade_do")
-        ctx = {"candidate_data": {"artifacts": {"do_rubric": [_rubric_item()]}}}
+        ctx = {"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}}
         consult_mod._apply_render_verdict_decoded_job(
             "grade_do",
             "job-726",
@@ -5738,3 +5830,76 @@ class TestAst1153MeteoriteTitleScreenProof:
         assert roster["state"] == "INVALID_TITLE"
         assert out["failed"] == 1
         assert out["total"] == 2
+
+
+class TestAst1277DispatchScoreFloorVerdict:
+    """AST-1277: scored soft-fail reads dispatch_task.score_floor (0 = no numeric soft-fail)."""
+
+    def test_dispatch_score_floor_lookup_null_zero_and_prefilter_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "list_dispatch_tasks_for_candidate",
+            MagicMock(return_value=[]),
+        )
+        assert consult_mod._dispatch_score_floor_for_task("c1", "grade_do") == 1.0
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "list_dispatch_tasks_for_candidate",
+            MagicMock(
+                return_value=[
+                    {"id": 9, "task_key": "prefilter", "score_floor": 0.0},
+                    {"id": 8, "task_key": "prefilter", "score_floor": 6.0},
+                ]
+            ),
+        )
+        # Newest-first (id DESC walk) — first match wins; consult key maps to prefilter.
+        assert consult_mod._dispatch_score_floor_for_task("c1", "prefilter_company") == 0.0
+        assert consult_mod._dispatch_score_floor_for_task("c1", "prefilter") == 0.0
+
+    def test_apply_soft_fails_below_floor_and_passes_at_zero_floor(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda astral_job_id: {
+                "astral_job_id": astral_job_id,
+                "astral_candidate_id": "c1",
+                "state": "PASSED_JD",
+            },
+        )
+        # Low importance + D grade → soft-fail under high floor; still passes at floor 0.
+        rubric = [{
+            "label": "Fit",
+            "code": "CR",
+            "importance": 1,
+            "content": "body\nA = one\nD = weak\nF = fail",
+            "grade_descriptions": [
+                {"grade": "A", "description": "one"},
+                {"grade": "D", "description": "weak"},
+                {"grade": "F", "description": "fail"},
+            ],
+        }]
+        cfg = consult_mod._consult_orchestration("grade_do")
+        grades = [{"grade": "D", "confidence": 2, "vector": "Fit"}]
+        ctx = {"astral_candidate_id": "c1"}
+
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=9.0)
+        to_state_high, score_high, _ = consult_mod._apply_render_verdict_decoded_job(
+            "grade_do", "job-hi", {"grades": grades, "notes": ""}, cfg, ctx
+        )
+        assert to_state_high == cfg["fail_state"]
+        assert score_high == 0.0
+
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
+        to_state_zero, score_zero, _ = consult_mod._apply_render_verdict_decoded_job(
+            "grade_do", "job-z", {"grades": grades, "notes": ""}, cfg, ctx
+        )
+        assert to_state_zero == cfg["pass_state"]
+        assert score_zero is not None and score_zero >= 0.0

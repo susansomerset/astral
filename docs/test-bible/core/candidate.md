@@ -60,7 +60,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-594 · AST-592
 
-Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-only **`TASK_CONFIG`** with **`resume_section_payload: True`**; runtime catalog whitelist via **`normalize_draft_job_resume_agent_payload`** / **`validate_draft_job_resume_payload`** (**AST-536**-style flatten); hop failures surface **`Validation failed:`** RESPONSE bodies + ERROR logs (**AST-531** ledger unchanged).
+Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-only **`TASK_CONFIG`** with **`resume_section_payload: True`**; runtime section whitelist via **`normalize_draft_job_resume_agent_payload`** / **`validate_draft_job_resume_payload`** (**AST-536**-style flatten); hop failures surface **`Validation failed:`** RESPONSE bodies + ERROR logs (**AST-531** ledger unchanged). **AST-1270** moved the whitelist source to **`artifacts.base_resume`** keys (fixtures revised — see **`### AST-1270`**).
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
@@ -961,6 +961,97 @@ Core `get_new_candidate_batch` / `clear_candidate_batch` wrappers (batch_id-firs
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_candidate.py::TestAst1259CandidateBatchApi \
+  -q
+```
+
+---
+
+### AST-1270 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
+
+Nested hop contract: normalize unwraps **`agent_payload.resume`** before section checks; whitelist = candidate **`artifacts.base_resume`** keys ∩ **`RESUME_STRUCTURE_KNOWN_SECTION_IDS`** (no persisted **`resume_structure`** required); **`deviations`** is sibling metadata (retention = **AST-1271**; Style D trail = **AST-1272**). Manage Tasks seed keeps nested envelope + experience value-type wording. Flat (no nest) payloads remain accepted.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unwrap + base_resume whitelist + prompt | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst1270NestedDraftJobResumeContract`** |
+| TASK_CONFIG nest/metadata keys | `src/utils/config.py` | **`TestAst1270DraftJobResumeNestConfig`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Nested body path ignores envelope | `src/core/tracker.py` | **`TestAst1270NestedResumePayloadBody`** (primary: **`docs/test-bible/core/tracker.md`**) |
+| Hop wiring (revised ctx fixtures) | `src/core/agent.py` | **`tests/component/core/test_agent.py`** — `-k "draft_job_resume"` |
+
+**Broken / obsolete this pass (revised):**
+
+- **`TestAst594DraftJobResumePayload`** — empty `{}` candidate_data no longer valid; fixtures supply **`artifacts.base_resume`**.
+- **`TestAst997JobTailoredExperience._base_cd`** — includes every section key payloads may send (whitelist = base keys).
+- **`TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`** — draft seed now nested envelope + experience value-type wording; pin policy stays in validate/pin unit tests.
+- **`_draft_job_resume_ctx`** in **`test_agent.py`** — empty artifacts → no base keys; now seeds matching base_resume sections.
+
+**Integration:** none — no existing `tests/integration/` scenario for this hop; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema \
+  -q
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py -k "draft_job_resume" -q
+```
+
+---
+
+### AST-1272 · AST-1268
+
+**Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`.
+
+After **AST-1270**: when `debug=True`, Style D found/recorded trails for nest unwrap (normalize) and base_resume whitelist + accepted/rejected keys (validate). `do_task` passes `debug=` into both helpers; validate’s internal normalize stays quiet. Does **not** change allowlist rules. Deviations retention = **AST-1271**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Unwrap + whitelist Style D on/off | `src/core/candidate.py` | **`TestAst1272DraftHopDebugWhitelistTrail`** |
+| Agent `debug=` passthrough | `src/core/agent.py` | **`TestDoTaskShouldStoreBranches::test_draft_job_resume_passes_debug_flag_to_normalize_and_validate`** |
+
+**Broken / obsolete this pass:** none — `debug=` defaults False; existing AST-594 / AST-1270 callers unchanged.
+
+**Integration:** none — observe-only debug; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_agent.py::TestDoTaskShouldStoreBranches::test_draft_job_resume_passes_debug_flag_to_normalize_and_validate \
+  -q
+```
+
+---
+
+### AST-1287 · AST-1285
+
+**Parent:** [AST-1285 — State transition validation for candidates is broken](https://linear.app/astralcareermatch/issue/AST-1285/state-transition-validation-for-candidates-is-broken). **Publish:** `origin/sub/AST-1285/AST-1287-admin-confirm-override`.
+
+Admin confirm-override for illegal candidate hops: `IllegalCandidateTransition` + keyword-only `force=` on `transition_candidate_state` (force skips prior_states only; unknown states still `ValueError`); admin `PUT …/data` accepts `confirm_state_override: true`, returns structured `code=illegal_candidate_transition` + `from_state`/`to_state` without confirm, skips transition when PUT `state` equals current (API-only — automation stays fail-closed). Does **not** own Manage Candidates are-you-sure UI (**AST-1288**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Force path + typed illegal hop | `src/core/candidate.py` | **`TestAst1287ForceTransition`**; revised **`TestTransitionCandidateState`**, **`TestAst970CandidateStateMachine`**, **`TestAst971CandidateTransitionHistory`** (raise type) |
+| Confirm flag + same-state skip + structured 400 | `src/ui/api/api_candidate.py` | **`TestAst1287AdminConfirmOverride`**; revised **`TestAst970AdminStateOverride`** + **`TestCandidateRoutes::test_update_merges_data_state_and_api_key`** (`force=` kwarg) |
+
+**Broken / obsolete this pass:** AST-970 admin override mocks/`assert_called_once_with` that assumed positional-only `transition_candidate_state(id, state)` and plain `ValueError` without `code` — revised above.
+
+**Integration:** none — existing `tests/integration/scenarios/test_candidate_nav_api.py` is nav visibility only; do not invent confirm-override integration coverage (UI confirm = **AST-1288**).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1287ForceTransition \
+  tests/component/core/test_candidate.py::TestTransitionCandidateState \
+  tests/component/core/test_candidate.py::TestAst970CandidateStateMachine::test_error_state_has_no_forward_happy_path \
+  tests/component/core/test_candidate.py::TestAst971CandidateTransitionHistory::test_illegal_hop_writes_nothing \
+  tests/component/ui/api/test_api_candidate.py::TestAst1287AdminConfirmOverride \
+  tests/component/ui/api/test_api_candidate.py::TestAst970AdminStateOverride \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_merges_data_state_and_api_key \
+  tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
   -q
 ```
 
