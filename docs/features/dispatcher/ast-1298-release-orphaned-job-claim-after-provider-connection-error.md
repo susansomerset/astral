@@ -167,3 +167,104 @@ Changes: Retracted hop-label-false as the AC1 root cause. Re-staged hop-label-tr
 | 1 | `91c81ba2` | Helper `try`/`finally` provider release + hop-label-false defense-in-depth |
 | 2 | `c74972b7` | Consult per-job release when `do_task` raises |
 | 3 | _(verify)_ | Call chain: BUILD_ARTIFACTS ctx → hop-label-true `finally` + consult except/failure release; no new debug strings |
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1298
+**Publish ref:** `origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error` @ `38d8bbdf`
+**Overall:** DISCUSS
+
+Diff scope (`git diff origin/dev...origin/<publish-ref>`): `src/core/agent.py` (modify, core), `src/core/consult.py` (modify, core), `docs/features/dispatcher/ast-1298-...md` (add, docs), `docs/test-bible/core/agent.md` (modify, docs), `tests/component/core/test_agent.py` + `tests/component/core/test_consult.py` (modify, Betty's `test(AST-1298)` commit, merged via one `merge-tests` commit).
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine stays assignee through Tests Passed per spawn prompt |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | no Chuckles-assignee action in this review |
+| orch.roles.pre-commit-path-bans | universal | conforms | `code()` commits touch only `src/core/agent.py` / `src/core/consult.py`, never test-tree paths |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/ + test-bible edits live in Betty's own `test(AST-1298)` commit, pulled in via `merge-tests` |
+| orch.pipeline.plan-is-bible | universal | conforms | plan formally revised (Revision 1) after Joan round=1 before build; stages executed as written |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a — single explicit ticket id, no queue mode |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | entered review-child from Tests Passed per spawn prompt |
+| orch.roles.archie-approves-statutes | universal | conforms | no `canon/statutes/**` edits in this diff |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | root-cause revision resolved via Joan round=1 discussion, not improvised |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | single `astral-AST-1280/` epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branch |
+| orch.git.no-dev-agent-branches | universal | conforms | no `dev-<agent>` branch created |
+| orch.git.commit-vocabulary | universal | conforms | `docs()` (plan/review-stub), `code()`, `test()`, `merge-tests()` types used correctly |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1280/AST-1298-...` naming, no invented ref |
+| orch.git.merge-on-checkout | universal | conforms | plan doc records tip-after-`sync-child`; no stale-seed evidence |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear fast-forward commit chain, no rebase/force in log |
+| orch.git.flow-direction-inviolable | universal | conforms | `tests`→`sub` via one `merge-tests` commit; no `tests`↔`dev` merge |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | exactly one `merge-tests(AST-1298): origin/tests bc4b100a...` commit |
+| astral.agent.confidence-bounds | scoped | conforms | no grading/confidence math touched |
+| astral.agent.do-task-delegation | scoped | conforms | `do_task` call site wrapped in `try`/`except` only; no inline external I/O added |
+| astral.agent.grade-vector-validation | scoped | conforms | no vector/grade validation touched |
+| astral.batch.batch-id-first | scoped | conforms | no new batch claim/get/clear helper signatures; `release_job_dispatch_claim(index)` call order unchanged |
+| astral.batch.batch-id-format | scoped | conforms | no new `batch_id` construction in diff |
+| astral.batch.claim-process-release | scoped | conforms | diff directly hardens claim→process→release: `finally`-based release in the hop-failure helper, release-on-raise in the consult per-job loop; dispatcher `finally` third belt untouched |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data/response persistence touched |
+| astral.config.config-source-of-truth | scoped | conforms | no new inline config; reuses existing `cfg.*` / `task_config` values |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env-specific values touched |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | statute file absent from `canon/statutes/astral/debug/` (registry drift, see Notes); diff writes no repo-root artifacts dir regardless |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | statute file absent from `canon/statutes/astral/debug/` (registry drift, see Notes); diff adds no `debug/` spike files regardless |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | paths restricted to `dispatcher.py` / `config.py`; diff touches neither |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | no new config hop-membership/frozenset; hop-label helpers still read `run_next`-derived ctx |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `docs/features/dispatcher/ast-1298-...md`, no duplicate |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty's `test(AST-1298)` commit touches only `tests/` + `docs/test-bible/` |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code()` commits touch only `src/core/agent.py` / `src/core/consult.py` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | `do_task` remains the only I/O boundary; no new I/O added in core |
+| astral.layers.import-direction | scoped | conforms | core→core `tracker` import only; no cross-layer import added |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` changes in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no `src/ui/**` or `config.py` changes |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | `release_job_dispatch_claim` clears a lock, not a cached coat-check value |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | dispatcher/`render_verdict` orchestration untouched; change is inside the existing dispatch-chain batch helper |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no `src/ui/**` endpoint changes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | diff touches none of `repo_admin_json.py` / `bootstrap.py` / `config.py` / `data/admin/**` |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | `dispatcher.py` / `config.py` / `data/admin/**` untouched |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | no seed/bootstrap logic touched; change is runtime exception handling, unrelated to boot-time seeding |
+| astral.seed.define-approved | scoped | conforms | no new/expanded product seed invented |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | `dispatcher.py` / `src/data/**` / `config.py` untouched |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | `dispatcher.py` / `config.py` / `src/data/**` untouched |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `logger.warning` stays in core (agent.py); no data-layer logging added |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` changes |
+| astral.standards.debug-contract-gated | scoped | conforms | `debug_detail` stays under existing `if debug:` gate; no new `logger.info("[DEBUG] …")`; format shape unchanged from the pre-existing hop-label-true line |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `try`/`finally` consolidation removes a duplicate release call site rather than adding one |
+| astral.standards.in-scope-only | scoped | conforms | diff matches Files Changed exactly: `src/core/agent.py` + `src/core/consult.py` |
+| astral.standards.logging-via-utils | scoped | conforms | only existing `get_logger` / `_do_task_debug_logger` / module `logger` used |
+| astral.standards.names-not-ticket-ids | scoped | conforms | no new ticket-id-named identifiers in `src/**`; `AST-1298` appears only in comments (carve-out) |
+| astral.standards.no-cross-contamination | scoped | conforms | no out-of-layer reference added |
+| astral.standards.no-hardcoded-sets | scoped | conforms | no new inline state/value sets; reuses `cfg.*` constants |
+| astral.standards.public-then-helpers | scoped | conforms | function order/position unchanged |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no `src/utils/**` changes |
+| astral.state.core-decides-transitions | scoped | conforms | `transition_job_state` still called with a core-chosen `err_state`; data layer untouched |
+| astral.state.job-prior-states-enforced | scoped | conforms | `transition_job_state` prior_states enforcement path unchanged; diff only wraps the existing call |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no new multi-hop auto-transition; release-on-failure is a lock-clear, not a state daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no `src/ui/**` changes |
+| astral.ui.naming-conventions | scoped | not-applicable | no `src/ui/**` changes |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no `src/ui/**` / `scripts/**` / `config.py` changes |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | ticket doc cites no `canon/patterns/**` id — see discuss finding below |
+
+### Plan adherence
+
+Diff matches the Files Changed table exactly for engineer scope (`src/core/agent.py`, `src/core/consult.py`); Betty's test/bible edits arrive via her own commit + one `merge-tests` merge, not engineer edits. Stage 1 and Stage 2 "Done when" criteria are met and covered by `TestAst1298OrphanedJobClaimRelease` + the revised `TestAst1191ArtifactHopFailureRelease` + `TestAst371ResumeArtifactDispatch` cases (verified against the diff, not re-run here). Stage 3 required verification only (no code change) — call chain confirmed: `draft_job_resume` + `BUILD_ARTIFACTS` ctx + `success=False`/raise both now route through the hardened hop-label-true `finally` release and the consult except/failure release; no new debug-contract strings added. Self-Assessment Scope (`Single-Component`) matches actual footprint; Conf `Medium` / Risk `Medium` carry no red flags requiring escalation.
+
+### Findings
+
+**discuss:** Uncited pattern match — `src/core/consult.py`'s new `try`/`except`/release wrap around `do_task`, and `src/core/agent.py`'s `try`/`finally` release, both instantiate the shape of approved `pattern.batch.entity-claim-process-release` (`canon/patterns/batch/pattern.batch.entity-claim-process-release.md`), but neither the Files Changed table nor the Self-review section cites it. Not a functional defect — recommend citing the pattern id in the next plan/doc touching this helper for traceability (code-rubric.v2 C5).
+
+### Notes
+
+- No Joan plan-rubric verdict attachment is present on this ticket doc (only narrative "Revision 1" driven by a Joan round=1 comment) — per C4 straggler rule this is not a block; noting `no plan-rubric verdict attached`.
+- Corpus drift (out of scope for this ticket, flagged downstream): `canon/statutes/README.md` § Harvested corpus lists `astral.debug.no-repo-root-artifacts-dir` and `astral.debug.spikes-under-debug-dir`, but `canon/statutes/astral/debug/` does not exist in the tree. Scored `not-applicable` to this diff either way; the registry/tree mismatch itself may warrant its own corpus-integrity ticket.
+- Style nit (advisory, not fix-now): in `consult.py`'s new `except BaseException:` arm, `errors += 1` runs immediately before `raise` — the function always exits via the exception on that path, so the incremented counter is never read from a returned dict. Harmless; a future cleanup could drop it.
+
+context_tokens≈60000
