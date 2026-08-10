@@ -1103,10 +1103,26 @@ def _apply_dispatch_chain_hop_failure(
     failure_class: Optional[str] = None,
 ) -> Dict[str, Any]:
     trigger_state, _ = _dispatch_chain_ctx(ctx)
+    from src.core import tracker as tracker_mod
+    # Hop-label-false: no error_state write; defense-in-depth claim release only (AST-1298).
     if not _should_write_dispatch_hop_label(
         entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
     ):
-        return dict(_HOP_FAILURE_NOOP)
+        batch_released = False
+        if provider_failed and index and entity_type == "job":
+            tracker_mod.release_job_dispatch_claim(index)
+            batch_released = True
+        if debug:
+            _do_task_debug_logger(debug).debug_detail(
+                f"chain_hop_failed apply_error_state=False "
+                f"error_state= batch_released={batch_released} "
+                f"failure_class={failure_class!r} error={error!r}"
+            )
+        return {
+            "apply_error_state": False,
+            "error_state": "",
+            "batch_released": batch_released,
+        }
     err_state = (task_config.get("error_state") or "").strip()
     balance_hold = provider_failed and is_provider_balance_refusal(
         {"failure_class": failure_class}
@@ -1118,17 +1134,19 @@ def _apply_dispatch_chain_hop_failure(
     )
     apply_error_state = False
     batch_released = False
-    from src.core import tracker as tracker_mod
-    if hard and err_state and index:
-        try:
-            tracker_mod.transition_job_state([index], err_state)
-            apply_error_state = True
-        except ValueError as exc:
-            logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
-    # Release after transition so state_history still stamps the in-flight batch_id.
-    if provider_failed and index:
-        tracker_mod.release_job_dispatch_claim(index)
-        batch_released = True
+    # Transition first (history stamps in-flight batch_id); release in finally so
+    # non-ValueError from transition cannot skip claim clear (AST-1298 / AST-1191).
+    try:
+        if hard and err_state and index:
+            try:
+                tracker_mod.transition_job_state([index], err_state)
+                apply_error_state = True
+            except ValueError as exc:
+                logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
+    finally:
+        if provider_failed and index:
+            tracker_mod.release_job_dispatch_claim(index)
+            batch_released = True
     if debug:
         _do_task_debug_logger(debug).debug_detail(
             f"chain_hop_failed apply_error_state={apply_error_state} "
