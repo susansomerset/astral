@@ -106,3 +106,10 @@ No API, config, CSS module, routes, upsert modal, or other Admin page files.
 context_tokens≈45000
 
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-10  
+**Review:** `[code-rubric] revision=2` — Overall CLEAN (Radia). No fix-now, no discuss, no advisory product work.
+
+**Actions:** None required beyond intake of Radia’s `docs(AST-1295): Radia review — clean` (`ad9c111b`) via `sync-child` merge of `origin/<publish-ref>`. Product tip remains `d2f2e1a9` (schema browser sibling reorder).
