@@ -2382,12 +2382,18 @@ async def _run_dispatch_chain_job_batch(
                 task_ctx["astral_candidate_id"] = str(co["candidate_id"])
         if "vector_labels" not in task_ctx:
             task_ctx["vector_labels"] = {}
-        result = await do_task(
-            dispatch_task_key,
-            index=aid,
-            ctx=task_ctx,
-            debug=debug,
-        )
+        # AST-1298: release on raise as well as success=False (dispatcher finally is third belt).
+        try:
+            result = await do_task(
+                dispatch_task_key,
+                index=aid,
+                ctx=task_ctx,
+                debug=debug,
+            )
+        except BaseException:
+            tracker.release_job_dispatch_claim(aid)
+            errors += 1
+            raise
         if not result.get("success"):
             tracker.release_job_dispatch_claim(aid)
             errors += 1
