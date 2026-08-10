@@ -120,3 +120,26 @@ Ruth `live_content` for `html_links` / `subject_body` is visible text + optional
   tests/component/core/test_repo_admin_json.py::TestAst1213MeteoriteEmailVisibleTextPrompts \
   -q
 ```
+
+### AST-1294 · AST-1290
+
+**Parent:** [AST-1290 — Only 32 of 34 jobs were loaded by parse_meteorite_email](https://linear.app/astralcareermatch/issue/AST-1290/only-32-of-34-jobs-were-loaded-by-parse-meteorite-email). **Publish:** `origin/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land`.
+
+Post-parse `_ensure_html_links_jobs_complete` on the `html_links` branch: every Ruth `--- LINKS ---` payload href lands in the jobs list used for ingest (stub `job_title: None` when Ruth omits the link). Match via `normalize_link`. Style D found/recorded/missing path-tail ids when `debug=True` and incomplete; silence when complete or `debug=False`. No `subject_url` / `subject_body` redesign; no Avail/coerce (AST-1282 / AST-1289).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper UAT 34→34 + normalize + Style D + junk/extras | `src/core/gaze_email.py` | **`TestAst1294HtmlLinksJobsComplete`** |
+| html_links call site ingests stubs | `src/core/gaze_email.py` | **`TestAst1294HtmlLinksJobsComplete::test_html_links_call_site_ingests_stubbed_links`** |
+
+**Broken / obsolete (Betty revision):** AST-1213 `test_html_links_live_content_shape` / `test_debug_true_emits_ruth_payload_detail` — empty Ruth `jobs` + payload links now reconcile-stub then ingest; mock `_ingest_link` so those cases stay on live_content / ruth_payload Style D (no real Playwright).
+
+**Integration:** no existing scenarios assert html_links completeness / gaze_email reconcile — none revised; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_gaze_email.py::TestAst1294HtmlLinksJobsComplete \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload::test_html_links_live_content_shape \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload::test_debug_true_emits_ruth_payload_detail \
+  -q
+```
