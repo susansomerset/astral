@@ -138,3 +138,7 @@ No fix-now findings. No discuss findings. No stragglers — Joan's `[plan-rubric
 context_tokens≈62000
 
 — Radia
+
+## Resolution
+
+**2026-08-10** — Radia `[code-rubric] revision=2` **CLEAN** (0 fix-now / 0 discuss). No product changes after review. Publish tip before resolve commit: `c3a4a441` (`docs(AST-1294): Radia review — clean`). Advancing to User Testing.
