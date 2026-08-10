@@ -97,3 +97,12 @@ parsed["jobs"] = jobs
 - §2.2 do-task-delegation: Ruth still via `do_task` / `_ruth_parse`; reconcile is gaze_email post-parse, not a second LLM call.
 - §3.3 imports: `normalize_link` from `src.utils.formatting` is an allowed core→utils import.
 - In-scope-only: no AST-1282 Avail/scheduler, no AST-1289 coerce, no seed rename, no AST-1213 payload reshape.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1290/AST-1294-html-links-completeness-all-payload-job-links-land`
+**Tip (pre-review):** `f75e80e1`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `f75e80e1` | `_ensure_html_links_jobs_complete` + html_links call site; Style D found/recorded/missing when incomplete |
