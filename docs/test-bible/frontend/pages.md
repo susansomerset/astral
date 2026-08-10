@@ -1682,3 +1682,26 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
   -t "AST-1288"
 ```
+
+---
+
+### AST-1295 · AST-1291
+
+**Parent:** [AST-1291 — Move table lookup and field lookup objects on Data Management page](https://linear.app/astralcareermatch/issue/AST-1291/move-table-lookup-and-field-lookup-objects-on-data-management-page). **Publish:** `origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql`.
+
+Layout-only: Data Management workbench flex row places **Main query panel** before **Schema browser** so Tables (+ Fields for selected table) render to the **right** of the SQL textarea. Selection / discovery SQL / Run / history / Copy Output / Table Upsert unchanged.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) schema-browser DOM order | `src/ui/frontend/src/pages/AdminDataManagement.tsx` | **`test_AdminDataManagement.test.tsx`** — **`AST-1295:`** Tables/Fields follow SQL textarea in document order; fields still load after table click |
+| Existing §6c regression (AC3) | same page | same file — sql / copy / schema click / upsert modal / toast / sql-error paths (labels + behavior, not left/right) |
+
+**Broken / obsolete this pass:** none — prior AdminDataManagement cases assert labels and flows, not left/right adjacency.
+
+**Integration:** none — page chrome reorder only; do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  -t "AST-1295"
+```
