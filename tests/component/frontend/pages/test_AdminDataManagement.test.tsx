@@ -123,4 +123,23 @@ describe("AdminDataManagement", () => {
     await userEvent.click(screen.getByRole("button", { name: "Run" }))
     await waitFor(() => expect(screen.getByText("bad sql")).toBeInTheDocument())
   }, 15000)
+
+  // AST-1295: schema browser DOM order — right of SQL workbench (flex row sibling reorder)
+  it("AST-1295: Tables/Fields schema browser follows SQL textarea in DOM (right of workbench)", async () => {
+    mockApi()
+    renderWithProviders(<DataManagement />)
+    await waitFor(() => expect(screen.getByRole("option", { name: "agent_task" })).toBeInTheDocument())
+
+    const textarea = screen.getByPlaceholderText(/SELECT \* FROM agent_task/)
+    const tablesLabel = screen.getByText("Tables")
+    // Default flex-direction:row → DOM order is visual left-to-right
+    expect(textarea.compareDocumentPosition(tablesLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+
+    const schemaRows = screen.getAllByText("agent_task")
+    await userEvent.click(schemaRows[schemaRows.length - 1])
+    const fieldsLabel = await screen.findByText("Fields — agent_task")
+    expect(textarea.compareDocumentPosition(fieldsLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(tablesLabel.compareDocumentPosition(fieldsLabel) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy()
+    expect(screen.getByText("id")).toBeInTheDocument()
+  }, 15000)
 })
