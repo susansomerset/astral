@@ -568,3 +568,5 @@ context_tokens≈52000
 | **advisory** — `#fff` on `.btn.danger` | Deferred — literal copy of `.modal-btn.danger` per plan Decision. Optional `--text-on-danger` belongs with AST-1301/AST-1302 when leftover families retire, not this ticket. |
 
 No fix-now items. No TSX / API / config change on resolve.
+
+**Docs-acceptance (Betty manifest):** patterns `approved` + README/HARVEST index rows + `App.css` TOC 14–15 / leftover families present + no catalog TSX consumers. Green on tip `51d38a4c` (re-run not required for this vocabulary commit).
