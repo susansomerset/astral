@@ -52,9 +52,14 @@ from src.utils.config import (
     EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
+    RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     TASK_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
@@ -1927,6 +1932,7 @@ def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_RESUME_SECTION_EXTRA_ID_RE = re.compile(RESUME_STRUCTURE_EXTRA_ID_PATTERN)
 
 
 def default_resume_structure() -> dict:
@@ -1950,9 +1956,10 @@ def normalize_resume_structure(raw: dict) -> dict:
         if ac not in palette:
             raise ValueError("resume_structure.accent_color not in accent_palette")
         out["accent_color"] = ac
+    missing = [rid for rid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS if rid not in sections_in]
+    if missing:
+        raise ValueError(f"resume_structure missing required section(s): {missing}")
     for sid, spec in sections_in.items():
-        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
-            raise ValueError(f"unknown resume section id: {sid}")
         if not isinstance(spec, dict):
             raise ValueError(f"section {sid} must be a dict")
         sec_id = str(spec.get("id") or sid).strip()
@@ -1967,16 +1974,48 @@ def normalize_resume_structure(raw: dict) -> dict:
         order = spec.get("order")
         if not isinstance(order, int):
             raise ValueError(f"section {sid} order must be int")
-        job_ed = spec.get("job_agent_editable")
-        if not isinstance(job_ed, bool):
-            raise ValueError(f"section {sid} job_agent_editable must be boolean")
-        out["sections"][sid] = {
+        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS and "job_agent_editable" not in spec:
+            job_ed = True
+        else:
+            job_ed = spec.get("job_agent_editable")
+            if not isinstance(job_ed, bool):
+                raise ValueError(f"section {sid} job_agent_editable must be boolean")
+        if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS and enabled is False:
+            raise ValueError(f"required section {sid} cannot be disabled")
+        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+            if sid in RESUME_STRUCTURE_RESERVED_EXTRA_IDS:
+                raise ValueError(f"invalid extra section id: {sid}")
+            if _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is None:
+                raise ValueError(f"invalid extra section id: {sid}")
+        row: Dict[str, Any] = {
             "id": sid,
             "title": title.strip(),
             "enabled": enabled,
             "order": order,
             "job_agent_editable": job_ed,
         }
+        if sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
+            pass
+        elif sid == "experience":
+            fmt = spec.get("format")
+            if fmt is None or (isinstance(fmt, str) and not fmt.strip()):
+                fmt = RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["experience"]
+            elif fmt != "experience_detail":
+                raise ValueError("section experience format must be experience_detail")
+            row["format"] = "experience_detail"
+        else:
+            fmt = spec.get("format")
+            if fmt is None or (isinstance(fmt, str) and not str(fmt).strip()):
+                if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID:
+                    fmt = RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+                else:
+                    raise ValueError(f"section {sid} requires format")
+            if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+                raise ValueError(
+                    f"section {sid} format must be one of {list(RESUME_STRUCTURE_BODY_FORMATS)}"
+                )
+            row["format"] = fmt
+        out["sections"][sid] = row
     if not out["sections"]:
         raise ValueError("resume_structure must include at least one section")
     return out
