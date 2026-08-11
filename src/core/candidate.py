@@ -2160,9 +2160,9 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     for k, v in content.items():
         if k not in section_ids:
             continue
-        if k == "experience" and _is_experience_job_array(v):
+        if _is_experience_job_array(v) and v:
             out[k] = v
-        elif isinstance(v, str):
+        elif k != "experience" and isinstance(v, str):
             out[k] = v
         # else: drop unexpected shapes (do not str()-corrupt)
     return out
@@ -2491,12 +2491,12 @@ def validate_draft_job_resume_payload(
                         accepted.append(key)
                         continue
                     if key == "experience":
-                        if _is_experience_job_array(val):
+                        if _is_experience_job_array(val) and val:
                             bad_job = False
                             for job in val:
                                 if not isinstance(job, dict):
                                     rejected.append(key)
-                                    err = "Section 'experience' must be a job array or prose string"
+                                    err = "Section 'experience' must be an experience_detail job array"
                                     bad_job = True
                                     break
                                 if not isinstance(job.get("location"), str):
@@ -2509,13 +2509,9 @@ def validate_draft_job_resume_payload(
                                 break
                             accepted.append(key)
                             continue
-                        if isinstance(val, str):
-                            accepted.append(key)
-                            continue
-                        if isinstance(val, (list, dict)):
-                            rejected.append(key)
-                            err = "Section 'experience' must be a job array or prose string"
-                            break
+                        rejected.append(key)
+                        err = "Section 'experience' must be an experience_detail job array"
+                        break
                     text = _coerce_resume_section_string(val)
                     if text is None:
                         rejected.append(key)
@@ -2573,9 +2569,9 @@ def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
         if key not in parsed:
             continue
         val = parsed[key]
-        if key == "experience" and _is_experience_job_array(val):
+        if _is_experience_job_array(val) and val:
             content[key] = val
-        elif isinstance(val, str):
+        elif key != "experience" and isinstance(val, str):
             content[key] = val
     return structure, content
 
@@ -2616,12 +2612,9 @@ def filter_content_to_resume_structure(
         val = content.get(key)
         if _is_experience_job_array(val) and val:
             out[key] = val
-        elif key == "experience":
-            if isinstance(val, str) and val.strip():
-                out[key] = val
-        elif isinstance(val, str) and val.strip():
+        elif key != "experience" and isinstance(val, str) and val.strip():
             out[key] = val
-        elif isinstance(val, list) and val and all(not isinstance(item, dict) for item in val):
+        elif key != "experience" and isinstance(val, list) and val and all(not isinstance(item, dict) for item in val):
             text = _coerce_resume_section_string(val)
             if text:
                 out[key] = text
