@@ -327,3 +327,12 @@ Self-Assessment (**Single-Component / high conf / low risk**) matches the diff f
 context_tokens≈38000
 — Radia
 
+## Resolution — 2026-08-11
+
+**Review tip:** `d1a3026d` (`docs(AST-1312): Radia review — CLEAN`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none.
+- **Advisory:** none.
+- **Product / plan code:** unchanged this pass (resolve clean).
+
