@@ -45,15 +45,15 @@ export default function Modal({ open, onClose, title, children, onSave, dirty, s
       <div className={`modal-card${size === "wide" ? " modal-card--wide" : ""}`}>
         <div className="modal-header">
           <h2 className="modal-title">{title}</h2>
-          <button className="modal-close" onClick={guardedClose} aria-label="Close">×</button>
+          <button type="button" className="icon-control" onClick={guardedClose} title="Close" aria-label="Close">×</button>
         </div>
         <div className="modal-body" onInput={onBodyInput} onChange={onBodyInput}>
           {children}
         </div>
         <div className="modal-footer">
-          <button className="modal-btn cancel" onClick={guardedClose}>Cancel</button>
+          <button className="btn secondary" onClick={guardedClose}>Cancel</button>
           {onSave && (
-            <button className="modal-btn save" onClick={onSave}>Save</button>
+            <button className="btn primary" onClick={onSave}>Save</button>
           )}
         </div>
       </div>

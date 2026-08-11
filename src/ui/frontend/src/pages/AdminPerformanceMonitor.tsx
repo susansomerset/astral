@@ -470,7 +470,7 @@ function LogViewer({
   return (
     <div className="dispatch-log-panel">
       <div className="dispatch-log-toolbar">
-        <button className="dispatch-log-copy-btn" onClick={copyLogs} title="Copy logs to clipboard">
+        <button className="btn secondary" onClick={copyLogs} title="Copy logs to clipboard">
           {copied ? "✓ Copied" : "⎘ Copy"}
         </button>
       </div>

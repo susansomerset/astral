@@ -84,7 +84,7 @@ export default function NewList() {
         loading={loading}
         onRowClick={row => setViewing(row.short_name)}
         actions={
-          <button className="dep-btn save" onClick={() => setImportOpen(true)} style={{ padding: "6px 14px", fontSize: 13 }}>
+          <button className="btn primary" onClick={() => setImportOpen(true)}>
             Import CSV
           </button>
         }

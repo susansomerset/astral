@@ -663,7 +663,7 @@ export default function ArtifactEditor({
           <div className="dep-actions">
             {canGenerate && (
               <button
-                className={`dep-btn save${generating ? " in-flight" : ""}`}
+                className={`btn primary${generating ? " in-flight" : ""}`}
                 onClick={handleGenerateClick}
                 disabled={generating}
                 style={{ marginRight: 8 }}
@@ -675,8 +675,8 @@ export default function ArtifactEditor({
             )}
             {(fixedFields || inReview || jobPersistence) ? (
               <>
-                <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-                <button className="dep-btn save" onClick={() => doSave(tabs)} disabled={saving}>
+                <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+                <button className="btn primary" onClick={() => doSave(tabs)} disabled={saving}>
                   {saving ? "Saving..." : "Save"}
                 </button>
               </>
@@ -798,16 +798,15 @@ export default function ArtifactEditor({
                 </p>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                   <button
-                    className="dep-btn cancel"
+                    className="btn secondary"
                     autoFocus
                     onClick={() => setConfirmRegen(false)}
                   >
                     No
                   </button>
                   <button
-                    className="dep-btn save"
+                    className="btn danger"
                     onClick={() => void doRequestArtifacts()}
-                    style={{ background: "#ff6b6b" }}
                   >
                     Yes
                   </button>
@@ -822,10 +821,10 @@ export default function ArtifactEditor({
                   or <strong>Save</strong> to keep it. Saving cannot be undone.
                 </p>
                 <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-                  <button className="dep-btn cancel" onClick={() => setConfirmRegen(false)}>
+                  <button className="btn secondary" onClick={() => setConfirmRegen(false)}>
                     Cancel
                   </button>
-                  <button className="dep-btn save" onClick={() => void doGenerate()} style={{ background: "#ff6b6b" }}>
+                  <button className="btn danger" onClick={() => void doGenerate()}>
                     Regenerate
                   </button>
                 </div>

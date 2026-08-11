@@ -166,7 +166,7 @@ export default function Profile() {
           {sigImg ? (
             <div style={{ marginTop: 12 }}>
               <img src={sigImg} alt="" style={{ maxWidth: maxSigW, maxHeight: maxSigH, display: "block" }} />
-              <button type="button" className="dep-btn cancel" style={{ marginTop: 8 }} onClick={handleClearSignatureImage}>
+              <button type="button" className="btn secondary" style={{ marginTop: 8 }} onClick={handleClearSignatureImage}>
                 Remove image
               </button>
             </div>
@@ -207,8 +207,8 @@ export default function Profile() {
         <div className="dep-header">
           <h1 className="dep-title">Candidate Profile</h1>
           <div className="dep-actions">
-            <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-            <button className="dep-btn save" onClick={handleSave}>Save</button>
+            <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+            <button className="btn primary" onClick={handleSave}>Save</button>
           </div>
         </div>
         <div className="dep-body">

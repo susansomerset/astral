@@ -365,3 +365,7 @@ Stage 1 lands the full `RESUME_STRUCTURE_*` family: required seven, historical o
 
 context_tokens≈95000
 — Radia
+
+## Resolution
+
+**2026-08-11** — Radia **CLEAN** (no fix-now / discuss). Merged `origin/dev` into this sub for §9a (prep-uat dry-run was dirty on the pre-merge tip, including `src/core/candidate.py`). Catalog + `normalize_resume_structure` contract unchanged after the merge. `origin/ftr/AST-1299` not on origin — ftr dry-run skipped.

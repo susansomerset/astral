@@ -139,7 +139,7 @@ export default function CandidateSurferConsent() {
           <div className="surfer-consent-actions">
             <button
               type="button"
-              className="modal-btn save"
+              className="btn primary"
               disabled={optingIn}
               onClick={() => void onOptIn()}
             >
@@ -147,7 +147,7 @@ export default function CandidateSurferConsent() {
             </button>
             <button
               type="button"
-              className="modal-btn cancel"
+              className="btn secondary"
               disabled={optingIn}
               onClick={onDecline}
             >

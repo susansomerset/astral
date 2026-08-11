@@ -353,7 +353,7 @@ export default function IntakeChatModal({
               />
               <button
                 type="button"
-                className="modal-btn save"
+                className="btn primary"
                 disabled={!draft.trim() || busy}
                 onClick={() => void handleSend()}
               >
@@ -361,7 +361,7 @@ export default function IntakeChatModal({
               </button>
               <button
                 type="button"
-                className="modal-btn save intake-generate-btn"
+                className="btn primary intake-generate-btn"
                 disabled={!readyToBuild || buildCompleted || busy}
                 onClick={() => void handleBuild()}
               >
@@ -374,7 +374,7 @@ export default function IntakeChatModal({
             <div className="intake-actions">
               <button
                 type="button"
-                className="modal-btn cancel"
+                className="btn secondary"
                 disabled={busy}
                 onClick={() => void handleNewSession()}
               >

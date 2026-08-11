@@ -326,7 +326,7 @@ export default function ListPage<T extends Row>({
           {bulkActions.map(action => (
             <button
               key={action.label}
-              className={`list-page-bulk-btn${action.variant === "danger" ? " danger" : ""}`}
+              className={action.variant === "danger" ? "btn danger" : "btn primary"}
               onClick={() => action.onClick(selectedArr)}
             >
               {action.label}

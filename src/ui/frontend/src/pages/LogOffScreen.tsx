@@ -29,7 +29,7 @@ export default function LogOffScreen({ reason }: { reason: LogOffReason }) {
       <div style={{ maxWidth: "28rem", textAlign: "center" }}>
         <h1 style={{ marginBottom: "1rem" }}>{title}</h1>
         <p style={{ marginBottom: "1.5rem", color: "var(--text-secondary)" }}>{body}</p>
-        <button type="button" onClick={handleRefresh} data-testid="logoff-refresh">
+        <button type="button" className="btn primary" onClick={handleRefresh} data-testid="logoff-refresh">
           Refresh
         </button>
       </div>

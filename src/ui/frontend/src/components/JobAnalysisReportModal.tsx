@@ -365,14 +365,14 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
       return (
         <div className="recommended-report-artifacts-actions">
-          <button type="button" className="modal-btn save in-flight" disabled>
+          <button type="button" className="btn primary in-flight" disabled>
             Generating…
           </button>
           {cancelActions.map(action => (
             <button
               key={action.action_key}
               type="button"
-              className="modal-btn save"
+              className="btn secondary"
               disabled={primaryBusy}
               onClick={() => runPrimaryAction(action)}
             >
@@ -391,7 +391,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         <div className="recommended-report-artifacts-actions">
           <button
             type="button"
-            className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
+            className={`btn primary${primaryBusy ? " in-flight" : ""}`}
             disabled={primaryBusy}
             onClick={() => runPrimaryAction(generate)}
           >
