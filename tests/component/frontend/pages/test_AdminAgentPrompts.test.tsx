@@ -242,4 +242,18 @@ describe("AdminAgentPrompts", () => {
     await waitFor(() => expect(screen.getByText(/agent personas/)).toBeInTheDocument())
     expect(screen.getByRole("button", { name: "Revert to file" })).toBeInTheDocument()
   }, 15000)
+
+  it("AST-1302: row Delete is icon-control with D", async () => {
+    mockApi()
+    renderWithProviders(<AgentPrompts />)
+    await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+    const deletes = screen.getAllByRole("button", { name: "Delete" })
+    expect(deletes[0]).toHaveClass("icon-control")
+    expect(deletes[0]).toHaveTextContent("D")
+    expect(deletes[0]).not.toBeDisabled()
+    expect(deletes[1]).toHaveClass("icon-control")
+    expect(deletes[1]).toHaveTextContent("D")
+    expect(deletes[1]).toBeDisabled()
+    expect(deletes[0]).not.toHaveClass("dep-btn")
+  }, 15000)
 })

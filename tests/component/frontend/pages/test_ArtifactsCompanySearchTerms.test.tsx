@@ -82,6 +82,8 @@ describe("ArtifactsCompanySearchTerms", () => {
 
     renderWithProviders(<ArtifactsCompanySearchTerms />)
     const generateBtn = await screen.findByRole("button", { name: "Generate" })
+    expect(generateBtn).toHaveClass("btn")
+    expect(generateBtn).toHaveClass("primary")
     expect(generateBtn).not.toHaveClass("in-flight")
     await userEvent.click(generateBtn)
     await waitFor(() => expect(generateBtn).toHaveClass("in-flight"))

@@ -91,4 +91,30 @@ describe('Modal', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSave).toHaveBeenCalledTimes(1)
   })
+
+  it('AST-1301: footer Cancel/Save use catalog classes', () => {
+    render(
+      wrap(
+        <Modal open onClose={vi.fn()} onSave={vi.fn()} title="Open">
+          <p>Body</p>
+        </Modal>,
+      ),
+    )
+    expect(screen.getByRole('button', { name: 'Cancel' })).toHaveClass('btn', 'secondary')
+    expect(screen.getByRole('button', { name: 'Save' })).toHaveClass('btn', 'primary')
+  })
+
+  it('AST-1302: header close is icon-control', () => {
+    render(
+      wrap(
+        <Modal open onClose={vi.fn()} title="Open">
+          <p>Body</p>
+        </Modal>,
+      ),
+    )
+    const close = screen.getByRole('button', { name: 'Close' })
+    expect(close).toHaveClass('icon-control')
+    expect(close).toHaveTextContent('×')
+    expect(close).not.toHaveClass('modal-close')
+  })
 })

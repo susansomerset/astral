@@ -24,6 +24,7 @@ describe("LogOffScreen", () => {
     expect(screen.getByRole("heading", { name: "You were signed out" })).toBeInTheDocument()
     expect(screen.getByText(/session expired after a period of inactivity/i)).toBeInTheDocument()
     expect(screen.queryByTestId("stytch-login")).not.toBeInTheDocument()
+    expect(screen.getByTestId("logoff-refresh")).toHaveClass("btn", "primary")
   })
 
   it("renders server-rejection copy", () => {
