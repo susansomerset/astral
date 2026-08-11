@@ -85,3 +85,70 @@ Susan keeps several Astral tabs open; Chrome’s tab list currently says `Astral
 | `astral.layers.ui-config-driven-business-logic` | React does not re-derive Full Name; it renders `full` from the payload |
 | `astral.standards.in-scope-only` | Two files only; nav / Profile / builder / picker labels excluded |
 | Boundaries | No `NavigationShell` edit, no `candidateLabel` reuse, no exported `<title>` in `builder.py` |
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1311
+**Publish ref:** `sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` @ `c65d6626`
+**Overall:** APPROVED
+
+### Traceability
+
+| Child AC | Plan stage(s) | Definition anchor |
+|----------|---------------|-------------------|
+| 1 — Selected Full Name `Jolane Abrams` → tab exactly `Astral - Jolane Abrams` | Stage 1 (`browserTabTitle`, apply effect) | Parent functional scope: `Astral - <Full Name>` |
+| 2 — Candidate change updates title without reload | Stage 1 (apply effect on `[selectedId, candidates]`) | Parent: “stays in sync when the selected candidate changes” |
+| 3 — Reload with persisted selection shows Full Name after load | Stage 1 (same effect after `load()` hydrates list + `localStorage` id) | Parent: “including a persisted selection on reload” |
+| 4 — No selection or unformable Full Name → exactly `Astral` | Stage 1 (`browserTabTitle` empty trim → `Astral`; missing row → `undefined`) | Parent: “When no candidate is selected, or Full Name cannot be formed, the title is `Astral`” |
+| 5 — Route navigation does not add route/page names | Stage 1 (no router/helmet/pathname deps; explicit non-goals) | Parent boundary: “Does not append the current route, page heading…” |
+| 6 — Unauthenticated / sign-in chrome still `Astral` | Stage 1 (unmount cleanup; `Authenticate` outside provider; `index.html` static) | Parent boundary: favicon / unauthenticated chrome unchanged |
+
+| Stage | Child AC / definition |
+|-------|----------------------|
+| Stage 1 | AC 1–6; parent Purpose + functional scope |
+
+No orphan stages. All six child ACs mapped.
+
+### Statute verdicts
+
+| Statute / pattern | Verdict | Rationale |
+|-------------------|---------|-----------|
+| `astral.ui.frontend-file-placement` | conforms | Helper in `src/ui/frontend/src/lib/`; sync in existing `contexts/CandidateContext.tsx` |
+| `astral.ui.naming-conventions` | conforms | `documentTitle.ts` / `browserTabTitle` domain names |
+| `astral.layers.ui-config-driven-business-logic` | conforms | Reads list payload `full` only; explicit ban on first+last join and `candidateLabel` |
+| `astral.standards.in-scope-only` | conforms | Two frontend files; nav / Profile / builder / picker excluded |
+| `astral.standards.names-not-ticket-ids` | conforms | No ticket ids in identifiers |
+| `astral.standards.dry-and-focused-functions` | conforms | Single formatter; apply + unmount both call it |
+| `no established pattern applies` (parent) | conforms | Plan matches parent: one-place shell presentation, not a new catalog shape |
+
+### Considered and excluded
+
+**Considered:** in-scope statutes above.
+
+**Excluded (boundary / out of child):**
+- `pattern.ui.shared-button-roles`, `pattern.ui.icon-control`, `pattern.ui.admin-endpoint` — do not govern `document.title`
+- `NavigationShell.tsx` / AST-1284 — parent forbids nav shell edits
+- `candidateLabel.ts` — picker label, not Full Name
+- Profile / `recompute_full_name` — AST-1081/1082; consumes `full` only
+- `builder.py` exported HTML `<title>` — parent boundary
+- `config.py` / API for product word `Astral` — presentation chrome in `index.html`
+- `index.html`, `Login.tsx`, `Authenticate.tsx`, `LogOffScreen.tsx` — static unauthenticated chrome
+- Universal `orch.*` — pipeline, not product scope
+
+### Findings
+
+| Sev | Location | Finding | Recommendation |
+|-----|----------|---------|----------------|
+| **acceptable** | Stage 1 apply effect | Brief `Astral` flash possible between auth + `/api/candidates` hydrate before `selected?.full` resolves | Matches AC 3 “after the app loads”; no plan change needed |
+| **acceptable** | Plan traceability | Single stage covers all ACs | Appropriate for Single-Component scope |
+
+**Tip verification:** `CandidateContext.tsx` already has `CandidateInfo.full`, timezone side-effect pattern at lines 64–69, and `load()` restoring `localStorage` selection — plan sites are accurate. `documentTitle.ts` does not exist yet (expected). `routes.tsx` mounts `CandidateProvider` only under `RequireAuth`; `authenticate` is outside that tree. `index.html` is `<title>Astral</title>`. `CandidateProfile.tsx` calls `refreshCandidate()` after save (line 113), so Full Name edits retrigger the apply effect as the plan assumes.
+
+**Self-assessment:** Single-Component / high conf / low risk — honest and proportionate.
+
+**Plan Discuss:** 0 completed rounds (Katherine plan comment only).
+
+context_tokens≈14000
+— Joan
