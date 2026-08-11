@@ -297,3 +297,8 @@ No statute `violates` / `needs-discussion`.
 
 context_tokens≈82000
 — Joan
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`  
+**Product commits:** `01d0ca38` (job-list row actions), `811eb190` (candidates/agents row actions), `e25f2b76` (modal × / chevron + leftover CSS)
