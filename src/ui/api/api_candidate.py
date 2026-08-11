@@ -19,6 +19,7 @@ from src.core.candidate import (
     delete_candidate as core_delete_candidate,
     enabled_resume_structure_sections,
     filter_base_resume_to_structure,
+    ingest_legacy_label_content_base_resume,
     get_candidate,
     get_pending_craft_generation,
     hydrate_rubric_artifacts_for_response,
@@ -195,10 +196,6 @@ def update_candidate_data(candidate_id):
                 cd = (candidate.get("candidate_data") or {}) if candidate else {}
                 resolved = resolve_resume_structure(cd)
                 section_ids = {s["id"] for s in enabled_resume_structure_sections(resolved)}
-                if "base_resume" in arts and isinstance(arts["base_resume"], dict):
-                    arts["base_resume"] = filter_base_resume_to_structure(
-                        arts["base_resume"], section_ids
-                    )
                 if "resume_structure" in arts and isinstance(arts["resume_structure"], dict):
                     rs_in = arts["resume_structure"]
                     merged = dict(resolved)
@@ -213,6 +210,18 @@ def update_candidate_data(candidate_id):
                         if "accent" in msg.lower():
                             return jsonify({"error": "invalid accent_color"}), 400
                         return jsonify({"error": "invalid resume_structure"}), 400
+                if "base_resume" in arts and isinstance(arts["base_resume"], (list, dict)):
+                    content, ingested_struct = ingest_legacy_label_content_base_resume(
+                        arts["base_resume"], arts.get("resume_structure") or resolved
+                    )
+                    arts["base_resume"] = content
+                    arts["resume_structure"] = ingested_struct
+                    section_ids = {
+                        s["id"] for s in enabled_resume_structure_sections(ingested_struct)
+                    }
+                    arts["base_resume"] = filter_base_resume_to_structure(
+                        arts["base_resume"], section_ids
+                    )
                 if not arts:
                     body.pop("artifacts", None)
                 else:

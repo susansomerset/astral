@@ -56,6 +56,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
@@ -1935,6 +1936,42 @@ _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
 _RESUME_SECTION_EXTRA_ID_RE = re.compile(RESUME_STRUCTURE_EXTRA_ID_PATTERN)
 
 
+def _slug_resume_extra_section_id(title: str, used: set) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", title.strip().lower()).strip("_")
+    if not s or not s[0].isalpha():
+        s = ("s_" + s) if s else "section"
+    base = s
+    n = 2
+    while (
+        s in used
+        or s in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+        or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(s) is None
+    ):
+        s = f"{base}_{n}"
+        n += 1
+    used.add(s)
+    return s
+
+
+def _title_to_structure_section_id(title: str, structure: dict) -> Optional[str]:
+    needle = title.strip().casefold()
+
+    def _match(sections: Any) -> Optional[str]:
+        if not isinstance(sections, dict):
+            return None
+        for sid, spec in sections.items():
+            if not isinstance(spec, dict):
+                continue
+            if str(spec.get("title") or "").strip().casefold() == needle:
+                return sid
+        return None
+
+    hit = _match((structure or {}).get("sections"))
+    if hit is not None:
+        return hit
+    return _match(RESUME_STRUCTURE_DEFAULT.get("sections"))
+
+
 def default_resume_structure() -> dict:
     """Deep copy of config default section catalog for new or missing structure."""
     return copy.deepcopy(RESUME_STRUCTURE_DEFAULT)
@@ -2021,6 +2058,83 @@ def normalize_resume_structure(raw: dict) -> dict:
     return out
 
 
+def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> tuple[dict, dict]:
+    """Map dict or {label, content} list → (id-keyed content, structure with extras)."""
+    if isinstance(structure, dict) and structure.get("sections"):
+        base_struct = normalize_resume_structure(structure)
+    else:
+        base_struct = default_resume_structure()
+    out_struct = copy.deepcopy(base_struct)
+    used = set(out_struct["sections"])
+    content: Dict[str, Any] = {}
+    if out_struct["sections"]:
+        next_order = 1 + max((spec.get("order") or 0) for spec in out_struct["sections"].values())
+    else:
+        next_order = 0
+
+    def _append_missing_section(sid: str, title: str) -> None:
+        nonlocal next_order
+        if sid in out_struct["sections"]:
+            return
+        fmt = (
+            RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+            if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID
+            else RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
+        )
+        out_struct["sections"][sid] = {
+            "id": sid,
+            "title": title,
+            "enabled": True,
+            "order": next_order,
+            "job_agent_editable": True,
+            "format": fmt,
+        }
+        used.add(sid)
+        next_order += 1
+
+    if isinstance(raw_base, dict):
+        for k, v in raw_base.items():
+            if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
+                continue
+            if k == "experience" and not _is_experience_job_array(v):
+                continue
+            if _is_experience_job_array(v) and v:
+                content[k] = v
+            elif isinstance(v, str):
+                content[k] = v
+            else:
+                continue
+            if (
+                k not in out_struct["sections"]
+                and _RESUME_SECTION_EXTRA_ID_RE.fullmatch(k)
+                and k not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+            ):
+                _append_missing_section(k, k.replace("_", " ").title())
+    elif isinstance(raw_base, list):
+        for item in raw_base:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            sid = _title_to_structure_section_id(label, out_struct)
+            if sid is None:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing_section(sid, label)
+            elif sid not in out_struct["sections"]:
+                _append_missing_section(sid, label)
+            val = item.get("content")
+            if sid == "experience" and not _is_experience_job_array(val):
+                continue
+            if _is_experience_job_array(val) and val:
+                content[sid] = val
+            else:
+                content[sid] = str(val) if val is not None else ""
+
+    out_struct = normalize_resume_structure(out_struct)
+    return content, out_struct
+
+
 def enabled_resume_structure_sections(resolved: dict) -> list:
     """Enabled sections as {id, label} sorted by order then id (read-only on resolved)."""
     sections = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
@@ -2060,30 +2174,12 @@ def format_base_resume_for_token(candidate_data: dict) -> str:
     artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
     raw = artifacts.get("base_resume")
     structure = resolve_resume_structure(cd)
-    sections = structure.get("sections") if isinstance(structure.get("sections"), dict) else {}
+    content, _struct = ingest_legacy_label_content_base_resume(raw, structure)
     section_ids = {
-        sid for sid, spec in sections.items() if isinstance(spec, dict) and spec.get("id")
-    }
-    title_to_id = {
-        (spec.get("title") or "").strip(): sid
-        for sid, spec in sections.items()
+        sid for sid, spec in _struct.get("sections", {}).items()
         if isinstance(spec, dict) and spec.get("id")
     }
-    if isinstance(raw, dict):
-        payload = filter_base_resume_to_structure(raw, section_ids)
-    elif isinstance(raw, list):
-        legacy: dict[str, str] = {}
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            label = (item.get("label") or "").strip()
-            sid = title_to_id.get(label)
-            if not sid or sid not in section_ids:
-                continue
-            legacy[sid] = str(item.get("content") if item.get("content") is not None else "")
-        payload = filter_base_resume_to_structure(legacy, section_ids)
-    else:
-        payload = {}
+    payload = filter_base_resume_to_structure(content, section_ids)
     return json.dumps(payload, indent=2) if payload else ""
 
 
@@ -2509,10 +2605,17 @@ def filter_content_to_resume_structure(
     out: Dict[str, Any] = {}
     for key in allowed:
         val = content.get(key)
-        if key == "experience" and _is_experience_job_array(val) and val:
+        if _is_experience_job_array(val) and val:
             out[key] = val
+        elif key == "experience":
+            if isinstance(val, str) and val.strip():
+                out[key] = val
         elif isinstance(val, str) and val.strip():
             out[key] = val
+        elif isinstance(val, list) and val and all(not isinstance(item, dict) for item in val):
+            text = _coerce_resume_section_string(val)
+            if text:
+                out[key] = text
     return out
 
 
