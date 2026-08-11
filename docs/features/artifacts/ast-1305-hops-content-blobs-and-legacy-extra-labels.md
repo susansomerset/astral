@@ -524,3 +524,66 @@ context_tokens≈115000
 Publish intake: `1ea0db27` (`docs(AST-1305): Radia review — CLEAN`).
 
 ---
+
+## Bug: AST-1322 — Saving base_resume drops Highlights / extra sections
+
+### As-is
+
+`PUT /api/candidates/<id>/data` with `artifacts.base_resume` that includes a Highlights (or other extra) section as a **title-keyed dict** (e.g. `{"Highlights": "…", "professional_summary": "…"}`) persists only the pre-existing fixed section ids. Highlights / Publications disappear from the saved `base_resume`. Label/content **list** Abrams payloads already keep those extras (AST-1305).
+
+### To-be
+
+Saving that object keeps Highlights and other extra sections present in the payload on the candidate’s `base_resume` (id-keyed, e.g. `highlights`) and adds matching enabled rows on `artifacts.resume_structure` when missing — same outcome the list ingest path already produces.
+
+### Repro
+
+Fixture (seven-required-only or default structure on disk; no `highlights` row yet):
+
+```python
+base_resume = {
+    "professional_summary": "Summary body",
+    "Highlights": "Won awards",
+    "Publications": "Paper one",
+}
+# PUT artifacts={"base_resume": base_resume}  (no resume_structure in body)
+```
+
+Observed after save: `base_resume` has `professional_summary` only; no `highlights` / `publications`.  
+Expected: `base_resume["highlights"] == "Won awards"`, `base_resume["publications"] == "Paper one"`, and `resume_structure.sections` includes those ids with `enabled=True`, `format=bullet_list`.
+
+Contrast (already green): same titles as `[{"label": "Highlights", "content": "Won awards"}, …]` survive PUT today.
+
+### Root cause
+
+`ingest_legacy_label_content_base_resume` **dict** branch only mints an extra structure row when the key already matches `RESUME_STRUCTURE_EXTRA_ID_PATTERN` (`^[a-z][a-z0-9_]*$`). Display-label keys such as `"Highlights"` / `"Publications"` are copied into `content` under those raw keys but never get a section row. PUT then rebuilds `section_ids` from `enabled_resume_structure_sections(ingested_struct)` and `filter_base_resume_to_structure` drops every key not in that set — so the title-case extras vanish. The **list** branch already resolves titles via `_title_to_structure_section_id` / `_slug_resume_extra_section_id`; the dict branch does not.
+
+### Proposed change
+
+In `src/core/candidate.py` `ingest_legacy_label_content_base_resume`, rewrite the `isinstance(raw_base, dict)` loop so each key resolves to a section **id** the same way list labels do, then write `content[sid]` (not the raw title key):
+
+1. Skip `RESUME_STRUCTURE_RESERVED_EXTRA_IDS` and `accent_color` (unchanged).
+2. Resolve `sid`:
+   - If `k` is already a usable id — `k in out_struct["sections"]`, or `k in RESUME_STRUCTURE_KNOWN_SECTION_IDS`, or (`_RESUME_SECTION_EXTRA_ID_RE.fullmatch(k)` and `k not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS`) — set `sid = k`. If that id is missing from `out_struct["sections"]` and is a valid extra id, `_append_missing_section(sid, sid.replace("_", " ").title())` (current mint behavior).
+   - Else treat `k` as a display label: `sid = _title_to_structure_section_id(k, out_struct)`; if `None`, `sid = _slug_resume_extra_section_id(k, used)` then `_append_missing_section(sid, k)`; elif `sid not in out_struct["sections"]`, `_append_missing_section(sid, k)`.
+3. Apply the existing Experience rules to `v` using `sid` (omit prose Experience; keep non-empty job arrays; strings for other keys).
+4. If `sid in content` already (collision), same as list path: `sid = _slug_resume_extra_section_id(k, used)` + `_append_missing_section(sid, k)` before writing.
+5. Do **not** mint extras for lowercase keys that fail the extra-id pattern and are not title-matched (e.g. `123bad`) — leave them un-rowed so the existing filter still drops them (AST-519 orphan strip).
+6. No PUT / filter / token-serialize call-site changes: they already call this ingest helper and filter on post-ingest enabled ids.
+
+⚠️ **Decision:** Title-keyed dicts are first-class Abrams cousins of `{label, content}` lists — resolve via title-match then slug. Do not invent a second ingest helper. Do not change ArtifactEditor in this bug (editor already saves structure **ids** as keys when the section exists on structure).
+
+### Blast radius
+
+- Shared `ingest_legacy_label_content_base_resume`: PUT (`api_candidate.update_candidate_data`), `format_base_resume_for_token`, `draft_job_resume_allowed_section_keys` — title-keyed base blobs start surviving all three.
+- AST-1305 list ingest / collision / prose Experience omit must still hold.
+- AST-1306 `slug_resume_section_id` / `prepare_resume_structure_sections_for_save` / editor PUT path unchanged.
+- Betty: extend PUT / ingest coverage for title-keyed Highlights; keep `123bad` orphan strip green.
+
+### What must still hold
+
+- AST-1305 AC: label/content list with Highlights + Publications still survives ingest / token / PUT; prose Experience still omitted / draft-rejected.
+- Job resume still cannot invent a section the candidate structure does not enable (post-ingest enabled set).
+- Extra default format remains `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` (`bullet_list`).
+- No builder emit / no editor TSX in this bug’s product delta.
+
+---
