@@ -330,3 +330,75 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 | Test-tree ban | No `tests/` or bible edits |
 
 No unresolved rule conflicts.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1301
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `58d8191b92c412194c176e105be3d0587f3e4f05`
+
+## Traceability
+Child AC2→Inventory+S1–5; AC3→S1–4; AC4→S1–5; AC5→S2+Inventory; AC6→Hard rules+S1–4; parent AC1→N/A (AST-1300); parent AC5→N/A (AST-1302)
+
+## Findings
+
+### discuss — Row-action controls also owned by AST-1302
+**Location:** Inventory `AdminManageCandidates.tsx` Set dispatch tasks; `AdminAgentPrompts.tsx` row Delete; Stage 3 steps 3–4
+**Finding:** Plan remediates these to labeled `btn *` with a note that AST-1302 “may iconify later.” AST-1302’s closed inventory converts the same controls to `icon-control` (and `_actions` column glyphs). Parallel subs touching the same lines need merge-child order AST-1301 → AST-1302 or AST-1302 wins back to icons.
+**Recommendation:** Non-blocking for Plan Approved. Chuckles should enforce sibling merge order on `ftr`, or engineer may exclude those two controls from AST-1301 to avoid throwaway labeled→icon churn.
+
+### discuss — Self-assessment Conf `high` on MAJOR-CHANGE sweep
+**Location:** Self-Assessment
+**Finding:** Inventory is exhaustive and swaps are mechanical, but wrong primary/danger on Kill All / confirm-regen / Scheduled Actions Stop is a real operator risk (plan correctly scores Risk Medium).
+**Recommendation:** Acceptable; builder should run Stage 5 `rg` verifies and spot-check Land Meteorite `disabled={!landEnabled}` after Stage 3.
+
+### R5 — Traceability (full)
+
+| Parent / child AC | Plan stage(s) | Notes |
+|---|---|---|
+| Child AC2 / parent AC2 — full labeled-button inventory | Inventory + Named exceptions + S1–5 | Plan doc is the AC2 artifact |
+| Child AC3 / parent AC3 — toolbar, bulk, modals, save bars, exports | S1–4 | Manage Email, ListPage, Modal, DetailsEdit*, exports covered |
+| Child AC4 / parent AC4 — retire parallel families | S1–4 call sites + S5 CSS delete | `modal-btn` / `dep-btn` / bulk / export / toolbar selectors |
+| Child AC5 / parent AC6 — in-flight gold unified | S2 + Inventory | Only where `in-flight` exists today |
+| Child AC6 / parent AC7 — no enablement regression | Hard rules all stages | Land Meteorite gate explicit |
+| Parent AC1 — pattern codify | N/A | AST-1300 (`pattern.ui.shared-button-roles` approved on tip) |
+| Parent AC5 — list row icon-controls only | N/A | AST-1302; exceptions table defers `list-page-edit-btn`, `job-list-icon-btn`, etc. |
+
+No orphan stages. No unmapped child AC.
+
+### R6 — Adversarial checklist (summary)
+
+| Check | Result |
+|---|---|
+| Definition fidelity — labeled sweep only, no pattern docs | Pass |
+| Boundaries — no `canon/patterns/**`, no icon-control files | Pass |
+| `pattern.ui.shared-button-roles` — cite valid, `status: approved` on tip | Pass |
+| Layer / placement — TSX `className` + `App.css` only; no `Button.tsx` | Pass |
+| Config — no `config.py`; inline color overrides removed | Pass |
+| DRY — Stage 5 deletes old families after migration | Pass |
+| Inventory completeness — spot-checked grep vs plan file list | Pass (all `modal-btn`/`dep-btn`/… TSX hits map to inventory or Named exceptions) |
+| Self-assessment MAJOR-CHANGE / high / Medium | Honest |
+
+### R1–R3 — Statute matching (key)
+
+**Plan layers:** `ui`
+**Considered:** 39 scoped + 17 universal orchestration (typical UI sweep)
+**Excluded:** `astral.git.engineer-test-tree-ban`, batch/agent/core statutes, `pattern.ui.icon-control` paths (consume-only sibling), etc.
+
+| Statute / pattern | Verdict |
+|---|---|
+| `pattern.ui.shared-button-roles` | conforms |
+| `astral.standards.in-scope-only` | conforms |
+| `astral.standards.dry-and-focused-functions` | conforms |
+| `astral.ui.frontend-file-placement` | conforms |
+| `astral.ui.naming-conventions` | conforms |
+| `astral.layers.ui-config-driven-business-logic` | conforms |
+| `astral.docs.features-single-file-per-ticket` | conforms |
+| Universal `orch.*` set | conforms |
+
+No `violates` statute scores.
+
+context_tokens≈85000
+— Joan
