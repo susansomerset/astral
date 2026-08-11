@@ -524,3 +524,7 @@ Self-Assessment **Single-Component** lists config key, two core helpers, GET/PUT
 
 context_tokens≈110000
 — Radia
+
+## Resolution
+
+**2026-08-11** — Radia **FIX-NOW**. Reverted the out-of-plan `filter_content_to_resume_structure` hunk in `src/core/candidate.py` to the AST-1303 loop (job-array only on `experience`; string values otherwise). That content-shape widening belongs on AST-1305. Advisory exported editor types left as-is.

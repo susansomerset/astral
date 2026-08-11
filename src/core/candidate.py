@@ -2539,17 +2539,10 @@ def filter_content_to_resume_structure(
     out: Dict[str, Any] = {}
     for key in allowed:
         val = content.get(key)
-        if _is_experience_job_array(val) and val:
+        if key == "experience" and _is_experience_job_array(val) and val:
             out[key] = val
-        elif key == "experience":
-            if isinstance(val, str) and val.strip():
-                out[key] = val
         elif isinstance(val, str) and val.strip():
             out[key] = val
-        elif isinstance(val, list) and val and all(not isinstance(item, dict) for item in val):
-            text = _coerce_resume_section_string(val)
-            if text:
-                out[key] = text
     return out
 
 
