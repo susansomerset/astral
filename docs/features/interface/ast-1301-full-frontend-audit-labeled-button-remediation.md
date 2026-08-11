@@ -402,3 +402,8 @@ No `violates` statute scores.
 
 context_tokens≈85000
 — Joan
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation`  
+**Product commits:** `bb54ee03` (shared shells), `9d753e98` (job/artifact/intake), `2b44fe4b` (admin), `7621e467` (remaining pages), `5bf2f625` (retire leftover CSS)
