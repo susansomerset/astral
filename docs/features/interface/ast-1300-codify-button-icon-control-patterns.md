@@ -556,3 +556,15 @@ Joan plan-rubric verdict attached (`revision=1`, APPROVED). No statute `violates
 
 context_tokens≈52000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-11  
+**Publish ref:** `origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns`
+
+| Finding | Action |
+|---------|--------|
+| **discuss** — plan excluded test-tree; tip includes Betty `docs/test-bible/frontend/root.md` via `merge-tests` | Closed — no product change. Engineer commits stay CSS + canon; bible is Betty’s expected Tests Passed shape (`d84a27f9` + `51d38a4c`). |
+| **advisory** — `#fff` on `.btn.danger` | Deferred — literal copy of `.modal-btn.danger` per plan Decision. Optional `--text-on-danger` belongs with AST-1301/AST-1302 when leftover families retire, not this ticket. |
+
+No fix-now items. No TSX / API / config change on resolve.
