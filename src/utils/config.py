@@ -5315,14 +5315,16 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
                     f"is not a JOB_STATES key"
                 )
 
-# Per-candidate resume section catalog (AST-517); persistence on artifacts.resume_structure.
+# Per-candidate resume section catalog (AST-517 / AST-1303).
+# Persistence: artifacts.resume_structure. Extra ids are per-candidate;
+# this list is not a closed extra catalog.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
     "candidate_name",
     "candidate_title",
     "candidate_tagline",
     "candidate_contact_detail",
 )
-RESUME_STRUCTURE_KNOWN_SECTION_IDS = (
+RESUME_STRUCTURE_REQUIRED_SECTION_IDS = (
     "candidate_name",
     "candidate_title",
     "candidate_tagline",
@@ -5330,9 +5332,38 @@ RESUME_STRUCTURE_KNOWN_SECTION_IDS = (
     "professional_summary",
     "core_competencies",
     "experience",
+)
+RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS = (
     "prior_experience",
     "education_certifications",
     "technical_skills",
+)
+RESUME_STRUCTURE_KNOWN_SECTION_IDS = (
+    *RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    *RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS,
+)
+RESUME_STRUCTURE_BODY_FORMATS = (
+    "free_prose",
+    "bullet_list",
+    "word_cloud",
+    "dual_column",
+    "indented_bold_single",
+    "experience_detail",
+)
+RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID = {
+    "professional_summary": "free_prose",
+    "core_competencies": "word_cloud",
+    "experience": "experience_detail",
+    "prior_experience": "word_cloud",
+    "education_certifications": "indented_bold_single",
+    "technical_skills": "dual_column",
+}
+RESUME_STRUCTURE_EMPHASIS_TAG_NAMES = ("i", "em", "b", "strong")
+RESUME_STRUCTURE_EXTRA_ID_PATTERN = r"^[a-z][a-z0-9_]*$"
+RESUME_STRUCTURE_RESERVED_EXTRA_IDS = (
+    "sections",
+    "accent_color",
+    "content",
 )
 RESUME_STRUCTURE_DEFAULT = {
     "sections": {
@@ -5370,6 +5401,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 4,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"],
         },
         "core_competencies": {
             "id": "core_competencies",
@@ -5377,6 +5409,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 5,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["core_competencies"],
         },
         "experience": {
             "id": "experience",
@@ -5384,6 +5417,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 6,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["experience"],
         },
         "prior_experience": {
             "id": "prior_experience",
@@ -5391,6 +5425,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 7,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["prior_experience"],
         },
         "education_certifications": {
             "id": "education_certifications",
@@ -5398,6 +5433,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 8,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["education_certifications"],
         },
         "technical_skills": {
             "id": "technical_skills",
@@ -5405,6 +5441,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 9,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["technical_skills"],
         },
     },
 }
