@@ -2096,20 +2096,41 @@ def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> t
         for k, v in raw_base.items():
             if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
                 continue
-            if k == "experience" and not _is_experience_job_array(v):
+            # Usable section id already, or display-label key (AST-1322 title-keyed dict).
+            if (
+                k in out_struct["sections"]
+                or k in RESUME_STRUCTURE_KNOWN_SECTION_IDS
+                or (
+                    _RESUME_SECTION_EXTRA_ID_RE.fullmatch(k) is not None
+                    and k not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+                )
+            ):
+                sid = k
+                if (
+                    sid not in out_struct["sections"]
+                    and _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
+                    and sid not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+                ):
+                    _append_missing_section(sid, sid.replace("_", " ").title())
+            else:
+                sid = _title_to_structure_section_id(k, out_struct)
+                if sid is None:
+                    # Keep AST-519 orphan strip: invalid lowercase ids (e.g. 123bad).
+                    if k == k.lower() and " " not in k and "-" not in k:
+                        continue
+                    sid = _slug_resume_extra_section_id(k, used)
+                    _append_missing_section(sid, k)
+                elif sid not in out_struct["sections"]:
+                    _append_missing_section(sid, k)
+            if sid in content:
+                sid = _slug_resume_extra_section_id(k, used)
+                _append_missing_section(sid, k)
+            if sid == "experience" and not _is_experience_job_array(v):
                 continue
             if _is_experience_job_array(v) and v:
-                content[k] = v
+                content[sid] = v
             elif isinstance(v, str):
-                content[k] = v
-            else:
-                continue
-            if (
-                k not in out_struct["sections"]
-                and _RESUME_SECTION_EXTRA_ID_RE.fullmatch(k)
-                and k not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
-            ):
-                _append_missing_section(k, k.replace("_", " ").title())
+                content[sid] = v
     elif isinstance(raw_base, list):
         for item in raw_base:
             if not isinstance(item, dict):
