@@ -287,3 +287,75 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.5 naming | `to_address` / `from_address` unchanged; helper names snake_case, not ticket ids. |
 
 No conflicts. Conf remains **high**.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1313
+**Publish ref:** `sub/AST-1308/AST-1313-from-then-to-bind-debug-source` @ `a55cf1f`
+**Overall:** APPROVED
+
+## Traceability
+
+| Child AC | Plan stage(s) | Definition anchor |
+|----------|---------------|-------------------|
+| 1 — From unique hit binds A even if To uniquely matches B or none | Stage 2 step 3 (`header == "from"` first in `header_order`) | Parent AC 1 |
+| 2 — From miss + single remaining To unique hit binds A | Stage 2 step 3 (`header == "to"` after From miss; `len(remaining) == 1`) | Parent AC 2 |
+| 3 — From miss + To missing / multi-remaining / non-unique lookup → unbound | Stage 2 step 3 (`len(remaining) != 1` or `cid is None`) | Parent AC 3 |
+| 4 — Configured Astral inbox address on To never binds by itself | Stage 2 step 3 (`_remaining_to_addresses` drops inbox by casefold) | Parent AC 4 |
+| 5 — `debug=True` on touched bind paths logs header + address + candidate id/none; `debug=False` no new contract lines | Stage 2 steps 4, 6 (`func="inbox_bind"`; create rematch bind details on `inbox_create_job`) | Parent AC 5 |
+| 6 — Unauthenticated callers still blocked | Stage 2 step 7 (no route/auth changes) | Parent AC 6 |
+
+| Plan stage | Child AC |
+|------------|----------|
+| Stage 1 (`INBOX_BIND_CONFIG`) | Enables AC 4 + header order for AC 1–3 |
+| Stage 2 (helper, list, create rematch, Style D) | AC 1–6 |
+
+No orphan stages. Parent mailbox-To exposure correctly deferred to AST-1312 (preflight only).
+
+## Statute verdicts
+
+| Statute / pattern | Verdict | Rationale |
+|-------------------|---------|-----------|
+| `pattern.config.config-block` | conforms | `INBOX_BIND_CONFIG` owns `header_order` + `inbox_address` alias |
+| `astral.config.config-source-of-truth` | conforms | Order and inbox identity read from config; asserted `("from", "to")` |
+| `astral.standards.no-hardcoded-sets` | conforms | Callers iterate `INBOX_BIND_CONFIG["header_order"]`; no inline header pair |
+| `pattern.layers.import-discipline` | conforms | Bind in `src/core/inbox.py`; Gmail/external untouched |
+| `astral.layers.import-direction` | conforms | core → candidate + external + utils; stdlib `email.utils` only |
+| `astral.layers.core-vs-external-bright-line` | conforms | To I/O AST-1312; decision here in core |
+| `astral.standards.debug-contract-gated` | conforms | Style D `inbox_bind` + bind source details; create helper stays `debug=False` to avoid duplicate streams |
+| `astral.standards.dry-and-focused-functions` | conforms | One `_bind_inbox_message`; list + create rematch both call it |
+| `astral.layers.ui-config-driven-business-logic` | conforms | `candidate_match` shape unchanged; no React To rules |
+| `astral.standards.in-scope-only` | conforms | Bind rule + debug source only; no new mailbox product |
+
+## Considered and excluded
+
+**Considered:** child **In scope** statutes (above).
+
+**Excluded (boundary / sibling):**
+- Raw `to_address` on list/get — AST-1312 (preflight dependency)
+- `pattern.ui.admin-endpoint` / `astral.patterns.require-auth-on-protected-endpoints` — no route changes
+- CC/BCC/Reply-To / forwarding headers — parent boundary
+- Multi-remaining unique-among-many To pick — Archie decision documented
+- Manage Email chrome / new column — out of scope
+- ingest/scrape/dedupe/archive beyond who is bound — consumers read enriched list only
+- `get_candidate_id_for_query` homes / second lookup — reused as-is
+- `GMAIL_USER` as ignore address — correctly rejected; uses `GAZE_EMAIL_CONFIG["account_address"]`
+- `bind_header` on JSON payload — Style D only (explicit decision)
+- `tests/`, `docs/test-bible/**` — Betty
+
+## Findings
+
+| Sev | Location | Finding | Recommendation |
+|-----|----------|---------|----------------|
+| **acceptable** | Stage 2 preflight | Publish tip plan-only; `src/external/gmail.py` on this branch lacks `to_address` until ftr/AST-1312 merge. Plan requires stop-if-missing preflight. | Execute preflight before Stage 2 edits (merge `origin/ftr/AST-1308-email-bind-where-email-is-in-the-to-field-alone`). |
+| **acceptable** | Stage 2 step 3 | When To has exactly one remaining address but lookup returns no unique hit, helper sets `bind_header="to"` with empty `astral_candidate_id` — consistent with parent AC 5 “candidate id or none/ambiguous.” | None. |
+| **acceptable** | Stage 2 step 6 | Create rematch logs bind source on `inbox_create_job` index 2 instead of a second `inbox_bind` index stream when `debug=True`. | None — avoids duplicate debug noise; still satisfies AC 5 for the rematch path. |
+
+**Tip verification:** Current `inbox.py` still has `_candidate_match_for_from`, `inbox_from_bind` debug, and From-only create rematch — all named replacement sites. `GAZE_EMAIL_CONFIG["account_address"]` exists at config line 2548; plan insertion anchor (post–AST-1098 assert, pre–`METEORITE_EMAIL_PARSE_CONFIG`) matches live `config.py`. `gaze_email.py`, `count_inbox_bound_by_candidate`, and Land Meteorite paths consume `list_inbox_messages()` → `candidate_match` without further edits.
+
+**Self-assessment:** Single-Component / high conf / medium risk — honest; shared helper is the sole decision point; consumer surface unchanged.
+
+context_tokens≈55000
+— Joan
