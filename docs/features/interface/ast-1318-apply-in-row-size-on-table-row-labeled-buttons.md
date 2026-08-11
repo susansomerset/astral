@@ -154,3 +154,22 @@ No unresolved rule conflicts.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1318
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons` @ `ac4b1bd3`
+
+## Traceability
+Child AC2 (labeled button in a data-table row uses in-row size ~60% of full labeled height) → Stage 1 (`btn primary in-row` / `btn danger in-row` consume AST-1317 `.btn.in-row`). Child AC3 (SA row Run / Stop including busy `Draining…` label; no longer full labeled-button row height) → Stage 1 (both Run-column buttons). Child AC4 (page/toolbar/modal/card-footer labeled buttons stay full size) → Stage 1 leave-alone list. Child AC5 (icon-only row actions stay icon-controls) → Stage 1 leave-alone (`CandidateJobRowActions`, Manage Candidates glyphs, modal ×). Child AC6 (no enablement/action change; SA auto-mode/running gating unchanged) → Stage 1 hard rule (className token only). Child AC1 / parent AC1 (catalog documents `in-row`) → N/A — AST-1317. Parent functional scope 2 → Stage 1 exhaustive inventory (only two labeled `btn`s inside any `<td>` on this tree: `AdminScheduledActions.tsx` Run + Stop overlay).
+
+**Considered:** Universal orch.* set + scoped `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.layers.ui-config-driven-business-logic` — all `conforms` (in-session; no statute-table rows required).
+
+context_tokens≈48000
+```
+
+**Gate summary:** AST-1318 is **Plan Ready**, assignee Joan, publish tip `ac4b1bd3`. Prerequisite AST-1317 is present on the epic worktree (`.btn.in-row` in `App.css`; pattern amended). Independent inventory pass confirms the plan's closed set: only `AdminScheduledActions.tsx` row Run / Stop labeled buttons live inside `<td>`; all other `btn` usages are toolbar, modal, card-body, or bulk-bar; row actions elsewhere are `icon-control`. Stage 1 is presentation-only (`className` token add), rejects `td .btn` descendant rules and per-call-site sizing, and preserves overlay geometry and enablement gating. Self-assessment (`Single-Component`, high conf, low risk) matches footprint. No `fix-now` or blocking `discuss` findings. Plan Discuss round count: 0 (first pass from Plan Ready).
