@@ -559,3 +559,25 @@ Joan plan-rubric verdict attached (APPROVED). No statute `violates` rows. No fix
 
 context_tokens≈65000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-11  
+**Publish ref:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation`  
+**Review tip:** `8e4f49bb` (`docs(AST-1301): Radia review — DISCUSS`)
+
+### fix-now
+
+None.
+
+### discuss
+
+- **Test-tree / bible on tip** — accepted as Betty `merge-tests` + qa-handoff artifacts. Engineer product commits did not touch `tests/` or `docs/test-bible/**`. No revert.
+- **`orch.roles.betty-owns-test-tree`** — process note only (same as AST-1300/1302). No labeled-button product change.
+- **Sibling overlap** — keep AST-1302 `icon-control` on row Delete, Set dispatch `T`, and modal ×. Labeled catalog stays on footers / toolbars / + Add Agent / + Add Candidate.
+
+### advisory
+
+Scheduled Actions per-row Run/Stop keep catalog `btn` padding (plan Decision). UAT spot-check only — no code change.
+
+No product edits this resolve pass.
