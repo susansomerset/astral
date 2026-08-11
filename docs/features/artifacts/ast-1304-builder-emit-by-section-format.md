@@ -353,3 +353,13 @@ Ticket-scoped product delta: `6c6e7dd5` + `757f2cda` (`src/core/builder.py`, `sr
 
 context_tokens≈115000
 — Radia
+
+## Resolution
+
+2026-08-11 — Radia `[code-rubric] revision=1` **CLEAN**. No fix-now. No product change on resolve.
+
+- **advisory (sibling ancestry):** publish ref rebuilt onto `origin/ftr` — AST-1304 commits only; no `Merge remote-tracking branch`; one `merge-tests(AST-1304)`.
+- **advisory (filter vs AST-1305):** leftover Experience prose stays in `filter_content_to_resume_structure` per this plan; emit still skips it.
+
+Publish intake: `1e842153` (`docs(AST-1304): Radia review — clean`).
+
