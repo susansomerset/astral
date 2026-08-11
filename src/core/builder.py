@@ -244,6 +244,8 @@ def build_resume_from_job(
         body_section_ids=ordered_body,
         body_section_titles=titles,
         resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_resume_from_job",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -420,6 +422,8 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         body_section_ids=ordered_body,
         body_section_titles=titles,
         resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_base_resume",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -496,6 +500,8 @@ def build_session_base_resume(
         body_section_ids=ordered_body,
         body_section_titles=titles,
         resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_session_base_resume",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -1098,6 +1104,8 @@ def _emit_html_document(
     body_section_ids: Optional[List[str]] = None,
     body_section_titles: Optional[Dict[str, str]] = None,
     resume_structure: Optional[dict] = None,
+    debug: bool = False,
+    debug_func: str = "",
 ) -> str:
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -1143,6 +1151,8 @@ def _emit_html_document(
         body_section_ids or list(_RESUME_BODY_KEYS),
         body_section_titles or {},
         resume_structure=resume_structure,
+        debug=debug,
+        debug_func=debug_func,
     )
 
     cover_html = ""
@@ -1459,16 +1469,22 @@ def _emit_body_sections_html(
     ordered_ids: List[str],
     titles: Dict[str, str],
     resume_structure: Optional[dict] = None,
+    debug: bool = False,
+    debug_func: str = "",
 ) -> str:
     chunks: List[str] = []
+    skip_reasons: Dict[str, str] = {}
+    emitted_ids: set = set()
     sections = (resume_structure or {}).get("sections") or {}
     for key in ordered_ids:
         raw = render.get(key)
-        if raw is None:
-            continue
         spec = sections.get(key) or {}
         fmt = spec.get("format") or RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.get(key)
+        if raw is None:
+            skip_reasons[key] = "skipped — empty"
+            continue
         if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            skip_reasons[key] = "skipped — missing format"
             continue
         sid = _html_section_dom_id(key)
         heading = html.escape(
@@ -1477,9 +1493,13 @@ def _emit_body_sections_html(
         inner_html = ""
         if fmt == "experience_detail":
             if not candidate_mod.is_experience_job_array(raw):
+                skip_reasons[key] = (
+                    "skipped — leftover prose" if key == "experience" else "skipped — not job array"
+                )
                 continue
             roles_html = _emit_experience_jobs_html(raw)
             if not roles_html.strip():
+                skip_reasons[key] = "skipped — empty"
                 continue
             inner_html = roles_html
         else:
@@ -1492,6 +1512,7 @@ def _emit_body_sections_html(
             else:
                 text = str(raw) if raw is not None else ""
             if not str(text).strip():
+                skip_reasons[key] = "skipped — empty"
                 continue
             if fmt == "free_prose":
                 paras = _session_cover_letter_paragraphs(str(text))
@@ -1502,6 +1523,7 @@ def _emit_body_sections_html(
             elif fmt == "bullet_list":
                 inner_html = _emit_bullet_list_html(str(text))
                 if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
                     continue
             elif fmt == "word_cloud":
                 inner_html = (
@@ -1510,19 +1532,47 @@ def _emit_body_sections_html(
             elif fmt == "dual_column":
                 inner_html = _emit_skills_grid_html(str(text))
                 if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
                     continue
             elif fmt == "indented_bold_single":
                 inner_html = _emit_education_list_html(str(text))
                 if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
                     continue
             else:
+                skip_reasons[key] = "skipped — empty"
                 continue
+        emitted_ids.add(key)
         chunks.append(
             f"""    <section aria-labelledby="{sid}">
       <h2 id="{sid}">{heading}</h2>
 {inner_html}
     </section>"""
         )
+    if debug:
+        enabled = candidate_mod.enabled_resume_section_ids(resume_structure or {})
+        total = len(enabled) or 1
+        contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+        for i, sid in enumerate(enabled, start=1):
+            spec = sections.get(sid) or {}
+            title = spec.get("title") or titles.get(sid) or ""
+            fmt = spec.get("format")
+            if sid in contact:
+                outcome = (
+                    "emitted" if str(render.get(sid) or "").strip() else "skipped — empty"
+                )
+            elif sid in emitted_ids:
+                outcome = "emitted"
+            else:
+                outcome = skip_reasons.get(sid, "skipped — empty")
+            _log.debug_index(
+                func=debug_func or "builder._emit_body_sections_html",
+                index=i,
+                total=total,
+                identifier=sid,
+                outcome=outcome,
+            )
+            _log.debug_detail(f"title={title!r} format={fmt!r}")
     return "\n".join(chunks)
 
 
