@@ -210,3 +210,135 @@ context_tokens≈38000
 
 **Publish ref:** `origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size`  
 **Product commits:** `a0979ffc` (unused `.btn.in-row` CSS), `26eef718` (pattern amend + HARVEST notes)
+
+## Radia review
+
+# Radia review — AST-1317
+
+**Status gate:** Tests Passed (spawn prompt; trusted)  
+**Baseline:** `origin/dev`  
+**Publish ref:** `origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size` @ `ae69743e0063f33befca8b5e39c2367e13f395f1`  
+**Diff change set:** layers `ui` + `docs`; paths `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/HARVEST.md`, `docs/features/interface/ast-1317-codify-in-row-labeled-button-size.md`, `docs/test-bible/frontend/root.md`; change_types `modify` + issue-doc `add`.
+
+Engineer product commits (`a0979ffc`, `26eef718`) touch only `App.css` and pattern canon. `docs/test-bible/frontend/root.md` arrives via Betty `merge-tests` (`3992b26a`) — expected pipeline, not engineer test-tree violation.
+
+---
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1317
+**Publish ref:** origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size @ ae69743e
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent-layer diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent-layer diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent-layer diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-layer diff |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-layer diff |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch-layer diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch-layer diff |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config-layer diff |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no config/secrets diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug-artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/ spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch-layer diff |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch-layer diff |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | predicate paths `docs/features/**` not in diff set |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty merge-tests commit, not engineer src/features edit |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits exclude `tests/` and `docs/test-bible/**`; bible via Betty merge |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no core/external diff |
+| astral.layers.import-direction | scoped | not-applicable | CSS/docs only; no Python imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts-layer diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | presentation-only CSS + catalog; no enablement/state strings |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no data/coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth paths |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed/json diff |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed/catalog conflict |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed/boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed/data diff |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer diff |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database/migration diff |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug logging diff |
+| astral.standards.dry-and-focused-functions | scoped | conforms | single `.btn.in-row` modifier; roles unchanged on existing selectors |
+| astral.standards.in-scope-only | scoped | conforms | unused CSS + catalog amend only; no TSX/icon-control/config creep |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | token `in-row`; no ticket id in selectors or slugs |
+| astral.standards.no-cross-contamination | scoped | conforms | no unrelated module edits |
+| astral.standards.no-hardcoded-sets | scoped | conforms | size in shared `App.css` rule per approved pattern amend (not per-call-site inline) |
+| astral.standards.public-then-helpers | scoped | not-applicable | no Python module structure diff |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils/data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state-machine diff |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job-state diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/dispatcher diff |
+| astral.ui.frontend-file-placement | scoped | conforms | style only in `App.css` section 14; no second stylesheet or wrapper |
+| astral.ui.naming-conventions | scoped | conforms | domain-language `in-row` modifier |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server/worker config diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1317)` present on publish tip |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`merge-tests` commits follow vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub-branch publish; no dev/main direct product push |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/AST-1309/AST-1317-…` |
+| orch.git.merge-on-checkout | universal | conforms | no merge/checkout violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear stage commits |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches in diff |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1309` worktree |
+| orch.git.three-permanent-branches | universal | conforms | no fourth permanent branch introduced |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 executed per binding plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | child scope matches AST-1309 child #1 |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed gate |
+| orch.roles.archie-approves-statutes | universal | conforms | in-place pattern amend; `approved_at` refresh; AST-1309 approval chain documented |
+| orch.roles.betty-owns-test-tree | universal | conforms | test-bible edit via Betty merge, not engineer |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a to diff content |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee; product commits engineer-scoped |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer commits avoid banned test-tree paths |
+
+**Straggler (C4):** Joan APPROVED attachment lists no Excluded statutes — no straggler rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.shared-button-roles | conforms | `in-row` documented as optional size modifier (never fifth role); pairings, ~60% height, `canonical_refs` + `.btn.in-row` CSS match Solution shape |
+| pattern.ui.icon-control | conforms (boundary) | file and CSS untouched; When-not-to-use boundary preserved |
+
+## Plan adherence
+
+- **Stage 1:** `.btn.in-row { padding: 3px 20px; line-height: 1.2; }` inserted after `.btn.danger:disabled`, before section 15 — exact match to plan.
+- **Stage 2:** `pattern.ui.shared-button-roles.md` matches plan template (frontmatter, body order, `approved_at: "2026-08-11"`, `no-hardcoded-sets` in `related_statutes`); HARVEST Crosswalk notes cell updated only.
+- **Boundaries:** `rg 'in-row' …/*.tsx` empty; no `Button.tsx`; no `.icon-control` / role selector value changes; parent AC2–6 correctly deferred to AST-1318.
+- **Estimate (2):** footprint matches — two-declaration CSS + in-place catalog amend + HARVEST cell (+ Betty bible row via merge).
+- **C6 aids (§5a–§5g):** N/A — CSS/docs-only diff; no imports, logging, debug contract, external layer, batch, or API surfaces touched.
+
+## Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:** CSS does not structurally enforce “always pair `in-row` with a role” — pairing is catalog law for AST-1318 markup apply. Acceptable for this codify ticket.
+
+## What’s solid
+
+- Tight, plan-faithful diff: unused modifier + catalog amendment only; zero runtime surface change until AST-1318.
+- Height lock math (~62% of full labeled button) implemented without shrinking label to icon-control size.
+- Clear sibling boundaries (AST-1318 apply, icon-control untouched, AST-1166 roles not reopened).
+
+## Frame diff
+
+(none) — no JSX/page frame or routing changes; only unused shared CSS and canon docs.
+
+## Notes
+
+Joan plan-rubric verdict attached (APPROVED @ `949171e0`). Betty test-bible manifest aligns with docs-acceptance grep/read gates on publish tip.
+
+context_tokens≈52000
+
