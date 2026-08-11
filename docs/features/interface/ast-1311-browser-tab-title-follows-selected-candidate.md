@@ -272,3 +272,13 @@ New `lib/documentTitle.ts` (`Astral` / `Astral - <trimmed full>`). `CandidateCon
 
 context_tokens≈28000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-11  
+**Outcome:** clean — no product changes.
+
+- **fix-now:** none.
+- **discuss:** none.
+- **advisory:** none.
+- Radia `[code-rubric] revision=2` **CLEAN** @ `0cfab525` — title helper + `CandidateProvider` sync match plan. Intake: `docs(AST-1311): Radia review — clean` @ `149d54a6` on the publish tip.
