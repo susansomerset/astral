@@ -188,3 +188,142 @@ context_tokens≈42000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `40612c89` | Raw `to_address` on Gmail list + get shapes |
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1312
+**Publish ref:** `origin/sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads` @ `eb63c656`
+
+**Overall:** CLEAN
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads` (4 paths: issue doc, test-bible, `src/external/gmail.py`, `tests/component/external/test_gmail.py`). Engineer code commit `40612c89` touches `gmail.py` only; Betty `2f4d1ad0` + `merge-tests` landed tests/bible per pipeline.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent/grade paths in diff |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no do_task/dispatch changes |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade vector changes |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch_id usage |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch_id strings |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent-response paths |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no config/TASK_CONFIG edits (Joan excluded; diff confirms) |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no env/secret surface changes |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no artifacts dir |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no debug spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch/seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run_next/dispatcher changes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single issue doc `docs/features/meteorite/ast-1312-…md` |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty commits limited to tests + test-bible |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer `code()` commit is `src/external/gmail.py` only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Gmail header I/O stays external; `_candidate_match_for_from` untouched |
+| `astral.layers.import-direction` | scoped | conforms | no new imports; external still utils-only |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts layer |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | no UI/React (Joan excluded) |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check storage |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/consult paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API route changes (Joan excluded) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed tables |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no boot/seed hot path |
+| `astral.seed.define-approved` | scoped | not-applicable | no define/seed flow |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no `debug=` emission added (Joan excluded for AST-1313) |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | reuses `_header_map` + same empty-string missing path as `from_address` |
+| `astral.standards.in-scope-only` | scoped | conforms | single additive field; bind/core/UI deferred to AST-1313 |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new logging/print |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `to_address` mirrors `from_address` naming |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no cross-layer smuggling |
+| `astral.standards.no-hardcoded-sets` | scoped | not-applicable | no behavior sets added (Joan excluded for AST-1313) |
+| `astral.standards.public-then-helpers` | scoped | conforms | public shapes extended; helpers unchanged in role |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils edits |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend files |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI naming |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1312)` present on publish tip |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub branch off ftr parent topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | publish ref `sub/AST-1308/AST-1312-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | no checkout violations observed |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commit stack |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent-named branches |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1308 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | sub publish, not main/dev direct |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | raw-To vs parse/bind correctly deferred to AST-1313 in plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stage 1 steps 1–7 executed literally in `40612c89` |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Meteorite child scoped correctly |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review gate satisfied |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test/bible commits by Betty pipeline |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Katherine through Tests Passed |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | engineer assignee retained |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits observed |
+
+**Sweep count:** 64 active statutes scored (per `canon/statutes/README.md` harvested corpus).
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | plan/parent cite no `canon/patterns/**` ids |
+
+### Plan adherence
+
+Stage 1 implemented exactly in engineer commit `40612c89`:
+
+- `GmailInboxMessage` / `GmailMessageHtml` gain `to_address: str` immediately after `from_address`.
+- `metadataHeaders` includes `"To"` with the required one-line comment guarding the list-empty failure mode.
+- `_message_metadata` and `get_message_html` copy raw `headers.get("to", "")` — no parse/split/filter.
+- Docstring updated; `_candidate_match_for_from` and bind consumers unchanged.
+- Core pass-through (`row = dict(msg)` in `inbox.py`) confirmed on worktree — `to_address` reaches list payloads without core edits.
+
+Self-Assessment (**Single-Component / high conf / low risk**) matches the diff footprint. Betty manifest (`TestAst1312ToAddress`) asserts both raw header copy and `metadataHeaders` contract; existing exact dicts revised. Joan plan-rubric APPROVED attached — **no stragglers** (Joan-excluded statutes remain `not-applicable` on this diff).
+
+### C6 judgment aids (§5a–§5g)
+
+| Lens | Verdict |
+|------|---------|
+| Imports (B1) | conforms — no new imports |
+| Layer compliance (B2) | conforms — external-only product change |
+| Silent failure (D2) | conforms — no new swallow paths |
+| Fallbacks (D3) | conforms — `headers.get("to", "")` matches existing `from_address` contract |
+| Logging (E1) | conforms — no logging added |
+| Config/state in UI (G1) | not-applicable |
+| Batch/transitions (H*) | not-applicable |
+| Debug contract (§5f) | not-applicable — no `debug=` paths touched |
+| External cleanliness (§5g) | not-applicable — gmail is not an LLM provider peer |
+
+### Findings
+
+*(none)*
+
+### What's solid
+
+- Mirrors AST-1032/AST-1049 `from_address` pattern with minimal, reviewable diff (+7/−2 in product code).
+- The `metadataHeaders` comment + `TestAst1312ToAddress::test_list_requests_to_and_copies_raw_header` guard the highest-risk failure mode (list rows always empty To).
+- Scope boundary to AST-1313 held: no bind logic, no inbox-address filter, no Manage Email chrome.
+
+### Frame diff
+
+- **`GmailInboxMessage`:** `+to_address: str` (after `from_address`)
+- **`GmailMessageHtml`:** `+to_address: str` (after `from_address`)
+- **Runtime JSON:** list/get/admin API payloads gain additive `to_address` key (empty string when header absent); clients ignoring unknown keys unaffected.
+
+### Notes
+
+- Joan plan-rubric verdict attached (`revision=1`, APPROVED). No straggler callouts.
+- Downstream AST-1313 will consume `to_address`; parsing/bind-source debug correctly out of scope here.
+
+context_tokens≈38000
+— Radia
+
