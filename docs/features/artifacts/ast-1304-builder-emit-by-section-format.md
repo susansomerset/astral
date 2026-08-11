@@ -193,3 +193,29 @@ The plan is binding. The agent:
 
 - **AST-1305** accepts extra keys on craft/draft hops and regenerates leftover Experience prose in persisted blobs. This ticket only refuses to **print** leftover Experience prose.
 - **AST-1306** lets operators change `format` / title. This ticket is why that change reprints with a different treatment and the same id.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1304
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `f51e905d7cbb6176b09918ddc5b82b4af223e16e`
+
+## Traceability
+Child AC1→S1; AC2→S1; AC3→S1; AC4→S1; AC5→S2; parent AC1→S1; parent AC3→(titles unchanged); parent AC2/4/5/11→child AC1–5/S1–2; parent AC5–8→AST-1305
+
+## Findings
+
+### discuss — Traceability table uses parent AC numbers (2–6), not child checkbox order (1–5)
+**Location:** Traceability (this child's AC only)
+**Finding:** Child ticket lists five AC bullets without parent indices; plan maps parent AC2–6 / 11. Content aligns; numbering differs.
+**Recommendation:** Non-blocking. Engineer may cross-reference child Description when implementing.
+
+### discuss — `filter_content_to_resume_structure` widens persist path before AST-1305 hop ingest
+**Location:** Stage 1 step 3; Contract for siblings
+**Finding:** Filter keeps leftover Experience prose and extra list/job-array bodies so emit can run; hop acceptance of extra keys remains AST-1305. End-to-end Highlights/Publications from craft hops needs 1305 on the rollup line.
+**Recommendation:** Non-blocking for this child — plan correctly scopes emit vs persist and names AST-1305 for regenerate.
+
+— Joan
+context_tokens≈95000
