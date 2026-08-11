@@ -115,3 +115,65 @@ Proposed resolutions: <2-3 options, or "need guidance">
 | §3.5 naming | `to_address` matches `from_address`; snake_case. |
 
 No conflicts. Conf remains **high**.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1312
+**Publish ref:** `sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads` @ `a8aa15f`
+**Overall:** APPROVED
+
+### Traceability
+
+| Child AC | Plan stage(s) | Definition anchor |
+|----------|---------------|-------------------|
+| 1 — `list_inbox_messages()` rows include `to_address` = raw `To` header (empty if missing) | Stage 1 steps 1, 3–4 | Child scope: expose To on mailbox rows for sibling bind |
+| 2 — `get_message_html()` payloads include `to_address` the same way | Stage 1 steps 2, 5 | Same |
+| 3 — From-only `candidate_match` / create rematch unchanged | Stage 1 step 6; “No changes expected” for core | Parent boundary: From-first bind stays; this child does not decide bind |
+| 4 — Manage Email chrome unchanged | Stage 1 step 6; no React/API edits | Parent boundary: no new column/chrome |
+| 5 — This slice does **not** complete parent AC 2–5 | Explicit boundary + ⚠️ decisions | Parent AC 2–5 owned by **AST-1313** |
+
+| Plan stage | Child AC / boundary |
+|------------|---------------------|
+| Stage 1 (gmail TypedDict + metadata + get) | AC 1–2 |
+| Stage 1 step 6 (no bind/core/UI edits) | AC 3–4 |
+| Out of scope / sibling | AC 5; parent AC 2–5 → AST-1313 |
+
+No orphan stages. Parent AC 1–6 correctly deferred to AST-1313 except raw-field prerequisite for AC 2.
+
+### Statute verdicts
+
+| Statute / pattern | Verdict | Rationale |
+|-------------------|---------|-----------|
+| `pattern.layers.import-discipline` | conforms | To read stays in `src/external/gmail.py`; bind decision untouched in core |
+| `astral.layers.import-direction` | conforms | No new imports; external → utils only |
+| `astral.layers.core-vs-external-bright-line` | conforms | Header I/O external; `_candidate_match_for_from` unchanged |
+| `astral.standards.in-scope-only` | conforms | Single additive field on existing list/get shapes |
+| `astral.standards.dry-and-focused-functions` | conforms | Reuses `_header_map` / `_message_metadata`; no parallel To parser |
+
+### Considered and excluded
+
+**Considered:** child **In scope** statutes (above).
+
+**Excluded (boundary / sibling):**
+- `pattern.config.config-block` / `astral.config.config-source-of-truth` / `astral.standards.no-hardcoded-sets` — AST-1313 (bind order, inbox identity)
+- `astral.standards.debug-contract-gated` — bind-source Style D is AST-1313
+- `astral.layers.ui-config-driven-business-logic` — no React To rules
+- `pattern.ui.admin-endpoint` / `astral.patterns.require-auth-on-protected-endpoints` — no route changes; existing admin jsonify pass-through
+- From-then-To bind, inbox-address filter, To parse/split — AST-1313
+- ingest / scrape / create / archive / gaze_email bind consumers — out of slice
+- `tests/`, `docs/test-bible/**` — Betty (plan documents expected fixture updates)
+
+### Findings
+
+| Sev | Location | Finding | Recommendation |
+|-----|----------|---------|----------------|
+| **acceptable** | “Betty will need” | Component tests in `test_gmail.py` use exact dict equality without `to_address`; plan correctly assigns fixture updates to Betty post–Code Complete. | None — already documented. |
+
+**Tip verification:** On worktree @ `a8aa15f`, `metadataHeaders` is `["Subject", "From", "Date"]` (no `"To"`), TypedDicts lack `to_address`, `_message_metadata` / `get_message_html` return only `from_address`. Core `list_inbox_messages` does `row = dict(msg)` and passes external keys through; `get_message_html` returns external TypedDict as-is — plan’s “no core/API/React edits” claim is accurate.
+
+**Self-assessment:** Single-Component / high conf / low risk — honest; mirrors AST-1032/AST-1049 `from_address` pattern; step 3 explicitly guards the list-empty-To failure mode.
+
+context_tokens≈42000
+— Joan
