@@ -642,3 +642,43 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx
 ```
+
+---
+
+### AST-1302 · AST-1166 (list icon-control remediation)
+
+**Parent:** [AST-1166 — Button consistency](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency). **Publish:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`.
+
+Consume landed `pattern.ui.icon-control`: list row actions + modal × + CollapsiblePanel chevron use `className="icon-control"`; cramped two-letter labels become single initials (`Sk`→`S`, `Jr`→`J`, `Re`→`R`, `In`→`I`, `Gh`→`G`); Manage Candidates Set dispatch tasks → `T`; Agents row Delete → `D`. Retire leftover `.job-list-icon-btn` / `.list-page-edit-btn` / `.modal-close` / `.collapsible-panel-chevron-btn`. Handlers / `disabled` / `aria-label` unchanged. Labeled sweep (including Scheduled Actions Run/Stop and modal Skip This Job) stays **AST-1301**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job-list row actions | `CandidateJobRowActions.tsx` + `App.css` | **`test_CandidateJobRowActions.test.tsx`** — existing Skip/Resurrect handlers; **`CandidateJobRowActions — AST-1302 icon-control`** (initials + class + leftover CSS retired + post-applied `R/I/X/G` handlers) |
+| Manage Candidates row column (**§6c**) | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1302: row actions are icon-control`** |
+| Manage Agents row Delete (**§6c**) | `AdminAgentPrompts.tsx` | **`test_AdminAgentPrompts.test.tsx`** — **`AST-1302: row Delete is icon-control with D`** |
+| Scheduled Actions modal × (**§6c**) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1302: Add Task and Kill Running × are icon-control`** |
+| Shared Modal × | `Modal.tsx` | **`test_Modal.test.tsx`** — **`AST-1302: header close is icon-control`** |
+| CollapsiblePanel chevron | `CollapsiblePanel.tsx` | **`test_CollapsiblePanel.test.tsx`** — **`AST-1302: chevron is icon-control`** |
+
+**Existing coverage (re-run):** `test_JobsRecommended.test.tsx` Skip-by-aria-label cases (page file not edited); `test_JobDetailModal.test.tsx` **Skip This Job** / `entity-skip-btn` (excluded).
+
+**Broken / obsolete:** none — existing tests use `aria-label` / role names that this ticket kept.
+
+**Integration:** no existing scenario asserts list-row / modal-close class names — no drift.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_CollapsiblePanel.test.tsx
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1302"
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  -t "Skip"
+```
