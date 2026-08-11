@@ -569,7 +569,7 @@ Resume HTML emit dispatches by each enabled section’s `format` (not by id). Hi
 | Job-array Experience still prints | `src/core/builder.py` | reuse **`TestAst998ExperienceJobRender`** (array paths) |
 | Cover letter unchanged | `src/core/builder.py` | reuse **`TestAst581ResumeCoverSplit`**, **`TestAst1304BuilderEmitByFormat::test_cover_letter_debug_has_no_resume_section_trail`** |
 
-**Broken / obsolete this pass:** AST-998 / AST-987 leftover Experience prose-block asserts — required Experience no longer has a string fallback. Helper six-section count now feeds a job array for `experience` so the section still emits.
+**Broken / obsolete this pass:** AST-998 / AST-987 leftover Experience prose-block asserts — required Experience no longer has a string fallback. Helper six-section count now feeds a job array for `experience` so the section still emits. Emphasis helper assert expects CPython `html.escape` `&quot;` (not `&#34;`).
 
 **Integration:** none — no existing `tests/integration/` scenario asserts resume HTML emit / section format. Do not invent one.
 
