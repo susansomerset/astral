@@ -25,7 +25,10 @@ from src.core import tracker as tracker_mod
 from src.data import database
 from src.utils.config import (
     BUILD_CONFIG,
+    RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EMPHASIS_TAG_NAMES,
     get_cover_letter_render_token,
 )
 from src.utils.formatting import split_to_list
@@ -60,6 +63,15 @@ _KEY_TO_HEADING: Dict[str, str] = {
     "education_certifications": "Education & Certifications",
     "technical_skills": "Technical Skills",
 }
+
+_EMPHASIS_TAG_RE = re.compile(
+    r"</?(?:" + "|".join(re.escape(n) for n in RESUME_STRUCTURE_EMPHASIS_TAG_NAMES) + r")>",
+    re.IGNORECASE,
+)
+
+
+def _html_section_dom_id(sid: str) -> str:
+    return _KEY_TO_SECTION_ID[sid] if sid in _KEY_TO_SECTION_ID else sid.replace("_", "-")
 
 
 def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -231,6 +243,7 @@ def build_resume_from_job(
         cover_profile=cd.get("contact") or {},
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -406,6 +419,7 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -481,6 +495,7 @@ def build_session_base_resume(
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -1024,11 +1039,11 @@ def _mark_resume_value(val: Any) -> Any:
 
 
 def _render_content_keys(markers: dict) -> List[str]:
-    """Keys present for Style D — strings with content, plus non-empty experience job arrays."""
+    """Keys present for Style D — strings with content, plus non-empty job arrays."""
     keys = [k for k, v in markers.items() if isinstance(v, str) and v.strip()]
-    exp = markers.get("experience")
-    if candidate_mod.is_experience_job_array(exp) and exp:
-        keys.append("experience")
+    for k, v in markers.items():
+        if candidate_mod.is_experience_job_array(v) and v:
+            keys.append(k)
     return sorted(set(keys))
 
 
@@ -1042,6 +1057,35 @@ def _resume_site_markers(text: str) -> str:
     return t
 
 
+def _emit_inline_emphasis_html(text: str) -> str:
+    """Escape HTML, then restore closed italic/bold tags from the config allowlist."""
+    if not text:
+        return ""
+    parts: List[str] = []
+    pos = 0
+    for match in _EMPHASIS_TAG_RE.finditer(text):
+        parts.append(html.escape(text[pos:match.start()]))
+        raw = match.group(0)
+        name = raw.strip("</>").lower()
+        parts.append(f"</{name}>" if raw.startswith("</") else f"<{name}>")
+        pos = match.end()
+    parts.append(html.escape(text[pos:]))
+    return "".join(parts)
+
+
+def _emit_bullet_list_html(text: str) -> str:
+    """Standalone section of lines as ``<li>`` items."""
+    items: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        items.append(f"        <li>{_emit_inline_emphasis_html(line)}</li>")
+    if not items:
+        return ""
+    return "      <ul>\n" + "\n".join(items) + "\n      </ul>"
+
+
 def _emit_html_document(
     render: dict,
     style: dict,
@@ -1053,6 +1097,7 @@ def _emit_html_document(
     cover_profile: Optional[dict] = None,
     body_section_ids: Optional[List[str]] = None,
     body_section_titles: Optional[Dict[str, str]] = None,
+    resume_structure: Optional[dict] = None,
 ) -> str:
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -1097,6 +1142,7 @@ def _emit_html_document(
         render,
         body_section_ids or list(_RESUME_BODY_KEYS),
         body_section_titles or {},
+        resume_structure=resume_structure,
     )
 
     cover_html = ""
@@ -1263,12 +1309,12 @@ h2::after {{ margin-left: 12px; }}
   font-style: italic;
   font-size: 14.5px;
 }}
-.role ul {{
+section ul, .role ul {{
   margin: 4px 0 0;
   padding-left: 20px;
 }}
-.role li {{ margin-bottom: 6px; }}
-.role li:last-child {{ margin-bottom: 0; }}
+section li, .role li {{ margin-bottom: 6px; }}
+section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 .education-list {{
   margin: 8px 0 0;
   margin-left: 0.5in;
@@ -1373,10 +1419,10 @@ def _emit_education_list_html(text: str) -> str:
         if bullet in line:
             cred, _, rest = line.partition(bullet)
             rows.append(
-                f"        <p><strong>{html.escape(cred)}</strong>{bullet}{html.escape(rest)}</p>"
+                f"        <p><strong>{_emit_inline_emphasis_html(cred)}</strong>{bullet}{_emit_inline_emphasis_html(rest)}</p>"
             )
         else:
-            rows.append(f"        <p><strong>{html.escape(line)}</strong></p>")
+            rows.append(f"        <p><strong>{_emit_inline_emphasis_html(line)}</strong></p>")
     if not rows:
         return ""
     return "      <div class=\"education-list\">\n" + "\n".join(rows) + "\n      </div>"
@@ -1393,14 +1439,14 @@ def _emit_skills_grid_html(text: str) -> str:
             category, _, items = line.partition(": ")
             cats.append(
                 "        <div class=\"skill-category\">\n"
-                f"          <h4>{html.escape(category)}</h4>\n"
-                f"          <p>{html.escape(items)}</p>\n"
+                f"          <h4>{_emit_inline_emphasis_html(category)}</h4>\n"
+                f"          <p>{_emit_inline_emphasis_html(items)}</p>\n"
                 "        </div>"
             )
         else:
             cats.append(
                 "        <div class=\"skill-category\">\n"
-                f"          <p>{html.escape(line)}</p>\n"
+                f"          <p>{_emit_inline_emphasis_html(line)}</p>\n"
                 "        </div>"
             )
     if not cats:
@@ -1412,89 +1458,71 @@ def _emit_body_sections_html(
     render: dict,
     ordered_ids: List[str],
     titles: Dict[str, str],
+    resume_structure: Optional[dict] = None,
 ) -> str:
     chunks: List[str] = []
+    sections = (resume_structure or {}).get("sections") or {}
     for key in ordered_ids:
         raw = render.get(key)
         if raw is None:
             continue
-        sid = _KEY_TO_SECTION_ID.get(key, key)
-        heading = html.escape(titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title())))
-        # Experience job array: emit per-role HTML before generic dict/list → JSON coercion.
-        if key == "experience" and candidate_mod.is_experience_job_array(raw):
+        spec = sections.get(key) or {}
+        fmt = spec.get("format") or RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.get(key)
+        if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            continue
+        sid = _html_section_dom_id(key)
+        heading = html.escape(
+            titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title()))
+        )
+        inner_html = ""
+        if fmt == "experience_detail":
+            if not candidate_mod.is_experience_job_array(raw):
+                continue
             roles_html = _emit_experience_jobs_html(raw)
             if not roles_html.strip():
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{roles_html}
-    </section>"""
-            )
-            continue
-        if isinstance(raw, (dict, list)):
-            text = _format_experience_value(raw)
+            inner_html = roles_html
         else:
-            text = str(raw) if raw is not None else ""
-        if not str(text).strip():
-            continue
-        if key == "professional_summary":
-            # Blank lines first; single-\n fallback (same as cover letter) → multiple .summary-intro
-            paras = _session_cover_letter_paragraphs(str(text))
-            body = "\n".join(
-                f'      <p class="summary-intro">{html.escape(p)}</p>' for p in paras
-            )
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{body}
-    </section>"""
-            )
-            continue
-        if key == "education_certifications":
-            edu_html = _emit_education_list_html(str(text))
-            if not edu_html.strip():
+            if isinstance(raw, str):
+                text = raw
+            elif isinstance(raw, list) and raw and all(not isinstance(item, dict) for item in raw):
+                text = "\n".join(str(item) for item in raw)
+            elif isinstance(raw, (dict, list)):
+                text = _format_experience_value(raw)
+            else:
+                text = str(raw) if raw is not None else ""
+            if not str(text).strip():
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{edu_html}
-    </section>"""
-            )
-            continue
-        if key == "technical_skills":
-            skills_html = _emit_skills_grid_html(str(text))
-            if not skills_html.strip():
+            if fmt == "free_prose":
+                paras = _session_cover_letter_paragraphs(str(text))
+                inner_html = "\n".join(
+                    f'      <p class="summary-intro">{_emit_inline_emphasis_html(p)}</p>'
+                    for p in paras
+                )
+            elif fmt == "bullet_list":
+                inner_html = _emit_bullet_list_html(str(text))
+                if not inner_html.strip():
+                    continue
+            elif fmt == "word_cloud":
+                inner_html = (
+                    f'      <p class="competencies-list">{_emit_inline_emphasis_html(str(text))}</p>'
+                )
+            elif fmt == "dual_column":
+                inner_html = _emit_skills_grid_html(str(text))
+                if not inner_html.strip():
+                    continue
+            elif fmt == "indented_bold_single":
+                inner_html = _emit_education_list_html(str(text))
+                if not inner_html.strip():
+                    continue
+            else:
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
+        chunks.append(
+            f"""    <section aria-labelledby="{sid}">
       <h2 id="{sid}">{heading}</h2>
-{skills_html}
+{inner_html}
     </section>"""
-            )
-            continue
-        inner = html.escape(str(text))
-        if key == "core_competencies":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
-        elif key == "experience":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="prose-block">{inner}</div>
-    </section>"""
-            )
-        elif key == "prior_experience":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
+        )
     return "\n".join(chunks)
 
 
@@ -1573,19 +1601,19 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         lines: List[str] = ['      <article class="role">', '        <div class="role-header">']
         if title_text:
             lines.append(
-                f'          <p class="compact-title"><strong>{html.escape(title_text)}</strong></p>'
+                f'          <p class="compact-title"><strong>{_emit_inline_emphasis_html(title_text)}</strong></p>'
             )
         if loc_text:
             lines.append(
-                f'          <p class="compact-location"><em>{html.escape(loc_text)}</em></p>'
+                f'          <p class="compact-location"><em>{_emit_inline_emphasis_html(loc_text)}</em></p>'
             )
         lines.append("        </div>")
         for lead in leads:
-            lines.append(f'        <p class="role-description">{html.escape(lead)}</p>')
+            lines.append(f'        <p class="role-description">{_emit_inline_emphasis_html(lead)}</p>')
         if bullets:
             lines.append("        <ul>")
             for bullet in bullets:
-                lines.append(f"          <li>{html.escape(bullet)}</li>")
+                lines.append(f"          <li>{_emit_inline_emphasis_html(bullet)}</li>")
             lines.append("        </ul>")
         lines.append("      </article>")
         role_chunks.append("\n".join(lines))
