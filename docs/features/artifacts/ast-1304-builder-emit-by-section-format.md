@@ -229,3 +229,127 @@ context_tokens≈95000
 |-------|--------|---------|
 | 1 | `6c6e7dd5` | emit by format, bullet_list, emphasis, skip leftover prose Experience |
 | 2 | `757f2cda` | Style D per-section emit trail |
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1304
+**Publish ref:** `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `1fb4ff0fd4a167fe68416d4a19af6cca225d2122`
+**Overall:** CLEAN
+
+## Statutes checked
+
+Ticket-scoped product delta: `6c6e7dd5` + `757f2cda` (`src/core/builder.py`, `src/core/candidate.py` modify). Formal three-dot `origin/dev...origin/sub` is epic-wide (branch also carries merged AST-1303/1305/1306 ancestry); predicates scored against ticket delta unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths in ticket delta |
+| astral.agent.do-task-delegation | scoped | conforms | emit/validate paths unchanged at call sites; no new Anthropic assembly |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | formats/emphasis from `RESUME_STRUCTURE_*` imports; no parallel catalog in builder |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer delta is `src/` only |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits touch only planned `src/core/*` files |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | builder stays core; no new external imports |
+| astral.layers.import-direction | scoped | conforms | builder → core/utils/data unchanged; candidate filter in core |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts paths |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI paths |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API paths |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer edits |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migrations |
+| astral.standards.debug-contract-gated | scoped | conforms | per-section `debug_index` + `\|` `debug_detail` only when `debug=True`; universal `index N/M`; cover letter untouched |
+| astral.standards.dry-and-focused-functions | scoped | conforms | single format dispatch; reuses existing `_emit_*` helpers |
+| astral.standards.in-scope-only | scoped | conforms | builder emit + filter keep-loop only; hops/editor/cover-letter schema untouched |
+| astral.standards.logging-via-utils | scoped | conforms | `_log` contract helpers; no new `print` / raw loggers |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain helper names (`_emit_inline_emphasis_html`, etc.) |
+| astral.standards.no-cross-contamination | scoped | conforms | no hop/editor/build_config edits in ticket commits |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | no hardcoded-set statute paths in ticket delta (formats/emphasis read from config) |
+| astral.standards.public-then-helpers | scoped | conforms | new helpers private/module-level under existing public builders |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data change |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job states |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `1fb4ff0f` after `merge-tests` |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1304): …` engineer commits |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1299/…` publish |
+| orch.git.ftr-sub-topology | universal | conforms | child under parent ftr |
+| orch.git.merge-on-checkout | universal | conforms | ftr + sibling sub merges documented on branch |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no destructive git in delta |
+| orch.git.no-dev-agent-branches | universal | conforms | sub publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1299` |
+| orch.git.three-permanent-branches | universal | conforms | standard sub topology |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | follows approved plan |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–2 match binding steps |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | spawned at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests via Betty merge + manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | allowed paths |
+
+**Count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan references `pattern.config.config-block` intent via Code Rules; no `canon/patterns/**` id in Architectural definition |
+
+## Plan adherence
+
+**Stage 1:** Config imports added; `_EMPHASIS_TAG_RE` + `_emit_inline_emphasis_html` built from `RESUME_STRUCTURE_EMPHASIS_TAG_NAMES`; `_emit_bullet_list_html` + `section ul/li` stylesheet selectors; `_html_section_dom_id`; `_emit_body_sections_html` dispatches by `format` with leftover Experience prose skip and extra `experience_detail` job-array path; `_emit_html_document` + three resume callers pass `resume_structure`; education/skills/experience job text uses emphasis helper; `_render_content_keys` includes any nonempty job array; `filter_content_to_resume_structure` widened per plan table (extra job arrays, leftover Experience prose kept for persist, scalar-list coerce).
+
+**Stage 2:** `debug` / `debug_func` threaded through `_emit_html_document` → `_emit_body_sections_html`; per-enabled-section Style D trail with planned outcomes; document-level success indexes preserved on public builders; cover-letter path still uses `_emit_somerset_cover_html_document` (no per-section trail).
+
+**Joan:** `[plan-rubric] revision=1` **APPROVED** — Excluded `debug-contract-gated` at plan time is satisfied on touched builder paths; filter/persist vs AST-1305 regenerate tension is plan-documented (non-blocking).
+
+**Cross-ticket:** No hop schema, editor, or `BUILD_CONFIG["supported_sections"]` edits in ticket commits. Sibling merges on branch do not expand AST-1304 product footprint beyond the two planned files.
+
+**C6 lenses:** No silent failure, layer violations, UI hardcoding, or external cleanliness issues on touched paths. §5f debug contract satisfied on Stage 2 trail.
+
+## Findings
+
+(none)
+
+## What's solid
+
+- Format-driven dispatch preserves historical Somerset treatments via AST-1303 default map; `bullet_list` is the only new visual helper.
+- Closed emphasis surface: escape-then-restore exact no-attribute tags; attributed/script tags stay escaped.
+- Leftover Experience prose skipped at emit while filter keeps it for tracker persist — matches explicit plan decision vs AST-1305 regenerate.
+- Betty manifest `TestAst1304BuilderEmitByFormat` + `TestAst1304FilterContentToResumeStructure` cover highlights/publications, format swap, emphasis safety, prose skip, extra job arrays, and Style D outcomes.
+
+## Notes
+
+- Publish tip `1fb4ff0f` includes `merge-tests` after engineer product SHA `757f2cda`.
+- Branch ancestry merges AST-1305/1306 for rollup; ticket-scoped review uses isolated `6c6e7dd5^..757f2cda` diff.
+- Joan discuss on filter widening vs hop ingest is plan-approved; no action required on this child.
+
+## Frame diff
+
+(none) — Self-Assessment **Single-Component** matches the two-file `builder.py` + filter keep-loop footprint.
+
+context_tokens≈115000
+— Radia
