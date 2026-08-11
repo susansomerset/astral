@@ -219,3 +219,81 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 | §3.5 placement / naming | Styles only in `App.css`; class name `icon-control` (domain language); no new component file |
 
 No conflicts. `conf-!!-NONE` does not apply.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1302
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation` @ `32321160a6ec32e853af680428a9d1b1b17220d3`
+
+## Traceability
+Child AC1→S1–3; Child AC2→S1–3; parent AC5→S1–2; parent AC7→S1–3; parent AC1–4,6→N/A (AST-1300/1301 boundaries)
+
+## Findings
+
+### discuss — Traceability labels use wrong child AC numbers
+**Location:** Traceability table (“Child AC5” / “Child AC6”)
+**Finding:** Child Description has two unnumbered AC bullets (list icon-only; no regression). Plan labels them AC5/AC6 (parent AC numbers; parent AC6 is in-flight gold, not this ticket).
+**Recommendation:** At build handoff, read as Child AC1/AC2 or parent AC5/AC7 — mapping to stages is correct. Non-blocking.
+
+### discuss — CollapsiblePanel chevron visual will change
+**Location:** Stage 3; `.collapsible-panel-chevron-btn` → `.icon-control`
+**Finding:** Old chevron was 32×32 borderless/transparent; `.icon-control` is bordered compact chrome per AST-1300. Intentional catalog conformance, not a pixel-parity swap.
+**Recommendation:** Accept as in-scope presentation change; layout-only `flex: 0 0 auto` helper is appropriate. Non-blocking.
+
+### R5 — Traceability (full)
+
+| AC / scope item | Plan stage(s) | Notes |
+|---|---|---|
+| Child AC1 — list row columns icon-only; fix cramped text (`Sk`) | S1–2 | `CandidateJobRowActions`, Manage Candidates/Agents row actions |
+| Child AC2 — no enablement/handler regression on touched flows | S1–3 | Explicit “do not change onClick/disabled”; Land Meteorite excluded |
+| Parent AC5 — list row icon-controls only | S1–2 | Closed inventory |
+| Parent AC7 — no regression on touched flows | S1–3 | Same |
+| Parent AC1–4, AC6 | N/A | Patterns (AST-1300), labeled sweep / in-flight (AST-1301) |
+| Parent Functional scope 5 | S1–2 | |
+| Parent catalog — modal ×, chevron | S3 | |
+| Child boundary — no pattern docs | — | No `canon/patterns/**` |
+| Child boundary — no labeled-button sweep | — | Exclusions table + AST-1301 carve-outs explicit |
+
+| Stage | Parent / child mapping |
+|---|---|
+| S1 — `CandidateJobRowActions` | Child AC1; parent AC5; `pattern.ui.icon-control` |
+| S2 — Manage Candidates + Agents row columns | Child AC1; Set dispatch tasks `T` decision documented |
+| S3 — Modal ×, Scheduled Actions ×, CollapsiblePanel chevron + CSS retire | Parent catalog peers; DRY cleanup |
+
+**Inventory verification (publish-ref tip):** `rg` on TSX hits only the six planned files + `App.css` for `job-list-icon-btn` / `list-page-edit-btn` / `modal-close` / `collapsible-panel-chevron-btn`. Matches closed inventory.
+
+**Dependency:** `pattern.ui.icon-control` + `.icon-control` CSS present on publish-ref tip (AST-1300 landed). Plan correctly consumes, does not edit pattern files.
+
+### R6 — Adversarial checklist (summary)
+
+| Check | Result |
+|---|---|
+| Definition fidelity — icon-control remediation only | Pass |
+| Boundaries — no AST-1300/1301 scope creep | Pass |
+| Closed inventory — no orphan surfaces in scope | Pass |
+| `pattern.ui.icon-control` solution shape | Pass — single initial/glyph; no `btn` combo; no per-site color (Delete inline danger removed) |
+| Layer / imports / config | Pass — UI frontend only |
+| File placement | Pass — `App.css` + existing components/pages |
+| DRY | Pass — retire four legacy families after last consumer |
+| Self-assessment Single-Component / high / Medium | Honest |
+| Resurrect `R` vs Reapply `R` | Pass — mutually exclusive state branches |
+
+### R1–R3 — Statute matching
+
+**Plan layers:** `ui`
+**Plan paths:** six TSX files + `App.css`
+**Change types:** `modify`
+
+**Considered (38):** universal orchestration set + scoped matches including `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.standards.names-not-ticket-ids`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-cross-contamination`, `astral.docs.features-single-file-per-ticket`, `orch.pipeline.plan-is-bible`, etc.
+
+**Excluded:** `astral.git.engineer-test-tree-ban` (no test paths); `astral.config.*`; batch/agent/core statutes; `astral.seed.*`.
+
+**Key cited pattern:** `pattern.ui.icon-control` — **conforms** (consumes approved pattern; presentation-only; `title`/`aria-label` preserved).
+
+No statute `violates` / `needs-discussion`.
+
+context_tokens≈82000
+— Joan
