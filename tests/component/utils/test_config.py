@@ -4522,3 +4522,10 @@ class TestAst1306ResumeStructureCatalog:
     def test_new_extra_default_format_is_bullet_list(self) -> None:
         assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT == "bullet_list"
         assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT in cfg.RESUME_STRUCTURE_BODY_FORMATS
+
+
+class TestAst1305ResumeStructureExtraDefault:
+    """AST-1305: extras default to bullet_list (same RESUME_STRUCTURE_* family)."""
+
+    def test_extra_default_format_is_bullet_list(self) -> None:
+        assert cfg.RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"

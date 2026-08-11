@@ -471,7 +471,7 @@ class TestAst519ResumeStructureApi:
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
         resp = candidate_client.put(
             "/api/candidates/c1/data",
-            json={"artifacts": {"base_resume": {"professional_summary": "ok", "orphan_section": "drop", "accent_color": "#ABCDEF"}}},
+            json={"artifacts": {"base_resume": {"professional_summary": "ok", "123bad": "drop", "accent_color": "#ABCDEF"}}},
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -1033,3 +1033,48 @@ class TestAst1306ResumeStructureAuthorApi:
         stored = save_data.call_args.args[1]["artifacts"]["resume_structure"]["sections"]
         assert "publications" in stored
         assert "_pending_0" not in stored
+
+
+class TestAst1305LegacyLabelIngestApi:
+    """AST-1305: PUT /data ingest keeps unmatched Abrams labels as extras."""
+
+    def _cd(self) -> dict:
+        from src.core import candidate as core_candidate
+
+        return {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "artifacts": {"resume_structure": core_candidate.default_resume_structure()},
+            },
+        }
+
+    def test_put_label_list_keeps_highlights_and_drops_prose_experience(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_data = MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        labels = [
+            {"label": "Professional Summary", "content": "Summary body"},
+            {"label": "Highlights", "content": "Won awards"},
+            {"label": "Publications", "content": "Paper one"},
+            {"label": "Experience", "content": "leftover prose"},
+        ]
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"base_resume": labels}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        arts = save_data.call_args.args[1]["artifacts"]
+        assert arts["base_resume"]["highlights"] == "Won awards"
+        assert arts["base_resume"]["publications"] == "Paper one"
+        assert arts["base_resume"]["professional_summary"] == "Summary body"
+        assert "experience" not in arts["base_resume"]
+        assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
+        assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"

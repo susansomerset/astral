@@ -18,6 +18,7 @@ from src.utils.config import (
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
 )
@@ -681,7 +682,7 @@ class TestRunCandidateArtifactGeneration:
 
     def test_persists_artifacts_on_craft_resume_base_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saves: list[tuple[Any, ...]] = []
-        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": "Jobs"})
+        parsed = _craft_resume_base_payload(_catalog_structure())
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
@@ -704,7 +705,7 @@ class TestRunCandidateArtifactGeneration:
         assert saves[0][1]["merge"] is True
         artifacts = saves[0][1]["candidate_data"]["artifacts"]
         assert "resume_structure" in artifacts
-        assert artifacts["base_resume"]["experience"] == "Jobs"
+        assert artifacts["base_resume"]["experience"] == [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
 
     def test_does_not_persist_artifacts_on_other_task_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saves: list[tuple[Any, ...]] = []
@@ -904,10 +905,11 @@ class TestAst517ResumeStructure:
     def test_split_filters_disabled_sections_from_content(self) -> None:
         structure = _catalog_structure()
         structure["sections"]["technical_skills"]["enabled"] = False
-        parsed = _craft_resume_base_payload(structure, {"technical_skills": "skip", "experience": "keep"})
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = _craft_resume_base_payload(structure, {"technical_skills": "skip", "experience": jobs})
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
         assert "technical_skills" not in content
-        assert content["experience"] == "keep"
+        assert content["experience"] == jobs
 
     def test_split_skips_non_string_section_values(self) -> None:
         structure = _catalog_structure()
@@ -918,9 +920,10 @@ class TestAst517ResumeStructure:
 
     def test_split_omits_enabled_sections_absent_from_payload(self) -> None:
         structure = _catalog_structure()
-        parsed = {"resume_structure": structure, "experience": "only this"}
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        parsed = {"resume_structure": structure, "experience": jobs}
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
-        assert content == {"experience": "only this"}
+        assert content == {"experience": jobs}
 
     def test_split_rejects_non_dict_payload(self) -> None:
         with pytest.raises(ValueError, match="must be a dict"):
@@ -1043,9 +1046,12 @@ class TestAst517ResumeStructure:
             sid: {**spec, "content": f"nested-{sid}"}
             for sid, spec in structure["sections"].items()
         }
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        sections["experience"] = {**structure["sections"]["experience"], "content": jobs}
         parsed = {"resume_structure": {"sections": sections}}
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
-        assert content["experience"] == "nested-experience"
+        assert content["experience"] == jobs
+        assert content["professional_summary"] == "nested-professional_summary"
 
     @pytest.mark.asyncio
     async def test_parse_persists_custom_structure_per_candidate(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1197,14 +1203,17 @@ class TestAst594DraftJobResumePayload:
         # AST-1270: draft whitelist reads artifacts.base_resume keys (not resume_structure catalog).
         base = {
             "professional_summary": "Summary",
-            "experience": "Jobs",
+            "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
             "candidate_contact_detail": "ada@example.com",
         }
         base.update(sections)
         return {"artifacts": {"base_resume": base}}
 
     def test_validate_accepts_structure_keyed_subset(self) -> None:
-        payload = {"professional_summary": "Summary", "experience": "Jobs"}
+        payload = {
+            "professional_summary": "Summary",
+            "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+        }
         assert candidate_mod.validate_draft_job_resume_payload(payload, self._base_cd()) is None
 
     def test_validate_rejects_unknown_section_key(self) -> None:
@@ -2013,7 +2022,7 @@ class TestAst986SessionResumeParse:
         save_c = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "get_candidate", get_c)
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save_c)
-        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": "Jobs"})
+        parsed = _craft_resume_base_payload(_catalog_structure())
         calls: list[dict[str, Any]] = []
 
         async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
@@ -2028,7 +2037,7 @@ class TestAst986SessionResumeParse:
         assert body["timesheet"] == {"tokens": 1}
         assert body["batch_id"].startswith("user-session-parse-resume-")
         assert "resume_structure" in body
-        assert body["base_resume"]["experience"] == "Jobs"
+        assert body["base_resume"]["experience"] == [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         assert calls[0]["task_key"] == "simple_resume_parse"
         assert calls[0]["live_content"] == "full resume text"
         assert calls[0]["index"] == body["batch_id"]
@@ -2100,7 +2109,7 @@ class TestAst996ExperienceJobArray:
             _catalog_structure(), {"experience": "legacy prose"}
         )
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
-        assert content["experience"] == "legacy prose"
+        assert "experience" not in content
 
     def test_filter_content_preserves_nonempty_job_array(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
@@ -2495,12 +2504,12 @@ class TestAst997JobTailoredExperience:
         assert payload["experience"][1]["location"] == "NYC"
 
     def test_validate_accepts_legacy_string_experience(self) -> None:
-        assert (
-            candidate_mod.validate_draft_job_resume_payload(
-                {"experience": "legacy prose"}, self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS])
-            )
-            is None
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"experience": "legacy prose"},
+            self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
         )
+        assert err is not None
+        assert "experience_detail" in err
 
     def test_validate_rejects_non_job_array_experience_object(self) -> None:
         err = candidate_mod.validate_draft_job_resume_payload(
@@ -2508,7 +2517,7 @@ class TestAst997JobTailoredExperience:
             self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
         )
         assert err is not None
-        assert "job array or prose string" in err
+        assert "experience_detail" in err
 
     def test_tailor_hop_prompts_teach_job_array_and_pin_policy(self) -> None:
         from pathlib import Path
@@ -4173,37 +4182,46 @@ class TestAst1270NestedDraftJobResumeContract:
         "candidate_contact_detail": "hire@example.com",
         "professional_summary": "Summary prose",
         "core_competencies": "Skills",
-        "experience": "Experience prose block",
         "prior_experience": "Prior",
         "education_certifications": "CSM",
         "technical_skills": "Python",
     }
 
+    def _base_sections(self) -> dict[str, Any]:
+        out = dict(self._BASE_SECTIONS)
+        out["experience"] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        return out
+
     def _cd(self, *, with_structure: bool = False) -> dict[str, Any]:
-        arts: dict[str, Any] = {"base_resume": dict(self._BASE_SECTIONS)}
+        arts: dict[str, Any] = {"base_resume": self._base_sections()}
         if with_structure:
             arts["resume_structure"] = candidate_mod.default_resume_structure()
         return {"artifacts": arts}
 
     def test_allowed_section_keys_intersect_known_ids(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         cd = {
             "artifacts": {
                 "base_resume": {
                     "professional_summary": "S",
-                    "experience": "E",
+                    "experience": jobs,
+                    "highlights": "Won awards",
                     "accent_color": "#fff",
-                    "not_a_section": "x",
+                    "sections": "reserved",
+                    "123bad": "x",
                 }
             }
         }
         assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
             "experience",
+            "highlights",
             "professional_summary",
         ]
 
     def test_nested_envelope_validates_and_unwraps_resume(self) -> None:
         # Nested sample shape from parent AST-1268 — resume body + sibling deviations.
-        resume_body = {k: f"tailored-{k}" if k != "experience" else "tailored experience" for k in self._BASE_SECTIONS}
+        resume_body = {k: f"tailored-{k}" for k in self._BASE_SECTIONS}
+        resume_body["experience"] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
         parsed: dict[str, Any] = {
             "agent_performance": {"status": "success", "failure_note": ""},
             "agent_payload": {
@@ -4233,7 +4251,10 @@ class TestAst1270NestedDraftJobResumeContract:
     def test_resume_never_reported_as_unknown_section_after_normalize(self) -> None:
         parsed = {
             "agent_payload": {
-                "resume": {"professional_summary": "ok", "experience": "jobs"},
+                "resume": {
+                    "professional_summary": "ok",
+                    "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+                },
             }
         }
         candidate_mod.normalize_draft_job_resume_agent_payload(parsed)
@@ -4244,7 +4265,7 @@ class TestAst1270NestedDraftJobResumeContract:
     def test_no_persisted_resume_structure_still_passes(self) -> None:
         payload = {
             "professional_summary": "S",
-            "experience": "E",
+            "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
         }
         # Explicitly no artifacts.resume_structure — whitelist is base_resume only.
         assert candidate_mod.validate_draft_job_resume_payload(payload, self._cd(with_structure=False)) is None
@@ -4266,7 +4287,10 @@ class TestAst1270NestedDraftJobResumeContract:
 
     def test_flat_payload_still_accepted(self) -> None:
         # AST-594-era callers: section keys flat on agent_payload (no nest).
-        payload = {"professional_summary": "S", "experience": "E"}
+        payload = {
+            "professional_summary": "S",
+            "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+        }
         assert candidate_mod.validate_draft_job_resume_payload(payload, self._cd()) is None
 
     def test_manage_tasks_prompt_nested_contract(self) -> None:
@@ -4291,7 +4315,7 @@ class TestAst1272DraftHopDebugWhitelistTrail:
             "artifacts": {
                 "base_resume": {
                     "professional_summary": "base summary",
-                    "experience": "base experience",
+                    "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
                 }
             }
         }
@@ -4356,7 +4380,12 @@ class TestAst1272DraftHopDebugWhitelistTrail:
         idx, detail = self._patch_debug(monkeypatch)
         # Flat payload — validate's internal normalize stays quiet (debug=False).
         err = candidate_mod.validate_draft_job_resume_payload(
-            {"agent_payload": {"professional_summary": "S", "experience": "E"}},
+            {
+                "agent_payload": {
+                    "professional_summary": "S",
+                    "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+                }
+            },
             self._cd(),
             debug=True,
         )
@@ -4389,7 +4418,10 @@ class TestAst1272DraftHopDebugWhitelistTrail:
         idx, detail = self._patch_debug(monkeypatch)
         assert (
             candidate_mod.validate_draft_job_resume_payload(
-                {"professional_summary": "S", "experience": "E"},
+                {
+                    "professional_summary": "S",
+                    "experience": [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS],
+                },
                 self._cd(),
                 debug=False,
             )
@@ -4663,3 +4695,136 @@ class TestAst1304FilterContentToResumeStructure:
             self._structure(),
         )
         assert "highlights" not in out
+
+
+class TestAst1305HopsContentBlobsAndLegacyLabels:
+    """AST-1305: extra keys on hops; Abrams labels kept; Experience is job-array only."""
+
+    def _abrams_list(self, *, experience: Any = "leftover prose") -> list[dict[str, Any]]:
+        return [
+            {"label": "Professional Summary", "content": "Summary body"},
+            {"label": "Highlights", "content": "Won awards"},
+            {"label": "Publications", "content": "Paper one"},
+            {"label": "Experience", "content": experience},
+        ]
+
+    def _seven(self) -> dict[str, Any]:
+        return _required_seven_structure()
+
+    def test_ingest_label_list_keeps_highlights_and_publications(self) -> None:
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            self._abrams_list(), self._seven()
+        )
+        assert content["professional_summary"] == "Summary body"
+        assert content["highlights"] == "Won awards"
+        assert content["publications"] == "Paper one"
+        assert "experience" not in content
+        for sid, title in (("highlights", "Highlights"), ("publications", "Publications")):
+            spec = structure["sections"][sid]
+            assert spec["title"] == title
+            assert spec["enabled"] is True
+            assert spec["job_agent_editable"] is True
+            assert spec["format"] == RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
+
+    def test_ingest_dict_extra_id_and_slug_collision(self) -> None:
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            {"professional_summary": "S", "highlights": "H", "experience": "prose"},
+            self._seven(),
+        )
+        assert content == {"professional_summary": "S", "highlights": "H"}
+        assert structure["sections"]["highlights"]["format"] == "bullet_list"
+        _, collided = candidate_mod.ingest_legacy_label_content_base_resume(
+            [
+                {"label": "Highlights", "content": "one"},
+                {"label": "Highlights", "content": "two"},
+            ],
+            self._seven(),
+        )
+        assert "highlights" in collided["sections"]
+        assert "highlights_2" in collided["sections"]
+
+    def test_token_keeps_unmatched_labels_and_omits_prose_experience(self) -> None:
+        cd = {
+            "artifacts": {
+                "resume_structure": self._seven(),
+                "base_resume": self._abrams_list(),
+            }
+        }
+        parsed = json.loads(candidate_mod.format_base_resume_for_token(cd))
+        assert parsed["highlights"] == "Won awards"
+        assert parsed["publications"] == "Paper one"
+        assert parsed["professional_summary"] == "Summary body"
+        assert "experience" not in parsed
+
+    def test_flatten_promotes_extra_keys_outside_known(self) -> None:
+        raw = self._seven()
+        raw["sections"]["highlights"] = {
+            "id": "highlights",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 20,
+            "job_agent_editable": True,
+            "format": "bullet_list",
+        }
+        parsed = {
+            "resume_structure": {
+                "sections": raw["sections"],
+                "content": {"highlights": "Won awards", "professional_summary": "S"},
+            }
+        }
+        candidate_mod._flatten_craft_resume_section_strings(parsed)
+        assert parsed["highlights"] == "Won awards"
+        assert parsed["professional_summary"] == "S"
+
+    def test_draft_whitelist_includes_extras_rejects_invented(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        cd = {
+            "artifacts": {
+                "base_resume": {
+                    "professional_summary": "S",
+                    "highlights": "H",
+                    "experience": jobs,
+                }
+            }
+        }
+        assert candidate_mod.draft_job_resume_allowed_section_keys(cd) == [
+            "experience",
+            "highlights",
+            "professional_summary",
+        ]
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"professional_summary": "S", "highlights": "H2"}, cd
+            )
+            is None
+        )
+        err = candidate_mod.validate_draft_job_resume_payload({"not_on_base": "x"}, cd)
+        assert err is not None
+        assert "Unknown resume section key" in err
+        assert "not_on_base" in err
+
+    def test_split_and_filter_omit_prose_experience(self) -> None:
+        parsed = _craft_resume_base_payload(self._seven(), {"experience": "leftover prose"})
+        _, content = candidate_mod.split_craft_resume_base_payload(parsed)
+        assert "experience" not in content
+        filtered = candidate_mod.filter_base_resume_to_structure(
+            {"experience": "leftover prose", "professional_summary": "S"},
+            {"experience", "professional_summary"},
+        )
+        assert filtered == {"professional_summary": "S"}
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        assert candidate_mod.filter_base_resume_to_structure(
+            {"experience": jobs}, {"experience"}
+        ) == {"experience": jobs}
+
+    def test_education_title_maps_on_seven_only(self) -> None:
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            [{"label": "Education & Certifications", "content": "CSM"}],
+            self._seven(),
+        )
+        assert content["education_certifications"] == "CSM"
+        assert "education_certifications" in structure["sections"]
+        assert (
+            structure["sections"]["education_certifications"]["format"]
+            == RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["education_certifications"]
+        )
