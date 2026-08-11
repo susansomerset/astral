@@ -18,7 +18,6 @@ from src.utils.config import (
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
-    RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
 )
@@ -4723,6 +4722,8 @@ class TestAst1305HopsContentBlobsAndLegacyLabels:
             assert spec["title"] == title
             assert spec["enabled"] is True
             assert spec["job_agent_editable"] is True
+            from src.utils.config import RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
+
             assert spec["format"] == RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
 
     def test_ingest_dict_extra_id_and_slug_collision(self) -> None:
