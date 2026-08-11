@@ -142,7 +142,7 @@ def get_candidate_resume_structure(candidate_id):
         sections_map.items(),
         key=lambda kv: (
             kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
-            sid,
+            kv[0],
         ),
     ):
         if not isinstance(spec, dict):
