@@ -452,3 +452,17 @@ Joan plan-rubric verdict attached (APPROVED). No statute `violates` rows. No fix
 
 context_tokens≈58000
 — Radia
+
+## Resolution
+
+**Date:** 2026-08-11  
+**Publish ref:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`
+
+| Finding | Action |
+|---------|--------|
+| **discuss** — Joan excluded test-tree; tip includes tests + bible | Closed — no product change. Engineer `code()` commits stay the six TSX files + `App.css`; `test(AST-1302)` + `merge-tests` are expected Tests Passed artifacts. |
+| **discuss** — `test(AST-1302)` vs `orch.roles.betty-owns-test-tree` | Closed for this ticket — Radia marked not fix-now on icon-control product work. Ownership exception is Chuckles/Susan pipeline, not a 1302 code change. |
+| **discuss** — CollapsiblePanel chevron visual | Closed — accept catalog `.icon-control` (Joan + Radia non-blocking). No pixel-parity restore. |
+| **advisory** — Delete loses red styling | Deferred — plan + `pattern.ui.icon-control` forbid per-site color / `btn danger` combo. Future catalog glyph variant is out of AST-1302. |
+
+No fix-now items. No TSX / CSS / API / config change on resolve.
