@@ -422,3 +422,137 @@ context_tokens≈78000
 
 **Publish ref:** `origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns`  
 **Product commits:** `8135c228` (shared `.btn` / `.icon-control` CSS), `d8221e08` (approved pattern files + README/HARVEST index)
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1300
+**Publish ref:** `origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns` @ `51d38a4c8450a4b02dc06b378d38ba130bd76357`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+Diff change set: paths `canon/patterns/**`, `docs/features/interface/ast-1300-codify-button-icon-control-patterns.md`, `docs/test-bible/frontend/root.md`, `src/ui/frontend/src/App.css`; layers `docs`, `ui`; change_types `add`, `modify`. **64** active statutes scored in-session (registry cites 65; `SCHEMA.md` harness excluded).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1300)` merges Betty bible SHA onto sub tip — expected Tests Passed shape |
+| `orch.git.commit-vocabulary` | universal | conforms | `code()` / `docs()` commits use standard vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Work lands on `sub/AST-1166/AST-1300-*`, not direct-to-dev |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child publish ref under `sub/<parent>/…` |
+| `orch.git.merge-on-checkout` | universal | conforms | No rebase-of-dev signal in diff |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No forbidden git ops in artifact |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Branch name is ticket-scoped sub ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1166 epic worktree pattern |
+| `orch.git.three-permanent-branches` | universal | conforms | Sub branch off ftr/dev topology |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Catalog locked on parent; no product reopen |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 executed per binding plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Interface child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Review at Tests Passed gate |
+| `orch.roles.archie-approves-statutes` | universal | conforms | Patterns cite `approved_by: Archie` per parent lock |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Bible edit is Betty-owned path via qa-child |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to diff content |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada remains implementer through review |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path commit signal |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no `src/core/**` diff |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no agent/dispatcher diff |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no agent grading diff |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch paths |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no batch paths |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no batch paths |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no `config.py` diff |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | not-applicable | no config/dispatch diff |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env diff |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact paths |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike paths |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch diff |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no dispatch diff |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single `docs/features/interface/ast-1300-*.md` |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty bible commit touches only `docs/test-bible/**` |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer commits (`8135c228`, `d8221e08`) did not touch test-tree; bible is Betty merge |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no core/external diff |
+| `astral.layers.import-direction` | scoped | conforms | CSS-only ui change; no new imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts diff |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Presentation classes only; no state strings |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render-verdict paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API diff |
+| `astral.patterns.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | not-applicable | no render-verdict paths |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | no API diff |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON diff |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog diff |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed boot diff |
+| `astral.seed.define-approved` | scoped | not-applicable | no seed define diff |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no seed operator diff |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no seed coverage diff |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer diff |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no database/migration diff |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug logging diff |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | One shared `.btn` + `.icon-control` family; intentional parallel leftovers |
+| `astral.standards.in-scope-only` | scoped | conforms | Codify only; no JSX sweep or sibling inventory |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no runtime logging diff |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `btn`, `icon-control`, pattern slugs — no ticket ids in code |
+| `astral.standards.no-cross-contamination` | scoped | conforms | UI CSS + pattern corpus only |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Reuses `:root` tokens; `#fff` on danger copies existing `.modal-btn.danger` |
+| `astral.standards.public-then-helpers` | scoped | not-applicable | no Python module diff |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils diff |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state machine diff |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state diff |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run-chain diff |
+| `astral.ui.frontend-file-placement` | scoped | conforms | Styles appended to `App.css`; patterns in `canon/patterns/ui/` |
+| `astral.ui.naming-conventions` | scoped | conforms | Domain class names; flat pattern domain folder |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server/worker diff |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.ui.shared-button-roles` | conforms | Approved entry + `canonical_refs` match landed `.btn.*` selectors; four roles + `in-flight` on primary only |
+| `pattern.ui.icon-control` | conforms | Approved entry + `.icon-control` CSS; glyph-only guidance; separate from `btn` family |
+
+No pre-existing catalog patterns cited for reuse (`none cited` beyond the two new entries this ticket lands).
+
+## Plan adherence
+
+Stages 1–2 match the binding plan: TOC **14–15** in `App.css`; unused `.btn` / `.icon-control` rules are a literal copy of `.modal-btn.*` / `.job-list-icon-btn` baselines (including `font-family: inherit` on icon-control); two `status: approved` pattern files with SCHEMA body order and ≥1 `canonical_refs` each; `README.md` count **Nine** approved + HARVEST supporting-package and Crosswalk rows after `pattern.ui.admin-endpoint`. Engineer commits did not touch TSX, `tests/**`, `Button.tsx`, or retire legacy families. Self-Assessment **Single-Component** / **high** / **low** still matches the footprint. Betty `docs/test-bible/frontend/root.md` manifest + `merge-tests` are expected qa-child artifacts, not engineer scope creep.
+
+## Findings
+
+### discuss — Straggler: plan excluded test-tree, diff includes Betty bible
+**Location:** Joan R1–R3 Excluded `astral.git.engineer-test-tree-ban`; diff adds `docs/test-bible/frontend/root.md`
+**Finding:** Joan excluded the statute because the plan listed no test-tree paths. The publish tip three-dot diff now includes Betty’s bible manifest (`d84a27f9`) merged via `merge-tests`. Statute sweep scores the bible path in-scope; engineer product commits did not touch it.
+**Recommendation:** No engineer action. Expected Betty/qa-child + merge-tests shape at Tests Passed. Note for traceability only.
+
+### advisory — `#fff` on `.btn.danger`
+**Location:** `src/ui/frontend/src/App.css` (`.btn.danger { color: #fff; }`)
+**Finding:** Literal copy from `.modal-btn.danger` per plan Decision; not a new design choice.
+**Recommendation:** Optional future token (`--text-on-danger`) when siblings retire legacy families — not blocking AST-1300.
+
+## What's solid
+
+- CSS fidelity: new `.btn` base matches `.modal-btn` base; role colors and in-flight gold align with existing modal/dep rules; `.icon-control` matches `.job-list-icon-btn` + `font-family: inherit`.
+- Scope gate verified: no TSX `className` uses catalog `btn primary|secondary|danger` or `icon-control`; legacy families remain untouched.
+- Pattern SCHEMA/AUTHORING: required frontmatter keys, body order, approved-set discovery via README/HARVEST, direct `approved` landing per parent Architectural lock (Joan discuss item accepted).
+- Cross-ticket boundaries: no AST-1301 labeled sweep or AST-1302 icon remediation in this diff.
+
+## Frame diff
+
+| Planned (Stages 1–2 product) | Actual on tip |
+|------------------------------|---------------|
+| `App.css` TOC 14–15 + selectors | Present (`8135c228`) |
+| Two `canon/patterns/ui/*.md` + README/HARVEST | Present (`d8221e08`) |
+| No TSX / tests / bible (engineer) | Engineer commits: CSS + canon only |
+| — | `+docs/test-bible/frontend/root.md` via Betty qa-child (`d84a27f9` + merge-tests) — expected, not plan drift |
+| — | `docs/features/interface/ast-1300-*.md` on branch (issue doc) — normal |
+
+`(none)` product footprint drift.
+
+## Notes
+
+Joan plan-rubric verdict attached (`revision=1`, APPROVED). No statute `violates` rows. C7 artifact complete for Chuckles doc append + Linear upshot.
+
+context_tokens≈52000
+— Radia
