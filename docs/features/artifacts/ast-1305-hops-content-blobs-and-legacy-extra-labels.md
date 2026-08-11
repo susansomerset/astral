@@ -293,3 +293,69 @@ The plan is binding. The agent:
 - **AST-1304** renders extras by `format`; does not treat leftover prose Experience as the required Experience section; Style D when `debug=True`.
 - **AST-1306** is how operators add/title/format extras in the editor. This ticket only mints extras from legacy labels / extra ids already on the hop payload.
 - **AST-1303** already accepts extra slugs on `normalize_resume_structure` and locks `experience` format to `experience_detail`. Do not revisit that loop except by calling `normalize_resume_structure` on ingest output.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1305
+**Publish ref:** `sub/AST-1299/AST-1305-hops-content-blobs-and-legacy-extra-labels` @ `1cc15431`
+**Overall:** APPROVED
+
+## Traceability
+
+| Child AC | Plan stage(s) | Definition anchor |
+|----------|---------------|-------------------|
+| 1 — Craft-base / draft-job accept extra keys on this candidate’s base/structure; no “unknown section” solely for being outside old ten-id list | Stage 2 (flatten `_is_resume_content_section_id`, whitelist ingest); Stage 1 ingest on token path | Parent functional scope: “Craft-base and draft-job hops accept those extra keys” |
+| 2 — Job resume cannot introduce a section the candidate structure does not enable | Stage 2 (`validate_draft_job_resume_payload` unknown-key gate; tracker `_prepare_job_resume_content`) | Parent functional scope: “Job artifacts remain a subset of the candidate’s **enabled** structure ids” |
+| 3 — Abrams label/content with Highlights/Publications not dropped on ingest or token serialize | Stage 1 (`ingest_legacy_label_content_base_resume`, `format_base_resume_for_token`, PUT ingest) | Parent: “Legacy label/content arrays keep extra titles” |
+| 4 — Leftover prose Experience not persisted; Experience only as `experience_detail` array | Stage 3 (filters, split, draft validate reject prose) | Parent: “Experience content is an `experience_detail` array; leftover prose … regenerated” |
+
+Stages → child AC: Stage 1 → AC 3; Stage 2 → AC 1–2; Stage 3 → AC 4. No orphan stages.
+
+## Statute verdicts
+
+| Statute / pattern | Verdict | Rationale |
+|-------------------|---------|-----------|
+| `pattern.config.config-block` | conforms | `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` added beside existing `RESUME_STRUCTURE_*` family |
+| `astral.config.config-source-of-truth` | conforms | Extra default format + slug rules read config; no parallel catalog in core |
+| `astral.standards.no-hardcoded-sets` | conforms | Removes `KNOWN` intersection / title-map drop; `_is_resume_content_section_id` uses pattern + reserved ids |
+| `astral.agent.do-task-delegation` | conforms | Changes normalize/validate/split paths `do_task` already calls; no new Anthropic path |
+| `astral.standards.in-scope-only` | conforms | `candidate.py`, one config constant, thin `tracker` / `api_candidate`; no builder/TSX |
+| `astral.standards.dry-and-focused-functions` | conforms | Single public `ingest_legacy_label_content_base_resume` shared by token, PUT, whitelist |
+| `astral.standards.public-then-helpers` | conforms | Ingest public; slug/title helpers private |
+| `astral.layers.import-direction` | conforms | core → utils; `api_candidate` → core ingest |
+| `astral.standards.names-not-ticket-ids` | conforms | Domain names (`ingest_legacy_label_content_base_resume`, etc.) |
+| `astral.standards.no-cross-contamination` | conforms | Explicit non-goals for builder emit and editor |
+
+## Considered and excluded
+
+**Considered:** statutes/patterns in child **In scope** (above).
+
+**Excluded (boundary / sibling):**
+- `astral.standards.debug-contract-gated` — Style D builder trail is AST-1304
+- `astral.layers.ui-config-driven-business-logic` — format picker HTTP is AST-1306
+- `src/core/builder.py` HTML emit — AST-1304
+- Structure editor / TSX — AST-1306
+- `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` / `finalize_job_resume` / `BUILD_CONFIG["supported_sections"]` — schema already ignores unknown keys; out of child
+- Cover-letter shape — parent boundary
+- AST-1201 generation order — adjacent, unchanged
+- `astral.batch.claim-process-release`, `astral.dispatch.run-next-is-chain-authority` — no dispatch lifecycle change
+- `tests/`, `docs/test-bible/**` — Betty
+
+## Findings
+
+| Sev | Location | Finding | Recommendation |
+|-----|----------|---------|----------------|
+| **discuss** | Stage 2 §6 (`tracker._prepare_job_resume_content`) | Child AC 2 / parent functional scope require job ⊆ **enabled** structure ids. Stage 2 step 6 re-injects base-whitelist keys dropped by `filter_content_to_resume_structure` (enabled-only) so Abrams extras can persist before structure is saved on disk. Deliberate, but tensions with strict “does not enable” wording if a base key exists while the persisted structure row is disabled or absent. | Confirm product intent: keep bridge for un-ingested extras, or intersect `allowed` with `enabled_resume_section_ids(resolve_resume_structure(cd))` (possibly after in-memory ingest) before re-inject. |
+| **acceptable** | Traceability table in plan doc | Plan doc labels child work as parent AC 5–8; Linear child ACs are 1–4. | Cosmetic; mapping is correct. |
+| **acceptable** | Stage 3 `filter_content_to_resume_structure` | AST-1304 sibling also widens this helper for format emit. | Merge-order coordination on `origin/ftr/AST-1299`; not a plan defect for this child. |
+
+**Tip verification:** On worktree tip, `format_base_resume_for_token` still drops unmatched labels (`title_to_id` miss at lines 2080–2082), `draft_job_resume_allowed_section_keys` is `base ∩ KNOWN` dict-only, `_flatten_craft_resume_section_strings` gates on `RESUME_STRUCTURE_KNOWN_SECTION_IDS` — all named sites the plan targets. AST-1303 `RESUME_STRUCTURE_EXTRA_ID_PATTERN` / `normalize_resume_structure` extras are present; `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` is not yet (Stage 1 adds it). Dependency merge note in execution contract is appropriate.
+
+**Self-assessment:** Single-Component / high conf / medium risk — honest; sites and failure modes are specific.
+
+context_tokens≈38000
+— Joan
+
+---
