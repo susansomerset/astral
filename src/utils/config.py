@@ -40,6 +40,7 @@ Config sections:
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
+  INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases GAZE_EMAIL_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals for gaze_email (AST-1089; renamed AST-1212)
@@ -2582,6 +2583,18 @@ assert all(
     for e in CANDIDATE_STAGE_DISPATCH.values()
     if "auto_mode" in e
 )
+# AST-1313: one bind rule for Manage Email / Avail / gaze_email / Land Meteorite / create rematch.
+# header_order is the only allowed sequence (From unique hit wins; To is fallback).
+# inbox_address is the product mailbox identity — same object as GAZE_EMAIL_CONFIG["account_address"].
+# Live OAuth user remains GMAIL_USER environ; do not read os.environ here.
+INBOX_BIND_CONFIG = {
+    "header_order": ("from", "to"),
+    "inbox_address": GAZE_EMAIL_CONFIG["account_address"],
+}
+assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
+assert INBOX_BIND_CONFIG["inbox_address"] == GAZE_EMAIL_CONFIG["account_address"]
+assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
+assert "@" in INBOX_BIND_CONFIG["inbox_address"]
 # AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
 # AST-1212: live task_key is meteorite_email (formerly parse_meteorite_email).
 # Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
