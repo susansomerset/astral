@@ -528,3 +528,66 @@ context_tokens≈110000
 ## Resolution
 
 **2026-08-11** — Radia **FIX-NOW**. Reverted the out-of-plan `filter_content_to_resume_structure` hunk in `src/core/candidate.py` to the AST-1303 loop (job-array only on `experience`; string values otherwise). That content-shape widening belongs on AST-1305. Advisory exported editor types left as-is.
+
+## Bug: AST-1323 — Structure editor collapsible header row with body between
+
+### As-is
+On Base Resume Content, structure fields (title, format select, enabled, "Job agent editable", up/down, Remove) live in a flat `ResumeStructureEditor` panel above the accent bar. Section body text is edited separately in `ArtifactEditor` collapsible panels lower on the page, so structure controls and body text are not interleaved.
+
+### To-be
+Per section, one `CollapsiblePanel` header row holds: section title (label), format type select, enabled, **Job edit** (short label, same `job_agent_editable` field), and up/down. That section's body text appears in the panel body between headers (not in a separate stack at the bottom of the page). Add-section / required-cannot-remove / catalog-driven formats still hold from AST-1306.
+
+### Repro
+1. Open Artifacts → Base Resume Content with a candidate that has a resolved resume structure (default ten or seven + extras).
+2. Observe the flat structure control rows at the top and the section text editors only in the `ArtifactEditor` stack below the accent bar.
+3. Confirm structure controls are not on the same collapsible header as the section body.
+
+### Root cause
+AST-1306 Stage 2 shipped structure authoring as a standalone flat list (`ResumeStructureEditor`) stacked above an unchanged `ArtifactEditor`. The page never placed structure controls on `CollapsiblePanel` headers that already wrap each section body.
+
+### Proposed change
+UI-only. Do not change GET/PUT `/resume_structure`, slug/prepare, normalize, or config catalog.
+
+1. In `src/ui/frontend/src/components/ArtifactEditor.tsx`, add optional authoring props used only by Base Resume Content (do **not** pass them from `JobAnalysisReportModal`):
+   - `structureCatalog: Catalog | null`
+   - `structureRows: SectionRow[]`
+   - `onStructureRowsChange: (rows: SectionRow[]) => void`
+   - `onStructureSave: (rows: SectionRow[]) => void`
+   - `structureSaving: boolean`
+   - `structureError: string | null`
+   Import `Catalog` / `SectionRow` from `./ResumeStructureEditor` (or move those types into a tiny shared type export in that file and keep importing them).
+
+2. When `useCandidateResumeStructure && structureCatalog != null`:
+   - Keep the existing collapsible stack + `LabeledTextArea` body (section text between headers).
+   - Replace the structureMode header `label`/`actions` so each `CollapsiblePanel` header is a **single row** containing, in order: title `<input className="dep-input">`, format `<select>` options from `structureCatalog.body_formats` only (same rules as today's editor: locked for contact/`experience`), Enabled checkbox (`disabled` when `row.required`), **Job edit** checkbox (label text exactly `Job edit`, still bound to `job_agent_editable`), Up / Down buttons (reindex `order` via `onStructureRowsChange`), Remove only when `!row.required`.
+   - Map each rail tab to its `structureRows` entry by section id (`tab.id` / shape key). If a tab has no matching row, render the body as today without authoring controls.
+   - Title edits update `structureRows[].title` (id unchanged). Format / enabled / job-edit / reorder / remove update `structureRows` the same way `ResumeStructureEditor` does today.
+   - Below the stack: keep Generate/Save chrome; add the Add-section row (title + format from catalog + `Add section` creating `_pending_*` id) and a `Save sections` button that calls `onStructureSave(structureRows)`. Show `structureError` when non-null.
+   - Do **not** hardcode a format-name array in TSX.
+
+3. In `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx`:
+   - Remove the standalone `<ResumeStructureEditor … />` above the accent bar.
+   - Pass `structureCatalog={catalog}`, `structureRows={allSections}`, `onStructureRowsChange={setAllSections}`, and the existing `saveStructure` / `structureSaving` / `structureError` into `ArtifactEditor`.
+   - Keep accent bar + toast. Keep `structureSections` derived from GET `sections` for tab labels until structure save refetches (after save, `applyStructurePayload` already refreshes both).
+
+4. In `src/ui/frontend/src/components/ResumeStructureEditor.tsx`: keep the file as the type export source (`Catalog`, `SectionRow`). Remove the default-exported flat editor UI if nothing imports it after step 3, ** leave a thin re-export module with types only — do not leave a second visible structure UI on the page.
+
+5. In `src/ui/frontend/src/App.css`: add/adjust rules so structure header controls sit on one `collapsible-panel-header` row (flex, gap, wrap allowed). Reuse `.dep-input`. Drop unused `.base-resume-structure-row` rules only if nothing else references them after the move.
+
+⚠️ **Decision:** Authoring lives on `ArtifactEditor` headers when catalog props are passed — not a second collapsible stack in `ResumeStructureEditor`. `JobAnalysisReportModal` keeps read-only structure tabs (no catalog props).
+
+⚠️ **Decision:** Content save (base_resume) stays ArtifactEditor Save/autosave; structure persist stays the existing PUT replace via `Save sections` / `saveStructure`. Do not fold structure into the content Save body in this bug.
+
+### Blast radius
+- `ArtifactEditor` structureMode is also used by `JobAnalysisReportModal` — must remain unchanged unless catalog/authoring props are passed.
+- Betty Vitest: `tests/component/frontend/components/test_ResumeStructureEditor.test.tsx`, `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` assume a standalone editor; expect **fix-board** / **qa-fix** to revise those tests.
+- API/core/config contracts from AST-1306 are untouched.
+
+### What must still hold
+- Format `<option>`s come only from GET `catalog.body_formats` (AST-1306 AC / no-hardcoded-sets).
+- Required sections: no Remove; enabled checkbox disabled; cannot omit required ids on save (AST-1306 AC5 / parent AC7).
+- Title change on a required section keeps the same section id (AST-1306 AC3).
+- Format change on an optional section keeps the same section id (AST-1306 AC4).
+- PUT `/data` replaces `sections` when that key is sent; accent-only PUT leaves sections alone.
+- `_pending_*` add still slugs from title in core on save.
+- No print CSS / hop changes (AST-1304 / AST-1305).
