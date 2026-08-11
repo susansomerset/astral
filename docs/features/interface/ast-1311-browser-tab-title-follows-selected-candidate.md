@@ -158,3 +158,117 @@ context_tokens≈14000
 **Built:** `origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` @ `acea55004bb8b60c94d98256cb936e5c5b873d7f`
 
 Stage 1: `browserTabTitle` in `lib/documentTitle.ts`; `CandidateProvider` applies `document.title` from selected `full` and resets to `Astral` on unmount. Tests deferred to Betty.
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1311
+**Publish ref:** `origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` @ `0cfab525b4c1333b0f63fdaf369360a006d190c6`
+**Overall:** CLEAN
+
+**Diff:** `origin/dev` (`8577bd5f`)…`origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` (no fetch; Ask mode — local tracking refs).
+**Change set:** layers `{ui, docs}`; change_types `{add, modify}`.
+**Paths:** `src/ui/frontend/src/lib/documentTitle.ts` (A), `src/ui/frontend/src/contexts/CandidateContext.tsx` (M), `docs/features/interface/ast-1311-browser-tab-title-follows-selected-candidate.md` (A), `docs/test-bible/frontend/{lib,contexts}.md` (M), `tests/component/frontend/{lib/test_documentTitle.test.ts,contexts/test_CandidateContext.test.tsx}` (A).
+
+Active harvested registry: **64** rows (README footer says 65 — see Notes). Retired ignored.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | layers `{core,utils}` ∩ `{ui,docs}` empty |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | layers `{core}` ∩ `{ui,docs}` empty |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | layers `{core}` ∩ `{ui,docs}` empty |
+| `astral.batch.batch-id-first` | scoped | not-applicable | layers `{data,core}` ∩ `{ui,docs}` empty |
+| `astral.batch.batch-id-format` | scoped | not-applicable | layers `{core,data}` ∩ `{ui,docs}` empty |
+| `astral.batch.claim-process-release` | scoped | not-applicable | layers `{core,data}` ∩ `{ui,docs}` empty |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | layers `{core,data}` ∩ `{ui,docs}` empty |
+| `astral.config.config-source-of-truth` | scoped | conforms | `Astral` is presentation chrome (plan + Joan); not a config/state set |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | no secrets / env lookups |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no artifacts/debug paths (file cursorignored; inferred from id) |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no `debug/` spike paths (file cursorignored; inferred from id) |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | layers `{core,utils}` ∩ `{ui,docs}` empty |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | layers `{core,utils}` ∩ `{ui,docs}` empty |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single `docs/features/interface/ast-1311-….md` |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | `test`/`merge-tests` touch bible+tests only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | `code(AST-1311)` is the two `src/ui/frontend` files only |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | layers `{core,external}` ∩ `{ui,docs}` empty |
+| `astral.layers.import-direction` | scoped | conforms | context → `../lib/documentTitle` only; no data/external |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers `{scripts}` ∩ `{ui,docs}` empty |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | renders list `full` only; no first+last / `candidateLabel` |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | layers `{core}` ∩ `{ui,docs}` empty |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | layers `{core}` ∩ `{ui,docs}` empty |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | no API routes; `CandidateProvider` still under `RequireAuth` |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | layers `{core,data,utils}` ∩ `{ui,docs}` empty |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | layers `{core,utils}` ∩ `{ui,docs}` empty |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | layers `{core,data,utils,scripts}` ∩ `{ui,docs}` empty |
+| `astral.seed.define-approved` | scoped | conforms | no product seed invented |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | layers `{core,data,utils}` ∩ `{ui,docs}` empty |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | layers `{core,data,utils}` ∩ `{ui,docs}` empty |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | no data-layer log/swallow in this diff |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | layers `{data}` ∩ `{ui,docs}` empty |
+| `astral.standards.debug-contract-gated` | scoped | conforms | no `debug=` / contract emission; SPA chrome only |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | one formatter; apply + unmount both call it |
+| `astral.standards.in-scope-only` | scoped | conforms | planned two `src` files; forbidden nav/Profile/builder/`index.html` untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | no `print` / `getLogger` |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `documentTitle` / `browserTabTitle` are domain names |
+| `astral.standards.no-cross-contamination` | scoped | conforms | stays in frontend `lib/` + `contexts/` |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | no state/enum sets; title literals are AC chrome |
+| `astral.standards.public-then-helpers` | scoped | conforms | single public export; context layout unchanged |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | layers `{utils}` ∩ `{ui,docs}` empty |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | layers `{core,data}` ∩ `{ui,docs}` empty |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | layers `{core,data,utils}` ∩ `{ui,docs}` empty |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | layers `{core}` ∩ `{ui,docs}` empty |
+| `astral.ui.frontend-file-placement` | scoped | conforms | helper in `lib/`; sync in existing `contexts/` |
+| `astral.ui.naming-conventions` | scoped | conforms | camelCase lib module matches peers (`analysisUpshot.ts`) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | no worker / server process change |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1311)` @ `0cfab525` ← `f5dcc87c` |
+| `orch.git.commit-vocabulary` | universal | conforms | `plan` / `docs` / `code` / `test` / `merge-tests` only |
+| `orch.git.flow-direction-inviolable` | universal | conforms | three-dot vs `origin/dev`; publish ref is `sub/…` |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` |
+| `orch.git.merge-on-checkout` | universal | conforms | epic worktree on publish ref = origin tip |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear docs→code→test→merge-tests; no rewrite signals |
+| `orch.git.no-dev-agent-branches` | universal | conforms | not `dev-*` / agent-named |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | `/home/susan/astral-AST-1307/` |
+| `orch.git.three-permanent-branches` | universal | conforms | no new permanent branch |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | placement / `full`-only / no helmet decided in plan; code did not reopen |
+| `orch.pipeline.plan-is-bible` | universal | conforms | formatter + two effects match Stage 1 verbatim |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Interface child; isolated review |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | spawn Status `Tests Passed` → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no `canon/statutes/**` in diff |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | bible + Vitest via `test` + `merge-tests` |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Katherine Johnson |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | implementer remains assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | engineer `code` commit has no banned test-tree paths |
+
+### Pattern conformance
+
+none cited
+
+Parent / Joan: “no established pattern applies.” Diff is one-place `document.title` chrome from list `full`. Does not match approved catalog `# Problem` shapes (batch claim, state transitions, config-block, import-discipline, admin-endpoint, shared-button, icon-control, score-floor).
+
+### Plan adherence
+
+Stage 1 landed as specified: `browserTabTitle` is the exact export; `CandidateProvider` has two new effects (not folded into timezone) on `[selectedId, candidates]` and unmount cleanup → `Astral`. Import is top-level with other `lib/` imports. `index.html` still `<title>Astral</title>`. `routes.tsx` still mounts `CandidateProvider` once under `RequireAuth` (Authenticate outside). No `candidateLabel`, no first+last join, no helmet/pathname, no Profile/builder/`config.py`/`NavigationShell`. Self-Assessment Single-Component / high / low matches the footprint. Relations: none — no sibling smuggle.
+
+C6 §5a–§5g: top-level import; no UI→data/external; no new swallow; `?? ""` / missing-row → `Astral` is the AC; no logging; no hardcoded state sets; no batch/debug/external surfaces. §5f/§5g not triggered.
+
+### Findings
+
+(none)
+
+### Frame diff
+
+New `lib/documentTitle.ts` (`Astral` / `Astral - <trimmed full>`). `CandidateContext.tsx` applies `document.title` from selected list-row `full` and resets on provider unmount. Betty: `test_documentTitle.test.ts` + `CandidateProvider — AST-1311` cases; bible `frontend/lib.md` + `frontend/contexts.md`. Issue doc plan + Joan APPROVED + build stub.
+
+### Notes
+
+- Joan excluded `orch.*` at plan time (“pipeline, not product”). Code-rubric universals still scored `conforms` — not a C4 product straggler.
+- Harvested table = 64 active ids; README says 65. Downstream canon hygiene, not this child.
+- `astral.debug.*` files are `.cursorignore`’d; N/A from id + absence of artifacts/spike paths.
+- Pre-existing bible header `tests/component/contexts/` vs real `tests/component/frontend/contexts/` — Betty optional; not in this `src` diff.
+- Ask mode: no fetch, no `docs()`, no Linear write.
+
+context_tokens≈28000
+— Radia
