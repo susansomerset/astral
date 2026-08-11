@@ -5365,6 +5365,7 @@ RESUME_STRUCTURE_RESERVED_EXTRA_IDS = (
     "accent_color",
     "content",
 )
+RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT = "bullet_list"
 RESUME_STRUCTURE_DEFAULT = {
     "sections": {
         "candidate_name": {
