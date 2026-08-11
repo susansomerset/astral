@@ -4514,3 +4514,11 @@ class TestAst1303ResumeStructureCatalog:
         for sid, fmt in cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.items():
             assert sections[sid]["format"] is fmt
         assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+
+
+class TestAst1306ResumeStructureCatalog:
+    """AST-1306: new-extra default format for the editor add-row."""
+
+    def test_new_extra_default_format_is_bullet_list(self) -> None:
+        assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT == "bullet_list"
+        assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT in cfg.RESUME_STRUCTURE_BODY_FORMATS

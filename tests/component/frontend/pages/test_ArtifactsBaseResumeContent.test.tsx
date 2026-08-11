@@ -118,8 +118,9 @@ describe("ArtifactsBaseResumeContent", () => {
   it("renders accent swatches and saves to resume_structure", async () => {
     renderWithProviders(<ArtifactsBaseResumeContent />)
     await waitFor(() => expect(screen.getByRole("group", { name: "Resume accent color" })).toBeInTheDocument())
-    const selected = await screen.findByRole("button", { name: "#445566" })
-    expect(selected).toHaveAttribute("aria-pressed", "true")
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "#445566" })).toHaveAttribute("aria-pressed", "true"),
+    )
     fireEvent.click(screen.getByRole("button", { name: "#112233" }))
     await waitFor(() => expect(screen.getByText("Accent color saved")).toBeInTheDocument())
     const putCall = mockedApi.mock.calls.find(
@@ -143,5 +144,79 @@ describe("ArtifactsBaseResumeContent", () => {
     await userEvent.click(screen.getByRole("button", { name: "Select c2" }))
     await waitFor(() => expect(screen.getByDisplayValue("Candidate two body")).toBeInTheDocument())
     expect(screen.queryByDisplayValue("Saved summary")).not.toBeInTheDocument()
+  })
+
+  it("AST-1306: renders editor from GET catalog and PUTs sections without accent", async () => {
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [],
+      extra_id_pattern: "^[a-z][a-z0-9_]*$",
+      reserved_extra_ids: ["content"],
+      new_extra_default_format: "bullet_list",
+    }
+    const allSections = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+      },
+    ]
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/system/ui_config") {
+        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
+      }
+      if (url === "/api/candidates/c1/resume_structure" && !init) {
+        return {
+          json: async () => ({
+            sections: [{ id: "professional_summary", label: "Summary" }],
+            all_sections: allSections,
+            accent_color: "#112233",
+            catalog,
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({ candidate_data: { artifacts: { base_resume: { professional_summary: "Saved summary" } } } }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByText("Resume sections")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Base Resume Content" })).toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument()
+    const formatOptions = Array.from(screen.getAllByRole("combobox")[0].querySelectorAll("option")).map(
+      o => o.textContent,
+    )
+    expect(formatOptions).toEqual(catalog.body_formats)
+    fireEvent.click(screen.getByRole("button", { name: "Save sections" }))
+    await waitFor(() => expect(screen.getByText("Resume sections saved")).toBeInTheDocument())
+    const putCall = mockedApi.mock.calls.find(
+      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
+    )
+    const body = JSON.parse(String(putCall?.[1]?.body))
+    expect(body.artifacts.resume_structure.sections.professional_summary.title).toBe("Summary")
+    expect(body.artifacts.resume_structure.accent_color).toBeUndefined()
   })
 })

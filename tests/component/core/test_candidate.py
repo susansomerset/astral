@@ -4572,3 +4572,41 @@ class TestAst1303ResumeStructureCatalog:
         assert out["sections"]["experience"]["format"] == "experience_detail"
         assert set(RESUME_STRUCTURE_BODY_FORMATS) >= {"bullet_list", "experience_detail"}
 
+
+# Branches: slug title→id; reserved/empty reject; pending rekey; duplicate after slug.
+class TestAst1306ResumeStructureSavePrep:
+    """AST-1306: slug_resume_section_id + prepare_resume_structure_sections_for_save."""
+
+    def test_slug_from_title_and_rejects_reserved_or_empty(self) -> None:
+        assert candidate_mod.slug_resume_section_id("Highlights") == "highlights"
+        assert candidate_mod.slug_resume_section_id("  Prior Experience  ") == "prior_experience"
+        with pytest.raises(ValueError, match="invalid extra section title"):
+            candidate_mod.slug_resume_section_id("!!!")
+        with pytest.raises(ValueError, match="invalid extra section id"):
+            candidate_mod.slug_resume_section_id("Content")
+
+    def test_prepare_rekeys_pending_and_rejects_duplicate_slug(self) -> None:
+        raw = _required_seven_structure()["sections"]
+        raw["_pending_0"] = {
+            "id": "_pending_0",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 10,
+            "format": "bullet_list",
+            "job_agent_editable": True,
+        }
+        out = candidate_mod.prepare_resume_structure_sections_for_save(raw)
+        assert "highlights" in out
+        assert out["highlights"]["id"] == "highlights"
+        assert "_pending_0" not in out
+        raw["_pending_1"] = {
+            "id": "_pending_1",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 11,
+            "format": "bullet_list",
+            "job_agent_editable": True,
+        }
+        with pytest.raises(ValueError, match="duplicate section id after slug"):
+            candidate_mod.prepare_resume_structure_sections_for_save(raw)
+
