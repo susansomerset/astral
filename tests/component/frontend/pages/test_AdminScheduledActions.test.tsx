@@ -1272,6 +1272,21 @@ describe("AdminScheduledActions", () => {
     }, 20000)
   })
 
+  it("AST-1301: labeled actions use catalog classes", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "+ Add Task" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "Stop All" })).toHaveClass("btn", "danger")
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Stop" })).toHaveClass("btn", "danger")
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const kill = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    expect(within(kill).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).toHaveClass("btn", "danger")
+  }, 20000)
+
   it("AST-1302: Add Task and Kill Running × are icon-control", async () => {
     mockApi(true)
     renderWithProviders(<ScheduledActions />)
