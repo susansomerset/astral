@@ -118,3 +118,34 @@ List enrichment: each row gets `candidate_match` (`matched` + `astral_candidate_
   tests/component/core/test_inbox.py::TestAst1135InboxBoundCounts \
   -q
 ```
+
+### AST-1313 · AST-1308
+
+**Parent:** [AST-1308 — Email bind where email is in the To: field (alone)](https://linear.app/astralcareermatch/issue/AST-1308/email-bind-where-email-is-in-the-to-field-alone). **Publish:** `origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source`.
+
+From unique hit wins; otherwise To binds only when exactly one remaining address after ignoring `INBOX_BIND_CONFIG["inbox_address"]` (alias of `GAZE_EMAIL_CONFIG["account_address"]`). Same helper for list enrichment and create rematch. Style D `func="inbox_bind"` (`bind_header` / `bind_address`); `candidate_match` stays `{matched, astral_candidate_id}`. Raw To field is **AST-1312**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `INBOX_BIND_CONFIG` | `src/utils/config.py` | **`tests/component/utils/test_config.py::TestAst1313InboxBindConfig`** |
+| From-then-To list + create rematch + Style D | `src/core/inbox.py` | **`TestAst1313FromThenToBind`**; revised **`TestAst1047InboxFromBind::test_list_debug_emits_style_d`** (`inbox_bind`) |
+| Auth unchanged (AC6) | `src/ui/api/api_inbox.py` | existing **`TestAst1033InboxApi`** list/get auth; **`TestAst1049InboxCreateJobApi::test_create_job_requires_auth`**; **`TestAst1141InboxLandMeteoriteApi::test_land_meteorite_requires_auth`** |
+
+**Broken / obsolete:** **`TestAst1047InboxFromBind::test_list_debug_emits_style_d`** asserted `func="inbox_from_bind"` / `from_address=` — product now emits `inbox_bind` + `bind_header` / `bind_address` (revised).
+
+**Integration:** none — no existing inbox bind scenario; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1313InboxBindConfig \
+  tests/component/core/test_inbox.py::TestAst1047InboxFromBind \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi::test_list_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi::test_get_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi::test_create_job_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi::test_land_meteorite_requires_auth \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.

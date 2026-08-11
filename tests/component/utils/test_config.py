@@ -4529,3 +4529,16 @@ class TestAst1305ResumeStructureExtraDefault:
 
     def test_extra_default_format_is_bullet_list(self) -> None:
         assert cfg.RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "INBOX_BIND_CONFIG"),
+    reason="AST-1313 INBOX_BIND_CONFIG not on this publish tip",
+)
+class TestAst1313InboxBindConfig:
+    def test_header_order_and_inbox_address_alias(self) -> None:
+        bind = cfg.INBOX_BIND_CONFIG
+        assert bind["header_order"] == ("from", "to")
+        assert bind["inbox_address"] == cfg.GAZE_EMAIL_CONFIG["account_address"]
+        assert isinstance(bind["inbox_address"], str)
+        assert "@" in bind["inbox_address"]
