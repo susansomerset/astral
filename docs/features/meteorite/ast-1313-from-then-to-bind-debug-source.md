@@ -359,3 +359,15 @@ No orphan stages. Parent mailbox-To exposure correctly deferred to AST-1312 (pre
 
 context_tokens≈55000
 — Joan
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source`
+**Plan path:** `docs/features/meteorite/ast-1313-from-then-to-bind-debug-source.md`
+
+**Built tip:** `b5ed286ca98fd4b9e665e92f8619ae4e7aa414db` (`b5ed286c`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `8ce2d70c` | `INBOX_BIND_CONFIG` header order + inbox address alias |
+| 2 | `b5ed286c` | `_bind_inbox_message` list enrichment + create rematch + Style D |
