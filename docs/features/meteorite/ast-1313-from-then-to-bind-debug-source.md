@@ -523,3 +523,13 @@ context_tokens≈55000
 
 context_tokens≈48000
 — Radia
+
+## Resolution — 2026-08-11
+
+**Review tip:** `21b547f6` (`docs(AST-1313): Radia review — CLEAN`) — Overall **CLEAN**.
+
+- **fix-now:** none.
+- **Discuss:** none.
+- **Advisory:** none (ambiguous-From → To fallback left as planned).
+- **Product / plan code:** unchanged this pass (resolve clean).
+- **Hygiene:** replayed plan/code/test/docs onto `origin/ftr/AST-1308-email-bind-where-email-is-in-the-to-field-alone` so the sub range has no `Merge remote-tracking branch` subject. Betty `merge-tests(AST-1313): origin/tests 94163472e21d521ccf9fce69764ee32e7caef5be` recreated as `0e52aed9`.
