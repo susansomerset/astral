@@ -4610,3 +4610,56 @@ class TestAst1306ResumeStructureSavePrep:
         with pytest.raises(ValueError, match="duplicate section id after slug"):
             candidate_mod.prepare_resume_structure_sections_for_save(raw)
 
+
+class TestAst1304FilterContentToResumeStructure:
+    """AST-1304: filter keep-loop widens extras; leftover Experience prose stays in the dict."""
+
+    def _structure(self) -> dict[str, Any]:
+        raw = candidate_mod.default_resume_structure()
+        raw["sections"]["highlights"] = {
+            "id": "highlights",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 10,
+            "job_agent_editable": True,
+            "format": "bullet_list",
+        }
+        raw["sections"]["consulting_roles"] = {
+            "id": "consulting_roles",
+            "title": "Consulting",
+            "enabled": True,
+            "order": 11,
+            "job_agent_editable": True,
+            "format": "experience_detail",
+        }
+        return raw
+
+    def test_keeps_leftover_experience_prose(self) -> None:
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"experience": "leftover prose", "orphan_section": "drop"},
+            self._structure(),
+        )
+        assert out["experience"] == "leftover prose"
+        assert "orphan_section" not in out
+
+    def test_keeps_extra_job_array_on_any_enabled_id(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"consulting_roles": jobs},
+            self._structure(),
+        )
+        assert out["consulting_roles"] == jobs
+
+    def test_coerces_extra_scalar_list_to_newline_string(self) -> None:
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"highlights": ["Won award", "Spoke at PyCon"]},
+            self._structure(),
+        )
+        assert out["highlights"] == "Won award\nSpoke at PyCon"
+
+    def test_drops_mixed_dict_list_that_is_not_a_job_array(self) -> None:
+        out = candidate_mod.filter_content_to_resume_structure(
+            {"highlights": [{"x": 1}, "nope"]},
+            self._structure(),
+        )
+        assert "highlights" not in out

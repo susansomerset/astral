@@ -273,7 +273,16 @@ class TestBuilderHelpers:
             {
                 "professional_summary": "Lead",
                 "core_competencies": "Python",
-                "experience": "Role",
+                # leftover Experience prose is not a section (AST-1304); job array still emits
+                "experience": [
+                    {
+                        "company": "Acme",
+                        "title": "Eng",
+                        "dates": "2020",
+                        "location": "",
+                        "accomplishments": "Shipped",
+                    }
+                ],
                 "prior_experience": "Earlier",
                 "education_certifications": "School",
                 "technical_skills": "SQL",
@@ -836,7 +845,9 @@ class TestAst987BuildSessionBaseResume:
             },
         )
         assert "Paste summary" in html
-        assert "Paste jobs" in html
+        # AST-1304: leftover Experience prose is not printed (job array still is).
+        assert "Paste jobs" not in html
+        assert 'id="experience"' not in html
         # Name from paste section strings — not profile (get_candidate never called).
         assert "Session User" in html
         get_c.assert_not_called()
@@ -958,8 +969,11 @@ class TestAst998ExperienceJobRender:
             self._structure(),
             {"professional_summary": "Summary", "experience": "Legacy prose blob"},
         )
-        assert "Legacy prose blob" in html
+        # AST-1304: required Experience has no prose-block fallback.
+        assert "Legacy prose blob" not in html
+        assert 'id="experience"' not in html
         assert '<article class="role">' not in html
+        assert "Summary" in html
 
     def test_base_resume_renders_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
@@ -3200,3 +3214,276 @@ class TestAst1165SignoffNewlineToBr:
         assert "<img" not in signoff
         assert "Susan Somerset<br>Senior Product Manager" in signoff
         assert "{$SIGNATURE_IMAGE}" not in signoff
+
+_AST1304_JOB = {
+    "company": "Acme Corp",
+    "title": "Engineer",
+    "dates": "2020-2023",
+    "location": "Remote",
+    "accomplishments": "Shipped widgets",
+}
+
+
+def _ast1304_catalog(**section_overrides: Any) -> dict[str, Any]:
+    """Default ten-id catalog plus optional extra specs (highlights, publications, …)."""
+    raw = builder_mod.candidate_mod.default_resume_structure()
+    raw["sections"].update(section_overrides)
+    return raw
+
+
+def _ast1304_extra(sid: str, title: str, fmt: str | None, order: int) -> dict[str, Any]:
+    spec: dict[str, Any] = {
+        "id": sid,
+        "title": title,
+        "enabled": True,
+        "order": order,
+        "job_agent_editable": True,
+    }
+    if fmt is not None:
+        spec["format"] = fmt
+    return spec
+
+
+class TestAst1304BuilderEmitByFormat:
+    """AST-1304: emit by format, bullet_list, emphasis, skip leftover Experience prose, Style D."""
+
+    def test_emphasis_helper_restores_closed_tags_and_escapes_the_rest(self) -> None:
+        fn = builder_mod._emit_inline_emphasis_html
+        assert fn("") == ""
+        assert fn("Hello <I>Ada</I>") == "Hello <i>Ada</i>"
+        assert fn('x <i onclick="x">nope</i> y') == "x &lt;i onclick=&#34;x&#34;&gt;nope&lt;/i&gt; y"
+        assert "<script>" not in fn("<script>alert(1)</script>")
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in fn("<script>alert(1)</script>")
+
+    def test_bullet_list_helper_skips_blank_lines(self) -> None:
+        html = builder_mod._emit_bullet_list_html("Won award\n\n  \nSpoke\n")
+        assert html.startswith("      <ul>\n")
+        assert "<li>Won award</li>" in html
+        assert "<li>Spoke</li>" in html
+        assert builder_mod._emit_bullet_list_html("  \n\n") == ""
+
+    def test_highlights_and_publications_print_as_bullet_lists_in_order(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog(
+            highlights=_ast1304_extra("highlights", "Highlights", "bullet_list", 10),
+            publications=_ast1304_extra("publications", "Publications", "bullet_list", 11),
+        )
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "professional_summary": "Pitch",
+                "highlights": "Won award\nSpoke at PyCon",
+                "publications": ["Paper A", "Paper B"],
+            },
+        )
+        h2 = html.index(">Highlights</h2>")
+        p2 = html.index(">Publications</h2>")
+        assert h2 < p2
+        assert "<li>Won award</li>" in html
+        assert "<li>Spoke at PyCon</li>" in html
+        assert "<li>Paper A</li>" in html
+        assert "<li>Paper B</li>" in html
+        assert "section ul, .role ul" in html
+        assert "section li, .role li" in html
+
+    def test_format_change_swaps_treatment_same_dom_id(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog()
+        blob = {"education_certifications": "MIT\nStanford"}
+        default_html = builder_mod.build_session_base_resume(structure, blob)
+        assert 'id="education"' in default_html
+        assert 'class="education-list"' in default_html
+        assert "<li>MIT</li>" not in default_html
+        structure["sections"]["education_certifications"]["format"] = "bullet_list"
+        swapped = builder_mod.build_session_base_resume(structure, blob)
+        assert 'id="education"' in swapped
+        # stylesheet still names .education-list; the section body must not use that class
+        edu = swapped.split('id="education"', 1)[1].split("</section>", 1)[0]
+        assert "education-list" not in edu
+        assert "<li>MIT</li>" in swapped
+        assert "<li>Stanford</li>" in swapped
+
+    def test_emphasis_tags_render_other_tags_escaped(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            _ast1304_catalog(),
+            {
+                "professional_summary": (
+                    "Hello <i>Ada</i> <em>Hedy</em> <b>bold</b> <strong>strong</strong> "
+                    '<script>alert(1)</script> <i onclick="x">nope</i>'
+                )
+            },
+        )
+        assert "<i>Ada</i>" in html
+        assert "<em>Hedy</em>" in html
+        assert "<b>bold</b>" in html
+        assert "<strong>strong</strong>" in html
+        assert "<script>" not in html
+        assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
+        assert "<i onclick" not in html
+
+    def test_leftover_experience_prose_skipped_job_array_emits(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog()
+        prose = builder_mod.build_session_base_resume(
+            structure, {"professional_summary": "Keep", "experience": "Leftover prose"}
+        )
+        assert "Leftover prose" not in prose
+        assert 'id="experience"' not in prose
+        assert "Keep" in prose
+        jobs = builder_mod.build_session_base_resume(
+            structure, {"experience": [dict(_AST1304_JOB)]}
+        )
+        assert 'id="experience"' in jobs
+        assert '<article class="role">' in jobs
+        assert "Acme Corp" in jobs
+
+    def test_seven_only_still_emits_header_and_enabled_bodies(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog()
+        for sid in ("prior_experience", "education_certifications", "technical_skills"):
+            structure["sections"][sid]["enabled"] = False
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "candidate_name": "Ada Lovelace",
+                "professional_summary": "Seven only",
+                "core_competencies": "Focus",
+            },
+        )
+        assert "Ada Lovelace" in html
+        assert "Seven only" in html
+        assert "Focus" in html
+        assert 'id="skills"' not in html
+        assert 'id="education"' not in html
+
+    def test_extra_experience_detail_emits_and_content_keys_include_it(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = _ast1304_catalog(
+            consulting_roles=_ast1304_extra(
+                "consulting_roles", "Consulting", "experience_detail", 12
+            ),
+        )
+        jobs = [dict(_AST1304_JOB)]
+        html = builder_mod.build_session_base_resume(
+            structure, {"consulting_roles": jobs, "professional_summary": "Pitch"}
+        )
+        assert 'id="consulting-roles"' in html
+        assert ">Consulting</h2>" in html
+        assert "Acme Corp" in html
+        keys = builder_mod._render_content_keys(
+            {"professional_summary": "Pitch", "consulting_roles": jobs, "empty": "  "}
+        )
+        assert "consulting_roles" in keys
+        assert "professional_summary" in keys
+        assert "empty" not in keys
+
+    def test_debug_true_style_d_per_enabled_section(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        indexes: list[dict[str, Any]] = []
+        details: list[str] = []
+
+        def _index(**kwargs: Any) -> None:
+            indexes.append(dict(kwargs))
+
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        structure = _ast1304_catalog(
+            highlights=_ast1304_extra("highlights", "Highlights", "bullet_list", 10),
+            consulting_roles=_ast1304_extra(
+                "consulting_roles", "Consulting", "experience_detail", 11
+            ),
+            mystery=_ast1304_extra("mystery", "Mystery", None, 12),
+        )
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "candidate_name": "Ada",
+                "professional_summary": "Pitch",
+                "experience": "Leftover prose",
+                "highlights": "Won award",
+                "consulting_roles": "not jobs",
+                "mystery": "secret",
+            },
+            debug=True,
+        )
+        assert "Pitch" in html
+        enabled = builder_mod.candidate_mod.enabled_resume_section_ids(structure)
+        section_rows = [row for row in indexes if row.get("total") == len(enabled)]
+        assert [row["index"] for row in section_rows] == list(range(1, len(enabled) + 1))
+        assert [row["identifier"] for row in section_rows] == enabled
+        by_id = {row["identifier"]: row["outcome"] for row in section_rows}
+        assert by_id["candidate_name"] == "emitted"
+        assert by_id["candidate_title"] == "skipped — empty"
+        assert by_id["professional_summary"] == "emitted"
+        assert by_id["experience"] == "skipped — leftover prose"
+        assert by_id["highlights"] == "emitted"
+        assert by_id["consulting_roles"] == "skipped — not job array"
+        assert by_id["mystery"] == "skipped — missing format"
+        assert any(
+            row.get("total") == 1 and "success" in str(row.get("outcome") or "")
+            for row in indexes
+        )
+        assert "title='Highlights' format='bullet_list'" in details
+        assert "title='Candidate Name' format=None" in details
+        assert "title='Mystery' format=None" in details
+
+    def test_debug_false_skips_per_section_trail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        called = {"index": 0}
+
+        def _index(**_k: Any) -> None:
+            called["index"] += 1
+
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        builder_mod.build_session_base_resume(
+            _ast1304_catalog(),
+            {"professional_summary": "Quiet"},
+            debug=False,
+        )
+        assert called["index"] == 0
+
+    def test_cover_letter_debug_has_no_resume_section_trail(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        indexes: list[dict[str, Any]] = []
+
+        def _index(**kwargs: Any) -> None:
+            indexes.append(dict(kwargs))
+
+        monkeypatch.setattr(builder_mod._log, "debug_index", _index)
+        monkeypatch.setattr(builder_mod._log, "debug_detail", lambda *_a, **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        builder_mod.build_session_cover_letter(
+            {
+                "from_block": "Ada Lovelace\nada@example.com",
+                "letter_date": "August 3, 2026",
+                "to_block": "",
+                "subject": "Re",
+                "letter": "Hello",
+                "signoff_closing": "Best,",
+                "signature": "Ada",
+            },
+            debug=True,
+        )
+        assert indexes
+        assert all(row.get("identifier") != "professional_summary" for row in indexes)
