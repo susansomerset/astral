@@ -383,3 +383,14 @@ Child AC1→S1–2; AC2→S1–2; AC3→S1–2 (plan doc labels these parent AC3
 — Joan
 context_tokens≈95000
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format`
+**Tip:** `cc00324c999561e4213fea9da1b7fc4e10958c4c`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| ftr | `04dcb32d` | merge `origin/ftr/AST-1299-support-alternative-resume-sections` (AST-1303 catalog) |
+| 1 | `bf147fb6` | catalog default, slug/rekey, GET `all_sections`+`catalog`, PUT replace |
+| 2 | `cc00324c` | `ResumeStructureEditor` on Base Resume Content |
+
