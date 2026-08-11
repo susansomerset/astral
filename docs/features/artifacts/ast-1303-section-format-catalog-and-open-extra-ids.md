@@ -234,3 +234,13 @@ Child AC1→S2; AC2→S2; AC3→S2; parent AC1/3/7 (normalize slice)→S2; paren
 
 — Joan
 context_tokens≈90000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids`
+**Tip:** `3ab84c5e0fa8c09bb6840b414dbadb22fa07eeab`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `3d744e02` | `RESUME_STRUCTURE_*` catalog + DEFAULT formats |
+| 2 | `3ab84c5e` | `normalize_resume_structure`: required seven, open extras, format |
