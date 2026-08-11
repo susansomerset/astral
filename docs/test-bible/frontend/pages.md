@@ -1737,3 +1737,26 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
   ../../../tests/component/frontend/components/test_ResumeStructureEditor.test.tsx
 ```
+
+---
+
+### AST-1323 · AST-1299 (bug — AST-1306 editor chrome)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1323-structure-editor-collapsible-header-row-body-between`.
+
+Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (title / format / enabled / **Job edit** / up-down); section body text stays in the panel body between headers. Standalone flat `ResumeStructureEditor` panel removed from the page. Catalog-driven formats and required-no-Remove still hold.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) header-row + body-between | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1323: structure controls on collapsible header with body between`** (bug-repro) |
+
+**Broken / obsolete this pass:** AST-1306 page cases that assume a standalone “Resume sections” panel — revise after make-fix; component `test_ResumeStructureEditor` stays type/catalog-oriented until the flat UI is removed.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1323"
+```
+
+---
+
