@@ -47,7 +47,7 @@ Equivalent harness:
 
 ### AST-998 · AST-994
 
-**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`; legacy string experience stays a single prose block. `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
+**AST-998:** Shared resume HTML emit (`build_session_base_resume` / `build_base_resume` / `build_resume_from_job`) recognizes AST-996 experience job arrays via `_emit_experience_jobs_html`. **AST-1304** removed the leftover-prose Experience fallback (string Experience is not a `div.prose-block`). `BUILD_CONFIG` experience `body_kind` = `experience_jobs` (emit still keys off value shape). Cover letter unchanged. Prompt/schema = siblings **AST-996** / **AST-997**. **Role chrome** (subheader/meta/accomplishments) was superseded by **AST-1008** golden article classes — **`TestAst998ExperienceJobRender`** asserts the current golden emit shape.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -556,3 +556,32 @@ UAT: `_html_with_signature_image_token` escapes SomersetCover signature segments
   -q
 ```
 
+### AST-1304 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format`.
+
+Resume HTML emit dispatches by each enabled section’s `format` (not by id). Highlights / Publications print as `bullet_list`. Changing an optional section’s format changes the Somerset treatment; DOM id stays the catalog map (`education` for `education_certifications`). Closed italic/bold tags render; other tags stay escaped. Required `experience` leftover prose is not printed (job arrays still emit). `filter_content_to_resume_structure` keeps leftover Experience prose and extra job-array / list-of-scalar bodies so emit can see them. `debug=True` adds one Style D header per enabled section (`emitted` / `skipped — empty` / `skipped — leftover prose` / `skipped — not job array` / `skipped — missing format`) plus `| title=… format=…`. Cover letter emit unchanged. Does **not** own hop schemas (**AST-1305**) or the structure editor (**AST-1306**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Format dispatch, bullet_list, emphasis, leftover prose skip, extra job-array emit, Style D trail | `src/core/builder.py` | **`TestAst1304BuilderEmitByFormat`**; revised **`TestBuilderHelpers::test_emits_body_sections_and_cover_blocks`**, **`TestAst987BuildSessionBaseResume::test_renders_from_in_memory_payload_no_candidate_bind`**, **`TestAst998ExperienceJobRender::test_session_legacy_string_experience_still_prose`** |
+| Filter keep-loop (extras + leftover Experience prose) | `src/core/candidate.py` | **`TestAst1304FilterContentToResumeStructure`**; reuse **`TestAst518ResumeStructureProjection`**, **`TestAst996ExperienceJobArray`** filter cases |
+| Job-array Experience still prints | `src/core/builder.py` | reuse **`TestAst998ExperienceJobRender`** (array paths) |
+| Cover letter unchanged | `src/core/builder.py` | reuse **`TestAst581ResumeCoverSplit`**, **`TestAst1304BuilderEmitByFormat::test_cover_letter_debug_has_no_resume_section_trail`** |
+
+**Broken / obsolete this pass:** AST-998 / AST-987 leftover Experience prose-block asserts — required Experience no longer has a string fallback. Helper six-section count now feeds a job array for `experience` so the section still emits.
+
+**Integration:** none — no existing `tests/integration/` scenario asserts resume HTML emit / section format. Do not invent one.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure \
+  tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
+  -q
+```

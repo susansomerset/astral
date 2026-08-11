@@ -1705,3 +1705,35 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
   -t "AST-1295"
 ```
+
+---
+
+### AST-1306 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format`.
+
+Operators author extra sections (title / format / enable / reorder / remove optional) on **Base Resume Content**. Format list comes from GET `catalog.body_formats` (not a TSX tuple). PUT `/data` **replaces** `sections` when that key is sent; accent-only PUT leaves sections. Required seven cannot be omitted or disabled. New extras slug from title in core (`_pending_*`). Does **not** own HTML emit (**AST-1304**) or hop/legacy ingest (**AST-1305**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New-extra default format | `src/utils/config.py` | **`TestAst1306ResumeStructureCatalog`** |
+| Slug + prepare-for-save | `src/core/candidate.py` | **`TestAst1306ResumeStructureSavePrep`** |
+| GET `all_sections`+`catalog`; PUT replace | `src/ui/api/api_candidate.py` | **`TestAst1306ResumeStructureAuthorApi`**; revised **`TestAst519ResumeStructureApi`** (normalize-valid fixture; 400 text) |
+| Editor (catalog options, no Remove on required) | `src/ui/frontend/src/components/ResumeStructureEditor.tsx` | **`test_ResumeStructureEditor.test.tsx`** |
+| Routed page (**§6c**) editor + first-paint mocks | `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — existing tab/accent cases + **`AST-1306:`** catalog editor / sections PUT |
+
+**Broken / obsolete this pass:** AST-519 GET fixture was a three-id blob — `resolve_resume_structure` now falls back to DEFAULT (AST-1303 required seven). Fixture is a normalize-valid ten-id catalog with `technical_skills` disabled. PUT invalid-sections 400 now returns the normalize message (`missing required`), not `invalid resume_structure`.
+
+**Integration:** none — existing `test_candidate_nav_api.py` is nav only; do not invent editor integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1306ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1306ResumeStructureAuthorApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ResumeStructureEditor.test.tsx
+```

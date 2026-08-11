@@ -402,38 +402,18 @@ class TestAst519ResumeStructureApi:
         return (BUILD_CONFIG.get("accent_palette") or ["#1A1A2E"])[0].upper()
 
     def _three_section_cd(self) -> dict:
+        # Normalize-valid ten-id blob (AST-1303 required seven); disable an optional.
+        from src.core.candidate import default_resume_structure
+
+        structure = default_resume_structure()
+        structure["sections"]["professional_summary"]["title"] = "Custom Summary"
+        structure["sections"]["experience"]["title"] = "Custom Jobs"
+        structure["sections"]["technical_skills"]["title"] = "Custom Skills"
+        structure["sections"]["technical_skills"]["enabled"] = False
+        structure["accent_color"] = self._valid_accent()
         return {
             "astral_candidate_id": "c1",
-            "candidate_data": {
-                "artifacts": {
-                    "resume_structure": {
-                        "sections": {
-                            "professional_summary": {
-                                "id": "professional_summary",
-                                "title": "Custom Summary",
-                                "enabled": True,
-                                "order": 0,
-                                "job_agent_editable": True,
-                            },
-                            "experience": {
-                                "id": "experience",
-                                "title": "Custom Jobs",
-                                "enabled": False,
-                                "order": 1,
-                                "job_agent_editable": True,
-                            },
-                            "technical_skills": {
-                                "id": "technical_skills",
-                                "title": "Custom Skills",
-                                "enabled": True,
-                                "order": 2,
-                                "job_agent_editable": True,
-                            },
-                        },
-                        "accent_color": self._valid_accent(),
-                    },
-                },
-            },
+            "candidate_data": {"artifacts": {"resume_structure": structure}},
         }
 
     def test_get_resume_structure_returns_enabled_ordered_sections(
@@ -444,10 +424,10 @@ class TestAst519ResumeStructureApi:
         assert resp.status_code == 200
         body = resp.get_json()
         assert body["accent_color"] == self._valid_accent()
-        assert body["sections"] == [
-            {"id": "professional_summary", "label": "Custom Summary"},
-            {"id": "technical_skills", "label": "Custom Skills"},
-        ]
+        ids = [row["id"] for row in body["sections"]]
+        assert "professional_summary" in ids
+        assert "technical_skills" not in ids
+        assert next(r["label"] for r in body["sections"] if r["id"] == "professional_summary") == "Custom Summary"
 
     def test_get_resume_structure_uses_resolve_default_when_blob_missing(
         self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
@@ -491,7 +471,7 @@ class TestAst519ResumeStructureApi:
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
         resp = candidate_client.put(
             "/api/candidates/c1/data",
-            json={"artifacts": {"base_resume": {"professional_summary": "ok", "orphan_section": "drop", "accent_color": "#ABCDEF"}}},
+            json={"artifacts": {"base_resume": {"professional_summary": "ok", "123bad": "drop", "accent_color": "#ABCDEF"}}},
             headers=auth_headers,
         )
         assert resp.status_code == 200
@@ -542,7 +522,7 @@ class TestAst519ResumeStructureApi:
             headers=auth_headers,
         )
         assert resp.status_code == 400
-        assert resp.get_json()["error"] == "invalid resume_structure"
+        assert "missing required" in resp.get_json()["error"]
 
 
 class TestAst723RubricVectorsApi:
@@ -917,3 +897,184 @@ class TestAst1287AdminConfirmOverride:
         )
         assert resp.status_code == 200
         transition.assert_called_once_with("cand-1", "INTAKE_INITIATED", force=False)
+
+
+class TestAst1306ResumeStructureAuthorApi:
+    """AST-1306: GET catalog/all_sections; PUT replace (not overlay) when sections sent."""
+
+    def _cd(self) -> dict:
+        return TestAst519ResumeStructureApi()._three_section_cd()
+
+    def _patch_put(self, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        save_data = MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        return save_data
+
+    def test_get_includes_catalog_and_all_sections(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import (
+            RESUME_STRUCTURE_BODY_FORMATS,
+            RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+            RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+        )
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        resp = candidate_client.get("/api/candidates/c1/resume_structure", headers=auth_headers)
+        body = resp.get_json()
+        assert resp.status_code == 200
+        assert body["catalog"]["body_formats"] == list(RESUME_STRUCTURE_BODY_FORMATS)
+        assert body["catalog"]["new_extra_default_format"] == RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT
+        assert body["catalog"]["required_ids"] == list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+        by_id = {row["id"]: row for row in body["all_sections"]}
+        assert by_id["technical_skills"]["enabled"] is False
+        assert by_id["experience"]["format_locked"] is True
+        assert by_id["candidate_name"]["required"] is True
+        assert {s["id"] for s in body["sections"]}.isdisjoint({"technical_skills"})
+
+    def test_put_replace_drops_omitted_optional_and_keeps_required_title(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_data = self._patch_put(monkeypatch)
+        from src.core.candidate import default_resume_structure
+        from src.utils.config import RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+
+        sections = {
+            sid: dict(spec)
+            for sid, spec in default_resume_structure()["sections"].items()
+            if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+        }
+        sections["professional_summary"]["title"] = "Summary"
+        sections["highlights"] = {
+            "id": "highlights",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 10,
+            "format": "bullet_list",
+            "job_agent_editable": True,
+        }
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"resume_structure": {"sections": sections}}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        stored = save_data.call_args.args[1]["artifacts"]["resume_structure"]["sections"]
+        assert "prior_experience" not in stored
+        assert stored["highlights"]["format"] == "bullet_list"
+        assert stored["professional_summary"]["id"] == "professional_summary"
+        assert stored["professional_summary"]["title"] == "Summary"
+
+    def test_put_accent_only_leaves_sections(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_data = self._patch_put(monkeypatch)
+        accent = TestAst519ResumeStructureApi()._valid_accent()
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"resume_structure": {"accent_color": accent.lower()}}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        stored = save_data.call_args.args[1]["artifacts"]["resume_structure"]
+        assert stored["accent_color"] == accent
+        assert "technical_skills" in stored["sections"]
+        assert stored["sections"]["technical_skills"]["enabled"] is False
+
+    def test_put_omitting_required_is_400(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        self._patch_put(monkeypatch)
+        from src.core.candidate import default_resume_structure
+        from src.utils.config import RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+
+        sections = {
+            sid: dict(spec)
+            for sid, spec in default_resume_structure()["sections"].items()
+            if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS and sid != "experience"
+        }
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"resume_structure": {"sections": sections}}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert "missing required" in resp.get_json()["error"]
+
+    def test_put_pending_key_slugs_from_title(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_data = self._patch_put(monkeypatch)
+        from src.core.candidate import default_resume_structure
+        from src.utils.config import RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+
+        sections = {
+            sid: dict(spec)
+            for sid, spec in default_resume_structure()["sections"].items()
+            if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+        }
+        sections["_pending_0"] = {
+            "id": "_pending_0",
+            "title": "Publications",
+            "enabled": True,
+            "order": 10,
+            "format": "bullet_list",
+            "job_agent_editable": True,
+        }
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"resume_structure": {"sections": sections}}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        stored = save_data.call_args.args[1]["artifacts"]["resume_structure"]["sections"]
+        assert "publications" in stored
+        assert "_pending_0" not in stored
+
+
+class TestAst1305LegacyLabelIngestApi:
+    """AST-1305: PUT /data ingest keeps unmatched Abrams labels as extras."""
+
+    def _cd(self) -> dict:
+        from src.core import candidate as core_candidate
+
+        return {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "artifacts": {"resume_structure": core_candidate.default_resume_structure()},
+            },
+        }
+
+    def test_put_label_list_keeps_highlights_and_drops_prose_experience(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        save_data = MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        labels = [
+            {"label": "Professional Summary", "content": "Summary body"},
+            {"label": "Highlights", "content": "Won awards"},
+            {"label": "Publications", "content": "Paper one"},
+            {"label": "Experience", "content": "leftover prose"},
+        ]
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"base_resume": labels}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        arts = save_data.call_args.args[1]["artifacts"]
+        assert arts["base_resume"]["highlights"] == "Won awards"
+        assert arts["base_resume"]["publications"] == "Paper one"
+        assert arts["base_resume"]["professional_summary"] == "Summary body"
+        assert "experience" not in arts["base_resume"]
+        assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
+        assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"
