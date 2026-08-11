@@ -213,3 +213,24 @@ The plan is binding. The agent:
 - **AST-1304** reads `format` from `resolve_resume_structure(…)["sections"][sid]` and `RESUME_STRUCTURE_BODY_FORMATS` / `RESUME_STRUCTURE_EMPHASIS_TAG_NAMES`. Emit Highlights / Publications as `bullet_list`; do not treat leftover prose Experience as the required Experience section; Style D when `debug=True`.
 - **AST-1305** stops treating extra keys as unknown solely because they are outside KNOWN; draft whitelist becomes this candidate’s current base_resume keys (including extras); legacy label/content arrays slug unmatched titles with `RESUME_STRUCTURE_EXTRA_ID_PATTERN`.
 - **AST-1306** serves the format catalog from config via the API (not a hardcoded React list); operators add/title/format/enable/reorder optionals; required seven cannot be removed in the editor.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1303
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids` @ `4531e0b0d3d5690360021fe80492bcd4c70da237`
+
+## Traceability
+Child AC1→S2; AC2→S2; AC3→S2; parent AC1/3/7 (normalize slice)→S2; parent AC2/4–6/8–11→sibling boundaries
+
+## Findings
+
+### discuss — `astral.layers.ui-config-driven-business-logic` cited; API serve is AST-1306
+**Location:** Child In scope; Contract for siblings
+**Finding:** Child cites UI-config-driven business logic, but this ticket only lands `RESUME_STRUCTURE_*` constants. Format catalog HTTP shape is explicitly AST-1306.
+**Recommendation:** Non-blocking — config-first placement is correct for this child; sibling contract section already names AST-1306 as the API consumer.
+
+— Joan
+context_tokens≈90000
