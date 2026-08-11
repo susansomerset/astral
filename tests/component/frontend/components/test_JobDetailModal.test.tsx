@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import JobDetailModal from "../../../../src/ui/frontend/src/components/JobDetailModal"
+import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
@@ -38,6 +39,9 @@ describe("JobDetailModal", () => {
 
   it("loads job details, switches tabs, and skips a job", async () => {
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
       if (url === "/api/candidates") {
         return { json: async () => [] } as Response
       }
@@ -67,6 +71,9 @@ describe("JobDetailModal", () => {
 
   it("shows not-found and already-skipped states", async () => {
     mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
       if (url === "/api/candidates") {
         return { json: async () => [] } as Response
       }
