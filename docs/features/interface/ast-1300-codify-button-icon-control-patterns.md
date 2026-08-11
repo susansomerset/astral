@@ -319,3 +319,101 @@ The plan is binding. Execute stages in order; one commit per stage on the epic w
 | Test-tree ban | No `tests/` or bible edits |
 
 No unresolved rule conflicts. Temporary CSS duplication with `.modal-btn` / `.dep-btn` is intentional and owned by the siblings who will delete the old rules after they migrate call sites.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1300
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns` @ `03ad36c5e4cc51de40ea0068072c487460785b6a`
+
+## Traceability
+Child AC1→S1–2; parent AC1→S1–2; parent AC2–7→N/A (AST-1301/AST-1302 boundaries)
+
+## Findings
+
+### discuss — Direct `approved` landing (skip `proposed` intermediate)
+**Location:** Stage 2 decisions; `canon/patterns/AUTHORING.md` lifecycle
+**Finding:** AUTHORING default is propose → Archie approve. Plan lands both patterns as `status: approved` in one pass, citing parent Architectural definition (“Archie approval of this Description (Todo) is approval to treat these as catalog law”).
+**Recommendation:** Acceptable for this epic — parent Todo lock is the approval signal. Builder should keep `proposed_in: AST-1166` and `approved_by: Archie` / `approved_at: "2026-08-11"` exactly as staged. Non-blocking.
+
+### R5 — Traceability (full)
+
+| Parent / child AC | Plan stage(s) | Notes |
+|---|---|---|
+| Child AC1 — canon contains both pattern ids matching Discussion catalog | S1–2 | Pattern bodies mirror parent Button class catalog tables |
+| Parent AC1 (same) | S1–2 | `canonical_refs` → `App.css` selectors |
+| Parent AC2 — full labeled-button inventory | N/A | AST-1301 |
+| Parent AC3 — toolbar/modal/detail/export on shared classes | N/A | AST-1301 |
+| Parent AC4 — retire duplicate families | N/A | AST-1301/1302 delete old rules after migration |
+| Parent AC5 — list row icon-controls only | N/A | AST-1302 |
+| Parent AC6 — unified in-flight gold | S1 | `.btn.primary.in-flight` copies `.modal-btn.save.in-flight` |
+| Parent AC7 — no enablement regression | N/A | No JSX touched this ticket |
+| Parent Purpose — codify before call-site rewrites | S1–2 | CSS + approved patterns land first |
+| Parent Functional scope 1 (catalog locked) | — | Plan does not reopen |
+| Parent Functional scope 2 (codify as patterns) | S1–2 | |
+| Parent Functional scope 3–6 | N/A | Siblings |
+
+| Plan stage | Parent mapping |
+|---|---|
+| S1 — `App.css` `.btn` / `.icon-control` | AC1 canonical implementation; parent catalog visual baselines |
+| S2 — pattern files + README/HARVEST index rows | AC1; parent Architectural “new patterns proposed” |
+| Execution contract / self-review | Orchestration discipline only |
+
+No orphan stages. No unmapped child AC.
+
+### R6 — Adversarial checklist (summary)
+
+| Check | Result |
+|---|---|
+| Definition fidelity — codify only, no sweep | Pass |
+| Boundaries — no JSX, no React wrapper, no CODE_RULES amend, no test tree | Pass |
+| Layer / import — `App.css` + `canon/patterns/**` only | Pass |
+| Config — no `config.py`; `:root` tokens reused | Pass |
+| File placement — styles in `App.css` TOC 14–15; patterns in `canon/patterns/ui/` | Pass |
+| Pattern SCHEMA / AUTHORING — required keys, body order, ≥1 `canonical_refs` each | Pass |
+| CSS baseline fidelity — compared tip `.modal-btn.*` / `.job-list-icon-btn` | Pass (literal copy + `font-family: inherit` on icon-control) |
+| DRY — temporary duplicate families left in place, not aliased | Pass (intentional; siblings own deletion) |
+| Self-assessment — Single-Component / high / low | Honest |
+
+### R1–R3 — Statute matching (plan Files Changed)
+
+**Plan layers:** `ui`, `docs`
+**Plan paths:** `src/ui/frontend/src/App.css`, `canon/patterns/ui/*.md`, `canon/patterns/README.md`, `canon/patterns/HARVEST.md`
+**Change types:** `add`, `modify`
+
+**Considered (39):** all universal orchestration statutes (17) + scoped matches including `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.standards.names-not-ticket-ids`, `astral.standards.no-cross-contamination`, `astral.standards.no-hardcoded-sets`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.ui.single-gunicorn-worker`, `astral.docs.features-single-file-per-ticket`, `astral.layers.ui-config-driven-business-logic`, `astral.layers.import-direction`, `astral.git.betty-no-src-or-features`, `orch.pipeline.plan-is-bible`, `orch.roles.archie-approves-statutes`, and other `src/**` / `docs/**` scoped standards whose predicates match.
+
+**Excluded (29) sample reasons:** `astral.git.engineer-test-tree-ban` (no test paths); `astral.agent.*` / `astral.batch.*` (no core/data); `astral.config.*` (no config.py); `astral.seed.*` (no seed tables); `astral.idioms.require-auth-on-protected-endpoints` (no API).
+
+**Per-statute verdicts (key cited on child):**
+
+| Statute | Verdict | One-line |
+|---|---|---|
+| `astral.standards.in-scope-only` | conforms | CSS + pattern corpus only; no JSX sweep |
+| `astral.standards.dry-and-focused-functions` | conforms | One labeled + one icon family; old families left for siblings |
+| `astral.ui.frontend-file-placement` | conforms | `App.css` only; flat `canon/patterns/ui/` |
+| `astral.ui.naming-conventions` | conforms | Domain class names, not ticket ids |
+| `astral.standards.names-not-ticket-ids` | conforms | `btn`, `icon-control`, pattern slugs |
+| `astral.standards.no-cross-contamination` | conforms | Stays in UI CSS + pattern tree |
+| `astral.standards.no-hardcoded-sets` | conforms | Reuses `:root` tokens; `#fff` on danger copied from existing `.modal-btn.danger` |
+| `astral.layers.ui-config-driven-business-logic` | conforms | Presentation classes only |
+| `astral.docs.features-single-file-per-ticket` | conforms | Single plan under `docs/features/interface/` |
+| `orch.pipeline.plan-is-bible` | conforms | Stages are binding; README/HARVEST index steps explicit |
+| All other considered universals / scoped | conforms | No pipeline/git/test-tree violations in plan shape |
+
+No `violates` / `needs-discussion` statute scores.
+
+### Pattern compliance (R6)
+
+| Pattern | Status | Match to `# Solution shape` |
+|---|---|---|
+| `pattern.ui.shared-button-roles` (new, to land `approved`) | Pass | Four roles + `in-flight` on primary only; `App.css` canonical_refs; no fifth family |
+| `pattern.ui.icon-control` (new, to land `approved`) | Pass | Glyph-only; separate from `btn`; `title`/`aria-label` guidance |
+| Parent “reuse themed confirm / modal shell” | Pass | No second confirm system introduced |
+
+The plan is a tight vertical slice for child #1: land unused `.btn` / `.icon-control` CSS (verified against existing `.modal-btn` / `.job-list-icon-btn` on tip) and two approved pattern files with README/HARVEST index updates, without touching JSX or sibling remediation scope. Child AC1 and parent AC1 trace cleanly to Stages 1–2; parent AC2–7 are correctly deferred to AST-1301/AST-1302.
+
+context_tokens≈78000
+— Joan
