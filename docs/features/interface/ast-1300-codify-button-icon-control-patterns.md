@@ -417,3 +417,8 @@ The plan is a tight vertical slice for child #1: land unused `.btn` / `.icon-con
 
 context_tokens≈78000
 — Joan
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns`  
+**Product commits:** `8135c228` (shared `.btn` / `.icon-control` CSS), `d8221e08` (approved pattern files + README/HARVEST index)
