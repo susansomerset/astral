@@ -244,3 +244,124 @@ context_tokens≈90000
 |-------|--------|---------|
 | 1 | `3d744e02` | `RESUME_STRUCTURE_*` catalog + DEFAULT formats |
 | 2 | `3ab84c5e` | `normalize_resume_structure`: required seven, open extras, format |
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1303
+**Publish ref:** `origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids` @ `2fd3253868ce88bb28abb9207ed939a399ae56c8`
+**Overall:** CLEAN
+
+## Statutes checked
+
+Ticket-scoped product delta: `3d744e02` + `3ab84c5e` (`src/utils/config.py`, `src/core/candidate.py` modify). Formal three-dot `origin/dev...origin/sub` is epic-wide (~650 paths); predicates scored against the ticket delta unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/agent/**` in ticket delta |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent/dispatcher paths in ticket delta |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent/grade paths in ticket delta |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths in ticket delta |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths in ticket delta |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release paths in ticket delta |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch/entity-agent paths in ticket delta |
+| astral.config.config-source-of-truth | scoped | conforms | `RESUME_STRUCTURE_*` catalog lives in `config.py`; normalize reads constants only |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor / pass-threshold paths in ticket delta |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret wiring in ticket delta |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths in ticket delta |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike/debug-dir paths in ticket delta |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths in ticket delta |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next/dispatch paths in ticket delta |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer delta is `src/` only (docs on Betty merge) |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute; Ada delta is `src/` only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits touch only `src/utils/config.py` + `src/core/candidate.py` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core change stays in core; no external imports |
+| astral.layers.import-direction | scoped | conforms | `candidate.py` adds config imports only (core→utils) |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` in ticket delta |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no `src/ui/**` in ticket delta; config constants only |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check / storage paths in ticket delta |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths in ticket delta |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth paths in ticket delta |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON paths in ticket delta |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed/catalog paths in ticket delta |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot/seed hot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed paths in ticket delta |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed operator-row paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `src/data/**` in ticket delta |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migration paths |
+| astral.standards.debug-contract-gated | scoped | conforms | no new `debug=` emission on normalize path |
+| astral.standards.dry-and-focused-functions | scoped | conforms | KNOWN composed from required+optional; DEFAULT formats read from map |
+| astral.standards.in-scope-only | scoped | conforms | only catalog + `normalize_resume_structure`; siblings untouched |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging/print in touched functions |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain `RESUME_STRUCTURE_*` names, not `AST_1303_*` |
+| astral.standards.no-cross-contamination | scoped | conforms | no unrelated module edits in ticket commits |
+| astral.standards.no-hardcoded-sets | scoped | conforms | ids/formats/pattern/reserved/emphasis in config tuples/maps |
+| astral.standards.public-then-helpers | scoped | conforms | one module-level regex helper; loop change in existing public normalize |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | `config.py` delta does not import `src.data` |
+| astral.state.core-decides-transitions | scoped | not-applicable | no candidate state machine changes |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job-state paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/daisy-chain paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend paths in ticket delta |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI paths |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server/worker paths |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | publish tip `2fd32538` is single merge-tests SHA (Betty lane) |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1303): …` engineer commits |
+| orch.git.flow-direction-inviolable | universal | conforms | work on `sub/AST-1299/…` |
+| orch.git.ftr-sub-topology | universal | conforms | child under parent ftr topology |
+| orch.git.merge-on-checkout | universal | conforms | no review signal of dirty merge gate on engineer commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no destructive git ops in delta |
+| orch.git.no-dev-agent-branches | universal | conforms | publish ref is `sub/…`, not dev agent branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1299` worktree |
+| orch.git.three-permanent-branches | universal | conforms | sub publish; no fourth permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | follows approved plan; no product invention |
+| orch.pipeline.plan-is-bible | universal | conforms | Stage 1+2 match binding plan steps |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | spawned at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a to implementation |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests via `merge-tests` + `69d0ae6a`, not engineer `src/` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a to code |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer path set allowed |
+
+**Count:** 65 active statutes scored (64 registry rows + `astral.config.pass-threshold-vs-score-floor` on tree).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan / parent brief cite config-block intent via Code Rules, not `canon/patterns/**` ids |
+
+## Plan adherence
+
+Stage 1 lands the full `RESUME_STRUCTURE_*` family: required seven, historical optional three, composed KNOWN (same ten strings, same order), body formats, default format map, emphasis tag names, extra-id pattern, reserved extra ids; DEFAULT body sections gain `format` from the map; contact ids omit `format`. Stage 2 rewrites only the `normalize_resume_structure` section loop: required-present check before loop, required cannot disable, open extras with pattern/reserved validation, default `job_agent_editable=True` for extras, contact strips `format`, `experience` locked to `experience_detail`, other body ids get closed-list format with map backfill. Out-of-scope areas (builder, hops, UI, PUT merge, debug) untouched. Self-Assessment **Single-Component** / **high** conf matches the two-file footprint.
+
+**Joan:** `[plan-rubric] revision=1` **APPROVED** — no Excluded-statute straggler list; prior discuss on `astral.layers.ui-config-driven-business-logic` was plan-scope only and remains n/a on this `src/` delta.
+
+**Cross-ticket:** Ticket commits do not smuggle AST-1304/1305/1306 scope. Formal three-dot vs `origin/dev` includes epic merge history; boundary judgment uses isolated `3d744e02^..3ab84c5e` product diff.
+
+**C6 lenses (§5a):** Imports at module top; core→utils only; no silent failure, fallbacks, print/logging, UI config, batch, debug (§5f), or external (§5g) issues on touched paths.
+
+## Findings
+
+(none)
+
+## What's solid
+
+- KNOWN tuple preserved for AST-1270 / AST-1305 hop intersection stability.
+- Required-seven + open-extra contract is explicit and config-driven.
+- `experience` format lock and contact `format` omission match parent decisions.
+- Betty manifest `TestAst1303ResumeStructureCatalog` + revised AST-517 cases align with bible intent (`docs/test-bible/core/candidate.md` §AST-1303).
+
+## Notes
+
+- Publish tip includes `merge-tests(AST-1303)` @ `2fd32538` (tests + bible); engineer product SHA for stages 1–2 remains `3ab84c5e`.
+- `RESUME_STRUCTURE_EMPHASIS_TAG_NAMES` declared here, consumed by AST-1304 — intentional per plan.
+
+## Frame diff
+
+(none) — Self-Assessment scope matches ticket-scoped `src/` delta.
+
+context_tokens≈95000
+— Radia
