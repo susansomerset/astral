@@ -358,4 +358,15 @@ Stages → child AC: Stage 1 → AC 3; Stage 2 → AC 1–2; Stage 3 → AC 4. N
 context_tokens≈38000
 — Joan
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1299/AST-1305-hops-content-blobs-and-legacy-extra-labels`  
+**Tip:** `2fb7a993f4d1b8068bad70102c2cea0c65770ace`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `98bb5bbe` | `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT`; ingest + token serialize + PUT |
+| 2 | `71c60385` | flatten extras; draft whitelist without KNOWN ∩; tracker persist bridge |
+| 3 | `2fb7a993` | Experience persists only as `experience_detail` job array |
+
 ---
