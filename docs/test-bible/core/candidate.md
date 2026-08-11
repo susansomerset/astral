@@ -1055,3 +1055,38 @@ Admin confirm-override for illegal candidate hops: `IllegalCandidateTransition` 
   -q
 ```
 
+---
+
+### AST-1303 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids`.
+
+Config contract + `normalize_resume_structure`: required seven ids (present + `enabled=True`); `RESUME_STRUCTURE_KNOWN_SECTION_IDS` stays the historical ten (required + optional, same order); extras persist when the slug matches `RESUME_STRUCTURE_EXTRA_ID_PATTERN` and is not reserved; closed `RESUME_STRUCTURE_BODY_FORMATS` (including `bullet_list` / `experience_detail`); missing formats filled from `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID`; contact ids have no `format`; `experience` is locked to `experience_detail`. Does **not** own HTML emit (**AST-1304**), hops/legacy labels (**AST-1305**), or the editor UI (**AST-1306**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Required / format / extra-id catalog | `src/utils/config.py` | **`TestAst1303ResumeStructureCatalog`** (config); reuse **`TestAst517ResumeStructureConfig`**, **`TestAst1010CandidateTaglineConfig`** |
+| Normalize seven-only, extras, format lock | `src/core/candidate.py` | **`TestAst1303ResumeStructureCatalog`**; revised **`TestAst517ResumeStructure`** (reject cases + persist fixtures) |
+
+**Broken / obsolete this pass:** AST-517 `unknown resume section id` reject and three-id blobs passed through `normalize` / `split` / parse — required-seven now fires first; valid extras are no longer unknown. Fixtures that hit normalize now use the default ten-id catalog. Slim `_three_section_structure` remains for projection helpers that do not normalize.
+
+**Integration:** none — existing `tests/integration/scenarios/test_candidate_nav_api.py` is nav visibility only; do not invent extra-section integration coverage (emit / hops / editor = siblings).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog \
+  tests/component/utils/test_config.py::TestAst517ResumeStructureConfig \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/core/test_candidate.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  tests/component/core/test_candidate.py::TestParseCandidateResume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_preserves_experience_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_still_keeps_legacy_string_experience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_parse_candidate_resume_debug_lists_jobs \
+  -q
+```
+
