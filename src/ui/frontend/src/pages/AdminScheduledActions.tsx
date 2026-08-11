@@ -837,7 +837,7 @@ export default function ScheduledActions() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Kill Running Threads</span>
-              <button className="modal-close" onClick={() => setShowStopAll(false)}>&times;</button>
+              <button type="button" className="icon-control" onClick={() => setShowStopAll(false)} title="Close" aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: "0.75rem" }}>The following tasks will be immediately killed:</p>
@@ -866,7 +866,7 @@ export default function ScheduledActions() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{editRow ? "Edit Task" : "Add Task"}</span>
-              <button className="modal-close" onClick={() => setShowModal(false)}>&times;</button>
+              <button type="button" className="icon-control" onClick={() => setShowModal(false)} title="Close" aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               {!editRow && (
