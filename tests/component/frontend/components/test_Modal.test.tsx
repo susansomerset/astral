@@ -91,4 +91,18 @@ describe('Modal', () => {
     await user.click(screen.getByRole('button', { name: 'Save' }))
     expect(onSave).toHaveBeenCalledTimes(1)
   })
+
+  it('AST-1302: header close is icon-control', () => {
+    render(
+      wrap(
+        <Modal open onClose={vi.fn()} title="Open">
+          <p>Body</p>
+        </Modal>,
+      ),
+    )
+    const close = screen.getByRole('button', { name: 'Close' })
+    expect(close).toHaveClass('icon-control')
+    expect(close).toHaveTextContent('×')
+    expect(close).not.toHaveClass('modal-close')
+  })
 })

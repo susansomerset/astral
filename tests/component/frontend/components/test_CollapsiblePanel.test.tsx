@@ -97,4 +97,15 @@ describe('CollapsiblePanel', () => {
     expect(onA).toHaveBeenCalledWith(true)
     expect(onB).not.toHaveBeenCalled()
   })
+
+  it('AST-1302: chevron is icon-control', () => {
+    render(
+      <CollapsiblePanel label="Section" defaultExpanded>
+        <p>Body</p>
+      </CollapsiblePanel>,
+    )
+    const chevron = screen.getByRole('button', { name: 'Collapse section' })
+    expect(chevron).toHaveClass('icon-control')
+    expect(chevron).not.toHaveClass('collapsible-panel-chevron-btn')
+  })
 })
