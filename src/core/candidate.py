@@ -2138,6 +2138,36 @@ def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> t
     return content, out_struct
 
 
+def slug_resume_section_id(title: str) -> str:
+    raw = (title or "").strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
+    if not slug or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(slug) is None:
+        raise ValueError("invalid extra section title")
+    if slug in RESUME_STRUCTURE_RESERVED_EXTRA_IDS:
+        raise ValueError(f"invalid extra section id: {slug}")
+    return slug
+
+
+def prepare_resume_structure_sections_for_save(sections_in) -> dict:
+    if not isinstance(sections_in, dict) or not sections_in:
+        raise ValueError("resume_structure.sections must be a non-empty dict")
+    out = {}
+    for sid, spec in sections_in.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"section {sid} must be a dict")
+        key = str(sid)
+        if key in RESUME_STRUCTURE_KNOWN_SECTION_IDS or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(key):
+            new_sid = key
+        else:
+            new_sid = slug_resume_section_id(str(spec.get("title") or ""))
+        if new_sid in out:
+            raise ValueError(f"duplicate section id after slug: {new_sid}")
+        row = dict(spec)
+        row["id"] = new_sid
+        out[new_sid] = row
+    return out
+
+
 def enabled_resume_structure_sections(resolved: dict) -> list:
     """Enabled sections as {id, label} sorted by order then id (read-only on resolved)."""
     sections = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
