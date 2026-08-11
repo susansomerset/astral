@@ -2123,6 +2123,9 @@ def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> t
                 _append_missing_section(sid, label)
             elif sid not in out_struct["sections"]:
                 _append_missing_section(sid, label)
+            if sid in content:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing_section(sid, label)
             val = item.get("content")
             if sid == "experience" and not _is_experience_job_array(val):
                 continue
@@ -2285,15 +2288,10 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
     for sid, spec in sections.items():
         if not isinstance(spec, dict) or not spec.get("enabled"):
             continue
-        if _coerce_resume_section_string(payload.get(sid)):
-            continue
         for ck in _CRAFT_RESUME_NESTED_CONTENT_KEYS:
             if ck not in spec:
                 continue
-            text = _coerce_resume_section_string(spec.get(ck))
-            if text:
-                payload[sid] = text
-                break
+            _promote(sid, spec.get(ck))
 
 
 def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
