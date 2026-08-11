@@ -3251,7 +3251,7 @@ class TestAst1304BuilderEmitByFormat:
         fn = builder_mod._emit_inline_emphasis_html
         assert fn("") == ""
         assert fn("Hello <I>Ada</I>") == "Hello <i>Ada</i>"
-        assert fn('x <i onclick="x">nope</i> y') == "x &lt;i onclick=&#34;x&#34;&gt;nope&lt;/i&gt; y"
+        assert fn('x <i onclick="x">nope</i> y') == "x &lt;i onclick=&quot;x&quot;&gt;nope&lt;/i&gt; y"
         assert "<script>" not in fn("<script>alert(1)</script>")
         assert "&lt;script&gt;alert(1)&lt;/script&gt;" in fn("<script>alert(1)</script>")
 
