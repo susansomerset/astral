@@ -248,7 +248,7 @@ async def _ruth_parse(
             debug=debug,
         )
     except Exception as exc:
-        _detail(debug, f"ruth_error={type(exc).__name__}")
+        _detail(debug, f"ruth_error={type(exc).__name__}: {exc}")
         return None
     if not isinstance(resp, dict) or not resp.get("success"):
         _detail(debug, f"ruth_fail={resp.get('error') if isinstance(resp, dict) else 'no-resp'}")

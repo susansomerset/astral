@@ -42,6 +42,7 @@ from src.utils.config import (
     dispatch_chain_row_matches_job,
     dispatch_task_key_is_scored,
     is_dispatch_chain_trigger,
+    is_meteorite_email_mailbox_task_key,
     template_candidate_id,
     CANDIDATE_STAGE_DISPATCH,
     DISPATCH_RETIRED_TASK_KEYS,
@@ -51,6 +52,11 @@ from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
 
 logger = get_logger(__name__)
 
+
+def _is_inbox_mailbox_task_key(task_key: str) -> bool:
+    """gaze_email + meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282."""
+    tk = (task_key or "").strip()
+    return tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk)
 
 def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
     """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
@@ -747,8 +753,8 @@ async def _dispatch_one(task: Dict) -> None:
     if debug:
         logger.set_debug_flag(True)
 
-    # AST-1134: candidate-bound gaze_email mailbox — ledger uses row candidate_id.
-    if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"]:
+    # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
+    if _is_inbox_mailbox_task_key(task_key):
         # late: keep gaze_email off module-top load (peer late imports in this file)
         from src.core.gaze_email import run_gaze_email
 
@@ -756,7 +762,7 @@ async def _dispatch_one(task: Dict) -> None:
         ledger_cid = str(candidate_id or "").strip()
         if not ledger_cid:
             _sched_log.error(
-                "Skipping %s/%s — gaze_email requires bound candidate_id",
+                "Skipping %s/%s — mailbox poller requires bound candidate_id",
                 task_key,
                 task_id,
             )
@@ -770,7 +776,7 @@ async def _dispatch_one(task: Dict) -> None:
                 outcome="task start",
             )
             logger.debug_detail(
-                f"gaze_email mailbox runner entity_batch_id={entity_batch_id} "
+                f"mailbox runner (gaze_email path) entity_batch_id={entity_batch_id} "
                 f"candidate_id={ledger_cid} "
                 f"mode={'AUTO' if not is_click else 'CLICK'}"
             )
@@ -1115,13 +1121,16 @@ def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
     et = task.get("entity_type")
     ts = task.get("trigger_state")
     cid = task.get("candidate_id", "")
-    if (task_key or "").strip() == GAZE_EMAIL_CONFIG["task_key"] and str(cid or "").strip():
+    if _is_inbox_mailbox_task_key(task_key) and str(cid or "").strip():
         try:
             from src.core.inbox import count_inbox_messages_bound_to_candidate
             task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
         except Exception:
             _sched_log.warning(
-                "run_task: gaze_email available_count failed task_id=%s", task_id, exc_info=True
+                "run_task: mailbox available_count failed task_id=%s task_key=%r",
+                task_id,
+                task_key,
+                exc_info=True,
             )
             task["available_count"] = 0
     else:
@@ -1243,14 +1252,13 @@ def _debug_log_auto_off_stage_skips() -> None:
 
 
 def _gaze_email_due_tasks() -> List[Dict[str, Any]]:
-    """AUTO candidate-bound gaze_email rows with live Avail ≥ min_count and freq allowing."""
+    """AUTO candidate-bound inbox mailbox rows with live Avail ≥ min_count and freq allowing."""
     # late: keep inbox/Gmail off module-top load (peer late imports in this file)
     from src.core.inbox import count_inbox_bound_by_candidate
 
-    tk = GAZE_EMAIL_CONFIG["task_key"]
     auto_gaze = [
         t for t in database.list_dispatch_tasks()
-        if (t.get("task_key") or "").strip() == tk
+        if _is_inbox_mailbox_task_key(t.get("task_key") or "")
         and bool(t.get("auto_mode"))
         and str(t.get("candidate_id") or "").strip()
     ]
@@ -1259,7 +1267,7 @@ def _gaze_email_due_tasks() -> List[Dict[str, Any]]:
     try:
         bound_counts = count_inbox_bound_by_candidate()
     except Exception:
-        _sched_log.warning("gaze_email due: inbox bind counts failed", exc_info=True)
+        _sched_log.warning("mailbox due: inbox bind counts failed", exc_info=True)
         return []
     due: List[Dict[str, Any]] = []
     for task in auto_gaze:
