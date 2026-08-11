@@ -4460,3 +4460,57 @@ class TestAst1214DispatchAdminDefaultsWidened:
         assert cfg.dispatch_task_admin_defaults("meteorite_email") == mailbox
         with pytest.raises(KeyError, match="unknown task_key"):
             cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
+
+
+# Branches: required/historical compose KNOWN; DEFAULT format keys from the map.
+class TestAst1303ResumeStructureCatalog:
+    """AST-1303: RESUME_STRUCTURE_* required seven, closed formats, extra-id rules."""
+
+    def test_known_is_required_plus_historical_in_order(self) -> None:
+        assert cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS == (
+            "candidate_name",
+            "candidate_title",
+            "candidate_tagline",
+            "candidate_contact_detail",
+            "professional_summary",
+            "core_competencies",
+            "experience",
+        )
+        assert cfg.RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS == (
+            "prior_experience",
+            "education_certifications",
+            "technical_skills",
+        )
+        assert cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS == (
+            *cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+            *cfg.RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS,
+        )
+
+    def test_body_formats_defaults_emphasis_and_extra_id_rules(self) -> None:
+        assert cfg.RESUME_STRUCTURE_BODY_FORMATS == (
+            "free_prose",
+            "bullet_list",
+            "word_cloud",
+            "dual_column",
+            "indented_bold_single",
+            "experience_detail",
+        )
+        assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
+            "professional_summary": "free_prose",
+            "core_competencies": "word_cloud",
+            "experience": "experience_detail",
+            "prior_experience": "word_cloud",
+            "education_certifications": "indented_bold_single",
+            "technical_skills": "dual_column",
+        }
+        assert cfg.RESUME_STRUCTURE_EMPHASIS_TAG_NAMES == ("i", "em", "b", "strong")
+        assert cfg.RESUME_STRUCTURE_EXTRA_ID_PATTERN == r"^[a-z][a-z0-9_]*$"
+        assert cfg.RESUME_STRUCTURE_RESERVED_EXTRA_IDS == ("sections", "accent_color", "content")
+
+    def test_default_sections_carry_format_from_map_only(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        for sid in cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS:
+            assert "format" not in sections[sid]
+        for sid, fmt in cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.items():
+            assert sections[sid]["format"] is fmt
+        assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
