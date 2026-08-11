@@ -2214,6 +2214,14 @@ def _is_experience_job_array(val: Any) -> bool:
     return isinstance(val, list) and all(isinstance(item, dict) for item in val)
 
 
+def _is_resume_content_section_id(sid: str) -> bool:
+    if sid in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or sid == "accent_color":
+        return False
+    if sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        return True
+    return _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
+
+
 # Public alias for tracker / builder (AST-996 / AST-997 / AST-998).
 is_experience_job_array = _is_experience_job_array
 
@@ -2243,11 +2251,11 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
         sections = None
 
     def _promote(sid: str, val: Any) -> None:
-        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        if not _is_resume_content_section_id(sid):
             return
-        if sid == "experience" and _is_experience_job_array(payload.get(sid)):
+        if _is_experience_job_array(payload.get(sid)):
             return
-        if sid == "experience" and _is_experience_job_array(val):
+        if _is_experience_job_array(val):
             payload[sid] = val
             return
         if _coerce_resume_section_string(payload.get(sid)):
@@ -2268,8 +2276,8 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
                 _promote(sid, val)
 
     # Direct keys on resume_structure (e.g. candidate_name) — not sections/content metadata.
-    for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
-        if sid in raw_struct:
+    for sid in list(raw_struct.keys()):
+        if _is_resume_content_section_id(sid):
             _promote(sid, raw_struct[sid])
 
     if sections is None:
@@ -2314,14 +2322,15 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 
 
 def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
-    """Section keys from artifacts.base_resume ∩ RESUME_STRUCTURE_KNOWN_SECTION_IDS."""
+    """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
     artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
     base = artifacts.get("base_resume")
-    if not isinstance(base, dict):
+    if not isinstance(base, (dict, list)):
         return []
-    known = set(RESUME_STRUCTURE_KNOWN_SECTION_IDS)
-    return sorted(k for k in base if k in known)
+    structure = resolve_resume_structure(cd)
+    content, _ingested = ingest_legacy_label_content_base_resume(base, structure)
+    return sorted(k for k in content if _is_resume_content_section_id(k))
 
 
 def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = False) -> None:
