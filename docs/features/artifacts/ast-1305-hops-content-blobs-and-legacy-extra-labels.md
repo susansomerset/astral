@@ -513,4 +513,14 @@ Ticket-scoped product delta: `98bb5bbe` + `71c60385` + `2fb7a993` (`src/utils/co
 context_tokens≈115000
 — Radia
 
+## Resolution
+
+2026-08-11 — Radia `[code-rubric] revision=1` **CLEAN**. No fix-now. No product change on resolve.
+
+- **advisory (tracker bridge):** left as approved Stage 2 §6 — base-whitelist re-inject is intentional until extra structure rows exist on disk.
+- **advisory (`filter_content` scalar-list):** no code change; non-dict list coercion stays (legacy label shapes; covered by `TestAst1305HopsContentBlobsAndLegacyLabels`).
+- **advisory (ftr merge coordination):** sibling overlap on `filter_content_to_resume_structure` is merge-child’s problem, not this tip.
+
+Publish intake: `1ea0db27` (`docs(AST-1305): Radia review — CLEAN`).
+
 ---
