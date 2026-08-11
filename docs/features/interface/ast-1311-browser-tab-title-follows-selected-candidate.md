@@ -152,3 +152,9 @@ No orphan stages. All six child ACs mapped.
 
 context_tokens≈14000
 — Joan
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` @ `acea55004bb8b60c94d98256cb936e5c5b873d7f`
+
+Stage 1: `browserTabTitle` in `lib/documentTitle.ts`; `CandidateProvider` applies `document.title` from selected `full` and resets to `Astral` on unmount. Tests deferred to Betty.
