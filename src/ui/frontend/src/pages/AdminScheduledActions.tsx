@@ -202,8 +202,8 @@ function ScheduledPhaseTable({
                 <td style={{ textAlign: "center" }}>
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <button
-                      className="list-page-bulk-btn"
-                      style={{ padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
+                      className="btn primary"
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
                       disabled={isRunning || !!row.auto_mode}
                       onClick={e => handleRun(e, row)}
                     >
@@ -211,8 +211,8 @@ function ScheduledPhaseTable({
                     </button>
                     {isRunning && (
                       <button
-                        className="list-page-bulk-btn"
-                        style={{ position: "absolute", inset: 0, padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", background: isDraining ? "#7d6608" : "#c0392b", color: "#fff" }}
+                        className="btn danger"
+                        style={{ position: "absolute", inset: 0, whiteSpace: "nowrap" }}
                         onClick={e => handleStop(e, row)}
                         disabled={isDraining}
                       >
@@ -684,14 +684,13 @@ export default function ScheduledActions() {
             </span>
           )}
           <button
-            className="list-page-bulk-btn"
-            style={{ background: activeThreads.length > 0 ? "#c0392b" : undefined, color: activeThreads.length > 0 ? "#fff" : undefined }}
+            className="btn danger"
             onClick={() => setShowStopAll(true)}
             disabled={activeThreads.length === 0}
           >
             Stop All
           </button>
-          <button className="list-page-bulk-btn" onClick={openAdd}>+ Add Task</button>
+          <button className="btn primary" onClick={openAdd}>+ Add Task</button>
         </div>
       </div>
 
@@ -851,8 +850,8 @@ export default function ScheduledActions() {
               </ul>
             </div>
             <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowStopAll(false)}>Cancel</button>
-              <button className="modal-btn save" style={{ background: "#c0392b" }} onClick={handleKillAll} disabled={stoppingAll}>
+              <button className="btn secondary" onClick={() => setShowStopAll(false)}>Cancel</button>
+              <button className="btn danger" onClick={handleKillAll} disabled={stoppingAll}>
                 {stoppingAll ? "Killing…" : "Kill Now"}
               </button>
             </div>
@@ -945,8 +944,8 @@ export default function ScheduledActions() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="modal-btn save" onClick={handleSave} disabled={saving || (!editRow && !form.candidate_id)}>
+              <button className="btn secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn primary" onClick={handleSave} disabled={saving || (!editRow && !form.candidate_id)}>
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

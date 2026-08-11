@@ -343,16 +343,16 @@ export default function AnthropicAdHoc() {
 
       {/* ── Action buttons ── */}
       <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="dep-btn cancel" onClick={handlePreview} disabled={previewing || !agentId}>
+        <button className="btn secondary" onClick={handlePreview} disabled={previewing || !agentId}>
           {previewing ? "Loading..." : "Preview Prompt"}
         </button>
-        <button className="dep-btn save" onClick={handleTest} disabled={testing || !agentId} style={{ minWidth: 100 }}>
+        <button className="btn primary" onClick={handleTest} disabled={testing || !agentId}>
           {testing ? "Testing..." : "▶ Test"}
         </button>
 
         {/* SAVE AS */}
         <div ref={saveRef} style={{ position: "relative" }}>
-          <button className="dep-btn cancel" onClick={() => setSaveAsOpen(!saveAsOpen)} disabled={!hasContent}>
+          <button className="btn secondary" onClick={() => setSaveAsOpen(!saveAsOpen)} disabled={!hasContent}>
             Save As
           </button>
           {saveAsOpen && (
@@ -388,8 +388,8 @@ export default function AnthropicAdHoc() {
             Replace current prompt content with prompts from <strong>{confirmFetch}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button className="dep-btn save" onClick={() => doFetchFrom(confirmFetch)} style={{ fontSize: 12, padding: "4px 12px" }}>Yes, Replace</button>
-            <button className="dep-btn cancel" onClick={() => setConfirmFetch(null)} style={{ fontSize: 12, padding: "4px 12px" }}>Cancel</button>
+            <button className="btn danger" onClick={() => doFetchFrom(confirmFetch)}>Yes, Replace</button>
+            <button className="btn secondary" onClick={() => setConfirmFetch(null)}>Cancel</button>
           </div>
         </div>
       )}
@@ -399,8 +399,8 @@ export default function AnthropicAdHoc() {
             Overwrite existing prompts for <strong>{confirmTask}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button className="dep-btn save" onClick={() => doSaveAs(confirmTask)} style={{ fontSize: 12, padding: "4px 12px" }}>Yes, Overwrite</button>
-            <button className="dep-btn cancel" onClick={() => setConfirmTask(null)} style={{ fontSize: 12, padding: "4px 12px" }}>Cancel</button>
+            <button className="btn danger" onClick={() => doSaveAs(confirmTask)}>Yes, Overwrite</button>
+            <button className="btn secondary" onClick={() => setConfirmTask(null)}>Cancel</button>
           </div>
         </div>
       )}

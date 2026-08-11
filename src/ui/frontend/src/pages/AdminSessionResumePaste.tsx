@@ -149,7 +149,7 @@ export default function SessionResumePaste() {
       <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
         <button
           type="button"
-          className="dep-btn save"
+          className="btn primary"
           onClick={() => void handleParse()}
           disabled={!pasteText.trim() || parsing}
         >
@@ -157,7 +157,7 @@ export default function SessionResumePaste() {
         </button>
         <button
           type="button"
-          className="dep-btn"
+          className="btn secondary"
           onClick={() => setJsonOpen(true)}
           disabled={!lastParse || opening || parsing}
         >
@@ -165,7 +165,7 @@ export default function SessionResumePaste() {
         </button>
         <button
           type="button"
-          className="dep-btn"
+          className="btn secondary"
           onClick={() => void handleOpenHtml()}
           disabled={!lastParse || opening || parsing}
         >

@@ -378,8 +378,7 @@ export default function ManageCandidates() {
           </button>
           <button
             type="button"
-            className="dep-btn"
-            style={{ padding: "6px 10px", fontSize: 12 }}
+            className="btn primary"
             aria-label={`Set dispatch tasks for ${row.astral_candidate_id}`}
             disabled={settingCandidateId === row.astral_candidate_id}
             onClick={e => { e.stopPropagation(); void handleSetDispatchTasks(row) }}
@@ -398,7 +397,7 @@ export default function ManageCandidates() {
         columns={columns}
         rows={rows}
         actions={
-          <button className="dep-btn save" onClick={() => setAddOpen(true)} style={{ padding: "6px 14px", fontSize: 13 }}>
+          <button className="btn primary" onClick={() => setAddOpen(true)}>
             + Add Candidate
           </button>
         }
@@ -479,16 +478,15 @@ export default function ManageCandidates() {
             />
             <button
               type="button"
-              className="dep-btn"
+              className="btn secondary"
               onClick={() => setShowKey(v => !v)}
-              style={{ padding: "6px 10px", fontSize: 12 }}
             >
               {showKey ? "Hide" : "Show"}
             </button>
             {editTarget?.has_api_key && !editForm.api_key && !clearKey && (
               <button
                 type="button"
-                className="dep-btn"
+                className="btn danger"
                 onClick={() => {
                   void (async () => {
                     const ok = await confirm(
@@ -500,7 +498,6 @@ export default function ManageCandidates() {
                     setToast({ text: "Key will be cleared on save", variant: "info" })
                   })()
                 }}
-                style={{ padding: "6px 10px", fontSize: 12, color: "var(--danger)" }}
               >
                 Clear
               </button>

@@ -200,10 +200,9 @@ export default function DataManagement() {
           </select>
           <button
             type="button"
-            className="dep-btn save"
+            className="btn primary"
             onClick={() => setUpsertModalOpen(true)}
             disabled={!upsertTable.trim() || upsertPosting}
-            style={{ fontSize: 12 }}
           >
             Update
           </button>
@@ -260,13 +259,13 @@ export default function DataManagement() {
           </div>
 
           <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center" }}>
-            <button className="dep-btn save" onClick={handleRun} disabled={running || !sql.trim()}>
+            <button className="btn primary" onClick={handleRun} disabled={running || !sql.trim()}>
               {running ? "Running..." : "Run"}
             </button>
             {result?.type === "select" && (
               <>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{result.count} row(s)</span>
-                <button className="dep-btn cancel" onClick={() => {
+                <button className="btn secondary" onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(result.rows, null, 2))
                   setToast({ text: "Copied to clipboard", variant: "success" })
                 }}>
