@@ -371,3 +371,155 @@ context_tokens≈55000
 |-------|--------|---------|
 | 1 | `8ce2d70c` | `INBOX_BIND_CONFIG` header order + inbox address alias |
 | 2 | `b5ed286c` | `_bind_inbox_message` list enrichment + create rematch + Style D |
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1313
+**Publish ref:** `origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source` @ `d197a847`
+
+**Overall:** CLEAN
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source` (10 paths, +1103/−23). Includes sibling **AST-1312** commits on branch lineage (`gmail.py` `to_address`, `test_gmail.py`); **AST-1313 product delta** is engineer commits `8ce2d70c` (`config.py`) + `b5ed286c` (`inbox.py`); Betty `94163472` + `merge-tests` landed tests/bible.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no dispatch/delegation |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade vectors |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch_id |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch_id strings |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent-response paths |
+| `astral.config.config-source-of-truth` | scoped | conforms | `INBOX_BIND_CONFIG` owns `header_order` + `inbox_address`; callers iterate config |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | inbox identity aliases `GAZE_EMAIL_CONFIG`; no `GMAIL_USER` in bind |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run_next |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | issue doc present |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty commits tests + test-bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer commits: `config.py` + `inbox.py` only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | bind decision in core; Gmail I/O unchanged by 1313 commits |
+| `astral.layers.import-direction` | scoped | conforms | core → candidate + external + utils; stdlib `email.utils` |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | `candidate_match` shape unchanged; no React To rules |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/consult |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no route/auth edits (Joan excluded) |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed tables |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no boot hot path |
+| `astral.seed.define-approved` | scoped | not-applicable | no define flow |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | conforms | `func="inbox_bind"` per-message index + `bind_header`/`bind_address`/`astral_candidate_id` details; create rematch bind source on `inbox_create_job` index 2; `debug=False` paths silent |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | single `_bind_inbox_message`; list + create share it |
+| `astral.standards.in-scope-only` | scoped | conforms | bind rule + debug source only; chrome/ingest untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | `get_logger` + contract helpers; no `print` |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `to_address`/`bind_header` naming; no ticket ids in symbols |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no cross-layer smuggling |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | `header_order` read from `INBOX_BIND_CONFIG`; asserted `("from", "to")` |
+| `astral.standards.public-then-helpers` | scoped | conforms | public list/create unchanged in surface; helpers private |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | config add only; no utils→data |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1313)` on tip |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub publish topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1308/AST-1313-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | ftr merge commit on branch history |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear stack |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent branches |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1308 worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | sub publish |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Archie decisions (single-remaining To, raw header, no JSON bind_header) documented in plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 executed per plan in engineer commits |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Meteorite child scoped |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed gate |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test/bible by Betty pipeline |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Ada assignee through Tests Passed |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | engineer assignee retained |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits observed |
+
+**Sweep count:** 64 active statutes scored (per `canon/statutes/README.md` harvested corpus).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited in plan body)* | — | no "Patterns to reuse" section; Joan validate references `pattern.config.config-block` / `pattern.layers.import-discipline` informally — implementation matches both approved catalog shapes |
+
+## Plan adherence
+
+**Stage 1 (`8ce2d70c`):** `INBOX_BIND_CONFIG` inserted at plan anchor with docstring line, `header_order == ("from", "to")`, `inbox_address` aliasing `GAZE_EMAIL_CONFIG["account_address"]`, and four asserts. No CC/BCC/`from_field` keys.
+
+**Stage 2 (`b5ed286c`):**
+- `_candidate_match_for_from` deleted; `_inbox_addr_folded`, `_remaining_to_addresses`, `_bind_inbox_message` match plan verbatim.
+- From unique hit breaks before To; `getaddresses` + casefold dedupe; inbox dropped via config address.
+- List enrichment calls helper with `to_address`; debug `func="inbox_bind"` replaces `inbox_from_bind`; `astral_candidate_id=` emitted on no-match.
+- Create rematch uses same helper with `debug=False`; bind source on `inbox_create_job` index 2.
+- `candidate_match` remains `{matched, astral_candidate_id}` only.
+- No `gaze_email` / API / React edits.
+
+**Preflight:** Branch includes AST-1312 `to_address` on TypedDicts (merge `9af4e20a`); Stage 2 precondition satisfied.
+
+**Self-Assessment** (config + core, medium risk) matches footprint. Joan plan-rubric APPROVED attached — **no stragglers** (Joan-excluded items remain `not-applicable` on this diff).
+
+**Betty manifest:** `TestAst1313FromThenToBind` covers AC 1–5 scenarios (From wins, To after inbox ignore, unbound cases, duplicate To dedupe, create To rematch, debug gating); `TestAst1313InboxBindConfig` locks config asserts.
+
+## C6 judgment aids (§5a–§5g)
+
+| Lens | Verdict |
+|------|---------|
+| Imports (B1) | conforms — stdlib `email.utils` at module top |
+| Layer compliance (B2) | conforms — bind in core; external passthrough only |
+| Silent failure (D2) | conforms — no new swallow paths |
+| Fallbacks (D3) | conforms — `msg.get("to_address") or ""` per plan for missing key |
+| Logging (E1) | conforms — contract helpers only |
+| Config/state in UI (G1) | conforms — config-driven bind order + inbox identity |
+| Batch/transitions (H*) | not-applicable |
+| Debug contract (§5f) | conforms — per-message `inbox_bind` index N/M; `truncate_debug_content` on `bind_address`; `debug=False` silent on list; create avoids duplicate `inbox_bind` stream |
+| External cleanliness (§5g) | not-applicable — no LLM external changes |
+
+## Findings
+
+*(none)*
+
+### Advisory (downstream awareness, not blocking)
+
+- **Ambiguous From → To fallback:** When `get_candidate_id_for_query` returns `None` for an ambiguous From (≥2 hits), bind falls through to To. This is consistent with treating ambiguous From as a "miss" and is covered by the plan's `if cid is None: continue` loop; worth Susan knowing if product intent is to hard-block To whenever From is ambiguous regardless of To shape.
+- **To path with single remaining but no lookup hit:** `bind_header="to"` with `matched=False` is Joan-documented and satisfies AC 5 debug-source logging.
+
+## What's solid
+
+- Single decision point (`_bind_inbox_message`) shared by list, counts, and create — consumers (`gaze_email`, Avail, Land Meteorite, Manage Email) need no edits.
+- `metadataHeaders` / `to_address` dependency correctly inherited from AST-1312 on branch; 1313 commits stay in lane.
+- Tests assert the highest-risk cases: From-over-To precedence, inbox ignore, multi/empty To unbound, duplicate To dedupe, create To rematch, and debug gating.
+
+## Frame diff
+
+- **`INBOX_BIND_CONFIG`:** new config block (`header_order`, `inbox_address` alias).
+- **`_candidate_match_for_from`:** removed.
+- **`_bind_inbox_message` + helpers:** added; returns `(candidate_match, bind_header, bind_address)`.
+- **List payloads:** `candidate_match` now From-then-To; debug `func` renamed `inbox_from_bind` → `inbox_bind` with `bind_header`/`bind_address` details.
+- **Create path:** rematch uses helper; debug bind source on existing `inbox_create_job` index 2.
+- **JSON contract:** `candidate_match` shape unchanged; no `bind_header` on API payloads.
+
+## Notes
+
+- Joan plan-rubric verdict attached (`revision=1`, APPROVED). No straggler callouts.
+- Three-dot diff vs `origin/dev` includes AST-1312 sibling work; 1313 review scoped to config + inbox engineer commits above.
+
+context_tokens≈48000
+— Radia
