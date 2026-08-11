@@ -1102,15 +1102,44 @@ Craft-base / draft-job accept extra section keys on this candidate’s base resu
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Extra default format | `src/utils/config.py` | **`TestAst1305ResumeStructureExtraDefault`** |
-| Ingest / token / flatten / whitelist / split / filter | `src/core/candidate.py` | **`TestAst1305HopsContentBlobsAndLegacyLabels`**; revised **`TestAst517ResumeStructure`** split fixtures; revised **`TestAst594DraftJobResumePayload`**, **`TestAst996ExperienceJobArray`**, **`TestAst997JobTailoredExperience`**, **`TestAst1270NestedDraftJobResumeContract`**, **`TestAst1272DraftHopDebugWhitelistTrail`** (job-array Experience; extras on whitelist) |
+| Ingest / token / flatten / whitelist / split / filter | `src/core/candidate.py` | **`TestAst1305HopsContentBlobsAndLegacyLabels`**; revised **`TestAst517ResumeStructure`** split fixtures; revised **`TestAst594DraftJobResumePayload`**, **`TestAst996ExperienceJobArray`** (not the Judith `cache_prompt` contract — out of this child), **`TestAst997JobTailoredExperience`**, **`TestAst1270NestedDraftJobResumeContract`**, **`TestAst1272DraftHopDebugWhitelistTrail`** (job-array Experience; extras on whitelist) |
 | PUT label-list ingest | `src/ui/api/api_candidate.py` | **`TestAst1305LegacyLabelIngestApi`**; revised **`TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`** (invalid extra-id, not a slug that becomes an extra) |
 | Job persist bridge | `src/core/tracker.py` | **`TestAst1305JobResumeExtras`** |
 | Hop wiring fixtures | `src/core/agent.py` | **`tests/component/core/test_agent.py`** — `_draft_job_resume_ctx` + draft payloads use a job array |
 
-**Broken / obsolete this pass:** AST-996 `test_split_still_keeps_legacy_string_experience` now asserts omit; AST-997 `test_validate_accepts_legacy_string_experience` now expects `experience_detail` reject; AST-1270 `test_allowed_section_keys_intersect_known_ids` now allows extras (`highlights`) and drops reserved / invalid ids; AST-517 / session-parse / craft-persist fixtures that stored prose `"Jobs"` now use the sample job array; AST-519 PUT orphan key `orphan_section` would mint an extra — fixture uses `123bad`.
+**Broken / obsolete this pass:** AST-996 `test_split_still_keeps_legacy_string_experience` now asserts omit; AST-997 `test_validate_accepts_legacy_string_experience` now expects `experience_detail` reject; AST-1270 `test_allowed_section_keys_intersect_known_ids` now allows extras (`highlights`) and drops reserved / invalid ids; AST-517 / session-parse / craft-persist fixtures that stored prose `"Jobs"` now use the sample job array; AST-519 PUT orphan key `orphan_section` would mint an extra — fixture uses `123bad`. **`[qa-handoff]`:** `TestAst986SessionResumeParse::test_200_success_splits_payload_no_candidate_bind_or_persist` asserts `context.raw_resume` (not `starting_resume_text`). Judith `craft_resume_base` `cache_prompt` contract stays on **AST-996** — not this child’s run list.
 
 **Integration:** none — existing `tests/integration/scenarios/test_candidate_nav_api.py` is nav visibility only; do not invent hop/ingest integration coverage.
 
 ```bash
-./scripts/testing/run_component_tests.sh   tests/component/utils/test_config.py::TestAst1305ResumeStructureExtraDefault   tests/component/core/test_candidate.py::TestAst1305HopsContentBlobsAndLegacyLabels   tests/component/core/test_candidate.py::TestAst517ResumeStructure   tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload   tests/component/core/test_candidate.py::TestAst996ExperienceJobArray   tests/component/core/test_candidate.py::TestAst997JobTailoredExperience   tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract   tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail   tests/component/core/test_candidate.py::TestAst986SessionResumeParse::test_200_success_splits_payload_no_candidate_bind_or_persist   tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success   tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi   tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys   tests/component/core/test_tracker.py::TestAst1305JobResumeExtras   tests/component/core/test_agent.py -k "draft_job_resume"   -q
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1305ResumeStructureExtraDefault \
+  tests/component/core/test_candidate.py::TestAst1305HopsContentBlobsAndLegacyLabels \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_is_experience_job_array_helper \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_preserves_experience_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_still_keeps_legacy_string_experience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_drops_empty_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_flatten_promotes_job_array_from_content_dict \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_flatten_does_not_str_coerce_existing_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_format_base_resume_token_includes_job_array_json \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_debug_experience_jobs_emits_style_d_lines \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_debug_experience_jobs_legacy_string_shape \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_parse_candidate_resume_debug_lists_jobs \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse::test_200_success_splits_payload_no_candidate_bind_or_persist \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/core/test_tracker.py::TestAst1305JobResumeExtras \
+  -q
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py -k "draft_job_resume" \
+  -q
 ```

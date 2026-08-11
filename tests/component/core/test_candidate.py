@@ -2042,8 +2042,7 @@ class TestAst986SessionResumeParse:
         assert calls[0]["live_content"] == "full resume text"
         assert calls[0]["index"] == body["batch_id"]
         assert "astral_candidate_id" not in calls[0]["ctx"]
-        # Session synthetic ctx on this tip still uses starting_resume_text (AST-1014 raw_* not on base).
-        assert calls[0]["ctx"]["candidate_data"]["context"]["starting_resume_text"] == "full resume text"
+        assert calls[0]["ctx"]["candidate_data"]["context"]["raw_resume"] == "full resume text"
         assert saves[0][0][2] == "session"
         assert updates[-1][1]["status"] == "COMPLETED"
         get_c.assert_not_called()
