@@ -253,7 +253,7 @@ export default function Skipped() {
       <div className="list-page-header">
         <h1 className="list-page-title">Skipped</h1>
         {selected.size > 0 && (
-          <button className="list-page-bulk-btn" onClick={handleRetry}>Retry ({selected.size})</button>
+          <button className="btn primary" onClick={handleRetry}>Retry ({selected.size})</button>
         )}
       </div>
       {loading ? (

@@ -91,7 +91,7 @@ export default function CandidateSurfer() {
           <h1>{dto.off_switch_heading}</h1>
           {statusLine && <p className="surfer-page-status">{statusLine}</p>}
           {dto.status === "opted_in" && (
-            <button type="button" disabled={busy} onClick={() => void handleOptOut()}>
+            <button type="button" className="btn secondary" disabled={busy} onClick={() => void handleOptOut()}>
               {dto.off_switch_button_label}
             </button>
           )}
