@@ -51,9 +51,9 @@ export default function Modal({ open, onClose, title, children, onSave, dirty, s
           {children}
         </div>
         <div className="modal-footer">
-          <button className="modal-btn cancel" onClick={guardedClose}>Cancel</button>
+          <button className="btn secondary" onClick={guardedClose}>Cancel</button>
           {onSave && (
-            <button className="modal-btn save" onClick={onSave}>Save</button>
+            <button className="btn primary" onClick={onSave}>Save</button>
           )}
         </div>
       </div>

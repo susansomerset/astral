@@ -81,8 +81,8 @@ export default function ContextTextPage({ title, contextKey }: ContextTextPagePr
         <div className="dep-header">
           <h1 className="dep-title">{title}</h1>
           <div className="dep-actions">
-            <button className="dep-btn cancel" onClick={handleCancel}>Cancel</button>
-            <button className="dep-btn save" onClick={handleSave}>Save</button>
+            <button className="btn secondary" onClick={handleCancel}>Cancel</button>
+            <button className="btn primary" onClick={handleSave}>Save</button>
           </div>
         </div>
         <div className="dep-body">
