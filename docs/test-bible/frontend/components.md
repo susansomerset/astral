@@ -642,3 +642,90 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx
 ```
+
+---
+
+### AST-1302 · AST-1166 (list icon-control remediation)
+
+**Parent:** [AST-1166 — Button consistency](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency). **Publish:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`.
+
+Consume landed `pattern.ui.icon-control`: list row actions + modal × + CollapsiblePanel chevron use `className="icon-control"`; cramped two-letter labels become single initials (`Sk`→`S`, `Jr`→`J`, `Re`→`R`, `In`→`I`, `Gh`→`G`); Manage Candidates Set dispatch tasks → `T`; Agents row Delete → `D`. Retire leftover `.job-list-icon-btn` / `.list-page-edit-btn` / `.modal-close` / `.collapsible-panel-chevron-btn`. Handlers / `disabled` / `aria-label` unchanged. Labeled sweep (including Scheduled Actions Run/Stop and modal Skip This Job) stays **AST-1301**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job-list row actions | `CandidateJobRowActions.tsx` + `App.css` | **`test_CandidateJobRowActions.test.tsx`** — existing Skip/Resurrect handlers; **`CandidateJobRowActions — AST-1302 icon-control`** (initials + class + leftover CSS retired + post-applied `R/I/X/G` handlers) |
+| Manage Candidates row column (**§6c**) | `AdminManageCandidates.tsx` | **`test_AdminManageCandidates.test.tsx`** — **`AST-1302: row actions are icon-control`** |
+| Manage Agents row Delete (**§6c**) | `AdminAgentPrompts.tsx` | **`test_AdminAgentPrompts.test.tsx`** — **`AST-1302: row Delete is icon-control with D`** |
+| Scheduled Actions modal × (**§6c**) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1302: Add Task and Kill Running × are icon-control`** |
+| Shared Modal × | `Modal.tsx` | **`test_Modal.test.tsx`** — **`AST-1302: header close is icon-control`** |
+| CollapsiblePanel chevron | `CollapsiblePanel.tsx` | **`test_CollapsiblePanel.test.tsx`** — **`AST-1302: chevron is icon-control`** |
+
+**Existing coverage (re-run):** `test_JobsRecommended.test.tsx` Skip-by-aria-label cases (page file not edited); `test_JobDetailModal.test.tsx` **Skip This Job** / `entity-skip-btn` (excluded).
+
+**Broken / obsolete:** none — existing tests use `aria-label` / role names that this ticket kept.
+
+**Integration:** no existing scenario asserts list-row / modal-close class names — no drift.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_CollapsiblePanel.test.tsx
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1302"
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  -t "Skip"
+```
+
+---
+
+### AST-1301 · AST-1166 (labeled-button remediations)
+
+**Parent:** [AST-1166 — Button consistency](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency). **Publish:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation`.
+
+Consume landed `pattern.ui.shared-button-roles`: labeled actions move onto `btn primary` / `secondary` / `danger` / `primary in-flight`. Leftover `.modal-btn` / `.dep-btn` / `.list-page-bulk-btn` / `.timesheet-export-btn` / `.entity-skip-btn` / `.dispatch-log-copy-btn` / `.recommended-report-copy-link` / `.section-expand-chrome button` / `.manage-email-toolbar button` deleted. Handlers / `disabled` / labels unchanged (Land Meteorite still `disabled={!landEnabled}`). Icon-control files stay **AST-1302** (`modal-close`, `list-page-edit-btn`, `job-list-icon-btn`, `sql-hist-btn`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared Modal footer | `Modal.tsx` | **`test_Modal.test.tsx`** — **`AST-1301: footer Cancel/Save use catalog classes`** (do **not** run **`AST-1302:`** close case on this tip — × stays `modal-close`) |
+| ListPage bulk | `ListPage.tsx` + `App.css` | **`test_ListPage.test.tsx`** — Archive/Delete catalog classes; **`AST-1301: App.css retires leftover labeled families`** |
+| Skip This Job | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — Skip is `btn secondary` |
+| Generate in-flight (**AST-645** revised) | `ArtifactEditor.tsx`, `ArtifactsCompanySearchTerms.tsx`, `JobAnalysisReportModal.tsx` | idle `btn primary`; busy still `in-flight` — drop obsolete `toHaveClass("save")` |
+| Manage Email toolbar (**§6c**) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** — Select all / Clear / Land Meteorite classes + existing Land gate/POST |
+| Scheduled Actions (**§6c**) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1301: labeled actions use catalog classes`** (do **not** run **`AST-1302:`** × case on this tip) |
+| JobsSkipped Retry (**§6c**) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — Retry is `btn primary` |
+| Intake / Profile (**§6c**) | `CandidateIntake.tsx`, `CandidateProfile.tsx` | Continue `btn primary`; Save/Cancel catalog |
+| Expand chrome / LogOff | `SectionExpandChrome.tsx`, `LogOffScreen.tsx` | Expand/Collapse `btn secondary`; Refresh `btn primary` |
+
+**Existing coverage (bible-backed §6c page renders — handlers unchanged):** `test_AdminAgentPrompts.test.tsx`, `test_AdminAgentTimesheets.test.tsx`, `test_AdminAnthropicAdHoc.test.tsx`, `test_AdminCostReconciliation.test.tsx`, `test_AdminDataManagement.test.tsx`, `test_AdminManageCandidates.test.tsx`, `test_AdminManageSlack.test.tsx`, `test_AdminPerformanceMonitor.test.tsx`, `test_AdminScheduledQueries.test.tsx`, `test_AdminSessionCoverLetter.test.tsx`, `test_AdminSessionResumePaste.test.tsx`, `test_AdminTaskPrompts.test.tsx`, `test_CandidateSurfer.test.tsx`, `test_CandidateSurferConsent.test.tsx`, `test_CompaniesNewList.test.tsx`.
+
+**Broken / obsolete (revised this pass):** `test_ArtifactEditor.test.tsx` AST-645 `toHaveClass("save")` → `btn` + `primary`. `[qa-handoff]` harness: AuthContext setter stubs; Agent Prompts GET `ok: true`; AST-634 top-level `first`; `JobDetailModal` already-skipped needs `/api/state_ui_manifest` (`STATE_UI_MANIFEST_FIXTURE`). After ftr/1302 merge-resume, glyph rows are `icon-control` — still do **not** run **`AST-1302:`** names on this ticket.
+
+**Integration:** no existing scenario asserts labeled-button class catalogs — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx \
+  ../../../tests/component/frontend/components/test_LogOffScreen.test.tsx \
+  -t "AST-1301|AST-645|Skip This Job|filters, sorts|Expand all|timeout copy"
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  -t "AST-1301|AST-1142|AST-645|Retry|Continue resumes|pronoun"
+```

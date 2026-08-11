@@ -142,6 +142,8 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
     const btn = await screen.findByRole("button", { name: "Generate Artifacts" })
+    expect(btn).toHaveClass("btn")
+    expect(btn).toHaveClass("primary")
     expect(btn).not.toHaveClass("in-flight")
     await userEvent.click(btn)
     await waitFor(() => expect(btn).toHaveClass("in-flight"))

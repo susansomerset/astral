@@ -1271,4 +1271,38 @@ describe("AdminScheduledActions", () => {
       expect(values).toEqual(["alpha_task", "fetch_jd", "meteorite_grade_do", "zebra_task"])
     }, 20000)
   })
+
+  it("AST-1301: labeled actions use catalog classes", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "+ Add Task" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "Stop All" })).toHaveClass("btn", "danger")
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Stop" })).toHaveClass("btn", "danger")
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const kill = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    expect(within(kill).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).toHaveClass("btn", "danger")
+  }, 20000)
+
+  it("AST-1302: Add Task and Kill Running × are icon-control", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+    const addModal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+    const addClose = within(addModal).getByRole("button", { name: "Close" })
+    expect(addClose).toHaveClass("icon-control")
+    expect(addClose).not.toHaveClass("modal-close")
+    await userEvent.click(within(addModal).getByRole("button", { name: "Cancel" }))
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const killModal = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    const killClose = within(killModal).getByRole("button", { name: "Close" })
+    expect(killClose).toHaveClass("icon-control")
+    expect(killClose).not.toHaveClass("modal-close")
+  }, 20000)
 })

@@ -83,7 +83,9 @@ describe("JobsSkipped", () => {
     await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
     const checkbox = screen.getByRole("checkbox")
     await userEvent.click(checkbox)
-    await userEvent.click(screen.getByRole("button", { name: "Retry (1)" }))
+    const retry = screen.getByRole("button", { name: "Retry (1)" })
+    expect(retry).toHaveClass("btn", "primary")
+    await userEvent.click(retry)
     await waitFor(() => expect(screen.getByText("1 jobs queued for retry")).toBeInTheDocument())
     // AST-1156: FAILED_LIKE → CULTURE_READY (not hard-coded NEW).
     expect(mockedApi).toHaveBeenCalledWith(

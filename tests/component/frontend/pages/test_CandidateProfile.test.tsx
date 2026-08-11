@@ -147,6 +147,8 @@ describe("CandidateProfile", () => {
     const pronoun = within(contactField as HTMLElement).getByRole("combobox")
     expect(pronoun).toHaveDisplayValue("they/them")
     await userEvent.selectOptions(pronoun, "she/her")
+    expect(screen.getByRole("button", { name: "Save" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
     expect(savedBody?.pronouns).toBe("she/her")

@@ -15,8 +15,11 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_STATES,
+    RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
 )
 
 _RUBRIC_CONTENT = "body\nA = one\nB = two"
@@ -25,6 +28,7 @@ _VALID_ACCENT = (BUILD_CONFIG.get("accent_palette") or ["#1A1A2E"])[0].upper()
 
 
 def _three_section_structure() -> dict[str, Any]:
+    """Slim three-id catalog for projection helpers that do not call normalize."""
     return {
         "sections": {
             "professional_summary": {
@@ -50,6 +54,30 @@ def _three_section_structure() -> dict[str, Any]:
             },
         },
     }
+
+
+def _catalog_structure() -> dict[str, Any]:
+    """Default ten-id catalog (normalize-valid) with the AST-517 custom titles."""
+    out = candidate_mod.default_resume_structure()
+    out["sections"]["professional_summary"]["title"] = "Custom Summary"
+    out["sections"]["experience"]["title"] = "Custom Jobs"
+    out["sections"]["technical_skills"]["title"] = "Custom Skills"
+    return out
+
+
+def _required_seven_structure() -> dict[str, Any]:
+    full = candidate_mod.default_resume_structure()
+    keep = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+    full["sections"] = {sid: spec for sid, spec in full["sections"].items() if sid in keep}
+    return full
+
+
+def _seven_experience(spec: Any, *, accent: Any = None) -> dict[str, Any]:
+    raw = _required_seven_structure()
+    raw["sections"]["experience"] = spec
+    if accent is not None:
+        raw["accent_color"] = accent
+    return raw
 
 
 # AST-996: craft-base Experience wire shape (shared fixture for schema-valid payloads).
@@ -192,7 +220,7 @@ class TestParseCandidateResume:
 
         monkeypatch.setattr(candidate_mod.database, "save_candidate", _save)
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
-        structure = _three_section_structure()
+        structure = _catalog_structure()
         parsed = _craft_resume_base_payload(structure, {"professional_summary": "ok"})
         monkeypatch.setattr(
             candidate_mod,
@@ -573,7 +601,7 @@ class TestParseCandidateResumeExtended:
         monkeypatch.setattr(candidate_mod.database, "save_candidate", lambda candidate_id, **kwargs: None)
         transition = MagicMock()
         monkeypatch.setattr(candidate_mod, "transition_candidate_state", transition)
-        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "ok"})
+        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": "ok"})
         monkeypatch.setattr(candidate_mod, "do_task", AsyncMock(return_value={"success": True, "parsed_response": parsed}))
         out = await candidate_mod.parse_candidate_resume("somerset")
         assert out["success"] is True
@@ -653,7 +681,7 @@ class TestRunCandidateArtifactGeneration:
 
     def test_persists_artifacts_on_craft_resume_base_success(self, monkeypatch: pytest.MonkeyPatch) -> None:
         saves: list[tuple[Any, ...]] = []
-        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "Jobs"})
+        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": "Jobs"})
         monkeypatch.setattr(candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id})
         monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
         monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
@@ -785,7 +813,7 @@ class TestAst517ResumeStructure:
         assert set(first["sections"]) == set(RESUME_STRUCTURE_KNOWN_SECTION_IDS)
 
     def test_normalize_accepts_valid_structure_with_accent(self) -> None:
-        raw = _three_section_structure()
+        raw = _catalog_structure()
         raw["accent_color"] = _VALID_ACCENT.lower()
         out = candidate_mod.normalize_resume_structure(raw)
         assert out["accent_color"] == _VALID_ACCENT
@@ -797,34 +825,50 @@ class TestAst517ResumeStructure:
             ("bad", "resume_structure must be a dict"),
             ({}, "sections must be a non-empty dict"),
             ({"sections": {}}, "sections must be a non-empty dict"),
-            ({"sections": {"bad_id": {}}}, "unknown resume section id"),
-            ({"sections": {"experience": "x"}}, "section experience must be a dict"),
+            ({"sections": {"bad_id": {}}}, "missing required"),
+            (_seven_experience("x"), "section experience must be a dict"),
             (
-                {"sections": {"experience": {"id": "wrong", "title": "T", "enabled": True, "order": 0, "job_agent_editable": True}}},
+                _seven_experience(
+                    {"id": "wrong", "title": "T", "enabled": True, "order": 0, "job_agent_editable": True}
+                ),
                 "section id mismatch",
             ),
             (
-                {"sections": {"experience": {"id": "experience", "title": " ", "enabled": True, "order": 0, "job_agent_editable": True}}},
+                _seven_experience(
+                    {"id": "experience", "title": " ", "enabled": True, "order": 0, "job_agent_editable": True}
+                ),
                 "requires non-empty title",
             ),
             (
-                {"sections": {"experience": {"id": "experience", "title": "T", "enabled": "yes", "order": 0, "job_agent_editable": True}}},
+                _seven_experience(
+                    {"id": "experience", "title": "T", "enabled": "yes", "order": 0, "job_agent_editable": True}
+                ),
                 "enabled must be boolean",
             ),
             (
-                {"sections": {"experience": {"id": "experience", "title": "T", "enabled": True, "order": "0", "job_agent_editable": True}}},
+                _seven_experience(
+                    {"id": "experience", "title": "T", "enabled": True, "order": "0", "job_agent_editable": True}
+                ),
                 "order must be int",
             ),
             (
-                {"sections": {"experience": {"id": "experience", "title": "T", "enabled": True, "order": 0, "job_agent_editable": "no"}}},
+                _seven_experience(
+                    {"id": "experience", "title": "T", "enabled": True, "order": 0, "job_agent_editable": "no"}
+                ),
                 "job_agent_editable must be boolean",
             ),
             (
-                {"sections": {"experience": {"id": "experience", "title": "T", "enabled": True, "order": 0, "job_agent_editable": True}}, "accent_color": "red"},
+                _seven_experience(
+                    {"id": "experience", "title": "T", "enabled": True, "order": 0, "job_agent_editable": True},
+                    accent="red",
+                ),
                 "accent_color must be #RRGGBB",
             ),
             (
-                {"sections": {"experience": {"id": "experience", "title": "T", "enabled": True, "order": 0, "job_agent_editable": True}}, "accent_color": "#ABCDEF"},
+                _seven_experience(
+                    {"id": "experience", "title": "T", "enabled": True, "order": 0, "job_agent_editable": True},
+                    accent="#ABCDEF",
+                ),
                 "accent_color not in accent_palette",
             ),
         ],
@@ -834,7 +878,7 @@ class TestAst517ResumeStructure:
             candidate_mod.normalize_resume_structure(raw)
 
     def test_resolve_returns_stored_structure(self) -> None:
-        stored = _three_section_structure()
+        stored = _catalog_structure()
         out = candidate_mod.resolve_resume_structure({"artifacts": {"resume_structure": stored}})
         assert out["sections"]["technical_skills"]["title"] == "Custom Skills"
 
@@ -858,7 +902,7 @@ class TestAst517ResumeStructure:
         assert content == {"professional_summary": "only body"}
 
     def test_split_filters_disabled_sections_from_content(self) -> None:
-        structure = _three_section_structure()
+        structure = _catalog_structure()
         structure["sections"]["technical_skills"]["enabled"] = False
         parsed = _craft_resume_base_payload(structure, {"technical_skills": "skip", "experience": "keep"})
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
@@ -866,14 +910,14 @@ class TestAst517ResumeStructure:
         assert content["experience"] == "keep"
 
     def test_split_skips_non_string_section_values(self) -> None:
-        structure = _three_section_structure()
+        structure = _catalog_structure()
         parsed = _craft_resume_base_payload(structure)
         parsed["technical_skills"] = 99
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
         assert "technical_skills" not in content
 
     def test_split_omits_enabled_sections_absent_from_payload(self) -> None:
-        structure = _three_section_structure()
+        structure = _catalog_structure()
         parsed = {"resume_structure": structure, "experience": "only this"}
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
         assert content == {"experience": "only this"}
@@ -994,7 +1038,7 @@ class TestAst517ResumeStructure:
         assert parsed["agent_payload"]["resume_structure"]["sections"]["experience"]["title"] == "Custom Jobs"
 
     def test_split_promotes_nested_section_content(self) -> None:
-        structure = _three_section_structure()
+        structure = _catalog_structure()
         sections = {
             sid: {**spec, "content": f"nested-{sid}"}
             for sid, spec in structure["sections"].items()
@@ -1009,8 +1053,8 @@ class TestAst517ResumeStructure:
             "cand-a": {"state": "NEW_CANDIDATE", "candidate_data": {"context": {"raw_resume": "a"}}},
             "cand-b": {"state": "NEW_CANDIDATE", "candidate_data": {"context": {"raw_resume": "b"}}},
         }
-        struct_a = _three_section_structure()
-        struct_b = _three_section_structure()
+        struct_a = _catalog_structure()
+        struct_b = _catalog_structure()
         struct_b["sections"]["experience"]["title"] = "Other Jobs"
 
         async def _do_task(**kwargs):
@@ -1969,7 +2013,7 @@ class TestAst986SessionResumeParse:
         save_c = MagicMock()
         monkeypatch.setattr(candidate_mod.database, "get_candidate", get_c)
         monkeypatch.setattr(candidate_mod.database, "save_candidate", save_c)
-        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": "Jobs"})
+        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": "Jobs"})
         calls: list[dict[str, Any]] = []
 
         async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
@@ -2002,7 +2046,7 @@ class TestAst986SessionResumeParse:
         detail = MagicMock()
         monkeypatch.setattr(candidate_mod.logger, "debug_index", dbg)
         monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
-        parsed = _craft_resume_base_payload(_three_section_structure())
+        parsed = _craft_resume_base_payload(_catalog_structure())
         monkeypatch.setattr(
             candidate_mod,
             "asyncio",
@@ -2045,7 +2089,7 @@ class TestAst996ExperienceJobArray:
 
     def test_split_preserves_experience_job_array(self) -> None:
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": jobs})
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
         assert content["experience"] == jobs
         assert content["experience"][0]["company"] == "Acme Corp"
@@ -2053,7 +2097,7 @@ class TestAst996ExperienceJobArray:
 
     def test_split_still_keeps_legacy_string_experience(self) -> None:
         parsed = _craft_resume_base_payload(
-            _three_section_structure(), {"experience": "legacy prose"}
+            _catalog_structure(), {"experience": "legacy prose"}
         )
         _, content = candidate_mod.split_craft_resume_base_payload(parsed)
         assert content["experience"] == "legacy prose"
@@ -2150,7 +2194,7 @@ class TestAst996ExperienceJobArray:
         monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
         monkeypatch.setattr(candidate_mod, "flush_log_buffer", MagicMock())
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": jobs})
 
         async def _fake_do_task(**kwargs: Any) -> dict[str, Any]:
             return {"success": True, "parsed_response": parsed, "timesheet": {}}
@@ -2166,7 +2210,7 @@ class TestAst996ExperienceJobArray:
     ) -> None:
         saves: list[tuple[Any, ...]] = []
         jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
-        parsed = _craft_resume_base_payload(_three_section_structure(), {"experience": jobs})
+        parsed = _craft_resume_base_payload(_catalog_structure(), {"experience": jobs})
         monkeypatch.setattr(
             candidate_mod.database, "get_candidate", lambda candidate_id: {"astral_candidate_id": candidate_id}
         )
@@ -2213,7 +2257,7 @@ class TestAst996ExperienceJobArray:
             return {
                 "success": True,
                 "parsed_response": _craft_resume_base_payload(
-                    _three_section_structure(), {"experience": jobs}
+                    _catalog_structure(), {"experience": jobs}
                 ),
             }
 
@@ -4414,4 +4458,117 @@ class TestAst1287ForceTransition:
         candidate_mod.transition_candidate_state("somerset", "INTAKE_INITIATED", force=True)
         assert save.call_args.kwargs["state"] == "INTAKE_INITIATED"
         assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INTAKE_INITIATED"
+
+
+# Branches: required-seven gate; extra slug accept/reject; format default/lock/strip.
+class TestAst1303ResumeStructureCatalog:
+    """AST-1303: required seven + open extras + closed format on normalize."""
+
+    def test_seven_only_fills_formats_and_strips_contact_format(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["candidate_name"]["format"] = "free_prose"
+        out = candidate_mod.normalize_resume_structure(raw)
+        assert set(out["sections"]) == set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+        for sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
+            assert "format" not in out["sections"][sid]
+        for sid in ("professional_summary", "core_competencies", "experience"):
+            assert out["sections"][sid]["format"] == RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+
+    def test_highlights_and_publications_persist_as_bullet_list(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["highlights"] = {
+            "id": "highlights",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 10,
+            "format": "bullet_list",
+        }
+        raw["sections"]["publications"] = {
+            "id": "publications",
+            "title": "Publications",
+            "enabled": True,
+            "order": 11,
+            "job_agent_editable": True,
+            "format": "bullet_list",
+        }
+        out = candidate_mod.normalize_resume_structure(raw)
+        assert out["sections"]["highlights"]["format"] == "bullet_list"
+        assert out["sections"]["highlights"]["job_agent_editable"] is True
+        assert out["sections"]["publications"]["title"] == "Publications"
+        assert out["sections"]["publications"]["format"] == "bullet_list"
+
+    def test_required_title_change_keeps_id(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["professional_summary"]["title"] = "Summary"
+        out = candidate_mod.normalize_resume_structure(raw)
+        assert "professional_summary" in out["sections"]
+        assert out["sections"]["professional_summary"]["id"] == "professional_summary"
+        assert out["sections"]["professional_summary"]["title"] == "Summary"
+
+    def test_omitting_required_section_raises(self) -> None:
+        raw = _required_seven_structure()
+        del raw["sections"]["experience"]
+        with pytest.raises(ValueError, match="missing required"):
+            candidate_mod.normalize_resume_structure(raw)
+
+    def test_disabling_required_section_raises(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["professional_summary"]["enabled"] = False
+        with pytest.raises(ValueError, match="cannot be disabled"):
+            candidate_mod.normalize_resume_structure(raw)
+
+    def test_ten_id_blob_without_format_keys_still_normalizes(self) -> None:
+        raw = candidate_mod.default_resume_structure()
+        for spec in raw["sections"].values():
+            spec.pop("format", None)
+        out = candidate_mod.normalize_resume_structure(raw)
+        for sid, fmt in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.items():
+            assert out["sections"][sid]["format"] == fmt
+
+    def test_reserved_and_invalid_extra_ids_rejected(self) -> None:
+        for bad in ("sections", "AccentColor", "1bad", "has-dash"):
+            raw = _required_seven_structure()
+            raw["sections"][bad] = {
+                "id": bad,
+                "title": "Extra",
+                "enabled": True,
+                "order": 20,
+                "format": "bullet_list",
+            }
+            with pytest.raises(ValueError, match="invalid extra section id"):
+                candidate_mod.normalize_resume_structure(raw)
+
+    def test_extra_requires_closed_format(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["highlights"] = {
+            "id": "highlights",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 10,
+            "job_agent_editable": True,
+        }
+        with pytest.raises(ValueError, match="requires format"):
+            candidate_mod.normalize_resume_structure(raw)
+        raw["sections"]["highlights"]["format"] = "header"
+        with pytest.raises(ValueError, match="must be one of"):
+            candidate_mod.normalize_resume_structure(raw)
+
+    def test_experience_format_locked_and_extra_may_use_experience_detail(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["experience"]["format"] = "word_cloud"
+        with pytest.raises(ValueError, match="must be experience_detail"):
+            candidate_mod.normalize_resume_structure(raw)
+        raw = _required_seven_structure()
+        raw["sections"]["publications"] = {
+            "id": "publications",
+            "title": "Publications",
+            "enabled": True,
+            "order": 11,
+            "job_agent_editable": True,
+            "format": "experience_detail",
+        }
+        out = candidate_mod.normalize_resume_structure(raw)
+        assert out["sections"]["publications"]["format"] == "experience_detail"
+        assert out["sections"]["experience"]["format"] == "experience_detail"
+        assert set(RESUME_STRUCTURE_BODY_FORMATS) >= {"bullet_list", "experience_detail"}
 
