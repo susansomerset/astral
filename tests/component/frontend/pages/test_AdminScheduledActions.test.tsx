@@ -1307,7 +1307,7 @@ describe("AdminScheduledActions", () => {
   }, 20000)
 
   it("AST-1318: row Run uses in-row; toolbar and modals stay full size", async () => {
-    mockApi(false)
+    mockApi(true)
     renderWithProviders(<ScheduledActions />)
     await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
     await expandFirstPhaseSection()
