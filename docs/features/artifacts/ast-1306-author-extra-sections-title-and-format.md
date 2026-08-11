@@ -356,3 +356,30 @@ The plan is binding. The agent:
 **Conf:** high — AST-1303 already owns normalize + the closed format list; this ticket only exposes that catalog on GET, switches PUT from overlay to replace when `sections` is sent, and adds a thin editor that renders the API payload.
 
 **Risk:** Medium — a buggy replace PUT that runs on a partial `sections` map would drop optional (or, if normalize were skipped, required) rows; accent-only PUT must keep omitting `sections`, and `ArtifactEditor` must keep reading the unchanged `sections` key.
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1306
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format` @ `2ea93a93bed6980c0d6b7cb5fe1ff5c248db783a`
+
+## Traceability
+Child AC1→S1–2; AC2→S1–2; AC3→S1–2 (plan doc labels these parent AC3/4/7 — see discuss)
+
+## Findings
+
+### discuss — Traceability table uses parent AC numbers, not child checkbox ids
+**Location:** Traceability (this child's AC only)
+**Finding:** Rows are labeled AC 3 / 4 / 5 (parent AC3 title, parent AC4 format, parent AC7 required). Child ticket has three ACs numbered 1–3 with the same content.
+**Recommendation:** Non-blocking for build. When posting Linear, use child AC1→S1–2; AC2→S1–2; AC3→S1–2. Engineer may add a one-line note in the plan Revisions section for clarity.
+
+### discuss — `pattern.ui.admin-endpoint` vs candidate routes
+**Location:** Stage 1 decisions; child In scope
+**Finding:** Pattern canonical_refs cite `api_admin.py`; plan correctly keeps `@require_auth` on existing `GET/PUT /api/candidates/...` and documents why (candidate-scoped artifacts, no duplicate catalog on `ui_config`). Matches parent Architectural definition intent (config resolved in API, React renders).
+**Recommendation:** Acceptable — do not add `/api/admin` routes for this child.
+
+— Joan
+context_tokens≈95000
+
