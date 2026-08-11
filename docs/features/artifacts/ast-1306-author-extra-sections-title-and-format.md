@@ -394,3 +394,133 @@ context_tokens≈95000
 | 1 | `bf147fb6` | catalog default, slug/rekey, GET `all_sections`+`catalog`, PUT replace |
 | 2 | `cc00324c` | `ResumeStructureEditor` on Base Resume Content |
 
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1306
+**Publish ref:** `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format` @ `1e405f2c43bee539306e983ee9a68d6c877afd8d`
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+Ticket-scoped product delta: `bf147fb6` + `cc00324c` + `1e405f2c` (`src/utils/config.py`, `src/core/candidate.py`, `src/ui/api/api_candidate.py`, `ResumeStructureEditor.tsx`, `ArtifactsBaseResumeContent.tsx`, `App.css` modify/add). Formal three-dot `origin/dev...origin/sub` is epic-wide; predicates scored against ticket delta unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths in ticket delta |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent/dispatcher paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade/agent paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | one new config key; GET catalog reads `RESUME_STRUCTURE_*` from config |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer delta is `src/` + frontend (docs on Betty merge) |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits touch planned `src/` + frontend only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core helpers only; no external imports |
+| astral.layers.import-direction | scoped | conforms | ui/api → core+utils; core → utils; no data/external from ui |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts paths |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | format list from GET `catalog.body_formats`; no TSX format literals |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | existing `@require_auth` candidate routes unchanged |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migrations |
+| astral.standards.debug-contract-gated | scoped | conforms | no new debug paths |
+| astral.standards.dry-and-focused-functions | scoped | conforms | slug once in core; catalog once in config/API |
+| astral.standards.in-scope-only | scoped | violates | `filter_content_to_resume_structure` changed — not in Files Changed / plan steps |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names (`slug_resume_section_id`, `ResumeStructureEditor`) |
+| astral.standards.no-cross-contamination | scoped | violates | content-filter behavior bundled into structure-editor ticket |
+| astral.standards.no-hardcoded-sets | scoped | conforms | formats/ids from config via GET catalog |
+| astral.standards.public-then-helpers | scoped | conforms | two new public core helpers at module level |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | config delta does not import data |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job states |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run chain |
+| astral.ui.frontend-file-placement | scoped | conforms | `ResumeStructureEditor.tsx` under `components/` |
+| astral.ui.naming-conventions | scoped | conforms | PascalCase component, snake_case Python |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `1e405f2c` after `merge-tests` @ `b67ac6c6` |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1306): …` engineer commits |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1299/…` publish |
+| orch.git.ftr-sub-topology | universal | conforms | child under parent ftr |
+| orch.git.merge-on-checkout | universal | conforms | ftr merge commit `04dcb32d` documented in stub |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no destructive git in delta |
+| orch.git.no-dev-agent-branches | universal | conforms | sub publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1299` |
+| orch.git.three-permanent-branches | universal | conforms | standard sub topology |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | follows approved plan except noted hunk |
+| orch.pipeline.plan-is-bible | universal | violates | plan forbids expanding `candidate.py` beyond slug/prepare; filter_content edited |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | spawned at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests via Betty merge + `c4b7adbb` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | allowed paths |
+
+**Count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan cites `pattern.ui.admin-endpoint` intent in decisions only; Joan accepted candidate-route placement |
+
+## Plan adherence
+
+**In scope (conforms):** `RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT` added; `slug_resume_section_id` + `prepare_resume_structure_sections_for_save` match Stage 1 algorithm; GET returns `sections` + `all_sections` + `catalog` + `accent_color`; PUT replaces `sections` when present (accent-only overlay preserved); `ValueError` text forwarded on 400; `ResumeStructureEditor` + Base Resume Content wiring + CSS match Stage 2; `normalize_resume_structure` / `enabled_resume_structure_sections` / `ArtifactEditor` untouched; no hardcoded format strings in TSX.
+
+**Joan:** `[plan-rubric] revision=1` **APPROVED** — no Excluded-statute straggler list; prior discuss items (traceability labels, admin-endpoint pattern) non-blocking.
+
+**Cross-ticket:** Relation `after AST-1303` satisfied (catalog names present). `filter_content_to_resume_structure` hunk is **AST-1305** content-ingest / legacy-array territory (AST-1303 explicitly left that helper untouched).
+
+**Tip note:** `1e405f2c` fixes GET sort tie-break (`kv[0]` vs erroneous `sid` closure) — correct on tip; commit message is `test(AST-1306)` but touches product `api_candidate.py` (process advisory only).
+
+## Findings
+
+### fix-now — Out-of-plan `filter_content_to_resume_structure` change
+**Location:** `src/core/candidate.py` — `filter_content_to_resume_structure` (~lines 2540–2552), introduced in `bf147fb6`
+**Finding:** Stage 1 step 3 limits `candidate.py` edits to `slug_resume_section_id` and `prepare_resume_structure_sections_for_save` and explicitly leaves `filter_base_resume_to_structure` alone. Files Changed does not list content filtering. The diff widens job-array preservation to any key, adds string `experience` fallback, and coerces non-dict lists via `_coerce_resume_section_string` — content-shape behavior owned by **AST-1305** (legacy label/content arrays), not structure authoring.
+**Recommendation:** Revert the `filter_content_to_resume_structure` hunk on this sub-branch; land equivalent behavior on the sibling ticket that owns content ingest/filtering. Structure editor + PUT replace do not require this change per the approved plan.
+
+### advisory — Exported editor types
+**Location:** `src/ui/frontend/src/components/ResumeStructureEditor.tsx`
+**Finding:** Plan specified inline types; implementation `export type Catalog` / `SectionRow` for page import. Harmless DRY improvement.
+**Recommendation:** No action required; optional one-line plan revision note.
+
+## What's solid
+
+- Config-driven catalog on GET; React renders `catalog.body_formats` only (no format literals in TSX).
+- Slug algorithm lives once in core; `_pending_*` keys rekey correctly.
+- PUT replace semantics + accent-only overlay match the binding decisions.
+- Required rows: no Remove, enabled checkbox disabled; `format_locked` on contact + experience.
+- Betty manifest covers slug/prepare, GET catalog, PUT replace/drop-optional, editor component, and page integration.
+
+## Notes
+
+- Publish tip `1e405f2c` includes `merge-tests` @ `b67ac6c6` (tests `c4b7adbb` + bundled sibling frontend test commits from origin/tests).
+- Engineer product SHA for stages 1–2: `cc00324c`; sort-key fix on tip via `1e405f2c`.
+
+## Frame diff
+
+Self-Assessment **Single-Component** lists config key, two core helpers, GET/PUT, editor, page, CSS — **mismatch:** `filter_content_to_resume_structure` behavior change is an undeclared fifth `candidate.py` concern; revert restores frame alignment.
+
+context_tokens≈110000
+— Radia
