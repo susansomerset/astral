@@ -483,7 +483,7 @@ def build_session_base_resume(
         },
         "contact": {},
     }
-    structure = candidate_mod.resolve_resume_structure(cd)
+    structure = _resume_structure_for_emit(resume_structure)
     render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
     # Skip _apply_contact_to_render_dict — contact/header from paste section strings.
     style = _merge_effective_style(cd)
@@ -1028,6 +1028,14 @@ def _structure_ordered_body_ids(resume_structure: dict) -> List[str]:
     return [sid for sid in candidate_mod.enabled_resume_section_ids(resume_structure) if sid not in contact]
 
 
+def _resume_structure_for_emit(raw: dict) -> dict:
+    """Normalize when valid; keep raw when an extra lacks format so emit can skip it."""
+    try:
+        return candidate_mod.normalize_resume_structure(raw)
+    except ValueError:
+        return raw
+
+
 def _apply_resume_text_markers(render: dict) -> dict:
     """Deep-walk dict/list nests; apply ``_resume_site_markers`` to every string leaf."""
     return {k: _mark_resume_value(v) for k, v in render.items()}
@@ -1064,16 +1072,25 @@ def _resume_site_markers(text: str) -> str:
 
 
 def _emit_inline_emphasis_html(text: str) -> str:
-    """Escape HTML, then restore closed italic/bold tags from the config allowlist."""
+    """Escape HTML, then restore paired italic/bold tags from the config allowlist."""
     if not text:
         return ""
     parts: List[str] = []
     pos = 0
+    open_counts: Dict[str, int] = {}
     for match in _EMPHASIS_TAG_RE.finditer(text):
         parts.append(html.escape(text[pos:match.start()]))
         raw = match.group(0)
         name = raw.strip("</>").lower()
-        parts.append(f"</{name}>" if raw.startswith("</") else f"<{name}>")
+        if raw.startswith("</"):
+            if open_counts.get(name, 0) > 0:
+                open_counts[name] -= 1
+                parts.append(f"</{name}>")
+            else:
+                parts.append(html.escape(raw))
+        else:
+            open_counts[name] = open_counts.get(name, 0) + 1
+            parts.append(f"<{name}>")
         pos = match.end()
     parts.append(html.escape(text[pos:]))
     return "".join(parts)
