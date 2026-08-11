@@ -591,3 +591,112 @@ UI-only. Do not change GET/PUT `/resume_structure`, slug/prepare, normalize, or 
 - PUT `/data` replaces `sections` when that key is sent; accent-only PUT leaves sections alone.
 - `_pending_*` add still slugs from title in core on save.
 - No print CSS / hop changes (AST-1304 / AST-1305).
+
+## Radia review (AST-1323)
+
+# Statutes checked
+
+Ticket-scoped product delta: `21986a9e` (`ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx`, `ResumeStructureEditor.tsx` types-only, `App.css`). Formal `ftr...sub` three-dot diff includes unrelated sibling merges (AST-1311–1318 inbox/gmail/SA tests); scored on the four-file UI fix unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.* (3) | scoped | not-applicable | no agent paths |
+| astral.batch.* (4) | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | format options from `structureCatalog.body_formats` prop (GET catalog) |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env wiring |
+| astral.debug.* (2) | scoped | not-applicable | no debug paths |
+| astral.dispatch.* (2) | scoped | not-applicable | no dispatch paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer delta is frontend only |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commit touches only planned `src/ui/frontend/**` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | UI-only delta |
+| astral.layers.import-direction | scoped | conforms | page → components; no data/external imports added |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | no hardcoded format tuple; catalog-driven `<select>` |
+| astral.idioms.* (3) | scoped | not-applicable | no API/auth paths changed |
+| astral.seed.* (5) | scoped | not-applicable | no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB paths |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | authoring logic moved into existing `ArtifactEditor` stack; types retained in thin module |
+| astral.standards.in-scope-only | scoped | conforms | UI-only; no API/core/config/hop edits |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names only |
+| astral.standards.no-cross-contamination | scoped | conforms | optional props gated; `JobAnalysisReportModal` unchanged |
+| astral.standards.no-hardcoded-sets | scoped | conforms | formats from catalog prop only |
+| astral.standards.public-then-helpers | scoped | conforms | helpers scoped inside `ArtifactEditor` |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils change |
+| astral.state.* (3) | scoped | not-applicable | no state machine |
+| astral.ui.frontend-file-placement | scoped | conforms | changes under `components/` + `pages/` |
+| astral.ui.naming-conventions | scoped | conforms | `structure-authoring-header`, existing BEM family |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.* (9) | universal | conforms | sub on ftr topology |
+| orch.pipeline.* (4) | universal | conforms | fix-lane at Tests Passed |
+| orch.roles.* (5) | universal | conforms | n/a to code shape |
+
+**Count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan-fix is UI chrome relocation only |
+
+## Plan adherence (plan-fix patch)
+
+**Matches:** Optional authoring props on `ArtifactEditor`; structure controls on `CollapsiblePanel` header row (title, format, Enabled, **Job edit**, Up/Down, conditional Remove); `stopPropagation` on header controls; body `LabeledTextArea` unchanged between headers; add-section + `Save sections` below stack; standalone `ResumeStructureEditor` removed from page; `ResumeStructureEditor.tsx` reduced to type exports; `handleStructureRowsChange` also syncs tab labels (AC3-friendly); `JobAnalysisReportModal` does not pass catalog props.
+
+**UI-only:** No GET/PUT/core/config changes — per plan.
+
+## Fix-specific checks
+
+### [bug-repro] — fix-now (stale sibling test)
+
+| Test | Verdict |
+|------|---------|
+| `test_ArtifactsBaseResumeContent.test.tsx` — `AST-1323: structure controls on collapsible header with body between` | **OK** — asserts flat “Resume sections” panel gone, `Job edit` on `.collapsible-panel-header`, format `<select>` in header, body textarea between panels; pins To-be layout. |
+| `tests/component/frontend/components/test_ResumeStructureEditor.test.tsx` | **fix-now** — still `import ResumeStructureEditor` default and renders flat editor UI removed in `21986a9e`. Module is types-only; this file will fail import/render. Bible notes it obsolete; Betty did not revise it in `bef854d1` while engineer removed the component. |
+
+### ## What must still hold — OK
+
+| Item | Verdict |
+|------|---------|
+| Formats from `catalog.body_formats` only | Options mapped from `structureCatalog.body_formats` — no TSX format literals. |
+| Required: no Remove; enabled disabled | `!structureRow.required` gate; `disabled={structureRow.required}` on Enabled. |
+| Title/format change keeps id | `patchStructureRow(structureRow.id, …)` — id stable. |
+| PUT replace / accent-only / `_pending_*` slug | `saveStructure` in page unchanged; still core slug on save. |
+| No AST-1304/1305 hop/emit changes | UI-only delta. |
+| `JobAnalysisReportModal` read-only structure tabs | No catalog/authoring props passed. |
+
+## Findings
+
+### fix-now — Obsolete `test_ResumeStructureEditor.test.tsx` after default export removed
+**Location:** `tests/component/frontend/components/test_ResumeStructureEditor.test.tsx` (unchanged on branch); `src/ui/frontend/src/components/ResumeStructureEditor.tsx` (types only @ `21986a9e`)
+**Finding:** Plan step 4 removes the flat editor UI; engineer did. Component test still imports and renders `ResumeStructureEditor` default export (AST-1306 cases). Manifest green for `AST-1323` page repro does not excuse a broken sibling test file on full frontend tier.
+**Recommendation:** Delete or rewrite `test_ResumeStructureEditor.test.tsx` to type-only smoke / drop file; migrate any still-needed catalog assertions into `test_ArtifactsBaseResumeContent` (page test already covers header authoring). Route via `resolve-child` or Betty `[qa-handoff]`.
+
+### advisory — Dead CSS for removed flat editor
+**Location:** `src/ui/frontend/src/App.css` — `.base-resume-structure-editor`, `.base-resume-structure-editor-title`, `.base-resume-structure-row`, `.base-resume-structure-row-id` unused after UI removal; `.base-resume-structure-add` / `.base-resume-structure-save` still used.
+**Recommendation:** Optional cleanup per plan step 5; non-blocking.
+
+## What's solid
+
+- Correct UX target: structure authoring interleaved with section bodies on one collapsible stack.
+- `structureAuthoring` gate prevents accidental authoring chrome on job modal / rubric modes.
+- Bug-repro page test directly encodes the reported layout defect and To-be.
+
+## Notes
+
+- **Parent shape:** normal stacked on ftr → clean **PROCEED** path is **Review Posted → User Testing** (skip `resolve-child`) once fix-now cleared; current gate is **REVIEW**.
+- **Tip:** `21986a9e` is the engineer product commit; `bef854d1` added page bug-repro only.
+- **merge-tests @ `6797d902`:** carries unrelated sibling test/bible commits on the `ftr...sub` diff — not AST-1323 product scope.
+
+## Frame diff
+
+(none) — UI-only relocation matches plan-fix scope; stale component test is the gap.
+
+context_tokens≈105000
+— Radia
+
+---
