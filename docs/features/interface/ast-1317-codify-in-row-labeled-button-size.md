@@ -205,3 +205,8 @@ context_tokens≈38000
 **Gate summary:** AST-1317 is **Plan Ready**, assignee Joan, publish tip `949171e0`. Child scope matches parent child #1 only: unused `.btn.in-row` CSS + in-place `pattern.ui.shared-button-roles` amend + HARVEST notes cell — no JSX, no icon-control restyle, no call-site switch (AST-1318).
 
 **R5 / R6:** Traceability is bidirectional and honest; parent AC2–6 are explicitly deferred, not orphaned. Insertion point in `App.css` (after `.btn.danger:disabled`, before section 15) matches the worktree. Height math (~62% of full labeled button) satisfies the parent “about 60%” lock without scaling type to icon-control size. AUTHORING **Amend** path (`approved_at` refresh, same `id`, `no-hardcoded-sets` in `related_statutes`) aligns with parent architectural definition and `pattern.ui.icon-control` boundary. Self-assessment (`Single-Component`, high conf, low risk) matches footprint. No `fix-now` or blocking `discuss` findings. Plan Discuss round count: 0 (first pass from Plan Ready).
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size`  
+**Product commits:** `a0979ffc` (unused `.btn.in-row` CSS), `26eef718` (pattern amend + HARVEST notes)
