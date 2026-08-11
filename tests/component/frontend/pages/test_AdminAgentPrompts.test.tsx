@@ -87,14 +87,14 @@ describe("AdminAgentPrompts", () => {
         } as Response
       }
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+        return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
-      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
-      if (url === "/api/admin/agents/models") return { json: async () => models } as Response
+      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
+      if (url === "/api/admin/agents/models") return { ok: true, json: async () => models } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
-        return { json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
+        return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
       }
       if (url === "/api/admin/agents/agent_a" && init?.method === "PUT")
         return { ok: true, status: 200, json: async () => ({ agent_id: "agent_a", brain_setting: "Medium" }) } as Response
@@ -161,15 +161,15 @@ describe("AdminAgentPrompts", () => {
   it("AST-636: tolerates non-OK agent token meta without showing picker", async () => {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+        return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") {
         return { ok: false, status: 500, json: async () => ({ error: "fail" }) } as Response
       }
-      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
-      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
-        return { json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
+        return { ok: true, json: async () => ({ ...agents[0], content: "system prompt" }) } as Response
       }
     })
     renderWithProviders(<AgentPrompts />)
@@ -188,13 +188,13 @@ describe("AdminAgentPrompts", () => {
     let putBody = ""
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+        return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
       if (url === "/api/admin/agents/meta/tokens") return { ok: true, json: async () => agentTokens } as Response
-      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
-      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
       if (url === "/api/admin/agents/agent_a" && !init?.method) {
-        return { json: async () => ({ ...agents[0], content: "Hello {$FIRST_NAME}" }) } as Response
+        return { ok: true, json: async () => ({ ...agents[0], content: "Hello {$FIRST_NAME}" }) } as Response
       }
       if (url === "/api/admin/agents/preview" && init?.method === "POST") {
         const body = JSON.parse(String(init?.body))
@@ -233,10 +233,10 @@ describe("AdminAgentPrompts", () => {
         } as Response
       }
       if (url === "/api/candidates") {
-        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
+        return { ok: true, json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }] } as Response
       }
-      if (url === "/api/admin/agents/brain_settings") return { json: async () => brainCatalog } as Response
-      if (url === "/api/admin/agents" && !init?.method) return { json: async () => agents } as Response
+      if (url === "/api/admin/agents/brain_settings") return { ok: true, json: async () => brainCatalog } as Response
+      if (url === "/api/admin/agents" && !init?.method) return { ok: true, json: async () => agents } as Response
     })
     renderWithProviders(<AgentPrompts />)
     await waitFor(() => expect(screen.getByText(/agent personas/)).toBeInTheDocument())
