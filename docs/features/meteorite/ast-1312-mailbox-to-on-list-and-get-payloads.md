@@ -177,3 +177,14 @@ No orphan stages. Parent AC 1–6 correctly deferred to AST-1313 except raw-fiel
 
 context_tokens≈42000
 — Joan
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads`
+**Plan path:** `docs/features/meteorite/ast-1312-mailbox-to-on-list-and-get-payloads.md`
+
+**Built tip:** `40612c891d3e7b1a26301dd0faad05366933e15b` (`40612c89`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `40612c89` | Raw `to_address` on Gmail list + get shapes |
