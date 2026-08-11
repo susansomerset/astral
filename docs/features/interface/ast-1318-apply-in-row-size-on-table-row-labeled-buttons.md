@@ -178,3 +178,142 @@ context_tokens≈48000
 
 **Publish ref:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons`  
 **Product commits:** `b0dfa249` (SA row Run / Stop `in-row` className)
+
+## Radia review
+
+# Radia review — AST-1318
+
+**Status gate:** Tests Passed (spawn prompt; trusted)  
+**Baseline:** `origin/dev`  
+**Publish ref:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons` @ `7e75f0e487a9d3bc0dcb647025c830b6202ba2b1`  
+**AST-1318 product delta:** `b0dfa249` — two `className` tokens in `AdminScheduledActions.tsx` only  
+**Diff change set (publish tip):** layers `ui` + `docs`; paths include predecessor AST-1317 canon/CSS plus AST-1318 TSX apply, issue docs, Betty test-bible/tests via `merge-tests`
+
+---
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1318
+**Publish ref:** origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons @ 7e75f0e4
+**Overall:** CLEAN
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent-layer diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent-layer diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent-layer diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-layer diff |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-layer diff |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch-layer diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch-layer diff |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config-layer diff |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug-artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch-layer diff |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch-layer diff |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | predicate paths `docs/features/**` not in AST-1318 engineer delta |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty test/bible commits only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commit `b0dfa249` touches only `AdminScheduledActions.tsx`; tests/bible via Betty merge |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no core/external diff |
+| astral.layers.import-direction | scoped | not-applicable | no Python imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts-layer diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | `className` token only; handlers, `disabled`, opacity/pointerEvents, overlay geometry unchanged |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no data/coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth diff |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed/json diff |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed/catalog conflict |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed/boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed/data diff |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data-layer diff |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database/migration diff |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug logging diff |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses AST-1317 `.btn.in-row`; no per-call-site sizing or wrapper |
+| astral.standards.in-scope-only | scoped | conforms | closed inventory: only SA row Run/Stop; no App.css/canon edits in engineer commit |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging diff |
+| astral.standards.names-not-ticket-ids | scoped | conforms | catalog token `in-row` only |
+| astral.standards.no-cross-contamination | scoped | conforms | single-file presentation change |
+| astral.standards.no-hardcoded-sets | scoped | conforms | size consumed from shared `.btn.in-row`; no inline padding/fontSize |
+| astral.standards.public-then-helpers | scoped | not-applicable | no Python module structure diff |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils/data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state-machine diff |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job-state diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/dispatcher diff |
+| astral.ui.frontend-file-placement | scoped | conforms | edit in existing `pages/AdminScheduledActions.tsx`; no new CSS file or wrapper |
+| astral.ui.naming-conventions | scoped | conforms | `in-row` paired with `btn primary` / `btn danger` per catalog |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server/worker config diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1318)` on publish tip |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests` vocabulary respected |
+| orch.git.flow-direction-inviolable | universal | conforms | sub-branch publish |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/AST-1309/AST-1318-…` |
+| orch.git.merge-on-checkout | universal | conforms | no merge/checkout violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear stage commits |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1309` worktree |
+| orch.git.three-permanent-branches | universal | conforms | no fourth permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stage 1 executed per binding plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | child scope matches AST-1309 child #2 |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed gate |
+| orch.roles.archie-approves-statutes | universal | conforms | consumes approved `pattern.ui.shared-button-roles` amendment |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible edits via Betty merge + qa-handoff fix |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a to diff content |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy product commit scoped to plan file |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer commit avoids banned test-tree paths |
+
+**Straggler (C4):** Joan APPROVED attachment lists no Excluded statutes — no straggler rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.shared-button-roles | conforms | `btn primary in-row` / `btn danger in-row` on SA table-row labeled controls; toolbar/modal/card buttons leave full size |
+| pattern.ui.icon-control | conforms (boundary) | AUTO/Dbg badges and modal × remain `icon-control` / `dispatch-status-badge`; no labeled↔icon conversion |
+
+## Plan adherence
+
+- **Stage 1:** Run column Run → `btn primary in-row`; overlay Stop/Draining → `btn danger in-row`; all other attributes byte-identical to plan snippets.
+- **Leave-alone:** Toolbar Stop All / `+ Add Task`, both modal footers, AUTO/Dbg badges, modal × — no `in-row` (verified in source).
+- **Boundaries:** Engineer did not edit `App.css`, `canon/patterns/**`, or other TSX; prerequisite `.btn.in-row` consumed from AST-1317 on branch.
+- **Inventory:** Independent pass confirms only labeled `btn` inside any `<td>` on this tree is the SA Run/Stop pair — exhaustive set covered.
+- **Estimate (2):** footprint matches — two-token single-file apply.
+- **C6 aids (§5a–§5g):** N/A beyond presentation/className — no imports, logging, debug contract, external layer, batch, or API changes.
+
+## Findings
+
+**fix-now:** none  
+
+**discuss:** none  
+
+**advisory:** Publish-tip three-dot diff includes predecessor AST-1317 canon/CSS commits on the same sub branch — expected rollup shape; AST-1318 product scope remains the two `className` lines in `b0dfa249`.
+
+## What’s solid
+
+- Presentation-only apply exactly as catalog specifies — no enablement, handler, overlay CSS, or label changes.
+- Closed inventory honored; no `td .btn` descendant rule or per-call-site sizing shortcuts.
+- Betty tests cover row Run/Stop/Draining `in-row` plus toolbar/modal leave-alone; qa-handoff corrected `mockApi(true)` for Stop All modal path.
+
+## Frame diff
+
+`AdminScheduledActions.tsx` → `ScheduledPhaseTable` Run column `<td>`: Run button `className` gains `in-row`; conditional Stop overlay `className` gains `in-row`. No structural/DOM/routing changes; row height driven by compact labeled buttons via shared CSS.
+
+## Notes
+
+Joan plan-rubric verdict attached (APPROVED @ `ac4b1bd3`). Prerequisite AST-1317 present on branch (`.btn.in-row` in `App.css`; pattern amended). Betty `merge-tests` + qa-handoff fix (`9b2b44a1` / `7e75f0e4`) align manifest with leave-alone modal assertions.
+
+context_tokens≈48000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 7e75f0e4) SA row in-row apply
+```
+
+**C7:** Complete — Chuckles may append to the issue doc, push `docs(AST-1318): Radia review — clean`, post slim upshot `--as radia`, and move to **Review Posted** → **User Testing** (PROCEED, no fix-now/discuss).
