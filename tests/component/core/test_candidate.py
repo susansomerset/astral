@@ -4828,3 +4828,30 @@ class TestAst1305HopsContentBlobsAndLegacyLabels:
             structure["sections"]["education_certifications"]["format"]
             == RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["education_certifications"]
         )
+
+
+class TestAst1322TitleKeyedBaseResumeDict:
+    """AST-1322 bug-repro: title-keyed dict extras survive ingest (then PUT filter)."""
+
+    def test_ingest_title_keyed_dict_keeps_highlights_and_publications(self) -> None:
+        # Repro: display-label keys (not slug ids, not {label,content} list).
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            {
+                "professional_summary": "Summary body",
+                "Highlights": "Won awards",
+                "Publications": "Paper one",
+            },
+            _required_seven_structure(),
+        )
+        assert content["professional_summary"] == "Summary body"
+        assert content["highlights"] == "Won awards"
+        assert content["publications"] == "Paper one"
+        assert "Highlights" not in content
+        assert "Publications" not in content
+        for sid, title in (("highlights", "Highlights"), ("publications", "Publications")):
+            spec = structure["sections"][sid]
+            assert spec["title"] == title
+            assert spec["enabled"] is True
+            from src.utils.config import RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
+
+            assert spec["format"] == RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"

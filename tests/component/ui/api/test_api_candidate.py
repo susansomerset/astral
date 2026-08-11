@@ -1078,3 +1078,37 @@ class TestAst1305LegacyLabelIngestApi:
         assert "experience" not in arts["base_resume"]
         assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
         assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"
+
+    def test_put_title_keyed_dict_keeps_highlights_and_publications(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # AST-1322 bug-repro: title-case keys must mint extras before orphan filter.
+        save_data = MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={
+                "artifacts": {
+                    "base_resume": {
+                        "professional_summary": "Summary body",
+                        "Highlights": "Won awards",
+                        "Publications": "Paper one",
+                    }
+                }
+            },
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        arts = save_data.call_args.args[1]["artifacts"]
+        assert arts["base_resume"]["highlights"] == "Won awards"
+        assert arts["base_resume"]["publications"] == "Paper one"
+        assert arts["base_resume"]["professional_summary"] == "Summary body"
+        assert "Highlights" not in arts["base_resume"]
+        assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
+        assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"

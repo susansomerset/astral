@@ -1143,3 +1143,25 @@ Craft-base / draft-job accept extra section keys on this candidate’s base resu
   tests/component/core/test_agent.py -k "draft_job_resume" \
   -q
 ```
+
+---
+
+### AST-1322 · AST-1299 (bug — AST-1305 ingest)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1322-saving-base-resume-drops-highlights-extra-sections`.
+
+Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug ids and mint extras the same way Abrams `{label, content}` lists already do. Pre-fix dict ingest only mints when the key already matches the extra-id pattern, so PUT filter drops title-case extras.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Title-keyed dict ingest | `src/core/candidate.py` | **`TestAst1322TitleKeyedBaseResumeDict`** (bug-repro) |
+| PUT title-keyed dict | `src/ui/api/api_candidate.py` | **`TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — AST-1305 list / id-keyed paths stay green; AST-519 `123bad` orphan strip unchanged.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1322TitleKeyedBaseResumeDict \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications \
+  -q
+```
