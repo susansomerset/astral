@@ -24,6 +24,8 @@
  * 11. Toast
  * 12. Agent Timesheets
  * 13. Execution History
+ * 14. Shared button roles
+ * 15. Icon control
  */
 
 
@@ -2598,4 +2600,91 @@ input.side-tab-heading-editable:focus {
 .intake-topic-menu-list {
   margin: 0.5rem 0 0;
   padding-left: 1.25rem;
+}
+
+/* === 14. Shared button roles === */
+
+.btn {
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 14px;
+  font-family: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.btn.primary {
+  background: var(--cta-green);
+  border: none;
+  color: var(--bg-deep);
+}
+
+.btn.primary:hover:not(:disabled) {
+  background: var(--cta-green-hover);
+}
+
+.btn.primary.in-flight,
+.btn.primary.in-flight:disabled {
+  background: var(--accent-gold);
+  border: none;
+  color: var(--bg-deep);
+}
+
+.btn.primary.in-flight:hover:not(:disabled) {
+  background: var(--accent-gold-hover);
+}
+
+.btn.secondary {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.btn.secondary:hover:not(:disabled) {
+  background: var(--border);
+  color: var(--text-primary);
+}
+
+.btn.danger {
+  background: var(--danger);
+  border: none;
+  color: #fff;
+}
+
+.btn.danger:hover:not(:disabled) {
+  background: var(--danger-hover);
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+}
+
+.btn.danger:disabled {
+  opacity: 0.4;
+}
+
+/* === 15. Icon control === */
+
+.icon-control {
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  cursor: pointer;
+  line-height: 1.2;
+  font-family: inherit;
+}
+
+.icon-control:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--accent-gold);
+}
+
+.icon-control:disabled {
+  opacity: 0.45;
+  cursor: default;
 }
