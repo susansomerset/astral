@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 import ArtifactEditor from "../components/ArtifactEditor"
-import ResumeStructureEditor, {
+import {
   type Catalog,
   type SectionRow,
 } from "../components/ResumeStructureEditor"
@@ -44,6 +44,11 @@ export default function BaseResumeContent() {
     setAccent(normalizeHex(data.accent_color))
     setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
     setCatalog(catalogFromPayload(data))
+  }
+
+  function handleStructureRowsChange(rows: SectionRow[]) {
+    setAllSections(rows)
+    setStructureSections(rows.map(r => ({ id: r.id, label: r.title })))
   }
 
   useEffect(() => {
@@ -129,16 +134,6 @@ export default function BaseResumeContent() {
 
   return (
     <>
-      {catalog !== null && selectedId && (
-        <ResumeStructureEditor
-          sections={allSections}
-          catalog={catalog}
-          disabled={!selectedId}
-          onSave={saveStructure}
-          saving={structureSaving}
-          error={structureError}
-        />
-      )}
       {palette.length > 0 && (
         <div className="base-resume-accent-bar" role="group" aria-label="Resume accent color">
           <span className="base-resume-accent-label">Accent</span>
@@ -164,6 +159,12 @@ export default function BaseResumeContent() {
         taskKey="craft_resume_base"
         useCandidateResumeStructure
         structureSections={structureSections}
+        structureCatalog={catalog}
+        structureRows={allSections}
+        onStructureRowsChange={handleStructureRowsChange}
+        onStructureSave={saveStructure}
+        structureSaving={structureSaving}
+        structureError={structureError}
       />
       <Toast message={toast} onDone={clearToast} />
     </>

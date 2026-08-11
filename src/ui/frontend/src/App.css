@@ -1206,6 +1206,14 @@ body {
   margin-top: 4px;
 }
 
+.structure-authoring-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
 .dep-header {
   display: flex;
   align-items: center;

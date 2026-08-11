@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import CollapsiblePanel from "./CollapsiblePanel"
+import type { Catalog, SectionRow } from "./ResumeStructureEditor"
 import LabeledTextArea from "./LabeledTextArea"
 import type { SideTab } from "./SideTabPanel"
 import Toast, { type ToastMessage } from "./Toast"
@@ -37,6 +38,13 @@ interface ArtifactEditorProps {
   shapesKey?: string           // key in DATA_SHAPES.candidates.detail — if set, tabs are fixed
   useCandidateResumeStructure?: boolean
   structureSections?: StructureSection[] | null
+  /** AST-1323: Base Resume Content structure authoring on collapsible headers. */
+  structureCatalog?: Catalog | null
+  structureRows?: SectionRow[]
+  onStructureRowsChange?: (rows: SectionRow[]) => void
+  onStructureSave?: (rows: SectionRow[]) => void
+  structureSaving?: boolean
+  structureError?: string | null
   /** Job-scoped artifact load/save (AST-553/565); no Generate. */
   jobPersistence?: { jobId: string; artifactKey: string; onSaved?: () => void }
 }
@@ -70,6 +78,12 @@ export default function ArtifactEditor({
   shapesKey,
   useCandidateResumeStructure = false,
   structureSections = undefined,
+  structureCatalog = null,
+  structureRows,
+  onStructureRowsChange,
+  onStructureSave,
+  structureSaving = false,
+  structureError = null,
   jobPersistence,
 }: ArtifactEditorProps) {
   const { manifest, loadState } = useStateUi()
@@ -113,6 +127,68 @@ export default function ArtifactEditor({
 
   const structureMode = !!useCandidateResumeStructure
   const editable = !shapesKey && !structureMode
+  const structureAuthoring = !!(
+    structureMode
+    && structureCatalog
+    && structureRows
+    && onStructureRowsChange
+    && onStructureSave
+  )
+  const [addTitle, setAddTitle] = useState("")
+  const [addFormat, setAddFormat] = useState(
+    structureCatalog?.new_extra_default_format || structureCatalog?.body_formats?.[0] || "",
+  )
+  useEffect(() => {
+    if (!structureCatalog) return
+    setAddFormat(structureCatalog.new_extra_default_format || structureCatalog.body_formats[0] || "")
+  }, [structureCatalog])
+
+  function reindexStructureRows(next: SectionRow[]) {
+    return next.map((row, i) => ({ ...row, order: i }))
+  }
+
+  function patchStructureRow(sid: string, patch: Partial<SectionRow>) {
+    if (!structureRows || !onStructureRowsChange) return
+    onStructureRowsChange(structureRows.map(r => (r.id === sid ? { ...r, ...patch } : r)))
+  }
+
+  function moveStructureRow(sid: string, delta: number) {
+    if (!structureRows || !onStructureRowsChange) return
+    const index = structureRows.findIndex(r => r.id === sid)
+    const j = index + delta
+    if (index < 0 || j < 0 || j >= structureRows.length) return
+    const next = structureRows.slice()
+    const tmp = next[index]
+    next[index] = next[j]
+    next[j] = tmp
+    onStructureRowsChange(reindexStructureRows(next))
+  }
+
+  function removeStructureRow(sid: string) {
+    if (!structureRows || !onStructureRowsChange) return
+    onStructureRowsChange(reindexStructureRows(structureRows.filter(r => r.id !== sid)))
+  }
+
+  function addStructureSection() {
+    if (!structureRows || !onStructureRowsChange || !structureCatalog) return
+    const title = addTitle.trim()
+    if (!title) return
+    onStructureRowsChange(reindexStructureRows([
+      ...structureRows,
+      {
+        id: `_pending_${structureRows.length}`,
+        title,
+        enabled: true,
+        order: structureRows.length,
+        format: addFormat || structureCatalog.new_extra_default_format || structureCatalog.body_formats[0] || "",
+        job_agent_editable: true,
+        required: false,
+        format_locked: false,
+      },
+    ]))
+    setAddTitle("")
+  }
+
   const fixedFields = shapeFields && shapeFields.length > 0 ? shapeFields : null
   const rubricMode = !fixedFields
   const inReview = snapshot !== null
@@ -689,11 +765,84 @@ export default function ArtifactEditor({
         </div>
         <div className="dep-body">
           <div className="artifact-editor-collapsible-stack">
-            {tabsForRail.map((tab, i) => (
+            {tabsForRail.map((tab, i) => {
+              const structureRow = structureAuthoring
+                ? structureRows!.find(r => r.id === tab.id)
+                : undefined
+              const formatValue = structureRow
+                ? (structureRow.format_locked
+                  ? (structureRow.format ?? "")
+                  : (structureRow.format && structureCatalog!.body_formats.includes(structureRow.format)
+                    ? structureRow.format
+                    : structureCatalog!.new_extra_default_format))
+                : ""
+              const structureRowIndex = structureRow
+                ? structureRows!.findIndex(r => r.id === structureRow.id)
+                : -1
+              return (
               <CollapsiblePanel
                 key={tab.id}
                 label={
-                  editable && editingId === tab.id ? (
+                  structureRow ? (
+                    <div
+                      className="structure-authoring-header"
+                      onClick={e => e.stopPropagation()}
+                      onKeyDown={e => e.stopPropagation()}
+                    >
+                      <input
+                        className="dep-input"
+                        type="text"
+                        value={structureRow.title}
+                        onChange={e => patchStructureRow(structureRow.id, { title: e.target.value })}
+                      />
+                      <select
+                        className="dep-input"
+                        value={formatValue}
+                        disabled={structureRow.format_locked}
+                        onChange={e => patchStructureRow(structureRow.id, { format: e.target.value })}
+                      >
+                        {structureCatalog!.body_formats.map(f => (
+                          <option key={f} value={f}>{f}</option>
+                        ))}
+                      </select>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={structureRow.enabled}
+                          disabled={structureRow.required}
+                          onChange={e => patchStructureRow(structureRow.id, { enabled: e.target.checked })}
+                        />
+                        {" "}Enabled
+                      </label>
+                      <label>
+                        <input
+                          type="checkbox"
+                          checked={structureRow.job_agent_editable}
+                          onChange={e => patchStructureRow(structureRow.id, { job_agent_editable: e.target.checked })}
+                        />
+                        {" "}Job edit
+                      </label>
+                      <button
+                        type="button"
+                        disabled={structureRowIndex <= 0}
+                        onClick={() => moveStructureRow(structureRow.id, -1)}
+                      >
+                        Up
+                      </button>
+                      <button
+                        type="button"
+                        disabled={structureRowIndex < 0 || structureRowIndex >= structureRows!.length - 1}
+                        onClick={() => moveStructureRow(structureRow.id, 1)}
+                      >
+                        Down
+                      </button>
+                      {!structureRow.required && (
+                        <button type="button" onClick={() => removeStructureRow(structureRow.id)}>
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ) : editable && editingId === tab.id ? (
                     <input
                       className="side-tab-rename"
                       value={tab.label}
@@ -717,7 +866,7 @@ export default function ArtifactEditor({
                   )
                 }
                 actions={
-                  editable ? (
+                  structureRow ? undefined : editable ? (
                     <span className="side-tab-controls">
                       {!rubricMode && (
                         <>
@@ -765,8 +914,38 @@ export default function ArtifactEditor({
                   hideTitle
                 />
               </CollapsiblePanel>
-            ))}
+              )
+            })}
           </div>
+          {structureAuthoring && (
+            <div className="base-resume-structure-add">
+              <input
+                className="dep-input"
+                type="text"
+                value={addTitle}
+                onChange={e => setAddTitle(e.target.value)}
+              />
+              <select
+                className="dep-input"
+                value={addFormat}
+                onChange={e => setAddFormat(e.target.value)}
+              >
+                {structureCatalog!.body_formats.map(f => (
+                  <option key={f} value={f}>{f}</option>
+                ))}
+              </select>
+              <button type="button" onClick={addStructureSection}>Add section</button>
+              <button
+                type="button"
+                className="base-resume-structure-save"
+                disabled={structureSaving}
+                onClick={() => onStructureSave!(structureRows!)}
+              >
+                Save sections
+              </button>
+              {structureError ? <div>{structureError}</div> : null}
+            </div>
+          )}
           {editable && tabs.length < MAX_ARTIFACT_TABS && (
             <button type="button" className="side-tab-add artifact-editor-add-criterion" onClick={addCriterionTab}>
               + Add
