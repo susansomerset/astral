@@ -173,3 +173,8 @@ context_tokens≈48000
 ```
 
 **Gate summary:** AST-1318 is **Plan Ready**, assignee Joan, publish tip `ac4b1bd3`. Prerequisite AST-1317 is present on the epic worktree (`.btn.in-row` in `App.css`; pattern amended). Independent inventory pass confirms the plan's closed set: only `AdminScheduledActions.tsx` row Run / Stop labeled buttons live inside `<td>`; all other `btn` usages are toolbar, modal, card-body, or bulk-bar; row actions elsewhere are `icon-control`. Stage 1 is presentation-only (`className` token add), rejects `td .btn` descendant rules and per-call-site sizing, and preserves overlay geometry and enablement gating. Self-assessment (`Single-Component`, high conf, low risk) matches footprint. No `fix-now` or blocking `discuss` findings. Plan Discuss round count: 0 (first pass from Plan Ready).
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons`  
+**Product commits:** `b0dfa249` (SA row Run / Stop `in-row` className)
