@@ -587,3 +587,113 @@ In `src/core/candidate.py` `ingest_legacy_label_content_base_resume`, rewrite th
 - No builder emit / no editor TSX in this bug’s product delta.
 
 ---
+
+## Radia review (AST-1322)
+
+# Statutes checked
+
+Ticket-scoped product delta: `8f537d4f` (`src/core/candidate.py` — `ingest_legacy_label_content_base_resume` dict branch only). Formal `ftr...sub` three-dot diff also carries Betty `merge-tests` bundles (AST-1311/1317/1318/… test+bible noise); predicates scored against the one-file fix unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatch/Anthropic path change |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | still reads `RESUME_STRUCTURE_*` / `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` via existing helpers |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer product delta is `src/` only (plan-fix patch on Betty/docs lane) |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commit touches only `src/core/candidate.py` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core-only change |
+| astral.layers.import-direction | scoped | conforms | no new imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI paths |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | PUT path unchanged at API layer |
+| astral.seed.* (5) | scoped | not-applicable | no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB paths |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | extends existing ingest helper; no second ingest path |
+| astral.standards.in-scope-only | scoped | conforms | dict-branch fix only; no editor/builder/hop edits |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | no `AST_1322_*` symbols |
+| astral.standards.no-cross-contamination | scoped | conforms | single-function surgical fix |
+| astral.standards.no-hardcoded-sets | scoped | conforms | uses existing pattern/reserved/known constants |
+| astral.standards.public-then-helpers | scoped | conforms | change inside public `ingest_legacy_label_content_base_resume` |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils change |
+| astral.state.* (3) | scoped | not-applicable | no state machine |
+| astral.ui.* (3) | scoped | not-applicable | no UI |
+| orch.git.* (9) | universal | conforms | sub on ftr topology |
+| orch.pipeline.* (4) | universal | conforms | fix-lane at Tests Passed |
+| orch.roles.* (5) | universal | conforms | n/a to code shape |
+
+**Count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan-fix references AST-1305 ingest contract only |
+
+## Plan adherence (plan-fix patch)
+
+**Root cause → fix:** Dict branch now resolves display-label keys (`"Highlights"`, `"Publications"`) to section ids via `_title_to_structure_section_id` / `_slug_resume_extra_section_id`, mints missing rows with `_append_missing_section`, and writes `content[sid]` (not raw title keys). Matches `## Proposed change` steps 1–4.
+
+**AST-519 orphan strip (step 5):** Invalid lowercase keys like `123bad` skip mint when title-match fails (`k == k.lower()` and no space/hyphen) — `test_put_base_resume_strips_orphan_keys` path preserved.
+
+**No call-site churn:** PUT / token / whitelist still call the same ingest helper — per plan step 6.
+
+**List branch:** Unchanged in product commit — Abrams list path intact.
+
+## Fix-specific checks
+
+### [bug-repro] — OK
+
+| Test | Verdict |
+|------|---------|
+| `TestAst1322TitleKeyedBaseResumeDict::test_ingest_title_keyed_dict_keeps_highlights_and_publications` | Pins `content["highlights"]` / `["publications"]`, structure rows, `bullet_list` format, absence of title-case keys — would fail pre-fix (title keys dropped or left un-rowed). |
+| `TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications` | End-to-end PUT asserts id-keyed `base_resume` + `resume_structure.sections` after save — not tautological. |
+
+### ## What must still hold — OK
+
+| Item | Verdict |
+|------|---------|
+| AST-1305 list ingest + prose Experience omit | List branch untouched; `sid == "experience"` prose skip retained on dict path. |
+| Draft cannot invent disallowed job sections | No change to `validate_draft_job_resume_payload`; base ingest widening is intentional for title-keyed **base** blobs. |
+| `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` (`bullet_list`) | `_append_missing_section` still uses config default for extras. |
+| No builder / editor TSX in product delta | Only `candidate.py` in `8f537d4f`. |
+
+## Findings
+
+(none)
+
+## What's solid
+
+- Minimal one-function fix at the documented root cause (dict branch title resolution gap vs list branch).
+- Collision handling mirrors list path (`sid in content` → re-slug).
+- Reuses AST-1305 private helpers; no parallel ingest helper.
+
+## Notes
+
+- **Parent shape:** normal stacked on `origin/ftr/AST-1299-support-alternative-resume-sections` → Chuckles clean-review shortcut to **User Testing** (skip `resolve-child`) when posted.
+- **merge-tests @ `4c13304c`:** bundles unrelated sibling test/bible commits (AST-1311/1317/1318/…) on the `ftr...sub` diff; engineer product scope remains `8f537d4f` only.
+
+## Frame diff
+
+(none) — plan-fix scope matches single-function ingest patch.
+
+context_tokens≈95000
+— Radia
+
+---
