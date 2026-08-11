@@ -367,23 +367,24 @@ export default function ManageCandidates() {
       key: "_actions", label: "", sortable: false,
       render: (_, row) => (
         <span style={{ display: "flex", gap: 6, alignItems: "center" }}>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); setViewing(row) }} aria-label="View">
+          <button type="button" className="icon-control" onClick={e => { e.stopPropagation(); setViewing(row) }} title="View" aria-label="View">
             <ViewIcon />
           </button>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); openEdit(row) }} aria-label="Edit">
+          <button type="button" className="icon-control" onClick={e => { e.stopPropagation(); openEdit(row) }} title="Edit" aria-label="Edit">
             <EditIcon />
           </button>
-          <button className="list-page-edit-btn" onClick={e => { e.stopPropagation(); void handleDelete(row) }} aria-label="Delete" style={{ color: "var(--danger)" }}>
+          <button type="button" className="icon-control" onClick={e => { e.stopPropagation(); void handleDelete(row) }} title="Delete" aria-label="Delete">
             <DeleteIcon />
           </button>
           <button
             type="button"
-            className="btn primary"
+            className="icon-control"
+            title="Set dispatch tasks"
             aria-label={`Set dispatch tasks for ${row.astral_candidate_id}`}
             disabled={settingCandidateId === row.astral_candidate_id}
             onClick={e => { e.stopPropagation(); void handleSetDispatchTasks(row) }}
           >
-            Set dispatch tasks
+            T
           </button>
         </span>
       ),

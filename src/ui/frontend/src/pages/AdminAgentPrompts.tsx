@@ -286,12 +286,14 @@ export default function AgentPrompts() {
           const disabled = count > 0
           return (
             <button
-              className="btn danger"
+              type="button"
+              className="icon-control"
               disabled={disabled}
               title={disabled ? `Agent is assigned to ${count} task(s) — unassign first` : "Delete agent"}
+              aria-label="Delete"
               onClick={e => { e.stopPropagation(); if (agent) setDeleteTarget(agent) }}
             >
-              Delete
+              D
             </button>
           )
         }}
