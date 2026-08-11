@@ -370,3 +370,147 @@ context_tokens≈38000
 | 3 | `2fb7a993` | Experience persists only as `experience_detail` job array |
 
 ---
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1305
+**Publish ref:** `origin/sub/AST-1299/AST-1305-hops-content-blobs-and-legacy-extra-labels` @ `59d6244ec909d0edf2ee79e1952470f68eebf804`
+**Overall:** CLEAN
+
+## Statutes checked
+
+Ticket-scoped product delta: `98bb5bbe` + `71c60385` + `2fb7a993` (`src/utils/config.py`, `src/core/candidate.py`, `src/core/tracker.py`, `src/ui/api/api_candidate.py` modify). Formal three-dot `origin/dev...origin/sub` is epic-wide; predicates scored against ticket delta unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent module edits in ticket delta |
+| astral.agent.do-task-delegation | scoped | conforms | split/flatten/validate paths `do_task` already calls; no new Anthropic assembly |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade paths in delta |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` in config family; callers read constants |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer delta is `src/` only |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits touch only planned `src/` files |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core + thin api; no external imports |
+| astral.layers.import-direction | scoped | conforms | core→utils; api→core; tracker→candidate (existing) |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts paths |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no frontend/TSX in delta (Joan excluded at plan) |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | existing `@require_auth` PUT/GET unchanged |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migrations |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no new debug emission (Joan excluded at plan) |
+| astral.standards.dry-and-focused-functions | scoped | conforms | single `ingest_legacy_label_content_base_resume` shared by token, PUT, whitelist |
+| astral.standards.in-scope-only | scoped | conforms | planned files only; no builder/TSX/hop schema edits |
+| astral.standards.logging-via-utils | scoped | conforms | no new logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names (`ingest_legacy_label_content_base_resume`, etc.) |
+| astral.standards.no-cross-contamination | scoped | conforms | explicit sibling boundaries respected |
+| astral.standards.no-hardcoded-sets | scoped | conforms | KNOWN intersection removed; pattern/reserved ids from config |
+| astral.standards.public-then-helpers | scoped | conforms | ingest public; slug/title helpers private |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | config delta does not import data |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job states |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend paths |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI paths |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `59d6244e` after merge-tests |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1305): …` engineer commits |
+| orch.git.flow-direction-inviolable | universal | conforms | `sub/AST-1299/…` publish |
+| orch.git.ftr-sub-topology | universal | conforms | child under parent ftr; AST-1303 ancestor present |
+| orch.git.merge-on-checkout | universal | conforms | prerequisite AST-1303 catalog on tree |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no destructive git in delta |
+| orch.git.no-dev-agent-branches | universal | conforms | sub publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1299` |
+| orch.git.three-permanent-branches | universal | conforms | standard sub topology |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | follows approved plan |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match binding steps |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | spawned at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests via Betty merge + `f27148fd` / `59d6244e` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | allowed paths |
+
+**Count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` beside existing `RESUME_STRUCTURE_*` family |
+| none other cited | — | Plan references config-block intent; no additional `canon/patterns/**` ids |
+
+## Plan adherence
+
+**Stage 1:** `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT = "bullet_list"`; `_slug_resume_extra_section_id` / `_title_to_structure_section_id`; public `ingest_legacy_label_content_base_resume` with dict/list paths, prose Experience omission, collision suffixes, final `normalize_resume_structure`; `format_base_resume_for_token` uses ingest (AC7 drop bug removed); PUT calls ingest after structure merge, recomputes enabled `section_ids`, then filters.
+
+**Stage 2:** `_is_resume_content_section_id`; flatten promotes extras + job arrays on any sid; `draft_job_resume_allowed_section_keys` uses ingest (no `∩ KNOWN`); validate keeps unknown-key shape; tracker bridge + `_resume_section_has_body` / `_resume_payload_body` widened for any-key job arrays.
+
+**Stage 3:** `filter_base_resume_to_structure`, `filter_content_to_resume_structure`, `split_craft_resume_base_payload` omit prose `experience`; draft validate rejects non-array Experience with `experience_detail` message.
+
+**Boundaries:** `normalize_resume_structure` loop not rewritten (only called from ingest); no `builder.py`, TSX, hop schema, or `enabled_resume_structure_sections` contract changes. AST-1306 `slug_resume_section_id` / editor not on this publish ref (correct sibling split).
+
+**Joan:** `[plan-rubric] revision=1` **APPROVED** — tracker bridge tension documented in plan Stage 2 §6; no straggler (excluded statutes remain n/a on this diff).
+
+**C6 lenses:** Top-level imports; ui→core only; no silent failure, print, or debug additions; no hardcoded format/id sets in callers.
+
+## Findings
+
+(none — fix-now)
+
+### advisory — Tracker bridge vs strict “enabled structure” wording
+**Location:** `src/core/tracker.py` `_prepare_job_resume_content` (Stage 2 §6)
+**Finding:** Re-injects base-whitelist keys dropped by enabled-only `filter_content_to_resume_structure` so Abrams extras persist before structure is saved — exactly as the approved plan documents. Joan flagged AC2 wording tension; implementation matches the binding decision.
+**Recommendation:** No code change required on resolve; note for UAT that base-key ⊆ job persist is intentional until structure rows exist on disk.
+
+### advisory — `filter_content` scalar-list coercion
+**Location:** `src/core/candidate.py` `filter_content_to_resume_structure`
+**Finding:** Stage 3 step text names job arrays + strings; implementation also coerces non-dict lists via `_coerce_resume_section_string` (tested in `TestAst1305HopsContentBlobsAndLegacyLabels`).
+**Recommendation:** Optional plan-doc one-liner; behavior is consistent with legacy label content shapes.
+
+### advisory — Ftr merge coordination
+**Location:** `filter_content_to_resume_structure` (also touched by AST-1304 / AST-1306 on sibling branches)
+**Finding:** Joan noted merge-order coordination on `origin/ftr/AST-1299`; this child’s hunk is plan-owned.
+**Recommendation:** Chuckles/merge-child reconcile if siblings land overlapping lines — not a defect in this sub tip.
+
+## What's solid
+
+- AC7 fix: unmatched Abrams labels (`highlights`, `publications`) survive ingest and `{$BASE_RESUME}` token JSON.
+- Extra hop keys accepted via `_is_resume_content_section_id` without reopening closed KNOWN catalog.
+- Draft whitelist is per-candidate base keys post-ingest; unknown-key gate preserved.
+- Prose Experience omitted on ingest/token/split/filter and rejected on draft validate.
+- Single ingest function DRY across token, PUT, and whitelist paths.
+
+## Notes
+
+- Engineer product SHAs: `98bb5bbe`, `71c60385`, `2fb7a993`; publish tip `59d6244e` includes Betty merge-tests + `[qa-handoff]` manifest trim (`06ace6fe`).
+- AST-1303 prerequisite satisfied on branch ancestry; `blockedBy AST-1303` relation met.
+
+## Frame diff
+
+(none) — Self-Assessment **Single-Component** matches four-file `src/` footprint.
+
+context_tokens≈115000
+— Radia
+
+---
