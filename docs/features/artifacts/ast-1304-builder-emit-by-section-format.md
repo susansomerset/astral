@@ -219,3 +219,13 @@ Child AC1→S1; AC2→S1; AC3→S1; AC4→S1; AC5→S2; parent AC1→S1; parent 
 
 — Joan
 context_tokens≈95000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format`
+**Tip:** `757f2cda6f7555191fa83a899a6ad9660f251ef9`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `6c6e7dd5` | emit by format, bullet_list, emphasis, skip leftover prose Experience |
+| 2 | `757f2cda` | Style D per-section emit trail |
