@@ -10,7 +10,25 @@ There is **no** per-source-file branch-lock table (**§6b**). Prefer adding or e
 
 | Ticket | Behavior | Sources | Manifest |
 | --- | --- | --- | --- |
+| **AST-1317** | Amend `pattern.ui.shared-button-roles` with optional `in-row` size; unused `.btn.in-row` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site apply is **AST-1318** |
 | **AST-1300** | Approved `pattern.ui.shared-button-roles` + `pattern.ui.icon-control`; unused `.btn` / `.icon-control` in `App.css` | `src/ui/frontend/src/App.css`, `canon/patterns/ui/pattern.ui.shared-button-roles.md`, `canon/patterns/ui/pattern.ui.icon-control.md`, `canon/patterns/README.md`, `canon/patterns/HARVEST.md` | docs-acceptance (grep/read) — no pytest; call-site remediations are **AST-1301** / **AST-1302** |
+
+---
+
+### AST-1317 · AST-1309 (codify in-row labeled-button size)
+
+**Parent:** [AST-1309 — Add a button style for in-row buttons](https://linear.app/astralcareermatch/issue/AST-1309/add-a-button-style-for-in-row-buttons). **Publish:** `origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size`.
+
+**Catalog + unused size CSS.** Live edits: `canon/patterns/ui/pattern.ui.shared-button-roles.md` (`status: approved`, `proposed_in: AST-1166`, `approved_by: Archie`, `approved_at: "2026-08-11"`, `canonical_refs` adds `.btn.in-row`, `related_statutes` adds `astral.standards.no-hardcoded-sets`); HARVEST Crosswalk notes cell only; `src/ui/frontend/src/App.css` section 14 `.btn.in-row` (`padding: 3px 20px; line-height: 1.2`) after `.btn.danger:disabled`, before section 15. No TSX call-site apply (sibling **AST-1318**). Does not restyle `.icon-control` or reopen AST-1166 roles. `canon/patterns/README.md` and `pattern.ui.icon-control.md` unchanged.
+
+**No new component or integration tests.** §6c N/A (no page / filter UX). Existing **AST-1301** catalog-class tests and **AST-645** `.in-flight` wiring stay valid — this tip does not add `in-row` to any `className`. Integration scenarios do not assert button-class catalogs — no drift.
+
+**`test-child`:** docs-acceptance (grep/read on publish tip) — no pytest / zero-arg harness / branch-lock gate.
+
+1. **Pattern amend** — `pattern.ui.shared-button-roles.md`: `status: approved`, `approved_by: Archie`, `proposed_in: AST-1166`, `approved_at: "2026-08-11"`; `canonical_refs` includes `.btn.in-row` plus the four role selectors; `related_statutes` includes `astral.standards.no-hardcoded-sets`; Solution shape documents optional `in-row` (never a fifth role; pairings `btn primary in-row` / `btn secondary in-row` / `btn danger in-row` / `btn primary in-flight in-row`; ~60% height; keep 14px label).
+2. **HARVEST notes** — existing `pattern.ui.shared-button-roles` Crosswalk notes cell is `approved — labeled \`btn\` roles + \`in-row\` size (AST-1317); CSS in \`App.css\``. No second Crosswalk row. README harvested-corpus row unchanged (same id).
+3. **App.css contract** — `.btn.in-row` exists with `padding: 3px 20px` and `line-height: 1.2`; `.btn` still `padding: 8px 20px` and `font-size: 14px`; role / in-flight / `.icon-control` declarations unchanged.
+4. **Scope gate** — `rg -n 'in-row' src/ui/frontend/src --glob '*.tsx'` is empty; no `Button.tsx`; `pattern.ui.icon-control.md` and `canon/patterns/README.md` unchanged vs `origin/dev`.
 
 ---
 
