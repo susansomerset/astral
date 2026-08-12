@@ -204,3 +204,177 @@ context_tokens≈58000
 - **Tip:** `26806660af85b384aaf7c318111f649cf8e21ab4`
 - **Stages:** Stage 1 shared craft/parse `highlights` schema; Stage 2 `craft_resume_base` / `simple_resume_parse` prompts + AST-756 fixture twin
 
+## Radia review
+
+# Radia review — AST-1333
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1333  
+**Publish ref:** `sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` @ `6d2d68748acd1d37908b36a79a3fcf03f8646e9a`  
+**Overall:** CLEAN
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` (8 paths; merge-tests tip `6d2d6874`)
+
+**Change set (layers):** `src/utils/config.py` (+schema); `data/admin/agent_task.json` + `docs/uat-fixtures/AST-756/expected-agent_task.json` (prompts + twin sync); Betty `tests/**` + `docs/test-bible/utils/config.md`; issue docs (`ast-1333` new, `ast-1332` 2-line sibling note).
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent/LLM paths in product diff |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `src/core/**` product edits (tests import validator only) |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade-vector paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch/dispatcher |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent-response paths |
+| `astral.config.config-source-of-truth` | scoped | conforms | `highlights` added to `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` in config block |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact dirs |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next / chain |
+| `astral.docs.features-single-file-per-ticket` | scoped | needs-discussion | 2-line edit to sibling `ast-1332-*.md` (not this ticket's doc) |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty commits tests/bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | product commits `5ae3463f` / `26806660` test-tree-free |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | utils + seed JSON only |
+| `astral.layers.import-direction` | scoped | conforms | no new cross-layer imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/` changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | no ui diff |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/verdict |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth handlers |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | `agent_task.json` prompt edits committed per plan |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | durable catalog edit; `cache_prompt` only on two rows |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no boot/seed hot path |
+| `astral.seed.define-approved` | scoped | not-applicable | no define/seed flow |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator-row seed |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no backend `debug=` |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | minimal schema line + targeted prompt inserts |
+| `astral.standards.in-scope-only` | scoped | conforms | product diff limited to planned paths; sibling doc note is docs-only |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `highlights` is domain slug |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no sibling product revert (unlike AST-1332 review); catalog diff vs dev is 2 prompts only |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | schema field in shared config object |
+| `astral.standards.public-then-helpers` | scoped | conforms | schema on named module constant |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils→data imports |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job-state enforcement |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run/daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no ui diff |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no ui diff |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server/worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | single `merge-tests(AST-1333): origin/tests b9e14e29` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `merge-tests` / `docs` prefixes |
+| `orch.git.flow-direction-inviolable` | universal | conforms | child on `sub/AST-1326/...`; tests via `origin/tests` |
+| `orch.git.ftr-sub-topology` | universal | conforms | correct `sub/<parent>/<slug>` publish ref |
+| `orch.git.merge-on-checkout` | universal | conforms | `sync(ftr)` + `sync(dev)` present; no conflict regression in product paths |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear merge-tests only |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent-named publish branches |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1326 epic worktree pattern |
+| `orch.git.three-permanent-branches` | universal | conforms | sub + tests merge |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | empty-string / checklist reconciliation documented in plan `## Revisions` |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 match approved plan (incl. Joan round-1 checklist fix) |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | pipeline placement correct |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a to diff content |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test + bible on Betty SHA, merged once |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Katherine (engineer) |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | engineer still assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no hook-evasion observed |
+
+**Sweep count:** 64 active statutes scored (per `canon/statutes/README.md` harvested corpus).
+
+**Straggler (C4):** Joan plan-rubric APPROVED (round 2) attached; round-1 `fix-now` (checklist vs empty `highlights`) resolved in plan `## Revisions` / Stage 2 step 1d — implemented in product diff. No Excluded-statute list — no straggler callout.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `highlights` on shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA`; both TASK_CONFIG hops keep `is` identity |
+| `astral.seed.agent-tables-in-repo-json` | conforms | seed JSON is the durable prompt source; whole-file fixture `cp` per plan |
+
+Joan cited `pattern.config.config-block`; seed statutes scored in C1–C3 above.
+
+---
+
+## Plan adherence
+
+**Stage 1 (conforms):**
+
+- `"highlights": {"type": "str", "required": True}` inserted immediately before `experience` in `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA`.
+- Key order matches plan: `resume_structure` … `core_competencies`, `highlights`, `experience`, … `technical_skills`.
+- `TASK_CONFIG["craft_resume_base"]["response_schema"]` and `TASK_CONFIG["simple_resume_parse"]["response_schema"]` remain the same object (`TestAst1333CraftParseHighlightsSchema` asserts `is` identity).
+- No edits to `_CRAFT_RESUME_NORMALIZE_TASK_KEYS`, resume-structure catalog tuples, `candidate.py`, or other hop schemas.
+
+**Stage 2 (conforms):**
+
+- `craft_resume_base` `cache_prompt` only: `exactly 10 keyed segments`; `### highlights` before `### experience` with plan body; QUALITY CHECKLIST step 1d replaces non-empty blanket rule.
+- `simple_resume_parse` `cache_prompt` only: field inventory lists `highlights` in required set; `resume_structure` known-id list includes `highlights` before `experience`; `### highlights` block before `### experience`.
+- `data/admin/agent_task.json` vs `docs/uat-fixtures/AST-756/expected-agent_task.json`: byte-identical at tip (`cmp` OK).
+- Two-dot diff vs `origin/dev` for `agent_task.json`: **only** the two `cache_prompt` lines changed — no other `task_key` rows touched.
+
+**Boundaries (conforms):** No `BUILD_CONFIG["artifact_shapes"]`, `draft_job_resume`, `candidate.py`, `builder.py`, or `agent.py` product edits. AST-1332 catalog/coerce present on epic line / `origin/dev` but not part of this ticket's three-dot product delta (+1 schema line only in `config.py`).
+
+**Estimate 3** matches footprint.
+
+**Betty coverage:** `TestAst1333CraftParseHighlightsSchema` + `TestAst1333CraftParseHighlightsPrompts`; fixture payloads gain `highlights: ""`; AST-996 / AST-1027–1030 retargeted from `craft_resume_base` → `simple_resume_parse` `current=1` (correct — parse-specific marker/title/competencies contracts live on Ruth, not Judith synthesis).
+
+**C6 lenses (§5a–§5g):** No import/layer/logging/debug/external/batch concerns on this diff.
+
+---
+
+## Findings
+
+### discuss — Sibling issue-doc edit in three-dot diff
+
+- **Location:** `docs/features/artifacts/ast-1332-required-highlights-catalog-and-default-order.md` (2-line qa-handoff status update)
+- **Finding:** AST-1333 publish ref updates AST-1332's issue doc (Betty handoff cleared note). Not in AST-1333 `## Files Changed`; docs-only, no product impact.
+- **Recommendation:** Optional hygiene — keep sibling status in AST-1332's own resolve/review pass; not blocking AST-1333 UT.
+
+### advisory — Large `expected-agent_task.json` three-dot footprint
+
+- **Location:** `docs/uat-fixtures/AST-756/expected-agent_task.json` (~1359 lines in three-dot stat)
+- **Finding:** Plan-authorized whole-file `cp` realigns fixture to catalog. On `origin/dev`, catalog and fixture were already drifted (~1353 lines apart); branch twin now matches catalog. Two-dot `origin/dev` catalog → branch fixture: **4 lines** (the two prompt edits only).
+- **Recommendation:** No product fix — behavior is correct per Stage 2 step 3 / plan ⚠️ Decision. Reviewers should not read the large stat as unrelated task-key churn.
+
+---
+
+## What's solid
+
+- Shared schema object identity preserved — craft/parse contracts cannot drift (AST-1037 pattern).
+- Joan round-1 checklist clash fully resolved in prompts (empty `highlights` allowed; key still required).
+- Engineer product commits are test-tree-clean; single Betty `merge-tests` SHA.
+- No AST-1334 / Modal regression in this diff (contrast with AST-1332 review finding).
+- Validation test proves omit → `Missing required field 'highlights'` and `""` passes for both task keys.
+
+---
+
+## Frame diff
+
+(none) — implementation matches approved plan frame after `## Revisions` checklist fix. Fixture `cp` blast radius is plan-authorized and corrects pre-existing dev catalog↔fixture drift.
+
+---
+
+## Notes
+
+- Joan verdict present (round 2 APPROVED); round-1 `fix-now` implemented.
+- `blockedBy AST-1332`: epic line / `origin/dev` already carries AST-1332 structure catalog; this ticket's AC4–5 are self-contained and delivered.
+- Downstream: Chuckles → **Review Posted** → **User Testing** (PROCEED path).
+
+context_tokens≈36000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 6d2d6874) craft parse highlights schema
+```
+[AST-1326 | AST-1333] Radia/review review-child - complete 65f99f00 model=composer-2.5 - (144s) > OK
