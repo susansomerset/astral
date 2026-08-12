@@ -1208,10 +1208,33 @@ body {
 
 .structure-authoring-header {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   gap: 8px;
   flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.structure-authoring-name {
+  flex: 1 1 auto;
+  min-width: 8rem;
+}
+
+.structure-authoring-style {
+  flex: 0 0 auto;
+  width: 9rem;
+  max-width: 12rem;
+}
+
+.structure-authoring-flag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+  white-space: nowrap;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .dep-header {

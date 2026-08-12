@@ -790,13 +790,13 @@ export default function ArtifactEditor({
                       onKeyDown={e => e.stopPropagation()}
                     >
                       <input
-                        className="dep-input"
+                        className="dep-input structure-authoring-name"
                         type="text"
                         value={structureRow.title}
                         onChange={e => patchStructureRow(structureRow.id, { title: e.target.value })}
                       />
                       <select
-                        className="dep-input"
+                        className="dep-input structure-authoring-style"
                         value={formatValue}
                         disabled={structureRow.format_locked}
                         onChange={e => patchStructureRow(structureRow.id, { format: e.target.value })}
@@ -805,22 +805,22 @@ export default function ArtifactEditor({
                           <option key={f} value={f}>{f}</option>
                         ))}
                       </select>
-                      <label>
+                      <label className="structure-authoring-flag">
+                        Enabled:
                         <input
                           type="checkbox"
                           checked={structureRow.enabled}
                           disabled={structureRow.required}
                           onChange={e => patchStructureRow(structureRow.id, { enabled: e.target.checked })}
                         />
-                        {" "}Enabled
                       </label>
-                      <label>
+                      <label className="structure-authoring-flag">
+                        Job Edit:
                         <input
                           type="checkbox"
                           checked={structureRow.job_agent_editable}
                           onChange={e => patchStructureRow(structureRow.id, { job_agent_editable: e.target.checked })}
                         />
-                        {" "}Job edit
                       </label>
                       <button
                         type="button"
