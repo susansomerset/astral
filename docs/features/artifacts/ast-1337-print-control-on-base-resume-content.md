@@ -123,3 +123,9 @@ AC1–5 → Stage 1 (validate-then-blob Print on saved base resume via `GET /can
 
 context_tokens≈38000
 ```
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content` @ `c4f30b5152bd8f9ff882fb8cc99c41e1c0de9bae`
+
+Stage 1: Print (`btn secondary`) on Base Resume Content — `api()` GET `/candidate/resume/base?candidate_id=…`, validate-then-blob tab; on-page error + toast; disabled without candidate. Tests deferred to Betty.
