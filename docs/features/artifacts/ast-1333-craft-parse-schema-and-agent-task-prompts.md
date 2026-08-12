@@ -378,3 +378,10 @@ context_tokens≈36000
 [code-rubric] PROCEED (Commit: 6d2d6874) craft parse highlights schema
 ```
 [AST-1326 | AST-1333] Radia/review review-child - complete 65f99f00 model=composer-2.5 - (144s) > OK
+
+## Resolution
+
+Revision 1 — 2026-08-12
+Driven by: Radia `[code-rubric] PROCEED` @ `6d2d6874` — Overall **CLEAN** (no fix-now / discuss product work).
+Changes: none — product tip unchanged; plan-doc intake of Radia `docs(AST-1333)` via sync; advance to User Testing after §9a dry-run.
+
