@@ -39,6 +39,8 @@ function sortRecommendedJobs(jobs: Job[], col: string, asc: boolean, phaseFields
       cmp = a.company.localeCompare(b.company)
     } else if (col === "state_changed_at") {
       cmp = (a.state_changed_at || "").localeCompare(b.state_changed_at || "")
+    } else if (col === "state") {
+      cmp = (a.state || "").localeCompare(b.state || "")
     } else if (phaseFields.includes(col)) {
       const av = a[col]
       const bv = b[col]
@@ -175,6 +177,9 @@ export default function Recommended() {
                       <th className="sortable" onClick={() => handleSort(sec.state, "company")}>
                         Company{sortIndicator(sec.state, "company")}
                       </th>
+                      <th className="sortable" onClick={() => handleSort(sec.state, "state")}>
+                        State{sortIndicator(sec.state, "state")}
+                      </th>
                       {manifest.jobs.recommended.phase_score_columns.map(col => (
                         <th
                           key={col.field}
@@ -203,6 +208,7 @@ export default function Recommended() {
                         </td>
                         <td>{job.job_title || "\u2014"}</td>
                         <td>{job.company}</td>
+                        <td>{job.state || "\u2014"}</td>
                         {manifest.jobs.recommended.phase_score_columns.map(col => (
                           <td key={col.field} style={{ textAlign: "center", whiteSpace: "nowrap", width: 1 }}>
                             {formatPhaseScore(job[col.field])}
