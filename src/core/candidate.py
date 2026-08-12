@@ -2276,6 +2276,80 @@ def _is_resume_content_section_id(sid: str) -> bool:
     return _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
 
 
+def _load_missing_section_format(sid: str) -> str:
+    """AST-1324 read-path default: known id map, else free_prose (not bullet_list extras default)."""
+    if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID:
+        return RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+    return RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"]
+
+
+def hydrate_resume_structure_from_base_resume(resolved: dict, base_resume: Any) -> dict:
+    """Read-only: union base_resume content keys into structure; missing body format → free_prose."""
+    out = copy.deepcopy(resolved) if isinstance(resolved, dict) else default_resume_structure()
+    sections = out.get("sections") if isinstance(out.get("sections"), dict) else {}
+    out["sections"] = sections
+    used = set(sections)
+    if sections:
+        next_order = 1 + max(
+            (spec.get("order") or 0) for spec in sections.values() if isinstance(spec, dict)
+        )
+    else:
+        next_order = 0
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+
+    def _append_missing(sid: str, title: str) -> None:
+        nonlocal next_order
+        if sid in sections:
+            return
+        row: Dict[str, Any] = {
+            "id": sid,
+            "title": title,
+            "enabled": True,
+            "order": next_order,
+            "job_agent_editable": True,
+        }
+        if sid not in contact:
+            row["format"] = _load_missing_section_format(sid)
+        sections[sid] = row
+        used.add(sid)
+        next_order += 1
+
+    def _fix_body_format(sid: str, spec: dict) -> None:
+        if sid in contact or sid == "experience":
+            return
+        fmt = spec.get("format")
+        if not isinstance(fmt, str) or fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            spec["format"] = _load_missing_section_format(sid)
+
+    def _ensure_sid(sid: str, title: str) -> None:
+        if sid not in sections:
+            _append_missing(sid, title)
+        elif isinstance(sections.get(sid), dict):
+            _fix_body_format(sid, sections[sid])
+
+    if isinstance(base_resume, dict):
+        for k in base_resume:
+            if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
+                continue
+            if _is_resume_content_section_id(k):
+                _ensure_sid(k, k.replace("_", " ").title())
+    elif isinstance(base_resume, list):
+        for item in base_resume:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            sid = _title_to_structure_section_id(label, out)
+            if sid is None:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing(sid, label)
+            else:
+                _ensure_sid(sid, label)
+
+    return out
+
+
 # Public alias for tracker / builder (AST-996 / AST-997 / AST-998).
 is_experience_job_array = _is_experience_job_array
 

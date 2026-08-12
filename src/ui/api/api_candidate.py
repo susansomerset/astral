@@ -22,6 +22,7 @@ from src.core.candidate import (
     ingest_legacy_label_content_base_resume,
     get_candidate,
     get_pending_craft_generation,
+    hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
     initiate_candidate,
@@ -131,7 +132,11 @@ def get_candidate_resume_structure(candidate_id):
     if not candidate:
         return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
     cd = candidate.get("candidate_data") or {}
-    resolved = resolve_resume_structure(cd)
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    resolved = hydrate_resume_structure_from_base_resume(
+        resolve_resume_structure(cd),
+        artifacts.get("base_resume"),
+    )
     accent = resolved.get("accent_color")
     if not isinstance(accent, str):
         accent = None
