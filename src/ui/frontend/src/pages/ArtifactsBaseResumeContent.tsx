@@ -149,6 +149,13 @@ export default function BaseResumeContent() {
           const data = await r.json()
           if (typeof data.error === "string" && data.error) msg = data.error
         } catch { /* non-JSON error body */ }
+        // Operator copy for empty/unusable saved base (incl. legacy internal key-path).
+        if (
+          msg === "No printable base resume content for this candidate"
+          || msg === "Candidate missing artifacts.base_resume"
+        ) {
+          msg = "No printable base resume content for this candidate"
+        }
         setPrintError(msg)
         setToast({ text: msg, variant: "error" })
         return

@@ -398,15 +398,22 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         )
         raise ValueError(msg)
     cd = _coerce_candidate_blob(row)
-    br = (cd.get("artifacts") or {}).get("base_resume")
-    if not isinstance(br, dict) or not br:
-        msg = "Candidate missing artifacts.base_resume"
+    structure = candidate_mod.resolve_resume_structure(cd)
+    raw = (cd.get("artifacts") or {}).get("base_resume")
+    # Same ingest as candidate PUT / Base Resume Content display (list or dict).
+    if isinstance(raw, (list, dict)):
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            raw, structure
+        )
+    else:
+        content = {}
+    if not content:
+        msg = "No printable base resume content for this candidate"
         _emit_builder_failure(
             func="builder.build_base_resume", identifier=identifier, message=msg, debug=debug
         )
         raise ValueError(msg)
-    structure = candidate_mod.resolve_resume_structure(cd)
-    render = candidate_mod.filter_content_to_resume_structure(dict(br), structure)
+    render = candidate_mod.filter_content_to_resume_structure(dict(content), structure)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
