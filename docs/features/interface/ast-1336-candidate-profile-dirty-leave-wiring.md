@@ -389,3 +389,10 @@ In `src/ui/frontend/src/pages/CandidateProfile.tsx` only:
 - Truly different values (e.g. `first` `"Ada"` → `"Augusta"`) still set `isDirty` true.
 - `persistProfile` still clears dirty by updating `fetched` + `values` from `editValuesFromCandidate` before resolve; still rethrows on failure.
 - No API/shapes/contract change; no `beforeunload` / autosave; Profile only.
+
+## Radia review (AST-1343)
+
+**Diff:** `origin/ftr/AST-1315-do-not-navigate-away-from-dirty-content...origin/sub/AST-1315/AST-1343-dirty-flag-not-cleared-after-undo-virgin-restore` @ `a0adf5ca`
+
+**Gate:** PROCEED (clean) — compare-time nullish↔`""` normalize in `CandidateProfile` clears dirty on virgin restore; `[bug-repro]` asserts the failing path; `## What must still hold` intact. Advisory only: optional `[bug-repro]` source tag hygiene.
+
