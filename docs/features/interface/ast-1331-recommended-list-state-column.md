@@ -273,3 +273,13 @@ Manifest-only execution masked latent red tests on the same publish ref. Worth n
 3. Katherine: **no product resolve-child** needed for AST-1331 itself unless Chuckles chooses to hold UT until test SHA is clean.
 
 context_tokens≈18500
+
+## Resolution
+
+**2026-08-12 — Katherine / resolve-child**
+
+- **Mandatory stale catch-up:** `sync-child` merged `origin/dev` → tip `0b418753` (`sync(dev): origin/dev`); republished `origin/sub/AST-1330/AST-1331-recommended-list-state-column` @ `0b418753` before resolve.
+- **fix-now:** none (Radia: product delta clean; no Katherine product work).
+- **discuss (sibling AST-1334 test/bible on this ref):** closed on this tip by the same `origin/dev` merge — `Modal.showFooter` and JAR `showFooter={false}` are now present; optional Modal/JAR component tests + Betty’s `test_JobsRecommended` manifest all green (49 tests). No `[qa-handoff]` / no product edit.
+- **advisory:** noted; no action required for UT.
+- **AST-1331 product:** unchanged since `a7c0738f` (State column + sort only).
