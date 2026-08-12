@@ -2537,6 +2537,48 @@ class TestAst1037SimpleResumeParseConfig:
         keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
         assert isinstance(keys, frozenset)
         assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
+
+
+class TestAst1333CraftParseHighlightsSchema:
+    """AST-1333: shared craft/parse schema requires highlights before experience."""
+
+    def test_highlights_required_str_before_experience_on_shared_schema(self) -> None:
+        schema = cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert schema is cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert schema is cfg.TASK_CONFIG["simple_resume_parse"]["response_schema"]
+        assert schema["highlights"] == {"type": "str", "required": True}
+        keys = list(schema.keys())
+        assert keys.index("highlights") == keys.index("experience") - 1
+
+    def test_omitting_highlights_fails_schema_empty_string_passes(self) -> None:
+        from src.core.agent import _validate_response_schema
+
+        schema = cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        base = {
+            "resume_structure": {"sections": {}},
+            "candidate_name": "A",
+            "candidate_title": "T",
+            "candidate_contact_detail": "a@b.c",
+            "professional_summary": "S",
+            "core_competencies": "C",
+            "experience": [
+                {
+                    "company": "Co",
+                    "title": "Eng",
+                    "dates": "",
+                    "location": "",
+                    "accomplishments": "",
+                }
+            ],
+        }
+        missing = {"agent_payload": dict(base)}
+        err = _validate_response_schema(missing, schema, "craft_resume_base")
+        assert err is not None
+        assert "Missing required field 'highlights'" in err
+        ok = {"agent_payload": {**base, "highlights": ""}}
+        assert _validate_response_schema(ok, schema, "simple_resume_parse") is None
+
+
 class TestAst1041MeteoriteConfig:
     """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
 
