@@ -719,3 +719,13 @@ Betty `[board-betty] TESTS: REVISE` on AST-1327: bible AST-950 rows still descri
 - AST-950: horizontal grade+confidence header row; expanded body = `take_*` above `AgentAnalysisHeader`; four phases; no Overview.
 - Engineer test-tree ban on AST-1327 stays intact — this gap child is the only place those asserts move.
 - Live candidate rubric underlap must not shrink the Analysis header row when `*_rubric` is present on the job.
+
+## Radia review (AST-1328 review-fix)
+
+**Verdict:** PROCEED (CLEAN) — Commit `585397a4`
+
+**fix-now / discuss:** none.
+
+**Advisory:** lib bug-repro decoy placement harmless; optional AgentAnalysisHeader rubricItems label case not added.
+
+**What’s solid:** bug-repro fixtures match plan; AST-950 suite migrated to job-carried; bible honest; merge-tests discipline held.
