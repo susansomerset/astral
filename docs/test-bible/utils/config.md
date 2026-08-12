@@ -10,6 +10,14 @@
 
 ---
 
+### AST-1347 · AST-1346
+
+**`PHASE_SCORE_BREAKDOWN_KEY_SUFFIX`** (`score_breakdown`) + **`PHASE_SCORE_BREAKDOWN_FIELDS`** (`earned`, `possible`, `max`). Not added to **`JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS`** (list Score columns stay 0–10). Persist/lift: **`docs/test-bible/core/consult.md`** / **`docs/test-bible/ui/api/api_jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Breakdown constants + list columns | `src/utils/config.py` | **`TestAst1347PhaseScoreBreakdownConfig`** |
+
 ### AST-428 · AST-358
 
 **`GRADE_VALUES`**, **`RUBRIC_TOTAL`**, **`grade_value()`** in `config.py`; graded consult tasks use encoded batch shapes — **`draft_job_resume`** is structure-keyed per **AST-594** (no `grades` / vectors on that hop).
