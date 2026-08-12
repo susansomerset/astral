@@ -22,6 +22,24 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
 ```
 
+### AST-1343 · AST-1315 (bug — virgin restore dirty)
+
+**Parent:** AST-1315. **Publish:** `origin/sub/AST-1315/AST-1343-dirty-flag-not-cleared-after-undo-virgin-restore`. Board: `[board-betty] TESTS: REVISE` — nullish nested field touch+clear/Undo misses FormFields null↔`""` coerce.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Virgin empty after touch+clear (§6c) | `CandidateProfile.tsx` `isDirty` | `test_CandidateProfile.test.tsx` — **`AST-1343: nullish nested field touch+clear clears dirty (virgin empty)`** — load `contact.phone: null`, type then clear; expect `isDirty` false (fails pre-fix on raw stringify; passes after compare-time normalize) |
+
+**Broken / obsolete:** none in existing AST-1336 Cancel/exact-string cases (those still pass).
+
+**AST-1343** narrowed Vitest (bug-repro):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  --testNamePattern="AST-1343"
+```
+
 ### AST-436 · AST-442
 
 Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests tested components or API defaults only. Use **§6c** for all future UI QA.
@@ -1839,4 +1857,64 @@ Consume AST-1317 `.btn.in-row`: Scheduled Actions row Run / Stop (busy label `Dr
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
   -t "AST-1318|AST-1301"
+```
+
+---
+
+### AST-1337 · AST-1314
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
+
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved base, not editor buffer / session admin POST / job Print). `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) Print enable + blob / error | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1337: Print disabled with no candidate; success opens blob tab (§6c)`**; **`AST-1337: Print error and empty HTML never open a tab`** |
+
+**Broken / obsolete this pass:** none for AST-1337 ship. **AST-1341** revises the Print 404 error assert to `No printable base resume content for this candidate` (replaces `Candidate missing artifacts.base_resume`).
+
+**Integration:** no existing scenario asserts Base Resume Content Print — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337"
+```
+
+---
+
+### AST-1342 · AST-1314 (bug — Print next to Regenerate)
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1342-print-button-placement-next-to-regenerate`.
+
+UAT chrome: Print must sit in ArtifactEditor `dep-actions` **immediately after** Generate/Regenerate (`headerActions` slot), not in the orphaned page-level row above the editor. Validate-then-blob behavior stays AST-1337.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) placement bug-repro | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1342: Print sits in dep-actions next to Regenerate`** (bug-repro) |
+| No-candidate unavailable (AST-1337 revised) | same | **`AST-1337:`** no-candidate: Print absent **or** disabled (survives headerActions early-return) |
+
+**Broken / obsolete this pass:** AST-1337 “Print must exist and be disabled with no candidate” — rewritten to allow absent (post-fix) or disabled (pre-fix page-level).
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1342|AST-1337"
+```
+
+---
+
+### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
+
+**Parent:** [AST-1314](https://linear.app/astralcareermatch/issue/AST-1314). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.
+
+Primary coverage: **`docs/test-bible/core/builder.md`** (`test_ast1341_list_shaped_base_resume_prints`). Page suite: AST-1337 Print error case asserts **`No printable base resume content for this candidate`**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337: Print error"
 ```
