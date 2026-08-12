@@ -2779,3 +2779,38 @@ Deletes `METEORITE_GDL_OUTCOME_BY_TASK` (symbol + JOB_STATES assert loop). Runti
   tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
   -q
 ```
+
+---
+
+### AST-1333 · AST-1326
+
+**Parent:** [AST-1326 — Make "Highlights" a REQUIRED resume section](https://linear.app/astralcareermatch/issue/AST-1326/make-highlights-a-required-resume-section). **Publish:** `origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts`.
+
+Shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` requires `highlights` (str) immediately before `experience`; `craft_resume_base` / `simple_resume_parse` keep object identity. Agent_task `cache_prompt`s require Highlights above Experience (craft: 10 keyed segments + empty-string checklist; simple: field inventory + segment block). Catalog twin `docs/uat-fixtures/AST-756/expected-agent_task.json` stays byte-identical. Catalog membership / normalize coerce = **AST-1332**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared schema + omit/empty validation | `src/utils/config.py` | **`TestAst1333CraftParseHighlightsSchema`**; reuse **`TestAst1037SimpleResumeParseConfig`** |
+| Prompt + fixture twin | `data/admin/agent_task.json` | **`TestAst1333CraftParseHighlightsPrompts`** |
+| Schema fixture payloads | `src/core/candidate.py` callers | revised **`TestAst517ResumeStructure`** inject cases; **`TestAst1005FalseMissingCandidateName`** `_OTHER_REQUIRED` |
+| Prompt regressions (contracts on simple_resume_parse) | same JSON | revised **`TestAst996…job_array_contract`**, **`TestAst1027…`**, **`TestAst1028…`**, **`TestAst1029…`**, **`TestAst1030…`** → read `simple_resume_parse` `current=1` |
+
+**Broken / obsolete this pass:** craft/parse schema fixtures omitting `highlights` fail validation — add `highlights: ""`. AST-996 / AST-1027–1030 asserted Judith craft_resume_base wording that now lives on Ruth `simple_resume_parse` (post AST-1037/1038); retargeted + aligned to current prompt text.
+
+**Integration:** none — no existing scenario pins craft/parse schema field inventory; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1333CraftParseHighlightsSchema \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/core/test_candidate.py::TestAst1333CraftParseHighlightsPrompts \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_normalize_injects_default_when_resume_structure_missing \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_normalize_injects_default_when_resume_structure_sections_empty \
+  tests/component/core/test_candidate.py::TestAst1005FalseMissingCandidateName \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
+  -q
+```
