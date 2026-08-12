@@ -101,3 +101,25 @@ Wire a **Print** control on Artifacts → Base Resume Content for the selected c
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1337
+**Overall:** APPROVED
+**Publish ref:** `a4e72815be96abb568a17cc6efd7c0f35c273ee0` (`origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`)
+
+## Traceability
+AC1–5 → Stage 1 (validate-then-blob Print on saved base resume via `GET /candidate/resume/base`; AC5 via explicit do-not-touch boundary).
+
+## Findings
+
+### acceptable — deliberate Session mirror (DRY)
+**Location:** Stage 1 `handlePrint`  
+**Finding:** `handlePrint` closely mirrors `AdminSessionResumePaste.handleOpenHtml` (~40 lines).  
+**Recommendation:** Acceptable for this ticket — parent requires Session-style validate-then-open; plan keeps scope to one page file and names the mirror explicitly. Optional future extract to `lib/` only if a third call site appears.
+
+context_tokens≈38000
+```
