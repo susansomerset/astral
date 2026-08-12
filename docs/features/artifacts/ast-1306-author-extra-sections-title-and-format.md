@@ -784,3 +784,90 @@ Scope: hydrate on the **read** path used by Base Resume Content. Do not change A
 - Required seven section ids still present after normalize; hydrate must not drop them.
 - No new format names; no React-owned format allowlist.
 
+
+## Radia review (AST-1324)
+
+# Statutes checked
+
+Ticket-scoped product delta: `e0825092` (`src/core/candidate.py`, `src/ui/api/api_candidate.py` only).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.* (3) | scoped | not-applicable | no agent paths |
+| astral.batch.* (4) | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | formats from existing `RESUME_STRUCTURE_*` maps; no parallel catalog |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no score-floor paths |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env wiring |
+| astral.debug.* (2) | scoped | not-applicable | no debug paths |
+| astral.dispatch.* (2) | scoped | not-applicable | no dispatch paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | engineer `src/` only |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer role statute |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer touches only planned core + API files |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core helper; API → core |
+| astral.layers.import-direction | scoped | conforms | `api_candidate` → core only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | GET serves hydrated structure; no React format allowlist added |
+| astral.idioms.* (3) | scoped | not-applicable | no new auth surface |
+| astral.seed.* (5) | scoped | not-applicable | no seed paths |
+| astral.standards.* (12) | scoped | conforms / n/a | in-scope-only, dry helper, no hardcoded format sets beyond map lookup, no cross-contamination |
+| astral.state.* (3) | scoped | not-applicable | no state machine |
+| astral.ui.* (3) | scoped | not-applicable / conforms | no frontend delta; API read path only |
+| orch.git.* (9) | universal | conforms | sub on ftr |
+| orch.pipeline.* (4) | universal | conforms | fix-lane at Tests Passed |
+| orch.roles.* (5) | universal | conforms | n/a |
+
+**Count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | read-path hydrate only |
+
+## Plan adherence (plan-fix patch)
+
+**Implemented:** `hydrate_resume_structure_from_base_resume` deep-copies resolved structure; dict keys via `_is_resume_content_section_id` append/fix rows; list branch uses title→id / slug (structure-only); missing body format → `_load_missing_section_format` (map value or `professional_summary` / `free_prose`, not `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT`); contact rows omit `format`; experience format fix skipped (normalize lock unchanged). `get_candidate_resume_structure` hydrates after `resolve_resume_structure` before building `sections` / `all_sections` / `catalog`. No PUT/ingest/frontend/config constant changes. No write to candidate_data.
+
+**Blast radius (accepted per plan):** `JobAnalysisReportModal` and other GET consumers see hydrated enabled sections — documented in plan-fix.
+
+## Fix-specific checks
+
+### [bug-repro] — OK
+
+`TestAst1324HydrateResumeStructureFromBaseResumeGet::test_get_includes_base_resume_extra_with_free_prose_default` — fixture matches plan (extra on `base_resume`, absent from `resume_structure`); asserts `highlights` in `all_sections` and enabled `sections`, `format == "free_prose"` (not `bullet_list`). Would fail pre-fix (extra missing from GET). Pins concrete To-be values.
+
+### ## What must still hold — OK
+
+| Item | Verdict |
+|------|---------|
+| AST-1306 catalog / Save sections PUT / content Save separate | Untouched; GET-only hydrate. |
+| AST-1323 header authoring | No layout change; more complete rows from GET. |
+| AST-1322 title-keyed PUT ingest | Untouched. |
+| AST-1305 list-ingest `bullet_list` extra default | Config unchanged; hydrate uses `free_prose` for load default only. |
+| Required seven preserved | Hydrate additive only; `resolve_resume_structure` baseline unchanged. |
+| No React format allowlist | No frontend diff. |
+
+## Findings
+
+(none)
+
+## What's solid
+
+- Surgical read-path fix at the right layer (GET hydrates before page consumes structure).
+- Clear separation: load default `free_prose` vs Add-section / ingest `bullet_list`.
+- Reuses `_is_resume_content_section_id`, `_title_to_structure_section_id`, `_slug_resume_extra_section_id` — no second eligibility table.
+
+## Notes
+
+- **Parent shape:** normal ftr stack → Chuckles clean-review shortcut to **User Testing** after post.
+- **Advisory:** Plan list-branch hydrate has API coverage only via dict repro; optional core unit test for Abrams list on GET is not required for this bug’s stated repro.
+- **Advisory:** Bible flags possible follow-up on AST-519 “orphan hide” page mock if client filtering diverges from hydrated GET — not a defect in this diff.
+
+## Frame diff
+
+(none) — matches plan-fix scope (core + GET only).
+
+context_tokens≈95000
+— Radia
+
+---
