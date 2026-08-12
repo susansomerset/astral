@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import CollapsiblePanel from "./CollapsiblePanel"
 import type { Catalog, SectionRow } from "./ResumeStructureEditor"
 import LabeledTextArea from "./LabeledTextArea"
@@ -47,6 +47,8 @@ interface ArtifactEditorProps {
   structureError?: string | null
   /** Job-scoped artifact load/save (AST-553/565); no Generate. */
   jobPersistence?: { jobId: string; artifactKey: string; onSaved?: () => void }
+  /** Optional controls after Generate/Regenerate in dep-actions (e.g. Base Resume Print). */
+  headerActions?: ReactNode
 }
 
 const AUTOSAVE_MS = 2000
@@ -85,6 +87,7 @@ export default function ArtifactEditor({
   structureSaving = false,
   structureError = null,
   jobPersistence,
+  headerActions,
 }: ArtifactEditorProps) {
   const { manifest, loadState } = useStateUi()
   const { selectedId, candidates, refresh: refreshCandidate } = useCandidate()
@@ -749,6 +752,7 @@ export default function ArtifactEditor({
                   : showAsRegenerate ? "Regenerate" : "Generate"}
               </button>
             )}
+            {headerActions}
             {(fixedFields || inReview || jobPersistence) ? (
               <>
                 <button className="btn secondary" onClick={handleCancel}>Cancel</button>

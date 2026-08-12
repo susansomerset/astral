@@ -201,16 +201,6 @@ export default function BaseResumeContent() {
           </div>
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, padding: "8px 20px 0", alignItems: "center" }}>
-        <button
-          type="button"
-          className="btn secondary"
-          onClick={() => void handlePrint()}
-          disabled={!selectedId || printing}
-        >
-          {printing ? "Opening…" : "Print"}
-        </button>
-      </div>
       {printError && (
         <p style={{ margin: "8px 20px 0", color: "var(--danger, #c44)", fontSize: 13 }}>
           {printError}
@@ -228,6 +218,17 @@ export default function BaseResumeContent() {
         onStructureSave={saveStructure}
         structureSaving={structureSaving}
         structureError={structureError}
+        headerActions={
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void handlePrint()}
+            disabled={!selectedId || printing}
+            style={{ marginRight: 8 }}
+          >
+            {printing ? "Opening…" : "Print"}
+          </button>
+        }
       />
       <Toast message={toast} onDone={clearToast} />
     </>
