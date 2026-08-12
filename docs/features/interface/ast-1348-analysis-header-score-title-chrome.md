@@ -260,3 +260,162 @@ context_tokens≈48000
 **Built:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `1a899283958046206b2e24221e461d5016e3b4a5`
 
 Stages 1–4: `PHASE_SCORE_HEADER_TITLE_TEMPLATE` + manifest; `_flatten_grades` read-time derive via `_phase_score_breakdown`; frontend breakdown lookup + title format; Analysis section headers wired in `JobAnalysisReportModal`. Stage 5 smoke: derive when score+grades+rubric present; stored trio wins; no-score omits key. Tests deferred to Betty.
+
+## Radia review
+
+# Radia review — AST-1348
+
+**Publish ref:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `cf6cbb5ad886c7959d38896183d379e17d90384e`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` (24 files; **AST-1348 product commit** `1a899283`: `config.py`, `api_jobs.py`, `JobAnalysisReportModal.tsx`, `StateUiContext.tsx`, `recommendedJobReport.tsx`)
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1348
+**Publish ref:** `sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `cf6cbb5a`
+**Overall:** DISCUSS
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent/confidence validation changes on AST-1348 product commit. |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No `do_task` changes on AST-1348 product commit. |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | Derive reuses existing helper; no grade-set rule edits. |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch API signature changes on AST-1348 product commit. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch_id format changes. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process/finally edits. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No agent_response persistence changes. |
+| `astral.config.config-source-of-truth` | scoped | conforms | `PHASE_SCORE_HEADER_TITLE_TEMPLATE` + manifest field in `config.py`. |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env handling. |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No repo-root artifact dirs. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No committed spike files. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch seed paths. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run-next / chain edits. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Plan doc at `docs/features/interface/ast-1348-…`. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Product `src/` from engineer; bible/tests from Betty merge. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer product commit is `src/` only. |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | No external imports; core helper via allowed ui→core path. |
+| `astral.layers.import-direction` | scoped | conforms | `api_jobs` imports `core.consult` + `utils.config` only; React consumes JSON/manifest. |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/` changes. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Title template from manifest; base `nav_label`s unchanged on `report_phase_tabs`. |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No score-save / orchestration edits on AST-1348 product commit. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No route/auth changes. |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed table edits. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog conflicts. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No seed boot paths. |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed work. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator seed rows. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage-join seed logic. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `src/data/` changes. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migration changes. |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | No new debug emission on AST-1348 product paths. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single core helper for math; frontend format-only helpers. |
+| `astral.standards.in-scope-only` | scoped | conforms | Product commit touches only plan files (config, api_jobs, frontend chrome). |
+| `astral.standards.logging-via-utils` | scoped | conforms | No `print()` / raw `logging` imports added. |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Runtime keys/template placeholders are domain names; ticket id in comments only. |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Layer imports legal; no out-of-layer deps. |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Template from config/manifest; phase prefixes from existing tab config. |
+| `astral.standards.public-then-helpers` | scoped | conforms | Frontend exports public helpers; core reuse is plan-mandated private import. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data late-import edits. |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No transition changes on AST-1348 product commit. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No prior-state enforcement edits. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run/daisy-chain edits. |
+| `astral.ui.frontend-file-placement` | scoped | conforms | Helpers in `lib/recommendedJobReport.tsx`; modal wiring in `components/`. |
+| `astral.ui.naming-conventions` | scoped | conforms | camelCase TS helpers; snake_case API keys consistent with flatten. |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server worker config. |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Tip is `merge-tests(AST-1348): origin/tests 2092f7bf`. |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` / `resolve` vocabulary on branch. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Sub off parent epic; no dev/main writes. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child on `sub/AST-1346/AST-1348-…`. |
+| `orch.git.merge-on-checkout` | universal | conforms | Branch includes `resolve(AST-1347)` + ftr sync prerequisite satisfied. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | None observed. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Publish ref is `sub/…`. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Reviewed in `astral-AST-1346` worktree. |
+| `orch.git.three-permanent-branches` | universal | conforms | Diff vs `origin/dev` only. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | 0/0 suffix display ownership explicit in plan Stage 3. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–4 match plan on product commit. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to code diff. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Review at Tests Passed per pipeline. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to implementation. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Tests/bible from Betty + merge-tests. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to code. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine remains assignee. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No hook-ban violations in product paths. |
+
+**Active set count:** 65 scored in-session.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `PHASE_SCORE_HEADER_TITLE_TEMPLATE` added beside scoring constants; exposed via manifest. |
+| `pattern.layers.import-discipline` | conforms | Derive in `api_jobs` (ui→core); React has no scoring math (matches `api_admin` consult import precedent). |
+
+## Plan adherence
+
+Stages 1–4 land on product commit `1a899283`: config template + `build_state_ui_manifest()` field; `_flatten_grades` lifts stored trio then derives missing breakdown (response-only, gated on `{prefix}_score is not None` + non-empty grades + rubric); frontend helpers validate finite `earned|possible|max`, round for display, wire Analysis `nav_label` only. Boundaries held: no score-save edits on this commit, no list column / `latest_score` / soft-fail changes, grade-dot metadata row untouched, Summary/Artifacts labels unchanged. Estimate **2** fits. Betty manifest covers config/manifest, API derive/omit/stored, lib helpers (incl. 0/0 fallback), and modal chrome.
+
+## Findings
+
+### discuss — Sibling ticket test commit on AST-1348 sub-branch
+
+**Location:** Branch history `c7bed34b test(AST-1343)` + `tests/component/frontend/pages/test_CandidateProfile.test.tsx`  
+**Finding:** AST-1343 (Candidate Profile dirty-state bug, different parent) test landed on this sub ref alongside AST-1348 work. Same pattern as AST-1341/1342 on AST-1347.  
+**Recommendation:** Not a product fix for Katherine. Chuckles should confirm sibling bug-lane tests stay bundled through `ftr` merge or get split before parent rollup.
+
+### discuss — Derive failures swallowed without log
+
+**Location:** `src/ui/api/api_jobs.py` `_flatten_grades` derive loop  
+**Finding:** `try/except (ValueError, TypeError, KeyError): pass` leaves breakdown absent on bad historical payloads — plan-intended, but no stderr/debug signal when derive fails.  
+**Recommendation:** Accept per plan; optional advisory log at `debug_detail` if operators need visibility — not required for merge.
+
+### discuss — Derive without explicit completeness check
+
+**Location:** `src/ui/api/api_jobs.py` derive gate  
+**Finding:** Joan flagged: no `_require_complete_grade_set` before `_phase_score_breakdown`; mismatched historical grades+rubric+score → absent key → plain label.  
+**Recommendation:** Accept as planned; jobs that earned `{prefix}_score` should have been complete at grade time.
+
+### advisory — Breakdown lookup comment vs `jobGradesForField` precedence
+
+**Location:** `src/ui/frontend/src/lib/recommendedJobReport.tsx` `jobScoreBreakdownForGradesField`  
+**Finding:** Docstring says “same lookup style as `jobGradesForField`” but reads top-level before `job_data` (opposite of grades helper). Joan accepted as intentional for API-flattened payloads.  
+**Recommendation:** Optional comment fix in resolve pass; behavior is correct.
+
+### advisory — Modal test uses stored breakdown only
+
+**Location:** `test_JobAnalysisReportModal.test.tsx` AST-1348 case  
+**Finding:** Modal test asserts stored `jd_score_breakdown`; API derive path covered separately in `TestAst1348FlattenDeriveBreakdown`.  
+**Recommendation:** Sufficient split coverage; end-to-end derive→modal path is implicit via flatten contract.
+
+## What's solid
+
+- Product commit is tightly scoped (5 files) and plan-faithful.
+- Derive gate correctly requires `{prefix}_score is not None` — dealbreaker/unscored stay label-only.
+- Stored trio wins (skip derive when key already lifted); `job_data` never mutated.
+- `formatPhaseSectionScoreTitle` rounds for display; empty-template fallback matches AC shape; 0/0 suffix shown per Stage 3 decision.
+- `analysisSections` deps include `job` + manifest template; metadata row and Summary/Artifacts paths untouched.
+- Tests cover derive, stored-trio retention, unscored omit, helper validation, manifest constant, and modal chrome.
+
+## Frame diff
+
+`(none)` — first Radia pass on AST-1348.
+
+Product frame under review (`1a899283`):
+- `src/utils/config.py`: `PHASE_SCORE_HEADER_TITLE_TEMPLATE` + manifest exposure
+- `src/ui/api/api_jobs.py`: read-time derive in `_flatten_grades`
+- `src/ui/frontend/src/lib/recommendedJobReport.tsx`: breakdown lookup + title formatter
+- `src/ui/frontend/src/contexts/StateUiContext.tsx`: manifest type
+- `src/ui/frontend/src/components/JobAnalysisReportModal.tsx`: Analysis header wiring
+
+**Note:** Three-dot diff vs `origin/dev` also includes AST-1347 dependency stack (consult persist, breakdown constants, flatten lift) — expected prerequisite per plan gate; not AST-1348 scope creep.
+
+## Notes
+
+- Joan plan-rubric verdict attached (APPROVED); no Excluded-statute stragglers.
+- AST-1347 Radia discuss items (0/0 suffix, sibling tests) addressed in AST-1348 plan Stage 3 — implementation matches.
+- No fix-now product defects; engineer `resolve-child` not required for product code on this pass.
+
+context_tokens≈58000
