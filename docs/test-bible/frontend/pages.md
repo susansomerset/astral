@@ -1719,10 +1719,10 @@ Operators author extra sections (title / format / enable / reorder / remove opti
 | New-extra default format | `src/utils/config.py` | **`TestAst1306ResumeStructureCatalog`** |
 | Slug + prepare-for-save | `src/core/candidate.py` | **`TestAst1306ResumeStructureSavePrep`** |
 | GET `all_sections`+`catalog`; PUT replace | `src/ui/api/api_candidate.py` | **`TestAst1306ResumeStructureAuthorApi`**; revised **`TestAst519ResumeStructureApi`** (normalize-valid fixture; 400 text) |
-| Editor (catalog options, no Remove on required) | `src/ui/frontend/src/components/ResumeStructureEditor.tsx` | **`test_ResumeStructureEditor.test.tsx`** |
-| Routed page (**§6c**) editor + first-paint mocks | `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — existing tab/accent cases + **`AST-1306:`** catalog editor / sections PUT |
+| Types-only catalog / section row shapes | `src/ui/frontend/src/components/ResumeStructureEditor.tsx` | no dedicated component test (module exports types only after AST-1323) |
+| Routed page (**§6c**) header authoring + sections PUT | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1306:`** catalog formats / no Remove on required / sections PUT; chrome covered under **AST-1323** |
 
-**Broken / obsolete this pass:** AST-519 GET fixture was a three-id blob — `resolve_resume_structure` now falls back to DEFAULT (AST-1303 required seven). Fixture is a normalize-valid ten-id catalog with `technical_skills` disabled. PUT invalid-sections 400 now returns the normalize message (`missing required`), not `invalid resume_structure`.
+**Broken / obsolete this pass:** AST-519 GET fixture was a three-id blob — `resolve_resume_structure` now falls back to DEFAULT (AST-1303 required seven). Fixture is a normalize-valid ten-id catalog with `technical_skills` disabled. PUT invalid-sections 400 now returns the normalize message (`missing required`), not `invalid resume_structure`. Flat `test_ResumeStructureEditor.test.tsx` deleted (UI removed; assertions live on the page suite).
 
 **Integration:** none — existing `test_candidate_nav_api.py` is nav only; do not invent editor integration coverage.
 
@@ -1735,7 +1735,7 @@ Operators author extra sections (title / format / enable / reorder / remove opti
   -q
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
-  ../../../tests/component/frontend/components/test_ResumeStructureEditor.test.tsx
+  -t "AST-1306"
 ```
 
 ---
@@ -1748,14 +1748,14 @@ Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Routed page (**§6c**) header-row + body-between | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1323: structure controls on collapsible header with body between`** (bug-repro) |
+| Routed page (**§6c**) header-row + body-between | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1323: structure controls on collapsible header with body between`** (bug-repro); **`AST-1306:`** catalog PUT / no Remove (migrated off deleted flat editor test) |
 
-**Broken / obsolete this pass:** AST-1306 page cases that assume a standalone “Resume sections” panel — revise after make-fix; component `test_ResumeStructureEditor` stays type/catalog-oriented until the flat UI is removed.
+**Broken / obsolete this pass:** none — flat `ResumeStructureEditor` UI + `test_ResumeStructureEditor.test.tsx` removed; module is types-only.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
-  -t "AST-1323"
+  -t "AST-1323|AST-1306"
 ```
 
 ---

@@ -203,8 +203,10 @@ describe("ArtifactsBaseResumeContent", () => {
       throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
     })
     renderWithProviders(<ArtifactsBaseResumeContent />)
-    await waitFor(() => expect(screen.getByText("Resume sections")).toBeInTheDocument())
+    // Flat ResumeStructureEditor removed — catalog authoring lives on collapsible headers (AST-1323).
     await waitFor(() => expect(screen.getByRole("heading", { name: "Base Resume Content" })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Job edit")).toBeInTheDocument())
+    expect(screen.queryByText("Resume sections")).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Remove" })).not.toBeInTheDocument()
     const formatOptions = Array.from(screen.getAllByRole("combobox")[0].querySelectorAll("option")).map(
       o => o.textContent,
