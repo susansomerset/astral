@@ -120,3 +120,36 @@ Parent ACs 1–3 (catalog / order / coerce) and AC 6 (HTML emit) are AST-1332. T
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1333
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` @ `d11875f794f1cb05802d64ddbc4ddeec9012f2fc`
+
+### Traceability
+AC4→S1 (`_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` shared object); AC5→S2 (`craft_resume_base` + `simple_resume_parse` `cache_prompt` + fixture `cp`). Parent AC1–3 / AC6 → AST-1332 (explicitly out of scope).
+
+### Findings
+
+#### fix-now — `craft_resume_base` QUALITY CHECKLIST contradicts empty `highlights`
+- **Location:** Stage 2 §1 (`craft_resume_base` `cache_prompt`), existing `QUALITY CHECKLIST`
+- **Finding:** Live prompt ends with “Every key present with a **non-empty string value**.” Stage 1 ⚠️ Decision and the new `### highlights` body both allow `""` when sources have no highlight material (`required: True` = key present; `_validate_schema_object_fields` only rejects `val is None`). Leaving the checklist unchanged tells the model to violate AC5/schema for a valid empty highlights response.
+- **Recommendation:** In Stage 2 step 1, amend QUALITY CHECKLIST (per step 1c “except as needed”): e.g. replace the blanket non-empty rule with “every **required** key present” and explicitly allow `highlights` (and other optional-empty fields as today) to be `""` when source material is absent. Do not ship the `### highlights` block without this reconciliation.
+
+#### discuss — Assignee not Joan at fetch time
+- **Location:** Linear ticket state
+- **Finding:** Status `Plan Ready` but assignee is Katherine, not Joan — `validate-plan` §1 expects Chuckles to assign Joan before spawn.
+- **Recommendation:** Chuckles procedural fix only; does not block plan content once checklist is patched.
+
+#### acceptable — No explicit Self-assessment line
+- **Location:** `## Estimate`
+- **Finding:** Same hygiene gap as sibling AST-1332; footprint is small and ⚠️ Decision blocks are specific.
+- **Recommendation:** Optional `Single-Component / high conf / low risk` before build.
+
+**In-session (R1–R4, not printed):** Considered statutes conform for cited scope — `astral.config.config-source-of-truth`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `pattern.config.config-block`. `astral.agent.do-task-delegation` excluded (no `src/core/**` in Files Changed). Layer table respects import discipline (utils + seed JSON + fixture twin only). Sibling boundary vs AST-1332 is explicit and correct. Plan Discuss round count after this pass: would be 1.
+
+context_tokens≈52000
