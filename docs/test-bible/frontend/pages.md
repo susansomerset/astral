@@ -2,6 +2,26 @@
 
 **Test tree:** `tests/component/pages/`
 
+### AST-1336 · AST-1315
+
+Wire Candidate Profile to `useDirtyLeaveSaveThenNavigate` (sibling **AST-1335**): dirty vs last loaded/saved snapshot (`JSON.stringify`), shared `persistProfile` Promise for header Save + dirty-leave `onSave`, header Cancel unchanged. Profile only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile dirty-leave (§6c) | `CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — **`CandidateProfile — AST-1336 dirty-leave wiring`**: helper wired; clean→dirty on edit; in-page tab keeps draft; Cancel reverts; `onSave` PUT then clears dirty; save reject stays dirty + error |
+| Helper contract | `useDirtyLeaveSaveThenNavigate.ts` | `docs/test-bible/frontend/hooks.md` (**AST-1335**) — not re-tested here |
+
+**Broken / obsolete:** entire prior Profile suite under `renderWithProviders` (`MemoryRouter`) — Profile now calls `useBlocker` via the helper; mock `useDirtyLeaveSaveThenNavigate` in `test_CandidateProfile.test.tsx` so existing §6c cases stay green without a data-router harness. Header Save failure assert uses helper `onSave` (persistProfile rethrows; `void handleSave()` would leave Vitest unhandled rejection).
+
+**Integration:** no existing scenario asserts Profile leave prompts — no drift.
+
+**AST-1336** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
 ### AST-436 · AST-442
 
 Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests tested components or API defaults only. Use **§6c** for all future UI QA.
