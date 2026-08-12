@@ -212,3 +212,116 @@ context_tokens≈38000
 
 **Publish ref:** `origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper`  
 **Product commits:** `e9123957` (data router), `f8e55aa7` (hook), `d1545f4b` (proposed pattern + README/HARVEST)
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1335
+**Publish ref:** `origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` @ `0452b5489a560f9c657b2f3852c6f30700af22f3`
+**Overall:** CLEAN
+
+**Scope note:** Full `origin/dev...origin/sub/...` three-dot diff reports multiple merge bases and carries broad epic integration noise (400+ files). This review scores **AST-1335 product commits** (`e9123957`, `f8e55aa7`, `d1545f4b`) plus Betty test land on the publish tip (`d3a87345`, `0452b548`). Unrelated sibling canon/product paths in the wide diff are **not** attributed to this ticket.
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent/LLM confidence surfaces in diff |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no dispatch/agent task changes |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grading/vector paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch claim paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release helpers |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity agent_responses paths |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no config.py / config block changes |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact dirs |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run_next chain edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | not-applicable | product commits did not add/duplicate feature docs |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty commits touch tests/bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Ada product commits exclude `tests/` and `docs/test-bible/**`; test land is Betty merge-tests |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no core/external layer changes |
+| `astral.layers.import-direction` | scoped | conforms | hook imports React Router + `UserPrompt` only (UI-internal) |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | no new hardcoded job/company/candidate state strings |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult/render paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API endpoint changes |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON edits in ticket scope |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog conflicts |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed boot paths |
+| `astral.seed.define-approved` | scoped | not-applicable | no define-approved seed flow |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join seed logic |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no database.py changes |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no backend `debug=` surfaces |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | single-purpose hook; no duplicated leave-prompt logic |
+| `astral.standards.in-scope-only` | scoped | conforms | product footprint matches plan; Profile/Modal/NavigationShell untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | no `print`/ad-hoc logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | symbols are descriptive (`useDirtyLeaveSaveThenNavigate`) |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no unrelated module rewrites |
+| `astral.standards.no-hardcoded-sets` | scoped | not-applicable | no new backend hardcoded sets |
+| `astral.standards.public-then-helpers` | scoped | conforms | exported types + hook; internals are module-private |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils changes |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state machine edits |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state transitions |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run/daisy-chain paths |
+| `astral.ui.frontend-file-placement` | scoped | conforms | `src/hooks/` matches established affordance-hook convention (Joan acceptable); statute prose still lists `lib/` |
+| `astral.ui.naming-conventions` | scoped | conforms | hook file/symbol naming follows UI conventions |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server/worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | merge-tests commit present on publish ref |
+| `orch.git.commit-vocabulary` | universal | conforms | `code(AST-1335)` / `test(AST-1335)` / `docs(AST-1335)` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub-branch publish; no dev/main direct commits |
+| `orch.git.ftr-sub-topology` | universal | conforms | child `sub/AST-1315/AST-1335-...` topology |
+| `orch.git.merge-on-checkout` | universal | not-applicable | not verifiable from diff alone |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no evidence of forbidden git ops in ticket commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/...`, not agent branch |
+| `orch.git.one-epic-worktree-per-parent` | universal | not-applicable | worktree discipline not diff-scored |
+| `orch.git.three-permanent-branches` | universal | conforms | changes on sub publish ref only |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no new product forks beyond approved plan decisions |
+| `orch.pipeline.plan-is-bible` | universal | conforms | three stages delivered in order per plan |
+| `orch.pipeline.project-scoped-queues` | universal | not-applicable | queue/orchestration N/A to code diff |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | review at Tests Passed gate |
+| `orch.roles.archie-approves-statutes` | universal | not-applicable | no statute authoring in product commits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test/bible changes on Betty commits, not Ada product commits |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | not-applicable | assignee discipline N/A to diff |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada remains assignee at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path product edits observed |
+
+**Sweep count:** 65 active statutes scored.
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.ui.dirty-leave-save-then-navigate` | conforms | Proposed catalog entry matches landed hook + data-router boot; `status: proposed` per plan |
+| `pattern.ui.shared-button-roles` | conforms | Save/Cancel use `UserPrompt` `variant: "default"` → `btn primary` / `btn secondary` |
+
+### Plan adherence
+
+All three stages match the plan bible (data router, hook contract, proposed pattern). Estimate 3 fits. Cross-ticket: no Profile/Modal/NavigationShell/routes edits.
+
+### Findings
+
+#### advisory — App mount smoke replaced by source contract
+**Location:** `tests/component/frontend/test_App.test.tsx`
+**Finding:** Behavioral routing regression signal weaker; bible documents RR7+jsdom AbortSignal constraint.
+**Recommendation:** Accept for this tip; consider routed smoke with AST-1336.
+
+#### advisory — Optional chaining on blocker methods
+**Location:** `useDirtyLeaveSaveThenNavigate.ts`
+**Finding:** `blocker.reset?.()` / `blocker.proceed?.()` vs plan literals without `?.`.
+**Recommendation:** Harmless; no action required.
+
+#### advisory — Uncited `pattern.ui.shared-button-roles`
+**Location:** hook confirm path via `UserPrompt`
+**Recommendation:** Optional cite when AST-1336 wires Profile.
+
+### What's solid
+Clean separation (hook + data router now; wiring AST-1336). Hook matches parent AC intent. Strict Mode guarded. Betty tests cover predicates and outcomes. Engineer respects test-tree ban.
+
+context_tokens≈42000
