@@ -1121,8 +1121,8 @@ class TestAst1324HydrateResumeStructureFromBaseResumeGet:
         from src.core.candidate import default_resume_structure
 
         structure = default_resume_structure()
-        # Ensure highlights is only on base_resume (load path must mint it).
-        structure["sections"].pop("highlights", None)
+        # publications stays an open extra (highlights is required — AST-1332).
+        structure["sections"].pop("publications", None)
         return {
             "astral_candidate_id": "c1",
             "candidate_data": {
@@ -1130,7 +1130,7 @@ class TestAst1324HydrateResumeStructureFromBaseResumeGet:
                     "resume_structure": structure,
                     "base_resume": {
                         "professional_summary": "Existing summary",
-                        "highlights": "Line A\nLine B",
+                        "publications": "Line A\nLine B",
                         "experience": [
                             {
                                 "title": "Role",
@@ -1160,8 +1160,8 @@ class TestAst1324HydrateResumeStructureFromBaseResumeGet:
         assert resp.status_code == 200
         body = resp.get_json()
         by_id = {row["id"]: row for row in body["all_sections"]}
-        assert "highlights" in by_id
-        assert by_id["highlights"]["enabled"] is True
+        assert "publications" in by_id
+        assert by_id["publications"]["enabled"] is True
         # Load default is free_prose — not Add-section / list-ingest bullet_list.
-        assert by_id["highlights"]["format"] == "free_prose"
-        assert "highlights" in {s["id"] for s in body["sections"]}
+        assert by_id["publications"]["format"] == "free_prose"
+        assert "publications" in {s["id"] for s in body["sections"]}
