@@ -146,3 +146,162 @@ context_tokens≈52000
 **Built:** `origin/sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `dbe04caea8c6c7418b6b46cfba41ec7c022ab972`
 
 Stage 1: Profile `isDirty` vs last loaded/saved snapshot; `persistProfile` Promise shared by header Save and `useDirtyLeaveSaveThenNavigate`; header Cancel unchanged. Tests deferred to Betty.
+
+## Radia review
+
+# Radia review — AST-1336
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1336  
+**Publish ref:** `origin/sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `92637061911e40ccd932f28448d09de1429c7a91`  
+**Overall:** CLEAN
+
+**Scope note:** Three-dot diff vs `origin/dev` includes AST-1315 prerequisite paths (`App.tsx`, `useDirtyLeaveSaveThenNavigate.ts`) from ftr rollup — **not** AST-1336 product commits. This review scores **AST-1336 product** (`dbe04cae` — `CandidateProfile.tsx` only) plus Betty test land (`b3d669fd`, `0433ab37`) on the publish tip.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent/LLM paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no dispatch/agent task changes |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grading/vector paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch claim paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release helpers |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity agent_responses paths |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no config changes |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact dirs |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run_next chain edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | not-applicable | product commits did not add feature docs |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty commits touch tests/bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Katherine product commit excludes `tests/` and `docs/test-bible/**` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no core/external changes |
+| `astral.layers.import-direction` | scoped | conforms | Profile imports hook + existing UI modules only |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | no new hardcoded state strings; shapes-driven Profile unchanged |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult/render paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no new API endpoints |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON edits in ticket scope |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog conflicts |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed boot paths |
+| `astral.seed.define-approved` | scoped | not-applicable | no define-approved seed flow |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join seed logic |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no database.py changes |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no backend `debug=` surfaces |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | single `persistProfile` shared by header Save and dirty-leave `onSave` |
+| `astral.standards.in-scope-only` | scoped | conforms | one file (`CandidateProfile.tsx`); plan out-of-scope paths untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | no logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `persistProfile`, `isDirty` naming is descriptive |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no unrelated module rewrites |
+| `astral.standards.no-hardcoded-sets` | scoped | not-applicable | no new backend hardcoded sets |
+| `astral.standards.public-then-helpers` | scoped | conforms | wiring at page level; helper remains shared export |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils changes |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state machine edits |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state transitions |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run/daisy-chain paths |
+| `astral.ui.frontend-file-placement` | scoped | conforms | change confined to `pages/CandidateProfile.tsx` |
+| `astral.ui.naming-conventions` | scoped | conforms | page/hook import paths follow UI conventions |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server/worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | merge-tests + restore commits on publish ref |
+| `orch.git.commit-vocabulary` | universal | conforms | `code(AST-1336)` / `test(AST-1336)` / `docs(AST-1336)` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub-branch publish |
+| `orch.git.ftr-sub-topology` | universal | conforms | child `sub/AST-1315/AST-1336-...` topology |
+| `orch.git.merge-on-checkout` | universal | not-applicable | not verifiable from diff alone |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no forbidden git ops in ticket commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/...` |
+| `orch.git.one-epic-worktree-per-parent` | universal | not-applicable | worktree discipline not diff-scored |
+| `orch.git.three-permanent-branches` | universal | conforms | changes on sub publish ref only |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no new product forks beyond approved plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | single stage delivered per plan |
+| `orch.pipeline.project-scoped-queues` | universal | not-applicable | queue/orchestration N/A to code diff |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | review at Tests Passed gate |
+| `orch.roles.archie-approves-statutes` | universal | not-applicable | no statute authoring in product commits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test/bible changes on Betty commits only |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | not-applicable | assignee discipline N/A to diff |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine remains assignee at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path product edits observed |
+
+**Sweep count:** 65 active statutes scored.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.ui.dirty-leave-save-then-navigate` | conforms | Profile wires `isDirty` + `persistProfile` per proposed Solution shape (AST-1335 prerequisite) |
+| `pattern.ui.shared-button-roles` | conforms | Header Save/Cancel labels, classes (`btn primary` / `btn secondary`), placement unchanged |
+| *(plan cited)* | none cited | Consumes AST-1335 proposed pattern; no additional approved pattern ids cited |
+
+## Plan adherence
+
+Stage 1 delivered faithfully in `dbe04cae`:
+
+- **Dirty detection:** `isDirty = data !== null && JSON.stringify(values) !== JSON.stringify(data)` against last loaded/saved `fetched` snapshot.
+- **`persistProfile`:** Promise-based PUT with same URL/method/body; success updates `fetched`/`values`, `refreshCandidate()`, success toast **before** resolve; failure sets error + toast **and rethrows**.
+- **Header Save:** `void persistProfile()` — labels/classes unchanged.
+- **Header Cancel:** unchanged revert-to-snapshot behavior.
+- **Helper wiring:** `useDirtyLeaveSaveThenNavigate({ isDirty, onSave: persistProfile })` with defaults; placed **before** Loading / No-candidate early returns (lines 142–145 vs 199–200).
+- **Boundaries:** No edits to hook, `App.tsx`, `routes.tsx`, `NavigationShell`, `TabbedTextArea`, `Modal`, API/shapes, or other Save pages.
+
+**Estimate (2):** Single-page wiring — footprint matches.
+
+**Prerequisite (AST-1335):** Hook + data router present on publish ref; consumed, not forked.
+
+**Joan straggler (C4):** Joan APPROVED verdict attached; no Excluded-statute conflicts.
+
+## Findings
+
+### advisory — Profile tests mock the helper (no real `useBlocker` navigation)
+
+**Location:** `tests/component/frontend/pages/test_CandidateProfile.test.tsx`  
+**Finding:** Suite mocks `useDirtyLeaveSaveThenNavigate` and asserts wiring via `latestDirtyLeave()` capture. No component test exercises Profile + real blocker + themed confirm + `proceed` on pathname change.  
+**Recommendation:** Accept — bible documents MemoryRouter/jsdom constraint; AST-1335 hook suite owns blocker/confirm contract. Optional integration follow-on if parent UAT wants end-to-end leave prompt on Profile.
+
+### advisory — Epic branch bible drift (`AST-1331` manifest missing vs `origin/dev`)
+
+**Location:** `docs/test-bible/frontend/pages.md` on publish tip  
+**Finding:** `origin/dev` retains `### AST-1331 · AST-1330` at ~line 1826; publish tip lacks it. Betty’s AST-1336 commit only **prepended** the AST-1336 block — deletion is epic merge-base integration debt, not Katherine product scope.  
+**Recommendation:** Downstream for Chuckles at `merge-child` / `prep-uat`: restore `AST-1331` bible block when landing ftr on dev — **not** an AST-1336 resolve-child item.
+
+### advisory — `JSON.stringify` dirty equality (Joan acceptable)
+
+**Location:** `CandidateProfile.tsx` `isDirty`  
+**Finding:** Blunt equality as Joan flagged; acceptable given shared `editValuesFromCandidate` / `setByPath` origin.  
+**Recommendation:** Monitor only if Profile shapes introduce key-order instability.
+
+## What's solid
+
+- Minimal, focused diff: 24 insertions / 4 deletions in one page file.
+- `persistProfile` correctly clears dirty before promise resolves — satisfies helper contract so `blocker.proceed()` is not re-blocked.
+- Hook call order respects Rules of Hooks (all hooks before conditional returns).
+- Betty tests cover: clean→dirty, in-page tab draft retention, Cancel revert, `onSave` success clears dirty, `onSave` failure stays dirty + surfaces error.
+- Prior save-failure test updated to call `onSave()` directly — correct given `persistProfile` rethrow + `void handleSave()`.
+- AST-1335 hook suite restored after merge-tests (`0433ab37`).
+
+## Frame diff
+
+| Planned | Landed |
+|---------|--------|
+| `handleSave` early `if (!selectedId) return` | `persistProfile` rejects when `!selectedId`; Save button not rendered in that state |
+| No test changes in engineer scope | Betty mocked helper + AST-1336 wiring describe block |
+| — | `0433ab37` restores AST-1335 hook test file post merge-tests |
+
+## Notes
+
+- §5f / §5g not triggered (UI page wiring only).
+- `blockedBy AST-1335 (User Testing)` prerequisite satisfied on publish ref.
+- Downstream for Chuckles: append artifact, `docs(AST-1336): Radia review — clean`, post slim upshot, Review Posted → PROCEED path.
+
+context_tokens≈38000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 92637061) Profile wiring clean
+```
