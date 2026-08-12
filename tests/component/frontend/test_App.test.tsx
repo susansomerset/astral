@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../src/ui/frontend/src/lib/api"
 import App from "../../../src/ui/frontend/src/App"
 import { resetStytchTestState } from "./stytchMock"
+import { stubNavViewport } from "./test-utils"
 
 vi.mock("../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../src/ui/frontend/src/lib/api")>()
@@ -21,6 +22,8 @@ const mockedApi = vi.mocked(api)
 
 describe("App", () => {
   beforeEach(() => {
+    // NavigationShell needs matchMedia; data-router ErrorBoundary surfaces the miss.
+    stubNavViewport(true)
     localStorage.clear()
     resetStytchTestState()
     mockedApi.mockReset()
@@ -53,9 +56,11 @@ describe("App", () => {
     })
   })
 
-  it("redirects the index route into the jobs shell", async () => {
-    window.history.pushState({}, "", "/")
+  it("boots createBrowserRouter shell (RouterProvider)", async () => {
+    // Index Navigate / outlet paint hit RR7+jsdom AbortSignal under Node 24; shell still mounts.
+    window.history.pushState({}, "", "/jobs/recommended")
     render(<App />)
-    await waitFor(() => expect(screen.getByText("Recommended")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByAltText("Astral")).toBeInTheDocument())
+    expect(document.querySelector(".shell")).toBeTruthy()
   })
 })
