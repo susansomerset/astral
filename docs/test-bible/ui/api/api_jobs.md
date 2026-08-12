@@ -43,3 +43,24 @@ Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT aliases `â€
   tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_bulk_state_updates_jobs \
   -q
 ```
+
+### AST-1347 Â· AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown`.
+
+`_flatten_grades` lifts `{jd,do,get,like}_score_breakdown` when present on `job_data` (same loop as grades/scores/rubrics). Does not invent when absent. Persist math: **`docs/test-bible/core/consult.md`** (**AST-1347**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Flatten lift + absent | `src/ui/api/api_jobs.py` (`_flatten_grades`) | **`TestAst1347FlattenScoreBreakdown`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
+  -q
+```

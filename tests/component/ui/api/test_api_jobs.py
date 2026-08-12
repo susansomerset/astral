@@ -18,6 +18,29 @@ class TestFlattenGrades:
         assert job["latest_score"] == 7.5
 
 
+class TestAst1347FlattenScoreBreakdown:
+    """AST-1347: lift {jd,do,get,like}_score_breakdown; do not invent when absent."""
+
+    def test_lifts_phase_score_breakdowns(self) -> None:
+        suffix = cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+        trio = {"earned": 100.0, "possible": 150.0, "max": 320.0}
+        jd = {f"{p}_{suffix}": dict(trio) for p in ("jd", "do", "get", "like")}
+        jd["jd_score"] = 7.5
+        job = jobs_mod._flatten_grades({"job_data": jd, "astral_job_id": "j1"})
+        for p in ("jd", "do", "get", "like"):
+            assert job[f"{p}_{suffix}"] == trio
+        assert job["jd_score"] == 7.5
+
+    def test_absent_breakdown_not_invented(self) -> None:
+        suffix = cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+        job = jobs_mod._flatten_grades(
+            {"job_data": {"jd_grades": [{"vector": "fit"}], "jd_score": 8.0}}
+        )
+        assert job["jd_score"] == 8.0
+        for p in ("jd", "do", "get", "like"):
+            assert f"{p}_{suffix}" not in job
+
+
 class TestJobsRoutes:
     def test_list_in_review_view(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = jobs_client.get("/api/jobs?view=in_review", headers=auth_headers)

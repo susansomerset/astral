@@ -43,6 +43,21 @@ class TestGradeValuesConfig:
             cfg.grade_value("")
 
 
+class TestAst1347PhaseScoreBreakdownConfig:
+    """AST-1347: breakdown key suffix + fields; list Score columns stay 0–10 only."""
+
+    def test_breakdown_constants(self) -> None:
+        assert cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX == "score_breakdown"
+        assert cfg.PHASE_SCORE_BREAKDOWN_FIELDS == ("earned", "possible", "max")
+
+    def test_breakdown_not_in_recommended_phase_score_columns(self) -> None:
+        fields = {row["field"] for row in cfg.JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS}
+        assert fields == {"jd_score", "do_score", "get_score", "like_score"}
+        assert cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX not in "".join(fields)
+        for p in ("jd", "do", "get", "like"):
+            assert f"{p}_{cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" not in fields
+
+
 # Branches: known model; unknown model.
 class TestGetModel:
     def test_returns_model_entry(self) -> None:
