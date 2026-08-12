@@ -1840,3 +1840,26 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
   -t "AST-1318|AST-1301"
 ```
+
+---
+
+### AST-1337 · AST-1314
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
+
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved base, not editor buffer / session admin POST / job Print). `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) Print enable + blob / error | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1337: Print disabled with no candidate; success opens blob tab (§6c)`**; **`AST-1337: Print error and empty HTML never open a tab`** |
+
+**Broken / obsolete this pass:** none — prior Base Resume Content cases (structure / accent / AST-1306 / AST-1323 / AST-1325) unchanged. Session Resume Paste / job Print suites left alone (out of boundaries).
+
+**Integration:** no existing scenario asserts Base Resume Content Print — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337"
+```
+
