@@ -375,3 +375,97 @@ Placement/styling delta only — do **not** change Print fetch/validate/blob log
 
 **Advisory:** no-candidate Print visibility now absent (ArtifactEditor early return) vs prior disabled — Betty suite accepts either; plan said disabled.
 
+## Bug: AST-1341 — Print false-missing artifacts.base_resume
+
+### As-is
+
+On Base Resume Content for candidate `abrams`, Print fails with `Candidate missing artifacts.base_resume` (error toast / click-to-copy diagnostic) instead of opening print-ready HTML, even while the operator is viewing that candidate’s base resume content in the editor.
+
+### To-be
+
+Print opens print-ready HTML for the selected candidate’s saved base resume when the editor can already show that content. If there is truly nothing printable, show a clear content-missing message (on-page + toast) that does **not** read like an internal hard crash — and still open **no** blank tab.
+
+### Repro
+
+1. Select candidate `abrams` (or any candidate whose saved `artifacts.base_resume` is a non-empty **list** of `{label, content}` rows, or another shape the Base Resume Content editor already maps into section tabs).
+2. Open Artifacts → Base Resume Content — section bodies are visible.
+3. Click **Print**.
+4. Observe failure: message `Candidate missing artifacts.base_resume`, no HTML tab.
+
+Fixture shape (no DB seed required for make-fix / qa-fix):
+
+```json
+{
+  "artifacts": {
+    "base_resume": [
+      { "label": "Summary", "content": "Visible in editor" },
+      { "label": "Skills", "content": "Also visible" }
+    ],
+    "resume_structure": { "sections": {} }
+  }
+}
+```
+
+`GET /api/candidates/<id>` + ArtifactEditor `mapFixedFieldsFromRaw` shows the list; current `build_base_resume` rejects it because `not isinstance(br, dict)`.
+
+### Root cause
+
+`build_base_resume` in `src/core/builder.py` loads raw `artifacts.base_resume` and fails closed with `Candidate missing artifacts.base_resume` unless it is already a **non-empty dict**:
+
+```python
+br = (cd.get("artifacts") or {}).get("base_resume")
+if not isinstance(br, dict) or not br:
+    raise ValueError("Candidate missing artifacts.base_resume")
+```
+
+Base Resume Content’s editor (and the candidate PUT path) already accept **list** or dict via `ingest_legacy_label_content_base_resume` / `mapFixedFieldsFromRaw`. Print never runs that ingest, so saved list-shaped (or title-keyed-until-ingest) content the operator is looking at is treated as “missing.” The internal key-path error string then surfaces through the error toast diagnostic bundle and looks like a crash.
+
+### Proposed change
+
+Scope: make Print succeed for the same saved shapes the Base Resume Content page already displays. Do **not** print the unsaved editor buffer. Do **not** change Session Resume Paste or job Print routes.
+
+1. In `src/core/builder.py`, `build_base_resume`:
+   - After `cd = _coerce_candidate_blob(row)`, resolve structure with `candidate_mod.resolve_resume_structure(cd)`.
+   - Read `raw = (cd.get("artifacts") or {}).get("base_resume")`.
+   - If `raw` is a `list` or `dict`, normalize with the same helper the PUT path uses:
+
+     ```python
+     content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+         raw, structure
+     )
+     ```
+
+     (Use the returned `structure` for the rest of the emit — extras discovered from legacy labels stay aligned with PUT.)
+   - Else (`raw` missing / wrong type): treat as empty content (`content = {}`), keep the resolved structure.
+   - Replace the current `isinstance(br, dict) or not br` gate with a **printable-content** check on `content` after ingest: if there is no usable body (empty dict, or every value is empty string / empty list / empty dict — mirror how the editor treats “has content” lightly; at minimum `if not content:`), raise:
+
+     ```python
+     raise ValueError("No printable base resume content for this candidate")
+     ```
+
+     Do **not** keep the string `Candidate missing artifacts.base_resume` for this path.
+   - Continue with existing emit: `filter_content_to_resume_structure(dict(content), structure)`, contact apply, markers, `_emit_html_document` — unchanged aside from using ingested `content` / `structure`.
+   - Keep `@require_auth` route in `api_resume_html.py` as a thin wrapper (still maps `ValueError` → 404 JSON `error`).
+
+2. In `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx`, `handlePrint` error path only:
+   - When the response error text is `No printable base resume content for this candidate` (or the legacy `Candidate missing artifacts.base_resume` if any stale build still returns it), set on-page `printError` + toast to that **operator** sentence (or a single stable page copy: `No printable base resume content for this candidate`) — still **no** `window.open`.
+   - Do not attach `diagnostics` / `ApiError` for this expected empty case (avoid implying a stacktrace crash). Other HTTP failures keep today’s error-string + toast behavior.
+
+3. Do **not** edit `AdminSessionResumePaste.tsx`, job Print callers, or persist a rewrite of abrams’ blob on Print (read-time ingest only). Optional later Save can rewrite list→dict via existing PUT ingest; out of scope here.
+
+4. Compile: `python3 -m py_compile src/core/builder.py`; if the TSX file changed, `cd src/ui/frontend && npx tsc -b --noEmit`.
+
+⚠️ **Decision:** Fix at `build_base_resume` with `ingest_legacy_label_content_base_resume` (same contract as candidate PUT), not by teaching the React Print handler to POST editor tabs or call Admin session HTML. Rejected: printing dirty unsaved buffer (parent boundary). Rejected: only renaming the error without ingest (would leave list-shaped abrams broken).
+
+### Blast radius
+
+- `build_base_resume` — also used by `GET /candidate/resume/base` only for this Print path; job `build_resume` already has its own base_resume fallback via `_is_nonempty_resume_dict` and does not use this gate.
+- Candidates with list-shaped or title-keyed saved `base_resume` that the editor already shows will start printing (intended).
+- Truly empty / missing base resume: message text changes — Betty’s AST-1337 empty/404 cases in `test_ArtifactsBaseResumeContent.test.tsx` may need assertion text updates (fix-board / qa-fix; engineer does not edit `tests/`).
+- Session / job Print suites — untouched if make-fix stays on `build_base_resume` + Base Resume Content page error copy.
+
+### What must still hold
+
+- AST-1337 AC1–5: validate-then-blob; no blank tab on failure; auth `GET /candidate/resume/base?candidate_id=…`; Print `btn secondary`; Session Resume Paste and job Print Resume / Cover Letter unchanged; prints **saved** content only (not unsaved editor buffer).
+- `ingest_legacy_label_content_base_resume` / PUT normalize contract unchanged (Print calls it read-only; does not invent a second ingest).
+- No new emit pipeline; no Admin `session_resume/html` for this page.
