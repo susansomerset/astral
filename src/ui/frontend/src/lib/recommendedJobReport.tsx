@@ -243,7 +243,7 @@ export function jobGradesForField(job: Record<string, unknown>, gradesField: str
   return job[gradesField]
 }
 
-/** Top-level flatten or job_data — same lookup style as jobGradesForField. */
+/** Top-level flatten first, then job_data — API derive writes top-level only (AST-1348). */
 export function jobScoreBreakdownForGradesField(
   job: Record<string, unknown>,
   gradesField: string,

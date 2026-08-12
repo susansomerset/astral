@@ -419,3 +419,21 @@ Product frame under review (`1a899283`):
 - No fix-now product defects; engineer `resolve-child` not required for product code on this pass.
 
 context_tokens≈58000
+
+---
+
+## Resolution
+
+**Date:** 2026-08-12  
+**Publish tip before resolve:** `b1a6bc1c` (`docs(AST-1348): Radia review — discuss branch hygiene`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — sibling AST-1343 test commit on sub | **No action** — Chuckles / merge-child topology; not an AST-1348 product fix |
+| discuss — derive failures swallowed without log | **No action** — plan-intended omit; advisory log not required for merge |
+| discuss — derive without completeness check | **No action** — Joan + Radia accepted as planned |
+| advisory — breakdown lookup docstring vs `jobGradesForField` | **Fixed** — docstring now states top-level-first (API derive writes top-level) |
+| advisory — modal test uses stored breakdown only | **No action** — split coverage accepted as sufficient |
+
+No other product code changes on this resolve pass.
