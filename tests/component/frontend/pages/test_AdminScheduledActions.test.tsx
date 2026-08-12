@@ -1305,4 +1305,53 @@ describe("AdminScheduledActions", () => {
     expect(killClose).toHaveClass("icon-control")
     expect(killClose).not.toHaveClass("modal-close")
   }, 20000)
+
+  it("AST-1318: row Run uses in-row; toolbar and modals stay full size", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Run" })).toHaveClass("btn", "primary", "in-row")
+    expect(screen.getByRole("button", { name: "Stop All" })).toHaveClass("btn", "danger")
+    expect(screen.getByRole("button", { name: "Stop All" })).not.toHaveClass("in-row")
+    expect(screen.getByRole("button", { name: "+ Add Task" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "+ Add Task" })).not.toHaveClass("in-row")
+
+    await userEvent.click(screen.getByRole("button", { name: "Stop All" }))
+    const kill = screen.getByText("Kill Running Threads").closest(".modal-card") as HTMLElement
+    expect(within(kill).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(kill).getByRole("button", { name: "Cancel" })).not.toHaveClass("in-row")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).toHaveClass("btn", "danger")
+    expect(within(kill).getByRole("button", { name: "Kill Now" })).not.toHaveClass("in-row")
+    await userEvent.click(within(kill).getByRole("button", { name: "Cancel" }))
+
+    await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+    const add = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+    expect(within(add).getByRole("button", { name: "Cancel" })).toHaveClass("btn", "secondary")
+    expect(within(add).getByRole("button", { name: "Cancel" })).not.toHaveClass("in-row")
+    expect(within(add).getByRole("button", { name: "Save" })).toHaveClass("btn", "primary")
+    expect(within(add).getByRole("button", { name: "Save" })).not.toHaveClass("in-row")
+  }, 20000)
+
+  it("AST-1318: row Stop uses in-row", async () => {
+    mockApi(true)
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Run" })).toHaveClass("btn", "primary", "in-row")
+    expect(within(tbody).getByRole("button", { name: "Stop" })).toHaveClass("btn", "danger", "in-row")
+  }, 20000)
+
+  it("AST-1318: row Draining uses in-row", async () => {
+    mockApi(true, {
+      threads: { 1: { running: true, draining: true, task_key: "scan_jobs", candidate_id: "c1", is_auto: false } },
+    })
+    renderWithProviders(<ScheduledActions />)
+    await waitFor(() => expect(screen.getByText("Scheduled Actions")).toBeInTheDocument())
+    await expandFirstPhaseSection()
+    const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+    expect(within(tbody).getByRole("button", { name: "Draining…" })).toHaveClass("btn", "danger", "in-row")
+  }, 20000)
 })

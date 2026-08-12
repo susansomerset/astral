@@ -1760,3 +1760,23 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1318 · AST-1309 (apply in-row size on table-row labeled buttons)
+
+**Parent:** [AST-1309 — Add a button style for in-row buttons](https://linear.app/astralcareermatch/issue/AST-1309/add-a-button-style-for-in-row-buttons). **Publish:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons`.
+
+Consume AST-1317 `.btn.in-row`: Scheduled Actions row Run / Stop (busy label `Draining…`) gain `in-row` on the existing role classes. Presentation only — handlers, `disabled`, overlay `inset`, AUTO / running gating unchanged. Toolbar Stop All / Add Task, both modal footers, and icon-controls stay full-size / `icon-control`. Inventory on this tree: only those two labeled `btn`s sit in a `<td>`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) row size + leave-alone | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1318: row Run uses in-row; toolbar and modals stay full size`**; **`AST-1318: row Stop uses in-row`**; **`AST-1318: row Draining uses in-row`** |
+| Existing catalog / enablement | same | **`AST-1301: labeled actions use catalog classes`**; **`renders tasks, edits, runs, and stops threads`** |
+
+**Broken / obsolete this pass:** none — AST-1301 `toHaveClass("btn", "danger")` still holds with the added size token. Leave-alone modal case uses `mockApi(true)` (running thread) so toolbar Stop All is enabled — `mockApi(false)` leaves `activeThreads` empty and the click never opens Kill Running Threads.
+
+**Integration:** no existing scenario asserts labeled-button class catalogs — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1318|AST-1301"
+```

@@ -202,7 +202,7 @@ function ScheduledPhaseTable({
                 <td style={{ textAlign: "center" }}>
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <button
-                      className="btn primary"
+                      className="btn primary in-row"
                       style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
                       disabled={isRunning || !!row.auto_mode}
                       onClick={e => handleRun(e, row)}
@@ -211,7 +211,7 @@ function ScheduledPhaseTable({
                     </button>
                     {isRunning && (
                       <button
-                        className="btn danger"
+                        className="btn danger in-row"
                         style={{ position: "absolute", inset: 0, whiteSpace: "nowrap" }}
                         onClick={e => handleStop(e, row)}
                         disabled={isDraining}

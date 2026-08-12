@@ -179,6 +179,28 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_taskKeySort.test.ts
 ```
 
+### AST-1311 · AST-1307
+
+**Parent:** [AST-1307 — Please set the page title to Astral - &lt;full_name&gt;](https://linear.app/astralcareermatch/issue/AST-1307/please-set-the-page-title-to-astral-full-name). **Publish:** `origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate`.
+
+`browserTabTitle` formats `Astral` or `Astral - <Full Name>` from the list payload `full` column only (trim; no first+last join, no picker label). `CandidateProvider` applies `document.title` on `[selectedId, candidates]` and resets to `Astral` on unmount. §6c N/A (no `pages/` edit; no filter UX).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Formatter | `src/ui/frontend/src/lib/documentTitle.ts` | **`test_documentTitle.test.ts`** |
+| Apply + unmount reset | `src/ui/frontend/src/contexts/CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1311 browser tab title`** |
+
+**Broken / obsolete:** none — existing CandidateContext selection tests stay valid (`full` absent → title `Astral`). `test_Authenticate` only passes `document.title` into `replaceState`, does not assert chrome text.
+
+**Integration:** none — SPA `document.title`; no `tests/integration/` scenario asserts tab chrome.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_documentTitle.test.ts \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+```
+
 ### Extension Surfer libs (moved)
 
 **AST-1254** migrated `test_surfer*.test.ts` from `tests/component/frontend/lib/` → `tests/component/extension/lib/` (WXT Vitest project). Coverage maps live under **`docs/test-bible/extension/lib.md`** (AST-1236–AST-1239) and **`docs/test-bible/extension/scaffold.md`** (AST-1254). Do not re-add Surfer extension-lib manifests here.
