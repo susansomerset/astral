@@ -700,3 +700,8 @@ context_tokens≈105000
 — Radia
 
 ---
+
+## Resolution (AST-1323)
+
+**2026-08-12** — Radia **REVIEW** fix-now cleared. Betty dropped obsolete `tests/component/frontend/components/test_ResumeStructureEditor.test.tsx` and migrated catalog asserts into the page suite (`e5b5710a` / `merge-tests` `42d006f8`). Module remains types-only; product tip `963af116` / `21986a9e` unchanged. §9a next → User Testing.
+
