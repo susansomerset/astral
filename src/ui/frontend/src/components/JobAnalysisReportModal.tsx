@@ -15,10 +15,12 @@ import {
   artifactsTabPrimaryActions,
   buildPhaseSectionGradeConfidenceRow,
   emailWithJobPlusTag,
+  formatPhaseSectionScoreTitle,
   gradesForHeader,
   isArtifactsBuildInProgress,
   jobGradesForField,
   jobRubricForField,
+  jobScoreBreakdownForGradesField,
   printCoverVisible,
   printResumeVisible,
   type ReportPrimaryAction,
@@ -175,12 +177,24 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   }, [manifest, companyNotes, hasCaveats, hasQuestions])
 
   const analysisSections = useMemo((): ReportSectionDef[] => {
-    return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => ({
-      section_id: p.tab_id,
-      nav_label: p.nav_label,
-      default_expanded: false,
-    }))
-  }, [manifest])
+    const template = manifest?.jobs.recommended.phase_score_header_title_template ?? ""
+    const jobRec = job as unknown as Record<string, unknown> | null
+    return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => {
+      const base = p.nav_label
+      let nav_label = base
+      if (jobRec) {
+        const breakdown = jobScoreBreakdownForGradesField(jobRec, p.grades_field)
+        if (breakdown) {
+          nav_label = formatPhaseSectionScoreTitle(base, breakdown, template)
+        }
+      }
+      return {
+        section_id: p.tab_id,
+        nav_label,
+        default_expanded: false,
+      }
+    })
+  }, [manifest, job])
 
   const artifactTabs = manifest?.jobs.recommended.report_artifact_tabs
   const artifacts = job?.job_data?.artifacts

@@ -1051,6 +1051,12 @@ RUBRIC_TOTAL = 3000
 # AST-1347 — job_data phase contribution breakdown beside {prefix}_score
 PHASE_SCORE_BREAKDOWN_KEY_SUFFIX = "score_breakdown"  # → f"{prefix}_score_breakdown"
 PHASE_SCORE_BREAKDOWN_FIELDS = ("earned", "possible", "max")
+# AST-1348 — Analysis section header title when a phase breakdown is available
+PHASE_SCORE_HEADER_TITLE_TEMPLATE = (
+    "{phase_label} - score: {earned} out of {possible} possible ({max} max total)"
+)
+
+
 def grade_value(letter: str) -> int:
     key = (letter or "").strip().upper()
     if key not in GRADE_VALUES:
@@ -3615,6 +3621,7 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_artifact_tabs": list(JOBS_RECOMMENDED_ARTIFACT_TABS),
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
+                "phase_score_header_title_template": PHASE_SCORE_HEADER_TITLE_TEMPLATE,
                 "meteorite_section": {
                     "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
                     "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],

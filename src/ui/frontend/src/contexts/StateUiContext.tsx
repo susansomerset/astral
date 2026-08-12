@@ -19,6 +19,7 @@ export interface StateUiManifest {
     recommended: {
       sections: Array<{ state: string; label: string }>
       phase_score_columns: Array<{ field: string; label: string }>
+      phase_score_header_title_template?: string
       primary_actions_by_state?: Record<string, Array<{
         action_key: string
         label: string
