@@ -255,6 +255,34 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
   })
 })
 
+describe("JobAnalysisReportModal — AST-1334 footer opt-out", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("omits modal footer Cancel; header Close still dismisses", async () => {
+    const onClose = vi.fn()
+    installBaseApiMocks(mockedApi, jobHandler("j1334"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1334" onClose={onClose} />)
+    await waitForShell()
+    expect(document.querySelector(".modal-footer")).toBeNull()
+    // Summary tab: no footer Cancel — only Artifacts in-flight Cancel remains elsewhere
+    expect(screen.queryByRole("button", { name: "Cancel" })).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Close" }))
+    expect(onClose).toHaveBeenCalledTimes(1)
+  })
+
+  it("BUILD_ARTIFACTS keeps Artifacts-strip Cancel without a footer Cancel", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1334-build", { state: "BUILD_ARTIFACTS" }))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1334-build" onClose={() => {}} />)
+    await waitForShell()
+    expect(document.querySelector(".modal-footer")).toBeNull()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    const strip = document.querySelector(".recommended-report-artifacts-actions") as HTMLElement
+    expect(within(strip).getByRole("button", { name: "Cancel" })).toBeInTheDocument()
+    // Exactly one Cancel in the document (Artifacts strip — not a footer twin)
+    expect(screen.getAllByRole("button", { name: "Cancel" })).toHaveLength(1)
+  })
+})
+
 describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
   beforeEach(() => mockedApi.mockReset())
 
