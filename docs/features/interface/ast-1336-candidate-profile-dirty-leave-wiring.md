@@ -140,3 +140,9 @@ AC1→S1 (`isDirty` + `useDirtyLeaveSaveThenNavigate`); AC2→S1 (`persistProfil
 context_tokens≈52000
 
 [plan-rubric] PROCEED (Commit: fd57bab1f9ad0eadd90ee101d5eb24f4cfb936bf) Profile wiring faithful
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `dbe04caea8c6c7418b6b46cfba41ec7c022ab972`
+
+Stage 1: Profile `isDirty` vs last loaded/saved snapshot; `persistProfile` Promise shared by header Save and `useDirtyLeaveSaveThenNavigate`; header Cancel unchanged. Tests deferred to Betty.
