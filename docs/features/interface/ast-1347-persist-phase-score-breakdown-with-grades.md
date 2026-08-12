@@ -393,3 +393,20 @@ Stages 1–4 land as specified. Out-of-scope items respected. Estimate **3** sti
 
 context_tokens≈52000
 ```
+
+---
+
+## Resolution
+
+**Date:** 2026-08-12  
+**Publish tip before resolve:** `e9761125` (`docs(AST-1347): Radia review — discuss sibling tests; product clean`)
+
+| Finding | Action |
+| -- | -- |
+| fix-now | none |
+| discuss — sibling AST-1341/1342 test commits on sub | **No action** — Chuckles / merge-child topology; not an AST-1347 product fix |
+| discuss — all-no-signal `0/0` + non-zero max | **No action** — plan + Joan accepted; AST-1348 owns header display |
+| advisory — double helper call | **No action** — plan-allowed; skip micro-opt |
+| advisory — get/like tests via shared verdict path | **No action** — accepted as sufficient |
+
+No product code changes on this resolve pass.
