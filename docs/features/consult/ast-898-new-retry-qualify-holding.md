@@ -499,3 +499,25 @@ AST-1338 shipped registry/UI without a concurrent test/bible revise; Betty board
 ## docs-acceptance (AST-1339)
 
 Test/bible-only gap — Betty `qa-fix` + `merge-tests` delivered coverage. No product `src/` delta beyond AST-1338 already on ftr. `code(AST-1339)` marks docs-acceptance for merge-child.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/962f44a8a4998d2cb06990dd2c93073c/02e211f0-a1fa-4282-809f-47a629370d5b/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/945cd02d-c518-4496-8a6c-4772f858b980/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/962f44a8a4998d2cb06990dd2c93073c/ff64ac7b-697d-4498-a39f-190e6945b430/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1319 (parent) | ftr/AST-1319-implement-retry-for-new-meteorite-states |
+| AST-1338 | sub/AST-1319/AST-1338-register-meteorite-new-retry-qualify-holding |
+| AST-1339 | sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests |
+
+**Epic worktree:** `astral-AST-1319/` — one active sub checked out at a time.
