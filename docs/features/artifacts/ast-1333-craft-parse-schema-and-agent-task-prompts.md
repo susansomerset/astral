@@ -57,7 +57,7 @@ Parent ACs 1–3 (catalog / order / coerce) and AC 6 (HTML emit) are AST-1332. T
 
 ## Stage 2: agent_task seed prompts — Highlights required above Experience
 
-**Done when:** Current `craft_resume_base` and `simple_resume_parse` rows in `data/admin/agent_task.json` instruct that Highlights is a required keyed segment / field sitting immediately above Experience, and their inventory language matches Stage 1's schema (including segment count / required-field list). `docs/uat-fixtures/AST-756/expected-agent_task.json` is byte-identical to `data/admin/agent_task.json`. No other `task_key` rows change. No `src/` edits in this stage.
+**Done when:** Current `craft_resume_base` and `simple_resume_parse` rows in `data/admin/agent_task.json` instruct that Highlights is a required keyed segment / field sitting immediately above Experience, and their inventory language matches Stage 1's schema (including segment count / required-field list). `craft_resume_base` QUALITY CHECKLIST no longer requires non-empty string values for every key (step 1d). `docs/uat-fixtures/AST-756/expected-agent_task.json` is byte-identical to `data/admin/agent_task.json`. No other `task_key` rows change. No `src/` edits in this stage.
 
 1. In `data/admin/agent_task.json`, edit **only** the object with `"task_key": "craft_resume_base"` and `"current": 1`. Change **`cache_prompt` only** (leave `user_prompt`, `nocache_prompt`, agent ids, grouping, `run_next`, uuids, `updated_at` untouched):
 
@@ -77,7 +77,21 @@ Parent ACs 1–3 (catalog / order / coerce) and AC 6 (HTML emit) are AST-1332. T
    - IF the sources have no highlight material, return an empty string (key still required)
    ```
 
-   c. Do **not** rewrite other segment bodies, FORMATTING RULES, or QUALITY CHECKLIST except as needed to keep the new `### highlights` block adjacent to `### experience` with no other `###` between them.
+   c. Keep other segment bodies and FORMATTING RULES unchanged. Keep the new `### highlights` block adjacent to `### experience` with no other `###` between them.
+
+   d. In the same `cache_prompt` **QUALITY CHECKLIST**, replace the blanket first bullet so empty `highlights` is allowed (schema + `### highlights` already allow `""`). Change this line:
+
+   ```
+   - Every key present with a non-empty string value
+   ```
+
+   to **exactly**:
+
+   ```
+   - Every required key present (string values may be empty when source material is absent — especially `highlights`)
+   ```
+
+   Leave the remaining checklist bullets unchanged.
 
 2. In `data/admin/agent_task.json`, edit **only** the object with `"task_key": "simple_resume_parse"` and `"current": 1`. Change **`cache_prompt` only**:
 
@@ -120,6 +134,12 @@ Parent ACs 1–3 (catalog / order / coerce) and AC 6 (HTML emit) are AST-1332. T
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+Revision 1 — 2026-08-12
+Driven by: Joan `[plan-discuss] round=1` fix-now — `craft_resume_base` QUALITY CHECKLIST contradicts empty `highlights` (“Every key present with a non-empty string value” vs Stage 1 / `### highlights` allowing `""`).
+Changes: Stage 2 step 1 now has explicit step **1d** replacing that checklist bullet with required-key + empty-string language so the model is not told to invent highlights or omit the key.
 
 ## Joan validate
 
