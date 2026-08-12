@@ -117,3 +117,34 @@ cmp -s data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+**Rubric:** plan-rubric
+**Ticket:** AST-1349
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent` @ `2342855c104a1e2109328f78c00bee28077c1dc0`
+
+### Traceability
+
+| AC | Plan stage(s) |
+|----|----------------|
+| 1 | S1 (shared array schemas), S2 (`craft_resume_base` / `simple_resume_parse` prompts), S4 (agent persist/validate on craft paths) |
+| 2 | S1 (`items_schema` identity craft vs finalize), S3 (job craft prompts), S4 (`pin_experience_job_facts_from_base`, draft validate) |
+| 3 | S1 (lock list+`items_schema` on craft/parse/finalize/`BUILD_CONFIG`), S2–S3 (remove prose-string authorization in prompts) |
+| 4 | S4 (`validate_draft_job_resume_payload` contract-only; no string success; drop `experience_detail` jargon) |
+| 5 | S4 (reuse `debug_experience_jobs` / existing Style D hooks when `debug=True`) |
+
+Stages S1–S5 map to child scope and parent functional bullets 1–4 + debug (parent AC 5–7 correctly deferred to AST-1350/AST-1351 per child Boundaries).
+
+### Findings
+
+**acceptable** — Ticket assignee is Ada (not Joan); Chuckles spawned this pass explicitly; no review block.
+
+**acceptable** — Stage 1 may be largely confirm-only on tip (`_EXPERIENCE_JOB_*` already wired in `config.py`); plan correctly limits edits to drift-only fixes.
+
+**acceptable** — Component tests asserting `"prose string or job array"` / `experience_detail` error text are out of plan scope (`tests/` ban); Betty manifest expected to flip during qa-child after build.
+
+No `fix-now` or `discuss` findings. Statute sweep (R1–R4) in-session: all universal `orch.*` conform; scoped statutes considered for `utils`/`core`/`data/admin` touch set — all `conforms`. Cited patterns `pattern.config.config-block` and `pattern.layers.import-discipline` match plan shape. As-is diagnosis verified on publish ref: `craft_resume_base` `### experience` still teaches prose blocks; `draft_job_resume` still authorizes `"prose string or job array"`.
+
+context_tokens≈48000
