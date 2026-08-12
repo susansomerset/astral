@@ -164,6 +164,7 @@ _CRAFT_RESUME_BASE_RESPONSE_SCHEMA: Dict[str, Any] = {
     "candidate_tagline": {"type": "str", "required": False},
     "professional_summary": {"type": "str", "required": True},
     "core_competencies": {"type": "str", "required": True},
+    "highlights": {"type": "str", "required": True},
     "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
     "prior_experience": {"type": "str", "required": False},
     "education_certifications": {"type": "str", "required": False},
