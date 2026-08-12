@@ -732,3 +732,29 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
   -t "AST-1301|AST-1142|AST-645|Retry|Continue resumes|pronoun"
 ```
+
+---
+
+### AST-1334 · AST-1329 (hide Recommended Job Report modal footer)
+
+**Parent:** [AST-1329 — Remove Cancel/footer from Recommended Job Modal](https://linear.app/astralcareermatch/issue/AST-1329/remove-the-cancel-button-and-footer-from-the-recommended-job-modal). **Publish:** `origin/sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer`.
+
+`Modal` gains optional `showFooter` (default `true`). `JobAnalysisReportModal` passes `showFooter={false}` so Summary / Analysis / Artifacts content is not covered by a footer Cancel strip. Header × dismiss and Artifacts-tab in-flight Cancel (`cancel_build`) stay. Other Modal call sites unchanged. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Shared Modal `showFooter` | `Modal.tsx` | **`test_Modal.test.tsx`** — **`AST-1334: showFooter false omits footer; header Close still closes`** (+ default footer regression via existing Cancel/Save cases) |
+| Recommended Job Report shell | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1334 footer opt-out`** (no `.modal-footer` / no footer Cancel; header Close; BUILD_ARTIFACTS strip Cancel only) |
+
+**Existing coverage (bible-backed):** AST-951 Artifacts Generating… + Cancel / `cancel_build` POST; AST-1301 footer catalog classes; AST-1302 header `icon-control`.
+
+**Broken / obsolete:** none — default `showFooter=true` keeps prior Modal Cancel/Save asserts; JAR Artifacts Cancel cases already scope `within(strip)`.
+
+**Integration:** no existing scenario asserts `.modal-footer` on Recommended Job Report — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  -t "AST-1334|AST-1301|AST-1302|shows Generating|Cancel closes modal after cancel_build"
+```
