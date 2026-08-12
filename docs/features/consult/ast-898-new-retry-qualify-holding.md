@@ -284,3 +284,92 @@ None (no fix-now / discuss).
 
 - **Publish tip after resolve:** `origin/sub/AST-895/ast-898-new-retry-qualify-holding` (this commit)
 - §9a dry-run vs `origin/dev` and `origin/ftr/AST-895-new-retry-qualify-holding` — clean
+
+---
+
+## Bug: AST-1338 — Register METEORITE_NEW_RETRY qualify holding (mirror AST-898)
+
+Pattern twin of this doc's AST-898 stages for meteorite qualify only. Ancestor AST-898 stays archived; do not re-parent. Parent mini-bug: [AST-1319](https://linear.app/astralcareermatch/issue/AST-1319). Publish ref: `origin/sub/AST-1319/AST-1338-register-meteorite-new-retry-qualify-holding`.
+
+### As-is
+
+`JOB_STATES["METEORITE_NEW"]` has no `retry_state`. Recoverable `qualify_meteorite` batch failures (missing IDs / bad response rows / envelope failure routed through `_consult_batch_fail_dest` → `_transition_batch_consult_failures`) therefore land straight on `TASK_CONFIG["qualify_meteorite"]["error_state"]` = **METEORITE_ERROR_QUALIFY** on the first strike. `dispatch_claim_states("METEORITE_NEW", "job")` returns only `["METEORITE_NEW"]` — no companion holding to reclaim.
+
+### To-be
+
+Same one-retry shape as AST-898's `NEW` → `NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS`:
+
+1. Recoverable first-attempt failure from **METEORITE_NEW** → **METEORITE_NEW_RETRY**.
+2. `dispatch_claim_states("METEORITE_NEW", "job")` == `["METEORITE_NEW", "METEORITE_NEW_RETRY"]` so the existing `qualify_meteorite` @ **METEORITE_NEW** dispatch row companion-claims the holding (registry-driven; no new DB companion row).
+3. Recoverable failure already on **METEORITE_NEW_RETRY** → **METEORITE_ERROR_QUALIFY** (no nested retry).
+4. Clean second-attempt pass/fail from the holding still reaches **METEORITE_QUALIFIED** / **METEORITE_FAILED_QUALIFY** (and bot → **BOT_BLOCKED**) via existing `qualify_meteorite` `process` + updated priors.
+5. Jobs In Review UI / admin state lists surface **METEORITE_NEW_RETRY** with label **"Meteorite New (retry)"**.
+
+### Repro
+
+Fixture shape (no DB seed — file/JSON persistence): a job dict with `state="METEORITE_NEW"` entering `qualify_meteorite` / `_run_batch_consult` where the agent response omits that job's `astral_job_id` (or otherwise routes the row through `_consult_batch_fail_dest`).
+
+- **Broken today:** `_consult_batch_fail_dest("METEORITE_NEW", "METEORITE_ERROR_QUALIFY")` returns `"METEORITE_ERROR_QUALIFY"`; job transitions to **METEORITE_ERROR_QUALIFY** on first strike.
+- **After fix:** same call returns `"METEORITE_NEW_RETRY"`; a second identical miss from `state="METEORITE_NEW_RETRY"` returns `"METEORITE_ERROR_QUALIFY"`.
+
+### Root cause
+
+Absence of `retry_state` on **METEORITE_NEW**. `_consult_batch_fail_dest` (AST-642) already implements primary → `retry_state` / holding → `error_state`; meteorite qualify never wired the primary pointer. AST-1053 explicitly deferred `METEORITE_NEW_RETRY`; AST-1319 / this bug supersedes that deferral for the qualify hop only. Content-gate fails inside `qualify_meteorite.process` that write `cfg["fail_state"]` (**METEORITE_FAILED_QUALIFY**) or `bot_blocked_state` are intentional outcomes — not this retry path.
+
+### Proposed change
+
+Config-driven mirror of AST-898 Stage 1; **no** VALID_TITLE intermediate and **no** qualify AI-filter membership edit (meteorite has no inline title-screen split — every claimed row already runs the same `process`).
+
+1. In `src/utils/config.py` `JOB_STATES`, point the primary at the new holding:
+
+   ```python
+   "METEORITE_NEW": {"prior_states": None, "retry_state": "METEORITE_NEW_RETRY"},
+   ```
+
+2. Insert **METEORITE_NEW_RETRY** immediately after **METEORITE_NEW** (before **METEORITE_QUALIFIED**):
+
+   ```python
+   "METEORITE_NEW_RETRY": {"prior_states": ["METEORITE_NEW"]},  # qualify_meteorite retry holding (AST-1338)
+   ```
+
+   No `retry_state` on the holding (second strike → `error_state` via `_consult_batch_fail_dest`).
+
+3. Extend leave-holding / terminal priors so a second attempt can graduate or fail cleanly:
+
+   - `METEORITE_QUALIFIED["prior_states"]`: add `"METEORITE_NEW_RETRY"` (keep existing **METEORITE_NEW**, **METEORITE_FAILED_JD**, **METEORITE_ERROR_EVALUATE_JD**).
+   - `METEORITE_FAILED_QUALIFY["prior_states"]`: `["METEORITE_NEW", "METEORITE_NEW_RETRY"]`.
+   - `METEORITE_ERROR_QUALIFY["prior_states"]`: `["METEORITE_NEW", "METEORITE_NEW_RETRY"]`.
+   - `BOT_BLOCKED["prior_states"]`: add `"METEORITE_NEW_RETRY"` alongside existing **PASSED_JOBLIST** / **METEORITE_NEW** (bot classification on a second attempt must still transition).
+
+4. UI / ordered lists (AC5):
+
+   - `IN_REVIEW_STATES`: insert `"METEORITE_NEW_RETRY"` immediately after `"METEORITE_NEW"`.
+   - `JOBS_IN_REVIEW_UI_SECTIONS`: insert `{"state": "METEORITE_NEW_RETRY", "label": "Meteorite New (retry)"}` immediately after the **METEORITE_NEW** row.
+
+5. Do **not** add a `JOBS_IN_REVIEW_GRADE_FIELD` entry — **METEORITE_NEW** has none (fields output, not grades); holding matches.
+
+6. Do **not** edit `JOBS_SKIPPED_BULK_RETRY_TO_STATE` / operator Skipped Retry maps (boundary: AST-1156). Leave **METEORITE_ERROR_QUALIFY** → **METEORITE_NEW**.
+
+7. Do **not** edit `src/data/database.py` / seed a **METEORITE_NEW_RETRY** companion `dispatch_task` row — companion claim is registry-driven via `METEORITE_NEW.retry_state` + existing `dispatch_claim_states` (same AST-882 / AST-898 decision). Do **not** change `qualify_job_listings` / **NEW_RETRY**. Do **not** change `qualify_meteorite` content-gate → `fail_state` / bot → `bot_blocked_state` routing.
+
+8. `src/core/consult.py`: **no product delta required** if `_consult_batch_fail_dest` + existing `_run_batch_consult` Style D `debug_index` on `bad_grades` / missing-ID paths already emit `outcome=… -> {dest}` when `debug=True`. Confirm after config; if meteorite-specific fail→dest debug is missing on a path that actually writes holding/terminal for this ticket, add Style D `debug_index` + `|` detail gated on `debug=True` only (mirror AST-898 Stage 2 AC8) — do **not** fork a qualify-meteorite-only dest helper.
+
+**Manual check (no commit of throwaway notes):** after the edit, `dispatch_claim_states("METEORITE_NEW", "job") == ["METEORITE_NEW", "METEORITE_NEW_RETRY"]`, `_consult_batch_fail_dest("METEORITE_NEW", "METEORITE_ERROR_QUALIFY") == "METEORITE_NEW_RETRY"`, `_consult_batch_fail_dest("METEORITE_NEW_RETRY", "METEORITE_ERROR_QUALIFY") == "METEORITE_ERROR_QUALIFY"`.
+
+### Blast radius
+
+- Shared `_consult_batch_fail_dest` / `dispatch_claim_states` — behavior change is registry-scoped to **METEORITE_NEW** only; other job retry pairs untouched.
+- `qualify_meteorite` @ **METEORITE_NEW** Available/claim counts gain the companion holding (dispatcher already unions claim states).
+- Tracker `prior_states` enforcement: without step 3, second-attempt pass/fail/error/bot transitions raise `ValueError`.
+- Downstream evaluate hops (**METEORITE_QUALIFIED** / **METEORITE_QUALIFIED_RETRY**) unchanged.
+- Tests that assert `METEORITE_NEW` has no `retry_state`, or that first-strike qualify errors terminal immediately, will need Betty revise (fix-board / qa-fix) — engineer does not edit `tests/` or bible in make-fix.
+- AST-1053 plan text that deferred `METEORITE_NEW_RETRY` is historical; this bug is the superseding cutover for qualify only.
+
+### What must still hold
+
+- AST-898 / regular track: `NEW` → `NEW_RETRY` → `ERROR_QUALIFY_JOB_LISTINGS`, `VALID_TITLE_RETRY` drain-only, title screen stays **NEW**-only — unchanged.
+- Content-gate / bot outcomes inside `qualify_meteorite.process` still write `fail_state` / `bot_blocked_state` (not the retry holding).
+- `_consult_batch_fail_dest` remains the sole fail→dest helper (§2.1 / §2.6) — no parallel meteorite dest map.
+- One-retry only: holding has no `retry_state`; second recoverable failure terminals at **METEORITE_ERROR_QUALIFY**.
+- No reopen/re-parent of archived AST-898; Skipped operator Retry maps stay AST-1156's lane.
+- With `debug=True`, fail→dest emissions remain Style D `debug_index` + `|` detail only (§1.5.1).
