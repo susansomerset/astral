@@ -469,3 +469,15 @@ Scope: make Print succeed for the same saved shapes the Base Resume Content page
 - AST-1337 AC1–5: validate-then-blob; no blank tab on failure; auth `GET /candidate/resume/base?candidate_id=…`; Print `btn secondary`; Session Resume Paste and job Print Resume / Cover Letter unchanged; prints **saved** content only (not unsaved editor buffer).
 - `ingest_legacy_label_content_base_resume` / PUT normalize contract unchanged (Print calls it read-only; does not invent a second ingest).
 - No new emit pipeline; no Admin `session_resume/html` for this page.
+
+## Radia review (AST-1341 review-fix)
+
+**Verdict:** REVIEW → Chuckles rebuild — Commit `b1dc009b` (clean sub on ftr)
+
+**fix-now (Chuckles mechanical — done):** sub had been contaminated with meteorite + AST-1342 test history. Rebuilt `origin/sub/AST-1314/AST-1341-…` from `origin/ftr/AST-1314-…` + cherry-picks `docs(AST-1341)` / `test(AST-1341)` / `code(AST-1341)` only.
+
+**Product (AST-1341):** PROCEED after clean rebuild — `build_base_resume` list ingest + operator error copy; Betty bug-repro on list-shaped print.
+
+**Discuss:** (none remaining after rebuild)
+
+**Advisory:** Empty-content gate is plan-minimum; bug-repro comment tag format advisory only.
