@@ -364,3 +364,14 @@ Placement/styling delta only — do **not** change Print fetch/validate/blob log
 - AST-1337 AC1–5: Print still opens print-ready HTML via auth `GET /candidate/resume/base?candidate_id=…` + validate-then-blob; no blank tab on failure; on-page error + toast; disabled with no candidate; Session/job Print paths unchanged; prints **saved** base resume only (not editor buffer).
 - Print remains `btn secondary` (`pattern.ui.shared-button-roles`).
 - No new emit endpoint; no Admin session HTML; no job id.
+
+## Radia review (AST-1342 review-fix)
+
+**Verdict:** CLEAN after Chuckles rebuilt `origin/sub/AST-1314/AST-1342-…` onto `origin/ftr/AST-1314-…` (cherry-pick plan/test/code only — dropped meteorite/dev contamination Radia flagged at 88a8acba).
+
+**fix-now (resolved):** publish-ref scope contamination — fixed by force-with-lease rewrite onto ftr tip `91410146`.
+
+**Discuss:** (none)
+
+**Advisory:** no-candidate Print visibility now absent (ArtifactEditor early return) vs prior disabled — Betty suite accepts either; plan said disabled.
+
