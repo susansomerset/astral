@@ -623,3 +623,7 @@ Frontend-only consumer of AST-1063 payload on the Recommended report Analysis ta
 **Advisory:** `buildJobListRubricColumnsForGroup` top-level-only vs `jobRubricForField` job_data asymmetry — safe with API flatten; optional follow-up. Bible rows for AST-950 still live-artifact wording — AST-1328.
 
 **What’s solid:** Analysis headers consume job-carried `*_rubric` via AST-1064 path; Analysis sections default collapsed; engineer test-tree ban held.
+
+## docs-acceptance (AST-1327)
+
+Test/bible coverage for this fix is owned by sibling gap **AST-1328** (Betty board TESTS: REVISE). Product code on this ref is docs-acceptance for merge-child — no fabricated `test(AST-1327)` noop.
