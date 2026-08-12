@@ -79,3 +79,27 @@ AC1–AC5 → Stage 1 (`JobsRecommended.tsx`: `sortRecommendedJobs` `state` bran
 (none)
 
 context_tokens≈22000
+
+## QA test manifest
+
+`origin/sub/AST-1330/AST-1331-recommended-list-state-column` @ merge-tests → `origin/tests` `e581b21caaebb1174cfcc3bc157049498888dec6`
+
+1. **Existing coverage (bible-backed):**
+   - `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — groups/phase scores, Company sort, row → JAR, Skip actions, AST-1057 Meteorites
+2. **Broken / obsolete:** none.
+3. **Gaps (this pass):**
+   - `AST-1331: State column on every section; Meteorites show distinct raw state keys`
+   - `AST-1331: State header sorts Meteorites by raw state asc then desc`
+   - `AST-1331: empty state cell shows em dash`
+
+**Integration:** none.
+
+**Run:**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx
+```
+
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `be40c493823eb3bab344f0cfd052a543a89fe012`
+
+— Betty
