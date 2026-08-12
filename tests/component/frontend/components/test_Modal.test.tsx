@@ -117,20 +117,4 @@ describe('Modal', () => {
     expect(close).toHaveTextContent('×')
     expect(close).not.toHaveClass('modal-close')
   })
-
-  it('AST-1334: showFooter false omits footer; header Close still closes', async () => {
-    const user = userEvent.setup()
-    const onClose = vi.fn()
-    render(
-      wrap(
-        <Modal open onClose={onClose} title="Report" showFooter={false}>
-          <p>Body</p>
-        </Modal>,
-      ),
-    )
-    expect(document.querySelector('.modal-footer')).toBeNull()
-    expect(screen.queryByRole('button', { name: 'Cancel' })).not.toBeInTheDocument()
-    await user.click(screen.getByRole('button', { name: 'Close' }))
-    expect(onClose).toHaveBeenCalledTimes(1)
-  })
 })

@@ -11,11 +11,9 @@ export interface ModalProps {
   dirty?: boolean
   size?: "wide"
   stacked?: boolean
-  /** When false, omit Cancel/Save footer strip (default true). */
-  showFooter?: boolean
 }
 
-export default function Modal({ open, onClose, title, children, onSave, dirty, size, stacked, showFooter = true }: ModalProps) {
+export default function Modal({ open, onClose, title, children, onSave, dirty, size, stacked }: ModalProps) {
   const ctxConfirm = useContext(ConfirmContext)
 
   // Auto-detect dirty: any input/change event inside the modal body sets the flag.
@@ -52,14 +50,12 @@ export default function Modal({ open, onClose, title, children, onSave, dirty, s
         <div className="modal-body" onInput={onBodyInput} onChange={onBodyInput}>
           {children}
         </div>
-        {showFooter && (
-          <div className="modal-footer">
-            <button className="btn secondary" onClick={guardedClose}>Cancel</button>
-            {onSave && (
-              <button className="btn primary" onClick={onSave}>Save</button>
-            )}
-          </div>
-        )}
+        <div className="modal-footer">
+          <button className="btn secondary" onClick={guardedClose}>Cancel</button>
+          {onSave && (
+            <button className="btn primary" onClick={onSave}>Save</button>
+          )}
+        </div>
       </div>
     </div>,
     document.body
