@@ -469,7 +469,7 @@ describe("ArtifactsBaseResumeContent", () => {
         return {
           ok: false,
           status: 404,
-          json: async () => ({ error: "Candidate missing artifacts.base_resume" }),
+          json: async () => ({ error: "No printable base resume content for this candidate" }),
         } as Response
       }
       throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
@@ -478,7 +478,7 @@ describe("ArtifactsBaseResumeContent", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
     await userEvent.click(screen.getByRole("button", { name: "Print" }))
     await waitFor(() =>
-      expect(screen.getAllByText("Candidate missing artifacts.base_resume").length).toBeGreaterThan(0),
+      expect(screen.getAllByText("No printable base resume content for this candidate").length).toBeGreaterThan(0),
     )
     expect(window.open).not.toHaveBeenCalled()
     unmount()

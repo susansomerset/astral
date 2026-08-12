@@ -585,3 +585,27 @@ Resume HTML emit dispatches by each enabled section’s `format` (not by id). Hi
   tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
   -q
 ```
+
+---
+
+### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.
+
+`build_base_resume` must ingest list-shaped / legacy `{label, content}` `artifacts.base_resume` the same way Base Resume Content already displays (via `ingest_legacy_label_content_base_resume`). Empty / unusable content raises **`No printable base resume content for this candidate`** (not `Candidate missing artifacts.base_resume`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List-shaped print success (bug-repro) | `src/core/builder.py` | **`TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints`** |
+| Empty / missing message | same | **`TestBuildBaseResume::test_requires_base_resume_artifact`**; **`TestBuildBaseResumeDebugPaths::test_failures_with_debug`** — match new empty copy |
+| Page error copy (AST-1337 revised) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — Print error asserts new operator sentence (primary: **`docs/test-bible/frontend/pages.md`**) |
+
+**Broken / obsolete this pass:** empty-gate asserts matching `missing artifacts.base_resume`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_requires_base_resume_artifact \
+  tests/component/core/test_builder.py::TestBuildBaseResumeDebugPaths::test_failures_with_debug \
+  -q
+```
