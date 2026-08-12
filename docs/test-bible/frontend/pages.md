@@ -1744,7 +1744,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1323-structure-editor-collapsible-header-row-body-between`.
 
-Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (title / format / enabled / **Job edit** / up-down); section body text stays in the panel body between headers. Standalone flat `ResumeStructureEditor` panel removed from the page. Catalog-driven formats and required-no-Remove still hold.
+Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (title / format / enabled / **Job Edit** / up-down); section body text stays in the panel body between headers. Standalone flat `ResumeStructureEditor` panel removed from the page. Catalog-driven formats and required-no-Remove still hold.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1770,7 +1770,7 @@ Single header row: name | style | `Enabled:` | `Job Edit:` | up/down (label-befo
 | --- | --- | --- |
 | Routed page (**§6c**) header row contract | `ArtifactEditor.tsx`, `App.css` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1325: header row is name | style | Enabled: | Job Edit: | up/down`** (bug-repro); AST-1323/1306 no longer lock old `Job edit` copy |
 
-**Broken / obsolete this pass:** AST-1323/1306 cases that asserted `Job edit` — rewritten to `.structure-authoring-header` / catalog PUT only.
+**Broken / obsolete this pass:** AST-1323/1306 cases that asserted `Job edit` — rewritten to `.structure-authoring-header` / catalog PUT only. **`[qa-handoff]`:** publish tip had duplicate `const headers` + leftover `Job edit` from a bad merge-tests conflict resolve — fixed; suite must load under vitest.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
