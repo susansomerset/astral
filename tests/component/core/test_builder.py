@@ -207,8 +207,33 @@ class TestBuildBaseResume:
         with pytest.raises(ValueError, match="Candidate not found"):
             builder_mod.build_base_resume("missing")
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda candidate_id: {"candidate_data": {"artifacts": {}}})
-        with pytest.raises(ValueError, match="missing artifacts.base_resume"):
+        with pytest.raises(ValueError, match="No printable base resume content for this candidate"):
             builder_mod.build_base_resume("cand-1")
+
+    def test_ast1341_list_shaped_base_resume_prints(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # bug-repro: list {label, content} is visible in Base Resume Content but pre-fix
+        # build_base_resume rejects non-dict with Candidate missing artifacts.base_resume.
+        monkeypatch.setattr(
+            builder_mod.candidate_mod,
+            "get_candidate",
+            lambda candidate_id: {
+                "first": "Ada",
+                "last": "Lovelace",
+                "full": "Ada Lovelace",
+                "candidate_data": {
+                    "artifacts": {
+                        "base_resume": [
+                            {"label": "Summary", "content": "Visible in editor"},
+                            {"label": "Skills", "content": "Also visible"},
+                        ],
+                        "resume_structure": {"sections": {}},
+                    }
+                },
+            },
+        )
+        html = builder_mod.build_base_resume("cand-1")
+        assert "Visible in editor" in html
+        assert "Also visible" in html
 
 
 class TestBuilderHelpers:
@@ -774,7 +799,7 @@ class TestBuildBaseResumeDebugPaths:
             "get_candidate",
             lambda candidate_id: {"candidate_data": {"artifacts": {}}},
         )
-        with pytest.raises(ValueError, match="missing artifacts.base_resume"):
+        with pytest.raises(ValueError, match="No printable base resume content for this candidate"):
             builder_mod.build_base_resume("cand-1", debug=True)
 
 

@@ -1853,7 +1853,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- |
 | Routed page (**§6c**) Print enable + blob / error | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1337: Print disabled with no candidate; success opens blob tab (§6c)`**; **`AST-1337: Print error and empty HTML never open a tab`** |
 
-**Broken / obsolete this pass:** none — prior Base Resume Content cases (structure / accent / AST-1306 / AST-1323 / AST-1325) unchanged. Session Resume Paste / job Print suites left alone (out of boundaries).
+**Broken / obsolete this pass:** none for AST-1337 ship. **AST-1341** revises the Print 404 error assert to `No printable base resume content for this candidate` (replaces `Candidate missing artifacts.base_resume`).
 
 **Integration:** no existing scenario asserts Base Resume Content Print — no drift. Do not invent integration coverage.
 
@@ -1884,3 +1884,19 @@ cd src/ui/frontend && npm run test:component -- \
   -t "AST-1342|AST-1337"
 ```
 
+---
+
+### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
+
+**Parent:** [AST-1314](https://linear.app/astralcareermatch/issue/AST-1314). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.
+
+Primary coverage: **`docs/test-bible/core/builder.md`** (`test_ast1341_list_shaped_base_resume_prints`). Page suite: AST-1337 Print error case asserts **`No printable base resume content for this candidate`**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337: Print error"
+```
