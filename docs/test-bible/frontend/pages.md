@@ -1760,6 +1760,26 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1324 · AST-1299 (bug — hydrate GET from base_resume)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1324-base-resume-content-must-load-render-existing-artifact-secti`.
+
+Read-time hydrate: `GET /resume_structure` unions usable `artifacts.base_resume` keys into structure rows; missing body format defaults to `free_prose` (not Add-section `bullet_list`). Page panels follow hydrated enabled sections — no Save required to discover content already on the artifact.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET hydrate from base_resume | `src/core/candidate.py`, `src/ui/api/api_candidate.py` | **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (bug-repro) |
+
+**Broken / obsolete this pass:** none for this repro — AST-519 page “hides orphan” still mocks a non-hydrated GET; revisit if make-fix changes client orphan filtering.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
+---
+
 ### AST-1318 · AST-1309 (apply in-row size on table-row labeled buttons)
 
 **Parent:** [AST-1309 — Add a button style for in-row buttons](https://linear.app/astralcareermatch/issue/AST-1309/add-a-button-style-for-in-row-buttons). **Publish:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons`.
