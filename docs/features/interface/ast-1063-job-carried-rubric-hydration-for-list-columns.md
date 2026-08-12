@@ -729,3 +729,25 @@ Betty `[board-betty] TESTS: REVISE` on AST-1327: bible AST-950 rows still descri
 **Advisory:** lib bug-repro decoy placement harmless; optional AgentAnalysisHeader rubricItems label case not added.
 
 **What’s solid:** bug-repro fixtures match plan; AST-950 suite migrated to job-carried; bible honest; merge-tests discipline held.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/19c5d0fc90a5e3a503adcd6a92005fd7/4d75d419-105f-4e0c-bd76-2b389e6f710d/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d6893c63-fc40-4352-a9a7-15be56caf78c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/19c5d0fc90a5e3a503adcd6a92005fd7/093a70ee-4637-48ee-9cbe-3cdb5781a809/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1321 (parent) | ftr/AST-1321-missing-vector-grades-rubric-headers |
+| AST-1327 | sub/AST-1321/AST-1327-fix-missing-vector-grades-headers |
+| AST-1328 | sub/AST-1321/AST-1328-gap-analysis-header-tests |
+
+**Epic worktree:** `astral-AST-1321/` — one active sub checked out at a time.
