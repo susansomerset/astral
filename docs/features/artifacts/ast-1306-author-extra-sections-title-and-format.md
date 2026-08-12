@@ -929,3 +929,50 @@ UI-only in `ArtifactEditor` + `App.css`. No GET/PUT, slug, normalize, catalog, o
 - AST-1306: catalog formats only; required rows no Remove / enabled disabled; Add section + Save sections PUT replace; content Save separate.
 - No hardcoded format-name array in TSX; no GET/PUT contract change.
 
+
+## Radia review (AST-1325)
+
+# Statutes checked
+
+Product delta: `33c11a9e` — `ArtifactEditor.tsx` + `App.css` only (UI polish).
+
+65 active statutes scored: **conforms** on in-scope-only, ui-config-driven (catalog formats unchanged), frontend placement, import-direction, dry/no-hardcoded format arrays; **not-applicable** elsewhere. No violations.
+
+## Pattern conformance
+
+none cited — layout/label polish on AST-1323 header.
+
+## Plan adherence
+
+| Plan step | Verdict |
+|-----------|---------|
+| Control order: name → style → `Enabled:`+checkbox → `Job Edit:`+checkbox → Up/Down → Remove | conforms |
+| CSS: `nowrap`, horizontal scroll, `.structure-authoring-name` grow, `.structure-authoring-style` compact, `.structure-authoring-flag` | conforms |
+| Literal `Enabled:` / `Job Edit:`; formats from `catalog.body_formats` only | conforms |
+| No API/GET/PUT/config changes | conforms |
+
+## Fix-specific checks
+
+**[bug-repro] — OK**  
+`AST-1325: header row is name | style | Enabled: | Job Edit: | up/down` asserts `.structure-authoring-name` / `.structure-authoring-style`, `Enabled:` / `Job Edit:` (not `Job edit`), and label order in row text. Would fail pre-fix (`Job edit` / checkbox-after-label). Betty also fixed AST-1323/1306 cases off stale `Job edit` copy (`7f715a98`, `3b4a7726` qa-handoff).
+
+**## What must still hold — OK**  
+AST-1323 body-between-headers + authoring on collapsible headers; AST-1306 catalog/required/Remove/Save semantics; no format tuple in TSX; no GET/PUT change.
+
+## Findings
+
+(none)
+
+## Notes
+
+- Parent shape: normal ftr → **Review Posted → User Testing** (skip `resolve-child`) when Chuckles posts.
+- **Advisory:** bug-repro does not assert Up/Down button presence or `flex-wrap: nowrap` in computed style — cosmetic gap only; markup/CSS implement the mock.
+
+## Frame diff
+
+(none)
+
+context_tokens≈85000  
+— Radia
+
+---
