@@ -31,6 +31,8 @@ export default function BaseResumeContent() {
   const [catalog, setCatalog] = useState<Catalog | null>(null)
   const [structureSaving, setStructureSaving] = useState(false)
   const [structureError, setStructureError] = useState<string | null>(null)
+  const [printing, setPrinting] = useState(false)
+  const [printError, setPrintError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -132,6 +134,52 @@ export default function BaseResumeContent() {
       .finally(() => setStructureSaving(false))
   }
 
+  // Session-style validate-then-blob: saved base via GET /candidate/resume/base (not editor buffer).
+  async function handlePrint() {
+    if (!selectedId || printing) return
+    setPrinting(true)
+    setPrintError(null)
+    try {
+      const r = await api(
+        `/candidate/resume/base?candidate_id=${encodeURIComponent(selectedId)}`,
+      )
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`
+        try {
+          const data = await r.json()
+          if (typeof data.error === "string" && data.error) msg = data.error
+        } catch { /* non-JSON error body */ }
+        setPrintError(msg)
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      const html = await r.text()
+      if (!html.trim()) {
+        const msg = "HTML response was empty"
+        setPrintError(msg)
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      const blobUrl = URL.createObjectURL(
+        new Blob([html], { type: "text/html;charset=utf-8" }),
+      )
+      const win = window.open(blobUrl, "_blank", "noopener,noreferrer")
+      if (!win) {
+        setToast({
+          text: "Popup blocked — allow popups to open the HTML tab.",
+          variant: "error",
+        })
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Print failed"
+      setPrintError(msg)
+      setToast({ text: msg, variant: "error" })
+    } finally {
+      setPrinting(false)
+    }
+  }
+
   return (
     <>
       {palette.length > 0 && (
@@ -152,6 +200,21 @@ export default function BaseResumeContent() {
             ))}
           </div>
         </div>
+      )}
+      <div style={{ display: "flex", gap: 8, padding: "8px 20px 0", alignItems: "center" }}>
+        <button
+          type="button"
+          className="btn secondary"
+          onClick={() => void handlePrint()}
+          disabled={!selectedId || printing}
+        >
+          {printing ? "Opening…" : "Print"}
+        </button>
+      </div>
+      {printError && (
+        <p style={{ margin: "8px 20px 0", color: "var(--danger, #c44)", fontSize: 13 }}>
+          {printError}
+        </p>
       )}
       <ArtifactEditor
         title="Base Resume Content"
