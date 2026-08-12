@@ -2348,7 +2348,7 @@ JOB_STATES = {
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": "JD_READY_RETRY"},
     "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]},  # AST-1195: universal bot/challenge
+    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "METEORITE_NEW_RETRY"]},  # AST-1195: universal bot/challenge
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
     "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
@@ -2389,11 +2389,12 @@ JOB_STATES = {
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
     # METEORITE_QUALIFIED (GDL entry). evaluate_meteorite claims METEORITE_QUALIFIED only (AST-1060).
-    "METEORITE_NEW":                  {"prior_states": None},
-    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
+    "METEORITE_NEW":                  {"prior_states": None, "retry_state": "METEORITE_NEW_RETRY"},
+    "METEORITE_NEW_RETRY":            {"prior_states": ["METEORITE_NEW"]},  # qualify_meteorite retry holding (AST-1338)
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
     "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
+    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
     "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"], "retry_state": "METEORITE_PASSED_JD_RETRY"},
     "METEORITE_PASSED_JD_RETRY":      {"prior_states": ["METEORITE_PASSED_JD"]},                 # meteorite grade_do incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
@@ -2888,7 +2889,7 @@ IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_JD_RETRY", "PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY",
     "CULTURE_READY_RETRY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
-    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
+    "METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
     "METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY", "METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY",
     "METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY",
     "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
@@ -3336,6 +3337,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
     {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
+    {"state": "METEORITE_NEW_RETRY", "label": "Meteorite New (retry)"},
     {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
     {"state": "METEORITE_QUALIFIED_RETRY", "label": "Meteorite Qualified (retry)"},
     {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},

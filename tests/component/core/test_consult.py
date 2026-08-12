@@ -2382,6 +2382,9 @@ class TestConsultBatchFailDest:
         # AST-898: VALID_TITLE.retry_state → NEW_RETRY (not VALID_TITLE_RETRY)
         assert consult_mod._consult_batch_fail_dest("VALID_TITLE", err) == "NEW_RETRY"
         assert consult_mod._consult_batch_fail_dest("JD_READY", TASK_CONFIG["evaluate_jd"]["error_state"]) == "JD_READY_RETRY"
+        # [bug-repro] AST-1339 — meteorite qualify first strike → METEORITE_NEW_RETRY
+        m_err = TASK_CONFIG["qualify_meteorite"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", m_err) == "METEORITE_NEW_RETRY"
 
     def test_retry_holding_routes_to_terminal_error(self) -> None:
         err = TASK_CONFIG["qualify_job_listings"]["error_state"]
@@ -2392,6 +2395,9 @@ class TestConsultBatchFailDest:
             consult_mod._consult_batch_fail_dest("JD_READY_RETRY", TASK_CONFIG["evaluate_jd"]["error_state"])
             == TASK_CONFIG["evaluate_jd"]["error_state"]
         )
+        # [bug-repro] AST-1339 — second strike from holding → METEORITE_ERROR_QUALIFY
+        m_err = TASK_CONFIG["qualify_meteorite"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", m_err) == m_err
 
     def test_analysis_upshot_retry_holding_to_failed_technical(self) -> None:
         err = TASK_CONFIG["analysis_upshot"]["error_state"]
