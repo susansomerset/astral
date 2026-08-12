@@ -1112,3 +1112,56 @@ class TestAst1305LegacyLabelIngestApi:
         assert "Highlights" not in arts["base_resume"]
         assert arts["resume_structure"]["sections"]["highlights"]["format"] == "bullet_list"
         assert arts["resume_structure"]["sections"]["publications"]["title"] == "Publications"
+
+
+class TestAst1324HydrateResumeStructureFromBaseResumeGet:
+    """AST-1324 bug-repro: GET /resume_structure unions base_resume keys; missing format → free_prose."""
+
+    def _cd_base_resume_extra_missing_from_structure(self) -> dict:
+        from src.core.candidate import default_resume_structure
+
+        structure = default_resume_structure()
+        # Ensure highlights is only on base_resume (load path must mint it).
+        structure["sections"].pop("highlights", None)
+        return {
+            "astral_candidate_id": "c1",
+            "candidate_data": {
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {
+                        "professional_summary": "Existing summary",
+                        "highlights": "Line A\nLine B",
+                        "experience": [
+                            {
+                                "title": "Role",
+                                "company": "Co",
+                                "dates": "",
+                                "location": "",
+                                "accomplishments": "",
+                            }
+                        ],
+                    },
+                }
+            },
+        }
+
+    def test_get_includes_base_resume_extra_with_free_prose_default(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            candidate_mod,
+            "get_candidate",
+            lambda candidate_id: self._cd_base_resume_extra_missing_from_structure(),
+        )
+        resp = candidate_client.get("/api/candidates/c1/resume_structure", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        by_id = {row["id"]: row for row in body["all_sections"]}
+        assert "highlights" in by_id
+        assert by_id["highlights"]["enabled"] is True
+        # Load default is free_prose — not Add-section / list-ingest bullet_list.
+        assert by_id["highlights"]["format"] == "free_prose"
+        assert "highlights" in {s["id"] for s in body["sections"]}

@@ -1165,3 +1165,24 @@ Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug i
   tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications \
   -q
 ```
+
+---
+
+### AST-1324 · AST-1299 (bug — hydrate GET from base_resume)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1324-base-resume-content-must-load-render-existing-artifact-secti`.
+
+`GET /resume_structure` must hydrate structure from `artifacts.base_resume` (append missing content ids; missing body format → `free_prose`). Persist still via Save sections / PUT ingest — hydrate is read-only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate helper + GET wire | `candidate.py`, `api_candidate.py` | **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — AST-1322 PUT title-keyed ingest / AST-1305 list ingest stay green; new-extra default remains `bullet_list`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
