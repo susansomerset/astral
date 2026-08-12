@@ -282,3 +282,24 @@ context_tokens≈60000
 | **advisory** — dead `errors += 1` before `raise` in consult except arm | Dropped the unused increment; release + re-raise unchanged. |
 
 No product behavior change beyond the advisory cleanup. §9a dry-run vs `origin/dev` at resolve tip.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/8675e3708318a1930b78ec858d53d9c0/5af8be6e-5434-4a78-8569-610b4b259765/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/76fc0138-37b1-4b19-a7a4-330a6a5a4aea/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8675e3708318a1930b78ec858d53d9c0/599ee163-c3a6-4ef7-bab8-37ca369b84a1/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1280 (parent) | ftr/AST-1280-connection-error-on-dispatch-task-did-not-clear-the-batch-id |
+| AST-1298 | sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error |
+
+**Epic worktree:** `astral-AST-1280/` — one active sub checked out at a time.
