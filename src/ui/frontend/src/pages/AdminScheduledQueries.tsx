@@ -190,7 +190,7 @@ export default function AdminScheduledQueries() {
           <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
             <h2 style={{ margin: 0, fontSize: 16 }}>{editingId ? "Edit query" : "New query"}</h2>
             {editingId ? (
-              <button type="button" className="dep-btn" onClick={startCreate} disabled={busy}>
+              <button type="button" className="btn primary" onClick={startCreate} disabled={busy}>
                 New
               </button>
             ) : null}
@@ -251,7 +251,7 @@ export default function AdminScheduledQueries() {
               placeholder={`DELETE FROM agent_data\nWHERE created_at < datetime('now', '-3 days')\n  AND block_type != 'RESPONSE'`}
             />
           </label>
-          <button type="button" className="dep-btn" onClick={() => void save()} disabled={busy}>
+          <button type="button" className="btn primary" onClick={() => void save()} disabled={busy}>
             {editingId ? "Update" : "Save"}
           </button>
         </section>
@@ -311,7 +311,7 @@ export default function AdminScheduledQueries() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      className="dep-btn"
+                      className="btn secondary"
                       onClick={() => startEdit(row)}
                       disabled={busy}
                     >
@@ -319,7 +319,7 @@ export default function AdminScheduledQueries() {
                     </button>
                     <button
                       type="button"
-                      className="dep-btn"
+                      className="btn secondary"
                       onClick={() => void toggleActive(row)}
                       disabled={busy}
                     >
@@ -327,7 +327,7 @@ export default function AdminScheduledQueries() {
                     </button>
                     <button
                       type="button"
-                      className="dep-btn"
+                      className="btn danger"
                       onClick={() => void remove(row)}
                       disabled={busy}
                     >

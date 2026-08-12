@@ -1,3 +1,348 @@
+<!-- linear-archive: AST-1120 archived 2026-08-11 -->
+
+## Linear archive (AST-1120)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1120/uuid-from-job-link-company-job-id-fallback-before-qualify-empty-id  
+**Status at archive:** Archive  
+**Project:** Astral Tracker  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1119 — Fallback for company job id  
+**Blocked by / blocks / related:** parent: AST-1119; blocks: AST-1121
+
+### Description
+
+## What this implements
+
+Owns resolve rule (AI wins; else UUID path segment from `job_link`; else empty) and wires it immediately before the `qualify_meteorite` empty-`company_job_id` content gate only. Does **not** own create-time meteorite ingest that leaves id empty; does **not** use `job_site`.
+
+## Acceptance criteria
+
+- [X] 1. Non-empty AI `company_job_id` is recorded unchanged even when `job_link` contains a different UUID path segment.
+- [X] 2. Empty/missing AI `company_job_id` + `job_link` containing a UUID path segment (e.g. Dice `…/company-profile/<uuid>` or a job URL with a UUID segment) records that UUID as `company_job_id` and does not hit the empty-id fail gate.
+- [X] 3. Empty/missing AI id + `job_link` with no UUID path segment still fails the empty-id gate (same fail kind as today).
+- [X] 4. Meteorite create-without-`company_job_id` behavior outside the agreed qualify apply surface is unchanged.
+
+## Boundaries
+
+- [X] Does not own debug found/recorded instrumentation (sibling AST-1121).
+- [X] Does not change meteorite create paths.
+- [X] Does not use `job_site`.
+- [X] Does not expand to `qualify_job_listings`.
+
+## In scope
+
+- [X] `pattern.batch.entity-claim-process-release` — fallback inside existing qualify claim/process/release apply
+- [X] `pattern.batch.entity-agent-responses` — AI value from latest RESPONSE decode; fallback is post-decode apply only
+- [X] `pattern.identity.url-uuid-path-external-id-fallback` (proposed) — prefer AI, else UUID path segment from `job_link`, else fail; introduced here for Archie approval before reuse
+- [X] `astral.standards.no-hardcoded-sets` — UUID shape via `TRACKER_CONFIG["uuid_path_segment_pattern"]`, not host allowlists
+- [X] `astral.standards.in-scope-only` — agreed qualify empty-id gate + resolve helper only
+- [X] `astral.standards.dry-and-focused-functions` / `astral.standards.public-then-helpers` — one resolve helper + pure extract helper
+- [X] `astral.layers.import-direction` — `consult` → `utils`; `formatting` stays pure (pattern passed as arg)
+- [X] `astral.config.config-source-of-truth` — UUID regex literal in `TRACKER_CONFIG`
+- [X] `astral.batch.claim-process-release` / `astral.batch.entity-agent-responses-latest-only` — no reinvent claim or RESPONSE storage
+
+## Considered but excluded
+
+- [X] `astral.standards.debug-contract-gated` — Style D found/recorded source logging is AST-1121 only; this ticket does not add source labels
+- [X] Meteorite create / gazer ingest leaving `company_job_id` empty — intentional pre-qualify carve-out (AST-1061 / AST-1090); out of apply surface
+- [X] `qualify_job_listings` — no empty-`company_job_id` content fail gate today; parent forbids expansion
+- [X] Company `job_site` / non-`job_link` URLs — id must stay unique to the job
+- [X] Arbitrary last path segment / query junk — UUID-shaped path token only (dedupe safety)
+- [X] UI or prompt rewrites as primary fix — out of epic Boundaries
+
+## Notes for planning
+
+Quick-fix epic: wire only at `qualify_meteorite` content gate. Prefer AI `company_job_id`; else UUID-shaped path segment from `job_link`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1119-fallback-for-company-job-id`, child `sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-02T17:27:27.690Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1120
+**Publish ref:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback` @ `ab463454`
+**Overall:** DISCUSS
+
+Diff baseline: `origin/dev...origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback` — layers `{core, docs, utils}`; change_types `{add, modify}`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | no confidence/grade bound changes |
+| `astral.agent.do-task-delegation` | scoped | conforms | no new do_task; post-decode apply only |
+| `astral.agent.grade-vector-validation` | scoped | conforms | no graded-task changes |
+| `astral.batch.batch-id-first` | scoped | conforms | no new claim/batch_id helpers |
+| `astral.batch.batch-id-format` | scoped | conforms | batch_id untouched |
+| `astral.batch.claim-process-release` | scoped | conforms | fallback inside existing qualify process |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | AI from RESPONSE decode; fallback post-decode |
+| `astral.config.config-source-of-truth` | scoped | conforms | UUID regex in TRACKER_CONFIG |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | thresholds untouched |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | no secrets/env reads added |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths no match among ['artifacts/**', 'scripts/spikes/**'] |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | docs/features plan only; not spike notes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | no run_next/dispatch chain edits |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | no seed/dispatch_task rows |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single docs/features/tracker/ast-1120-….md |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty commits only tests/bible; merge-tests ok |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | tests/bible only in test()+merge-tests commits |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | no external I/O; utils extract only |
+| `astral.layers.import-direction` | scoped | conforms | consult→utils; formatting has no config import |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers ['scripts'] ∩ diff ['core', 'docs', 'utils'] empty |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | TRACKER_CONFIG literal; no UI rule surface |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | coat-check paths untouched |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | wire is qualify_meteorite process only |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | no seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | no catalog edits |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | resolve is apply logic not seed/boot |
+| `astral.seed.define-approved` | scoped | conforms | no seed define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | untouched |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | untouched |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | no data-layer edits |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | layers ['data'] ∩ diff ['core', 'docs', 'utils'] empty |
+| `astral.standards.debug-contract-gated` | scoped | conforms | no new debug emission; source labels are AST-1121 |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | one resolve helper + one pure extract |
+| `astral.standards.in-scope-only` | scoped | conforms | qualify empty-id gate + helpers only |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new logging framework; get_logger unchanged |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | domain helper/key names; ticket only in comments |
+| `astral.standards.no-cross-contamination` | scoped | conforms | stays core/utils apply surface |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | UUID shape via TRACKER_CONFIG; no host allowlist |
+| `astral.standards.public-then-helpers` | scoped | conforms | helper clustered with existing privates after qualify_meteorite |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | formatting pure; no data import |
+| `astral.state.core-decides-transitions` | scoped | conforms | same fail_state/pass_state; no new states |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | prior_states untouched |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | no daisy-chain invent |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers ['ui'] ∩ diff ['core', 'docs', 'utils'] empty |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | no worker/deployment changes |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | one merge-tests(AST-1120) on sub tip |
+| `orch.git.commit-vocabulary` | universal | conforms | docs/code/test/merge-tests vocabulary only |
+| `orch.git.flow-direction-inviolable` | universal | conforms | publish stays on origin/sub child ref |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub/AST-1119/AST-1120-… matches parent Git table |
+| `orch.git.merge-on-checkout` | universal | conforms | no illegal merge recipe in tip commits |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commits; no cherry-pick/rebase/force |
+| `orch.git.no-dev-agent-branches` | universal | conforms | child publish-ref is sub/… not agent-named |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | review in astral-AST-1119 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | no new permanent branch |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | AI-first/UUID-path decisions already in plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | stages + Files Changed match tip |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Tracker child AST-1120 only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via test()+merge-tests only |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee remains Ada |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada stays assignee through Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned path edits in product commits |
+
+## Pattern conformance
+
+| pattern | verdict |
+|---------|---------|
+| `pattern.batch.entity-claim-process-release` | conforms — fallback inside existing qualify claim/process/release |
+| `pattern.batch.entity-agent-responses` | conforms — AI from latest RESPONSE decode; fallback post-decode apply |
+| `pattern.identity.url-uuid-path-external-id-fallback` (proposed) | conforms — AI wins; else UUID path segment from `job_link`; else empty |
+
+## Plan adherence
+
+Stages 1–2 match tip: `TRACKER_CONFIG["uuid_path_segment_pattern"]`, pure `uuid_path_segment_from_url`, `_resolve_company_job_id` wired immediately before the empty-`company_job_id` gate with `link_for_id = response job_link or input job_link`. Self-Assessment Scope `Single-Component` matches footprint. Boundaries held (no AST-1121 source labels, no create/`job_site`/`qualify_job_listings`). Joan discuss on helper placement: implementation clusters with existing privates after `qualify_meteorite` (publics-first for this insert).
+
+## Findings
+
+**fix-now:** none
+
+**discuss (C4 straggler — excluded at plan time but in-scope on tip vs `origin/dev`):**
+1. `astral.debug.spikes-under-debug-dir` — plan file under `docs/features/**`; scored conforms (not spike notes).
+2. `astral.docs.features-single-file-per-ticket` — same plan path; scored conforms (single file).
+3. `astral.git.engineer-test-tree-ban` — `tests/**` + bible via Betty `test()`/`merge-tests`; scored conforms.
+
+No product code action required for stragglers.
+
+## What's solid
+
+AI-never-overwrite, path-segment-only UUID fullmatch from config, formatting stays config-free, qualify-only apply surface, one `merge-tests` SHA.
+
+## Recommended actions
+
+Resolve-child can proceed without product edits for these discuss items. AST-1121 still owns Style D found/recorded source labels.
+
+**Notes:** Joan plan-rubric verdict attached (APPROVED). Active statute count checked: 65.
+
+context_tokens≈52000
+
+#### betty — 2026-08-02T17:24:32.962Z
+1. `tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback` — AC1 AI wins over different UUID in `job_link`; AC2 empty AI + Dice UUID path → pass + recorded UUID; AC3 empty AI + no UUID → `empty company_job_id` fail; `_resolve_company_job_id` helper branches + `link_for_id` input fallback composition.
+2. `tests/component/utils/test_formatting.py::TestUuidPathSegmentFromUrl` — empty URL; Dice rightmost UUID; multi-UUID rightmost; query/fragment ignored; percent-decode + case preserved.
+3. `tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern` — `TRACKER_CONFIG["uuid_path_segment_pattern"]` anchored fullmatch.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1120CompanyJobIdFallback \
+  tests/component/utils/test_formatting.py::TestUuidPathSegmentFromUrl \
+  tests/component/utils/test_config.py::TestAst1120UuidPathSegmentPattern \
+  -q
+```
+
+**Broken / obsolete:** none — existing AST-1062 empty-id gate case still uses a non-UUID `job_link`.
+
+**Integration:** no existing scenarios assert qualify empty-id / company_job_id resolve — none revised.
+
+**Publish:** `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback` @ `bea30019` (`merge-tests(AST-1120): origin/tests ea4716e7`).
+
+**Bible shasums on publish tip:**
+- `docs/test-bible/core/consult.md` `8836932387b00abba469f99168aa84d4d634e597`
+- `docs/test-bible/utils/formatting.md` `68df4340b1d737a40780f83530060d3b769276df`
+- `docs/test-bible/utils/config.md` `26cee476852eaaf3fa1a3d4c5928c8b0df66fdc6`
+
+— Betty
+
+#### joan — 2026-08-02T17:17:16.754Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1120
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Non-empty AI `company_job_id` recorded unchanged | Stage 2 — `_resolve_company_job_id` returns AI immediately |
+| AC2 Empty AI + UUID path segment in `job_link` records UUID; skips empty-id fail | Stage 1 extract + Stage 2 wire before empty-id gate |
+| AC3 Empty AI + no UUID still empty-id fail | Stage 2 — resolve returns `""`; existing `fail_reason = "empty company_job_id"` |
+| AC4 debug=True found source / recorded Style D | N/A — boundary (AST-1121); plan forbids source labels |
+| AC5 Meteorite create-without-id outside qualify surface unchanged | Stage 2 Decision — no create / gazer / `qualify_job_listings` edits |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 TRACKER_CONFIG pattern + `uuid_path_segment_from_url` | Purpose/Functional scope UUID-from-`job_link`; `no-hardcoded-sets` / config SoT |
+| Stage 2 `_resolve_company_job_id` + wire before `qualify_meteorite` empty-id gate | Functional scope apply surface; proposed `pattern.identity.url-uuid-path-external-id-fallback`; child AC1–3/5 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests work |
+| orch.git.commit-vocabulary | conforms | Sub publish / plan vocabulary only |
+| orch.git.flow-direction-inviolable | conforms | Publish to origin/sub only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | conforms | None proposed |
+| orch.git.no-dev-agent-branches | conforms | Uses sub/AST-1119/AST-1120-… |
+| orch.git.one-epic-worktree-per-parent | conforms | astral-AST-1119 epic worktree |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions documented; open questions none |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Files Changed |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Tracker scope |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready validate only |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/bible edits |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Ada) implements |
+| orch.roles.engineer-assignee-through-resolve | conforms | Implementer path after approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No grade/confidence changes |
+| astral.agent.do-task-delegation | conforms | No new do_task; post-decode apply only |
+| astral.agent.grade-vector-validation | conforms | No graded-task changes |
+| astral.batch.batch-id-first | conforms | No new claim helpers |
+| astral.batch.batch-id-format | conforms | No batch_id invent |
+| astral.batch.claim-process-release | conforms | Fallback inside existing qualify process |
+| astral.batch.entity-agent-responses-latest-only | conforms | AI from RESPONSE decode; fallback post-decode |
+| astral.config.config-source-of-truth | conforms | UUID regex in TRACKER_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.dispatch.run-next-is-chain-authority | conforms | No dispatch chain edits |
+| astral.dispatch.seed-auto-false | conforms | No seed/dispatch_task rows |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src |
+| astral.layers.core-vs-external-bright-line | conforms | No external I/O changes |
+| astral.layers.import-direction | conforms | consult→utils; formatting pure (pattern arg) |
+| astral.layers.ui-config-driven-business-logic | conforms | TRACKER_CONFIG literal only; no React UI rules |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Wire is qualify_meteorite process, not new orchestrator |
+| astral.seed.agent-tables-in-repo-json | conforms | No seed JSON |
+| astral.seed.archie-catalog-wins | conforms | No catalog edits |
+| astral.seed.boot-only-not-hot-path | conforms | Hot-path resolve is apply logic, not seed |
+| astral.seed.define-approved | conforms | No seed define |
+| astral.seed.operator-rows-stay-deleted | conforms | Untouched |
+| astral.seed.other-via-coverage-join | conforms | Untouched |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer edits |
+| astral.standards.debug-contract-gated | conforms | Found/recorded source logging deferred to AST-1121 per parent split |
+| astral.standards.dry-and-focused-functions | conforms | One resolve + one extract helper |
+| astral.standards.in-scope-only | conforms | qualify_meteorite empty-id gate + helpers only |
+| astral.standards.logging-via-utils | conforms | No new logging framework; no source labels |
+| astral.standards.names-not-ticket-ids | conforms | Keys/helpers named by domain, not ticket id |
+| astral.standards.no-cross-contamination | conforms | Stays core/utils |
+| astral.standards.no-hardcoded-sets | conforms | UUID shape via TRACKER_CONFIG; no host allowlist |
+| astral.standards.public-then-helpers | conforms | Helper grouped with existing private helpers; publics remain primary API |
+| astral.standards.utils-data-late-import-only | conforms | formatting stays pure; no data import |
+| astral.state.core-decides-transitions | conforms | Same fail_state/pass_state; no new states |
+| astral.state.job-prior-states-enforced | conforms | Untouched prior_states |
+| astral.state.no-daisy-chain-in-run | conforms | No daisy-chain invent |
+| astral.ui.single-gunicorn-worker | conforms | No worker/deployment changes |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.dispatch.run-next-is-chain-authority, astral.dispatch.seed-auto-false, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.seed.agent-tables-in-repo-json, astral.seed.archie-catalog-wins, astral.seed.boot-only-not-hot-path, astral.seed.define-approved, astral.seed.operator-rows-stay-deleted, astral.seed.other-via-coverage-join, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.names-not-ticket-ids, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — layers {docs} ∩ plan {core,utils} empty
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers ∩ plan empty
+- astral.patterns.require-auth-on-protected-endpoints — layers {ui} ∩ plan empty
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty
+- astral.ui.frontend-file-placement — layers {ui} ∩ plan empty
+- astral.ui.naming-conventions — layers {ui} ∩ plan empty
+
+## Findings
+
+None fix-now.
+
+**discuss (non-blocking):** Stage 2 says place `_resolve_company_job_id` “near other private helpers above `qualify_meteorite`” while also claiming publics-first. Match the file’s existing helper cluster; do not invent a new helpers-before-publics layout if the file already keeps publics first.
+
+**acceptable:** Scope Single-Component / Conf high / Risk Medium honest; AI-never-overwrite + path-segment fullmatch + create-path freeze mitigate Medium risk. Parent AC4 correctly left to AST-1121.
+
+**R6:** Definition fidelity pass for child #1 resolve+wire. Layer/import pass. Config SoT pass. No create/`job_site`/`qualify_job_listings` creep. DRY pass.
+
+context_tokens≈45000
+
+— Joan
+
+#### chuckles — 2026-08-02T17:15:37.994Z
+[thread-orphan] Joan session `da0027e7-276d-4fe2-a6e6-65c8eb77e24d` was under wrong workspace hash; relocated `/home/susan/.cursor/chats/0f41bf986cfef9e06ea903e586d6d4d9/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db` → `/home/susan/.cursor/chats/3b42c17f1227be2507eadeb09fad46b8/da0027e7-276d-4fe2-a6e6-65c8eb77e24d/store.db`. Resuming same UUID.
+
+— Chuckles
+
+#### ada — 2026-08-02T17:15:22.643Z
+Plan published on `origin/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback` @ `dba469fa`.
+
+**Plan doc:** https://github.com/susansomerset/astral/blob/sub/AST-1119/AST-1120-uuid-from-job-link-company-job-id-fallback/docs/features/tracker/ast-1120-uuid-from-job-link-company-job-id-fallback.md
+
+**Self-assessment**
+- **Scope:** `Single-Component` — `TRACKER_CONFIG` UUID regex + pure `formatting.uuid_path_segment_from_url` + `_resolve_company_job_id` wired only at the `qualify_meteorite` empty-id gate.
+- **Conf:** `high` — gate/fields already exist; change is AI-first then rightmost UUID path segment before the existing `empty company_job_id` fail.
+- **Risk:** `Medium` — a bad overwrite or non-UUID path grab would poison external-id dedupe/identity; mitigated by AI-never-overwrite, path-segment fullmatch from config, and no create-path edits.
+
+AST-1121 still owns Style D found/recorded source logging after this resolve lands.
+
+#### chuckles — 2026-08-02T17:10:33.596Z
+[thread-missing] Cursor chat `ab3b5b9a-f89f-48cc-bde1-4eacdaedd5eb` has no local `store.db` on **chuckles** (expected `/home/susan/.cursor/chats/3b42c17f1227be2507eadeb09fad46b8/ab3b5b9a-f89f-48cc-bde1-4eacdaedd5eb/store.db`; blob-search also empty).
+
+Minting a **new** conversation on this host and continuing (history from the old UUID is not recovered). New Ada Team UUID: `d21f66a2-0d74-4041-97bc-0d2a9dd924d5`.
+
+— Chuckles
+
+---
+
 # AST-1120 — UUID-from-job_link company_job_id fallback before qualify empty-id gate
 
 **Linear:** [AST-1120](https://linear.app/astralcareermatch/issue/AST-1120/uuid-from-job-link-company-job-id-fallback-before-qualify-empty-id)

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
 import api from "../lib/api"
 import { setFmtTimezone } from "../lib/fmt"
+import { browserTabTitle } from "../lib/documentTitle"
 import { useAuth } from "./AuthContext"
 
 export interface CandidateInfo {
@@ -67,6 +68,17 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
     const contact = c?.candidate_data?.contact as Record<string, string> | undefined
     setFmtTimezone(contact?.timezone || "UTC")
   }, [selectedId, candidates])
+
+  useEffect(() => {
+    const selected = candidates.find(c => c.astral_candidate_id === selectedId)
+    document.title = browserTabTitle(selected?.full)
+  }, [selectedId, candidates])
+
+  useEffect(() => {
+    return () => {
+      document.title = browserTabTitle(undefined)
+    }
+  }, [])
 
   return (
     <CandidateContext.Provider value={{ candidates, selectedId, setSelectedId, refresh: load }}>

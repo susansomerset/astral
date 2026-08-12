@@ -39,7 +39,7 @@ export default function CollapsiblePanel(props: CollapsiblePanelProps) {
       <div className="collapsible-panel-header">
         <button
           type="button"
-          className="collapsible-panel-chevron-btn"
+          className="icon-control"
           aria-expanded={expanded}
           aria-label={expanded ? "Collapse section" : "Expand section"}
           onClick={() => setEx(!expanded)}

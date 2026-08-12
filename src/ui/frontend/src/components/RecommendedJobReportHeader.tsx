@@ -65,7 +65,7 @@ export default function RecommendedJobReportHeader({
           {applicationEmail && (
             <button
               type="button"
-              className="recommended-report-copy-link"
+              className="btn secondary"
               title="Copy Application Email"
               onClick={() => onCopyApplicationEmail?.()}
             >
@@ -75,7 +75,7 @@ export default function RecommendedJobReportHeader({
           {linkedInUrl && (
             <button
               type="button"
-              className="recommended-report-copy-link"
+              className="btn secondary"
               title="Copy LinkedIn Profile"
               onClick={() => onCopyLinkedIn?.()}
             >
@@ -90,12 +90,12 @@ export default function RecommendedJobReportHeader({
       {(showPrintResume || showPrintCover) && (
         <div className="recommended-report-header-actions">
           {showPrintResume && (
-            <button type="button" className="modal-btn cancel" onClick={() => onPrintResume?.()}>
+            <button type="button" className="btn secondary" onClick={() => onPrintResume?.()}>
               Print Resume
             </button>
           )}
           {showPrintCover && (
-            <button type="button" className="modal-btn cancel" onClick={() => onPrintCover?.()}>
+            <button type="button" className="btn secondary" onClick={() => onPrintCover?.()}>
               Print Cover Letter
             </button>
           )}

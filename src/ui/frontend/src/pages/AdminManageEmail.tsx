@@ -216,6 +216,7 @@ export default function AdminManageEmail() {
           <div className="manage-email-toolbar">
             <button
               type="button"
+              className="btn primary"
               disabled={messages.length === 0}
               onClick={selectAllVisible}
             >
@@ -223,6 +224,7 @@ export default function AdminManageEmail() {
             </button>
             <button
               type="button"
+              className="btn secondary"
               disabled={selectionCount === 0}
               onClick={clearSelection}
             >
@@ -230,6 +232,7 @@ export default function AdminManageEmail() {
             </button>
             <button
               type="button"
+              className="btn primary"
               disabled={!landEnabled}
               onClick={onLandMeteorite}
             >

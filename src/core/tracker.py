@@ -156,6 +156,14 @@ def _prepare_job_resume_content(resume_content: Dict[str, Any], candidate_data: 
         structure,
         allow_contact=False,
     )
+    allowed = set(candidate_mod.draft_job_resume_allowed_section_keys(candidate_data))
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+    for sid, val in (resume_content or {}).items():
+        if sid in allowed and sid not in filtered and sid not in contact:
+            if candidate_mod.is_experience_job_array(val) and val:
+                filtered[sid] = val
+            elif isinstance(val, str) and val.strip():
+                filtered[sid] = val
     artifacts = candidate_data.get("artifacts") if isinstance(candidate_data.get("artifacts"), dict) else {}
     base_resume = artifacts.get("base_resume") if isinstance(artifacts.get("base_resume"), dict) else {}
     snapshot: Dict[str, str] = {}
@@ -335,7 +343,7 @@ def _artifact_shape_required_keys(shape_name: str) -> List[str]:
 
 
 def _resume_section_has_body(sid: str, val: Any) -> bool:
-    if sid == "experience" and candidate_mod.is_experience_job_array(val) and val:
+    if candidate_mod.is_experience_job_array(val) and val:
         return True
     return isinstance(val, str) and bool(val.strip())
 
@@ -361,7 +369,7 @@ def _resume_payload_body(parsed: Any) -> Dict[str, Any]:
             continue
         if isinstance(v, str):
             out[k] = v
-        elif k == "experience" and candidate_mod.is_experience_job_array(v):
+        elif candidate_mod.is_experience_job_array(v):
             out[k] = v
     return out
 

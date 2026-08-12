@@ -104,9 +104,154 @@ class TestAst1047InboxFromBind:
         monkeypatch.setattr(inbox_mod.logger, "debug_detail", dbg_detail)
         inbox_mod.list_inbox_messages(debug=True)
         assert dbg_index.called
-        assert dbg_index.call_args.kwargs["func"] == "inbox_from_bind"
+        assert dbg_index.call_args.kwargs["func"] == "inbox_bind"
         assert dbg_index.call_args.kwargs["outcome"] == "found|none"
-        assert any("from_address=" in str(c) for c in dbg_detail.call_args_list)
+        details = [str(c) for c in dbg_detail.call_args_list]
+        # empty bind_address is omitted — truncate_debug_content("") yields no lines
+        assert any("bind_header=" in d for d in details)
+
+
+# AST-1313: From unique hit wins; else To binds only on one remaining address after inbox ignore.
+class TestAst1313FromThenToBind:
+    def _inbox(self) -> str:
+        return inbox_mod.INBOX_BIND_CONFIG["inbox_address"]
+
+    def _lookup(self, monkeypatch: pytest.MonkeyPatch, table: dict[str, str | None]) -> MagicMock:
+        folded = {k.casefold(): v for k, v in table.items()}
+
+        def _side(q: str, debug: bool = False):
+            from email.utils import parseaddr
+
+            _display, addr = parseaddr(q or "")
+            token = (addr or q or "").strip().casefold()
+            return folded.get(token)
+
+        lookup = MagicMock(side_effect=_side)
+        monkeypatch.setattr(inbox_mod, "get_candidate_id_for_query", lookup)
+        return lookup
+
+    def _list(self, monkeypatch: pytest.MonkeyPatch, **msg) -> list[dict]:
+        monkeypatch.setattr(
+            inbox_mod, "external_list_inbox_messages", MagicMock(return_value=[msg])
+        )
+        return inbox_mod.list_inbox_messages(debug=False)
+
+    def test_from_unique_wins_over_conflicting_to(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        lookup = self._lookup(monkeypatch, {"ada@ex.com": "cand-ada", "bob@ex.com": "cand-bob"})
+        out = self._list(
+            monkeypatch,
+            id="m1",
+            from_address="Ada <ada@ex.com>",
+            to_address="Bob <bob@ex.com>",
+        )
+        assert out[0]["candidate_match"] == {
+            "matched": True,
+            "astral_candidate_id": "cand-ada",
+        }
+        assert set(out[0]["candidate_match"]) == {"matched", "astral_candidate_id"}
+        assert lookup.call_count == 1
+        assert lookup.call_args.args[0] == "Ada <ada@ex.com>"
+
+    def test_to_single_remaining_after_inbox_ignore(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        inbox = self._inbox()
+        self._lookup(monkeypatch, {"ada@ex.com": "cand-ada"})
+        out = self._list(
+            monkeypatch,
+            id="m2",
+            from_address="recruiter@corp.com",
+            to_address=f"Astral <{inbox}>, Ada <ada@ex.com>",
+        )
+        assert out[0]["candidate_match"] == {
+            "matched": True,
+            "astral_candidate_id": "cand-ada",
+        }
+
+    def test_unbound_when_to_empty_multi_or_inbox_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        inbox = self._inbox()
+        self._lookup(monkeypatch, {"ada@ex.com": "cand-ada", "bob@ex.com": "cand-bob"})
+        empty = self._list(monkeypatch, id="e", from_address="x@y", to_address="")
+        multi = self._list(
+            monkeypatch, id="m", from_address="x@y", to_address="ada@ex.com, bob@ex.com"
+        )
+        only_inbox = self._list(monkeypatch, id="i", from_address="x@y", to_address=inbox)
+        unbound = {"matched": False, "astral_candidate_id": None}
+        assert empty[0]["candidate_match"] == unbound
+        assert multi[0]["candidate_match"] == unbound
+        assert only_inbox[0]["candidate_match"] == unbound
+
+    def test_duplicate_to_address_is_one_remaining(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._lookup(monkeypatch, {"ada@ex.com": "cand-ada"})
+        out = self._list(
+            monkeypatch,
+            id="m3",
+            from_address="x@y",
+            to_address="Ada <ada@ex.com>, ada@ex.com",
+        )
+        assert out[0]["candidate_match"]["astral_candidate_id"] == "cand-ada"
+
+    def test_create_rematch_uses_to_when_from_misses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "get_message_html",
+            MagicMock(
+                return_value={
+                    "id": "m1",
+                    "html_body": "<p>JD</p>",
+                    "subject": "Role",
+                    "from_address": "recruiter@corp.com",
+                    "to_address": f"{self._inbox()}, ada@ex.com",
+                }
+            ),
+        )
+        self._lookup(monkeypatch, {"ada@ex.com": "cand-ada"})
+        ingest = MagicMock(
+            return_value={
+                "astral_candidate_id": "cand-ada",
+                "mode": "body",
+                "created": [
+                    {
+                        "astral_job_id": "job-1",
+                        "company": "meteorite-cand-ada",
+                        "state": "METEORITE_NEW",
+                        "latest_score": 10.0,
+                        "company_inserted": True,
+                    }
+                ],
+                "skipped": [],
+            }
+        )
+        monkeypatch.setattr(inbox_mod, "ingest_meteorite_jobs_from_email_html_sync", ingest)
+        dbg_index = MagicMock()
+        dbg_detail = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg_index)
+        monkeypatch.setattr(inbox_mod.logger, "debug_detail", dbg_detail)
+        out = inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=True)
+        assert out["astral_candidate_id"] == "cand-ada"
+        assert ingest.call_args.args[0] == "cand-ada"
+        details = [str(c) for c in dbg_detail.call_args_list]
+        assert any("bind_header=to" in d for d in details)
+        assert any("bind_address=ada@ex.com" in d for d in details)
+        dbg_index.reset_mock()
+        inbox_mod.create_meteorite_job_from_inbox_message("m1", debug=False)
+        assert not dbg_index.called
+
+    def test_list_debug_false_emits_no_contract(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            inbox_mod,
+            "external_list_inbox_messages",
+            MagicMock(return_value=[{"id": "m1", "from_address": "a@x"}]),
+        )
+        self._lookup(monkeypatch, {})
+        dbg = MagicMock()
+        monkeypatch.setattr(inbox_mod.logger, "debug_index", dbg)
+        monkeypatch.setattr(inbox_mod.logger, "debug_detail", MagicMock())
+        inbox_mod.list_inbox_messages(debug=False)
+        assert not dbg.called
 
 
 # AST-1049: strip/extract + Create orchestration.

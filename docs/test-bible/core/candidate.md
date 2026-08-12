@@ -66,7 +66,7 @@ Retire **AST-450** graded-consult contract on **`draft_job_resume`**: metadata-o
 | --- | --- | --- | --- |
 | **AST-594** | Structure-keyed section JSON; reject `grades` / unknown keys; validation message on hop row | `src/utils/config.py`, `src/core/candidate.py`, `src/core/agent.py` | `tests/component/utils/test_config.py::TestAst594DraftJobResumeSchema`; `tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload`; `tests/component/core/test_agent.py` — `-k "draft_job_resume"` (acceptance, unknown key, disallowed `grades`, RESPONSE **`Validation failed:`** prefix) |
 | **AST-604** | Section key aliases (`candidate_contact` → `candidate_contact_detail`) before catalog whitelist | `src/core/candidate.py` | `tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload::test_normalize_renames_candidate_contact_alias` |
-| **AST-607** | `{$BASE_RESUME}` token emits section-id-keyed JSON (not markdown `###` sections); legacy label/content arrays map via structure title | `src/core/candidate.py` (`format_base_resume_for_token`), `src/utils/config.py` (`resume_sections_json` serialize) | `tests/component/core/test_candidate.py::TestAst607BaseResumeToken`; `tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown` |
+| **AST-607** | `{$BASE_RESUME}` token emits section-id-keyed JSON (not markdown `###` sections); legacy label/content arrays map via structure title. Unmatched titles (Highlights / Publications) stay as extras — **`### AST-1305`** | `src/core/candidate.py` (`format_base_resume_for_token`), `src/utils/config.py` (`resume_sections_json` serialize) | `tests/component/core/test_candidate.py::TestAst607BaseResumeToken`; `tests/component/utils/test_config.py::TestResolveTokens::test_base_resume_token_emits_section_json_not_markdown` |
 
 **AST-594** narrowed run:
 
@@ -376,7 +376,7 @@ Legacy candidate state remap + hard-delete of pre-cutover `DELETED`; dispatch tr
 
 ### AST-996 · AST-994
 
-**AST-996:** Judith `craft_resume_base` Experience is an ordered **job array** (`company` / `title` / `dates` / `location` / `accomplishments`). Config shares `_EXPERIENCE_JOB_ARRAY_FIELD` across TASK + `resume_content` shapes; `DATA_SHAPES` marks experience as `experience_jobs`. Candidate split/filter/flatten/token preserve job lists (no `str(list)`); legacy string experience still readable. Style D debug lists recorded jobs on session parse / parse_candidate_resume / craft generate when `debug=True`. ArtifactEditor JSON round-trip for experience tabs — see **`docs/test-bible/frontend/components.md`**. HTML emit / job-tailored highlights = siblings **AST-998** / **AST-997**.
+**AST-996:** Judith `craft_resume_base` Experience is an ordered **job array** (`company` / `title` / `dates` / `location` / `accomplishments`). Config shares `_EXPERIENCE_JOB_ARRAY_FIELD` across TASK + `resume_content` shapes; `DATA_SHAPES` marks experience as `experience_jobs`. Candidate split/filter/flatten/token preserve job lists (no `str(list)`). Leftover prose Experience is omitted on persist / token — **`### AST-1305`**. Style D debug lists recorded jobs on session parse / parse_candidate_resume / craft generate when `debug=True`. ArtifactEditor JSON round-trip for experience tabs — see **`docs/test-bible/frontend/components.md`**. HTML emit / job-tailored highlights = siblings **AST-998** / **AST-997**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -522,11 +522,11 @@ cd src/ui/frontend && npm run test:component -- \
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Normalize / validate / pin / hop prompts | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst997JobTailoredExperience`**; reuse **`TestAst594DraftJobResumePayload`** (legacy string still OK) |
+| Normalize / validate / pin / hop prompts | `src/core/candidate.py`, `data/admin/agent_task.json` | **`TestAst997JobTailoredExperience`**; reuse **`TestAst594DraftJobResumePayload`** (prose Experience rejected — **`### AST-1305`**) |
 | Finalize optional schema | `src/utils/config.py` | **`TestAst997FinalizeExperienceJobArray`** (primary: **`docs/test-bible/utils/config.md`**) |
 | Persist / match gates | `src/core/tracker.py` | **`TestAst997ExperienceJobArrayPersist`** (primary: **`docs/test-bible/core/tracker.md`**) |
 
-**Broken / obsolete this pass:** none — legacy string experience still accepted on draft validate.
+**Broken / obsolete this pass:** none at AST-997 land. **AST-1305** later rejects leftover prose Experience on draft validate (fixtures revised there).
 
 **AST-997** narrowed run:
 
@@ -970,7 +970,7 @@ Core `get_new_candidate_batch` / `clear_candidate_batch` wrappers (batch_id-firs
 
 **Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1270-nested-draft-job-resume-contract`.
 
-Nested hop contract: normalize unwraps **`agent_payload.resume`** before section checks; whitelist = candidate **`artifacts.base_resume`** keys ∩ **`RESUME_STRUCTURE_KNOWN_SECTION_IDS`** (no persisted **`resume_structure`** required); **`deviations`** is sibling metadata (retention = **AST-1271**; Style D trail = **AST-1272**). Manage Tasks seed keeps nested envelope + experience value-type wording. Flat (no nest) payloads remain accepted.
+Nested hop contract: normalize unwraps **`agent_payload.resume`** before section checks; whitelist = candidate **`artifacts.base_resume`** keys (including extras after **AST-1305** — no longer ∩ **`RESUME_STRUCTURE_KNOWN_SECTION_IDS`**; no persisted **`resume_structure`** required); **`deviations`** is sibling metadata (retention = **AST-1271**; Style D trail = **AST-1272**). Manage Tasks seed keeps nested envelope + experience value-type wording. Flat (no nest) payloads remain accepted.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1052,6 +1052,168 @@ Admin confirm-override for illegal candidate hops: `IllegalCandidateTransition` 
   tests/component/ui/api/test_api_candidate.py::TestAst970AdminStateOverride \
   tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_update_merges_data_state_and_api_key \
   tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state \
+  -q
+```
+
+---
+
+### AST-1303 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids`.
+
+Config contract + `normalize_resume_structure`: required seven ids (present + `enabled=True`); `RESUME_STRUCTURE_KNOWN_SECTION_IDS` stays the historical ten (required + optional, same order); extras persist when the slug matches `RESUME_STRUCTURE_EXTRA_ID_PATTERN` and is not reserved; closed `RESUME_STRUCTURE_BODY_FORMATS` (including `bullet_list` / `experience_detail`); missing formats filled from `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID`; contact ids have no `format`; `experience` is locked to `experience_detail`. Does **not** own HTML emit (**AST-1304**), hops/legacy labels (**AST-1305**), or the editor UI (**AST-1306**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Required / format / extra-id catalog | `src/utils/config.py` | **`TestAst1303ResumeStructureCatalog`** (config); reuse **`TestAst517ResumeStructureConfig`**, **`TestAst1010CandidateTaglineConfig`** |
+| Normalize seven-only, extras, format lock | `src/core/candidate.py` | **`TestAst1303ResumeStructureCatalog`**; revised **`TestAst517ResumeStructure`** (reject cases + persist fixtures) |
+
+**Broken / obsolete this pass:** AST-517 `unknown resume section id` reject and three-id blobs passed through `normalize` / `split` / parse — required-seven now fires first; valid extras are no longer unknown. Fixtures that hit normalize now use the default ten-id catalog. Slim `_three_section_structure` remains for projection helpers that do not normalize.
+
+**Integration:** none — existing `tests/integration/scenarios/test_candidate_nav_api.py` is nav visibility only; do not invent extra-section integration coverage (emit / hops / editor = siblings).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog \
+  tests/component/utils/test_config.py::TestAst517ResumeStructureConfig \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/core/test_candidate.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  tests/component/core/test_candidate.py::TestParseCandidateResume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_preserves_experience_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_still_keeps_legacy_string_experience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_parse_candidate_resume_debug_lists_jobs \
+  -q
+```
+
+
+---
+
+### AST-1305 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1305-hops-content-blobs-and-legacy-extra-labels`.
+
+Craft-base / draft-job accept extra section keys on this candidate’s base resume (not “unknown” merely for sitting outside the old ten-id list). Draft whitelist is current `artifacts.base_resume` keys including extras — not `base ∩ KNOWN`. Abrams `{label, content}` arrays keep unmatched titles (Highlights / Publications) on ingest, token JSON, and PUT `/data`. Experience persists only as an `experience_detail` job array; leftover prose is omitted / rejected so the hop regenerates. Does **not** own HTML emit (**AST-1304**) or the structure editor (**AST-1306**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Extra default format | `src/utils/config.py` | **`TestAst1305ResumeStructureExtraDefault`** |
+| Ingest / token / flatten / whitelist / split / filter | `src/core/candidate.py` | **`TestAst1305HopsContentBlobsAndLegacyLabels`**; revised **`TestAst517ResumeStructure`** split fixtures; revised **`TestAst594DraftJobResumePayload`**, **`TestAst996ExperienceJobArray`** (not the Judith `cache_prompt` contract — out of this child), **`TestAst997JobTailoredExperience`**, **`TestAst1270NestedDraftJobResumeContract`**, **`TestAst1272DraftHopDebugWhitelistTrail`** (job-array Experience; extras on whitelist) |
+| PUT label-list ingest | `src/ui/api/api_candidate.py` | **`TestAst1305LegacyLabelIngestApi`**; revised **`TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`** (invalid extra-id, not a slug that becomes an extra) |
+| Job persist bridge | `src/core/tracker.py` | **`TestAst1305JobResumeExtras`** |
+| Hop wiring fixtures | `src/core/agent.py` | **`tests/component/core/test_agent.py`** — `_draft_job_resume_ctx` + draft payloads use a job array |
+
+**Broken / obsolete this pass:** AST-996 `test_split_still_keeps_legacy_string_experience` now asserts omit; AST-997 `test_validate_accepts_legacy_string_experience` now expects `experience_detail` reject; AST-1270 `test_allowed_section_keys_intersect_known_ids` now allows extras (`highlights`) and drops reserved / invalid ids; AST-517 / session-parse / craft-persist fixtures that stored prose `"Jobs"` now use the sample job array; AST-519 PUT orphan key `orphan_section` would mint an extra — fixture uses `123bad`. **`[qa-handoff]`:** `TestAst986SessionResumeParse::test_200_success_splits_payload_no_candidate_bind_or_persist` asserts `context.raw_resume` (not `starting_resume_text`). Judith `craft_resume_base` `cache_prompt` contract stays on **AST-996** — not this child’s run list.
+
+**Integration:** none — existing `tests/integration/scenarios/test_candidate_nav_api.py` is nav visibility only; do not invent hop/ingest integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1305ResumeStructureExtraDefault \
+  tests/component/core/test_candidate.py::TestAst1305HopsContentBlobsAndLegacyLabels \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  tests/component/core/test_candidate.py::TestAst594DraftJobResumePayload \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_is_experience_job_array_helper \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_preserves_experience_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_still_keeps_legacy_string_experience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_drops_empty_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_flatten_promotes_job_array_from_content_dict \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_flatten_does_not_str_coerce_existing_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_format_base_resume_token_includes_job_array_json \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_debug_experience_jobs_emits_style_d_lines \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_debug_experience_jobs_legacy_string_shape \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_parse_candidate_resume_debug_lists_jobs \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_candidate.py::TestAst986SessionResumeParse::test_200_success_splits_payload_no_candidate_bind_or_persist \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/core/test_tracker.py::TestAst1305JobResumeExtras \
+  -q
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py -k "draft_job_resume" \
+  -q
+```
+
+---
+
+### AST-1322 · AST-1299 (bug — AST-1305 ingest)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1322-saving-base-resume-drops-highlights-extra-sections`.
+
+Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug ids and mint extras the same way Abrams `{label, content}` lists already do. Pre-fix dict ingest only mints when the key already matches the extra-id pattern, so PUT filter drops title-case extras.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Title-keyed dict ingest | `src/core/candidate.py` | **`TestAst1322TitleKeyedBaseResumeDict`** (bug-repro) |
+| PUT title-keyed dict | `src/ui/api/api_candidate.py` | **`TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — AST-1305 list / id-keyed paths stay green; AST-519 `123bad` orphan strip unchanged.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1322TitleKeyedBaseResumeDict \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi::test_put_title_keyed_dict_keeps_highlights_and_publications \
+  -q
+```
+
+---
+
+### AST-1324 · AST-1299 (bug — hydrate GET from base_resume)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1324-base-resume-content-must-load-render-existing-artifact-secti`.
+
+`GET /resume_structure` must hydrate structure from `artifacts.base_resume` (append missing content ids; missing body format → `free_prose`). Persist still via Save sections / PUT ingest — hydrate is read-only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hydrate helper + GET wire | `candidate.py`, `api_candidate.py` | **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (bug-repro) |
+
+**Broken / obsolete this pass:** none — AST-1322 PUT title-keyed ingest / AST-1305 list ingest stay green; new-extra default remains `bullet_list`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
+---
+
+### AST-1332 · AST-1326
+
+**Parent:** [AST-1326 — Make "Highlights" a REQUIRED resume section](https://linear.app/astralcareermatch/issue/AST-1326/make-highlights-a-required-resume-section). **Publish:** `origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`.
+
+`highlights` joins `RESUME_STRUCTURE_REQUIRED_SECTION_IDS` (before `experience`), default format `bullet_list`, DEFAULT order immediately above Experience; `normalize_resume_structure` coerces Highlights↔Experience adjacency on every successful normalize. Does **not** own hop schema / agent_task prompts (**AST-1333**) or builder HTML emit.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Required catalog + default order/format | `src/utils/config.py` | **`TestAst1332RequiredHighlightsCatalog`**; revised **`TestAst1303ResumeStructureCatalog`** (config) |
+| Omit/disable gates + order coerce | `src/core/candidate.py` | **`TestAst1332RequiredHighlightsNormalize`**; revised **`TestAst1303ResumeStructureCatalog`** (candidate), **`TestAst1306ResumeStructureSavePrep`** |
+| Hydrate extra fixture (not required id) | `api_candidate.py` GET | revised **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (`publications` extra) |
+
+**Broken / obsolete this pass:** AST-1303 config required-seven / format-map tuples — now eight required + `highlights: bullet_list`; KNOWN is eleven. AST-1303 `test_extra_requires_closed_format` / highlights-as-extra mint used `highlights` — switched to `publications` (required ids fill format from the map). AST-1306 pending-slug fixture titled "Highlights" — switched to "Publications". AST-1324 hydrate fixture popped required `highlights` (resolve fell back to DEFAULT `bullet_list`) — now hydrates open extra `publications` → `free_prose`.
+
+**Return pass ([qa-handoff]):** Restored AST-1334 test-tree paths from `origin/dev` onto this publish ref (`docs/test-bible/frontend/components.md` § AST-1334; `test_Modal.test.tsx`; `test_JobAnalysisReportModal.test.tsx`) after a bad sync dropped them — AST-1332 bible/tests unchanged.
+
+**Integration:** none — no existing scenario pins required-seven / Highlights optional; do not invent new integration coverage (hop/prompt = AST-1333).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1332RequiredHighlightsCatalog \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1332RequiredHighlightsNormalize \
+  tests/component/core/test_candidate.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
   -q
 ```
 

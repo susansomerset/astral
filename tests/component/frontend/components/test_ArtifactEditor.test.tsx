@@ -175,7 +175,8 @@ describe("ArtifactEditor", () => {
       }),
     } as Response)
     await waitFor(() => expect(generateBtn).not.toHaveClass("in-flight"))
-    expect(generateBtn).toHaveClass("save")
+    expect(generateBtn).toHaveClass("btn")
+    expect(generateBtn).toHaveClass("primary")
   })
 
   it("supports fixed-shape artifacts and add/remove controls", async () => {

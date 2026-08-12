@@ -1,3 +1,507 @@
+<!-- linear-archive: AST-1069 archived 2026-08-11 -->
+
+## Linear archive (AST-1069)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1069/slack-events-api-webhook-ingress-external-slack-contact  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1043 — Slack Bot Agent  
+**Blocked by / blocks / related:** parent: AST-1043; blocks: AST-1070
+
+### Description
+
+## What this implements
+
+Production Slack **Events API HTTP Request URL** ingress: verify signing secret, answer URL verification challenge, ack within ~3s, dedupe `event_id`, and route Estelle-relevant DMs / `@` mentions into Contact when listen is on. Web API `postMessage` for reply plumbing. Socket Mode stays **local/dev only** and feeds the same Contact handler. Does not own Manage Slack UI, resolve/PROSPECT, conversation cache, skill runners, or Estelle turn loop.
+
+## Acceptance criteria
+
+- [X] Production ingress is Events API HTTP Request URL (`POST /api/slack/events`), not Socket Mode.
+- [X] Signature verify + URL challenge + immediate 200 ack; process-local `event_id` dedupe.
+- [X] Mentions / DM messages route into Contact via `handle_slack_event` once listen is on.
+- [X] Socket Mode remains available for local/dev only (`scripts/slack_socket_mode_dev.py`).
+- [X] Railway/Slack Request URL operator checklist documented in the plan.
+
+## Boundaries
+
+Does not own CONTACT_CONFIG product surface (extends Events/Socket keys only), Manage Slack UI (AST-1067), candidate resolve/PROSPECT (AST-1068), conversation cache (AST-1070), skill runners (AST-1071), or Estelle conversational turn (AST-1046).
+
+## In scope
+
+- [X] `pattern.external.slack-events` (proposed) — `src/external/slack.py` verify / challenge / postMessage / Socket Mode helper
+- [X] `pattern.api.routes` — thin `api_slack` blueprint registered on Flask (transport only; no ui→external)
+- [X] `pattern.core.contact-agent` (proposed) — `receive_slack_events_http` + `handle_slack_event` on Contact
+- [X] `pattern.config.config-block` — CONTACT_CONFIG Events path / bot_event_types / dedupe / app_token_env
+- [X] `astral.config.config-source-of-truth` — ingress constants in config, not literals in UI/external
+- [X] `astral.config.secrets-and-env-specific-from-environ` — bot/signing/app tokens via env names at call time (core/external, not UI)
+- [X] `astral.layers.import-direction` — ui → core → external; UI never imports external
+- [X] `astral.layers.core-vs-external-bright-line` — HMAC/HTTP/Socket I/O only in external
+- [X] `astral.patterns.require-auth-on-protected-endpoints` — Events route intentionally open; Slack signature is auth
+- [X] `astral.standards.no-hardcoded-sets` — event types / path / dedupe max from CONTACT_CONFIG
+- [X] `astral.standards.debug-contract-gated` — Style D found/recorded on Contact inbound when `debug=True`
+- [X] `astral.standards.in-scope-only` / `astral.standards.no-cross-contamination` — sibling scopes excluded
+- [X] `astral.standards.public-then-helpers` / `astral.standards.dry-and-focused-functions` — receive/verify/post/handle as public surface
+- [X] `astral.standards.logging-via-utils` — Contact debug/outcome via get_logger; external does not log outcomes
+
+## Considered but excluded
+
+- [X] `pattern.ui.admin-endpoint` — Manage Slack listen flip is AST-1067
+- [X] `pattern.state.entity-state-transitions` / PROSPECT registry — AST-1068 resolve + create
+- [X] `pattern.agent.estelle-turn` (proposed) — conversational envelope is AST-1046 / AST-1072
+- [X] `astral.standards.database-header-inventory` — no schema/table changes; process-local dedupe only
+- [X] Socket Mode as production ingress — parent AC forbids; local script only
+
+## Notes for planning
+
+Depends on AST-1066 (`CONTACT_CONFIG` + `slack_listen_enabled()`). Request URL = webhook; Socket Mode = local listener. Slack subscription `message.im` vs payload type `message` — see plan Stage 5.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1043-slack-bot-agent`; child `sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`. Created at dispatch-parent.
+
+## Plan
+
+`docs/features/contact/ast-1069-slack-events-api-webhook-ingress.md` @ `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress` tip `3069520f`.
+
+### Comments
+
+#### betty — 2026-07-30T03:33:50.887Z
+merge-tests hygiene: collapsed duplicate `merge-tests(AST-1069)` commits on `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress` → exactly one: `9107d11f` (`origin/tests 1d2bf80e`). Tip tree unchanged (product + tests). Dropped empty `0c9d89c3`.
+
+#### chuckles — 2026-07-30T03:31:48.534Z
+[merge-child] blocked: duplicate merge-tests(AST-1069) on sub — count=2 (amend on tests, one merge-tests only)
+
+Commits:
+- `650a0d51` merge-tests(AST-1069): origin/tests 1d2bf80e…
+- `0c9d89c3` merge-tests(AST-1069): origin/tests 26fe570b…
+
+@Betty White — tests hygiene: leave exactly one `merge-tests(AST-1069)` on `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`, then Chuckles will re-run merge-child.
+
+— Chuckles
+
+#### radia — 2026-07-30T03:27:33.399Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1069
+**Publish ref:** `3462a2fd` on `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`
+**Overall:** DISCUSS
+
+**Diff change set:** `origin/dev...3462a2fd` — layers `{core, external, utils, ui, docs, scripts}`; paths `src/external/slack.py` (A), `src/core/contact.py` (A), `src/ui/api/api_slack.py` (A), `src/ui/server.py` (M), `src/utils/config.py` (M), `scripts/slack_socket_mode_dev.py` (A), `requirements.txt` (M), plan/bible/tests; change_types `{add, modify}`. Tip carries AST-1066 scaffold ancestry (empty skills); not AST-1071.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task; CONTACT ≠ TASK_CONFIG |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim API |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data entity refs |
+| astral.config.config-source-of-truth | scoped | conforms | events path / bot_event_types / dedupe / env names in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | strict os.environ at call time in core/external; no import-time reads |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | docs/features plans only — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file per ticket under docs/features/contact/ |
+| astral.git.betty-no-src-or-features | scoped | conforms | tip merge-tests `650a0d51` tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests/bible via Betty test/merge-tests vocabulary |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | HMAC/HTTP/Socket I/O only in external |
+| astral.layers.import-direction | scoped | conforms | ui→core only; core→external; script exempt callers |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | conforms | Socket Mode local script under scripts/ |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | path/event types/listen from config via Contact |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | no coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render_verdict |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | Events route open; Slack signature auth via core |
+| astral.standards.data-raises-caller-logs | scoped | conforms | external raises on post; Contact decides verify outcomes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no data/schema paths |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on receive/handle when debug=True; quiet when False |
+| astral.standards.dry-and-focused-functions | scoped | conforms | receive / verify / post / handle split |
+| astral.standards.in-scope-only | scoped | conforms | no Manage Slack / resolve / skills / turn-loop |
+| astral.standards.logging-via-utils | scoped | conforms | Contact get_logger Style D; external does not log outcomes |
+| astral.standards.no-cross-contamination | scoped | conforms | skills stay empty; no TASK_CONFIG / sibling product |
+| astral.standards.no-hardcoded-sets | scoped | conforms | event types/path/dedupe from config; skew/timeout named module constants |
+| astral.standards.public-then-helpers | scoped | conforms | public ingress API present; private helpers grouped with handle path |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config.py has no data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state work |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch run_next |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no src/ui/frontend/** |
+| astral.ui.naming-conventions | scoped | conforms | snake_case /api/slack/events |
+| astral.ui.single-gunicorn-worker | scoped | conforms | process-local dedupe; multi-worker OOS as planned |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | authoritative merge-tests tip `650a0d51` (prior empty merge ignored) |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary on sub |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1069-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | no illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none in tip history |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1069-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Joan round=1 import-direction fixed; Decisions held |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–5 + Revision 1 match tip |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Hedy remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.external.slack-events (proposed) | conforms | verify / challenge / postMessage / Socket Mode helper |
+| pattern.api.routes | conforms | thin api_slack transport-only |
+| pattern.core.contact-agent (proposed) | conforms | receive_slack_events_http + handle_slack_event |
+| pattern.config.config-block | conforms | CONTACT_CONFIG Events/Socket keys |
+
+## Plan adherence
+
+Stages 1–5 land; Revision 1 import-direction fix present (UI never imports external; signing secret read in Contact). Listen gate, signature verify, URL challenge, daemon-thread ack, process-local dedupe, Socket Mode script local-only. Self-Assessment MAJOR-CHANGE / high / HIGH matches open-webhook risk and mitigations. Sibling scopes clean (empty skills; no resolve/Manage Slack/turn-loop).
+
+## Findings
+
+**discuss** — C4 straggler: Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban` now in-scope on tip (docs/features + tests/bible). All three score **conforms** — no product action.
+
+## What’s solid
+
+ui→core→external after Joan Plan Discuss; HMAC + listen gate + empty 200 ack; config-driven path/types/dedupe; external silent on outcomes; Socket Mode confined to scripts/.
+
+Plan append: `docs/features/contact/ast-1069-slack-events-api-webhook-ingress.md` @ `3462a2fd`.
+
+context_tokens≈58000
+
+— Radia
+
+#### betty — 2026-07-30T03:23:50.912Z
+## QA test manifest — AST-1069
+
+`origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress` @ `650a0d51`
+
+- `merge-tests(AST-1069): origin/tests 1d2bf80ea8abd4d4596ebd8350ea655a0994dda3` (Betty paths overlay via `-s ours`; tip vs `3069520f` is tests/bible only)
+- Prior empty `merge-tests` @ `0c9d89c3` was a no-op against wrong SHA — ignore; tip `650a0d51` is authoritative.
+
+### Manifest
+
+1. `tests/component/utils/test_config.py::TestAst1069ContactEventsConfig`
+2. `tests/component/external/test_slack.py::TestAst1069ExternalSlack`
+3. `tests/component/core/test_contact.py::TestAst1069ContactSlackIngress`
+4. `tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi`
+5. `tests/component/core/test_contact.py::TestAst1066ContactScaffold` (scaffold still green; empty skills)
+6. `tests/component/utils/test_config.py::TestAst1066ContactConfig`
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1069ContactEventsConfig \
+  tests/component/external/test_slack.py::TestAst1069ExternalSlack \
+  tests/component/core/test_contact.py::TestAst1069ContactSlackIngress \
+  tests/component/ui/api/test_api_slack.py::TestAst1069SlackEventsApi \
+  tests/component/core/test_contact.py::TestAst1066ContactScaffold \
+  tests/component/utils/test_config.py::TestAst1066ContactConfig \
+  -q
+```
+
+(21 passed vs tip product.)
+
+### Broken / obsolete
+none — additive Events/Socket keys + ingress handlers + external slack + thin blueprint.
+
+### Bible shasums (`origin/sub/…` tip, sha256)
+
+- `docs/test-bible/core/contact.md` — `3c5b16b5d72bd3266274f3a139375f0657b417e5a05efcf94d8f7c00625dd24c`
+- `docs/test-bible/external/slack.md` — `e87a70ec5908e1aeb080452e6bff19e6c7ea33ffd16a25e27dfc3da91e5d2092`
+- `docs/test-bible/ui/api/api_slack.md` — `ea16176b3604650c382819bb94e2965a195d1a00611a56663229dbad8c198f11`
+- `docs/test-bible/utils/config.md` — `38b120e6af0dabe00b54420d5a45e21149ac379000ee0982b3f529e9b253dd7e`
+
+#### joan — 2026-07-30T03:13:08.343Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1069
+**Overall:** APPROVED
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Estelle DM/@ ingress + reply plumbing | Stages 2–4 (ingress); `post_message` for reply plumbing; turn loop N/A (AST-1046) |
+| AC2 Events Request URL verify/ack; DM/@ reach Contact when listen on | Stages 2–4 + Stage 5 Production Request URL |
+| AC3 Manage Slack listen + `[env]` prefix | N/A — boundary (AST-1067); this child only reads `listen_enabled` |
+| AC4 resolve + PROSPECT | N/A — boundary (AST-1068) |
+| AC5 routing exposes state | N/A — boundary (AST-1068) |
+| AC6 conversation load/cache | N/A — boundary (AST-1070) |
+| AC7 CONTACT_CONFIG skills/ACL | N/A — extends Events/Socket keys only; skills ACL is AST-1066/1071 |
+| AC8 debug=True found/recorded | Stage 3 Style D on receive/handle when `debug=True` |
+
+### Child AC → plan stages
+
+| Child AC | Plan coverage |
+|----------|---------------|
+| Production ingress Events HTTP Request URL | Stages 4–5 |
+| Signature verify + challenge + 200 ack; event_id dedupe | Stages 2–3 |
+| Mentions/DM → Contact via `handle_slack_event` when listen on | Stage 3 |
+| Socket Mode local/dev only | Stages 2, 5 |
+| Railway/Slack Request URL checklist in plan | Stage 5 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 CONTACT_CONFIG Events/Socket keys | config-source-of-truth; no-hardcoded-sets |
+| Stage 2 `src/external/slack.py` | pattern.external.slack-events; core-vs-external I/O |
+| Stage 3 `receive_slack_events_http` + `handle_slack_event` | ui→core→external; listen gate; debug contract |
+| Stage 4 `api_slack` transport-only | thin Events webhook entry; parent AC2 |
+| Stage 5 Socket script + Railway checklist | Socket Mode local-only; operator wiring |
+
+**Notes:** Files Changed layer `deps` for `requirements.txt` mapped as `docs` for matching. Prior Plan Discuss round=1 (concern+reply) completed; re-validate from Plan Ready on tip `433b8574`.
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Sub publish vocabulary |
+| orch.git.flow-direction-inviolable | conforms | origin/sub only |
+| orch.git.ftr-sub-topology | conforms | Parent Git table match |
+| orch.git.merge-on-checkout | conforms | No illegal merge |
+| orch.git.no-cherry-pick-rebase-force | conforms | None |
+| orch.git.no-dev-agent-branches | conforms | sub/AST-1043/AST-1069-… |
+| orch.git.one-epic-worktree-per-parent | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions + stop→parent on Socket underspec |
+| orch.pipeline.plan-is-bible | conforms | Binding stages + Revision 1 delta |
+| orch.pipeline.project-scoped-queues | conforms | Contact child only |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready re-validate after discuss |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Hedy) builds |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer path |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded tasks |
+| astral.agent.do-task-delegation | conforms | No do_task |
+| astral.agent.grade-vector-validation | conforms | No grades |
+| astral.batch.batch-id-first | conforms | No batch claim |
+| astral.batch.batch-id-format | conforms | No batch_id |
+| astral.batch.claim-process-release | conforms | No batch |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data |
+| astral.config.config-source-of-truth | conforms | Path/event types/dedupe/env names in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | Strict environ at call time in core/external |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src |
+| astral.layers.core-vs-external-bright-line | conforms | HMAC/HTTP/Socket helpers in external only |
+| astral.layers.import-direction | conforms | UI→core only; core→external; Revision 1 fixed prior violate |
+| astral.layers.scripts-exempt-from-layer-rules | conforms | Socket Mode script under scripts/ |
+| astral.layers.ui-config-driven-business-logic | conforms | Listen/event types from config via Contact |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | Events route open; Slack signature auth via core |
+| astral.standards.data-raises-caller-logs | conforms | External raises; Contact decides |
+| astral.standards.debug-contract-gated | conforms | Style D on Contact inbound when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | receive/verify/post/handle split |
+| astral.standards.in-scope-only | conforms | Sibling Out of scope list |
+| astral.standards.logging-via-utils | conforms | Contact logs; external does not log outcomes |
+| astral.standards.no-cross-contamination | conforms | No resolve/Manage Slack/skills |
+| astral.standards.no-hardcoded-sets | conforms | Event types/path/dedupe from config |
+| astral.standards.public-then-helpers | conforms | Public receive/handle/verify/post surface |
+| astral.standards.utils-data-late-import-only | conforms | No utils→data |
+| astral.state.core-decides-transitions | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | conforms | No jobs |
+| astral.state.no-daisy-chain-in-run | conforms | No dispatch chain |
+| astral.ui.naming-conventions | conforms | snake_case `/api/slack/events` |
+| astral.ui.single-gunicorn-worker | conforms | Process-local dedupe; multi-worker OOS |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.scripts-exempt-from-layer-rules, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — paths match none of plan paths
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty
+- astral.ui.frontend-file-placement — paths match none of plan paths
+
+## Findings
+
+None fix-now.
+
+**Round 1 disposition:** Prior import-direction violate resolved — `receive_slack_events_http` in core; Stage 4 transport-only; Stage 5 `message.im` vs payload `message` clarified.
+
+**acceptable:** Self-assessment MAJOR-CHANGE / Conf high / Risk HIGH remains honest; signature (core→external) + listen gate + empty 200 ack are adequate mitigations. Not escalate.
+
+**R6 checklist:** Definition fidelity pass. Layer/import pass after Revision 1. Config/secrets pass. Open Events route intentional (§2.9). No sibling creep.
+
+context_tokens≈58000
+
+— Joan
+
+#### hedy — 2026-07-30T03:09:15.889Z
+[plan-discuss] round=1 reply
+
+**Delta:** Fixed Joan fix-now on `astral.layers.import-direction`.
+
+- Stage 3: added Contact `receive_slack_events_http(raw_body, timestamp=, signature=, debug=)` — loads signing secret, calls external verify + challenge parse, daemon-threads `handle_slack_event`, returns `(status, body)`.
+- Stage 4: `api_slack` is transport-only (raw body + Slack headers → core). **No** ui→external imports; **no** signing-secret environ reads in UI.
+- Stage 2 / Files Changed: external callers = core + scripts only.
+- Stage 5: clarified Slack subscription `message.im` vs payload `event.type == "message"` in `bot_event_types`.
+
+**Plan tip:** `433b8574` — https://github.com/susansomerset/astral/blob/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress/docs/features/contact/ast-1069-slack-events-api-webhook-ingress.md
+
+Returning to **Plan Ready**.
+
+#### joan — 2026-07-30T03:07:13.060Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1069
+**Overall:** REVISE
+
+## Traceability
+
+### Parent AC → plan stages (this child only)
+
+| Parent AC | Plan coverage |
+|-----------|---------------|
+| AC1 Estelle DM/@ ingress + reply plumbing | Stages 2–4 (ingress); `post_message` for reply plumbing; turn loop N/A (AST-1046) |
+| AC2 Events Request URL verify/ack; DM/@ reach Contact when listen on | Stages 2–4 + Stage 5 Production Request URL |
+| AC3 Manage Slack listen + `[env]` prefix | N/A — boundary (AST-1067); this child only reads `listen_enabled` |
+| AC4 resolve + PROSPECT | N/A — boundary (AST-1068) |
+| AC5 routing exposes state | N/A — boundary (AST-1068) |
+| AC6 conversation load/cache | N/A — boundary (AST-1070) |
+| AC7 CONTACT_CONFIG skills/ACL | N/A — extends Events/Socket keys only; skills ACL is AST-1066/1071 |
+| AC8 debug=True found/recorded | Stage 3 `handle_slack_event(..., debug=)` Style D |
+
+### Child AC → plan stages
+
+| Child AC | Plan coverage |
+|----------|---------------|
+| Production ingress Events HTTP Request URL | Stages 4–5 |
+| Signature verify + challenge + 200 ack; event_id dedupe | Stages 2–4 |
+| Mentions/DM → Contact via `handle_slack_event` when listen on | Stage 3–4 |
+| Socket Mode local/dev only | Stages 2, 5 |
+| Railway/Slack Request URL checklist in plan | Stage 5 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|-------|---------|
+| Stage 1 CONTACT_CONFIG Events/Socket keys | config-source-of-truth; no-hardcoded-sets |
+| Stage 2 `src/external/slack.py` | pattern.external.slack-events; core-vs-external I/O |
+| Stage 3 `handle_slack_event` | pattern.core.contact-agent inbound; listen gate; debug contract |
+| Stage 4 `api_slack` + register | thin Events webhook entry; parent AC2 |
+| Stage 5 Socket script + Railway checklist | Socket Mode local-only; operator wiring |
+
+**Notes:** Files Changed layer `deps` for `requirements.txt` mapped as `docs` for matching (unrecognized layer).
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Sub publish vocabulary |
+| orch.git.flow-direction-inviolable | conforms | origin/sub only |
+| orch.git.ftr-sub-topology | conforms | Parent Git table match |
+| orch.git.merge-on-checkout | conforms | No illegal merge |
+| orch.git.no-cherry-pick-rebase-force | conforms | None |
+| orch.git.no-dev-agent-branches | conforms | sub/AST-1043/AST-1069-… |
+| orch.git.one-epic-worktree-per-parent | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Decisions documented; stop→parent on Socket underspec |
+| orch.pipeline.plan-is-bible | conforms | Binding stages present |
+| orch.pipeline.project-scoped-queues | conforms | Contact child only |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready gate |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | No tests/ |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Engineer (Hedy) builds |
+| orch.roles.engineer-assignee-through-resolve | conforms | Engineer path |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | No graded tasks |
+| astral.agent.do-task-delegation | conforms | No do_task |
+| astral.agent.grade-vector-validation | conforms | No grades |
+| astral.batch.batch-id-first | conforms | No batch claim |
+| astral.batch.batch-id-format | conforms | No batch_id |
+| astral.batch.claim-process-release | conforms | No batch |
+| astral.batch.entity-agent-responses-latest-only | conforms | No agent_data |
+| astral.config.config-source-of-truth | conforms | Path/event types/dedupe/env names in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | Strict environ at call time; no import-time crash |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns src |
+| astral.layers.core-vs-external-bright-line | conforms | HMAC/HTTP/Socket helpers live in external (Stage 2) |
+| astral.layers.import-direction | **violates** | Stage 4 UI calls external verify/challenge — ui may import core/utils only |
+| astral.layers.scripts-exempt-from-layer-rules | conforms | Socket Mode script under scripts/ |
+| astral.layers.ui-config-driven-business-logic | conforms | Listen/event types from config via Contact |
+| astral.patterns.coat-check-never-store-empty | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | No consult |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | Events route intentionally open; Slack signature is auth (§2.9) |
+| astral.standards.data-raises-caller-logs | conforms | External raises; Contact/UI decide |
+| astral.standards.debug-contract-gated | conforms | Style D on Contact inbound when debug=True |
+| astral.standards.dry-and-focused-functions | conforms | verify/post/handle split |
+| astral.standards.in-scope-only | conforms | Sibling Out of scope list |
+| astral.standards.logging-via-utils | conforms | Contact logs; external does not log outcomes |
+| astral.standards.no-cross-contamination | conforms | No resolve/UI Manage Slack/skills |
+| astral.standards.no-hardcoded-sets | conforms | Event types/path/dedupe from config |
+| astral.standards.public-then-helpers | conforms | Public verify/post/handle surface |
+| astral.standards.utils-data-late-import-only | conforms | No utils→data |
+| astral.state.core-decides-transitions | conforms | No state transitions |
+| astral.state.job-prior-states-enforced | conforms | No jobs |
+| astral.state.no-daisy-chain-in-run | conforms | No dispatch chain |
+| astral.ui.naming-conventions | conforms | snake_case `/api/slack/events` |
+| astral.ui.single-gunicorn-worker | conforms | Process-local dedupe assumes single worker; multi-worker noted OOS |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.scripts-exempt-from-layer-rules, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths match none of plan paths
+- astral.debug.spikes-under-debug-dir — paths match none of plan paths
+- astral.docs.features-single-file-per-ticket — paths match none of plan paths
+- astral.git.engineer-test-tree-ban — paths match none of plan paths
+- astral.standards.database-header-inventory — layers {data} ∩ plan empty
+- astral.ui.frontend-file-placement — paths match none of plan paths
+
+## Findings
+
+### fix-now — Stage 4 UI → external import (import-direction)
+
+**Location:** Stage 4 `api_slack.py` — calls `verify_slack_signature` / `parse_url_verification` from `src.external.slack`, and reads `os.environ[CONTACT_CONFIG["signing_secret_env"]]` in the UI layer.
+
+**Finding:** `astral.layers.import-direction` — **ui may import core and utils only; never external**. Existing `src/ui/api/*` modules do not import `src.external`. Stage 2 correctly puts HMAC/HTTP in external, but Stage 4 wires the blueprint to call external directly.
+
+**Recommendation:** Keep blueprint thin: read raw body + Slack headers only; call a **core** entrypoint (e.g. extend Contact with `receive_slack_events_http(raw_body, timestamp, signature) -> (status_code, body_dict_or_bytes)`) that (1) loads signing secret / calls external verify + challenge parse, (2) returns challenge response or 401, (3) on event payloads schedules/calls `handle_slack_event`. UI must not import `src.external.slack`. Daemon-thread ack-then-process can stay in UI **or** move into that core entry — either is fine if UI→external is gone.
+
+### discuss (non-blocking)
+
+- **HIGH risk** self-assessment is honest; signature check + listen gate + empty 200 ack are adequate mitigations **after** the layering fix — not an Archie escalate by itself.
+- Stage 5 checklist `message.im` vs config `bot_event_types` containing payload type `message` is a Slack subscription-vs-payload naming quirk — clarify in plan so operators subscribe correctly without changing Contact filters.
+
+context_tokens≈55000
+
+— Joan
+
+#### hedy — 2026-07-30T03:03:15.462Z
+Plan published on `origin/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1043/AST-1069-slack-events-api-webhook-ingress/docs/features/contact/ast-1069-slack-events-api-webhook-ingress.md (`fd5e8439`)
+
+**Scope:** `MAJOR-CHANGE` — new `src/external/slack.py`, Events webhook blueprint, Contact `handle_slack_event`, Socket Mode local script, and CONTACT_CONFIG ingress keys.
+
+**Conf:** `high` — AST-1066 left env-name + listen contracts; Slack verify/ack/post is a fixed Events API contract; layering matches existing external modules.
+
+**Risk:** `HIGH` — bad verify/ack can take Estelle offline workspace-wide or leave an open webhook; mitigated by HMAC signature check, listen gate, empty immediate 200, and no Bearer-protected data on this route.
+
+---
+
 # AST-1069 — Slack Events API webhook ingress
 
 **Linear:** [AST-1069](https://linear.app/astralcareermatch/issue/AST-1069/slack-events-api-webhook-ingress-external-slack-contact)  

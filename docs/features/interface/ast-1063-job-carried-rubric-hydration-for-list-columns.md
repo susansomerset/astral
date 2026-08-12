@@ -518,3 +518,236 @@ Stages 1–3: `_rubric_snapshot_for_job_data`; persist `*_rubric` on verdict / j
 | discuss — statute stragglers ×3 (all conforms) | **No action** — informational plan-vs-diff predicate drift only. |
 
 No product code changes in resolve. Proceeding to User Testing after §9a dry-run.
+
+---
+
+## Bug: AST-1327 — Missing vector grades in Analysis-tab headers (meteorites)
+
+### As-is
+
+On Recommended Job Report → **Analysis** tab, collapsed phase headers show only a subset of per-vector grade icons for **meteorite** jobs (often a single shared vector such as Quality Check / Gut Check). **Gazer** jobs show the full grade row. Expanded phase bodies already list every graded vector via `AgentAnalysisHeader`. **JD Analysis** opens expanded by default (`default_expanded: p.tab_id === "phase_jd"`).
+
+### To-be
+
+Collapsed Analysis section headers show a grade+confidence cell for **every** graded vector on that phase for meteorites and gazers alike, using analysis-time **job-carried** `*_rubric` (with grades-only fallback when the snapshot is absent). Expanded body vector identity/labels follow the same job-carried source. All Analysis-tab sections start **collapsed**. Summary / Artifacts expand rules unchanged.
+
+### Repro
+
+1. Open a meteorite Recommended job whose `jd_grades` has multiple vectors (e.g. Embedded/Firmware, International, ML/IC, Onsite, Pre-PMF, Quality Check, Gut Check) while the candidate’s live `jobdesc_rubric` only overlaps on a subset.
+2. Analysis → JD Analysis header (collapsed): only the overlapping vector(s) appear in `.recommended-report-phase-grade-row`.
+3. Expand the section: `.analysis-header` lists every grade row from `jd_grades`.
+4. Repeat on a gazer job graded against live `jobdesc_rubric`: header row matches body.
+5. Open Analysis: JD Analysis panel has `aria-expanded="true"`; other phases collapsed.
+
+Fixture shape (no DB seed — file/JSON persistence):
+
+```json
+{
+  "jd_grades": [
+    {"vector": "Embedded/Firmware/Hardware Domain", "grade": "A", "confidence": 5},
+    {"vector": "Quality Check", "grade": "B", "confidence": 4}
+  ],
+  "jd_rubric": [
+    {"code": "EFW", "label": "Embedded/Firmware/Hardware Domain", "importance": 1, "grade_descriptions": []},
+    {"code": "QC", "label": "Quality Check", "importance": 5, "grade_descriptions": []}
+  ]
+}
+```
+
+With live candidate `artifacts.jobdesc_rubric` containing only Quality Check, pre-fix header shows one cell; post-fix shows two from `jd_rubric`.
+
+### Root cause
+
+AST-950 wired Analysis header metadata through `buildPhaseSectionGradeConfidenceRow(gradesRaw, rubricKey, candidateArtifacts)` where `rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]` → always `jobdesc_rubric` for `jd_grades` (`JOBS_UI_GRADE_RUBRIC`). Meteorite JD shares `jd_grades` / `jd_rubric` storage but was scored against **`meteorite_jobdesc_rubric`** (config already documents this in `JOBS_UI_STATE_RUBRIC_OVERRIDE`; list UI / consult text paths honor it; Analysis tab does not).
+
+Header columns are built from the **live** gazer artifact; `gradeAndConfidenceForCol` skips non-matching grade vectors (`if (!grade) continue`). Body uses `gradesForHeader(gradesRaw)` (iterate grades) so every vector appears. AST-1063 already persists + flattens job-carried `*_rubric` on detail (`GET /api/jobs/<id>` → `_flatten_grades`); Analysis never consumes it.
+
+Secondary: Analysis section expand hardcodes JD open — contradicts current UAT ask (collapse all Analysis sections).
+
+### Proposed change
+
+Frontend-only consumer of AST-1063 payload on the Recommended report Analysis tab. Reuse `jobCarriedRubricKey` / `buildJobListRubricColumnsForGroup` (AST-1064) — do not reintroduce live `grade_rubric_by_field` / `candidateArtifacts` for header column identity. Do not change consult write paths or API flatten (already landed).
+
+1. **`src/ui/frontend/src/lib/recommendedJobReport.tsx` — `buildPhaseSectionGradeConfidenceRow`**
+   - Change signature to take the job object + `gradesField` (not live artifact key + `candidateArtifacts`):
+     ```ts
+     buildPhaseSectionGradeConfidenceRow(
+       gradesRaw: unknown,
+       job: Record<string, unknown>,
+       gradesField: string,
+     ): ReactNode
+     ```
+   - Build columns via `buildJobListRubricColumnsForGroup({ gradeKey: gradesField, columnSourceJob: job })` then `sortJobListRubricColumns` (same as Skipped/In Review). Paint grade+confidence cells exactly as today (`gradeAndConfidenceForCol` + `ConfidenceBullets`).
+   - When job-carried `*_rubric` is absent/empty, `buildJobListRubricColumnsForGroup` already falls back to grades-only columns — keep that; **do not** fall back to live `jobdesc_rubric` / `meteorite_jobdesc_rubric` for header identity (that is the defect).
+   - Update / remove `buildPhaseTabGradeDots` only if still referenced; if unused by Analysis, leave alone unless a single call site still passes live artifacts for this report.
+
+2. **`src/ui/frontend/src/components/JobAnalysisReportModal.tsx`**
+   - `renderAnalysisMetadata`: pass `job` + `phase.grades_field` into the revised helper; stop reading `manifest.jobs.grade_rubric_by_field` / `candidateArtifacts` for the header row.
+   - `analysisSections`: set `default_expanded: false` for every phase (drop `p.tab_id === "phase_jd"`). Summary / Artifacts logic untouched.
+   - `renderAnalysisSection` / `AgentAnalysisHeader`: pass job-carried rubric items for vector labels — resolve via `jobCarriedRubricKey(phase.grades_field)` from flattened job (top-level or `job_data`, same as `jobGradesForField`). Keep live `rubricArtifact` **only** as optional content lookup for “show rubric” (snapshot omits `content` per AST-1063); label/order must not depend on live artifact match. Prefer a small helper `jobRubricForField(job, gradesField)` next to `jobGradesForField` if it keeps both call sites DRY.
+   - Extend local `JobDetail` typing with optional `jd_rubric` / `do_rubric` / `get_rubric` / `like_rubric` (and joblist if ever shown) so TypeScript matches `_flatten_grades`.
+
+3. **Out of scope**
+   - Consult snapshot / API flatten (AST-1063 already done).
+   - Skipped / In Review list grouping (AST-1064).
+   - Changing `JOBS_UI_GRADE_RUBRIC` / state override maps for other consumers.
+   - Backfill historical `*_rubric`; grades-only fallback covers pre-snapshot rows.
+   - `tests/` / bible (Betty / fix-board).
+
+⚠️ **Decision:** Prefer job-carried `*_rubric` over wiring `jobs_ui_rubric_for_state` / live meteorite artifact into the Analysis tab. Job-carried matches analysis-time criteria for both pipelines without state branching in React; state override remains for consumers that still need a live artifact key.
+
+### Blast radius
+
+- Analysis header metadata + section default expand in Recommended Job Report only.
+- Shared helper `buildPhaseSectionGradeConfidenceRow` — any test or caller still using `(grades, rubricKey, candidateArtifacts)` must update (Betty).
+- `AgentAnalysisHeader` label path may accept explicit rubric items; other call sites (if any) keep current live-artifact behavior unless they pass the new prop.
+- Does not affect Jobs list tables, Summary expand rules, or scoring.
+
+### What must still hold
+
+- AST-1063: job-carried `*_rubric` shape (no `content`); API flatten of `*_rubric` / `*_score` on list + detail; historical jobs may omit `*_rubric`.
+- AST-950: horizontal grade+confidence header row; expanded body = phase `take_*` above per-vector rows; four phase sections (JD/DO/GET/LIKE); no Overview.
+- AST-1064 contract: `grade_field.replace("_grades", "_rubric")`; grades-only fallback when snapshot missing — Analysis reuses that consumer pattern, does not invent a third source.
+- Live candidate rubric edits without re-grade must not retitle Analysis header columns for already-graded jobs.
+
+## Radia review (AST-1327 review-fix)
+
+**Verdict:** REVIEW (DISCUSS, no fix-now) — Commit `a4549715`
+
+**fix-now:** (none)
+
+**Discuss:**
+1. Stale AST-950 component tests still call old 3-arg `buildPhaseSectionGradeConfidenceRow` — tracked on sibling gap **AST-1328**; not product fix-now.
+2. Meteorite “show rubric” content may still use `jobdesc_rubric` live key for modal content (headers fixed; content out of header-bug scope).
+
+**Advisory:** `buildJobListRubricColumnsForGroup` top-level-only vs `jobRubricForField` job_data asymmetry — safe with API flatten; optional follow-up. Bible rows for AST-950 still live-artifact wording — AST-1328.
+
+**What’s solid:** Analysis headers consume job-carried `*_rubric` via AST-1064 path; Analysis sections default collapsed; engineer test-tree ban held.
+
+## docs-acceptance (AST-1327)
+
+Test/bible coverage for this fix is owned by sibling gap **AST-1328** (Betty board TESTS: REVISE). Product code on this ref is docs-acceptance for merge-child — no fabricated `test(AST-1327)` noop.
+
+---
+
+## Bug: AST-1328 — gap: Analysis header job-carried / collapse tests
+
+### As-is
+
+No bible or component coverage for Recommended Analysis headers keyed off job-carried `*_rubric` (meteorite vs gazer live-artifact mismatch). Existing AST-950 asserts still call the pre–AST-1327 `buildPhaseSectionGradeConfidenceRow(grades, rubricArtifactKey, candidateArtifacts)` signature and expect **JD Analysis** default-expanded (`Collapse section` count === 1 on Analysis open). Against `origin/ftr/AST-1321-missing-vector-grades-rubric-headers` (AST-1327 product), those asserts fail (`gradeKey.endsWith is not a function`; no Collapse control until a section is expanded).
+
+### To-be
+
+Bible (`docs/test-bible/frontend/lib.md` + `components.md` AST-950 sections) and tests document/assert: header columns from job-carried `*_rubric` (or grades-only fallback); meteorite-shaped fixture where live `jobdesc_rubric` underlaps `jd_grades` still shows every graded vector in the header row; all four Analysis sections start collapsed. Obsolete live-artifact / JD-expanded AST-950 asserts are revised (not deleted wholesale).
+
+### Repro
+
+Against product tip with AST-1327 landed (no test updates):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  --testNamePattern="AST-950"
+```
+
+Fails: lib helper calls with `"jobdesc_rubric"` + artifacts map; JAR “JD expanded by default” / Collapse-first flows. Fixture that demonstrates the product bug (pre-fix) and the gap (post-fix without tests):
+
+```json
+{
+  "jd_grades": [
+    {"vector": "Embedded/Firmware/Hardware Domain", "grade": "A", "confidence": 5},
+    {"vector": "Quality Check", "grade": "B", "confidence": 4}
+  ],
+  "jd_rubric": [
+    {"code": "EFW", "label": "Embedded/Firmware/Hardware Domain", "importance": 1, "grade_descriptions": []},
+    {"code": "QC", "label": "Quality Check", "importance": 5, "grade_descriptions": []}
+  ]
+}
+```
+
+with candidate `artifacts.jobdesc_rubric` containing only Quality Check — header must render **two** cells from `jd_rubric`, not one from live artifact.
+
+### Root cause
+
+Betty `[board-betty] TESTS: REVISE` on AST-1327: bible AST-950 rows still describe live-artifact header wiring; component tests encode AST-950 Stage 3 expand seed and old helper arity. Product fix shipped on AST-1327 without revising those contracts — gap child owns test/bible only.
+
+### Proposed change
+
+**Owner:** Betty (test-tree + bible). No product `src/` changes on this ticket — AST-1327 already landed job-carried headers + collapse-all. Do not reopen Analysis React for coverage convenience.
+
+1. **`docs/test-bible/frontend/lib.md` (AST-950 section)**
+   - Rewrite the AST-950 helper row: `buildPhaseSectionGradeConfidenceRow(gradesRaw, job, gradesField)` columns via `buildJobListRubricColumnsForGroup` / job-carried `*_rubric` (grades-only when snapshot absent) — **not** live `jobdesc_rubric` / `candidateArtifacts`.
+   - Add a manifest line for meteorite mismatch: header cell count follows `jd_rubric` ∩ graded vectors when live gazer artifact underlaps.
+   - Keep narrowed run command; add `--testNamePattern` tokens for any new describe names below.
+
+2. **`docs/test-bible/frontend/components.md` (AST-950 section)**
+   - Replace “JD Analysis default expanded” with **all Analysis sections start collapsed** (AST-1327 UAT).
+   - Note JAR Analysis metadata uses job-carried flatten (`jd_rubric` et al. on job payload), not `grade_rubric_by_field` live lookup for header identity.
+   - Point manifest at revised JAR + lib cases (and optional `AgentAnalysisHeader` job-carried `rubricItems` label case if covered).
+
+3. **`tests/component/frontend/lib/test_recommendedJobReport.test.tsx` — describe `recommendedJobReport — AST-950 grade+confidence header row`**
+   - Update both helper cases to the 3-arg job form:
+     - Happy path: `job = { jd_grades: [...], jd_rubric: [{ code, label, importance }] }`; call `buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")`.
+     - Grades-only fallback: job with grades, **no** `jd_rubric` (or empty); still paints dots in array/column order.
+   - **Add** a case: job has full `jd_rubric` + multi-vector `jd_grades`; if a third arg were live artifacts with underlapping `jobdesc_rubric`, header must still show all graded vectors (prove job-carried path — do not pass live artifacts into the helper at all).
+
+4. **`tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — describe `JobAnalysisReportModal — AST-950 Analysis tab grades and confidence`**
+   - Rename/revise “JD expanded by default”: on Analysis open, assert **zero** `Collapse section` and **four** `Expand section`; still no Overview; four phase labels present.
+   - “header grade+confidence row visible when JD collapsed…”: start collapsed — assert header row/dots visible **before** expand; then expand JD to assert `take_jd` + body reason; collapse again and assert body hidden / header retained.
+   - “expanded DO…”: first expand is no longer “after JD”; click the DO section’s Expand (by label/order) — keep take_do + reason asserts.
+   - Empty-grades case: open Analysis with all collapsed; expand JD (or the empty phase) before asserting “No consult detail…” empty copy.
+   - Extend at least one JAR fixture with top-level (or `job_data`) `jd_rubric` matching grades so header paint is job-carried, not live CandidateContext artifacts. Add one meteorite-mismatch fixture: multi-vector `jd_grades` + matching `jd_rubric`, CandidateContext `jobdesc_rubric` underlapping — expect header cell count === graded vectors present in `jd_rubric`.
+
+5. **Out of scope**
+   - Product changes under `src/ui/frontend` (AST-1327).
+   - Skipped/In Review list tests (AST-1064).
+   - New integration scenarios as the default.
+   - Re-grading / consult snapshot writes.
+
+⚠️ **Decision:** Revise AST-950 describes in place (same files Betty named) rather than inventing a parallel AST-1328-only test file — keeps the bible AST-950 run command the single narrowed suite for Analysis header chrome.
+
+### Blast radius
+
+- AST-950 bible sections + the two component test files above; any tip still on pre–AST-1327 helper arity will fail until this gap merges onto `ftr`.
+- Does not change product behavior. Sibling AST-1327 remains the product source of truth.
+- `test_ReportSectionList` AST-950 `renderMetadata` slot tests — touch only if they hardcode JD expand or old helper; otherwise leave.
+
+### What must still hold
+
+- AST-1327 / AST-1063: job-carried `*_rubric` header identity; grades-only fallback; Analysis all-collapsed; Summary/Artifacts expand rules unchanged.
+- AST-950: horizontal grade+confidence header row; expanded body = `take_*` above `AgentAnalysisHeader`; four phases; no Overview.
+- Engineer test-tree ban on AST-1327 stays intact — this gap child is the only place those asserts move.
+- Live candidate rubric underlap must not shrink the Analysis header row when `*_rubric` is present on the job.
+
+## Radia review (AST-1328 review-fix)
+
+**Verdict:** PROCEED (CLEAN) — Commit `585397a4`
+
+**fix-now / discuss:** none.
+
+**Advisory:** lib bug-repro decoy placement harmless; optional AgentAnalysisHeader rubricItems label case not added.
+
+**What’s solid:** bug-repro fixtures match plan; AST-950 suite migrated to job-carried; bible honest; merge-tests discipline held.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/19c5d0fc90a5e3a503adcd6a92005fd7/4d75d419-105f-4e0c-bd76-2b389e6f710d/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d6893c63-fc40-4352-a9a7-15be56caf78c/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/19c5d0fc90a5e3a503adcd6a92005fd7/093a70ee-4637-48ee-9cbe-3cdb5781a809/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1321 (parent) | ftr/AST-1321-missing-vector-grades-rubric-headers |
+| AST-1327 | sub/AST-1321/AST-1327-fix-missing-vector-grades-headers |
+| AST-1328 | sub/AST-1321/AST-1328-gap-analysis-header-tests |
+
+**Epic worktree:** `astral-AST-1321/` — one active sub checked out at a time.

@@ -1216,3 +1216,32 @@ class TestAst1271DeviationsMetadataRetention:
         assert "deviations" not in art
         assert "resume_content" not in art
         assert art["analysis_upshot"] == {"summary": "keep"}
+
+
+class TestAst1305JobResumeExtras:
+    """AST-1305: job persist keeps base-derived extras; invented keys stay out."""
+
+    def test_prepare_keeps_base_extra_and_drops_invented(self) -> None:
+        from src.core import candidate as candidate_mod
+
+        structure = candidate_mod.default_resume_structure()
+        cd = {
+            "artifacts": {
+                "resume_structure": structure,
+                "base_resume": {
+                    "professional_summary": "S",
+                    "highlights": "Won awards",
+                },
+            }
+        }
+        prepared = tracker_mod._prepare_job_resume_content(
+            {
+                "professional_summary": "Job S",
+                "highlights": "Job highlights",
+                "invented_section": "nope",
+            },
+            cd,
+        )
+        assert prepared["professional_summary"] == "Job S"
+        assert prepared["highlights"] == "Job highlights"
+        assert "invented_section" not in prepared

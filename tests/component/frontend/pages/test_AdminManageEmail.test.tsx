@@ -181,6 +181,9 @@ describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", (
     expect(screen.getByText("0 selected")).toBeInTheDocument()
     expect(screen.getByRole("button", { name: "Land Meteorite" })).toBeDisabled()
     expect(screen.getByRole("button", { name: "Clear selection" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Select all" })).toHaveClass("btn", "primary")
+    expect(screen.getByRole("button", { name: "Clear selection" })).toHaveClass("btn", "secondary")
+    expect(screen.getByRole("button", { name: "Land Meteorite" })).toHaveClass("btn", "primary")
 
     const matchedRow = screen.getByText("Hello Astral").closest("tr")!
     const rowCheckbox = within(matchedRow).getByRole("checkbox")

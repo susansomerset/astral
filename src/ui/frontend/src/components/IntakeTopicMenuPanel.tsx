@@ -204,7 +204,7 @@ export default function IntakeTopicMenuPanel({
             ))}
           </ul>
           <div className="intake-topic-menu-actions">
-            <button type="button" className="modal-btn save" onClick={onDone}>
+            <button type="button" className="btn primary" onClick={onDone}>
               Done
             </button>
           </div>
@@ -235,12 +235,12 @@ export default function IntakeTopicMenuPanel({
           rows={4}
         />
         <div className="intake-topic-menu-actions">
-          <button type="button" className="modal-btn cancel" disabled={busy || generating} onClick={onCancel}>
+          <button type="button" className="btn secondary" disabled={busy || generating} onClick={onCancel}>
             Cancel
           </button>
           <button
             type="button"
-            className="modal-btn cancel"
+            className="btn secondary"
             disabled={busy || generating || !draft.trim()}
             onClick={() => void handleSend()}
           >
@@ -248,7 +248,7 @@ export default function IntakeTopicMenuPanel({
           </button>
           <button
             type="button"
-            className="modal-btn save"
+            className="btn primary"
             disabled={busy || generating}
             onClick={() => void handleAccept()}
           >

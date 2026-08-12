@@ -104,10 +104,9 @@ export default function RepoJsonDivergenceBanner({
       <div style={{ marginTop: 8, display: "flex", gap: 8, alignItems: "center" }}>
         <button
           type="button"
-          className="dep-btn cancel"
+          className="btn secondary"
           disabled={reverting}
           onClick={() => void handleRevert()}
-          style={{ fontSize: 12, padding: "4px 12px" }}
         >
           {reverting ? "Reverting…" : "Revert to file"}
         </button>

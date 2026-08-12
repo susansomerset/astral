@@ -40,6 +40,7 @@ Config sections:
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
+  INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases GAZE_EMAIL_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals for gaze_email (AST-1089; renamed AST-1212)
@@ -163,6 +164,7 @@ _CRAFT_RESUME_BASE_RESPONSE_SCHEMA: Dict[str, Any] = {
     "candidate_tagline": {"type": "str", "required": False},
     "professional_summary": {"type": "str", "required": True},
     "core_competencies": {"type": "str", "required": True},
+    "highlights": {"type": "str", "required": True},
     "experience": _EXPERIENCE_JOB_ARRAY_FIELD,
     "prior_experience": {"type": "str", "required": False},
     "education_certifications": {"type": "str", "required": False},
@@ -2346,7 +2348,7 @@ JOB_STATES = {
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": "JD_READY_RETRY"},
     "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]},  # AST-1195: universal bot/challenge
+    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "METEORITE_NEW_RETRY"]},  # AST-1195: universal bot/challenge
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
     "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
@@ -2387,11 +2389,12 @@ JOB_STATES = {
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
     # METEORITE_QUALIFIED (GDL entry). evaluate_meteorite claims METEORITE_QUALIFIED only (AST-1060).
-    "METEORITE_NEW":                  {"prior_states": None},
-    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
+    "METEORITE_NEW":                  {"prior_states": None, "retry_state": "METEORITE_NEW_RETRY"},
+    "METEORITE_NEW_RETRY":            {"prior_states": ["METEORITE_NEW"]},  # qualify_meteorite retry holding (AST-1338)
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
     "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
+    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
     "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"], "retry_state": "METEORITE_PASSED_JD_RETRY"},
     "METEORITE_PASSED_JD_RETRY":      {"prior_states": ["METEORITE_PASSED_JD"]},                 # meteorite grade_do incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
@@ -2582,6 +2585,18 @@ assert all(
     for e in CANDIDATE_STAGE_DISPATCH.values()
     if "auto_mode" in e
 )
+# AST-1313: one bind rule for Manage Email / Avail / gaze_email / Land Meteorite / create rematch.
+# header_order is the only allowed sequence (From unique hit wins; To is fallback).
+# inbox_address is the product mailbox identity — same object as GAZE_EMAIL_CONFIG["account_address"].
+# Live OAuth user remains GMAIL_USER environ; do not read os.environ here.
+INBOX_BIND_CONFIG = {
+    "header_order": ("from", "to"),
+    "inbox_address": GAZE_EMAIL_CONFIG["account_address"],
+}
+assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
+assert INBOX_BIND_CONFIG["inbox_address"] == GAZE_EMAIL_CONFIG["account_address"]
+assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
+assert "@" in INBOX_BIND_CONFIG["inbox_address"]
 # AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
 # AST-1212: live task_key is meteorite_email (formerly parse_meteorite_email).
 # Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
@@ -2874,7 +2889,7 @@ IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_JD_RETRY", "PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY",
     "CULTURE_READY_RETRY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
-    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
+    "METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
     "METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY", "METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY",
     "METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY",
     "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
@@ -3322,6 +3337,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
     {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
+    {"state": "METEORITE_NEW_RETRY", "label": "Meteorite New (retry)"},
     {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
     {"state": "METEORITE_QUALIFIED_RETRY", "label": "Meteorite Qualified (retry)"},
     {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
@@ -5315,25 +5331,60 @@ for _alias_key, _alias_cfg in TASK_CONFIG.items():
                     f"is not a JOB_STATES key"
                 )
 
-# Per-candidate resume section catalog (AST-517); persistence on artifacts.resume_structure.
+# Per-candidate resume section catalog (AST-517 / AST-1303).
+# Persistence: artifacts.resume_structure. Extra ids are per-candidate;
+# this list is not a closed extra catalog.
 RESUME_STRUCTURE_CONTACT_SECTION_IDS = (
     "candidate_name",
     "candidate_title",
     "candidate_tagline",
     "candidate_contact_detail",
 )
-RESUME_STRUCTURE_KNOWN_SECTION_IDS = (
+RESUME_STRUCTURE_REQUIRED_SECTION_IDS = (
     "candidate_name",
     "candidate_title",
     "candidate_tagline",
     "candidate_contact_detail",
     "professional_summary",
     "core_competencies",
+    "highlights",
     "experience",
+)
+RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS = (
     "prior_experience",
     "education_certifications",
     "technical_skills",
 )
+RESUME_STRUCTURE_KNOWN_SECTION_IDS = (
+    *RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    *RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS,
+)
+RESUME_STRUCTURE_BODY_FORMATS = (
+    "free_prose",
+    "bullet_list",
+    "word_cloud",
+    "dual_column",
+    "indented_bold_single",
+    "experience_detail",
+)
+RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID = {
+    "professional_summary": "free_prose",
+    "core_competencies": "word_cloud",
+    "highlights": "bullet_list",
+    "experience": "experience_detail",
+    "prior_experience": "word_cloud",
+    "education_certifications": "indented_bold_single",
+    "technical_skills": "dual_column",
+}
+RESUME_STRUCTURE_EMPHASIS_TAG_NAMES = ("i", "em", "b", "strong")
+RESUME_STRUCTURE_EXTRA_ID_PATTERN = r"^[a-z][a-z0-9_]*$"
+RESUME_STRUCTURE_RESERVED_EXTRA_IDS = (
+    "sections",
+    "accent_color",
+    "content",
+)
+RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT = "bullet_list"
+RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT = "bullet_list"
 RESUME_STRUCTURE_DEFAULT = {
     "sections": {
         "candidate_name": {
@@ -5370,6 +5421,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 4,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"],
         },
         "core_competencies": {
             "id": "core_competencies",
@@ -5377,34 +5429,47 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 5,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["core_competencies"],
+        },
+        "highlights": {
+            "id": "highlights",
+            "title": "Highlights",
+            "enabled": True,
+            "order": 6,
+            "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["highlights"],
         },
         "experience": {
             "id": "experience",
             "title": "Experience",
             "enabled": True,
-            "order": 6,
+            "order": 7,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["experience"],
         },
         "prior_experience": {
             "id": "prior_experience",
             "title": "Prior Experience",
             "enabled": True,
-            "order": 7,
+            "order": 8,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["prior_experience"],
         },
         "education_certifications": {
             "id": "education_certifications",
             "title": "Education & Certifications",
             "enabled": True,
-            "order": 8,
+            "order": 9,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["education_certifications"],
         },
         "technical_skills": {
             "id": "technical_skills",
             "title": "Technical Skills",
             "enabled": True,
-            "order": 9,
+            "order": 10,
             "job_agent_editable": True,
+            "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["technical_skills"],
         },
     },
 }

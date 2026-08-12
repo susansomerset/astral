@@ -113,6 +113,17 @@ def enable_debug_log(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(agent_mod.logger, "isEnabledFor", lambda level: level == agent_mod._LOG_DEBUG)
 
 
+_DRAFT_EXPERIENCE_JOBS = [
+    {
+        "company": "Acme",
+        "title": "Engineer",
+        "dates": "2020-2023",
+        "location": "",
+        "accomplishments": "Built things.",
+    }
+]
+
+
 def _draft_job_resume_ctx() -> dict[str, Any]:
     """Truthy candidate_data with base_resume keys so draft whitelist validation runs (AST-1270)."""
     return {
@@ -120,7 +131,7 @@ def _draft_job_resume_ctx() -> dict[str, Any]:
             "artifacts": {
                 "base_resume": {
                     "professional_summary": "Seasoned engineer.",
-                    "experience": "Built things.",
+                    "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
                 }
             }
         }
@@ -3347,7 +3358,7 @@ class TestDoTaskShouldStoreBranches:
                     "parsed_response": {
                         "agent_payload": {
                             "professional_summary": "Seasoned engineer.",
-                            "experience": "Built things.",
+                            "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
                         }
                     },
                     "api_response": _api_response(),
@@ -3392,7 +3403,7 @@ class TestDoTaskShouldStoreBranches:
                     "parsed_response": {
                         "agent_payload": {
                             "professional_summary": "Seasoned engineer.",
-                            "experience": "Built things.",
+                            "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
                         }
                     },
                     "api_response": _api_response(),
@@ -7410,7 +7421,7 @@ class TestAst1271DoTaskDeviationsPersist:
                         "agent_payload": {
                             "resume": {
                                 "professional_summary": "Seasoned engineer.",
-                                "experience": "Built things.",
+                                "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
                             },
                             "deviations": ["Skipped UAT claim."],
                         }

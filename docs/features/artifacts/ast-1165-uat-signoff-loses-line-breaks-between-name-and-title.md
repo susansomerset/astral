@@ -1,3 +1,153 @@
+<!-- linear-archive: AST-1165 archived 2026-08-11 -->
+
+## Linear archive (AST-1165)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1165/uat-signoff-loses-line-breaks-between-name-and-title  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** Urgent / —  
+**Parent:** AST-1161 — Signature Image now overlaps Name text in signature  
+**Blocked by / blocks / related:** parent: AST-1161
+
+### Description
+
+## What failed
+
+After the overlap fix, cover signoff with authored newlines between typed name and title collapses those lines. Signature content:
+
+```
+Best,
+{$SIGNATURE_IMAGE}
+Susan Somerset
+Senior Product Manager
+```
+
+renders name and title as one visual run (HTML text nodes with no `<br>` between them inside `.letterSignoff`), so the title does not appear on its own line under the name.
+
+## Expected
+
+Authored newlines in the signature field after the image (and in other non-image signoff text segments) become visible line breaks in rendered cover HTML — e.g. name on one line, title on the next — while keeping image above that text with no overlap.
+
+## Repro
+
+1. Open Session Cover Letter (or job Print Cover Letter) for a candidate with a signature image.
+2. Set signature content to closing + `{$SIGNATURE_IMAGE}` + name on one line + title on the next line.
+3. Emit / preview HTML (or print preview).
+4. Observe name and title not stacked as separate lines under the image.
+
+## Parent AC (quoted inline)
+
+> Closing lines and other signoff text that are not the image remain readable and in the same relative order as the authored signature content.
+>
+> With signature content shaped like closing + image token + name, rendered cover HTML shows the image above the name with no overlap and no shared bottom alignment of image and name glyphs.
+
+## Diagnosis
+
+* **Hypothesis:** SomersetCover signoff builds the signature fragment by HTML-escaping text around `{$SIGNATURE_IMAGE}` but does not turn authored newlines into `<br>` (letter body already does; signoff does not), so browsers collapse name/title onto one visual line.
+* **Correct outcome:** Best, then signature image, then name on its own line, then title on its own line (matching authored newlines), with no image/name overlap regression.
+* **Wrong fix to avoid:** `white-space: pre` on all of `.letterSignoff` that fights other layout; inventing separate name/title fields; swallowing the bug by only changing CSS margin again; changing the SIGNATURE_IMAGE token contract.
+* **Related siblings / contracts:** AST-1162 (margin fix must remain); AST-1126 token-at-position emit must still omit when token/image absent.
+
+## In scope
+
+- [X] `astral.standards.in-scope-only` — only `_html_with_signature_image_token` newline→`<br>` after escape on SomersetCover signature fragment path in `src/core/builder.py`
+- [X] `astral.standards.no-cross-contamination` — do not touch resume `_emit_cover_signoff_html`, token contract, profile upload, or AST-1162 CSS margin
+- [X] `astral.docs.features-single-file-per-ticket` — one plan doc for this UAT child
+
+## Considered but excluded
+
+- [X] `{$SIGNATURE_IMAGE}` token contract / omit policies — AST-1125 / AST-1126; consume only
+- [X] Candidate profile signature image upload — out of slice
+- [X] From-block / letter body paragraph layout — out of slice (letter already has newline→`<br>`; do not redesign)
+- [X] Resume HTML emit (`_emit_cover_signoff_html` / `_emit_html_document`) — out of slice
+- [X] Reopen AST-1162 margin / invent `white-space: pre` on `.letterSignoff` — wrong fixes from Diagnosis
+
+## Boundaries
+
+* This bug does **not** change: token contract / omit policies, profile image upload, from-block / letter body layout, resume HTML emit.
+* "No more stacktrace / no more error" alone is **not** done — Parent AC + Correct outcome must hold.
+
+## Git branch (authoritative)
+
+`sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title`
+
+### Comments
+
+#### radia — 2026-08-03T22:50:51.965Z
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1165
+**Publish ref:** `31ebb768a7ba3eb8d685932c058839e9f63882cd`
+**Overall:** CLEAN
+
+**Full-set sweep:** all 65 active statutes scored in-session (22 universal, 43 scoped). Zero `violates`, zero `needs-discussion`. Scoped statutes outside `src/core/**` / `docs/features/**` / test-tree paths are `not-applicable`. No Joan plan-rubric verdict attached — noted, not a block.
+
+## Pattern conformance
+
+none cited (description checkboxes are statute ids already covered by the full sweep, not `canon/patterns/*` ids).
+
+## Plan adherence
+
+- Diff is exactly Stage 1: local `_esc_br` helper added inside `_html_with_signature_image_token`, used on both the token-present join path and the token-absent full-text path — no img markup / omit-policy / `.signature-img` CSS changes.
+- `_esc_br` is DRY with the module's existing `\r\n`→`\n` normalization + `html.escape(...).replace(chr(10), "<br>")` pattern already used verbatim for letter-body paragraphs (`src/core/builder.py:724`) and `from_block`/`to_block` (`:703-704`, `:711-712`) — not a new hardcoded literal, mirrors established precedent in the same file.
+- Sibling checks hold: AST-1162 `.signature-img { margin: 8px 0 8px 0 }` untouched (new test asserts `-25px` absent); AST-1126 token-absent/omit path still emits no `<img>`. Per-commit boundaries clean: `code(AST-1165)` touches only `src/core/builder.py`; `test(AST-1165)` touches only `tests/` + `docs/test-bible/`; single `merge-tests(AST-1165)` merge onto the sub.
+
+**What's solid:** Fix matches the plan's explicit "wrong fix to avoid" guardrails — no `white-space: pre`, no invented name/title fields, no CSS-only patch, no token-contract change. New test class covers session + job SomersetCover paths and the token-absent no-`<img>` case.
+
+**Notes:** Local pytest re-run blocked in this shell (no Python 3.10+ available); relying on Betty's `merge-tests(AST-1165)` SHA and the Tests Passed gate for green confirmation.
+
+## Frame diff
+
+(none)
+
+context_tokens≈12000
+— Radia
+
+#### betty — 2026-08-03T22:47:22.009Z
+## QA test manifest
+
+`origin/sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title` @ `31ebb768` (`merge-tests(AST-1165): origin/tests d56a7acf6402d6ca97cb415f1e1d9ca2cec9e7e0`)
+
+1. **Existing coverage** — still apply:
+   - `tests/component/core/test_builder.py::TestAst1162SignatureImgVerticalSpacing` (sibling margin lock)
+   - `tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_token_replaces_with_contact_image`
+2. **Broken / obsolete** — none.
+3. **Gaps (new this pass)** — `TestAst1165SignoffNewlineToBr`:
+   - `…::test_session_name_and_title_br_after_image` — `Name<br>Title` after img; AST-1162 margin still `8px 0 8px 0`
+   - `…::test_job_somerset_name_and_title_br_after_image` — job SomersetCover same fragment
+   - `…::test_token_absent_preserves_newlines_no_img` — newlines→`<br>` without empty `<img>`
+
+**Integration:** none to revise.
+
+**Run:**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1165SignoffNewlineToBr \
+  tests/component/core/test_builder.py::TestAst1162SignatureImgVerticalSpacing \
+  tests/component/core/test_builder.py::TestAst1024BuildSessionCoverLetter::test_token_replaces_with_contact_image \
+  -q
+```
+
+**Bible:** `docs/test-bible/core/builder.md` shasum `f217d667b455231bacef5ef19d219a2a593e2589`
+
+— Betty
+
+#### ada — 2026-08-03T22:44:05.755Z
+Plan published on `origin/sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title` @ `b1416191`.
+
+https://github.com/susansomerset/astral/blob/sub/AST-1161/AST-1165-uat-signoff-loses-line-breaks-between-name-and-title/docs/features/artifacts/ast-1165-uat-signoff-loses-line-breaks-between-name-and-title.md
+
+**Scope:** Single-Component — `_html_with_signature_image_token` in `src/core/builder.py` (shared SomersetCover session + job).
+
+**Conf:** high — Diagnosis matches code (escape-only join); letter body already has the newline→`<br>` pattern to copy.
+
+**Risk:** low — signature fragment only; AST-1162 margin and AST-1126 omit left untouched.
+
+---
+
 # AST-1165 — UAT: signoff loses line breaks between name and title
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1165/uat-signoff-loses-line-breaks-between-name-and-title  

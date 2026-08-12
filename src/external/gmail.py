@@ -47,6 +47,7 @@ class GmailInboxMessage(TypedDict):
     thread_id: str
     subject: str
     from_address: str
+    to_address: str
     date: str
     unread: bool
     # Gmail internalDate as ms since epoch; 0 if missing/unparseable (AST-1090 retention).
@@ -58,6 +59,7 @@ class GmailMessageHtml(TypedDict):
     html_body: str
     subject: str
     from_address: str
+    to_address: str
 
 
 # ---------------------------------------------------------------------------
@@ -132,7 +134,8 @@ def list_inbox_messages() -> list[GmailInboxMessage]:
                 userId="me",
                 id=message_id,
                 format="metadata",
-                metadataHeaders=["Subject", "From", "Date"],
+                # format=metadata only returns named headers — without To, list to_address is always empty.
+                metadataHeaders=["Subject", "From", "Date", "To"],
             )
             .execute()
         )
@@ -141,7 +144,7 @@ def list_inbox_messages() -> list[GmailInboxMessage]:
 
 
 def get_message_html(message_id: str) -> GmailMessageHtml:
-    """Return HTML body + Subject/From for one Gmail message id (empty html if no HTML part)."""
+    """Return HTML body + Subject/From/To for one Gmail message id (empty html if no HTML part)."""
     require_controlled_external_io("gmail.get_message_html")
     service = _build_service()
     raw = service.users().messages().get(userId="me", id=message_id, format="full").execute()
@@ -153,6 +156,7 @@ def get_message_html(message_id: str) -> GmailMessageHtml:
         "html_body": _extract_html_body(payload_dict),
         "subject": headers.get("subject", ""),
         "from_address": headers.get("from", ""),
+        "to_address": headers.get("to", ""),
     }
 
 
@@ -253,6 +257,7 @@ def _message_metadata(raw: dict) -> GmailInboxMessage:
         "thread_id": thread_id if isinstance(thread_id, str) else "",
         "subject": headers.get("subject", ""),
         "from_address": headers.get("from", ""),
+        "to_address": headers.get("to", ""),
         "date": headers.get("date", ""),
         "unread": "UNREAD" in label_ids if isinstance(label_ids, list) else False,
         "internal_date_ms": _internal_date_ms(raw),

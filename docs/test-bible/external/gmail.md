@@ -94,3 +94,28 @@ Sole OAuth scope `gmail.modify` (replaces send+readonly pair). Public `archive_m
   -q
 ```
 
+### AST-1312 · AST-1308
+
+**Parent:** [AST-1308 — Email bind where email is in the To: field (alone)](https://linear.app/astralcareermatch/issue/AST-1308/email-bind-where-email-is-in-the-to-field-alone). **Publish:** `origin/sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads`.
+
+Raw `to_address` on `list_inbox_messages` / `get_message_html` (empty string when the To header is missing). List metadata get must request `"To"`. No parse, no inbox-address filter, no From-then-To bind (AST-1313).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Raw To on list + metadataHeaders | `src/external/gmail.py` | **`TestAst1312ToAddress::test_list_requests_to_and_copies_raw_header`**; revised **`TestListInboxMessages`** exact dicts |
+| Raw To on get (or empty) | `src/external/gmail.py` | **`TestAst1312ToAddress::test_get_copies_raw_to_or_empty`**; revised **`TestGetMessageHtml`** (`test_includes_subject_and_from_headers` + exact dicts) |
+| From-only bind unchanged | `src/core/inbox.py` | existing **`tests/component/core/test_inbox.py::TestAst1047InboxFromBind`** |
+
+**Broken / obsolete:** exact-equality asserts on list/get dicts missing `to_address` — revised.
+
+**Integration:** none — no existing inbox/gmail scenario to revise; do not invent coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_gmail.py \
+  tests/component/core/test_inbox.py::TestAst1047InboxFromBind \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.
+

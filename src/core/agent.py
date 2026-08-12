@@ -66,6 +66,7 @@ from src.utils.config import (
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
     resolve_task_key_for_content,
     is_task_alias,
+    METEORITE_EMAIL_PARSE_CONFIG,
 )
 from src.utils.rubric_feedback import (
     format_hydrated_review_debug_line,
@@ -467,6 +468,16 @@ def _resolve_task_prompts(task_key: str):
     """
     content_key = resolve_task_key_for_content(task_key)
     agent_task_row = get_agent_task(content_key)
+    # AST-1212/1282: TASK_CONFIG key is meteorite_email; live Ruth prompts still on
+    # parse_meteorite_email until seed rename. Empty stub rows have no agent_id.
+    cfg = METEORITE_EMAIL_PARSE_CONFIG
+    if content_key == cfg["task_key"] and (
+        not agent_task_row or not (agent_task_row.get("agent_id") or "").strip()
+    ):
+        legacy_row = get_agent_task(cfg["legacy_agent_task_key"])
+        if legacy_row and (legacy_row.get("agent_id") or "").strip():
+            agent_task_row = legacy_row
+            content_key = cfg["legacy_agent_task_key"]
     if not agent_task_row:
         raise ValueError(
             f"No agent_task row for '{content_key}'"

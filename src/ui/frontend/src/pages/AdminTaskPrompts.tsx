@@ -624,8 +624,7 @@ export default function TaskPrompts() {
                 />
               </label>
             )}
-            <button className="dep-btn cancel" type="button" onClick={handlePreview} disabled={previewLoading}
-              style={{ fontSize: 12, padding: "5px 12px" }}>
+            <button className="btn secondary" type="button" onClick={handlePreview} disabled={previewLoading}>
               {previewLoading ? "Loading..." : "Preview Resolved"}
             </button>
             <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>

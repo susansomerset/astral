@@ -2,6 +2,26 @@
 
 **Test tree:** `tests/component/pages/`
 
+### AST-1336 · AST-1315
+
+Wire Candidate Profile to `useDirtyLeaveSaveThenNavigate` (sibling **AST-1335**): dirty vs last loaded/saved snapshot (`JSON.stringify`), shared `persistProfile` Promise for header Save + dirty-leave `onSave`, header Cancel unchanged. Profile only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile dirty-leave (§6c) | `CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — **`CandidateProfile — AST-1336 dirty-leave wiring`**: helper wired; clean→dirty on edit; in-page tab keeps draft; Cancel reverts; `onSave` PUT then clears dirty; save reject stays dirty + error |
+| Helper contract | `useDirtyLeaveSaveThenNavigate.ts` | `docs/test-bible/frontend/hooks.md` (**AST-1335**) — not re-tested here |
+
+**Broken / obsolete:** entire prior Profile suite under `renderWithProviders` (`MemoryRouter`) — Profile now calls `useBlocker` via the helper; mock `useDirtyLeaveSaveThenNavigate` in `test_CandidateProfile.test.tsx` so existing §6c cases stay green without a data-router harness. Header Save failure assert uses helper `onSave` (persistProfile rethrows; `void handleSave()` would leave Vitest unhandled rejection).
+
+**Integration:** no existing scenario asserts Profile leave prompts — no drift.
+
+**AST-1336** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
 ### AST-436 · AST-442
 
 Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests tested components or API defaults only. Use **§6c** for all future UI QA.
@@ -1705,3 +1725,141 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
   -t "AST-1295"
 ```
+
+---
+
+### AST-1306 · AST-1299
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format`.
+
+Operators author extra sections (title / format / enable / reorder / remove optional) on **Base Resume Content**. Format list comes from GET `catalog.body_formats` (not a TSX tuple). PUT `/data` **replaces** `sections` when that key is sent; accent-only PUT leaves sections. Required seven cannot be omitted or disabled. New extras slug from title in core (`_pending_*`). Does **not** own HTML emit (**AST-1304**) or hop/legacy ingest (**AST-1305**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| New-extra default format | `src/utils/config.py` | **`TestAst1306ResumeStructureCatalog`** |
+| Slug + prepare-for-save | `src/core/candidate.py` | **`TestAst1306ResumeStructureSavePrep`** |
+| GET `all_sections`+`catalog`; PUT replace | `src/ui/api/api_candidate.py` | **`TestAst1306ResumeStructureAuthorApi`**; revised **`TestAst519ResumeStructureApi`** (normalize-valid fixture; 400 text) |
+| Types-only catalog / section row shapes | `src/ui/frontend/src/components/ResumeStructureEditor.tsx` | no dedicated component test (module exports types only after AST-1323) |
+| Routed page (**§6c**) header authoring + sections PUT | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1306:`** catalog formats / no Remove on required / sections PUT; chrome covered under **AST-1323** |
+
+**Broken / obsolete this pass:** AST-519 GET fixture was a three-id blob — `resolve_resume_structure` now falls back to DEFAULT (AST-1303 required seven). Fixture is a normalize-valid ten-id catalog with `technical_skills` disabled. PUT invalid-sections 400 now returns the normalize message (`missing required`), not `invalid resume_structure`. Flat `test_ResumeStructureEditor.test.tsx` deleted (UI removed; assertions live on the page suite).
+
+**Integration:** none — existing `test_candidate_nav_api.py` is nav only; do not invent editor integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1306ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1306ResumeStructureAuthorApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1306"
+```
+
+---
+
+### AST-1323 · AST-1299 (bug — AST-1306 editor chrome)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1323-structure-editor-collapsible-header-row-body-between`.
+
+Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (title / format / enabled / **Job Edit** / up-down); section body text stays in the panel body between headers. Standalone flat `ResumeStructureEditor` panel removed from the page. Catalog-driven formats and required-no-Remove still hold.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) header-row + body-between | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1323: structure controls on collapsible header with body between`** (bug-repro); **`AST-1306:`** catalog PUT / no Remove (migrated off deleted flat editor test) |
+
+**Broken / obsolete this pass:** none — flat `ResumeStructureEditor` UI + `test_ResumeStructureEditor.test.tsx` removed; module is types-only. Header label copy (`Job edit` → `Job Edit:`) locked under **AST-1325**.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1323|AST-1306"
+```
+
+---
+
+### AST-1325 · AST-1299 (bug — structure header row layout)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1325-structure-header-row-name-style-enabled-job-edit-up-down-sup`.
+
+Single header row: name | style | `Enabled:` | `Job Edit:` | up/down (label-before-checkbox). Body still between headers (AST-1323). UI/CSS only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) header row contract | `ArtifactEditor.tsx`, `App.css` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1325: header row is name | style | Enabled: | Job Edit: | up/down`** (bug-repro); AST-1323/1306 no longer lock old `Job edit` copy |
+
+**Broken / obsolete this pass:** AST-1323/1306 cases that asserted `Job edit` — rewritten to `.structure-authoring-header` / catalog PUT only. **`[qa-handoff]`:** publish tip had duplicate `const headers` + leftover `Job edit` from a bad merge-tests conflict resolve — fixed; suite must load under vitest.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1325"
+```
+
+---
+
+### AST-1324 · AST-1299 (bug — hydrate GET from base_resume)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1324-base-resume-content-must-load-render-existing-artifact-secti`.
+
+Read-time hydrate: `GET /resume_structure` unions usable `artifacts.base_resume` keys into structure rows; missing body format defaults to `free_prose` (not Add-section `bullet_list`). Page panels follow hydrated enabled sections — no Save required to discover content already on the artifact.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| GET hydrate from base_resume | `src/core/candidate.py`, `src/ui/api/api_candidate.py` | **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (bug-repro) |
+
+**Broken / obsolete this pass:** none for this repro — AST-519 page “hides orphan” still mocks a non-hydrated GET; revisit if make-fix changes client orphan filtering.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
+---
+
+### AST-1318 · AST-1309 (apply in-row size on table-row labeled buttons)
+
+**Parent:** [AST-1309 — Add a button style for in-row buttons](https://linear.app/astralcareermatch/issue/AST-1309/add-a-button-style-for-in-row-buttons). **Publish:** `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons`.
+
+Consume AST-1317 `.btn.in-row`: Scheduled Actions row Run / Stop (busy label `Draining…`) gain `in-row` on the existing role classes. Presentation only — handlers, `disabled`, overlay `inset`, AUTO / running gating unchanged. Toolbar Stop All / Add Task, both modal footers, and icon-controls stay full-size / `icon-control`. Inventory on this tree: only those two labeled `btn`s sit in a `<td>`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) row size + leave-alone | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1318: row Run uses in-row; toolbar and modals stay full size`**; **`AST-1318: row Stop uses in-row`**; **`AST-1318: row Draining uses in-row`** |
+| Existing catalog / enablement | same | **`AST-1301: labeled actions use catalog classes`**; **`renders tasks, edits, runs, and stops threads`** |
+
+**Broken / obsolete this pass:** none — AST-1301 `toHaveClass("btn", "danger")` still holds with the added size token. Leave-alone modal case uses `mockApi(true)` (running thread) so toolbar Stop All is enabled — `mockApi(false)` leaves `activeThreads` empty and the click never opens Kill Running Threads.
+
+**Integration:** no existing scenario asserts labeled-button class catalogs — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1318|AST-1301"
+```
+
+---
+
+### AST-1337 · AST-1314
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
+
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved base, not editor buffer / session admin POST / job Print). `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) Print enable + blob / error | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1337: Print disabled with no candidate; success opens blob tab (§6c)`**; **`AST-1337: Print error and empty HTML never open a tab`** |
+
+**Broken / obsolete this pass:** none — prior Base Resume Content cases (structure / accent / AST-1306 / AST-1323 / AST-1325) unchanged. Session Resume Paste / job Print suites left alone (out of boundaries).
+
+**Integration:** no existing scenario asserts Base Resume Content Print — no drift. Do not invent integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1337"
+```
+

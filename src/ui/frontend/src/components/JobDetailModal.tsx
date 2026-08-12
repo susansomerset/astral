@@ -154,7 +154,7 @@ function InfoTab({
 
           <div style={{ marginTop: 20 }}>
             <button
-              className="entity-skip-btn"
+              className="btn secondary"
               onClick={onSkip}
               disabled={skipping || alreadySkipped}
             >

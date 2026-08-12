@@ -219,7 +219,7 @@ export default function SessionCoverLetter() {
       <div style={{ display: "flex", gap: 8, marginTop: 4, alignItems: "center" }}>
         <button
           type="button"
-          className="dep-btn save"
+          className="btn primary"
           onClick={() => void handleOpenHtml()}
           disabled={!requiredComplete || opening}
         >

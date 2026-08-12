@@ -1,3 +1,231 @@
+<!-- linear-archive: AST-1094 archived 2026-08-11 -->
+
+## Linear archive (AST-1094)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1094/uat-manage-slack-list-of-estelle-users-bind-status-msg-count-last  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1043 — Slack Bot Agent  
+**Blocked by / blocks / related:** parent: AST-1043
+
+### Description
+
+## What failed
+
+UAT cannot verify Slack → Contact resolve/bind without an admin view of who @'ed Estelle. Manage Slack today only exposes the listen switch — no list of Slack users who @'ed Estelle, bind outcome, message counts, or last-seen channel/timestamp.
+
+## Expected
+
+Admin **Manage Slack** shows a list of Slack users who have @'ed Estelle, each with: whether they bound successfully to an Astral candidate, inbound message count from that Slack user, and the timestamp + channel of the last message seen.
+
+## Repro
+
+1. Deploy with Slack Events Request URL + secrets configured; Manage Slack listen **on**.
+2. From Slack, @Estelle (and optionally a second user / second channel).
+3. Open Admin → Manage Slack.
+4. Observe: no list of @Estelle Slack users / bind status / counts / last message metadata — cannot confirm AC #4–#5 from the admin UI.
+
+## Parent AC (quoted inline)
+
+> 9. Admin **Manage Slack** lists Slack users who have @'ed Estelle: bind success/fail to an Astral candidate, inbound message count from that Slack user, and timestamp + channel of the last message seen.
+
+## Diagnosis
+
+* **Hypothesis:** Manage Slack (AST-1067) shipped listen on/off + non-prod reply tag only; no persistence/UI for per–Slack-user @Estelle activity summary needed for UAT of resolve/bind.
+* **Correct outcome:** Admin sees one row per Slack user who @'ed Estelle with bind success/fail, message count, last message timestamp + channel.
+* **Wrong fix to avoid:** Full Estelle conversational transcript UI (AST-1046); inventing a second matcher beside `get_candidate_id_for_query`; making Slack history the DB SoT.
+* **Related siblings / contracts:** AST-1067 (Manage Slack), AST-1068 (resolve/PROSPECT), AST-1069 (events ingress), AST-1070 (context cache) — must still hold.
+
+## Boundaries
+
+* This bug does **not** change: Events webhook challenge/signing, CONTACT_CONFIG skill ACL bodies, Estelle turn-loop/envelope (AST-1046).
+* "No more stacktrace / no more error" alone is **not** done — Parent AC #9 + Correct outcome must hold.
+
+## In scope
+
+- [X] `pattern.ui.manage-pages` / `pattern.ui.admin-endpoint` — extend Manage Slack with activity table + thin `@require_admin` GET `/estelle_activity` on `contact_bp`
+- [X] `pattern.config.config-block` — `CONTACT_CONFIG["activity_state_filename"]`
+- [X] `pattern.core.contact-agent` (proposed) — record activity on accepted `handle_slack_event`; `list_estelle_activity()`
+- [X] `astral.config.config-source-of-truth` — activity filename literal in config
+- [X] `astral.layers.import-direction` — ui → core → data; UI never imports `external.slack`
+- [X] `astral.patterns.require-auth-on-protected-endpoints` — GET `/api/admin/contact/estelle_activity` `@require_admin`; page stays behind `AdminRoute`
+- [X] `astral.standards.no-hardcoded-sets` — activity filename from `CONTACT_CONFIG`
+- [X] `astral.standards.debug-contract-gated` — Style D on list/record when `debug=True`
+- [X] `astral.standards.data-raises-caller-logs` — data silent; core/API log failures
+- [X] `astral.standards.database-header-inventory` — durable JSON under `db_dir`, **no** new SQLite table (explicit choose-JSON)
+- [X] `astral.standards.in-scope-only` / `astral.standards.no-cross-contamination` — no Events/skills/turn-loop/cache ownership
+- [X] `astral.standards.public-then-helpers` / `astral.standards.dry-and-focused-functions` — public list/record surface; JSON I/O in data
+- [X] `astral.standards.logging-via-utils` — Contact via `get_logger`; data layer silent
+- [X] `astral.ui.frontend-file-placement` / `astral.ui.naming-conventions` — extend `AdminManageSlack.tsx`; snake_case API path
+
+## Considered but excluded
+
+- [X] `pattern.external.slack-events` — Events verify/ack already AST-1069; this ticket only records after accept
+- [X] `pattern.state.entity-state-transitions` / PROSPECT body — AST-1068 owns `resolve_slack_user`
+- [X] Skill ACL runners / `CONTACT_CONFIG["skills"]` bodies — AST-1071
+- [X] Conversation cache / Slack history as SoT — AST-1070; activity file is summary only
+- [X] Estelle turn loop / envelope — AST-1046 / AST-1072–1073
+- [X] Full transcript admin UI — wrong fix (AST-1046)
+- [X] Mutating Railway env vars / Slack history backfill — out of scope for UAT list
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1043-slack-bot-agent`; child `sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`. Created at fix-uat.
+
+## Plan
+
+`docs/features/contact/ast-1094-uat-manage-slack-estelle-activity-list.md` @ `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list` tip `699b140e`.
+
+### Comments
+
+#### radia — 2026-07-31T04:09:01.335Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1094
+**Publish ref:** `dae36e8c` on `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`
+**Overall:** CLEAN
+
+**Diff change set:** `origin/dev...dae36e8c` — layers `{core, data, utils, ui, docs}`; change_types `{add, modify}`; 17 focused paths for Parent AC #9.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | activity_state_filename in CONTACT_CONFIG |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1094 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits touch src only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external edits; UI never calls slack |
+| astral.layers.import-direction | scoped | conforms | ui→core→data; data→utils only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | table renders API rows; no hard-coded state sets |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | GET /estelle_activity @require_admin |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data silent; core/API log failures |
+| astral.standards.database-header-inventory | scoped | conforms | choose-JSON under db_dir; no new SQLite table |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D on list + record when debug=True |
+| astral.standards.dry-and-focused-functions | scoped | conforms | data I/O vs core record/list vs thin API |
+| astral.standards.in-scope-only | scoped | conforms | no Events/skills/turn-loop/cache ownership |
+| astral.standards.logging-via-utils | scoped | conforms | Contact get_logger; data silent |
+| astral.standards.no-cross-contamination | scoped | conforms | focused 17-path tip; no unrelated deletes |
+| astral.standards.no-hardcoded-sets | scoped | conforms | filename from CONTACT_CONFIG |
+| astral.standards.public-then-helpers | scoped | conforms | public list_estelle_activity / data record+list |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | no state transition ownership; resolve untouched |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | extends AdminManageSlack.tsx |
+| astral.ui.naming-conventions | scoped | conforms | snake_case /estelle_activity |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no worker config change |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHA 65096646 |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1094-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | conforms | tip includes merge-tests; no lost origin/dev paths |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1094-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held (JSON summary; no transcript SoT) |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–5 land as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Katherine remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.manage-pages / pattern.ui.admin-endpoint | conforms | Manage Slack table + thin admin GET |
+| pattern.config.config-block | conforms | CONTACT_CONFIG activity_state_filename |
+| pattern.core.contact-agent (proposed) | conforms | record on accept + list_estelle_activity |
+
+## Plan adherence
+
+Stages 1–5 match the combined plan almost verbatim (config key, data module, resolve wrap + activity record, GET route, Manage Slack table). Self-Assessment MAJOR-CHANGE / high / Medium matches footprint. Sibling boundaries held.
+
+## Findings
+
+None.
+
+## What’s solid
+
+JSON-under-`db_dir` summary (not conversation SoT); record after resolve / before turn; bind_ok from candidate id; `@require_admin`; Style D gated; UI keeps listen usable if activity GET fails.
+
+## Notes
+
+no plan-rubric verdict attached
+
+Plan append: `docs/features/contact/ast-1094-uat-manage-slack-estelle-activity-list.md` @ `dae36e8c`.
+
+context_tokens≈42000
+
+— Radia
+
+#### betty — 2026-07-31T04:06:08.838Z
+QA manifest (FIX-UAT) — `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list` @ `65096646` (`merge-tests(AST-1094): origin/tests 39cfb82a`).
+
+1. `tests/component/utils/test_config.py::TestAst1094ActivityConfig` — `CONTACT_CONFIG["activity_state_filename"]`
+2. `tests/component/data/test_contact_estelle_activity.py::TestAst1094EstelleActivityData` — load/record/list JSON store
+3. `tests/component/core/test_contact.py::TestAst1094EstelleActivity` — `list_estelle_activity`; record on accept; skip when listen off
+4. `tests/component/ui/api/test_api_contact.py::TestAst1094EstelleActivityApi` — GET `/estelle_activity` users / 502 / 401
+5. `cd src/ui/frontend && npm run test:component -- AdminManageSlack` — §6c `@Estelle users` table + empty state (activity GET mocked)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1094ActivityConfig \
+  tests/component/data/test_contact_estelle_activity.py::TestAst1094EstelleActivityData \
+  tests/component/core/test_contact.py::TestAst1094EstelleActivity \
+  tests/component/ui/api/test_api_contact.py::TestAst1094EstelleActivityApi \
+  -q
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+
+Bible sha256 @ publish tip:
+- `docs/test-bible/data/contact_estelle_activity.md` `3546f547588a22f2fa1da54201e4bca028f1f498dec4ea67d4489179cbaaa78a`
+- `docs/test-bible/core/contact.md` `2d3291d7ec6921f77a76af9ff2e6f1a2fe4782a917481d47c8aea2323d71de21`
+- `docs/test-bible/utils/config.md` `ff56a1ebdbb63f68f16ed72921cf20f49a83ffe65e21fada2e0c5a3241c366e9`
+- `docs/test-bible/ui/api/api_contact.md` `869d3ef91bc6a49ace4be281cd66ba72f37afc57f54b9b13e7878402f7fdab8b`
+- `docs/test-bible/frontend/pages.md` `f5c5c4d17ee1482f24b838668bde75b6d6a6cb12afabb19f7c332f2233109c4c`
+
+— Betty
+
+#### katherine — 2026-07-31T03:56:33.700Z
+Plan published for FIX-UAT AC #9 (Manage Slack @Estelle activity list).
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list/docs/features/contact/ast-1094-uat-manage-slack-estelle-activity-list.md
+**Publish ref tip:** `4ffce6d7` on `origin/sub/AST-1043/AST-1094-uat-manage-slack-estelle-activity-list`
+
+**Approach:** Durable per–Slack-user summary JSON under `ASTRAL_DB_DIR` (`contact_estelle_activity.json`) — not SQLite, not conversation SoT. Record on accepted `handle_slack_event` after resolve (before Estelle turn). Admin GET `/api/admin/contact/estelle_activity` + table on existing Manage Slack page (bind ok/fail, count, last channel/ts).
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — new data module + Contact record/list + admin GET + Manage Slack table (utils/data/core/ui).
+- **Conf:** `high` — reuses listen JSON-under-`db_dir` pattern, shipped accept/resolve path, and Manage Slack page; AC fields map 1:1 to columns.
+- **Risk:** `Medium` — wrong/missing rows confuse UAT of bind; mitigated by recording only on accepted events after resolve, fail-closed corrupt file → empty list, no Slack history backfill, record before turn so turn failure does not skip the row.
+
+**UAT fitness** in plan: Parent AC #9 + correct outcome (list rows) + sibling contracts held + wrong fixes rejected (transcript UI / second matcher / Slack history SoT).
+
+---
+
 # AST-1094 — UAT: Manage Slack list of @Estelle users (bind status, msg count, last channel/ts)
 
 **Linear:** [AST-1094](https://linear.app/astralcareermatch/issue/AST-1094/uat-manage-slack-list-of-estelle-users-bind-status-msg-count-last)  

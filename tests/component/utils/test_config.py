@@ -2007,6 +2007,45 @@ class TestAst898NewRetryQualifyHolding:
         assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
 
 
+class TestAst1339MeteoriteNewRetryQualifyHolding:
+    """[bug-repro] AST-1339 — METEORITE_NEW_RETRY qualify holding (twin of AST-898)."""
+
+    def test_meteorite_new_claim_companion(self) -> None:
+        assert cfg.dispatch_claim_states("METEORITE_NEW", "job") == [
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("METEORITE_NEW_RETRY", "job") == [
+            "METEORITE_NEW_RETRY"
+        ]
+
+    def test_registry_retry_pointer_no_nested(self) -> None:
+        assert cfg.JOB_STATES["METEORITE_NEW"]["retry_state"] == "METEORITE_NEW_RETRY"
+        assert "retry_state" not in cfg.JOB_STATES["METEORITE_NEW_RETRY"]
+        assert cfg.JOB_STATES["METEORITE_NEW_RETRY"]["prior_states"] == ["METEORITE_NEW"]
+
+    def test_ui_sections_label_no_grade_field(self) -> None:
+        assert "METEORITE_NEW_RETRY" in cfg.IN_REVIEW_STATES
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY")
+        assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
+        row = next(
+            r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "METEORITE_NEW_RETRY"
+        )
+        assert row["label"] == "Meteorite New (retry)"
+        assert "METEORITE_NEW_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+
+    def test_consult_batch_fail_dest_matrix(self) -> None:
+        from src.core import consult as consult_mod
+
+        err = cfg.TASK_CONFIG["qualify_meteorite"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", err) == "METEORITE_NEW_RETRY"
+        assert (
+            consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", err)
+            == "METEORITE_ERROR_QUALIFY"
+        )
+
+
 class TestAst955RegisteredKeyDispatchAdminDefaults:
     """AST-955: admin defaults for any registered TASK_CONFIG key (+ optional trigger)."""
 
@@ -2537,6 +2576,48 @@ class TestAst1037SimpleResumeParseConfig:
         keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
         assert isinstance(keys, frozenset)
         assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
+
+
+class TestAst1333CraftParseHighlightsSchema:
+    """AST-1333: shared craft/parse schema requires highlights before experience."""
+
+    def test_highlights_required_str_before_experience_on_shared_schema(self) -> None:
+        schema = cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert schema is cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert schema is cfg.TASK_CONFIG["simple_resume_parse"]["response_schema"]
+        assert schema["highlights"] == {"type": "str", "required": True}
+        keys = list(schema.keys())
+        assert keys.index("highlights") == keys.index("experience") - 1
+
+    def test_omitting_highlights_fails_schema_empty_string_passes(self) -> None:
+        from src.core.agent import _validate_response_schema
+
+        schema = cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        base = {
+            "resume_structure": {"sections": {}},
+            "candidate_name": "A",
+            "candidate_title": "T",
+            "candidate_contact_detail": "a@b.c",
+            "professional_summary": "S",
+            "core_competencies": "C",
+            "experience": [
+                {
+                    "company": "Co",
+                    "title": "Eng",
+                    "dates": "",
+                    "location": "",
+                    "accomplishments": "",
+                }
+            ],
+        }
+        missing = {"agent_payload": dict(base)}
+        err = _validate_response_schema(missing, schema, "craft_resume_base")
+        assert err is not None
+        assert "Missing required field 'highlights'" in err
+        ok = {"agent_payload": {**base, "highlights": ""}}
+        assert _validate_response_schema(ok, schema, "simple_resume_parse") is None
+
+
 class TestAst1041MeteoriteConfig:
     """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
 
@@ -2596,6 +2677,7 @@ class TestAst1053MeteoriteGdlJobStates:
 
     _PASS = (
         "METEORITE_NEW",
+        "METEORITE_NEW_RETRY",  # AST-1339 / AST-1338 qualify holding
         "METEORITE_QUALIFIED",  # AST-1060: pre-AI → Ruth qualify → GDL entry
         "METEORITE_QUALIFIED_RETRY",  # AST-1155 incomplete-grade holding
         "METEORITE_PASSED_JD",
@@ -2625,13 +2707,21 @@ class TestAst1053MeteoriteGdlJobStates:
         assert js["METEORITE_NEW"]["prior_states"] is None
         # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
         # AST-1156: Skipped Retry from meteorite JD fail/error → METEORITE_QUALIFIED.
+        # AST-1339 / AST-1338: METEORITE_NEW_RETRY is also a leave-holding prior.
         assert js["METEORITE_QUALIFIED"]["prior_states"] == [
             "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
             "METEORITE_FAILED_JD",
             "METEORITE_ERROR_EVALUATE_JD",
         ]
-        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
-        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == [
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        ]
+        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == [
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        ]
         # AST-1155: graded-trigger *_RETRY holdings are also priors on hop outcomes.
         assert js["METEORITE_PASSED_JD"]["prior_states"] == [
             "METEORITE_QUALIFIED",
@@ -2678,13 +2768,16 @@ class TestAst1053MeteoriteGdlJobStates:
         for state in self._PASS:
             assert state in review, state
         assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
-        assert review.index("METEORITE_NEW") < review.index("METEORITE_QUALIFIED")
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY")
+        assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
         assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
         assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
         labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
         assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
+        assert labels["METEORITE_NEW_RETRY"] == "Meteorite New (retry)"
         assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
         assert labels["METEORITE_PASSED_LIKE_RETRY"] == "Meteorite LIKE upshot (retry)"
+        assert "METEORITE_NEW_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
 
         order = cfg.JOBS_SKIPPED_SECTION_ORDER
         for state in self._FAIL:
@@ -2962,7 +3055,9 @@ class TestAst1195SchemaNullsAndBotBlocked:
         assert "BOT_BLOCKED" in cfg.JOB_STATES
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
         assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == [
-            "PASSED_JOBLIST", "METEORITE_NEW",
+            "PASSED_JOBLIST",
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
         ]
         assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
@@ -2988,6 +3083,7 @@ class TestAst1197QualifyMeteoriteApplyKnobs:
         assert tc["email_link_prefix"] == "email-"
         assert tc["bot_blocked_state"] == "BOT_BLOCKED"
         assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
+        assert "METEORITE_NEW_RETRY" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
     def test_challenge_bot_signals_present(self) -> None:
         from src.utils import config as cfg
@@ -4460,3 +4556,109 @@ class TestAst1214DispatchAdminDefaultsWidened:
         assert cfg.dispatch_task_admin_defaults("meteorite_email") == mailbox
         with pytest.raises(KeyError, match="unknown task_key"):
             cfg.dispatch_task_admin_defaults("not_a_registered_task_key")
+
+
+# Branches: required/historical compose KNOWN; DEFAULT format keys from the map.
+class TestAst1303ResumeStructureCatalog:
+    """AST-1303: RESUME_STRUCTURE_* required catalog, closed formats, extra-id rules."""
+
+    def test_known_is_required_plus_historical_in_order(self) -> None:
+        # AST-1332: highlights joins required immediately before experience.
+        assert cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS == (
+            "candidate_name",
+            "candidate_title",
+            "candidate_tagline",
+            "candidate_contact_detail",
+            "professional_summary",
+            "core_competencies",
+            "highlights",
+            "experience",
+        )
+        assert cfg.RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS == (
+            "prior_experience",
+            "education_certifications",
+            "technical_skills",
+        )
+        assert cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS == (
+            *cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+            *cfg.RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS,
+        )
+
+    def test_body_formats_defaults_emphasis_and_extra_id_rules(self) -> None:
+        assert cfg.RESUME_STRUCTURE_BODY_FORMATS == (
+            "free_prose",
+            "bullet_list",
+            "word_cloud",
+            "dual_column",
+            "indented_bold_single",
+            "experience_detail",
+        )
+        assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
+            "professional_summary": "free_prose",
+            "core_competencies": "word_cloud",
+            "highlights": "bullet_list",
+            "experience": "experience_detail",
+            "prior_experience": "word_cloud",
+            "education_certifications": "indented_bold_single",
+            "technical_skills": "dual_column",
+        }
+        assert cfg.RESUME_STRUCTURE_EMPHASIS_TAG_NAMES == ("i", "em", "b", "strong")
+        assert cfg.RESUME_STRUCTURE_EXTRA_ID_PATTERN == r"^[a-z][a-z0-9_]*$"
+        assert cfg.RESUME_STRUCTURE_RESERVED_EXTRA_IDS == ("sections", "accent_color", "content")
+
+    def test_default_sections_carry_format_from_map_only(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        for sid in cfg.RESUME_STRUCTURE_CONTACT_SECTION_IDS:
+            assert "format" not in sections[sid]
+        for sid, fmt in cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.items():
+            assert sections[sid]["format"] is fmt
+        assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+
+
+class TestAst1332RequiredHighlightsCatalog:
+    """AST-1332: highlights required + default order immediately above experience."""
+
+    def test_required_places_highlights_before_experience(self) -> None:
+        req = cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+        assert "highlights" in req
+        assert req.index("highlights") == req.index("experience") - 1
+
+    def test_default_orders_highlights_immediately_above_experience(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        assert sections["highlights"]["order"] == 6
+        assert sections["experience"]["order"] == 7
+        assert sections["highlights"]["title"] == "Highlights"
+        assert sections["highlights"]["enabled"] is True
+        assert sections["highlights"]["format"] == "bullet_list"
+        ordered = sorted(sections.values(), key=lambda s: (s["order"], s["id"]))
+        ids = [s["id"] for s in ordered]
+        assert ids.index("highlights") == ids.index("experience") - 1
+        assert len(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS) == 11
+
+
+class TestAst1306ResumeStructureCatalog:
+    """AST-1306: new-extra default format for the editor add-row."""
+
+    def test_new_extra_default_format_is_bullet_list(self) -> None:
+        assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT == "bullet_list"
+        assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT in cfg.RESUME_STRUCTURE_BODY_FORMATS
+
+
+class TestAst1305ResumeStructureExtraDefault:
+    """AST-1305: extras default to bullet_list (same RESUME_STRUCTURE_* family)."""
+
+    def test_extra_default_format_is_bullet_list(self) -> None:
+        assert cfg.RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
+
+
+@pytest.mark.skipif(
+    not hasattr(cfg, "INBOX_BIND_CONFIG"),
+    reason="AST-1313 INBOX_BIND_CONFIG not on this publish tip",
+)
+class TestAst1313InboxBindConfig:
+    def test_header_order_and_inbox_address_alias(self) -> None:
+        bind = cfg.INBOX_BIND_CONFIG
+        assert bind["header_order"] == ("from", "to")
+        assert bind["inbox_address"] == cfg.GAZE_EMAIL_CONFIG["account_address"]
+        assert isinstance(bind["inbox_address"], str)
+        assert "@" in bind["inbox_address"]

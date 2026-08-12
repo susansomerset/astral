@@ -232,26 +232,18 @@ export default function AdminManageSlack() {
             )}
             <button
               type="button"
+              className="btn secondary"
               disabled={busy}
               onClick={() => void toggleListen()}
-              style={{
-                padding: "8px 14px",
-                fontSize: 14,
-                cursor: busy ? "wait" : "pointer",
-              }}
             >
               {state.listen_enabled ? "Disable listen" : "Enable listen"}
             </button>
             <button
               type="button"
+              className="btn secondary"
               disabled={busy || debugEnabled === null}
               onClick={() => void toggleDebug()}
-              style={{
-                padding: "8px 14px",
-                fontSize: 14,
-                cursor: busy ? "wait" : "pointer",
-                marginLeft: 8,
-              }}
+              style={{ marginLeft: 8 }}
             >
               {debugEnabled ? "Disable debug" : "Enable debug"}
             </button>

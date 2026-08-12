@@ -19,14 +19,17 @@ from src.core.candidate import (
     delete_candidate as core_delete_candidate,
     enabled_resume_structure_sections,
     filter_base_resume_to_structure,
+    ingest_legacy_label_content_base_resume,
     get_candidate,
     get_pending_craft_generation,
+    hydrate_resume_structure_from_base_resume,
     hydrate_rubric_artifacts_for_response,
     IllegalCandidateTransition,
     initiate_candidate,
     list_candidates as core_list_candidates,
     normalize_resume_structure,
     normalize_rubric_artifacts_on_save,
+    prepare_resume_structure_sections_for_save,
     resolve_resume_structure,
     run_candidate_artifact_generation,
     save_candidate_admin,
@@ -37,6 +40,12 @@ from src.core.candidate import (
 from src.utils.config import (
     CANDIDATE_STATES,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
+    RESUME_STRUCTURE_BODY_FORMATS,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+    RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     TASK_CONFIG,
     UI_CONFIG,
@@ -123,12 +132,51 @@ def get_candidate_resume_structure(candidate_id):
     if not candidate:
         return jsonify({"error": f"Candidate not found: {candidate_id}"}), 404
     cd = candidate.get("candidate_data") or {}
-    resolved = resolve_resume_structure(cd)
-    sections = enabled_resume_structure_sections(resolved)
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    resolved = hydrate_resume_structure_from_base_resume(
+        resolve_resume_structure(cd),
+        artifacts.get("base_resume"),
+    )
     accent = resolved.get("accent_color")
     if not isinstance(accent, str):
         accent = None
-    return jsonify({"sections": sections, "accent_color": accent})
+    required = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+    all_sections = []
+    sections_map = resolved.get("sections") if isinstance(resolved.get("sections"), dict) else {}
+    for sid, spec in sorted(
+        sections_map.items(),
+        key=lambda kv: (
+            kv[1].get("order", 0) if isinstance(kv[1], dict) and isinstance(kv[1].get("order"), int) else 0,
+            kv[0],
+        ),
+    ):
+        if not isinstance(spec, dict):
+            continue
+        all_sections.append({
+            "id": sid,
+            "title": spec.get("title") or "",
+            "enabled": bool(spec.get("enabled")),
+            "order": spec.get("order") if isinstance(spec.get("order"), int) else 0,
+            "format": spec.get("format") if isinstance(spec.get("format"), str) else None,
+            "job_agent_editable": bool(spec.get("job_agent_editable")),
+            "required": sid in required,
+            "format_locked": sid == "experience" or sid in contact,
+        })
+    catalog = {
+        "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
+        "required_ids": list(RESUME_STRUCTURE_REQUIRED_SECTION_IDS),
+        "contact_ids": list(RESUME_STRUCTURE_CONTACT_SECTION_IDS),
+        "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
+        "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
+        "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    }
+    return jsonify({
+        "sections": enabled_resume_structure_sections(resolved),
+        "all_sections": all_sections,
+        "accent_color": accent,
+        "catalog": catalog,
+    })
 
 
 @candidate_bp.route("/<candidate_id>")
@@ -195,15 +243,11 @@ def update_candidate_data(candidate_id):
                 cd = (candidate.get("candidate_data") or {}) if candidate else {}
                 resolved = resolve_resume_structure(cd)
                 section_ids = {s["id"] for s in enabled_resume_structure_sections(resolved)}
-                if "base_resume" in arts and isinstance(arts["base_resume"], dict):
-                    arts["base_resume"] = filter_base_resume_to_structure(
-                        arts["base_resume"], section_ids
-                    )
                 if "resume_structure" in arts and isinstance(arts["resume_structure"], dict):
                     rs_in = arts["resume_structure"]
                     merged = dict(resolved)
                     if isinstance(rs_in.get("sections"), dict):
-                        merged["sections"] = {**resolved.get("sections", {}), **rs_in["sections"]}
+                        merged["sections"] = prepare_resume_structure_sections_for_save(rs_in["sections"])
                     if "accent_color" in rs_in:
                         merged["accent_color"] = rs_in["accent_color"]
                     try:
@@ -212,7 +256,19 @@ def update_candidate_data(candidate_id):
                         msg = str(e)
                         if "accent" in msg.lower():
                             return jsonify({"error": "invalid accent_color"}), 400
-                        return jsonify({"error": "invalid resume_structure"}), 400
+                        return jsonify({"error": msg}), 400
+                if "base_resume" in arts and isinstance(arts["base_resume"], (list, dict)):
+                    content, ingested_struct = ingest_legacy_label_content_base_resume(
+                        arts["base_resume"], arts.get("resume_structure") or resolved
+                    )
+                    arts["base_resume"] = content
+                    arts["resume_structure"] = ingested_struct
+                    section_ids = {
+                        s["id"] for s in enabled_resume_structure_sections(ingested_struct)
+                    }
+                    arts["base_resume"] = filter_base_resume_to_structure(
+                        arts["base_resume"], section_ids
+                    )
                 if not arts:
                     body.pop("artifacts", None)
                 else:

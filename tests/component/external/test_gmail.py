@@ -151,6 +151,7 @@ class TestListInboxMessages:
             "thread_id": "t1",
             "subject": "One",
             "from_address": "a@x",
+            "to_address": "",
             "date": "Mon, 1 Jan 2026",
             "unread": True,
             "internal_date_ms": 0,
@@ -178,6 +179,7 @@ class TestListInboxMessages:
                 "thread_id": "",
                 "subject": "",
                 "from_address": "",
+                "to_address": "",
                 "date": "",
                 "unread": False,
                 "internal_date_ms": 0,
@@ -223,6 +225,7 @@ class TestGetMessageHtml:
             "html_body": html,
             "subject": "",
             "from_address": "",
+            "to_address": "",
         }
 
     def test_includes_subject_and_from_headers(self, monkeypatch) -> None:
@@ -235,6 +238,7 @@ class TestGetMessageHtml:
                         "headers": [
                             {"name": "Subject", "value": "JD role"},
                             {"name": "From", "value": "Ada <ada@ex.com>"},
+                            {"name": "To", "value": "Susan <susan@ex.com>"},
                         ],
                         "body": {"data": _b64url("<p>body</p>")},
                     }
@@ -247,6 +251,7 @@ class TestGetMessageHtml:
             "html_body": "<p>body</p>",
             "subject": "JD role",
             "from_address": "Ada <ada@ex.com>",
+            "to_address": "Susan <susan@ex.com>",
         }
 
     def test_top_level_html_and_empty_when_missing(self, monkeypatch) -> None:
@@ -292,6 +297,7 @@ class TestGetMessageHtml:
             "html_body": "",
             "subject": "",
             "from_address": "",
+            "to_address": "",
         }
         assert gmail_mod.get_message_html("empty-data")["html_body"] == ""
         assert gmail_mod.get_message_html("bad-body")["html_body"] == ""
@@ -301,6 +307,7 @@ class TestGetMessageHtml:
             "html_body": "",
             "subject": "",
             "from_address": "",
+            "to_address": "",
         }
         assert gmail_mod.get_message_html("no-payload")["html_body"] == ""
 
@@ -366,6 +373,63 @@ class TestAst1090InternalDateMs:
         monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
         rows = gmail_mod.list_inbox_messages()
         assert rows[0]["internal_date_ms"] == 99
+
+
+# Branches: raw To on list/get; empty when missing; list metadata must request To (AST-1312).
+class TestAst1312ToAddress:
+    def test_list_requests_to_and_copies_raw_header(self, monkeypatch) -> None:
+        # format=metadata omits unnamed headers — without "To", list to_address is always "".
+        raw_to = "Susan <susan@ex.com>, other@ex.com"
+        fake = _inbox_service(
+            list_pages=[{"messages": [{"id": "m1"}]}],
+            metadata_by_id={
+                "m1": {
+                    "id": "m1",
+                    "threadId": "t1",
+                    "labelIds": ["INBOX"],
+                    "payload": {
+                        "headers": [
+                            {"name": "From", "value": "recruiter@ex.com"},
+                            {"name": "To", "value": raw_to},
+                        ]
+                    },
+                }
+            },
+        )
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        rows = gmail_mod.list_inbox_messages()
+        assert rows[0]["to_address"] == raw_to
+        assert rows[0]["from_address"] == "recruiter@ex.com"
+        gets = [c for c in fake["calls"] if c["op"] == "get"]
+        assert gets and gets[0]["metadataHeaders"] == ["Subject", "From", "Date", "To"]
+
+    def test_get_copies_raw_to_or_empty(self, monkeypatch) -> None:
+        raw_to = "Susan <susan@ex.com>"
+        fake = _inbox_service(
+            list_pages=[],
+            full_by_id={
+                "with-to": {
+                    "payload": {
+                        "mimeType": "text/html",
+                        "headers": [
+                            {"name": "From", "value": "Ada <ada@ex.com>"},
+                            {"name": "To", "value": raw_to},
+                        ],
+                        "body": {"data": _b64url("<p>x</p>")},
+                    }
+                },
+                "no-to": {
+                    "payload": {
+                        "mimeType": "text/html",
+                        "headers": [{"name": "From", "value": "a@x"}],
+                        "body": {"data": _b64url("<p>y</p>")},
+                    }
+                },
+            },
+        )
+        monkeypatch.setattr(gmail_mod, "build", lambda *a, **k: fake["service"])
+        assert gmail_mod.get_message_html("with-to")["to_address"] == raw_to
+        assert gmail_mod.get_message_html("no-to")["to_address"] == ""
 
 
 # Branches: integration harness blocks live Gmail send/list/get without live opt-in.

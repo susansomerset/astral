@@ -42,8 +42,8 @@ const candidateFixture = [
 ]
 
 const adminCandidates = [
-  { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Ada" } },
-  { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: { profile: { timezone: "America/Los_Angeles" }, first: "Betty" } },
+  { astral_candidate_id: "c1", state: "ACTIVE", first: "Ada", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
+  { astral_candidate_id: "c2", state: "ACTIVE", first: "Betty", candidate_data: { profile: { timezone: "America/Los_Angeles" } } },
 ]
 
 /** AST-634: urlPresentDisablesSync needs candidate_id on mount or RTL hangs on nav sync. */

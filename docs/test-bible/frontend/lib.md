@@ -106,11 +106,12 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-950 · AST-858
 
-**AST-950:** `buildPhaseSectionGradeConfidenceRow` + `gradesForHeader` for Analysis section headers / `AgentAnalysisHeader` payloads.
+**AST-950 / AST-1327 / AST-1328:** `buildPhaseSectionGradeConfidenceRow(gradesRaw, job, gradesField)` builds Analysis header columns via `buildJobListRubricColumnsForGroup` / job-carried `*_rubric` (grades-only when snapshot absent) — **not** live `jobdesc_rubric` / `candidateArtifacts`. `gradesForHeader` still normalizes body payloads for `AgentAnalysisHeader`.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+| **AST-950** | Grade+confidence header helper (job-carried arity) | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+| **AST-1328** | Meteorite mismatch: header cell count follows `jd_rubric` ∩ graded vectors when live gazer artifact underlaps | same | same describe — **`AST-1328: header shows every job-carried vector when live jobdesc_rubric underlaps`** (bug-repro) |
 
 ---
 
@@ -177,6 +178,28 @@ cd src/ui/frontend && npm run test:component -- \
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_taskKeySort.test.ts
+```
+
+### AST-1311 · AST-1307
+
+**Parent:** [AST-1307 — Please set the page title to Astral - &lt;full_name&gt;](https://linear.app/astralcareermatch/issue/AST-1307/please-set-the-page-title-to-astral-full-name). **Publish:** `origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate`.
+
+`browserTabTitle` formats `Astral` or `Astral - <Full Name>` from the list payload `full` column only (trim; no first+last join, no picker label). `CandidateProvider` applies `document.title` on `[selectedId, candidates]` and resets to `Astral` on unmount. §6c N/A (no `pages/` edit; no filter UX).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Formatter | `src/ui/frontend/src/lib/documentTitle.ts` | **`test_documentTitle.test.ts`** |
+| Apply + unmount reset | `src/ui/frontend/src/contexts/CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`CandidateProvider — AST-1311 browser tab title`** |
+
+**Broken / obsolete:** none — existing CandidateContext selection tests stay valid (`full` absent → title `Astral`). `test_Authenticate` only passes `document.title` into `replaceState`, does not assert chrome text.
+
+**Integration:** none — SPA `document.title`; no `tests/integration/` scenario asserts tab chrome.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_documentTitle.test.ts \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
 ```
 
 ### Extension Surfer libs (moved)

@@ -1,3 +1,221 @@
+<!-- linear-archive: AST-1092 archived 2026-08-11 -->
+
+## Linear archive (AST-1092)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1092/uat-profile-extra-binding-emails-resumemessages-email-labels  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1065 — Update candidate ui for contact info  
+**Blocked by / blocks / related:** parent: AST-1065
+
+### Description
+
+## What failed
+
+On Candidate Profile → Contact Information, the candidate can add websites, but cannot add **extra email addresses** for binding email sent to the platform. Existing email fields still use unclear labels (Contact Email / Reply Email) instead of purpose-named labels.
+
+Archie (UAT): “You have the option to add websites but we need the candidate to be able to add "extra" email addresses for binding email sent to the platform. Also we should relabel the email fields as "Email for Resume" and "Email for Messages (if different)" … I consider this in scope for this ticket.”
+
+## Expected
+
+1. Profile Contact Information labels: `contact.contact_email` → **Email for Resume**; `contact.reply_email` → **Email for Messages (if different)**.
+2. Candidate can add / edit / remove **extra** email addresses on Profile (same class of multi-entry UX as websites); those addresses participate in platform email **binding / lookup** (same vocabulary as `CANDIDATE_LOOKUP_CONFIG` email paths).
+3. Save then reopen Profile shows the same email labels and extra-email list values from the library homes.
+
+## Repro
+
+1. Open Candidate → Profile → Contact Information on staging/`dev` after AST-1065 land.
+2. Confirm websites Add/Remove exists; note there is no parallel control for extra binding emails.
+3. Note Contact Email / Reply Email labels (not Resume / Messages).
+4. Attempt to register an additional binding email beyond the two scalar fields — no Profile surface for it.
+
+## Parent AC (quoted inline)
+
+> On Candidate Profile, Contact Information (including signature/image, title_patterns, reason_codes) read and save against name columns + `contact.*` — not `profile.*`.
+> A candidate can add, edit, and remove websites entries on Profile; after save and reload, those entries persist under `contact.websites`.
+> Save then reopen Profile shows the same contact values from the library homes.
+
+Archie UAT scope clarification (in-scope for this parent): extra binding emails + Resume/Messages labels.
+
+## Diagnosis
+
+* **Hypothesis:** Contact Information ships websites as `string_list` and two scalar emails (`contact.contact_email` / `contact.reply_email`) with legacy labels; bind/lookup only knows the configured email paths — there is no Profile multi-entry email list wired into that vocabulary, so candidates cannot register extra binding addresses the way they add websites.
+* **Correct outcome:** Labels read Email for Resume / Email for Messages (if different); candidate can manage an extra-emails list on Profile; those values persist under the contact library home and are used for binding email sent to the platform; round-trip after save/reload.
+* **Wrong fix to avoid:** Stuffing emails into `contact.websites`; Admin Manage Candidates contact editing; swallowing bind failures; inventing a Profile-only list that never registers on `CANDIDATE_LOOKUP_CONFIG` / uniqueness email paths; drive-by preamble/intake work.
+* **Related siblings / contracts:** AST-1081 (shapes / `string_list`), AST-1082 (Profile manage + nav), AST-1014 (contact blob / name columns), AST-1045 uniqueness email vocabulary — extras must stay aligned with lookup/bind paths.
+
+## Boundaries
+
+* This bug does **not** change: preamble intake UI, Topic Menu, Admin Manage Candidates as a contact editor, candidate state machine, or unrelated contact keys (phone/GitHub/etc.) beyond what’s required for extra binding emails + the two label renames.
+* "No more confusion" alone is **not** done — Parent AC round-trip + Correct outcome (labels + bindable extra emails) must hold.
+
+## In scope
+
+- [X] `astral.config.config-source-of-truth` — labels, `extra_emails` key, lookup `email_list_paths`, uniqueness `list_paths` in config
+- [X] `astral.layers.ui-config-driven-business-logic` — Profile renders shape `string_list`; no hardcoded contact field list
+- [X] `astral.ui.frontend-file-placement` — Profile page load/save normalize only
+- [X] `astral.ui.naming-conventions` — shape labels; key `extra_emails`
+- [X] `astral.standards.in-scope-only` — labels + bindable extras only
+- [X] `astral.docs.features-single-file-per-ticket` — plan at `docs/features/interface/ast-1092-uat-extra-binding-emails-labels.md`
+
+## Considered but excluded
+
+- [X] Admin Manage Candidates `edit.manage` / list email labels — Profile owns this UAT surface
+- [X] FormFields `string_list` type introduction — AST-1081 already shipped
+- [X] Stuffing extras into `contact.websites` — wrong fix on bug
+- [X] Preamble / intake / Topic Menu — out of bug Boundaries
+- [X] `astral.patterns.require-auth-on-protected-endpoints` — no new routes
+- [X] `astral.git.engineer-test-tree-ban` — Betty owns tests at Code Complete
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1065-update-candidate-ui-for-contact-info`; child `sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`. Publish to `origin/<publish-ref>` only.
+
+### Comments
+
+#### radia — 2026-07-31T03:42:41.325Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1092
+**Publish ref:** `efdea153122e648410fd9b39ee2f0b7487b86fb0` (`origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels`)
+**Overall:** CLEAN
+
+Diff: `origin/dev...origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels` — layers `{core, ui, utils, docs}`; change_types `{add, modify}`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1092)` on sub |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`code`/`test`/`merge-tests` prefixes |
+| orch.git.flow-direction-inviolable | universal | conforms | Tip on `origin/sub/...` publish-ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1065/AST-1092-…` matches Git table |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in AST-1092 history |
+| orch.git.no-dev-agent-branches | universal | conforms | Uses sub topology |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in `astral-AST-1065` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Archie UAT scope already on bug; no open product call |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match product diff |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Interface child under AST-1065 |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | `test`/`merge-tests` own bible + tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Product commits on allowed paths |
+| astral.agent.confidence-bounds | scoped | conforms | No graded/confidence path |
+| astral.agent.do-task-delegation | scoped | conforms | No `do_task` work |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade-vector work |
+| astral.batch.batch-id-first | scoped | conforms | Not a batch path |
+| astral.batch.batch-id-format | scoped | conforms | Not a batch path |
+| astral.batch.claim-process-release | scoped | conforms | Not a batch path |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No agent_data RESPONSE work |
+| astral.config.config-source-of-truth | scoped | conforms | Labels/key/lookup/uniqueness/shapes all in config |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths `artifacts/**`/`scripts/spikes/**` absent |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan + model docs, not spike output |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One AST-1092 plan file |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits stay off `src/` / features |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer `code()` excludes test tree |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core save/bind only; no external I/O |
+| astral.layers.import-direction | scoped | conforms | UI→api; core reads config |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Shape `string_list`; no hardcoded contact field list |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check keys |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | No consult path |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | No new routes; existing PUT |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `ValueError` on non-list extra_emails |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` in diff |
+| astral.standards.debug-contract-gated | scoped | conforms | No new ungated debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Shared coerce loop; reuses `_iter_uniqueness_path_values` |
+| astral.standards.in-scope-only | scoped | conforms | Labels + bindable extras only; no Admin/preamble |
+| astral.standards.logging-via-utils | scoped | conforms | No new print/`logging` |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in named layers/files |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Paths/keys in config; bind uses `email_list_paths` |
+| astral.standards.public-then-helpers | scoped | conforms | Extends existing save/lookup helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No utils→data import change |
+| astral.state.core-decides-transitions | scoped | conforms | Candidate state machine untouched |
+| astral.state.job-prior-states-enforced | scoped | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Untouched |
+| astral.ui.frontend-file-placement | scoped | conforms | Profile page normalize only |
+| astral.ui.naming-conventions | scoped | conforms | `extra_emails` key; shape labels only |
+| astral.ui.single-gunicorn-worker | scoped | conforms | No worker/deploy change |
+
+## Pattern conformance
+
+none cited beyond astral statutes in ticket In scope (covered via full-set sweep). Reuses AST-1081 `string_list` (not reintroduced).
+
+## Plan adherence
+
+Stages 1–3 match. Self-Assessment Scope `Single-Component` matches the diff. Wrong fixes avoided (no websites-as-email; extras on lookup + uniqueness; Admin untouched).
+
+## Findings
+
+None.
+
+## Notes
+
+- `no plan-rubric verdict attached` — C4 straggler check N/A; not a block.
+- §5f/§5g N/A.
+- `docs()` append pushed to publish-ref.
+
+## What’s solid
+
+Separate `email_list_paths` keeps scalar readers honest; comment + code refuse walking all uniqueness list paths for bind; Profile always normalizes `extra_emails` to `string[]` for round-trip.
+
+context_tokens≈42000
+
+#### betty — 2026-07-31T03:40:20.769Z
+## QA test manifest
+
+`merge-tests(AST-1092)` → `origin/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels` @ `46d2ae0b` (origin/tests `b07991e0`).
+
+### Classification
+
+1. **Existing coverage:** AST-1081 websites coerce / `string_list`; AST-1082 Profile full/websites (revised Add scope); AST-1047 lookup scalars.
+2. **Broken / obsolete:** `TestAst1079ContactUniquenessConfig` `list_paths` websites-only — revised to include `contact.extra_emails`. AST-1082 websites Add used global Add — revised to Websites field scope.
+3. **Gaps (this pass):** Resume/Messages + Extra emails labels/shape; library + `email_list_paths` + uniqueness align; save coerce; bind via extras only (not websites); §6c Profile extra_emails Add round-trip.
+
+**FIX-UAT:** no `docs/test-bible/**` change on `origin/ftr/AST-1065-…` since last qa — no full bible re-read.
+
+**Integration:** none — no revision.
+
+### Manifest (run on publish tip after merge `origin/ftr/…`)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1092ExtraBindingEmailsConfig \
+  tests/component/utils/test_config.py::TestAst1079ContactUniquenessConfig \
+  tests/component/core/test_candidate.py::TestAst1092ExtraBindingEmails \
+  tests/component/core/test_candidate.py::TestAst1081ContactShapesSaveContract \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+### Bible shasums (`origin/sub/…` tip)
+
+- `docs/test-bible/core/candidate.md` `0290de951c9fe9343cf225ef999da86e56c451c1`
+- `docs/test-bible/utils/config.md` `d1b6f7d7b563f75a168da49b51300361460722c3`
+- `docs/test-bible/frontend/pages.md` `45f3c2a9800cce1a853d769bf265b9fab63bf097`
+
+#### katherine — 2026-07-31T03:32:41.847Z
+Plan published: https://github.com/susansomerset/astral/blob/sub/AST-1065/AST-1092-uat-extra-binding-emails-labels/docs/features/interface/ast-1092-uat-extra-binding-emails-labels.md
+
+**Scope:** Single-Component — `DATA_SHAPES` email label renames + new `contact.extra_emails` (`string_list`); lookup `email_list_paths` + uniqueness `list_paths`; save coerce + Profile normalize; bind expands list in `get_candidate_id_for_query`.
+
+**Conf:** high — reuses AST-1081 `string_list` / websites coerce / uniqueness list walk; gap is missing key + list bind expansion.
+
+**Risk:** Medium — forgetting lookup expansion leaves extras Profile-only (fails Correct outcome); walking all `list_paths` would wrongly bind websites.
+
+---
+
 # UAT: Profile extra binding emails + resume/messages email labels
 
 **Linear:** [AST-1092](https://linear.app/astralcareermatch/issue/AST-1092/uat-profile-extra-binding-emails-resumemessages-email-labels)

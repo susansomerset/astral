@@ -1,3 +1,273 @@
+<!-- linear-archive: AST-1105 archived 2026-08-11 -->
+
+## Linear archive (AST-1105)
+
+**Archived:** 2026-08-11  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1105/uat-slack-usernamedisplay-on-manage-slack-activity-profile  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1043 — Slack Bot Agent  
+**Blocked by / blocks / related:** parent: AST-1043
+
+### Description
+
+## What failed
+
+Manage Slack @Estelle activity list shows only the opaque Slack user id (e.g. `U0BLSRFG1UL`) — no username / profile display metadata. Candidate Profile UI also does not show the Slack user id or Slack username for Slack-bound candidates (resolve already calls `users.info` for first/last on PROSPECT create, but does not surface Slack handle / id on Profile).
+
+## Expected
+
+1. Manage Slack activity rows show human-readable Slack identity (username and/or display name) in addition to Slack user id, bind status, message count, last channel/ts.
+2. Candidate Profile shows Slack user id and Slack username for candidates bound via Slack.
+
+## Repro
+
+1. Staging: listen on; Estelle in channel; Events API (not Socket Mode).
+2. `@Estelle` from a Slack user so an activity row exists.
+3. Admin → Manage Slack — row shows only `U…` id, no username/display name.
+4. Open the bound candidate’s Profile — no Slack user id / Slack username field visible.
+
+## Parent AC (quoted inline)
+
+> 4. Slack @Estelle resolves via `get_candidate_id_for_query` (AST-1047) using Slack user id; first unknown Slack user creates **PROSPECT** with Slack user id stored and Slack-seeded profile fields; no @ means no candidate row from Slack.
+> 5. Admin **Manage Slack** lists Slack users who have @'ed Estelle: bind success/fail to an Astral candidate, inbound message count from that Slack user, and timestamp + channel of the last message seen.
+
+## Diagnosis
+
+* **Hypothesis:** Activity persistence/UI only keyed on `slack_user_id`; Profile form fields omit `contact.slack_user_id` (and no `contact.slack_username` / display name path). `fetch_user_profile` already returns names for PROSPECT create but that metadata is not recorded on activity rows or exposed on Profile.
+* **Correct outcome:** Activity list shows username/display name + id; Profile shows Slack user id and Slack username for Slack-bound candidates; existing bind/count/channel/ts behavior held.
+* **Wrong fix to avoid:** Fabricating display names without Slack `users.info`; scraping Slack HTML; inventing a second identity matcher beside `get_candidate_id_for_query`; Socket Mode.
+* **Related siblings / contracts:** AST-1094 (activity list), AST-1068 (resolve/PROSPECT seed), AST-1067 (Manage Slack), AST-1101 (hear path) — must still hold.
+
+## Boundaries
+
+* This bug does **not** change: Events verify/ack, listen switch, Estelle turn envelope (AST-1046), Socket Mode as production ingress.
+* "No more stacktrace / no more error" alone is **not** done — Parent AC #4 + #9 + Correct outcome must hold.
+
+## In scope
+
+- [X] `pattern.external.slack-web-api` / `astral.layers.core-vs-external-bright-line` — extend `fetch_user_profile` with Slack `user.name` → `username`; Contact owns persist/UI orchestration
+- [X] `pattern.core.contact-agent` (proposed) — resolve stores/returns `contact.slack_username`; activity record gets username/display; match-path backfill when username missing
+- [X] `pattern.config.config-block` / `astral.ui.frontend-file-placement` — Profile Contact Information fields `contact.slack_user_id` + `contact.slack_username`; Manage Slack columns
+- [X] `astral.config.config-source-of-truth` — Profile field keys in NAV/profile config
+- [X] `astral.layers.import-direction` — ui → core → data/external; UI never imports `external.slack`
+- [X] `astral.patterns.require-auth-on-protected-endpoints` — existing admin activity GET + Profile behind auth; no new unauth surface
+- [X] `astral.standards.data-raises-caller-logs` — activity data silent; core logs fetch/backfill failures
+- [X] `astral.standards.database-header-inventory` — still JSON activity file; no new SQLite table
+- [X] `astral.standards.debug-contract-gated` — Style D on resolve/activity when `debug=True`
+- [X] `astral.standards.in-scope-only` / `astral.standards.no-cross-contamination` — no Events/listen/turn-loop ownership; no second matcher
+- [X] `astral.standards.no-hardcoded-sets` — identity from Slack payload / CONTACT paths only
+- [X] `astral.standards.public-then-helpers` / `astral.standards.dry-and-focused-functions` — reuse `fetch_user_profile`; thin activity field extension
+- [X] `astral.ui.naming-conventions` — `contact.slack_*` keys; activity API snake_case fields
+
+## Considered but excluded
+
+- [X] Fabricating display names / scraping Slack HTML — wrong fix
+- [X] Second matcher beside `get_candidate_id_for_query` — wrong fix
+- [X] Socket Mode as production ingress — out of scope
+- [X] Events verify/ack, listen switch, Estelle turn envelope — sibling ownership
+- [X] Adding `slack_username` to `save_candidate_contact` skill ACL — resolve owns Slack identity writes (same as `slack_user_id`)
+- [X] Slack history API backfill of all historical activity rows — next @Estelle fills names
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1043-slack-bot-agent`; child `sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`. Created at fix-uat.
+
+## Plan
+
+`docs/features/contact/ast-1105-uat-slack-username-display-activity-profile.md` @ `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` tip `25d810bb`.
+
+### Comments
+
+#### betty — 2026-07-31T06:06:33.444Z
+Path C scrub landed — `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` @ `618c7ee9` (`test(AST-1105): scrub orphan AST-1099/1100 test+bible bleed`).
+
+Removed from tip only (left on `origin/tests` for AST-1091):
+- `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+- `docs/test-bible/utils/config.md` ### AST-1099 / ### AST-1100 blocks
+
+Kept: `TestAst1105ProfileSlackFields` + AST-1105 bible block. Single `merge-tests(AST-1105)` unchanged @ `a39f94db`.
+
+`docs/test-bible/utils/config.md` sha256 @ tip: `3b2d3dbeeed56416aa3e22f5a4c06d6418fb758bb131f6e08cd60483d6a19cd6`
+
+Status stays **Review Posted**.
+
+— Betty
+
+#### katherine — 2026-07-31T06:03:52.100Z
+[qa-handoff]
+
+@Betty White — Radia **fix-now** on AST-1105 is test-tree only (`astral.standards.no-cross-contamination`). Engineer product Stages 1–5 are fine; I did not invent AST-1099 pin product on this Contact tip.
+
+**What failed / why test-tree:** Publish tip carries orphan sibling-epic fragments that assert pin config absent from this tip:
+- `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig`
+- `docs/test-bible/utils/config.md` AST-1099 / AST-1100 sections
+
+Would AttributeError/fail if run against Contact tip (`JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` missing; clear keys still legacy-only).
+
+**What Betty should fix:** Scrub AST-1099/1100 test + bible bleed off `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`. Keep AST-1105 `TestAst1105ProfileSlackFields` + matching bible. Reassign Katherine when scrub + updated manifest (if any) are on the tip.
+
+**Publish:** `7ca8c67b` (resolve Resolution note only).
+
+Status stays **Review Posted**.
+
+#### radia — 2026-07-31T06:01:14.495Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1105
+**Publish ref:** `253200ee` on `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`
+**Overall:** FIX-NOW
+
+**Diff change set:** `origin/dev...253200ee` — layers `{core, data, external, utils, ui, docs}`; change_types `{add, modify}`; 16 paths (AST-1105 product + Betty bible/tests, with sibling-epic test bleed).
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | no graded agent tasks |
+| astral.agent.do-task-delegation | scoped | conforms | no do_task |
+| astral.agent.grade-vector-validation | scoped | conforms | no grade vectors |
+| astral.batch.batch-id-first | scoped | conforms | no batch claim |
+| astral.batch.batch-id-format | scoped | conforms | no batch_id |
+| astral.batch.claim-process-release | scoped | conforms | no batch processing |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | no agent_data |
+| astral.config.config-source-of-truth | scoped | conforms | Profile Slack keys in DATA_SHAPES; username from Slack |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | no threshold/score-floor edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| astral.dispatch.seed-auto-false | scoped | conforms | config Profile Slack fields only; no dispatch seed |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | plan under docs/features — not spike notes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | one plan file AST-1105 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/merge-tests touch tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer code() commits touch src only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | users.info username in external; Contact orchestrates |
+| astral.layers.import-direction | scoped | conforms | ui→core→data/external; UI never imports slack |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** in tip |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | table renders API identity fields; Profile via config |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | no consult |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | no new unauth surface; existing admin/Profile auth |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data silent; core logs fetch/backfill failures |
+| astral.standards.database-header-inventory | scoped | conforms | JSON activity fields only; no new SQLite table |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D details include slack_username when debug |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuse fetch_user_profile; thin activity field extend |
+| astral.standards.in-scope-only | scoped | conforms | product stages stay on identity/UI; no Events/listen/turn |
+| astral.standards.logging-via-utils | scoped | conforms | Contact logger; external silent |
+| astral.standards.no-cross-contamination | scoped | violates | tip adds AST-1099 pin tests/bible without pin product on tip |
+| astral.standards.no-hardcoded-sets | scoped | conforms | identity from Slack payload / contact paths |
+| astral.standards.public-then-helpers | scoped | conforms | public resolve/record surfaces; private identity helper |
+| astral.standards.utils-data-late-import-only | scoped | conforms | config has no data import |
+| astral.state.core-decides-transitions | scoped | conforms | no state transition ownership |
+| astral.state.job-prior-states-enforced | scoped | conforms | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | no dispatch chain |
+| astral.ui.frontend-file-placement | scoped | conforms | extends AdminManageSlack.tsx; Profile via DATA_SHAPES |
+| astral.ui.naming-conventions | scoped | conforms | contact.slack_* keys; activity snake_case |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no worker config change |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests SHA a39f94db |
+| orch.git.commit-vocabulary | universal | conforms | plan/code/test/merge-tests vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | publish on origin/sub/AST-1043/AST-1105-… |
+| orch.git.ftr-sub-topology | universal | conforms | matches parent Git table |
+| orch.git.merge-on-checkout | universal | needs-discussion | merge-tests ancestry left AST-1099/1100 bible/test bleed |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | none observed |
+| orch.git.no-dev-agent-branches | universal | conforms | uses sub/AST-1043/AST-1105-… |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | astral-AST-1043 |
+| orch.git.three-permanent-branches | universal | conforms | no new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Decisions held (user.name; no skill ACL; no fabricate) |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–5 product land as planned |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Contact child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authorship |
+| orch.roles.betty-owns-test-tree | universal | needs-discussion | Betty must scrub orphan AST-1099 tests off this tip |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | implementer Katherine remains assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | doc-only review commit paths |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.external.slack-web-api | conforms | fetch_user_profile.username from user.name |
+| pattern.core.contact-agent (proposed) | conforms | persist/backfill + activity identity |
+| pattern.config.config-block | conforms | Profile DATA_SHAPES Slack fields |
+
+## Plan adherence
+
+Stages 1–5 product match: external username, activity optional identity with prior-keep, resolve create/match backfill, Profile fields (not skill ACL), Manage Slack Username/Display columns. Self-Assessment MAJOR-CHANGE / high / Medium matches.
+
+## Findings
+
+**fix-now** — `astral.standards.no-cross-contamination` / merge integrity  
+**Location:** tip vs `origin/dev` — `tests/component/utils/test_config.py::TestAst1099JobArtifactAgentDataPinConfig` + `docs/test-bible/utils/config.md` AST-1099 / AST-1100 sections.  
+**Why:** Asserts `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` and pin slots on `JOB_BUILD_ARTIFACT_CLEAR_KEYS` that are **not** on this Contact tip (pin map absent; clear keys still legacy-only). Orphan sibling-epic (AST-1091) test/bible bleed via merge-tests ancestry — would AttributeError/fail if run.  
+**Action:** Betty scrub those AST-1099/1100 fragments off this publish tip (keep AST-1105 `TestAst1105ProfileSlackFields` + matching bible). Do not invent AST-1099 product on Contact tip.
+
+**discuss** — `orch.git.merge-on-checkout` / `orch.roles.betty-owns-test-tree` — same bleed; engineer product is fine; test-tree scrub is Betty.
+
+## What’s solid
+
+Username from Slack `user.name` only; match-path backfill; activity preserves prior names on None; Profile keys not in Contact skill ACL; no second matcher; UI columns additive.
+
+## Notes
+
+no plan-rubric verdict attached
+
+Plan append: `docs/features/contact/ast-1105-uat-slack-username-display-activity-profile.md` @ `253200ee`.
+
+context_tokens≈45000
+
+— Radia
+
+#### betty — 2026-07-31T05:58:15.157Z
+QA manifest (FIX-UAT) — `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile` @ `a39f94db` (`merge-tests(AST-1105): origin/tests 21881772`).
+
+1. `tests/component/external/test_slack.py::TestAst1068FetchUserProfile` — revised `username` from `user.name`
+2. `tests/component/external/test_slack.py::TestAst1105FetchUserProfileUsername` — empty username when omitted
+3. `tests/component/data/test_contact_estelle_activity.py::TestAst1105ActivityIdentity` — persist + preserve identity on None
+4. `tests/component/core/test_contact.py::TestAst1068ResolveSlackUser` — revised create/found return + contact payload
+5. `tests/component/core/test_contact.py::TestAst1105SlackUsernameDisplay` — backfill + activity identity on accept
+6. `tests/component/utils/test_config.py::TestAst1105ProfileSlackFields` — Profile Slack id/username fields (not skill ACL)
+7. `cd src/ui/frontend && npm run test:component -- AdminManageSlack` — Username/Display columns + `—` empty
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_slack.py::TestAst1068FetchUserProfile \
+  tests/component/external/test_slack.py::TestAst1105FetchUserProfileUsername \
+  tests/component/data/test_contact_estelle_activity.py::TestAst1105ActivityIdentity \
+  tests/component/core/test_contact.py::TestAst1068ResolveSlackUser \
+  tests/component/core/test_contact.py::TestAst1105SlackUsernameDisplay \
+  tests/component/utils/test_config.py::TestAst1105ProfileSlackFields \
+  -q
+cd src/ui/frontend && npm run test:component -- AdminManageSlack
+```
+
+Bible sha256 @ publish tip:
+- `docs/test-bible/external/slack.md` `a4838bd8001cd42adc9187a018146a5691857db97f38a1b7a75f1e1876847cb6`
+- `docs/test-bible/data/contact_estelle_activity.md` `650a92b4d9f0aeed4e046d83dd75bb9c654dbbf671163d4c14eaadf6fca43b87`
+- `docs/test-bible/core/contact.md` `88a4b5d09c3446755c7b7bc319f9fd17c8df76048390061084a521cde38d7f7e`
+- `docs/test-bible/utils/config.md` `805ec3c297d509eb5c0cdc57462e13c42e806294fa830cfa0d8b7d94fe8c3417`
+- `docs/test-bible/frontend/pages.md` `497a4bd33a7e13e3d829a0f99b9d64db11371c3793f371bdbbf931dbcf9793f6`
+
+— Betty
+
+#### katherine — 2026-07-31T05:49:01.520Z
+Plan published for FIX-UAT Slack username/display on Manage Slack activity + Profile.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile/docs/features/contact/ast-1105-uat-slack-username-display-activity-profile.md
+**Publish ref tip:** `467118ac` on `origin/sub/AST-1043/AST-1105-uat-slack-username-display-activity-profile`
+
+**Approach:** Extend `fetch_user_profile` with Slack `user.name` → `username`. Persist `contact.slack_username` on PROSPECT create; backfill on match when missing. Activity rows gain `slack_username` / `slack_display_name` (preserve prior names if later fetch fails). Profile Contact Information adds Slack user id + username fields. Manage Slack table gets Username + Display columns. No second matcher; no fabricated names; skill ACL still excludes Slack identity writes.
+
+**Self-assessment**
+- **Scope:** `MAJOR-CHANGE` — external profile shape + resolve persist/backfill + activity fields + Profile NAV + Manage Slack columns.
+- **Conf:** `high` — reuses `users.info` + AST-1094 activity/UI path; AC maps to concrete fields.
+- **Risk:** `Medium` — extra `users.info` on match-without-username; mitigated by one call per accept and preserving prior activity names when fetch fails.
+
+**UAT fitness** in plan: Parent AC #4 + Manage Slack list AC + correct outcome (names on activity + Profile) + siblings held + wrong fixes rejected.
+
+---
+
 # AST-1105 — UAT: Slack username/display on Manage Slack activity + Profile
 
 **Linear:** [AST-1105](https://linear.app/astralcareermatch/issue/AST-1105/uat-slack-usernamedisplay-on-manage-slack-activity-profile)  
