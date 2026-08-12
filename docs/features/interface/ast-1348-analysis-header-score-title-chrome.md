@@ -216,3 +216,39 @@ Breakdown dict keys are exactly `PHASE_SCORE_BREAKDOWN_FIELDS` = `("earned", "po
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1348
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `c5864e220195da5e9a343a6f803606000ada9803`
+
+## Traceability
+AC1 → Stages 2–4 (API derive + `formatPhaseSectionScoreTitle` on JD Analysis header); AC2 → Stages 2–4 (same loop over jd/do/get/like prefixes); AC3 → Stage 2 (read-time `_phase_score_breakdown` when stored trio absent, grades + job-carried rubric + `{prefix}_score` present); AC4 → Stages 2–3–4 (derive gate on `{prefix}_score is not None` + null helper + plain `nav_label` fallback); AC5 → Stages 1–2–4 (no `JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS` / `latest_score` / soft-fail / list UI changes).
+
+## Findings
+
+### discuss — derive without explicit completeness check
+**Location:** Stage 2 derive gate  
+**Finding:** Plan calls `_phase_score_breakdown` when grades/rubric/score are present but does not invoke `_require_complete_grade_set` before derive; mismatched historical payloads would fail into absent key (plain label) rather than AC3 numbers.  
+**Recommendation:** Accept for build — jobs that earned a stored `{prefix}_score` should already have had a complete set at grade time; add completeness guard only if Betty surfaces a real fixture gap.
+
+### acceptable — breakdown lookup precedence vs `jobGradesForField`
+**Location:** Stage 3 `jobScoreBreakdownForGradesField`  
+**Finding:** Helper reads top-level breakdown before `job_data`, opposite of `jobGradesForField` (job_data first).  
+**Recommendation:** Intentional — API derive writes top-level only; follow plan as written.
+
+### acceptable — derive runs on list flatten path
+**Location:** Stage 2 in `_flatten_grades`  
+**Finding:** Breakdown derive would run for list rows even though only the Analysis modal consumes it.  
+**Recommendation:** Accept — extra JSON fields do not change list columns (AC5); optimize later only if perf matters.
+
+**R6 checklist:** Definition fidelity ✓ (header chrome only; persist deferred to AST-1347). Layer imports ✓ (`ui/api` → `core.consult` + utils; React consumes JSON/manifest only — matches `pattern.layers.import-discipline`). Config/manifest ✓ (template in `config.py` + `build_state_ui_manifest`; base `nav_label` unchanged on `report_phase_tabs`). DRY ✓ (single core helper; no TS scoring math). Boundaries ✓ (no score-save, no grade-dot metadata row, no Summary/Artifacts label changes). Self-assessment ✓ (High conf justified; derive gate and AST-1347 contract cited). Joan AST-1347 handoff ✓ (explicit 0/0 suffix ownership in Stage 3).
+
+**Statute pass (in-session):** Universal orch set — conforms. Scoped applies — `astral.layers.import-direction`, `astral.layers.ui-config-driven-business-logic`, `astral.config.config-source-of-truth`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`, `astral.standards.dry-and-focused-functions`, `astral.docs.features-single-file-per-ticket` — all **conforms**. No R3 `violates`; no R5 gaps on child AC 1–5.
+
+**Procedural:** Status `Plan Ready` ✓; assignee Joan ✓; no Plan Discuss rounds.
+
+context_tokens≈48000
