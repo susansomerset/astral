@@ -105,6 +105,14 @@ describe("ArtifactsBaseResumeContent", () => {
     resetStytchTestState()
     mockedApi.mockReset()
     installMocks()
+    vi.stubGlobal(
+      "open",
+      vi.fn(() => ({ closed: false })),
+    )
+    vi.stubGlobal("URL", {
+      createObjectURL: vi.fn(() => "blob:base-resume-html"),
+      revokeObjectURL: vi.fn(),
+    })
   })
 
   it("renders structure-driven tabs and hides orphan base_resume keys", async () => {
@@ -368,5 +376,145 @@ describe("ArtifactsBaseResumeContent", () => {
     expect(screen.queryByText("Job edit")).not.toBeInTheDocument()
     const rowText = authoring!.textContent || ""
     expect(rowText.indexOf("Job Edit:")).toBeGreaterThan(rowText.indexOf("Enabled:"))
+  })
+
+  it("AST-1337: Print disabled with no candidate; success opens blob tab (§6c)", async () => {
+    // No candidate → Print unavailable; with c1 + HTML → validate-then-blob (not window.open of URL).
+    installMocks([])
+    const { unmount } = renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByText("No candidate selected.")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "Print" })).toBeDisabled()
+    expect(screen.getByRole("button", { name: "Print" })).toHaveClass("btn", "secondary")
+    unmount()
+
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/system/ui_config") {
+        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
+      }
+      if (url === "/api/candidates/c1/resume_structure" && !init) {
+        return {
+          json: async () => structureByCandidate.c1,
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
+          }),
+        } as Response
+      }
+      if (url === "/candidate/resume/base?candidate_id=c1") {
+        return {
+          ok: true,
+          text: async () => "<html><body>base resume print</body></html>",
+        } as Response
+      }
+      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
+    await userEvent.click(screen.getByRole("button", { name: "Print" }))
+    await waitFor(() =>
+      expect(window.open).toHaveBeenCalledWith(
+        "blob:base-resume-html",
+        "_blank",
+        "noopener,noreferrer",
+      ),
+    )
+    expect(URL.createObjectURL).toHaveBeenCalled()
+    expect(mockedApi.mock.calls.some(([u]) => String(u).startsWith("/candidate/resume/base?"))).toBe(true)
+  })
+
+  it("AST-1337: Print error and empty HTML never open a tab", async () => {
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/system/ui_config") {
+        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
+      }
+      if (url === "/api/candidates/c1/resume_structure" && !init) {
+        return { json: async () => structureByCandidate.c1 } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
+          }),
+        } as Response
+      }
+      if (url === "/candidate/resume/base?candidate_id=c1") {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({ error: "Candidate missing artifacts.base_resume" }),
+        } as Response
+      }
+      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
+    })
+    const { unmount } = renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
+    await userEvent.click(screen.getByRole("button", { name: "Print" }))
+    await waitFor(() =>
+      expect(screen.getAllByText("Candidate missing artifacts.base_resume").length).toBeGreaterThan(0),
+    )
+    expect(window.open).not.toHaveBeenCalled()
+    unmount()
+
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/system/ui_config") {
+        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
+      }
+      if (url === "/api/candidates/c1/resume_structure" && !init) {
+        return { json: async () => structureByCandidate.c1 } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
+          }),
+        } as Response
+      }
+      if (url === "/candidate/resume/base?candidate_id=c1") {
+        return { ok: true, text: async () => "   " } as Response
+      }
+      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
+    })
+    vi.mocked(window.open).mockClear()
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
+    await userEvent.click(screen.getByRole("button", { name: "Print" }))
+    await waitFor(() => expect(screen.getAllByText("HTML response was empty").length).toBeGreaterThan(0))
+    expect(window.open).not.toHaveBeenCalled()
   })
 })
