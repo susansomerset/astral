@@ -166,3 +166,9 @@ AC1→S1+existing normalize checks; AC2→S1; AC3→S2 (`normalize_resume_struct
 context_tokens≈42000
 
 [plan-rubric] PROCEED (Commit: 17530d63a5a31f94f6a615bbdaeb2c7807437bc4) config coerce highlights order
+
+## Review
+
+- **Publish ref:** `sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`
+- **Tip:** `1bf6c7c9f34bd8c89389573c0b154cf35e7bb189`
+- **Stages:** Stage 1 config catalog + default order; Stage 2 normalize Highlights↔Experience coerce
