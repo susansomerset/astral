@@ -215,3 +215,38 @@ Each breakdown value is a **dict**:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+---
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1347
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1346/AST-1347-persist-phase-score-breakdown` @ `d405dad3852eadabb06f5ccb93f50743ea6d46b3`
+
+## Traceability
+AC3 → Stages 2–3 (`_phase_score_breakdown` extract + persist `{prefix}_score_breakdown` on jd/do/get/like score-save paths in `_apply_render_verdict_decoded_job` and `evaluate_jd_batch`); AC4 → Stage 1 (explicit exclusion from `JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS`), Stages 3–4 (no `{prefix}_score` / `latest_score` / score_floor / soft-fail changes; API lift only).
+
+## Findings
+
+### acceptable — Stage 2/3 double `_phase_score_breakdown` call
+**Location:** Stage 2 refactor + Stage 3 persist sites  
+**Finding:** Plan allows calling the helper twice (once inside `_render_score` for earned, again at persist) for clarity; small duplicate loop at save time.  
+**Recommendation:** Accept as written; optional single-pass internal helper is implementer optimization only — must not change `_render_score` signature or 0–10 output.
+
+### discuss — all-no-signal edge (`n_counted == 0`)
+**Location:** Stage 2 `_phase_score_breakdown` behavior  
+**Finding:** When every vector is no-signal, plan sets `earned=possible=0.0` while `_render_score` may still emit numeric `0.0` and persist `{prefix}_score`, so breakdown may show `0/0` with a non-zero `max`.  
+**Recommendation:** Persist behavior matches existing score-save gate; AST-1348 owns whether header suffix appears — no plan change required here.
+
+**R6 checklist:** Definition fidelity ✓ (child scope matches AST-1347 description; header chrome / derive-at-read correctly deferred to AST-1348). Layer imports ✓ (`core`→utils; `ui/api` lifts stored keys only, no consult import). Config ✓ (suffix + field tuple in `config.py`). File placement ✓ (no new dirs). Patterns ✓ (`pattern.config.config-block`; import-direction lift mirrors AST-1063 rubric/score flatten). DRY ✓ (single helper bound to existing `_render_score` math). Boundaries ✓ (no React, no qualify/joblist path, no backfill, no 0–10 semantic change). Self-assessment ✓ (Medium conf honest; save sites and max/possible denominator split called out).
+
+**Statute pass (in-session):** Universal orch set — conforms (plan-is-bible, git topology via prerequisite gate, Betty owns tests). Scoped applies — `astral.layers.import-direction`, `astral.config.config-source-of-truth`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`, `astral.standards.dry-and-focused-functions`, `astral.agent.grade-vector-validation`, `astral.idioms.render-verdict-orchestrates-consult`, `astral.docs.features-single-file-per-ticket` — all **conforms**. No R3 `violates`; no R5 gaps on child AC 3–4.
+
+**Procedural (Chuckles):** Ticket status `Plan Ready` ✓; assignee is Ada (not Joan) — Chuckles should assign Joan before spawn in future; validation proceeded per spawn command.
+
+context_tokens≈32000
+```
