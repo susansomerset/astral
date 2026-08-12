@@ -57,6 +57,11 @@ Display the stored key only. Do not map through section labels, `legacyStateSect
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1330/AST-1331-recommended-list-state-column`  
+**Product commits:** `a7c0738f` (sortable State column on Recommended list tables)
+
 ## Joan validate
 
 [plan-rubric]
