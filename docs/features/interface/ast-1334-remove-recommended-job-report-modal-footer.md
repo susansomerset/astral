@@ -50,3 +50,25 @@ Do not change `guardedClose`, dirty discard, header × (`className="icon-control
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1334
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer` @ `5b69fa2fedd67e2aa0a1acf21cb0345d126018ff`
+
+### Traceability
+
+AC1–AC4 → Stage 1 (`showFooter` opt-out on `Modal.tsx`; `showFooter={false}` on `JobAnalysisReportModal.tsx`; header × / `guardedClose` and Artifacts `cancel_build` strip unchanged).
+
+### Findings
+
+**acceptable** — `Modal.tsx` / `JobAnalysisReportModal.tsx` — Plan correctly rejects auto-hiding the footer when `onSave` is absent; read-only consumers (`RubricModal`, `MaterialsPreviewModal`, `BatchAgentDataModal`) still need footer Cancel beside ×.
+
+**acceptable** — Stage 1 — Betty test coverage (`test_Modal.test.tsx`, `test_JobAnalysisReportModal.test.tsx`) deferred to qa-child per engineer test-tree ban; plan names the gap explicitly.
+
+No `fix-now` or `discuss` findings.
+
+context_tokens≈42000
