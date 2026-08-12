@@ -1,3 +1,307 @@
+<!-- linear-archive: AST-977 archived 2026-08-05 -->
+
+## Linear archive (AST-977)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-977/agent-data-self-ref-dedupe-writeread-add-a-self-reference-key-to-agent  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-974 — Add a self-reference key to agent_data  
+**Blocked by / blocks / related:** parent: AST-974; blocks: AST-978
+
+### Description
+
+## What this implements
+
+Schema for `ref_agent_data_id` on `agent_data`; write always creates an audit row; on identical `block_data` sets ref → earliest match and omits duplicate payload; read resolves refs transparently; canonical rows keep `ref_agent_data_id` null; debug found/recorded on touched backend paths. Does **not** own historical backfill.
+
+## Acceptance criteria
+
+1. Schema includes nullable `ref_agent_data_id` on `agent_data`, applied via the project’s normal schema-ensure path so existing and new databases gain the column.
+2. On every content write, an `agent_data` audit row is created; when identical `block_data` already exists, that row’s `ref_agent_data_id` points at the earliest match and the row does not store a second full content copy.
+3. Writing content with no identical match creates a normal content row with `ref_agent_data_id` null.
+4. The earliest/canonical content row always has `ref_agent_data_id` null; writes that would create a self-ref or cycle are rejected.
+5. Matching for reuse uses exact `block_data` only (block_type may differ between audit row and ref).
+6. Reading agent content (by id and by batch) returns the same plain-text payload whether the row holds content directly or references the earliest identical row.
+7. With `debug=True` on touched backend write/read paths, a scannable per-index trail shows match-vs-new and the ids recorded/resolved; with `debug=False`, no new debug-contract noise.
+8. Existing flows that store and later retrieve system/task/response blocks for a batch still succeed end-to-end after the change.
+
+## Boundaries
+
+Does not own the one-time backfill of existing duplicates (sibling). Does not clear, null, or delete historical `block_data` (Susan-owned SQL + vacuum). Does not change BLOCK_TYPES, prompt assembly, or Anthropic call behavior.
+
+## Notes for planning
+
+Content-addressed self-reference pattern: `ref_agent_data_id` → earliest identical block; audit rows may omit payload. Data layer raises; callers log.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law. Created at dispatch-parent. Publish to origin/<sub-ref> only.
+
+### Comments
+
+#### radia — 2026-07-24T01:06:59.641Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-977
+**Publish ref:** `origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read` @ `6a2812c33bdeed652ac0e961f5f9ce51a7851e9b`
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|---|---|---|---|
+| `astral.agent.confidence-bounds` | scoped | conforms | no grade/confidence changes in agent.py |
+| `astral.agent.do-task-delegation` | scoped | conforms | store/hydration stay in agent; no Anthropic assembly elsewhere |
+| `astral.agent.grade-vector-validation` | scoped | conforms | untouched grade-vector paths |
+| `astral.batch.batch-id-first` | scoped | conforms | no new batch claim APIs |
+| `astral.batch.batch-id-format` | scoped | conforms | batch_id usage unchanged |
+| `astral.batch.claim-process-release` | scoped | conforms | untouched |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | still stores agent_data ids; no entity-array rewrite |
+| `astral.config.config-source-of-truth` | scoped | conforms | no new config keys |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | untouched |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | no secrets/env literals |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss artifacts/** / scripts/spikes/** |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | docs/features plan file; not spike notes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single docs/features/foundation/ast-977-….md |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test commit touched tests/bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer code commits exclude tests/; Betty owns test SHA |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | no external I/O; data+core only |
+| `astral.layers.import-direction` | scoped | conforms | data helpers in database; debug in agent; no UI→data |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers miss (no scripts) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | layers miss (no ui/utils) |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | untouched |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | untouched |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers miss (no ui) |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | ValueError in data; zero data logging; debug in agent |
+| `astral.standards.database-header-inventory` | scoped | conforms | agent_data inventory notes ref_agent_data_id |
+| `astral.standards.debug-contract-gated` | scoped | violates | hydrate agent_data_read debug_detail before any do_task debug_index |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | single match + resolve helpers shared by getters |
+| `astral.standards.in-scope-only` | scoped | conforms | no backfill/vacuum/BLOCK_TYPES/Anthropic |
+| `astral.standards.logging-via-utils` | scoped | conforms | get_logger debug helpers in agent only |
+| `astral.standards.no-cross-contamination` | scoped | conforms | layered files only |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | BLOCK_TYPES unchanged; no new enums |
+| `astral.standards.public-then-helpers` | scoped | conforms | private _find/_resolve beside agent_data CRUD cluster |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | layers miss (no utils) |
+| `astral.state.core-decides-transitions` | scoped | conforms | untouched |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | untouched |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | untouched |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers miss (no ui) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers miss (no ui) |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | layers miss (no ui/scripts/utils) |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | single merge-tests SHA 12cfcb0 from origin/tests 8c562e6 |
+| `orch.git.commit-vocabulary` | universal | conforms | docs/code/test/merge-tests vocabulary only |
+| `orch.git.flow-direction-inviolable` | universal | conforms | published on child sub under AST-974 |
+| `orch.git.ftr-sub-topology` | universal | conforms | origin/sub/AST-974/AST-977-… |
+| `orch.git.merge-on-checkout` | universal | conforms | merge origin/dev into sub; no rebase of dev onto worktree |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no rewrite ops in tip history |
+| `orch.git.no-dev-agent-branches` | universal | conforms | work on epic sub publish-ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | astral-AST-974 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | no new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | contract fixed by parent AC; no product fork |
+| `orch.pipeline.plan-is-bible` | universal | conforms | stages 1–5 match tip; Stage 4 read-trail gap scored under debug-contract |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Foundation child only |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test()+bible via Betty merge-tests path |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | implementer Ada; Chuckles not assignee |
+| `orch.roles.engineer-assignee-through-resolve` | universal | needs-discussion | Linear assignee is Radia at Tests Passed; Joan named Ada |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | engineer commits stayed off tests/; Betty owns test tree |
+
+## Pattern conformance
+
+none cited (ticket “content-addressed self-reference” is prose, not a canon pattern id)
+
+## Plan adherence
+
+Stages 1–3 and 5 match the tip (schema, dedupe write + exclude-id, transparent resolve, Code Rules). Stage 4 write trail nests under `_do_task_debug_entry`; hydration read trail does not — see fix-now. Self-Assessment Scope (Single-Component) matches the diff footprint. AST-978 backfill boundary held. Joan plan-rubric APPROVED attached.
+
+## Findings
+
+**fix-now** — `astral.standards.debug-contract-gated` / Plan Stage 4 / §1.5.1: `_block_text_by_type` emits `agent_data_read` via `debug_detail` during `_hydrate_caller_chain_context`, which runs before `_do_task_debug_entry` / `_resume_hop_debug_index`. Plan requires `debug_index` when not already under a do_task index. Write-path `agent_data_write` details after task-start index are OK.
+
+**Recommended:** When `debug=True` and ids are non-empty, emit one local `debug_index` (e.g. func=`_block_text_by_type` / `agent_data_read`, index 1/1 or per-id) then details; or collect and emit the read trail after `_do_task_debug_entry`.
+
+**discuss** — `orch.roles.engineer-assignee-through-resolve`: ticket assignee is Radia; Joan named Ada. review-child does not reassign — restore Ada through resolve.
+
+**discuss (straggler)** — Joan Excluded but in-scope on diff (all conforms): `astral.debug.spikes-under-debug-dir`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`.
+
+**advisory** — `save_agent_data` uses `conn.total_changes == 0` for `duplicate_id`; fragile if `_ensure_agent_data_schema` mutates on the same connection. Common path after ensure-flag is OK; prefer statement `rowcount` if touching this again.
+
+### What’s solid
+Schema/ALTER/inventory; exact plain-text match without block_type; always-insert audit + omit payload; resolve on get/by_batch/for_ids; self-ref/cycle/missing raise; data raises / agent logs; Betty test tree ownership; AST-978 out of scope.
+
+**Notes:** Joan plan-rubric verdict attached (APPROVED). Docs append on plan file @ this tip.
+
+context_tokens≈48000
+
+#### betty — 2026-07-24T00:27:46.116Z
+## QA test manifest
+
+`origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read` @ `12cfcb0` (`merge-tests(AST-977): origin/tests 8c562e6`)
+
+### Broken / revised
+1. `TestSaveAgentData::test_saves_and_reads_batch_blocks` — assert bool → outcome dict (`new_content`)
+2. `TestFeedbackBlockType::test_save_agent_data_accepts_feedback_block` — same bool→dict revision
+
+### Gaps (new)
+3. Schema ensure fresh + ALTER adds `ref_agent_data_id`
+4. Identical write → `ref_existing`, earliest canonical, omit payload; block_type may differ
+5. Reads resolve plain text via `get_agent_data` / `get_agent_data_by_batch` / `get_agent_data_for_ids`
+6. PK retry → `duplicate_id`
+7. Missing ref / cycle → `ValueError`
+8. Agent debug: `agent_data_write` / `agent_data_read` when `debug=True`; quiet when `debug=False`
+
+### Existing coverage (bible-backed)
+- Baseline invalid `block_type` still in `TestSaveAgentData`
+
+### Run
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py \
+  tests/component/data/database/test_rubric_vectors.py::TestFeedbackBlockType \
+  tests/component/core/test_agent.py::TestAst977AgentDataDedupeDebug \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### Bible shasums (publish-ref)
+- `docs/test-bible/data/database/agent_data.md` `sha256:36f1102cbb3a3a43d1ff13994e654edcdf8825f3ee484154803d5cab58beaf08`
+- `docs/test-bible/core/agent.md` `sha256:d3acf264affc71d4d2996cecbacb919e4b5c6c184547432f177dcbc9fe1b54e2`
+
+Out of scope: AST-978 backfill.
+
+#### joan — 2026-07-24T00:14:12.113Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-977
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read`
+**Engineer:** Ada
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AST-974 AC | Plan coverage |
+|---|---|
+| 1 Schema nullable `ref_agent_data_id` via schema-ensure | Stage 1 |
+| 2 Every write creates audit row; match → ref earliest + omit payload | Stage 2 |
+| 3 No-match → content row, ref null | Stage 2 |
+| 4 Canonical earliest ref null; reject self-ref/cycle | Stages 2–3 |
+| 5 Match on exact `block_data` only (block_type may differ) | Stage 2 (`_find_earliest…`, no block_type filter; logical decompress equality) |
+| 6 Reads by id/batch return same plain text direct or via ref | Stage 3 |
+| 7 Backfill dry-run + live | N/A — boundary; child + plan assign to AST-978 |
+| 8 Debug found/recorded when `debug=True`; quiet when false | Stage 4 |
+| 9 Existing store-then-retrieve flows still succeed | Stages 2–3 (transparent resolve; signatures preserved aside from save return dict ignored by callers) |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+|---|---|
+| 1 Schema + inventory | Purpose / Functional scope §1; AC1; Boundaries (no clear/delete) |
+| 2 Dedupe write | Functional scope §2–3; AC2–5 |
+| 3 Transparent read | Functional scope §4; AC6, AC9 |
+| 4 Debug on touched agent paths | Functional scope §6; AC8 |
+| 5 Code Rules mention | Compression/ref contract documentation (data-layer bullet) |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|---|---|---|
+| orch.git.betty-merge-tests-one-sha | conforms | Plan leaves tests to Betty; no merge-tests improvisation |
+| orch.git.commit-vocabulary | conforms | Plan/docs vocabulary only; no banned commit types prescribed |
+| orch.git.flow-direction-inviolable | conforms | Publish ref is child `sub/…` under parent ftr topology |
+| orch.git.ftr-sub-topology | conforms | Uses authoritative `sub/AST-974/AST-977-…` |
+| orch.git.merge-on-checkout | conforms | No contrary checkout guidance |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite operations in plan |
+| orch.git.no-dev-agent-branches | conforms | Work stays on epic sub publish-ref |
+| orch.git.one-epic-worktree-per-parent | conforms | Epic worktree `astral-AST-974/` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Column/match/read contract fixed by parent AC; no product fork |
+| orch.pipeline.plan-is-bible | conforms | Binding staged plan with Done-when gates |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Foundation ticket; no queue expansion |
+| orch.pipeline.status-gates-skill-entry | conforms | Validation at Plan Ready only |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | `tests/` / bible explicitly Betty / out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer is Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign to Ada on approve |
+| orch.roles.pre-commit-path-bans | conforms | Engineer paths `src/` + Code Rules docs; no test-tree |
+| astral.agent.confidence-bounds | conforms | No grade/confidence changes |
+| astral.agent.do-task-delegation | conforms | Keeps `do_task` store/hydration; no Anthropic assembly in other core |
+| astral.agent.grade-vector-validation | conforms | Untouched |
+| astral.batch.batch-id-first | conforms | No new batch claim APIs |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Untouched |
+| astral.batch.entity-agent-responses-latest-only | conforms | Continues storing agent_data ids; no entity-array rewrite |
+| astral.config.config-source-of-truth | conforms | Explicitly no new config keys |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env literals introduced |
+| astral.git.betty-no-src-or-features | conforms | Engineer owns `src/` + plan; Betty excluded from those paths |
+| astral.layers.core-vs-external-bright-line | conforms | No external I/O; data persistence + core debug only |
+| astral.layers.import-direction | conforms | data helpers in database; debug/logging in agent; UI stays off data |
+| astral.patterns.coat-check-never-store-empty | conforms | Untouched |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Untouched |
+| astral.standards.data-raises-caller-logs | conforms | Data raises `ValueError`; zero data logging; debug in agent behind flag |
+| astral.standards.database-header-inventory | conforms | Stage 1 updates `agent_data` inventory for `ref_agent_data_id` |
+| astral.standards.debug-contract-gated | conforms | Stage 4 uses §1.5.1 helpers; quiet when `debug=False` |
+| astral.standards.dry-and-focused-functions | conforms | Single match + single resolve helpers shared by getters |
+| astral.standards.in-scope-only | conforms | Boundaries exclude backfill / vacuum / BLOCK_TYPES / Anthropic |
+| astral.standards.logging-via-utils | conforms | `get_logger` / debug helpers in agent only |
+| astral.standards.no-cross-contamination | conforms | Layered files only; no out-of-structure deps |
+| astral.standards.no-hardcoded-sets | conforms | No new state/enum sets; BLOCK_TYPES unchanged |
+| astral.standards.public-then-helpers | conforms | Private `_find_*` / `_resolve_*` beside public CRUD |
+| astral.state.core-decides-transitions | conforms | Untouched |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.database-header-inventory, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss plan paths
+- astral.debug.spikes-under-debug-dir — paths miss plan paths
+- astral.docs.features-single-file-per-ticket — paths `docs/features/**` miss (Code Rules path only)
+- astral.git.engineer-test-tree-ban — paths miss plan paths
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss (no scripts)
+- astral.layers.ui-config-driven-business-logic — layers/paths miss (no ui)
+- astral.patterns.require-auth-on-protected-endpoints — layers/paths miss (no ui)
+- astral.standards.utils-data-late-import-only — layers/paths miss (no utils)
+- astral.ui.frontend-file-placement — layers/paths miss (no ui)
+- astral.ui.naming-conventions — layers/paths miss (no ui)
+- astral.ui.single-gunicorn-worker — layers/paths miss (no ui)
+
+## Findings
+
+None fix-now.
+
+**acceptable** — Stage 2 full-table decompress scan on every write matches Susan’s no-unauthorized-limits rule and is already called Medium risk in self-assessment; build should keep the no-cap contract unless Susan authorizes a limit later.
+
+**acceptable** — `save_agent_data` return flips bool→dict; production call sites ignore the return today (`agent.py` stores + database feedback helper). Betty may need mock return shapes later — correctly out of this plan.
+
+Definition fidelity, layer/config/placement/pattern/DRY checks: pass. Self-assessment (Single-Component / high / Medium) is honest for a data-primary change with thin core debug.
+
+— Joan
+context_tokens≈42000
+
+#### ada — 2026-07-24T00:07:07.113Z
+Plan published on `origin/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read` @ `3f81b45`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-974/AST-977-agent-data-self-ref-dedupe-write-read/docs/features/foundation/ast-977-agent-data-self-ref-dedupe-write-read.md
+
+**Self-assessment**
+- **Scope:** Single-Component — `database.py` agent_data schema/write/read + thin `agent.py` debug/passthrough; one Code Rules sentence.
+- **Conf:** high — parent AC specifies the contract; compress/decompress and `_ensure_*` migration patterns already exist; current callers ignore `save_agent_data`’s return.
+- **Risk:** Medium — bad match/resolve would corrupt prompt/response text for hydration callers; mitigated by exact plain-text match, canonical-only refs, and cycle checks.
+
+**Approach (binding):** nullable `ref_agent_data_id` via `_ensure_agent_data_schema`; every write inserts an audit row; identical logical `block_data` → ref earliest + `block_data` NULL; reads resolve in data layer; debug found/recorded only in `agent.py` when `debug=True`. Backfill stays AST-978.
+
+---
+
 # AST-977 — agent_data self-ref + dedupe write/read
 
 - **Linear:** [AST-977](https://linear.app/astralcareermatch/issue/AST-977/agent-data-self-ref-dedupe-writeread-add-a-self-reference-key-to-agent)

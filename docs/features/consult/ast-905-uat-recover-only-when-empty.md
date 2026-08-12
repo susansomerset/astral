@@ -1,3 +1,103 @@
+<!-- linear-archive: AST-905 archived 2026-08-02 -->
+
+## Linear archive (AST-905)
+
+**Archived:** 2026-08-02  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-905/uat-recover-rubric-only-when-criteria-empty-do-not-overwrite-edits  
+**Status at archive:** Archive  
+**Project:** Astral Consult  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-900 — craft get rubric did not populate the rubric content for candidate  
+**Blocked by / blocks / related:** parent: AST-900
+
+### Description
+
+## What failed
+
+After Generate recovery / pending restore on rubric criteria pages, the product is **overwriting subsequent edits** the candidate makes. Returning to the page (or recovery) restores agent-generated criteria even when the editor already has rubric criteria the user has edited.
+
+Susan: restore from agent responses / pending **only if there are NONE** already — if criteria already exist, do not overwrite user edits.
+
+## Expected
+
+Pending / agent-response recovery runs only when the candidate has **no** stored rubric criteria for that artifact. If criteria already exist (including after user edits), do not restore over them.
+
+## Repro
+
+1. Open a candidate Artifacts rubric page (e.g. Get Job Criteria) that already has criteria, or Generate then edit a criterion.
+2. Navigate away and return (or trigger pending recovery).
+3. Observe: edits / existing criteria are overwritten by restored agent generation.
+
+## Parent AC (quoted inline)
+
+> Generating Get Job Criteria for a candidate with an empty rubric ends with the criteria visible in the editor, and after Save they are present in the candidate's stored artifact.
+> A generation that completes on the backend can no longer vanish without a user-visible trace: the editor shows the result or an error, or the completed result is recoverable when the user returns to the page.
+
+## Boundaries
+
+* This bug does **not** remove recovery when the rubric is empty (empty still recovers).
+* Does not change craft_get max_tokens / JSON truncation hardening (sibling generate bugs).
+* Get Save still failing is a separate UAT bug.
+
+### Comments
+
+#### radia — 2026-07-18T17:22:49.806Z
+### Radia review — findings
+
+Diff: `origin/dev`…`origin/sub/AST-900/AST-905-uat-recover-only-when-empty` @ `848879c` (product tip `8d58866` + this doc commit). AST-905 product delta = `candidate.py` + `ArtifactEditor.tsx`; AST-906 files in the vs-`dev` diff were already reviewed clean.
+
+Plan doc: https://github.com/susansomerset/astral/blob/848879cdec99f51bb1cc1d332c92c5065b6981b3/docs/features/consult/ast-905-uat-recover-only-when-empty.md
+
+No fix-now.
+
+**discuss:** Company prefilter always looks “non-empty.” `rubric_criteria_for_task(..., "prefilter_company")` always prepends `EMBEDDED_COMPANY_PREFILTER_CRITERIA` (RC with content), and hydrate overlays that into `artifacts.company_prefilter`. Under this ticket’s gate, `craft_prefilter_rubric` pending recovery will **never** return 200 / never apply in the editor — even with no saved vectors — because embedded RC counts as criteria. Plan explicitly chose `rubric_criteria_for_task` / hydrate parity, and a literal “only if NONE” reading agrees. Confirm with Susan: permanently disable prefilter page-return recovery, or treat “empty” as no candidate/table vectors beyond embedded?
+
+**Solid:** Stages 1–2 match for Get/Do/Like/joblist/jobdesc — backend 404 when stored list non-empty; frontend skips fetch when tabs already have trimmed content (+ belt before apply); empty placeholder still recovers. Get UAT overwrite path is fixed. No Generate/Save/prompt scope creep.
+
+**Advisory:** Skipping recovery does not clear stale pending (plan: optional later).
+
+#### betty — 2026-07-18T17:20:15.882Z
+## QA test manifest — AST-905
+
+**Publish:** `origin/sub/AST-900/AST-905-uat-recover-only-when-empty` @ `8d58866` (`merge-tests(AST-905): origin/tests e8914a0646b1062184ffc8378610359a34ef95eb`)
+
+### Manifest (run all)
+
+1. `tests/component/core/test_candidate.py::TestAst905RecoverOnlyWhenEmpty` — `get_pending_craft_generation` → 404 when stored rubric non-empty (even with stash); 200 when stored empty
+2. `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — **`AST-905: skips pending recovery when loaded criteria already have content`** (no pending fetch; keeps loaded content)
+3. `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — **`AST-902: pending recovery loads criteria into review mode`** (empty load still recovers; regression)
+
+### Narrowed run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst905RecoverOnlyWhenEmpty \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  -t 'AST-905|AST-902: pending recovery'
+```
+
+### Bible shasums (`origin/sub/…` tip)
+
+- `docs/test-bible/core/candidate.md` — `997ef16b87c5d2c311a153d0bdce1cba807a4579`
+- `docs/test-bible/frontend/components.md` — `bffe0a128aa03d723fc1199fd4cc3acd884f77ee`
+
+— Betty
+
+#### katherine — 2026-07-18T17:17:11.793Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-900/AST-905-uat-recover-only-when-empty/docs/features/consult/ast-905-uat-recover-only-when-empty.md
+
+**Scope:** Single-Component — empty-only gate on `get_pending_craft_generation` + ArtifactEditor recovery apply; six craft-rubric pages inherit.
+
+**Conf:** high — overwrite is unconditional pending apply after load; Susan’s rule is restore only when none exist.
+
+**Risk:** Medium — overly strict empty check could block recovery after failed Save with empty table; mitigated by recovering when stored list length is 0.
+
+---
+
 # UAT: recover rubric only when criteria empty — do not overwrite edits
 
 **Parent:** [AST-900 — craft get rubric did not populate the rubric content for candidate](https://linear.app/astralcareermatch/issue/AST-900/craft-get-rubric-did-not-populate-the-rubric-content-for-candidate)

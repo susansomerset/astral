@@ -3,7 +3,8 @@ Core candidate: candidate lifecycle management (AST-216).
 
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
-contact uniqueness enforcement on save (AST-1080).
+contact uniqueness enforcement on save (AST-1080),
+get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -17,7 +18,7 @@ import re
 import uuid
 from datetime import datetime, timedelta, timezone
 from email.utils import parseaddr
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
 from src.data import database
 from src.core.agent import (
@@ -37,22 +38,35 @@ from src.utils.config import (
     CANDIDATE_CONTACT_UNIQUENESS_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_LOOKUP_CONFIG,
+    COVER_FROM_BLOCK_CONFIG,
+    TOKEN_SOURCES,
     TOPIC_MENU_CONFIG,
+    SURFER_CONSENT_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
+    CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH,
     CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY,
     CRAFT_RUBRIC_UI_TASK_KEYS,
+    NAV_CONFIG,
     EMBEDDED_COMPANY_PREFILTER_CRITERIA,
     EMBEDDED_EVALUATE_JD_CRITERIA,
     PRONOUN_PREFERENCE_DEFAULT,
     PRONOUN_PREFERENCE_OPTIONS,
+    RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
+    RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
+    TASK_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     rubric_owner_task_key,
 )
+from src.utils.formatting import value_to_str
 from src.utils.logging import flush_log_buffer, get_logger, log_batch_id, truncate_debug_content
 
 logger = get_logger(__name__)
@@ -60,6 +74,8 @@ logger = get_logger(__name__)
 
 _NAME_COLUMNS = CANDIDATE_LIBRARY_CONFIG["name_columns"]
 _LIBRARY_BLOB_KEYS = ("contact", "context", "artifacts")
+# AST-1148: same shape as config._TOKEN_RE — do not import that private.
+_FROM_BLOCK_TOKEN_RE = re.compile(r"\{\$([A-Z_]+)\}")
 
 
 def build_candidate_token_view(candidate: dict) -> dict:
@@ -79,10 +95,198 @@ def build_candidate_token_view(candidate: dict) -> dict:
     }
 
 
+def is_candidate_token_view(obj: object) -> bool:
+    """True when obj matches build_candidate_token_view output (not a DB row/raft)."""
+    if not isinstance(obj, dict) or "candidate_data" in obj:
+        return False
+    return "first" in obj or "last" in obj or "full" in obj or "contact" in obj
+
+
+def is_candidate_row_with_name_columns(obj: object) -> bool:
+    """True when obj is a DB row/raft with nested candidate_data and name columns."""
+    if not isinstance(obj, dict) or not isinstance(obj.get("candidate_data"), dict):
+        return False
+    return "first" in obj or "last" in obj or "full" in obj
+
+
 def recompute_full_name(first: str, last: str) -> str:
     join = CANDIDATE_LIBRARY_CONFIG["full_name_join"]
     parts = [p for p in ((first or "").strip(), (last or "").strip()) if p]
     return join.join(parts)
+
+
+def expand_cover_from_block_text(
+    text: str,
+    candidate: dict,
+    *,
+    source: str,
+    debug: bool = False,
+) -> str:
+    """Expand from-block authoring text for emit (AST-1148).
+
+    Allowlisted ``{$TOKEN}`` → candidate values; ``|`` → emit separator;
+    empty segments dropped per COVER_FROM_BLOCK_CONFIG. Unrecognized
+    ``{$…}`` left as-is. ``source`` is a debug label only (candidate/default/session).
+    """
+    logger.set_debug_flag(debug)
+    auth_sep = COVER_FROM_BLOCK_CONFIG["authoring_separator"]
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    line_sep = COVER_FROM_BLOCK_CONFIG["line_separator"]
+    policy = COVER_FROM_BLOCK_CONFIG["empty_segment_policy"]
+    allowed = COVER_FROM_BLOCK_CONFIG["allowed_token_ids"]
+    if policy != "drop_with_adjacent_separator":
+        raise ValueError(
+            f"Unsupported COVER_FROM_BLOCK_CONFIG empty_segment_policy: {policy!r}"
+        )
+
+    # DB row → token view; builder/token-view shape keeps top-level contact.
+    if isinstance(candidate.get("candidate_data"), dict):
+        view = build_candidate_token_view(candidate)
+    else:
+        contact = (
+            candidate["contact"]
+            if isinstance(candidate.get("contact"), dict)
+            else {}
+        )
+        view = {
+            "first": candidate.get("first") or "",
+            "last": candidate.get("last") or "",
+            "full": candidate.get("full") or "",
+            "contact": contact,
+            "_astral_candidate_id": (
+                candidate.get("_astral_candidate_id")
+                or candidate.get("astral_candidate_id")
+                or ""
+            ),
+        }
+    if not str(view.get("full") or "").strip():
+        view["full"] = recompute_full_name(
+            str(view.get("first") or ""), str(view.get("last") or "")
+        )
+
+    def _walk_path(obj: object, path: str) -> object:
+        for segment in path.split("."):
+            if not isinstance(obj, dict):
+                return None
+            obj = obj.get(segment)
+        return obj
+
+    def _lookup_allowed(name: str) -> Optional[str]:
+        # None → leave {$name} as-is; "" → allowlisted empty (segment may drop).
+        if name not in allowed:
+            return None
+        spec = TOKEN_SOURCES.get(name)
+        if not spec or spec.get("source") != "candidate":
+            return None
+        raw = _walk_path(view, spec["path"])
+        if raw is None or raw == "" or raw == []:
+            return ""
+        return value_to_str(raw).strip()
+
+    totals = {"resolved": 0, "empty": 0, "left_as_is": 0}
+
+    def _expand_segment(segment: str) -> str:
+        def _replace(match: re.Match) -> str:
+            name = match.group(1)
+            looked = _lookup_allowed(name)
+            if looked is None:
+                totals["left_as_is"] += 1
+                return match.group(0)
+            if looked:
+                totals["resolved"] += 1
+            else:
+                totals["empty"] += 1
+            return looked
+
+        return _FROM_BLOCK_TOKEN_RE.sub(_replace, segment)
+
+    raw = (text or "").replace("\r\n", "\n")
+    tokens_found = len(_FROM_BLOCK_TOKEN_RE.findall(raw))
+    out_lines = []
+    for line in raw.split(line_sep):
+        # Split on authoring "|", expand tokens, drop empty, join with emit sep.
+        keepers = []
+        for seg in line.split(auth_sep):
+            expanded = _expand_segment(seg).strip()
+            if expanded:
+                keepers.append(expanded)
+        if keepers:
+            out_lines.append(emit_sep.join(keepers))
+    result = line_sep.join(out_lines)
+
+    if debug:
+        cid = (
+            view.get("_astral_candidate_id")
+            or candidate.get("astral_candidate_id")
+            or ""
+        )
+        logger.debug_index(
+            func="candidate.expand_cover_from_block_text",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=f"success — from_block {source}",
+        )
+        logger.debug_detail(f"source={source}")
+        logger.debug_detail(f"tokens_found={tokens_found}")
+        logger.debug_detail(f"tokens_resolved={totals['resolved']}")
+        logger.debug_detail(f"tokens_empty={totals['empty']}")
+        logger.debug_detail(f"tokens_left_as_is={totals['left_as_is']}")
+        logger.debug_detail(
+            f"separator_rewrite={'yes' if auth_sep in raw else 'no'}"
+        )
+        logger.debug_detail(f"text_chars={len(result)}")
+    return result
+
+
+def resolve_cover_from_block(candidate: dict, *, debug: bool = False) -> dict:
+    """Return cover from-block text + source for emit consumers (AST-1137 / AST-1148).
+
+    Returns ``{"text": str, "source": "candidate"|"default"}``.
+    Custom wins when ``contact.cover_letter_from_block`` strips non-empty;
+    otherwise expand ``default_template``. Both paths run token / ``|``→``•`` /
+    empty-segment expand.
+    """
+    logger.set_debug_flag(debug)
+    src_candidate, src_default = COVER_FROM_BLOCK_CONFIG["sources"]
+    contact_key = COVER_FROM_BLOCK_CONFIG["contact_key"]
+
+    # DB row (candidate_data.contact) or token-view (top-level contact).
+    cd = candidate.get("candidate_data")
+    if isinstance(cd, dict):
+        contact = cd.get("contact") if isinstance(cd.get("contact"), dict) else {}
+    elif isinstance(candidate.get("contact"), dict):
+        contact = candidate["contact"]
+    else:
+        contact = {}
+
+    raw = contact.get(contact_key)
+    if isinstance(raw, str) and raw.strip():
+        authoring = raw.strip()
+        source = src_candidate
+    else:
+        authoring = COVER_FROM_BLOCK_CONFIG["default_template"]
+        source = src_default
+
+    text = expand_cover_from_block_text(
+        authoring, candidate, source=source, debug=debug
+    )
+    if debug:
+        cid = (
+            candidate.get("astral_candidate_id")
+            or candidate.get("_astral_candidate_id")
+            or ""
+        )
+        logger.debug_index(
+            func="candidate.resolve_cover_from_block",
+            index=1,
+            total=1,
+            identifier=cid,
+            outcome=f"success — from_block {source}",
+        )
+        logger.debug_detail(f"source={source}")
+        logger.debug_detail(f"text_chars={len(text)}")
+    return {"text": text, "source": source}
 
 
 def normalize_contact_urls(contact: dict) -> None:
@@ -858,6 +1062,175 @@ def mark_topic_menu_preamble_confirmed(
     return menu
 
 
+def _surfer_consent_key() -> str:
+    return str(SURFER_CONSENT_CONFIG["candidate_data_key"])
+
+
+def _surfer_consent_now() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def empty_surfer_consent() -> dict:
+    """Empty Surfer consent envelope (AST-1235)."""
+    return {
+        "status": SURFER_CONSENT_CONFIG["default_status"],
+        "accepted_version": None,
+        "updated_at": None,
+    }
+
+
+def normalize_surfer_consent(raw: Any) -> dict:
+    """Coerce stored/raw consent to status / accepted_version / updated_at."""
+    if not isinstance(raw, dict):
+        return empty_surfer_consent()
+    status = raw.get("status")
+    if status not in SURFER_CONSENT_CONFIG["statuses"]:
+        status = "none"
+    accepted = raw.get("accepted_version")
+    if isinstance(accepted, str) and accepted.strip():
+        accepted_version = accepted.strip()
+    else:
+        accepted_version = None
+    updated = raw.get("updated_at")
+    if isinstance(updated, str) and updated.strip():
+        updated_at = updated.strip()
+    else:
+        updated_at = None
+    return {
+        "status": status,
+        "accepted_version": accepted_version,
+        "updated_at": updated_at,
+    }
+
+
+def get_surfer_consent(candidate_id: str) -> dict:
+    """Load ``candidate_data.surfer_consent`` (normalized). Raises if candidate missing."""
+    cand = get_candidate(candidate_id)
+    if not cand:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = cand.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    return normalize_surfer_consent(cd.get(_surfer_consent_key()))
+
+
+def is_surfer_consent_current(record: Any) -> bool:
+    """True only when opted_in and accepted_version matches config current_version."""
+    n = normalize_surfer_consent(record)
+    return (
+        n["status"] == "opted_in"
+        and n["accepted_version"] == SURFER_CONSENT_CONFIG["current_version"]
+    )
+
+
+def require_current_surfer_consent(candidate_id: str) -> dict:
+    """Return the consent DTO when current; raise ValueError if capture must no-op."""
+    dto = surfer_consent_dto(candidate_id)
+    if not dto["is_current"]:
+        raise ValueError(str(SURFER_CONSENT_CONFIG["capture_denied_message"]))
+    return dto
+
+
+def surfer_consent_dto(candidate_id: str) -> dict:
+    """Read model for API / siblings (includes current disclosure copy + is_current)."""
+    record = get_surfer_consent(candidate_id)
+    return {
+        "status": record["status"],
+        "accepted_version": record["accepted_version"],
+        "updated_at": record["updated_at"],
+        "current_version": SURFER_CONSENT_CONFIG["current_version"],
+        "disclosure_copy": SURFER_CONSENT_CONFIG["disclosure_copy"],
+        "is_current": is_surfer_consent_current(record),
+        # AST-1237: display chrome from config (not stored on the meta record).
+        "disclosure_title": SURFER_CONSENT_CONFIG["disclosure_title"],
+        "opt_in_label": SURFER_CONSENT_CONFIG["opt_in_label"],
+        "decline_label": SURFER_CONSENT_CONFIG["decline_label"],
+        "current_ok_title": SURFER_CONSENT_CONFIG["current_ok_title"],
+        "current_ok_body": SURFER_CONSENT_CONFIG["current_ok_body"],
+        # AST-1238: off-switch / status chrome from config.
+        "off_switch_heading": SURFER_CONSENT_CONFIG["off_switch_heading"],
+        "off_switch_button_label": SURFER_CONSENT_CONFIG["off_switch_button_label"],
+        "off_switch_confirm": SURFER_CONSENT_CONFIG["off_switch_confirm"],
+        "status_on_label": SURFER_CONSENT_CONFIG["status_on_label"],
+        "status_off_label": SURFER_CONSENT_CONFIG["status_off_label"],
+        "status_stale_label": SURFER_CONSENT_CONFIG["status_stale_label"],
+        "uninstall_guidance": SURFER_CONSENT_CONFIG["uninstall_guidance"],
+        "capture_denied_message": SURFER_CONSENT_CONFIG["capture_denied_message"],
+    }
+
+
+def opt_in_surfer_consent(
+    candidate_id: str,
+    accepted_version: Any,
+    *,
+    debug: bool = False,
+) -> dict:
+    """Record affirmative Surfer opt-in for the current disclosure version."""
+    logger.set_debug_flag(debug)
+    if not isinstance(accepted_version, str) or not accepted_version.strip():
+        raise ValueError("accepted_version must be a non-empty string")
+    accepted_version = accepted_version.strip()
+    if accepted_version != SURFER_CONSENT_CONFIG["current_version"]:
+        raise ValueError("accepted_version does not match current disclosure version")
+    current = get_surfer_consent(candidate_id)
+    to_store = {
+        "status": "opted_in",
+        "accepted_version": accepted_version,
+        "updated_at": _surfer_consent_now(),
+    }
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_in_surfer_consent",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"record={current!r}")
+    save_candidate_data(candidate_id, {_surfer_consent_key(): to_store}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_in_surfer_consent",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"to_store={to_store!r}")
+    return surfer_consent_dto(candidate_id)
+
+
+def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
+    """Record Surfer opt-out; preserve last accepted_version for audit."""
+    logger.set_debug_flag(debug)
+    current = get_surfer_consent(candidate_id)
+    to_store = {
+        "status": "opted_out",
+        "accepted_version": current["accepted_version"],
+        "updated_at": _surfer_consent_now(),
+    }
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_out_surfer_consent",
+            index=1,
+            total=2,
+            identifier=candidate_id,
+            outcome="found",
+        )
+        logger.debug_detail(f"record={current!r}")
+    save_candidate_data(candidate_id, {_surfer_consent_key(): to_store}, debug=debug)
+    if debug:
+        logger.debug_index(
+            func="candidate.opt_out_surfer_consent",
+            index=2,
+            total=2,
+            identifier=candidate_id,
+            outcome="recorded",
+        )
+        logger.debug_detail(f"to_store={to_store!r}")
+    return surfer_consent_dto(candidate_id)
+
+
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
     """For each rubric criteria artifact in ``artifacts``, parse trailing grade tables, set
     ``grade_descriptions``, and coerce ``importance`` (1–10). Mutates criterion dicts in place.
@@ -941,7 +1314,7 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
             if isinstance(c, dict) and str(c.get("code") or "").strip().upper() not in embedded_codes
         ]
         return list(EMBEDDED_COMPANY_PREFILTER_CRITERIA) + tail
-    if owner_task_key == "evaluate_jd":
+    if owner_task_key in ("evaluate_jd", "evaluate_meteorite"):
         return _merge_embedded_evaluate_jd_criteria(criteria)
     return criteria
 
@@ -969,7 +1342,9 @@ def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
         if not isinstance(val, list):
             raise ValueError(f"Artifact {key!r} must be a list of rubric criteria.")
         # AST-1085: restore QC/GC on save (append; embedded wins on code).
-        if owner == "evaluate_jd":
+        # QC/GC are source-agnostic dealbreaker safety-net vectors — also apply to the
+        # meteorite JD screen, not just the regular gazer-discovered evaluate_jd.
+        if owner in ("evaluate_jd", "evaluate_meteorite"):
             val = _merge_embedded_evaluate_jd_criteria(val)
         database.sync_rubric_vectors_from_criteria(candidate_id, owner, val)
         del artifacts[key]
@@ -1079,6 +1454,43 @@ def list_candidates(include_deleted: bool = False) -> list:
     if include_deleted:
         return all_candidates
     return [c for c in all_candidates if c.get("state") != "DELETED"]
+
+
+# ---- Batch API ----
+def get_new_candidate_batch(
+    state: str,
+    limit: Optional[int] = None,
+    sort_by: Optional[str] = None,
+    batch_id: Optional[str] = None,
+    context: Optional[str] = None,
+    *,
+    states: Optional[List[str]] = None,
+) -> Tuple[str, List[Dict[str, Any]]]:
+    """Claim candidates for batch processing. Returns (batch_id, candidates).
+
+    Cross-candidate pool (AST-1258/1259) — no candidate_id / score_floor scope.
+    batch_id: when provided, uses this batch_id instead of generating a new one.
+    context: prefix for auto-generated batch_id (required when batch_id is not provided).
+    """
+    allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
+    if states is None:
+        if not allowed or state not in allowed:
+            raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
+    else:
+        for s in states:
+            if not allowed or s not in allowed:
+                raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
+    limit_val = limit if limit is not None else 10
+    if not batch_id and not context:
+        raise ValueError("batch_id or context is required for batch_id generation")
+    bid = batch_id or f"{context}-{uuid.uuid4()}"
+    database.claim_candidate_batch(bid, state, limit_val, sort_by=sort_by, states=states)
+    return (bid, database.get_candidate_batch(bid))
+
+
+def clear_candidate_batch(batch_id: str) -> int:
+    """Release batch. Returns count cleared."""
+    return database.clear_candidate_batch(batch_id)
 
 
 def _lookup_path_value(candidate: Dict[str, Any], dotted_path: str) -> str:
@@ -1208,7 +1620,8 @@ def preview_task_prompt(
         if not candidates:
             raise ValueError("No active candidate found for preview.")
         candidate = candidates[0]
-    cd = candidate.get("candidate_data") or {}
+    # AST-1192: walkable view (name columns + library blobs) for resolve_tokens.
+    cd = build_candidate_token_view(candidate)
     cid = candidate.get("astral_candidate_id") or candidate_id
     jc: Optional[Dict[str, str]] = None
     if astral_job_id and str(astral_job_id).strip():
@@ -1250,6 +1663,17 @@ def preview_task_prompt(
 def delete_candidate(candidate_id: str) -> None:
     """Logical delete — transition to DELETED (starts reap timer)."""
     transition_candidate_state(candidate_id, "DELETED")
+
+
+class IllegalCandidateTransition(ValueError):
+    """prior_states rejected this hop; API maps to illegal_candidate_transition."""
+
+    def __init__(self, from_state: str, to_state: str):
+        self.from_state = from_state
+        self.to_state = to_state
+        super().__init__(
+            f"Invalid candidate state transition: {from_state} -> {to_state}"
+        )
 
 
 def _candidate_prior_states(to_state: str):
@@ -1347,24 +1771,107 @@ def purge_reap_due_candidates(*, now: Optional[datetime] = None) -> int:
     return n
 
 
-def transition_candidate_state(candidate_id: str, to_state: str) -> None:
+def transition_candidate_state(
+    candidate_id: str,
+    to_state: str,
+    *,
+    force: bool = False,
+) -> None:
     """Validate prior_states on CANDIDATE_STATES, then update state.
-    Raises ValueError if the hop is disallowed."""
+    Raises IllegalCandidateTransition if the hop is disallowed (unless force).
+    Unknown states raise ValueError even when force=True."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         raise ValueError(f"Candidate not found: {candidate_id}")
     if to_state not in CANDIDATE_STATES:
         raise ValueError(f"Unknown candidate state: {to_state}")
     from_state = candidate["state"]
-    if not _candidate_state_allowed(from_state, to_state):
-        raise ValueError(
-            f"Invalid candidate state transition: {from_state} -> {to_state}"
+    # One prior_states check: gate when not force; INFO when force bypasses.
+    allowed = _candidate_state_allowed(from_state, to_state)
+    if not force and not allowed:
+        raise IllegalCandidateTransition(from_state, to_state)
+    if force and not allowed:
+        logger.info(
+            "forced candidate state transition: %s %s -> %s",
+            candidate_id,
+            from_state,
+            to_state,
         )
     now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
     history = _append_candidate_state_history(candidate, from_state, to_state, now)
     database.save_candidate(candidate_id, state=to_state, state_history=history)
     if to_state == "DELETED":
         _start_candidate_reap_timer(candidate_id)
+
+
+def start_requested_artifacts(candidate_id: str) -> str:
+    """UI/API handoff into REQUESTED_ARTIFACTS (AST-1253). Priors enforce legality."""
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    target = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    transition_candidate_state(candidate_id, target)
+    return target
+
+
+def _walk_requested_artifacts_chain_task_keys() -> list[str]:
+    """Live run_next walk from stage entry hop; defensive cycle bail (write-path is acyclic)."""
+    start = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
+    out: list[str] = []
+    seen: set[str] = set()
+    key = (start or "").strip()
+    while key:
+        if key in seen:
+            raise RuntimeError(f"craft run_next cycle at {key!r}")
+        seen.add(key)
+        out.append(key)
+        key = (_current_agent_task_run_next(key) or "").strip()
+    return out
+
+
+def requested_artifacts_chain_task_keys() -> list[str]:
+    """Public: live craft chain task_keys in run_next order."""
+    return _walk_requested_artifacts_chain_task_keys()
+
+
+def is_requested_artifacts_chain_ui_task(task_key: str) -> bool:
+    """True when task_key is on the live REQUESTED_ARTIFACTS craft chain."""
+    tk = (task_key or "").strip()
+    if not tk:
+        return False
+    return tk in _walk_requested_artifacts_chain_task_keys()
+
+
+def _artifacts_nav_label_for_path(path: str) -> str:
+    """Resolve Artifacts NAV_CONFIG child label for a path string."""
+    for section in NAV_CONFIG:
+        if not isinstance(section, dict) or section.get("label") != "Artifacts":
+            continue
+        for item in section.get("items") or []:
+            if isinstance(item, dict) and item.get("path") == path:
+                label = (item.get("label") or "").strip()
+                if label:
+                    return label
+    return ""
+
+
+def requested_artifacts_chain_hop_labels() -> list[str]:
+    """Live walk order × NAV_CONFIG Artifacts labels (fallback: task_key)."""
+    labels: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        path = CRAFT_ARTIFACTS_CHAIN_TASK_TO_NAV_PATH.get(task_key) or ""
+        labels.append(_artifacts_nav_label_for_path(path) or task_key)
+    return labels
+
+
+def requested_artifacts_chain_artifact_keys() -> list[str]:
+    """Rubric artifact keys only (excludes table-backed company_search_terms)."""
+    keys: list[str] = []
+    for task_key in _walk_requested_artifacts_chain_task_keys():
+        artifact = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key)
+        if artifact:
+            keys.append(artifact)
+    return keys
 
 
 _CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
@@ -1426,6 +1933,43 @@ def age_stale_candidate_states(*, now: Optional[datetime] = None) -> int:
 
 
 _HEX_COLOR_RE = re.compile(r"^#[0-9A-Fa-f]{6}$")
+_RESUME_SECTION_EXTRA_ID_RE = re.compile(RESUME_STRUCTURE_EXTRA_ID_PATTERN)
+
+
+def _slug_resume_extra_section_id(title: str, used: set) -> str:
+    s = re.sub(r"[^a-z0-9]+", "_", title.strip().lower()).strip("_")
+    if not s or not s[0].isalpha():
+        s = ("s_" + s) if s else "section"
+    base = s
+    n = 2
+    while (
+        s in used
+        or s in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+        or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(s) is None
+    ):
+        s = f"{base}_{n}"
+        n += 1
+    used.add(s)
+    return s
+
+
+def _title_to_structure_section_id(title: str, structure: dict) -> Optional[str]:
+    needle = title.strip().casefold()
+
+    def _match(sections: Any) -> Optional[str]:
+        if not isinstance(sections, dict):
+            return None
+        for sid, spec in sections.items():
+            if not isinstance(spec, dict):
+                continue
+            if str(spec.get("title") or "").strip().casefold() == needle:
+                return sid
+        return None
+
+    hit = _match((structure or {}).get("sections"))
+    if hit is not None:
+        return hit
+    return _match(RESUME_STRUCTURE_DEFAULT.get("sections"))
 
 
 def default_resume_structure() -> dict:
@@ -1449,9 +1993,10 @@ def normalize_resume_structure(raw: dict) -> dict:
         if ac not in palette:
             raise ValueError("resume_structure.accent_color not in accent_palette")
         out["accent_color"] = ac
+    missing = [rid for rid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS if rid not in sections_in]
+    if missing:
+        raise ValueError(f"resume_structure missing required section(s): {missing}")
     for sid, spec in sections_in.items():
-        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
-            raise ValueError(f"unknown resume section id: {sid}")
         if not isinstance(spec, dict):
             raise ValueError(f"section {sid} must be a dict")
         sec_id = str(spec.get("id") or sid).strip()
@@ -1466,18 +2011,181 @@ def normalize_resume_structure(raw: dict) -> dict:
         order = spec.get("order")
         if not isinstance(order, int):
             raise ValueError(f"section {sid} order must be int")
-        job_ed = spec.get("job_agent_editable")
-        if not isinstance(job_ed, bool):
-            raise ValueError(f"section {sid} job_agent_editable must be boolean")
-        out["sections"][sid] = {
+        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS and "job_agent_editable" not in spec:
+            job_ed = True
+        else:
+            job_ed = spec.get("job_agent_editable")
+            if not isinstance(job_ed, bool):
+                raise ValueError(f"section {sid} job_agent_editable must be boolean")
+        if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS and enabled is False:
+            raise ValueError(f"required section {sid} cannot be disabled")
+        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+            if sid in RESUME_STRUCTURE_RESERVED_EXTRA_IDS:
+                raise ValueError(f"invalid extra section id: {sid}")
+            if _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is None:
+                raise ValueError(f"invalid extra section id: {sid}")
+        row: Dict[str, Any] = {
             "id": sid,
             "title": title.strip(),
             "enabled": enabled,
             "order": order,
             "job_agent_editable": job_ed,
         }
+        if sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
+            pass
+        elif sid == "experience":
+            fmt = spec.get("format")
+            if fmt is None or (isinstance(fmt, str) and not fmt.strip()):
+                fmt = RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["experience"]
+            elif fmt != "experience_detail":
+                raise ValueError("section experience format must be experience_detail")
+            row["format"] = "experience_detail"
+        else:
+            fmt = spec.get("format")
+            if fmt is None or (isinstance(fmt, str) and not str(fmt).strip()):
+                if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID:
+                    fmt = RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+                else:
+                    raise ValueError(f"section {sid} requires format")
+            if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+                raise ValueError(
+                    f"section {sid} format must be one of {list(RESUME_STRUCTURE_BODY_FORMATS)}"
+                )
+            row["format"] = fmt
+        out["sections"][sid] = row
     if not out["sections"]:
         raise ValueError("resume_structure must include at least one section")
+    return out
+
+
+def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> tuple[dict, dict]:
+    """Map dict or {label, content} list → (id-keyed content, structure with extras)."""
+    if isinstance(structure, dict) and structure.get("sections"):
+        base_struct = normalize_resume_structure(structure)
+    else:
+        base_struct = default_resume_structure()
+    out_struct = copy.deepcopy(base_struct)
+    used = set(out_struct["sections"])
+    content: Dict[str, Any] = {}
+    if out_struct["sections"]:
+        next_order = 1 + max((spec.get("order") or 0) for spec in out_struct["sections"].values())
+    else:
+        next_order = 0
+
+    def _append_missing_section(sid: str, title: str) -> None:
+        nonlocal next_order
+        if sid in out_struct["sections"]:
+            return
+        fmt = (
+            RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+            if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID
+            else RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
+        )
+        out_struct["sections"][sid] = {
+            "id": sid,
+            "title": title,
+            "enabled": True,
+            "order": next_order,
+            "job_agent_editable": True,
+            "format": fmt,
+        }
+        used.add(sid)
+        next_order += 1
+
+    if isinstance(raw_base, dict):
+        for k, v in raw_base.items():
+            if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
+                continue
+            # Usable section id already, or display-label key (AST-1322 title-keyed dict).
+            if (
+                k in out_struct["sections"]
+                or k in RESUME_STRUCTURE_KNOWN_SECTION_IDS
+                or (
+                    _RESUME_SECTION_EXTRA_ID_RE.fullmatch(k) is not None
+                    and k not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+                )
+            ):
+                sid = k
+                if (
+                    sid not in out_struct["sections"]
+                    and _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
+                    and sid not in RESUME_STRUCTURE_RESERVED_EXTRA_IDS
+                ):
+                    _append_missing_section(sid, sid.replace("_", " ").title())
+            else:
+                sid = _title_to_structure_section_id(k, out_struct)
+                if sid is None:
+                    # Keep AST-519 orphan strip: invalid lowercase ids (e.g. 123bad).
+                    if k == k.lower() and " " not in k and "-" not in k:
+                        continue
+                    sid = _slug_resume_extra_section_id(k, used)
+                    _append_missing_section(sid, k)
+                elif sid not in out_struct["sections"]:
+                    _append_missing_section(sid, k)
+            if sid in content:
+                sid = _slug_resume_extra_section_id(k, used)
+                _append_missing_section(sid, k)
+            if sid == "experience" and not _is_experience_job_array(v):
+                continue
+            if _is_experience_job_array(v) and v:
+                content[sid] = v
+            elif isinstance(v, str):
+                content[sid] = v
+    elif isinstance(raw_base, list):
+        for item in raw_base:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            sid = _title_to_structure_section_id(label, out_struct)
+            if sid is None:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing_section(sid, label)
+            elif sid not in out_struct["sections"]:
+                _append_missing_section(sid, label)
+            if sid in content:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing_section(sid, label)
+            val = item.get("content")
+            if sid == "experience" and not _is_experience_job_array(val):
+                continue
+            if _is_experience_job_array(val) and val:
+                content[sid] = val
+            else:
+                content[sid] = str(val) if val is not None else ""
+
+    out_struct = normalize_resume_structure(out_struct)
+    return content, out_struct
+
+
+def slug_resume_section_id(title: str) -> str:
+    raw = (title or "").strip().lower()
+    slug = re.sub(r"[^a-z0-9]+", "_", raw).strip("_")
+    if not slug or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(slug) is None:
+        raise ValueError("invalid extra section title")
+    if slug in RESUME_STRUCTURE_RESERVED_EXTRA_IDS:
+        raise ValueError(f"invalid extra section id: {slug}")
+    return slug
+
+
+def prepare_resume_structure_sections_for_save(sections_in) -> dict:
+    if not isinstance(sections_in, dict) or not sections_in:
+        raise ValueError("resume_structure.sections must be a non-empty dict")
+    out = {}
+    for sid, spec in sections_in.items():
+        if not isinstance(spec, dict):
+            raise ValueError(f"section {sid} must be a dict")
+        key = str(sid)
+        if key in RESUME_STRUCTURE_KNOWN_SECTION_IDS or _RESUME_SECTION_EXTRA_ID_RE.fullmatch(key):
+            new_sid = key
+        else:
+            new_sid = slug_resume_section_id(str(spec.get("title") or ""))
+        if new_sid in out:
+            raise ValueError(f"duplicate section id after slug: {new_sid}")
+        row = dict(spec)
+        row["id"] = new_sid
+        out[new_sid] = row
     return out
 
 
@@ -1506,9 +2214,9 @@ def filter_base_resume_to_structure(content: dict, section_ids: set) -> dict:
     for k, v in content.items():
         if k not in section_ids:
             continue
-        if k == "experience" and _is_experience_job_array(v):
+        if _is_experience_job_array(v) and v:
             out[k] = v
-        elif isinstance(v, str):
+        elif k != "experience" and isinstance(v, str):
             out[k] = v
         # else: drop unexpected shapes (do not str()-corrupt)
     return out
@@ -1520,30 +2228,12 @@ def format_base_resume_for_token(candidate_data: dict) -> str:
     artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
     raw = artifacts.get("base_resume")
     structure = resolve_resume_structure(cd)
-    sections = structure.get("sections") if isinstance(structure.get("sections"), dict) else {}
+    content, _struct = ingest_legacy_label_content_base_resume(raw, structure)
     section_ids = {
-        sid for sid, spec in sections.items() if isinstance(spec, dict) and spec.get("id")
-    }
-    title_to_id = {
-        (spec.get("title") or "").strip(): sid
-        for sid, spec in sections.items()
+        sid for sid, spec in _struct.get("sections", {}).items()
         if isinstance(spec, dict) and spec.get("id")
     }
-    if isinstance(raw, dict):
-        payload = filter_base_resume_to_structure(raw, section_ids)
-    elif isinstance(raw, list):
-        legacy: dict[str, str] = {}
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            label = (item.get("label") or "").strip()
-            sid = title_to_id.get(label)
-            if not sid or sid not in section_ids:
-                continue
-            legacy[sid] = str(item.get("content") if item.get("content") is not None else "")
-        payload = filter_base_resume_to_structure(legacy, section_ids)
-    else:
-        payload = {}
+    payload = filter_base_resume_to_structure(content, section_ids)
     return json.dumps(payload, indent=2) if payload else ""
 
 
@@ -1578,6 +2268,88 @@ def _is_experience_job_array(val: Any) -> bool:
     return isinstance(val, list) and all(isinstance(item, dict) for item in val)
 
 
+def _is_resume_content_section_id(sid: str) -> bool:
+    if sid in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or sid == "accent_color":
+        return False
+    if sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        return True
+    return _RESUME_SECTION_EXTRA_ID_RE.fullmatch(sid) is not None
+
+
+def _load_missing_section_format(sid: str) -> str:
+    """AST-1324 read-path default: known id map, else free_prose (not bullet_list extras default)."""
+    if sid in RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID:
+        return RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
+    return RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"]
+
+
+def hydrate_resume_structure_from_base_resume(resolved: dict, base_resume: Any) -> dict:
+    """Read-only: union base_resume content keys into structure; missing body format → free_prose."""
+    out = copy.deepcopy(resolved) if isinstance(resolved, dict) else default_resume_structure()
+    sections = out.get("sections") if isinstance(out.get("sections"), dict) else {}
+    out["sections"] = sections
+    used = set(sections)
+    if sections:
+        next_order = 1 + max(
+            (spec.get("order") or 0) for spec in sections.values() if isinstance(spec, dict)
+        )
+    else:
+        next_order = 0
+    contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+
+    def _append_missing(sid: str, title: str) -> None:
+        nonlocal next_order
+        if sid in sections:
+            return
+        row: Dict[str, Any] = {
+            "id": sid,
+            "title": title,
+            "enabled": True,
+            "order": next_order,
+            "job_agent_editable": True,
+        }
+        if sid not in contact:
+            row["format"] = _load_missing_section_format(sid)
+        sections[sid] = row
+        used.add(sid)
+        next_order += 1
+
+    def _fix_body_format(sid: str, spec: dict) -> None:
+        if sid in contact or sid == "experience":
+            return
+        fmt = spec.get("format")
+        if not isinstance(fmt, str) or fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            spec["format"] = _load_missing_section_format(sid)
+
+    def _ensure_sid(sid: str, title: str) -> None:
+        if sid not in sections:
+            _append_missing(sid, title)
+        elif isinstance(sections.get(sid), dict):
+            _fix_body_format(sid, sections[sid])
+
+    if isinstance(base_resume, dict):
+        for k in base_resume:
+            if k in RESUME_STRUCTURE_RESERVED_EXTRA_IDS or k == "accent_color":
+                continue
+            if _is_resume_content_section_id(k):
+                _ensure_sid(k, k.replace("_", " ").title())
+    elif isinstance(base_resume, list):
+        for item in base_resume:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            if not label:
+                continue
+            sid = _title_to_structure_section_id(label, out)
+            if sid is None:
+                sid = _slug_resume_extra_section_id(label, used)
+                _append_missing(sid, label)
+            else:
+                _ensure_sid(sid, label)
+
+    return out
+
+
 # Public alias for tracker / builder (AST-996 / AST-997 / AST-998).
 is_experience_job_array = _is_experience_job_array
 
@@ -1607,11 +2379,11 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
         sections = None
 
     def _promote(sid: str, val: Any) -> None:
-        if sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
+        if not _is_resume_content_section_id(sid):
             return
-        if sid == "experience" and _is_experience_job_array(payload.get(sid)):
+        if _is_experience_job_array(payload.get(sid)):
             return
-        if sid == "experience" and _is_experience_job_array(val):
+        if _is_experience_job_array(val):
             payload[sid] = val
             return
         if _coerce_resume_section_string(payload.get(sid)):
@@ -1632,8 +2404,8 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
                 _promote(sid, val)
 
     # Direct keys on resume_structure (e.g. candidate_name) — not sections/content metadata.
-    for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS:
-        if sid in raw_struct:
+    for sid in list(raw_struct.keys()):
+        if _is_resume_content_section_id(sid):
             _promote(sid, raw_struct[sid])
 
     if sections is None:
@@ -1641,15 +2413,10 @@ def _flatten_craft_resume_section_strings(payload: dict) -> None:
     for sid, spec in sections.items():
         if not isinstance(spec, dict) or not spec.get("enabled"):
             continue
-        if _coerce_resume_section_string(payload.get(sid)):
-            continue
         for ck in _CRAFT_RESUME_NESTED_CONTENT_KEYS:
             if ck not in spec:
                 continue
-            text = _coerce_resume_section_string(spec.get(ck))
-            if text:
-                payload[sid] = text
-                break
+            _promote(sid, spec.get(ck))
 
 
 def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
@@ -1668,7 +2435,6 @@ def normalize_craft_resume_base_agent_payload(parsed: dict) -> None:
             payload["resume_structure"] = default_resume_structure()
 
 
-_DRAFT_JOB_RESUME_METADATA_KEYS = frozenset({"astral_job_id", "company", "title", "task_success"})
 _DRAFT_JOB_RESUME_CONSULT_KEYS = frozenset(
     {"grades", "dealbreakers", "clarifications", "overall_assessment", "ja_notes"}
 )
@@ -1678,17 +2444,23 @@ _DRAFT_JOB_RESUME_SECTION_ALIASES = {
 }
 
 
-def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
-    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
-        if alias not in inner:
-            continue
-        alias_val = inner.pop(alias)
-        if canonical not in inner or inner.get(canonical) in (None, ""):
-            inner[canonical] = alias_val
+def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
+    """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
+    cd = candidate_data if isinstance(candidate_data, dict) else {}
+    artifacts = cd.get("artifacts") if isinstance(cd.get("artifacts"), dict) else {}
+    base = artifacts.get("base_resume")
+    if not isinstance(base, (dict, list)):
+        return []
+    structure = resolve_resume_structure(cd)
+    content, _ingested = ingest_legacy_label_content_base_resume(base, structure)
+    return sorted(k for k in content if _is_resume_content_section_id(k))
 
 
-def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
-    """Before draft_job_resume validation: flatten nested/wrapped section strings (AST-594)."""
+def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = False) -> None:
+    """Before draft_job_resume validation: unwrap nested resume + flatten section strings (AST-594 / AST-1270).
+
+    When ``debug=True``, emit Style D unwrap trail (AST-1272) before the nest pop.
+    """
     if not isinstance(parsed, dict):
         return
     payload = parsed.get("agent_payload")
@@ -1698,10 +2470,40 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
         inner = parsed
     else:
         return
+    task_cfg = TASK_CONFIG["draft_job_resume"]
+    nest_key = task_cfg["nested_resume_key"]
+    meta = set(task_cfg["payload_metadata_keys"])
+    # Style D unwrap trail before pop — agent passes debug= on first do_task call only.
+    logger.set_debug_flag(debug)
+    nested = inner.get(nest_key)
+    if isinstance(nested, dict):
+        unwrap_outcome = "popped"
+        nested_section_count = len(nested)
+    elif nest_key in inner:
+        unwrap_outcome = "invalid"
+        nested_section_count = 0
+    else:
+        unwrap_outcome = "flat"
+        nested_section_count = 0
+    if debug:
+        logger.debug_index(
+            func="candidate.normalize_draft_job_resume_agent_payload",
+            index=1,
+            total=1,
+            identifier=str(inner.get("astral_job_id") or ""),
+            outcome=f"unwrap {unwrap_outcome}",
+        )
+        logger.debug_detail(f"found nest_key={nest_key!r} unwrap={unwrap_outcome}")
+        logger.debug_detail(f"found nested_section_count={nested_section_count}")
+    # Nested envelope: promote section bodies onto agent_payload; drop nest key.
+    if isinstance(nested, dict):
+        block = inner.pop(nest_key)
+        for sid, val in block.items():
+            inner[sid] = val
     if "resume_structure" in inner:
         _flatten_craft_resume_section_strings(inner)
-    for nest_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
-        block = inner.get(nest_key)
+    for promote_key in _CRAFT_RESUME_CONTENT_DICT_KEYS:
+        block = inner.get(promote_key)
         if not isinstance(block, dict):
             continue
         for sid, val in block.items():
@@ -1713,7 +2515,7 @@ def normalize_draft_job_resume_agent_payload(parsed: dict) -> None:
             if text:
                 inner[sid] = text
     for key, val in list(inner.items()):
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        if key in meta or key == "resume_structure":
             continue
         if key == "experience" and _is_experience_job_array(val):
             continue
@@ -1765,44 +2567,111 @@ def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> N
                 job[field] = ""
 
 
-def validate_draft_job_resume_payload(parsed: dict, candidate_data: dict) -> Optional[str]:
-    """Catalog whitelist for draft_job_resume section keys; all sections optional."""
+def validate_draft_job_resume_payload(
+    parsed: dict, candidate_data: dict, *, debug: bool = False
+) -> Optional[str]:
+    """Whitelist draft_job_resume section keys against artifacts.base_resume (AST-1270).
+
+    When ``debug=True``, emit Style D whitelist / accepted / rejected trail (AST-1272).
+    """
+    # Second normalize stays quiet — unwrap Style D already fired on agent's first call.
     normalize_draft_job_resume_agent_payload(parsed)
+    logger.set_debug_flag(debug)
     payload = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
+    accepted: list[str] = []
+    rejected: list[str] = []
+    allowed: set = set()
+    err: Optional[str] = None
+
     if not isinstance(payload, dict):
-        return "agent_payload must be a dict"
-    structure = resolve_resume_structure(candidate_data)
-    allowed = set(enabled_resume_section_ids(structure))
-    if not allowed:
-        return "candidate has no enabled resume sections"
-    for key, val in payload.items():
-        if key in _DRAFT_JOB_RESUME_METADATA_KEYS or key == "resume_structure":
+        err = "agent_payload must be a dict"
+    else:
+        task_cfg = TASK_CONFIG["draft_job_resume"]
+        nest_key = task_cfg["nested_resume_key"]
+        meta = set(task_cfg["payload_metadata_keys"])
+        if nest_key in payload and not isinstance(payload.get(nest_key), dict):
+            err = f"{nest_key!r} must be an object of resume sections"
+        else:
+            allowed = set(draft_job_resume_allowed_section_keys(candidate_data))
+            if not allowed:
+                err = "candidate has no base_resume section keys"
+            else:
+                for key, val in payload.items():
+                    if key in meta or key == "resume_structure":
+                        continue
+                    if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
+                        rejected.append(key)
+                        err = f"Unknown or disallowed field '{key}' on draft_job_resume"
+                        break
+                    if key not in allowed:
+                        rejected.append(key)
+                        err = (
+                            f"Unknown resume section key '{key}' "
+                            f"(not in candidate base_resume keys: {sorted(allowed)})"
+                        )
+                        break
+                    if val is None or val == "":
+                        accepted.append(key)
+                        continue
+                    if key == "experience":
+                        if _is_experience_job_array(val) and val:
+                            bad_job = False
+                            for job in val:
+                                if not isinstance(job, dict):
+                                    rejected.append(key)
+                                    err = "Section 'experience' must be an experience_detail job array"
+                                    bad_job = True
+                                    break
+                                if not isinstance(job.get("location"), str):
+                                    job["location"] = (
+                                        ""
+                                        if job.get("location") is None
+                                        else str(job.get("location") or "")
+                                    )
+                            if bad_job or err is not None:
+                                break
+                            accepted.append(key)
+                            continue
+                        rejected.append(key)
+                        err = "Section 'experience' must be an experience_detail job array"
+                        break
+                    text = _coerce_resume_section_string(val)
+                    if text is None:
+                        rejected.append(key)
+                        err = f"Section '{key}' must be prose text (string or coercible list)"
+                        break
+                    if text != val:
+                        payload[key] = text
+                    accepted.append(key)
+                if err is None:
+                    pin_experience_job_facts_from_base(payload, candidate_data)
+
+    if debug:
+        ident = str(payload.get("astral_job_id") or "") if isinstance(payload, dict) else ""
+        outcome = "ok" if err is None else "reject"
+        logger.debug_index(
+            func="candidate.validate_draft_job_resume_payload",
+            index=1,
+            total=1,
+            identifier=ident,
+            outcome=outcome,
+        )
+        logger.debug_detail(
+            f"found whitelist_source=base_resume keys={sorted(allowed)}"
+        )
+        logger.debug_detail(f"recorded accepted_keys={sorted(accepted)}")
+        logger.debug_detail(f"recorded rejected_keys={sorted(rejected)}")
+        logger.debug_detail(f"recorded error={err if err is not None else 'none'}")
+    return err
+
+
+def _apply_draft_job_resume_section_aliases(inner: dict) -> None:
+    for alias, canonical in _DRAFT_JOB_RESUME_SECTION_ALIASES.items():
+        if alias not in inner:
             continue
-        if key in _DRAFT_JOB_RESUME_CONSULT_KEYS:
-            return f"Unknown or disallowed field '{key}' on draft_job_resume"
-        if key not in allowed:
-            return f"Unknown resume section key '{key}' (not in candidate catalog: {sorted(allowed)})"
-        if val is None or val == "":
-            continue
-        if key == "experience":
-            if _is_experience_job_array(val):
-                for job in val:
-                    if not isinstance(job, dict):
-                        return "Section 'experience' must be a job array or prose string"
-                    if not isinstance(job.get("location"), str):
-                        job["location"] = "" if job.get("location") is None else str(job.get("location") or "")
-                continue
-            if isinstance(val, str):
-                continue
-            if isinstance(val, (list, dict)):
-                return "Section 'experience' must be a job array or prose string"
-        text = _coerce_resume_section_string(val)
-        if text is None:
-            return f"Section '{key}' must be prose text (string or coercible list)"
-        if text != val:
-            payload[key] = text
-    pin_experience_job_facts_from_base(payload, candidate_data)
-    return None
+        alias_val = inner.pop(alias)
+        if canonical not in inner or inner.get(canonical) in (None, ""):
+            inner[canonical] = alias_val
 
 
 def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
@@ -1823,9 +2692,9 @@ def split_craft_resume_base_payload(parsed: dict) -> tuple[dict, dict]:
         if key not in parsed:
             continue
         val = parsed[key]
-        if key == "experience" and _is_experience_job_array(val):
+        if _is_experience_job_array(val) and val:
             content[key] = val
-        elif isinstance(val, str):
+        elif key != "experience" and isinstance(val, str):
             content[key] = val
     return structure, content
 
@@ -1864,10 +2733,17 @@ def filter_content_to_resume_structure(
     out: Dict[str, Any] = {}
     for key in allowed:
         val = content.get(key)
-        if key == "experience" and _is_experience_job_array(val) and val:
+        if _is_experience_job_array(val) and val:
             out[key] = val
+        elif key == "experience":
+            if isinstance(val, str) and val.strip():
+                out[key] = val
         elif isinstance(val, str) and val.strip():
             out[key] = val
+        elif isinstance(val, list) and val and all(not isinstance(item, dict) for item in val):
+            text = _coerce_resume_section_string(val)
+            if text:
+                out[key] = text
     return out
 
 
@@ -2057,7 +2933,8 @@ def _persist_craft_dispatch_success(candidate_id: str, task_key: str, parsed: An
         if not isinstance(criteria, list) or len(criteria) == 0:
             raise ValueError(f"{task_key} returned no criteria")
         # AST-1085: craft_jobdesc_rubric persist restores QC/GC before sync.
-        if artifact_key == "jobdesc_rubric":
+        # QC/GC are source-agnostic — also restore for the meteorite dealbreaker screen.
+        if artifact_key in ("jobdesc_rubric", "meteorite_jobdesc_rubric"):
             criteria = _merge_embedded_evaluate_jd_criteria(criteria)
         arts = {artifact_key: criteria}
         normalize_rubric_artifacts_on_save(arts)
@@ -2076,47 +2953,8 @@ def _requested_stage_failure_target(primary_state: str, current_state: str) -> s
     return error
 
 
-async def run_requested_resume_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_RESUME → craft_resume_base → RESUME_READY / retry / error."""
-    zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
-    logger.set_debug_flag(debug)
-    candidate = database.get_candidate(candidate_id)
-    if not candidate:
-        return {**zero, "total_processed": 1, "total_errors": 1}
-    stage = CANDIDATE_STAGE_DISPATCH["requested_resume"]
-    primary = stage["trigger_state"]
-    pass_state = stage["pass_state"]
-    craft_key = stage["craft_task_key"]
-    current = (candidate.get("state") or "").strip()
-    live = ((candidate.get("candidate_data") or {}).get("context") or {}).get("raw_resume") or ""
-    try:
-        response = await do_task(
-            task_key=craft_key,
-            live_content=live,
-            index=candidate_id,
-            ctx=candidate,
-            debug=debug,
-        )
-        if not response or not response.get("success"):
-            raise RuntimeError(
-                (response or {}).get("error") if response else "do_task returned None"
-            )
-        parsed = response.get("parsed_response")
-        _persist_craft_dispatch_success(candidate_id, craft_key, parsed)
-        transition_candidate_state(candidate_id, pass_state)
-        return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
-    except Exception as e:
-        logger.error("run_requested_resume_dispatch failed candidate_id=%s error=%s", candidate_id, e)
-        target = _requested_stage_failure_target(primary, current)
-        try:
-            transition_candidate_state(candidate_id, target)
-        except ValueError:
-            return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-
-
 async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → craft_* via run_next → ARTIFACTS_READY / retry / error."""
+    """Claim worker: REQUESTED_ARTIFACTS → craft_get_rubric run_next chain → ARTIFACTS_READY / retry / error."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
@@ -2126,29 +2964,25 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
     primary = stage["trigger_state"]
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
-    craft_key = (stage.get("craft_task_key") or "").strip()
-    seen: set[str] = set()
+    task_key = (stage.get("task_key") or "").strip()
     try:
-        while craft_key:
-            if craft_key in seen:
-                raise RuntimeError(f"craft run_next cycle at {craft_key!r}")
-            seen.add(craft_key)
-            # Refresh ctx each hop so later crafts see earlier persists.
-            candidate = database.get_candidate(candidate_id) or candidate
-            task_ctx = {**(candidate or {}), "suppress_run_next": True}
-            response = await do_task(
-                task_key=craft_key,
-                live_content="",
-                index=candidate_id,
-                ctx=task_ctx,
-                debug=debug,
+        # Native do_task run_next (hop ledgers); persist via ctx flag — no suppress_run_next.
+        task_ctx = {
+            **(candidate or {}),
+            "astral_candidate_id": candidate_id,
+            "persist_candidate_craft_hops": True,
+        }
+        response = await do_task(
+            task_key=task_key,
+            live_content="",
+            index=candidate_id,
+            ctx=task_ctx,
+            debug=debug,
+        )
+        if not response or not response.get("success"):
+            raise RuntimeError(
+                (response or {}).get("error") if response else f"do_task None for {task_key}"
             )
-            if not response or not response.get("success"):
-                raise RuntimeError(
-                    (response or {}).get("error") if response else f"do_task None for {craft_key}"
-                )
-            _persist_craft_dispatch_success(candidate_id, craft_key, response.get("parsed_response"))
-            craft_key = _current_agent_task_run_next(craft_key)
         transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
@@ -2332,6 +3166,18 @@ def run_candidate_artifact_generation(
 ) -> Tuple[Dict[str, Any], int]:
     """Run a craft_* do_task with dispatch_ledger + log_batch_id; returns (json_body, http_status)."""
     logger.set_debug_flag(debug)
+    # AST-1253: chain craft keys hand off via generate_artifacts / REQUESTED_ARTIFACTS
+    if is_requested_artifacts_chain_ui_task(task_key):
+        return (
+            {
+                "success": False,
+                "error": (
+                    "Use POST /api/candidates/<id>/generate_artifacts "
+                    "(REQUESTED_ARTIFACTS dispatch chain); per-artifact UI generate retired for this task"
+                ),
+            },
+            409,
+        )
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return ({"error": f"Candidate not found: {candidate_id}"}, 404)
@@ -2459,7 +3305,8 @@ def run_candidate_artifact_generation(
                     500,
                 )
             # AST-1085: append QC/GC into craft_jobdesc_rubric generate response/stash.
-            if task_key == "craft_jobdesc_rubric" and isinstance(parsed_response, dict):
+            # QC/GC are source-agnostic — also apply to the meteorite dealbreaker rubric.
+            if task_key in ("craft_jobdesc_rubric", "craft_evaluate_meteorite_rubric") and isinstance(parsed_response, dict):
                 crit = parsed_response.get("criteria")
                 if isinstance(crit, list):
                     parsed_response["criteria"] = _merge_embedded_evaluate_jd_criteria(crit)

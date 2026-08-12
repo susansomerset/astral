@@ -31,8 +31,8 @@ export default function CandidateJobRowActions({
   if (state === "CANDIDATE_SKIPPED" && onResurrect) {
     return (
       <div className="job-list-actions" onClick={e => e.stopPropagation()}>
-        <button type="button" className="job-list-icon-btn" title="Resurrect" aria-label="Resurrect"
-          onClick={onResurrect}>Re</button>
+        <button type="button" className="icon-control" title="Resurrect" aria-label="Resurrect"
+          onClick={onResurrect}>R</button>
       </div>
     )
   }
@@ -40,11 +40,11 @@ export default function CandidateJobRowActions({
   if (REVIEW_LIKE.has(state) && onSkip) {
     return (
       <div className="job-list-actions" onClick={e => e.stopPropagation()}>
-        <button type="button" className="job-list-icon-btn" title="Skip" aria-label="Skip"
-          onClick={onSkip}>Sk</button>
+        <button type="button" className="icon-control" title="Skip" aria-label="Skip"
+          onClick={onSkip}>S</button>
         {showViewAnalysis !== false && onViewAnalysis && (
-          <button type="button" className="job-list-icon-btn" title="View Job Analysis" aria-label="View Job Analysis"
-            onClick={onViewAnalysis}>Jr</button>
+          <button type="button" className="icon-control" title="View Job Analysis" aria-label="View Job Analysis"
+            onClick={onViewAnalysis}>J</button>
         )}
       </div>
     )
@@ -53,14 +53,14 @@ export default function CandidateJobRowActions({
   if (POST_APPLIED.has(state) && onAction) {
     return (
       <div className="job-list-actions" onClick={e => e.stopPropagation()}>
-        <button type="button" className="job-list-icon-btn" title="Reapply" aria-label="Reapply"
-          onClick={() => onAction("review")}>Re</button>
-        <button type="button" className="job-list-icon-btn" title="Interview" aria-label="Interview"
-          onClick={() => onAction("interview")}>In</button>
-        <button type="button" className="job-list-icon-btn" title="Rejected" aria-label="Rejected"
+        <button type="button" className="icon-control" title="Reapply" aria-label="Reapply"
+          onClick={() => onAction("review")}>R</button>
+        <button type="button" className="icon-control" title="Interview" aria-label="Interview"
+          onClick={() => onAction("interview")}>I</button>
+        <button type="button" className="icon-control" title="Rejected" aria-label="Rejected"
           onClick={() => onAction("rejected")}>X</button>
-        <button type="button" className="job-list-icon-btn" title="Ghosted" aria-label="Ghosted"
-          onClick={() => onAction("ghosted")}>Gh</button>
+        <button type="button" className="icon-control" title="Ghosted" aria-label="Ghosted"
+          onClick={() => onAction("ghosted")}>G</button>
       </div>
     )
   }

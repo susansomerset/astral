@@ -200,10 +200,9 @@ export default function DataManagement() {
           </select>
           <button
             type="button"
-            className="dep-btn save"
+            className="btn primary"
             onClick={() => setUpsertModalOpen(true)}
             disabled={!upsertTable.trim() || upsertPosting}
-            style={{ fontSize: 12 }}
           >
             Update
           </button>
@@ -231,54 +230,6 @@ export default function DataManagement() {
       </Modal>
 
       <div style={{ display: "flex", gap: 16, alignItems: "flex-start" }}>
-        {/* Schema browser panel */}
-        <div style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1 }}>Tables</label>
-          <div style={{
-            border: "1px solid var(--border)", borderRadius: 4,
-            background: "var(--bg-elevated)", overflowY: "auto",
-            maxHeight: 260, minHeight: 120,
-          }}>
-            {tables.length === 0 && (
-              <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>
-            )}
-            {tables.map(t => (
-              <div
-                key={t}
-                onClick={() => setSelectedTable(t)}
-                style={{
-                  padding: "4px 10px", fontSize: 12, fontFamily: "monospace",
-                  cursor: "pointer", color: "var(--text-primary)",
-                  background: t === selectedTable ? "var(--accent-gold-dim, rgba(212,168,67,0.15))" : "transparent",
-                }}
-              >{t}</div>
-            ))}
-          </div>
-
-          {selectedTable && (
-            <>
-              <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1, marginTop: 4 }}>
-                Fields — {selectedTable}
-              </label>
-              <div style={{
-                border: "1px solid var(--border)", borderRadius: 4,
-                background: "var(--bg-elevated)", overflowY: "auto",
-                maxHeight: 300,
-              }}>
-                {fields.map(f => (
-                  <div key={f.name} style={{
-                    padding: "3px 10px", fontSize: 12, fontFamily: "monospace",
-                    color: "var(--text-primary)",
-                  }}>
-                    {f.pk ? "🔑 " : ""}<span style={{ color: "var(--accent-gold)" }}>{f.name}</span>{" "}
-                    <span style={{ color: "var(--text-muted)" }}>{f.type}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          )}
-        </div>
-
         {/* Main query panel */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ display: "flex", gap: 8, alignItems: "flex-start" }}>
@@ -308,13 +259,13 @@ export default function DataManagement() {
           </div>
 
           <div style={{ marginTop: 12, display: "flex", gap: 12, alignItems: "center" }}>
-            <button className="dep-btn save" onClick={handleRun} disabled={running || !sql.trim()}>
+            <button className="btn primary" onClick={handleRun} disabled={running || !sql.trim()}>
               {running ? "Running..." : "Run"}
             </button>
             {result?.type === "select" && (
               <>
                 <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{result.count} row(s)</span>
-                <button className="dep-btn cancel" onClick={() => {
+                <button className="btn secondary" onClick={() => {
                   navigator.clipboard.writeText(JSON.stringify(result.rows, null, 2))
                   setToast({ text: "Copied to clipboard", variant: "success" })
                 }}>
@@ -376,6 +327,54 @@ export default function DataManagement() {
           </table>
         </div>
       )}
+        </div>
+
+        {/* Schema browser panel */}
+        <div style={{ width: 200, flexShrink: 0, display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1 }}>Tables</label>
+          <div style={{
+            border: "1px solid var(--border)", borderRadius: 4,
+            background: "var(--bg-elevated)", overflowY: "auto",
+            maxHeight: 260, minHeight: 120,
+          }}>
+            {tables.length === 0 && (
+              <div style={{ padding: "8px 10px", fontSize: 12, color: "var(--text-muted)" }}>Loading…</div>
+            )}
+            {tables.map(t => (
+              <div
+                key={t}
+                onClick={() => setSelectedTable(t)}
+                style={{
+                  padding: "4px 10px", fontSize: 12, fontFamily: "monospace",
+                  cursor: "pointer", color: "var(--text-primary)",
+                  background: t === selectedTable ? "var(--accent-gold-dim, rgba(212,168,67,0.15))" : "transparent",
+                }}
+              >{t}</div>
+            ))}
+          </div>
+
+          {selectedTable && (
+            <>
+              <label style={{ fontSize: 11, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: 1, marginTop: 4 }}>
+                Fields — {selectedTable}
+              </label>
+              <div style={{
+                border: "1px solid var(--border)", borderRadius: 4,
+                background: "var(--bg-elevated)", overflowY: "auto",
+                maxHeight: 300,
+              }}>
+                {fields.map(f => (
+                  <div key={f.name} style={{
+                    padding: "3px 10px", fontSize: 12, fontFamily: "monospace",
+                    color: "var(--text-primary)",
+                  }}>
+                    {f.pk ? "🔑 " : ""}<span style={{ color: "var(--accent-gold)" }}>{f.name}</span>{" "}
+                    <span style={{ color: "var(--text-muted)" }}>{f.type}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
 

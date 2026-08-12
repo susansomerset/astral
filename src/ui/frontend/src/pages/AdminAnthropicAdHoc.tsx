@@ -4,6 +4,7 @@ import TokenTextarea from "../components/TokenTextarea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
+import { compareTaskKeys } from "../lib/taskKeySort"
 import { useLocalStorage } from "../lib/useLocalStorage"
 
 const LS = "adhoc:"  // localStorage key prefix
@@ -142,6 +143,12 @@ export default function AnthropicAdHoc() {
 
   const hasContent = userPrompt.trim() || cachePrompt.trim() || nocachePrompt.trim()
 
+  // Explicit lexicographic task_key order (do not rely on API array order alone).
+  const taskKeysSorted = useMemo(
+    () => [...tasks].sort((a, b) => compareTaskKeys(a.task_key, b.task_key)),
+    [tasks],
+  )
+
   function handlePreview() {
     if (!agentId) { setToast({ text: "Select an agent first", variant: "error" }); return }
     setPreviewing(true)
@@ -270,7 +277,7 @@ export default function AnthropicAdHoc() {
           <label className="dep-field-label">Task Key <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(loads prompts + entities)</span></label>
           <select className="dep-input" value={taskKey} onChange={e => setTaskKey(e.target.value)}>
             <option value="">— No Task (ad hoc) —</option>
-            {tasks.map(t => <option key={t.task_key} value={t.task_key}>{t.task_key}</option>)}
+            {taskKeysSorted.map(t => <option key={t.task_key} value={t.task_key}>{t.task_key}</option>)}
           </select>
         </div>
         <div className="dep-field" style={{ flex: 1, maxWidth: 280 }}>
@@ -336,16 +343,16 @@ export default function AnthropicAdHoc() {
 
       {/* ── Action buttons ── */}
       <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
-        <button className="dep-btn cancel" onClick={handlePreview} disabled={previewing || !agentId}>
+        <button className="btn secondary" onClick={handlePreview} disabled={previewing || !agentId}>
           {previewing ? "Loading..." : "Preview Prompt"}
         </button>
-        <button className="dep-btn save" onClick={handleTest} disabled={testing || !agentId} style={{ minWidth: 100 }}>
+        <button className="btn primary" onClick={handleTest} disabled={testing || !agentId}>
           {testing ? "Testing..." : "▶ Test"}
         </button>
 
         {/* SAVE AS */}
         <div ref={saveRef} style={{ position: "relative" }}>
-          <button className="dep-btn cancel" onClick={() => setSaveAsOpen(!saveAsOpen)} disabled={!hasContent}>
+          <button className="btn secondary" onClick={() => setSaveAsOpen(!saveAsOpen)} disabled={!hasContent}>
             Save As
           </button>
           {saveAsOpen && (
@@ -355,7 +362,7 @@ export default function AnthropicAdHoc() {
               borderRadius: 4, boxShadow: "0 4px 12px rgba(0,0,0,0.4)",
               maxHeight: 300, overflowY: "auto", minWidth: 280,
             }}>
-              {tasks.map(t => {
+              {taskKeysSorted.map(t => {
                 const hasExisting = (t.user_prompt_len || 0) > 0 || (t.cache_prompt_len || 0) > 0 || (t.nocache_prompt_len || 0) > 0
                 return (
                   <div key={t.task_key} onClick={() => handleSaveAs(t.task_key)} style={{
@@ -381,8 +388,8 @@ export default function AnthropicAdHoc() {
             Replace current prompt content with prompts from <strong>{confirmFetch}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button className="dep-btn save" onClick={() => doFetchFrom(confirmFetch)} style={{ fontSize: 12, padding: "4px 12px" }}>Yes, Replace</button>
-            <button className="dep-btn cancel" onClick={() => setConfirmFetch(null)} style={{ fontSize: 12, padding: "4px 12px" }}>Cancel</button>
+            <button className="btn danger" onClick={() => doFetchFrom(confirmFetch)}>Yes, Replace</button>
+            <button className="btn secondary" onClick={() => setConfirmFetch(null)}>Cancel</button>
           </div>
         </div>
       )}
@@ -392,8 +399,8 @@ export default function AnthropicAdHoc() {
             Overwrite existing prompts for <strong>{confirmTask}</strong>?
           </span>
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
-            <button className="dep-btn save" onClick={() => doSaveAs(confirmTask)} style={{ fontSize: 12, padding: "4px 12px" }}>Yes, Overwrite</button>
-            <button className="dep-btn cancel" onClick={() => setConfirmTask(null)} style={{ fontSize: 12, padding: "4px 12px" }}>Cancel</button>
+            <button className="btn danger" onClick={() => doSaveAs(confirmTask)}>Yes, Overwrite</button>
+            <button className="btn secondary" onClick={() => setConfirmTask(null)}>Cancel</button>
           </div>
         </div>
       )}

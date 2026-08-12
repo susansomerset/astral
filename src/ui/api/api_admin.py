@@ -22,6 +22,7 @@ from src.data.database import (
 )
 
 from src.core.consult import list_timesheets
+from src.core.inbox import count_inbox_bound_by_candidate
 from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 from src.utils.cost_calculator import sum_calc_cost_components
@@ -66,13 +67,17 @@ from src.utils.config import (
     admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
+    GAZE_EMAIL_CONFIG,
     dispatch_task_admin_defaults,
     dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
     dispatch_task_key_retired_message,
     _dispatch_entity_type_for_task_key,
+    _dispatch_trigger_state_for_task_key,
+    is_meteorite_email_mailbox_task_key,
     get_task_keys,
     dispatch_claim_uses_score_floor,
+    dispatch_score_floor_option_labels,
     is_dispatch_chain_trigger,
     parse_dispatch_hop_label,
     get_active_llm_provider,
@@ -856,6 +861,25 @@ _DISPATCH_TASK_COLUMNS = [
 def list_dtasks():
     rows = list_dispatch_tasks()
     rows = [r for r in rows if r.get("task_key") not in DISPATCH_RETIRED_TASK_KEYS]
+    gaze_tk = GAZE_EMAIL_CONFIG["task_key"]
+
+    def _inbox_avail_task_key(tk: str) -> bool:
+        # gaze_email + meteorite mailbox fold share Gmail inbox ping Avail (AST-1214).
+        return tk == gaze_tk or is_meteorite_email_mailbox_task_key(tk)
+
+    # One inbox snapshot when any candidate-bound mailbox Avail row is present.
+    need_gaze_counts = any(
+        _inbox_avail_task_key((r.get("task_key") or "").strip())
+        and str(r.get("candidate_id") or "").strip()
+        for r in rows
+    )
+    bound_counts: Dict[str, int] = {}
+    if need_gaze_counts:
+        try:
+            bound_counts = count_inbox_bound_by_candidate()
+        except Exception as exc:
+            logger.warning("list_dtasks: gaze_email inbox bind counts failed: %s", exc)
+            bound_counts = {}
     # Enrich each row with live available entity count
     for row in rows:
         is_scored = dispatch_claim_uses_score_floor(row.get("trigger_state"))
@@ -867,18 +891,22 @@ def list_dtasks():
         et = row.get("entity_type")
         ts = row.get("trigger_state")
         cid = row.get("candidate_id", "")
-        try:
-            row["available_count"] = (
-                database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
-            )
-        except Exception as exc:
-            logger.warning(
-                "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
-                row.get("id"),
-                row.get("task_key"),
-                exc,
-            )
-            row["available_count"] = 0
+        if _inbox_avail_task_key((row.get("task_key") or "").strip()):
+            cid_s = str(cid or "").strip()
+            row["available_count"] = int(bound_counts.get(cid_s, 0)) if cid_s else 0
+        else:
+            try:
+                row["available_count"] = (
+                    database.count_eligible_for_dispatch_task(row) if et and ts and cid else 0
+                )
+            except Exception as exc:
+                logger.warning(
+                    "list_dtasks: available_count failed for dispatch_task id=%s task_key=%r: %s",
+                    row.get("id"),
+                    row.get("task_key"),
+                    exc,
+                )
+                row["available_count"] = 0
         row["always_visible_under_avail_gt0"] = (
             row.get("task_key") in admin_always_visible_under_avail_gt0_dispatch_task_keys()
         )
@@ -902,7 +930,7 @@ def _catalog_task_grouping_meta(catalog_key: str) -> dict:
 
 
 def _dispatch_task_key_form_meta(task_key: str) -> dict:
-    """Scheduled Actions form defaults: TASK_CONFIG keys use dispatch_task_admin_defaults
+    """Scheduled Actions form defaults: TASK_CONFIG / mailbox keys use dispatch_task_admin_defaults
     when defaults resolve; grouping fields from agent_task via dispatch_task_grouping_catalog_key;
     entity/trigger keyed by dispatch task_key."""
     catalog_key = (task_key or "").strip()
@@ -911,14 +939,29 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     entity_type = cfg.get("entity_type") or ""
     ts = cfg.get("trigger_state")
     trigger_state = (ts or "") if ts is not None else ""
-    # Prefer derived admin defaults when the key is registered and has a trigger rule.
-    if task_key in TASK_CONFIG:
+    # Prefer derived admin defaults (TASK_CONFIG + meteorite mailbox fold).
+    if task_key in TASK_CONFIG or is_meteorite_email_mailbox_task_key(task_key):
         try:
             derived = dispatch_task_admin_defaults(task_key)
-            entity_type = derived["entity_type"]
-            trigger_state = derived["trigger_state"]
+            entity_type = derived["entity_type"] or ""
+            trigger_state = (
+                (derived["trigger_state"] or "")
+                if derived["trigger_state"] is not None
+                else ""
+            )
         except KeyError:
-            pass  # mid-chain / no default trigger — keep TASK_CONFIG field values
+            pass  # mid-chain / no default — keep prior field values
+    # Helper-resolvable agent_task-only hops fill empty entity/trigger.
+    if not entity_type:
+        try:
+            entity_type = _dispatch_entity_type_for_task_key(task_key) or ""
+        except KeyError:
+            pass
+    if not trigger_state:
+        try:
+            trigger_state = _dispatch_trigger_state_for_task_key(task_key) or ""
+        except KeyError:
+            pass
     return {
         "entity_type": entity_type or "",
         "trigger_state": trigger_state,
@@ -927,38 +970,34 @@ def _dispatch_task_key_form_meta(task_key: str) -> dict:
     }
 
 
+def _admin_dispatch_task_key_catalog() -> dict[str, dict]:
+    """Live Admin picker catalog: agent_task ∪ TASK_CONFIG ∪ dispatch orphans, alpha by task_key."""
+    membership: set[str] = set(get_task_keys())
+    for row in database.list_candidate_tasks():
+        tk = (row.get("task_key") or "").strip()
+        if tk:
+            membership.add(tk)
+    for r in list_dispatch_tasks():
+        k = (r.get("task_key") or "").strip()
+        if k:
+            membership.add(k)
+    membership -= set(admin_hidden_dispatch_task_keys())
+    membership -= set(DISPATCH_RETIRED_TASK_KEYS)
+    return {tk: _dispatch_task_key_form_meta(tk) for tk in sorted(membership)}
+
+
 @admin_bp.route("/dispatch_tasks/task_keys")
 @require_admin
 def dispatch_task_keys():
-    """task_key → entity_type / trigger_state for Scheduled Actions forms.
+    """task_key → form meta for Scheduled Actions (and peer Admin pickers).
 
-    Every TASK_CONFIG key is selectable. Registered keys use config-built defaults when
-    available; other keys inherit from TASK_CONFIG. Existing dispatch_task rows may add keys."""
-    seen: dict[str, dict] = {}
-    for tk in get_task_keys():
-        seen[tk] = _dispatch_task_key_form_meta(tk)
-    for r in list_dispatch_tasks():
-        k = r.get("task_key", "")
-        if not k:
-            continue
-        if k in DISPATCH_RETIRED_TASK_KEYS:
-            continue
-        if k not in seen:
-            seen[k] = {
-                "entity_type": (r.get("entity_type") or "") or "",
-                "trigger_state": (r.get("trigger_state") or "") or "",
-                "task_group_order": "",
-                "task_group_name": "",
-                "task_seq": None,
-                "task_name": "",
-                "is_scored": dispatch_claim_uses_score_floor(r.get("trigger_state")),
-            }
-    hidden = admin_hidden_dispatch_task_keys()
-    for tk in hidden:
-        seen.pop(tk, None)
-    for tk in DISPATCH_RETIRED_TASK_KEYS:
-        seen.pop(tk, None)
-    return jsonify(seen)
+    Membership is the live union of TASK_CONFIG keys, current agent_task keys
+    (including fetch_* and peers), and existing dispatch_task keys — sorted
+    alphabetically by task_key via sorted(membership). Retired / admin-hidden
+    keys are omitted. Grouping fields come from agent_task; no parallel
+    section inventory.
+    """
+    return jsonify(_admin_dispatch_task_key_catalog())
 
 
 @admin_bp.route("/dispatch_tasks/state_options")
@@ -969,6 +1008,13 @@ def dispatch_task_state_options():
         "company": list(COMPANY_STATES.keys()),
         "candidate": list(CANDIDATE_STATES.keys()),
     })
+
+
+@admin_bp.route("/dispatch_tasks/score_floor_options")
+@require_admin
+def dispatch_task_score_floor_options():
+    # pattern.ui.admin-endpoint — options catalog from config (AST-1278 / AST-750)
+    return jsonify({"values": dispatch_score_floor_option_labels()})
 
 
 @admin_bp.route("/dispatch_tasks/counts")
@@ -1046,15 +1092,24 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    if tk not in TASK_CONFIG:
+    # Mailbox identities (gaze_email + meteorite fold) — null/empty trigger only.
+    if tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk):
+        ts = (trigger_state or "").strip()
+        if ts:
+            return (
+                f"task_key {tk!r} is a mailbox poller; trigger_state must be null/empty "
+                f"(got {trigger_state!r})"
+            )
+        return None
+    try:
+        et = _dispatch_entity_type_for_task_key(tk)
+    except KeyError:
+        if tk in TASK_CONFIG:
+            return f"task_key {tk!r} has unsupported entity_type"
         return f"Unknown task_key: {tk!r}"
     ts = (trigger_state or "").strip()
     if not ts:
         return "trigger_state is required"
-    try:
-        et = _dispatch_entity_type_for_task_key(tk)
-    except KeyError:
-        return f"task_key {tk!r} has unsupported entity_type"
     if et not in ENTITY_TYPES:
         return f"task_key {tk!r} has unsupported entity_type {et!r}"
     try:
@@ -1213,7 +1268,7 @@ def _build_adhoc_live_content(task_key: str, entity_id: str, entity_ids: Optiona
                     continue
                 lines.append(
                     f"{len(lines):03d}: job_link: {job.get('job_link') or ''}\n"
-                    f"job_description: {(job.get('job_data') or {}).get(jd_key, '') or ''}"
+                    f"CONTENT:\n{(job.get('job_data') or {}).get(jd_key, '') or ''}"
                 )
             return ("METEORITE JOBS:\n" + "\n".join(lines)) if lines else ""
         # single-entity tasks
@@ -1534,6 +1589,69 @@ def session_cover_letter_html():
     except ValueError as exc:
         return jsonify({"success": False, "error": str(exc)}), 400
     return Response(html_out, mimetype="text/html; charset=utf-8")
+
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Queries (AST-1122)
+# ---------------------------------------------------------------------------
+
+@admin_bp.route("/scheduled_queries", methods=["GET"])
+@require_admin
+def list_scheduled_queries_api():
+    return jsonify(database.list_scheduled_queries())
+
+
+@admin_bp.route("/scheduled_queries", methods=["POST"])
+@require_admin
+def create_scheduled_query_api():
+    body = request.get_json(silent=True) or {}
+    try:
+        row = database.save_scheduled_query(
+            name=body.get("name") or "",
+            sql_text=body.get("sql_text") or "",
+            active=bool(body.get("active", False)),
+            interval_hours=float(body.get("interval_hours", 24)),
+            scheduled_query_id=body.get("scheduled_query_id"),
+        )
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    return jsonify(row), 201
+
+
+@admin_bp.route("/scheduled_queries/<scheduled_query_id>", methods=["PUT"])
+@require_admin
+def update_scheduled_query_api(scheduled_query_id: str):
+    body = request.get_json(silent=True) or {}
+    kwargs = {}
+    if "name" in body:
+        kwargs["name"] = body.get("name")
+    if "sql_text" in body:
+        kwargs["sql_text"] = body.get("sql_text")
+    if "active" in body:
+        kwargs["active"] = bool(body.get("active"))
+    if "interval_hours" in body:
+        kwargs["interval_hours"] = float(body.get("interval_hours"))
+    try:
+        row = database.update_scheduled_query(scheduled_query_id, **kwargs)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    if row is None:
+        return jsonify({"error": "not found"}), 404
+    return jsonify(row)
+
+
+@admin_bp.route("/scheduled_queries/<scheduled_query_id>", methods=["DELETE"])
+@require_admin
+def delete_scheduled_query_api(scheduled_query_id: str):
+    ok = database.delete_scheduled_query(scheduled_query_id)
+    if not ok:
+        return jsonify({"error": "not found"}), 404
+    return jsonify({"ok": True})
 
 
 @admin_bp.route("/data/sql", methods=["POST"])

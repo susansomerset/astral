@@ -1,3 +1,328 @@
+<!-- linear-archive: AST-1048 archived 2026-08-05 -->
+
+## Linear archive (AST-1048)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1048/manage-email-match-indicator-create-control-bind-email-to-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1044 — Bind email to candidate  
+**Blocked by / blocks / related:** parent: AST-1044; blocks: AST-1049
+
+### Description
+
+## What this implements
+
+Owns rename **Read email** → **Manage Email** and the admin surface changes: show match bind on listed/selected messages, enable **Create** only when matched, keep unmatched browse working. Does **not** own the reusable lookup (AST-1047) or strip/extract + meteorite create wire (sibling / AST-1034). After AST-1047.
+
+## Citations
+
+`pattern.ui.admin-endpoint`; `astral.patterns.require-auth-on-protected-endpoints`; `astral.layers.ui-config-driven-business-logic`; `astral.layers.import-direction`.
+
+## Acceptance criteria
+
+- [X] 2. On Manage Email, a message whose **From** uniquely matches via that lookup shows a clear visual bind to that candidate.
+- [X] 3. On Manage Email, a matched message exposes an active **Create** control; an unmatched or ambiguous message does not.
+- [X] 4. Admin nav/screen is labeled **Manage Email** (replacing **Read email**).
+- [X] 5. Unauthenticated callers cannot run match or Create endpoints/screens.
+- [X] 6. Existing inbox browse (list + HTML body view) still works for unmatched messages after this epic.
+
+## Boundaries
+
+- [X] Does **not** own the reusable lookup (AST-1047) or strip/extract + meteorite create wire (sibling / AST-1034).
+
+## Notes for planning
+
+After AST-1047. Admin page rename and match indicator + Create enablement only.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1044-bind-email-to-candidate`; child `sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-07-29T19:40:51.669Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1048
+**Publish ref:** `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control` @ `f13d5267` (product tip `5f69a906` + docs review)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control` — AST-1048 chrome (`AdminManageEmail.tsx`, `routes.tsx`, `App.css`, `NAV_CONFIG`) plus rolled-up AST-1047 core/utils/tests on this tip.
+**Notes:** Joan plan-rubric APPROVED. C4 stragglers from plan-time UI-only exclusion vs three-dot tip that includes AST-1047 — substance **conforms**; no fix-now.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | No confidence / grade work in 1048 chrome; 1047 lookup untouched here |
+| astral.agent.do-task-delegation | scoped | conforms | No `do_task` |
+| astral.agent.grade-vector-validation | scoped | conforms | Untouched |
+| astral.batch.batch-id-first | scoped | conforms | No batch claim |
+| astral.batch.batch-id-format | scoped | conforms | No batch ids |
+| astral.batch.claim-process-release | scoped | conforms | No claim/process/release |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Untouched |
+| astral.config.config-source-of-truth | scoped | conforms | Nav label/path only in `NAV_CONFIG`; no React match field lists |
+| astral.config.pass-threshold-vs-score-floor | scoped | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss (`artifacts/**` / `scripts/spikes/**`) |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Feature plans under `docs/features/` — not spikes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | One plan file for AST-1048 (1047 plan is sibling tip rollup) |
+| astral.git.betty-no-src-or-features | scoped | conforms | Engineer owns src/features; Betty owns tests/bible |
+| astral.git.engineer-test-tree-ban | scoped | conforms | `test()`/`merge-tests()` Betty; Hedy did not edit tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | 1048 UI only; Gmail stays external (1047 rollup) |
+| astral.layers.import-direction | scoped | conforms | Page → `api()` only; no data/external |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers miss (`scripts`) |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Create enablement = server `candidate_match.matched` |
+| astral.patterns.coat-check-never-store-empty | scoped | conforms | No coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | conforms | Untouched |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | Keeps `AdminRoute`; inbox APIs stay `@require_admin` |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No data-layer logging |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers miss (`data`) |
+| astral.standards.debug-contract-gated | scoped | conforms | No new ungated debug in React; 1047 Style D already gated |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Reuses list `candidate_match`; no second client lookup |
+| astral.standards.in-scope-only | scoped | conforms | No strip/extract/meteorite POST; no lookup reimplementation |
+| astral.standards.logging-via-utils | scoped | conforms | Untouched in 1048 chrome |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered UI only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No inline email/name field lists in React |
+| astral.standards.public-then-helpers | scoped | conforms | Page component; local matchCell/onCreateClick |
+| astral.standards.utils-data-late-import-only | scoped | conforms | NAV_CONFIG only; no utils→data |
+| astral.state.core-decides-transitions | scoped | conforms | No state machine |
+| astral.state.job-prior-states-enforced | scoped | conforms | Untouched |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Untouched |
+| astral.ui.frontend-file-placement | scoped | conforms | Flat `pages/AdminManageEmail.tsx`; styles in `App.css` |
+| astral.ui.naming-conventions | scoped | conforms | PascalCase page; snake_case `/admin/manage_email` |
+| astral.ui.single-gunicorn-worker | scoped | conforms | Untouched |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single `merge-tests(AST-1048)` @ `5f69a906` |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`code`/`test`/`merge-tests` / `resolve(AST-1047)` on tip |
+| orch.git.flow-direction-inviolable | universal | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1044/AST-1048-manage-email-match-indicator-create-control` |
+| orch.git.merge-on-checkout | universal | conforms | Tip stacks on `origin/ftr/AST-1044-bind-email-to-candidate` |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | universal | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | `astral-AST-1044` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Path rename + disabled Create decided in plan |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match `code(AST-1048)` |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Meteorite child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Hedy |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy stays assignee through Review Posted |
+| orch.roles.pre-commit-path-bans | universal | conforms | Docs-only Radia commit |
+
+## Pattern conformance
+
+| cited | verdict |
+| -- | -- |
+| `pattern.ui.admin-endpoint` | conforms — admin page + existing inbox APIs |
+| `astral.patterns.require-auth-on-protected-endpoints` | conforms — `AdminRoute` |
+| `astral.layers.ui-config-driven-business-logic` | conforms — enablement from server payload |
+| `astral.layers.import-direction` | conforms — ui→api client only |
+
+## Plan adherence
+
+`code(AST-1048)` matches Stages 1–3 and Self-Assessment Single-Component / high / Medium. Consumes AST-1047 `candidate_match` only; Create click stub for AST-1049; unmatched list+HTML browse preserved; no `/admin/read_email` alias (intentional).
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **straggler cluster** — Joan excluded agent/batch/core-vs-external/state/spike/features/test-tree statutes for a UI-only Files Changed table; three-dot tip includes rolled-up AST-1047 so those ids are in-scope. Substance: **conforms** (no Hedy product change expected for stragglers alone).
+
+### advisory
+(none)
+
+### What’s solid
+- Manage Email rename + match column/modal bind + disabled Create when unmatched.
+- No client-side lookup; no meteorite create wire.
+
+### Recommended actions
+- Hedy: acknowledge stragglers → resolve-child → User Testing.
+
+context_tokens≈52000
+
+#### betty — 2026-07-29T19:37:55.152Z
+## QA test manifest — AST-1048
+
+**Publish:** `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control` @ `5f69a906`
+**Delivery:** `merge-tests(AST-1048): origin/tests 7a16dbbcd3ca4ce2dc24110a8fd46d4f3c416ffd`
+
+### Existing coverage (revised)
+1. `tests/component/utils/test_config.py::TestAst1033ReadEmailNav` — now asserts **Manage Email** / `/admin/manage_email` (no `/admin/read_email`)
+2. `tests/component/frontend/pages/test_AdminManageEmail.test.tsx` — replaces `test_AdminReadEmail.test.tsx` (§6c page; keeps AST-1040 raw-source cases)
+
+### Gaps (new AST-1048 cases in page suite)
+3. Candidate column: matched bind vs `—`
+4. Matched modal: bind line + **Create** enabled
+5. Unmatched modal: no `.manage-email-match--modal`; **Create** disabled; HTML browse still works
+
+### Broken / obsolete (revised this pass)
+- `test_AdminReadEmail.test.tsx` + heading/import `AdminReadEmail` / "Read email"
+- `TestAst1033ReadEmailNav.test_read_email_follows_session_cover_letter` path/label
+
+### Integration
+- No existing Admin Manage Email scenarios — none revised; did not invent new integration coverage.
+
+### Narrowed run
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx
+```
+
+### Bible shasums (publish tip)
+- `docs/test-bible/frontend/pages.md` `c6c3820ee5643320f09f10c8cbecf2d586db6a40b133aca011724fc9b3355cca`
+- `docs/test-bible/utils/config.md` `05d2c70aaf9f5f8151fb2527f6569299c2bb504bdd90f023131ae83dc41b2706`
+
+— Betty
+
+#### joan — 2026-07-29T19:31:55.122Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1048
+**Overall:** APPROVED
+
+**Notes:** First Plan Ready pass. Tip `941f6315`. Publish ref `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control`. Blocked-by AST-1047 acknowledged; consumes list `candidate_match` only; Create click stub correctly deferred to AST-1049.
+**Implementer:** Hedy (plan author / parent Team table).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1 Reusable lookup | N/A — boundary: AST-1047 |
+| 2 Visual From bind on Manage Email | Stage 2 |
+| 3 Create active only when matched | Stage 3 (enablement; click wire N/A — AST-1049) |
+| 4 Create strip/extract + meteorite job | N/A — boundary: AST-1049 |
+| 5 Nav/screen labeled Manage Email | Stage 1 |
+| 6 Unauthenticated cannot match/Create | Stage 1 keeps `AdminRoute`; inbox APIs stay `@require_admin` (unchanged) |
+| 7 Style D debug on match/create backends | N/A — UI ticket; no React debug requirement |
+| 8 Unmatched browse still works | Stages 2–3 (additive chrome; list+HTML unchanged for unmatched) |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 2 Clear visual bind from lookup match | 2 |
+| 3 Active Create when matched; not when unmatched/ambiguous | 3 |
+| 4 Admin nav/screen labeled Manage Email | 1 |
+| 5 Unauthenticated cannot reach match/Create screens | 1 (`AdminRoute`) |
+| 6 Unmatched list + HTML browse still works | 2–3 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 Nav + route rename | Parent AC5 / child AC4; Purpose Manage Email surface |
+| 2 Match indicator from `candidate_match` | Parent/child AC2; ui-config-driven (server payload) |
+| 3 Create enablement stub | Parent/child AC3; Boundaries (no meteorite wire) |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Plan `docs(AST-1048):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | Depends on ftr tip with AST-1047 |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-1044` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Path rename + disabled-vs-hidden Create decided in plan |
+| orch.pipeline.plan-is-bible | conforms | Binding stages; siblings excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Meteorite |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Hedy |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Hedy on approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | Untouched (considered via matching; no agent work) |
+| astral.config.config-source-of-truth | conforms | Nav label/path in `NAV_CONFIG` only |
+| astral.config.pass-threshold-vs-score-floor | conforms | Untouched |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned src/features |
+| astral.layers.import-direction | conforms | UI → api client only; no Gmail/data |
+| astral.layers.ui-config-driven-business-logic | conforms | Enablement = server `candidate_match.matched`; no React match rules |
+| astral.patterns.require-auth-on-protected-endpoints | conforms | Keeps `AdminRoute`; no public route |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer work |
+| astral.standards.debug-contract-gated | conforms | No new ungated debug |
+| astral.standards.dry-and-focused-functions | conforms | Reuses list payload; no second lookup |
+| astral.standards.in-scope-only | conforms | Excludes lookup, strip/extract, meteorite POST |
+| astral.standards.logging-via-utils | conforms | Untouched |
+| astral.standards.no-cross-contamination | conforms | Layered UI only |
+| astral.standards.no-hardcoded-sets | conforms | No inline match field lists in React |
+| astral.standards.public-then-helpers | conforms | Page component rename only |
+| astral.standards.utils-data-late-import-only | conforms | No utils→data |
+| astral.state.job-prior-states-enforced | conforms | Untouched |
+| astral.ui.frontend-file-placement | conforms | Flat `pages/` rename; styles in `App.css` |
+| astral.ui.naming-conventions | conforms | PascalCase page; snake_case route `/admin/manage_email` |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.require-auth-on-protected-endpoints, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.job-prior-states-enforced, astral.ui.frontend-file-placement, astral.ui.naming-conventions, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.agent.do-task-delegation — layers/paths miss
+- astral.agent.grade-vector-validation — layers/paths miss
+- astral.batch.batch-id-first — layers/paths miss
+- astral.batch.batch-id-format — layers/paths miss
+- astral.batch.claim-process-release — layers/paths miss
+- astral.batch.entity-agent-responses-latest-only — layers/paths miss
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.layers.core-vs-external-bright-line — layers/paths miss
+- astral.patterns.coat-check-never-store-empty — layers/paths miss
+- astral.patterns.render-verdict-orchestrates-consult — layers/paths miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.state.core-decides-transitions — layers/paths miss
+- astral.state.no-daisy-chain-in-run — layers/paths miss
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### acceptable
+1. Create click is a silent no-op stub — correct child split; AST-1049 owns strip/extract + meteorite POST.
+2. Disabled (visible) Create on unmatched vs hidden — matches parent “active when matched / not when unmatched” without orphan-job affordance.
+3. Bind text `Matched: {astral_candidate_id}` is enough identity — ids are lowercase last-name slugs (e.g. `somerset`), not opaque UUIDs.
+4. No `/admin/read_email` redirect — intentional for seed surface; Risk Medium notes bookmark break.
+5. Self-assessment Single-Component / high / Medium — honest.
+
+— Joan
+context_tokens≈48000
+
+#### hedy — 2026-07-29T19:28:57.920Z
+Plan: [`docs/features/meteorite/ast-1048-manage-email-match-indicator-create-control.md`](https://github.com/susansomerset/astral/blob/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control/docs/features/meteorite/ast-1048-manage-email-match-indicator-create-control.md) on `origin/sub/AST-1044/AST-1048-manage-email-match-indicator-create-control` @ `941f6315`.
+
+**Scope:** Single-Component — Admin Manage Email React + NAV_CONFIG/route rename + light CSS; consumes AST-1047 `candidate_match`; Create click stub left for AST-1049.
+
+**Conf:** high — list enrichment already on ftr; existing Read email page/AdminRoute are the surfaces to rename/extend.
+
+**Risk:** Medium — path rename breaks `/admin/read_email`; wrong enablement would expose Create on unmatched senders once AST-1049 wires the click.
+
+---
+
 # AST-1048 — Manage Email match indicator + Create control
 
 **Linear (this ticket):** https://linear.app/astralcareermatch/issue/AST-1048/manage-email-match-indicator-create-control-bind-email-to-candidate  

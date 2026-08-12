@@ -1,3 +1,200 @@
+<!-- linear-archive: AST-1030 archived 2026-08-05 -->
+
+## Linear archive (AST-1030)
+
+**Archived:** 2026-08-05  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1030/uat-no-bullet-lead-emitted-as-list-item  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1019 — Take 2: Resume Render Format discrepancies  
+**Blocked by / blocks / related:** parent: AST-1019
+
+### Description
+
+## What failed
+
+`<no bullet>` lead copy under a role is emitted as a `<li>` inside `<ul>` instead of a non-list lead paragraph. Observed Somerset Consulting role HTML starts:
+
+```
+<ul>
+  <li>Solo practice delivering embedded technical program management…</li>
+  <li>Diagnosed and mitigated blockers…</li>
+  …
+</ul>
+```
+
+(no preceding `<p class="role-description">` for the `<no bullet>` line).
+
+## Expected
+
+Lines marked `<no bullet>` render as role lead paragraph (`.role-description`), not list items. Following true bullets remain `<li>`.
+
+## Repro
+
+1. Paste experience block including a `<no bullet>…` lead line under a role (as in parent Original brief / UAT paste).
+2. Parse → Open HTML.
+3. Confirm lead text is `<p class="role-description">` (or equivalent non-li), then `<ul><li>…` for real bullets only.
+
+## Parent AC (quoted inline)
+
+> Experience roles, education indent/credentials, and Technical Skills category grid match golden spacing/typography (items 7–9).
+> Structure already owned by AST-993 … Experience role articles (compact title/location, optional lead paragraph, bullets) …
+> Susan can verify by eye against the desired HTML for every laundry-list item; no judgment call on “close enough.”
+
+## Diagnosis
+
+* **Hypothesis:** `<no bullet>` marker is ignored in role-body emit — lead sentence folded into the bullet list.
+* **Correct outcome:** Lead paragraph outside `<ul>`; only genuine bullets are `<li>`.
+* **Wrong fix to avoid:** Unstyle the first `<li>` with CSS so it "looks" like a paragraph; drop the lead text.
+* **Related siblings / contracts:** AST-993 role layout / `<no bullet>` convention; AST-1021 residual emit.
+
+## Boundaries
+
+* Does **not** change role CSS spacing rules (AST-1020) except as needed if class hooks were wrong.
+* Does **not** invent new marker syntax beyond existing `<no bullet>`.
+
+### Comments
+
+#### radia — 2026-07-29T04:32:26.613Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1030
+**Publish ref:** b35e68bbb40c8ebda4c8bb8a7a3de79a37695395
+**Overall:** CLEAN
+
+Diff basis: required `origin/dev...origin/sub/AST-1019/AST-1030-uat-no-bullet-lead` reports **multiple merge bases** (git picked `ab6e07a8…`) and therefore a noisy three-dot (spurious `canon/**` adds). Product review uses AST-1030 commits + `origin/ftr/ast-1019-take-2-resume-render-format-discrepancies...HEAD` for the real child delta. Product @ `f54d3519` / merge-tests tip `67718600` + this `docs()` append. No `src/` in the AST-1030 code commit.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1030): origin/tests 133c5cde` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`docs`/`test`/`merge-tests`/`resolve` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Forward publish to child `origin/sub/…` |
+| orch.git.ftr-sub-topology | universal | conforms | Child sub under AST-1019; no remote-tracking merge subject on tip lineage |
+| orch.git.merge-on-checkout | universal | conforms | No alternate merge inventiveness in AST-1030 commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | universal | conforms | Authoritative sub publish-ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in astral-AST-1019 |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | UAT diagnosis matches fixture; no product fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stage 1 `<no bullet>` preserve Done-when matches tip |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single Artifacts bug child |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Reviewed from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits in AST-1030 product commits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty `test` + `merge-tests`; Ada avoided test tree |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Implementer stays assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Engineer product path is repo admin JSON + plan |
+| astral.agent.confidence-bounds | scoped | not-applicable | layers/paths miss — no `src/core/**` / config |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers/paths miss — no `src/core/**` |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers/paths miss — no `src/core/**` |
+| astral.batch.batch-id-first | scoped | not-applicable | paths miss — no `src/data/**` / `src/core/**` |
+| astral.batch.batch-id-format | scoped | not-applicable | paths miss — no `src/core/**` / `src/data/**` |
+| astral.batch.claim-process-release | scoped | not-applicable | paths miss — no `src/core/**` / `src/data/**` |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | paths miss — no `src/core/**` / `src/data/**` |
+| astral.config.config-source-of-truth | scoped | not-applicable | paths miss — no `src/**` |
+| astral.config.pass-threshold-vs-score-floor | scoped | not-applicable | paths miss — no scored config/core/data |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers/paths miss — no `src/**` / `scripts/**` |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss — no repo-root `artifacts/**` |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan under `docs/features/`; no spike pollution |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `docs/features/artifacts/ast-1030-….md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits only tests/bible (+ merge-tests) |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Ada code/docs omit tests/bible |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers/paths miss — no `src/core/**` / external |
+| astral.layers.import-direction | scoped | not-applicable | paths miss — no `src/**` |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers/paths miss — no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers/paths miss — no UI/config src |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | layers/paths miss — no `src/core/**` |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | layers/paths miss — no `src/core/**` |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | layers/paths miss — no `src/ui/**` |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | paths miss — no `src/**` |
+| astral.standards.database-header-inventory | scoped | not-applicable | paths miss — no `src/data/**` |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers/paths miss — no `src/**` |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | paths miss — no `src/**` / scripts |
+| astral.standards.in-scope-only | scoped | not-applicable | paths miss — no `src/**` (product is `data/admin/`) |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers/paths miss — no `src/**` |
+| astral.standards.no-cross-contamination | scoped | not-applicable | paths miss — no `src/**` |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | paths miss — no `src/**` |
+| astral.standards.public-then-helpers | scoped | not-applicable | paths miss — no `src/**` |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers/paths miss — no `src/utils/**` |
+| astral.state.core-decides-transitions | scoped | not-applicable | paths miss — no `src/core/**` / `src/data/**` |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | paths miss — no state-machine paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers/paths miss — no `src/core/**` |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers/paths miss — no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | not-applicable | layers/paths miss — no `src/ui/**` |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers/paths miss — no worker/config/UI knobs |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+Stage 1 matches: preserve literal `<no bullet>` on paste role leads in `accomplishments`; following bullets unmarked; do-not-invent; checklist bullet present. Stage 2 builder lock holds — AST-1030 code commit does not touch `src/core/builder.py`. Scope Single-Component matches. Parsed JSON: only `craft_resume_base.cache_prompt` changed.
+
+## Findings
+
+None.
+
+### What’s solid
+
+Parse-side preserve so shared `_split_role_accomplishments` can emit `.role-description` then `<li>` — no CSS first-li restyle, no first-line heuristic.
+
+### Recommended actions
+
+resolve-child → User Testing. Restart/deploy so startup applies repo JSON, then re-paste Somerset `<no bullet>` fixture.
+
+**Notes:** no plan-rubric verdict attached. FIX-UAT mode. Three-dot vs `origin/dev` multiple-merge-base noise recorded above; product judgment uses AST-1030 commits + ftr…HEAD delta.
+
+— Radia
+context_tokens≈40000
+
+#### betty — 2026-07-29T04:28:01.100Z
+## QA test manifest (AST-1030)
+
+**Publish:** `origin/sub/AST-1019/AST-1030-uat-no-bullet-lead` @ `67718600` (`merge-tests(AST-1030): origin/tests 133c5cde`)
+
+**FIX-UAT:** no `docs/test-bible/**` change on `origin/ftr/ast-1019-take-2-resume-render-format-discrepancies` since AST-1029 — skipped full bible re-read.
+
+### Classification
+
+1. **Existing coverage:** AST-1008 experience golden layout (lead → `.role-description`); AST-1027 marker preserve; AST-1028 title/tagline; AST-1029 competencies bullets; AST-996 job-array prompt.
+2. **Broken / obsolete:** none — emit path unchanged; prompt was the gap.
+3. **Gaps:** `craft_resume_base` must preserve paste `<no bullet>` on role leads (do not invent); emit lock with/without prefix.
+
+### Manifest (narrowed)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_builder.py::TestAst1030UatNoBulletLeadEmit \
+  tests/component/core/test_builder.py::TestAst1008ExperienceGoldenLayout \
+  -q
+```
+
+### Bible shasums (on publish ref)
+
+- `docs/test-bible/core/candidate.md` `aaaa01c6a43db24c9581f1683a1b6f766494c5ab`
+- `docs/test-bible/core/builder.md` `cc32ad0795bb7e451e280f7c528d17d0d5e3edc7`
+
+#### ada — 2026-07-29T04:22:16.194Z
+Plan: [`docs/features/artifacts/ast-1030-uat-no-bullet-lead.md`](https://github.com/susansomerset/astral/blob/sub/AST-1019/AST-1030-uat-no-bullet-lead/docs/features/artifacts/ast-1030-uat-no-bullet-lead.md) on `origin/sub/AST-1019/AST-1030-uat-no-bullet-lead` @ `f04c2080`.
+
+**Scope:** `Single-Component` — `craft_resume_base` `cache_prompt` only; builder `_split_role_accomplishments` already correct when `<no bullet>` survives parse.
+
+**Conf:** `high` — AST-1008 emit path proven; experience prompt never mentions preserving the marker; UAT Actual matches stripped prefix → all `<li>`.
+
+**Risk:** `Medium` — prompt hits all `craft_resume_base` consumers; mitigated by paste-only preserve / do-not-invent language. Sub rooted on current ftr (no `Merge remote-tracking branch`).
+
+---
+
 # UAT: `<no bullet>` lead emitted as list item
 
 **Linear:** [AST-1030](https://linear.app/astralcareermatch/issue/AST-1030/uat-no-bullet-lead-emitted-as-list-item)

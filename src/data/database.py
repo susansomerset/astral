@@ -9,16 +9,17 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
 - job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
-- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key).
+- candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984).
+- scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id nullable for shared Astral inbox tasks (AST-1088). Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
-- app_log — Application log storage (add_log_entry, list_log_entries).
+- app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
   created_at, updated_at). Composite PRIMARY KEY (candidate_id, search_term). Source of truth for discovery terms (AST-524).
 - rubric_vector — Per-candidate rubric vector identity (rubric_vector_uuid TEXT PK, candidate_id,
@@ -40,7 +41,7 @@ Schema checks use sqlite_master only. No other tables in the database are touche
 
 Company: save_company, get_company, update_company; batch: set_company_batch, get_company_batch, clear_company_batch (claim_company_batch wrapper).
 Job: save_job (upsert), get_job; batch: claim_job_batch, get_job_batch, clear_job_batch.
-Candidate: save_candidate (upsert), get_candidate, list_candidates.
+Candidate: save_candidate (upsert), get_candidate, list_candidates; claim_candidate_batch / get_candidate_batch / clear_candidate_batch (AST-1258); last_email_check (nullable; AST-1134 column / AST-1136 stamp call site).
 Agent: save_agent (upsert), get_agent, list_agents, update_agent, delete_agent, count_agent_task_refs.
 Retry/log/crash on transient DB errors; domain outcomes
 via return values (duplicate -> False, no records -> False / count).
@@ -75,7 +76,7 @@ from src.utils.config import (
     remap_legacy_candidate_state,
     COMPANY_STATES,
     METEORITE_CONFIG,
-    GAZE_EMAIL_CONFIG,
+    METEORITE_EMAIL_INGEST_CONFIG,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -180,6 +181,7 @@ _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
 _agent_data_schema_ensured = False
+_scheduled_query_schema_ensured = False
 
 # ---- TODO:Cleanup ----
 # refactor callers of claim_company_batch to use set_company_batch.
@@ -1789,23 +1791,65 @@ def job_link_exists(job_link: str) -> bool:
 
 
 def job_link_exists_for_candidate(candidate_id: str, job_link: str) -> bool:
-    """True when a job under this candidate's meteorite company has this exact job_link."""
+    """True when any job under a company owned by this candidate has this exact job_link."""
     cid = (candidate_id or "").strip()
     link = (job_link or "").strip()
     if not cid or not link:
         return False
-    company = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
 
     def _do(c: sqlite3.Connection) -> bool:
         _ensure_job_schema(c)
+        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
         cursor = c.execute(
             """SELECT 1 FROM job
-               WHERE company = ? AND job_link = ?
+               WHERE job_link = ?
                  AND job_link IS NOT NULL AND TRIM(job_link) != ''
+                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
                LIMIT 1""",
-            (company, link),
+            (link, cid),
         )
         return cursor.fetchone() is not None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
+def text_matches_known_company_job_id_for_candidate(
+    candidate_id: str, text: str
+) -> Optional[str]:
+    """Inverted company_job_id match scoped to this candidate's companies.
+
+    Returns the matched company_job_id when a non-empty id with
+    LENGTH(TRIM(...)) >= METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"]
+    (AST-1146) on a job under the candidate's companies appears as a substring of text;
+    else None.
+    """
+    cid = (candidate_id or "").strip()
+    if not cid or not text:
+        return None
+
+    def _do(c: sqlite3.Connection) -> Optional[str]:
+        _ensure_job_schema(c)
+        # Subquery reads company.candidate_id — ensure before join (AST-1132 / Betty).
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
+        min_chars = int(METEORITE_EMAIL_INGEST_CONFIG["min_company_job_id_match_chars"])
+        cursor = c.execute(
+            """SELECT company_job_id FROM job
+               WHERE company_job_id IS NOT NULL AND TRIM(company_job_id) != ''
+                 AND LENGTH(TRIM(company_job_id)) >= ?
+                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+                 AND ? LIKE '%' || company_job_id || '%'
+               LIMIT 1""",
+            (min_chars, cid, text),
+        )
+        row = cursor.fetchone()
+        return row[0] if row else None
 
     conn = _get_connection()
     try:
@@ -2496,9 +2540,12 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
                 full TEXT,
                 pronouns TEXT,
                 candidate_api_key TEXT,
+                batch_id TEXT,
+                batch_created_at TIMESTAMP,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                state_changed_at TIMESTAMP
+                state_changed_at TIMESTAMP,
+                last_email_check TIMESTAMP
             )
         """)
         conn.commit()
@@ -2512,6 +2559,9 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
             ("last", "TEXT"),
             ("full", "TEXT"),
             ("pronouns", "TEXT"),
+            ("last_email_check", "TIMESTAMP"),
+            ("batch_id", "TEXT"),
+            ("batch_created_at", "TIMESTAMP"),
         ]:
             if col not in cols:
                 try:
@@ -3186,6 +3236,35 @@ def save_candidate(
     _run_with_retry(_with_conn)
 
 
+
+def update_candidate_last_email_check(
+    candidate_id: str, when: Optional[str] = None
+) -> None:
+    """Set candidate.last_email_check (UTC). when=None → now. Raises if candidate missing."""
+    cid = str(candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    stamp = when.strip() if (when or "").strip() else _utc_now()
+    now = _utc_now()
+
+    def _with_conn() -> None:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            cur = conn.execute(
+                "UPDATE candidate SET last_email_check = ?, updated_at = ? "
+                "WHERE astral_candidate_id = ?",
+                (stamp, now, cid),
+            )
+            if cur.rowcount == 0:
+                raise LookupError(f"Candidate not found: {cid}")
+            conn.commit()
+        finally:
+            conn.close()
+
+    _run_with_retry(_with_conn)
+
+
 def clear_candidate_api_key(candidate_id: str) -> None:
     """Set candidate_api_key to NULL for a candidate."""
     now = _utc_now()
@@ -3230,6 +3309,112 @@ def list_candidates() -> List[Dict[str, Any]]:
             _ensure_candidate_schema(conn)
             rows = conn.execute("SELECT * FROM candidate ORDER BY created_at").fetchall()
             return [_parse_candidate_row(_row_to_dict(r)) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+# Allowed ORDER BY columns for candidate pool claims (AST-1258).
+_CANDIDATE_BATCH_SORT_COLUMNS = frozenset({"rowid", "created_at", "updated_at", "state_changed_at"})
+
+
+def claim_candidate_batch(
+    batch_id: str,
+    state: str,
+    limit: int,
+    sort_by: Optional[str] = None,
+    *,
+    states: Optional[List[str]] = None,
+) -> int:
+    """Claim up to limit unclaimed candidates in state (cross-candidate pool).
+
+    Sets batch_id, batch_created_at. Parameter order: batch_id first (caller owns it).
+    Unclaimed = batch_id IS NULL OR batch_id = '' (same as job/company). Returns count claimed.
+    """
+    now = _utc_now()
+    claim_states = states if states is not None else [state]
+    state_sql, state_params = _state_in_sql(claim_states)
+    order_clause = (
+        f"ORDER BY {sort_by} ASC NULLS FIRST"
+        if sort_by and sort_by in _CANDIDATE_BATCH_SORT_COLUMNS
+        else "ORDER BY rowid"
+    )
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            params = [batch_id, now, *state_params, int(limit)]
+            cur = conn.execute(
+                f"""UPDATE candidate SET batch_id = ?, batch_created_at = ?
+                   WHERE astral_candidate_id IN (
+                     SELECT astral_candidate_id FROM candidate
+                     WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')
+                     {order_clause}
+                     LIMIT ?
+                   )""",
+                tuple(params),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_candidate_batch(batch_id: str) -> List[Dict[str, Any]]:
+    """Return candidate rows with given batch_id as parsed dicts."""
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            rows = conn.execute(
+                "SELECT * FROM candidate WHERE batch_id = ?",
+                (batch_id,),
+            ).fetchall()
+            return [_parse_candidate_row(_row_to_dict(r)) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def clear_candidate_batch(batch_id: str) -> int:
+    """Release batch: set batch_id and batch_created_at to NULL. Returns count released."""
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            cur = conn.execute(
+                "UPDATE candidate SET batch_id = NULL, batch_created_at = NULL WHERE batch_id = ?",
+                (batch_id,),
+            )
+            n = cur.rowcount
+            conn.commit()
+            return n
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def count_candidates_unclaimed_in_states(states: List[str]) -> int:
+    """Count unclaimed candidates in the given state set (global pool; AST-1258)."""
+    state_sql, state_params = _state_in_sql(states)
+
+    def _with_conn() -> int:
+        conn = _get_connection()
+        try:
+            _ensure_candidate_schema(conn)
+            row = conn.execute(
+                f"""SELECT COUNT(*) FROM candidate
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
+                tuple(state_params),
+            ).fetchone()
+            return int(row[0])
         finally:
             conn.close()
 
@@ -4790,232 +4975,23 @@ def _apply_ast723_rubric_vectors_token_migration(conn: sqlite3.Connection) -> No
 
 
 
-_AST776_VET_INFLOW_MECHANICAL_MARKER = "MECHANICAL LINK-TYPE VET ONLY (AST-776)"
-
-_AST776_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
-
-You vet a single discovery hit for roster inflow. Live content is one pipe line:
-
-`index|title|url|snippet`
-
-## Mechanical scope only
-
-Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
-news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
-
-Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
-
-## Response
-
-Use the standard two-key JSON envelope. In `agent_payload`, return:
-
-```json
-{"results": [{"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"}]}
-```
-
-- `action: "ignore"` — wrong page type; omit website or leave empty.
-- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
-"""
-
-
-_AST822_VET_INFLOW_BATCH_MARKER = "MULTI-HIT VET BATCH (AST-822)"
-
-_AST822_VET_INFLOW_USER_PROMPT_SEED = """## MECHANICAL LINK-TYPE VET ONLY (AST-776)
-## MULTI-HIT VET BATCH (AST-822)
-
-You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
-
-`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
-
-## Mechanical scope only
-
-Reject (`action: "ignore"`) link types that are not useful for downstream job-page search:
-news/articles, Wikipedia, directories/listicles, Better Business Bureau listings, job-board posts, social profiles.
-
-Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps.
-
-## Response
-
-Use the standard two-key JSON envelope. In `agent_payload`, return one `results` object per input line:
-
-```json
-{"results": [
-  {"hit_index": 0, "action": "slug"|"ignore", "website": "<homepage URL when slug>"},
-  {"hit_index": 1, "action": "slug"|"ignore", "website": "…"}
-]}
-```
-
-- `hit_index` must match the input line index (`000` → 0, `001` → 1, …).
-- `action: "ignore"` — wrong page type; omit website or leave empty.
-- `action: "slug"` — plausibly a company we can pursue for job listings; set `website` to the best official company homepage (may differ from the discovery hit URL).
-"""
-
-
+# AST-1108: retired hot-path prompt seeds. Authoritative vet_inflow_discovery prose lives in
+# data/admin/agent_task.json (repo-wins at bootstrap). Prior AST-776/822/880 migrations ran from
+# _ensure_agent_task_schema once per process; AST-880's seed omitted earlier markers, so the three
+# overwrote each other forever (new task_key_uuid/updated_at each pass → Manage Tasks divergence banner).
 def _apply_ast776_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
-    """AST-776: seed mechanical-only vet_inflow_discovery prompt for company dispatch on NEW."""
-    marker = _AST776_VET_INFLOW_MECHANICAL_MARKER
-    try:
-        row = conn.execute(
-            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
-                      cache_prompt_d, nocache_prompt, system_prompt, run_next
-               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
-        ).fetchone()
-    except sqlite3.Error:
-        return
-    if not row:
-        return
-    up_raw = row[1] or ""
-    if marker in up_raw:
-        return
-    agent_id = row[0]
-    if not (agent_id or "").strip():
-        fcw = conn.execute(
-            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
-        ).fetchone()
-        if fcw and (fcw[0] or "").strip():
-            agent_id = fcw[0]
-    new_up = _AST776_VET_INFLOW_USER_PROMPT_SEED.strip()
-    _save_agent_task_on_connection(
-        conn,
-        "vet_inflow_discovery",
-        now=_utc_now(),
-        agent_id=agent_id,
-        user_prompt=new_up,
-        cache_prompt=row[2],
-        cache_prompt_b=row[3],
-        cache_prompt_c=row[4],
-        cache_prompt_d=row[5],
-        nocache_prompt=row[6],
-        run_next=row[8],
-        system_prompt=row[7],
-    )
-    conn.commit()
-
+    """AST-1108: no-op — superseded by repo admin JSON for agent_task."""
+    return
 
 
 def _apply_ast822_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
-    """AST-822: widen vet_inflow_discovery prompt for multi-hit batch decode."""
-    marker = _AST822_VET_INFLOW_BATCH_MARKER
-    try:
-        row = conn.execute(
-            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
-                      cache_prompt_d, nocache_prompt, system_prompt, run_next
-               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
-        ).fetchone()
-    except sqlite3.Error:
-        return
-    if not row:
-        return
-    up_raw = row[1] or ""
-    if marker in up_raw:
-        return
-    agent_id = row[0]
-    if not (agent_id or "").strip():
-        fcw = conn.execute(
-            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
-        ).fetchone()
-        if fcw and (fcw[0] or "").strip():
-            agent_id = fcw[0]
-    new_up = _AST822_VET_INFLOW_USER_PROMPT_SEED.strip()
-    _save_agent_task_on_connection(
-        conn,
-        "vet_inflow_discovery",
-        now=_utc_now(),
-        agent_id=agent_id,
-        user_prompt=new_up,
-        cache_prompt=row[2],
-        cache_prompt_b=row[3],
-        cache_prompt_c=row[4],
-        cache_prompt_d=row[5],
-        nocache_prompt=row[6],
-        run_next=row[8],
-        system_prompt=row[7],
-    )
-    conn.commit()
-
-
-_AST880_VET_INFLOW_ENCODED_MARKER = "ENCODED A-F LINK-TYPE VET (AST-880)"
-
-_AST880_VET_INFLOW_USER_PROMPT_SEED = """## ENCODED A-F LINK-TYPE VET (AST-880)
-
-You vet one or more discovery hits for roster inflow. Live content is a header line plus pipe rows:
-
-`Discovery hit(s) (index|title|url|snippet)` followed by lines like `000|title|url|snippet`, `001|…`, etc.
-
-## Result Finding (mechanical link-type only)
-
-Classify each hit with exactly one grade:
-
-- **A** — hit URL is a company homepage
-- **B** — deeplink on a company site (e.g. product page)
-- **C** — company-hosted blog/post on that company's site
-- **D** — external to any one company but may still be worth parsing for a company pointer
-- **F** — unrelated / information-only / unlikely pointer (wiki, directories, news-only, BBB, job boards, social profiles, similar)
-
-Do **not** filter for candidate fit, industry preference, company quality, or role match — that belongs in later pipeline steps (prefilter handles D).
-
-## Response
-
-Use the standard two-key JSON envelope. Put newline-separated encoded lines in `agent_payload` as a single string — **not** a JSON `results[]` of `action` objects.
-
-One line per input hit:
-
-`{pos}|LT{grade}{conf}|{website}`
-
-- `{pos}` matches the input line index (`000` → 0, `001` → 1, …), zero-padded to 3 digits
-- `LT` is the fixed link-type vector code
-- `{grade}` is exactly one of A B C D F
-- `{conf}` is a confidence digit 1–5 (use 5 when the page type is clear)
-- `{website}` is an absolute company homepage URL — **required on every grade including F**
-
-Example:
-
-```
-000|LTA5|https://www.acme.com
-001|LTF5|https://www.otherco.com
-```
-"""
+    """AST-1108: no-op — superseded by repo admin JSON for agent_task."""
+    return
 
 
 def _apply_ast880_vet_inflow_discovery_prompt_migration(conn: sqlite3.Connection) -> None:
-    """AST-880: A–F encoded link-type vet prompt (supersedes AST-776/822 prose)."""
-    marker = _AST880_VET_INFLOW_ENCODED_MARKER
-    try:
-        row = conn.execute(
-            """SELECT agent_id, user_prompt, cache_prompt, cache_prompt_b, cache_prompt_c,
-                      cache_prompt_d, nocache_prompt, system_prompt, run_next
-               FROM agent_task WHERE task_key = 'vet_inflow_discovery' AND current = 1 LIMIT 1"""
-        ).fetchone()
-    except sqlite3.Error:
-        return
-    if not row:
-        return
-    up_raw = row[1] or ""
-    if marker in up_raw:
-        return
-    agent_id = row[0]
-    if not (agent_id or "").strip():
-        fcw = conn.execute(
-            "SELECT agent_id FROM agent_task WHERE task_key = 'find_company_website' AND current = 1 LIMIT 1"
-        ).fetchone()
-        if fcw and (fcw[0] or "").strip():
-            agent_id = fcw[0]
-    new_up = _AST880_VET_INFLOW_USER_PROMPT_SEED.strip()
-    _save_agent_task_on_connection(
-        conn,
-        "vet_inflow_discovery",
-        now=_utc_now(),
-        agent_id=agent_id,
-        user_prompt=new_up,
-        cache_prompt=row[2],
-        cache_prompt_b=row[3],
-        cache_prompt_c=row[4],
-        cache_prompt_d=row[5],
-        nocache_prompt=row[6],
-        run_next=row[8],
-        system_prompt=row[7],
-    )
-    conn.commit()
+    """AST-1108: no-op — superseded by repo admin JSON for agent_task."""
+    return
 
 
 def _apply_ast561_analysis_upshot_take_jd_migration(conn: sqlite3.Connection) -> None:
@@ -5063,33 +5039,14 @@ def _apply_ast469_select_job_page_run_next_migration(conn: sqlite3.Connection) -
 
 
 def _apply_ast1113_craft_run_next_chain_migration(conn: sqlite3.Connection) -> None:
-    """AST-1113: confirm/correct craft_* agent_task.run_next succession (idempotent)."""
-    chain = (
-        ("craft_company_search_terms", "craft_joblist_rubric"),
-        ("craft_joblist_rubric", "craft_jobdesc_rubric"),
-        ("craft_jobdesc_rubric", "craft_do_rubric"),
-        ("craft_do_rubric", "craft_get_rubric"),
-        ("craft_get_rubric", "craft_like_rubric"),
-        ("craft_like_rubric", "craft_prefilter_rubric"),
-        ("craft_prefilter_rubric", ""),
-    )
-    for task_key, expected in chain:
-        try:
-            row = conn.execute(
-                "SELECT task_key_uuid, run_next FROM agent_task WHERE task_key = ? AND current = 1 LIMIT 1",
-                (task_key,),
-            ).fetchone()
-        except sqlite3.Error:
-            return
-        if not row:
-            continue
-        if (row[1] or "").strip() == (expected or "").strip():
-            continue
-        conn.execute(
-            "UPDATE agent_task SET run_next = ?, updated_at = CURRENT_TIMESTAMP WHERE task_key_uuid = ?",
-            (expected, row[0]),
-        )
-        conn.commit()
+    """AST-1264 / AST-1108 species: no-op — craft run_next from repo admin JSON only.
+
+    Prior AST-1113 migration rewrote craft_* edges from `_ensure_agent_task_schema`
+    (hot path), stomping live seed (`craft_get_rubric` → `craft_do_rubric`) and
+    bypassing `_validate_run_next_graph_acyclic`. Repo JSON at bootstrap is authority
+    (`astral.dispatch.run-next-is-chain-authority`, `astral.seed.boot-only-not-hot-path`).
+    """
+    return
 
 
 def _apply_ast834_clear_select_job_page_run_next_migration(conn: sqlite3.Connection) -> None:
@@ -5205,9 +5162,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
     _apply_ast1113_craft_run_next_chain_migration(conn)
     _apply_ast723_rubric_vectors_token_migration(conn)
     _apply_ast561_analysis_upshot_take_jd_migration(conn)
-    _apply_ast776_vet_inflow_discovery_prompt_migration(conn)
-    _apply_ast822_vet_inflow_discovery_prompt_migration(conn)
-    _apply_ast880_vet_inflow_discovery_prompt_migration(conn)
+    # AST-1108: AST-776/822/880 vet_inflow_discovery prompt migrations retired (repo JSON wins).
     _apply_ast738_task_grouping_metadata_seed(conn)
     _agent_task_schema_ensured = True
 
@@ -5892,10 +5847,19 @@ def _resolve_agent_data_block_data(
     conn: sqlite3.Connection,
     row_dict: Dict[str, Any],
 ) -> Optional[str]:
-    """Return plain-text block_data, following ref_agent_data_id to the canonical row."""
+    """Return plain-text block_data for an agent_data row.
+
+    When ref_agent_data_id is populated, follow the ref chain to canonical
+    content (covers null/empty local + ref — AST-1274). No ref → return local
+    as-is. Missing targets and cycles raise ValueError — callers decide.
+    """
+    local = _decompress_payload(row_dict.get("block_data"))
     ref = row_dict.get("ref_agent_data_id")
-    if ref is None or str(ref).strip() == "":
-        return _decompress_payload(row_dict.get("block_data"))
+    has_ref = ref is not None and str(ref).strip() != ""
+    # No ref → return local as-is (None, blank, or body).
+    if not has_ref:
+        return local
+    # Populated ref → follow chain (plan Stage 1; restores pre-AST-1274 tie-break).
     visited = set()
     current_id = str(ref)
     start_id = row_dict.get("agent_data_id")
@@ -6393,7 +6357,7 @@ def get_recent_ledger_summaries(task_key: str, candidate_id: str, n: int = 3) ->
 # ---------------------------------------------------------------------------
 
 def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
-    """Create app_log table if not present. Idempotent."""
+    """Create app_log with integer AUTOINCREMENT PK; migrate TEXT PK if needed. Idempotent."""
     global _app_log_schema_ensured
     if _app_log_schema_ensured:
         return
@@ -6401,7 +6365,7 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
     if cursor.fetchone()[0] == 0:
         conn.execute("""
             CREATE TABLE app_log (
-                id TEXT PRIMARY KEY,
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
                 level TEXT,
                 logger_name TEXT,
                 message TEXT,
@@ -6410,6 +6374,30 @@ def _ensure_app_log_schema(conn: sqlite3.Connection) -> None:
             )
         """)
         conn.commit()
+    else:
+        # TEXT → INTEGER rebuild when legacy UUID PK remains
+        cols = list(conn.execute("PRAGMA table_info(app_log)").fetchall())
+        id_col = next((r for r in cols if r[1] == "id"), None)
+        id_type = (id_col[2] if id_col else "") or ""
+        if id_type.upper() != "INTEGER":
+            conn.execute("DROP TABLE IF EXISTS app_log_new")
+            conn.execute("""
+                CREATE TABLE app_log_new (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    level TEXT,
+                    logger_name TEXT,
+                    message TEXT,
+                    batch_id TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                )
+            """)
+            conn.execute("""
+                INSERT INTO app_log_new (level, logger_name, message, batch_id, created_at)
+                SELECT level, logger_name, message, batch_id, created_at FROM app_log
+            """)
+            conn.execute("DROP TABLE app_log")
+            conn.execute("ALTER TABLE app_log_new RENAME TO app_log")
+            conn.commit()
     _app_log_schema_ensured = True
 
 
@@ -6420,14 +6408,14 @@ def add_log_entry(
     batch_id: Optional[str] = None,
 ) -> bool:
     """Append a log entry. Fast write path; caller ensures valid data."""
-    entry_id = str(uuid.uuid4())
     conn = _get_connection()
     try:
         _ensure_app_log_schema(conn)
+        # DB assigns integer id — do not mint client UUID
         conn.execute("""
-            INSERT OR IGNORE INTO app_log (id, level, logger_name, message, batch_id)
-            VALUES (?, ?, ?, ?, ?)
-        """, (entry_id, level, logger_name, message, batch_id))
+            INSERT INTO app_log (level, logger_name, message, batch_id)
+            VALUES (?, ?, ?, ?)
+        """, (level, logger_name, message, batch_id))
         conn.commit()
         return True
     except Exception:
@@ -7060,16 +7048,12 @@ def save_dispatch_task(
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
-    candidate_id may be NULL only for GAZE_EMAIL_CONFIG task_key (AST-1088)."""
+    candidate_id is required for every task_key (AST-1134 retired null gaze_email shell)."""
     tk = (task_key or "").strip()
     cid_raw = None if candidate_id is None else str(candidate_id).strip()
-    cid_val: Optional[str]
-    if tk == GAZE_EMAIL_CONFIG["task_key"] and not cid_raw:
-        cid_val = None
-    elif not cid_raw:
+    if not cid_raw:
         raise ValueError("candidate_id is required")
-    else:
-        cid_val = cid_raw
+    cid_val: Optional[str] = cid_raw
     try:
         defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
@@ -7370,8 +7354,12 @@ def set_dispatch_tasks_from_template_rows(
 
 
 def get_due_tasks() -> List[Dict[str, Any]]:
-    """Return auto_mode dispatch_tasks that have enough eligible entities to process.
-    Each returned dict includes 'available_count' from count_eligible_for_dispatch_task (WATCH/gaze respects freq_hrs and last_scan_at)."""
+    """Return auto_mode claim-queue dispatch_tasks with enough eligible entities.
+
+    Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
+    (WATCH respects freq_hrs / last_scan_at). Candidate-bound gaze_email AUTO due is
+    merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
+    """
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
@@ -7388,13 +7376,6 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         cid = task.get("candidate_id")
-        tk = (task.get("task_key") or "").strip()
-        if tk == GAZE_EMAIL_CONFIG["task_key"]:
-            avail = count_eligible_for_dispatch_task(task)
-            if avail >= (task.get("min_count") or 1):
-                task["available_count"] = avail
-                due.append(task)
-            continue
         if not et or not ts or not cid:
             continue
         avail = count_eligible_for_dispatch_task(task)
@@ -7525,27 +7506,26 @@ def _parse_dispatch_last_run_at(raw: Any) -> Optional[datetime]:
     return dt
 
 
-def _gaze_email_available_count(task: Dict[str, Any]) -> int:
-    """Due signal for null-candidate gaze_email: 1 when freq allows, else 0 (AST-1090)."""
+def dispatch_task_freq_allows(task: Dict[str, Any]) -> bool:
+    """True when freq_hrs is 0/absent, or last_run_at is missing/stale vs freq_hrs."""
     freq = float(task.get("freq_hrs") or 0)
-    if freq > 0:
-        last = _parse_dispatch_last_run_at(task.get("last_run_at"))
-        if last is not None:
-            age = datetime.now(timezone.utc) - last
-            if age.total_seconds() < freq * 3600:
-                return 0
-    return 1
+    if freq <= 0:
+        return True
+    last = _parse_dispatch_last_run_at(task.get("last_run_at"))
+    if last is None:
+        return True
+    age = datetime.now(timezone.utc) - last
+    return age.total_seconds() >= freq * 3600
 
 
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
-    """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH/gaze).
+    """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH).
 
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
-    Other company states and all job states use count_entities_in_state (no per-task freq filter)."""
-    tk = (task.get("task_key") or "").strip()
-    if tk == GAZE_EMAIL_CONFIG["task_key"]:
-        return _gaze_email_available_count(task)
+    Other company states and all job states use count_entities_in_state (no per-task freq filter).
+    gaze_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
+    """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")
     candidate_id = task.get("candidate_id")
@@ -7565,9 +7545,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        return count_candidate_inflow_discovery_eligible(
-            candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
-        )
+        # inflow_discovery keeps term/state helper; other candidate claim queues use pool count.
+        if (task_key or "").strip() == INFLOW_CONFIG["discovery"]["task_key"]:
+            return count_candidate_inflow_discovery_eligible(
+                candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
+            )
+        return count_candidates_unclaimed_in_states(claim_states)
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)
@@ -7717,3 +7700,290 @@ def count_entities_in_state(
         finally:
             conn.close()
     return _run_with_retry(_with_conn)
+
+
+# ---------------------------------------------------------------------------
+# Scheduled Queries (AST-1122)
+# ---------------------------------------------------------------------------
+
+def _ensure_scheduled_query_schema(conn: sqlite3.Connection) -> None:
+    """Create scheduled_query table if missing. Idempotent."""
+    global _scheduled_query_schema_ensured
+    if _scheduled_query_schema_ensured:
+        return
+    conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS scheduled_query (
+            scheduled_query_id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            sql_text TEXT NOT NULL,
+            active INTEGER NOT NULL DEFAULT 0,
+            interval_hours REAL NOT NULL DEFAULT 24,
+            last_run_at TIMESTAMP,
+            last_rows_affected INTEGER,
+            last_error TEXT,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    _scheduled_query_schema_ensured = True
+
+
+def _scheduled_query_row(row: sqlite3.Row) -> Dict[str, Any]:
+    d = _row_to_dict(row)
+    d["active"] = bool(d.get("active"))
+    return d
+
+
+def list_scheduled_queries() -> List[Dict[str, Any]]:
+    """Return all scheduled_query rows ordered by name then id."""
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            rows = conn.execute(
+                """SELECT * FROM scheduled_query
+                   ORDER BY name COLLATE NOCASE ASC, scheduled_query_id ASC"""
+            ).fetchall()
+            return [_scheduled_query_row(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_scheduled_query(scheduled_query_id: str) -> Optional[Dict[str, Any]]:
+    """Return one scheduled_query row or None."""
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            row = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?",
+                (scheduled_query_id,),
+            ).fetchone()
+            return _scheduled_query_row(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def save_scheduled_query(
+    *,
+    name: str,
+    sql_text: str,
+    active: bool = False,
+    interval_hours: float = 24.0,
+    scheduled_query_id: Optional[str] = None,
+) -> Dict[str, Any]:
+    """Insert a scheduled_query row. Returns the saved row dict."""
+    qid = (scheduled_query_id or "").strip() or str(uuid.uuid4())
+    name_s = (name or "").strip()
+    sql_s = (sql_text or "").strip()
+    if not name_s:
+        raise ValueError("name is required")
+    if not sql_s:
+        raise ValueError("sql_text is required")
+    hours = float(interval_hours)
+    if hours <= 0:
+        raise ValueError("interval_hours must be > 0")
+    now = _utc_now()
+
+    def _with_conn() -> Dict[str, Any]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            conn.execute(
+                """INSERT INTO scheduled_query
+                   (scheduled_query_id, name, sql_text, active, interval_hours,
+                    last_run_at, last_rows_affected, last_error, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, NULL, NULL, NULL, ?, ?)""",
+                (qid, name_s, sql_s, 1 if active else 0, hours, now, now),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?", (qid,)
+            ).fetchone()
+            return _scheduled_query_row(row)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def update_scheduled_query(
+    scheduled_query_id: str,
+    *,
+    name: Optional[str] = None,
+    sql_text: Optional[str] = None,
+    active: Optional[bool] = None,
+    interval_hours: Optional[float] = None,
+) -> Optional[Dict[str, Any]]:
+    """Patch fields on a scheduled_query row. Returns updated row or None if missing."""
+    qid = (scheduled_query_id or "").strip()
+    if not qid:
+        raise ValueError("scheduled_query_id is required")
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            existing = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?", (qid,)
+            ).fetchone()
+            if not existing:
+                return None
+            cur = _scheduled_query_row(existing)
+            new_name = cur["name"] if name is None else str(name).strip()
+            new_sql = cur["sql_text"] if sql_text is None else str(sql_text).strip()
+            new_active = cur["active"] if active is None else bool(active)
+            new_hours = float(cur["interval_hours"] if interval_hours is None else interval_hours)
+            if not new_name:
+                raise ValueError("name is required")
+            if not new_sql:
+                raise ValueError("sql_text is required")
+            if new_hours <= 0:
+                raise ValueError("interval_hours must be > 0")
+            now = _utc_now()
+            conn.execute(
+                """UPDATE scheduled_query
+                   SET name = ?, sql_text = ?, active = ?, interval_hours = ?, updated_at = ?
+                   WHERE scheduled_query_id = ?""",
+                (new_name, new_sql, 1 if new_active else 0, new_hours, now, qid),
+            )
+            conn.commit()
+            row = conn.execute(
+                "SELECT * FROM scheduled_query WHERE scheduled_query_id = ?", (qid,)
+            ).fetchone()
+            return _scheduled_query_row(row)
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def delete_scheduled_query(scheduled_query_id: str) -> bool:
+    """Delete a scheduled_query row. Returns True if a row was removed."""
+
+    def _with_conn() -> bool:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            cur = conn.execute(
+                "DELETE FROM scheduled_query WHERE scheduled_query_id = ?",
+                (scheduled_query_id,),
+            )
+            conn.commit()
+            return cur.rowcount > 0
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def _is_operator_sql_fault(exc: BaseException) -> bool:
+    """True when the SQL itself is wrong (deactivate); False for transient DB issues."""
+    msg = str(exc).lower()
+    if "locked" in msg or "busy" in msg or "timeout" in msg:
+        return False
+    if "syntax" in msg or "no such table" in msg or "no such column" in msg:
+        return True
+    if isinstance(exc, sqlite3.ProgrammingError):
+        return True
+    return isinstance(exc, sqlite3.OperationalError) and "disk" not in msg
+
+
+def list_due_scheduled_queries(now: Optional[str] = None) -> List[Dict[str, Any]]:
+    """Active rows whose last_run_at is null or older than interval_hours."""
+    ts = now or _utc_now()
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_scheduled_query_schema(conn)
+            rows = conn.execute(
+                """SELECT * FROM scheduled_query
+                   WHERE active = 1
+                     AND (
+                       last_run_at IS NULL
+                       OR (julianday(?) - julianday(last_run_at)) * 24.0 >= interval_hours
+                     )
+                   ORDER BY name COLLATE NOCASE ASC, scheduled_query_id ASC""",
+                (ts,),
+            ).fetchall()
+            return [_scheduled_query_row(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def run_due_scheduled_queries(*, now: Optional[str] = None) -> Dict[str, Any]:
+    """Execute due active scheduled queries; update last_run / deactivate on operator faults.
+
+    Returns counts: scanned, ran, deactivated, skipped_transient.
+    Data layer does not log.
+    """
+    ts = now or _utc_now()
+    due = list_due_scheduled_queries(now=ts)
+    counts: Dict[str, Any] = {
+        "scanned": len(due),
+        "ran": 0,
+        "deactivated": 0,
+        "skipped_transient": 0,
+        "actions": [],
+    }
+    for row in due:
+        qid = row["scheduled_query_id"]
+        sql = row["sql_text"]
+
+        def _exec_one(qid=qid, sql=sql) -> Dict[str, Any]:
+            conn = _get_connection()
+            try:
+                _ensure_scheduled_query_schema(conn)
+                try:
+                    cursor = conn.execute(sql)
+                    if cursor.description:
+                        fetched = cursor.fetchall()
+                        affected = len(fetched)
+                    else:
+                        affected = cursor.rowcount if cursor.rowcount is not None else 0
+                        conn.commit()
+                    conn.execute(
+                        """UPDATE scheduled_query
+                           SET last_run_at = ?, last_rows_affected = ?, last_error = NULL,
+                               updated_at = ?
+                           WHERE scheduled_query_id = ?""",
+                        (ts, int(affected), ts, qid),
+                    )
+                    conn.commit()
+                    return {"outcome": "ran", "rows_affected": int(affected)}
+                except Exception as exc:
+                    if _is_operator_sql_fault(exc):
+                        conn.execute(
+                            """UPDATE scheduled_query
+                               SET active = 0, last_error = ?, updated_at = ?
+                               WHERE scheduled_query_id = ?""",
+                            (str(exc)[:2000], ts, qid),
+                        )
+                        conn.commit()
+                        return {"outcome": "deactivated", "error": str(exc)}
+                    return {"outcome": "skipped_transient", "error": str(exc)}
+            finally:
+                conn.close()
+
+        result = _run_with_retry(_exec_one)
+        outcome = result.get("outcome")
+        if outcome == "ran":
+            counts["ran"] += 1
+        elif outcome == "deactivated":
+            counts["deactivated"] += 1
+        else:
+            counts["skipped_transient"] += 1
+        counts["actions"].append({"scheduled_query_id": qid, **result})
+    return counts

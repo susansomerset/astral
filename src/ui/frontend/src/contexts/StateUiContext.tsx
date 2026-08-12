@@ -13,7 +13,7 @@ export interface StateUiManifest {
       below_dispatch_label: string
       section_order: string[]
       section_labels: Record<string, string>
-      bulk_retry_to_state: string
+      bulk_retry_to_state_by_from_state: Record<string, string>
     }
     detail: { already_skipped_state: string }
     recommended: {
@@ -52,7 +52,12 @@ export interface StateUiManifest {
       }
     }
   }
-  candidate: { artifact_generate_states: string[] }
+  candidate: {
+    artifact_generate_states: string[]
+    artifacts_chain_task_keys: string[]
+    artifacts_chain_hop_labels: string[]
+    artifacts_chain_artifact_keys: string[]
+  }
   company: {
     watch_readonly_states: string[]
     bulk_transitions: Record<string, string>

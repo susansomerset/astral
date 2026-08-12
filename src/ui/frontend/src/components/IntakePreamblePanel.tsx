@@ -234,12 +234,12 @@ export default function IntakePreamblePanel({
 
         {noPending ? (
           <div className="intake-preamble-actions">
-            <button type="button" className="modal-btn cancel" disabled={busy} onClick={onCancel}>
+            <button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>
               Cancel
             </button>
             <button
               type="button"
-              className="modal-btn save"
+              className="btn primary"
               disabled={busy}
               onClick={handleContinueEmpty}
             >
@@ -256,12 +256,12 @@ export default function IntakePreamblePanel({
               placeholder="Paste your answer…"
             />
             <div className="intake-preamble-actions">
-              <button type="button" className="modal-btn cancel" disabled={busy} onClick={onCancel}>
+              <button type="button" className="btn secondary" disabled={busy} onClick={onCancel}>
                 Cancel
               </button>
               <button
                 type="button"
-                className="modal-btn save"
+                className="btn primary"
                 disabled={busy || !draft.trim()}
                 onClick={() => void handleSubmit()}
               >

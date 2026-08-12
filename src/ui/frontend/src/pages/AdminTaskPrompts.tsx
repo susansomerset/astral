@@ -9,6 +9,7 @@ import TokenTextarea from "../components/TokenTextarea"
 import Time from "../components/Time"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
+import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 
 interface AgentTask {
   task_key: string
@@ -230,7 +231,7 @@ export default function TaskPrompts() {
           const as_ = a.task_seq ?? 999
           const bs_ = b.task_seq ?? 999
           if (as_ !== bs_) return as_ - bs_
-          return a.task_key.localeCompare(b.task_key)
+          return compareTaskKeys(a.task_key, b.task_key)
         }),
       }))
   }, [tasks])
@@ -255,7 +256,7 @@ export default function TaskPrompts() {
   }, [sectionKeys, expandedKeys, setExpandedKeys])
 
   const taskKeyOptions = useMemo(
-    () => [...new Set(tasks.map(t => t.task_key))].sort((a, b) => a.localeCompare(b)),
+    () => sortedTaskKeys(new Set(tasks.map(t => t.task_key))),
     [tasks],
   )
 
@@ -623,8 +624,7 @@ export default function TaskPrompts() {
                 />
               </label>
             )}
-            <button className="dep-btn cancel" type="button" onClick={handlePreview} disabled={previewLoading}
-              style={{ fontSize: 12, padding: "5px 12px" }}>
+            <button className="btn secondary" type="button" onClick={handlePreview} disabled={previewLoading}>
               {previewLoading ? "Loading..." : "Preview Resolved"}
             </button>
             <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>

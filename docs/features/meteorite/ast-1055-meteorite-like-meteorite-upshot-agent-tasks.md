@@ -1,3 +1,365 @@
+<!-- linear-archive: AST-1055 archived 2026-08-07 -->
+
+## Linear archive (AST-1055)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1055/meteorite-like-meteorite-upshot-agent-tasks-processing-meteorites  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1052 — Processing meteorites  
+**Blocked by / blocks / related:** parent: AST-1052; blocks: AST-1057
+
+### Description
+
+## What this implements
+
+Owns agent_task `meteorite_like` (same like rubric; no vibe-page assumptions; liberally use grade **X**) and the meteorite **upshot** twin (emphasize lack of company visibility). After #1; pairs with sibling 2 for dispatch triggers. Does **not** own Recommended UI or Create landing.
+
+## Acceptance criteria
+
+- [X] 3. No meteorite path requires `fetch_culture_pages` / **CULTURE_READY**; after **METEORITE_PASSED_GET**, `meteorite_like` runs (same like rubric; prompt omits vibe-page assumptions and tells Grace to use grade **X** more liberally when info is thin).
+- [X] 4. After meteorite LIKE, a **meteorite upshot** task runs with company-visibility caveats in the prompt.
+
+## Boundaries
+
+Does **not** own JOB_STATES (sibling 1), dispatch rows (sibling 2), Create landing (sibling 4), or Recommended section (sibling 5).
+
+## In scope
+
+- [X] `pattern.config.config-block` — `TASK_CONFIG` twins + `RECOMMENDED` prior extension in `src/utils/config.py`
+- [X] company-absent agent_task twin (new-pattern) — `meteorite_like` / `meteorite_upshot` prompts in `data/admin/agent_task.json`
+- [X] `astral.config.config-source-of-truth` — task keys, states, schemas, prompts from config/repo JSON only
+- [X] `astral.standards.no-hardcoded-sets` — no inline meteorite task/state sets outside config
+- [X] `astral.state.job-prior-states-enforced` — lawful `RECOMMENDED` priors from `METEORITE_PASSED_LIKE` / `METEORITE_PASSED_LIKE_RETRY`
+- [X] `astral.state.core-decides-transitions` — consult transitions via `TASK_CONFIG` registries
+- [X] `astral.layers.import-direction` — core consult/agent/dispatcher only; no UI layer edits
+- [X] `astral.standards.debug-contract-gated` — reuse existing debug paths; no new ungated debug noise
+- [X] universal set — product code + plan doc
+
+## Considered but excluded
+
+- [X] `astral.config.pass-threshold-vs-score-floor` — dispatch `score_floor` 0 rows are AST-1054
+- [X] `pattern.batch.entity-claim-process-release` / `astral.batch.claim-process-release` — claim wiring is AST-1054
+- [X] `pattern.state.entity-state-transitions` for new `JOB_STATES` keys — AST-1053 (landed)
+- [X] Recommended Meteorites section UI — AST-1057 (`src/ui/`)
+- [X] Create landing / `METEORITE_CONFIG` create default — AST-1056
+- [X] `astral.standards.database-header-inventory` — no new tables
+- [X] `astral.debug.spikes-under-debug-dir` — no spike scripts in this ticket
+- [X] `astral.git.engineer-test-tree-ban` — Betty owns `tests/` / bible after Code Complete
+- [X] Changing non-meteorite `grade_like` / `analysis_upshot` prompt bodies
+
+## Notes for planning
+
+After AST-1053. Company-absent agent_task twin pattern. Plan: `docs/features/meteorite/ast-1055-meteorite-like-meteorite-upshot-agent-tasks.md`.
+
+## Git branch (authoritative)
+
+`origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`
+
+### Comments
+
+#### radia — 2026-07-29T22:16:28.577Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1055
+**Publish ref:** `e02d5c594ef40851515d1ae425da66d512c9b751` (`origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks` — layers `{core, utils, docs}` (+ `data/admin/agent_task.json`); stacked tip includes AST-1053 plan/states ancestry.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| `astral.agent.confidence-bounds` | scoped | conforms | Liberal X is prompt guidance; confidence contract untouched |
+| `astral.agent.do-task-delegation` | scoped | conforms | Twins call do_task via consult batch paths |
+| `astral.agent.grade-vector-validation` | scoped | conforms | Same encoded LIKE schema / like_rubric |
+| `astral.batch.batch-id-first` | scoped | conforms | No new claim APIs; batch_id passed through |
+| `astral.batch.batch-id-format` | scoped | conforms | Untouched |
+| `astral.batch.claim-process-release` | scoped | conforms | No claim/clear changes; dispatch rows AST-1054 |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | conforms | Untouched |
+| `astral.config.config-source-of-truth` | scoped | conforms | Twins in TASK_CONFIG; prompts in agent_task.json |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | pass_threshold copied; score_floor rows AST-1054 |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss (['artifacts/**', 'scripts/spikes/**']) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Plan docs under docs/features/; no spikes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single AST-1055 plan file (+ stacked 1053 plan in tip) |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test()/merge-tests; engineer code() owns src+features |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | test() commits own tests/bible; engineer code() product only |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Prep/orchestration stay in core; no external edits |
+| `astral.layers.import-direction` | scoped | conforms | core/utils only; no UI layer |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers miss (['scripts']); paths miss (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No UI edits; RECOMMENDED priors only |
+| `astral.patterns.coat-check-never-store-empty` | scoped | conforms | requires_company False → company=None; JD-only prep |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | conforms | Twins via run_consult_task |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers miss (['ui']); paths miss (['src/ui/**']) |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | No data-layer logging |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | layers miss (['data']); paths miss (['src/data/**']) |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Reuses existing debug= gates; no new ungated noise |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Shared encoded LIKE + generalized upshot batch |
+| `astral.standards.in-scope-only` | scoped | conforms | No Create/Recommended UI/dispatch seed |
+| `astral.standards.logging-via-utils` | scoped | conforms | Existing get_logger paths |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Layered core/utils; non-meteorite prompts untouched |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Task keys/states in TASK_CONFIG/JOB_STATES |
+| `astral.standards.public-then-helpers` | scoped | conforms | Thin meteorite_like_batch wrapper |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No new utils→data |
+| `astral.state.core-decides-transitions` | scoped | conforms | Transitions via TASK_CONFIG pass/fail/error |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | RECOMMENDED priors + meteorite LIKE states |
+| `astral.state.no-daisy-chain-in-run` | scoped | conforms | run_next empty; separate dispatch hops AST-1054 |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers miss (['ui']); paths miss (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers miss (['ui']); paths miss (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | Untouched |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | merge-tests(AST-1055) one SHA (+ follow-up test fix) |
+| `orch.git.commit-vocabulary` | universal | conforms | docs/code/test/merge-tests vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Work on sub/* only |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub/AST-1052/AST-1055-… |
+| `orch.git.merge-on-checkout` | universal | conforms | No conflicting checkout rewrite |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No rewrite ops |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Ticket sub publish-ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | astral-AST-1052 |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Company-absent twin locked in parent definition |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–3 match tip; boundaries held |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty owns tests/bible |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Katherine |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Assignee remains Katherine |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Role-appropriate paths per vocabulary |
+
+## Pattern conformance
+
+- `pattern.config.config-block` — conforms (`TASK_CONFIG` twins + `RECOMMENDED` priors)
+- Cited statutes (`astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.state.job-prior-states-enforced`, `astral.state.core-decides-transitions`, `astral.layers.import-direction`, `astral.standards.debug-contract-gated`) covered in Statutes checked
+- Company-absent agent_task twin (new-pattern, Linear) — conforms (prompt deltas + `requires_company: False`)
+
+## Plan adherence
+
+Stages 1–3 delivered: TASK_CONFIG twins + rubric_owner resolve + batch frozenset; agent_task prompt twins (no-vibe / liberal X / Meteorite context); consult/agent/dispatcher routing via shared encoded LIKE + generalized upshot. Self-Assessment Scope matches. Boundaries held — no dispatch seed, Create, or Recommended section UI.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **straggler ×3** — Joan excluded at plan time; in-scope on three-dot vs `origin/dev` (all substance **conforms**):
+   - `astral.debug.spikes-under-debug-dir`
+   - `astral.docs.features-single-file-per-ticket`
+   - `astral.git.engineer-test-tree-ban`
+
+### advisory
+(none)
+
+### What’s solid
+- JD-only prep with `requires_company: False`; upshot persists `analysis_upshot`; non-meteorite prompts untouched.
+
+### Recommended actions
+- Katherine: acknowledge stragglers → resolve-child → User Testing.
+
+**Notes:** Joan plan-rubric verdict attached (APPROVED). Docs append on plan file @ `e02d5c59`.
+
+context_tokens≈32000
+
+#### katherine — 2026-07-29T22:13:47.640Z
+Manifest green (14 passed) after product fix: `system_prompt: ""` on `meteorite_like` / `meteorite_upshot` (+ UAT fixture sync).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes
+```
+
+`origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks` @ `78f5a981`
+
+#### betty — 2026-07-29T22:12:41.625Z
+Product bug — holding **Tests Ready**.
+
+`data/admin/agent_task.json` rows **`meteorite_like`** and **`meteorite_upshot`** omit **`system_prompt`**. Peer Job Review rows (e.g. `grade_like`, `analysis_upshot`) include `"system_prompt": ""`. `TestAst786AgentTaskRepoJsonSeed::test_startup_apply_loads_all_41_current_rows` requires each repo JSON row’s keys to match the `agent_task` schema columns exactly — fails on row 40/41 with schema extras: `system_prompt`.
+
+**Fix (product):** add `"system_prompt": ""` to both new rows (same as siblings). Keep UAT fixture byte-identical after that (Betty will refresh fixture + re-publish if needed).
+
+Tests already drafted on `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks` @ `1d60dadb` (`merge-tests` from `origin/tests` `c98ae2fb`) — not advancing status until this lands.
+
+@Katherine Johnson
+
+#### betty — 2026-07-29T22:12:30.879Z
+1. `tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks` — TASK_CONFIG twins, RECOMMENDED meteorite priors, rubric_owner → grade_like, batch/strict-encoded/chunk-exhaust membership
+2. `tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched` — revised (dropped RECOMMENDED prior absence; score-gated + create smoke kept)
+3. `tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed` — catalog **39 → 41** + UAT fixture byte lock
+4. `tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows` — meteorite_like cache_prompt (no-vibe / liberal X) + meteorite_upshot Meteorite context
+5. `tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes` — routes + persist `job_data.analysis_upshot` under twin states
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1055MeteoriteLikeUpshotTasks \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates::test_non_meteorite_gdl_and_recommended_untouched \
+  tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed \
+  tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
+  tests/component/core/test_consult.py::TestAst1055MeteoriteConsultRoutes
+```
+
+**Product fix before green:** `data/admin/agent_task.json` rows `meteorite_like` / `meteorite_upshot` omit `system_prompt` (other catalog rows include `"system_prompt": ""`). `test_startup_apply_loads_all_41_current_rows` requires exact schema keys — add the empty field to both rows (and keep fixture in sync if you touch the JSON).
+
+**Broken/revised:** AST-1053 RECOMMENDED prior absence; AST-786 39→41 + fixture.
+**Integration:** none revised.
+
+**Publish:** `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks` @ `1d60dadb`
+`merge-tests(AST-1055): origin/tests c98ae2fb`
+
+**Bible shasums** on publish ref:
+- `docs/test-bible/utils/config.md` a7b99fa96f229030c6dbc6d653b7ceaef47369e9a395fabc976cff355afee396
+- `docs/test-bible/core/consult.md` 95dc8fe30b0a24bc991c8c5c1f1f7073d285192347270c0d60bc9a72638d3a1e
+- `docs/test-bible/core/repo_admin_json.md` 0a872591df253b1b2f6737e81c50425d477baba5eed91188aa483560ec16c7a8
+
+#### joan — 2026-07-29T21:59:29.250Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1055
+**Overall:** APPROVED
+
+**Notes:** First Plan Ready pass. Tip `ff3d0df1`. Publish ref `origin/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks`. Files Changed layer `data/admin` mapped to `docs`. Company-absent twin pattern authorized by parent AST-1052 definition.
+**Implementer:** Katherine (plan author / parent Team table).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1 METEORITE_* states | N/A — boundary: AST-1053 (landed) |
+| 2 Dispatch rows score_floor 0 | N/A — boundary: AST-1054 |
+| 3 No culture hop; `meteorite_like` after PASSED_GET (same rubric; no vibe; liberal X) | Stages 1–3 (`requires_company: False`, prompt deltas, consult routing); claim/trigger wiring AST-1054 |
+| 4 Meteorite upshot after LIKE with company-visibility caveats | Stages 1–3 (`meteorite_upshot` + RECOMMENDED priors); dispatch trigger AST-1054 |
+| 5 Recommended Meteorites section | N/A — boundary: AST-1057; priors only on this ticket |
+| 6 Create → METEORITE_NEW | N/A — boundary: AST-1056 |
+| 7 Fail/technical + non-meteorite smoke | Twin fail/error states use AST-1053 keys; non-meteorite prompts untouched |
+| 8 Style D debug | Reuse existing consult/agent debug paths; no new ungated lines |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 3 meteorite_like (no vibe; liberal X) | 1–3 |
+| 4 meteorite upshot (company-visibility caveats) | 1–3 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 TASK_CONFIG twins + RECOMMENDED priors + rubric_owner resolve | Functional scope company-absent twins; AC3/AC4; job-prior-states for upshot landing |
+| 2 agent_task.json prompt twins | AC3/AC4 prompt deltas; config-source-of-truth |
+| 3 consult/agent/dispatcher routing | AC3 JD-only prep; DRY reuse of encoded LIKE + upshot batches |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Plan `docs(AST-1055):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No conflicting checkout procedure |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-1052` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Company-absent twin locked in parent definition |
+| orch.pipeline.plan-is-bible | conforms | Stages binding; dispatch/UI siblings excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Meteorite |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Katherine |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Katherine on approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | Liberal X is prompt guidance; confidence contract unchanged |
+| astral.agent.do-task-delegation | conforms | Twins call `do_task` via existing consult paths |
+| astral.agent.grade-vector-validation | conforms | Same encoded LIKE schema / like_rubric |
+| astral.batch.batch-id-first | conforms | No new claim APIs |
+| astral.batch.batch-id-format | conforms | Untouched |
+| astral.batch.claim-process-release | conforms | Claim rows deferred to AST-1054 |
+| astral.batch.entity-agent-responses-latest-only | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | Twins in TASK_CONFIG; prompts in agent_task.json |
+| astral.config.pass-threshold-vs-score-floor | conforms | score_floor rows are AST-1054; pass_threshold unchanged |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned src + features |
+| astral.layers.core-vs-external-bright-line | conforms | Prep/orchestration stay in core |
+| astral.layers.import-direction | conforms | utils/core/repo JSON; no UI |
+| astral.layers.ui-config-driven-business-logic | conforms | No UI edits |
+| astral.patterns.coat-check-never-store-empty | conforms | JD-only path skips website coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | conforms | Twins routed through run_consult_task |
+| astral.standards.data-raises-caller-logs | conforms | No data-layer logging |
+| astral.standards.debug-contract-gated | conforms | Reuse existing debug gates |
+| astral.standards.dry-and-focused-functions | conforms | Shared encoded batch + generalized upshot batch |
+| astral.standards.in-scope-only | conforms | Explicit out-of-scope for 1053/1054/1056/1057 |
+| astral.standards.logging-via-utils | conforms | Existing logging |
+| astral.standards.no-cross-contamination | conforms | Layered structure |
+| astral.standards.no-hardcoded-sets | conforms | States/task keys in config |
+| astral.standards.public-then-helpers | conforms | Thin wrappers / shared helpers |
+| astral.standards.utils-data-late-import-only | conforms | No new utils→data |
+| astral.state.core-decides-transitions | conforms | Transitions via TASK_CONFIG pass/fail/error |
+| astral.state.job-prior-states-enforced | conforms | RECOMMENDED priors extended for meteorite LIKE states |
+| astral.state.no-daisy-chain-in-run | conforms | Empty run_next; separate dispatch hops (AST-1054) |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.agent.do-task-delegation, astral.agent.grade-vector-validation, astral.batch.batch-id-first, astral.batch.batch-id-format, astral.batch.claim-process-release, astral.batch.entity-agent-responses-latest-only, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.core-vs-external-bright-line, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.patterns.coat-check-never-store-empty, astral.patterns.render-verdict-orchestrates-consult, astral.standards.data-raises-caller-logs, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.core-decides-transitions, astral.state.job-prior-states-enforced, astral.state.no-daisy-chain-in-run, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.patterns.require-auth-on-protected-endpoints — layers/paths miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.ui.frontend-file-placement — layers/paths miss
+- astral.ui.naming-conventions — layers/paths miss
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### acceptable
+1. `requires_company: False` + JD-only prep — necessary so meteorites never hit `NEED_WEBSITE_CONTENT` (priors would reject METEORITE_* → NEED_WEBSITE_CONTENT).
+2. Extending `RECOMMENDED` priors here while Meteorites **section** stays AST-1057 — correct split for lawful upshot landing.
+3. Deferring `_dispatch_trigger_state_for_task_key` branches to AST-1054 — matches sibling ownership; entity_type already resolves via TASK_CONFIG.
+4. Persist twin upshot under `job_data.analysis_upshot` — keeps report consumers working.
+5. Self-assessment Single-Component / high / Medium — honest.
+
+— Joan
+context_tokens≈52000
+
+#### katherine — 2026-07-29T21:56:14.041Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1052/AST-1055-meteorite-like-meteorite-upshot-agent-tasks/docs/features/meteorite/ast-1055-meteorite-like-meteorite-upshot-agent-tasks.md
+
+**Scope:** Single-Component — `TASK_CONFIG` twins + `agent_task.json` prompts + consult/agent/dispatcher routing; no UI.
+
+**Conf:** high — mirrors `grade_like` / `analysis_upshot`; company-absent via `requires_company: False` + prompt deltas; same `like_rubric`.
+
+**Risk:** Medium — bad prep/`requires_company` would send meteorites to `NEED_WEBSITE_CONTENT`; missing `RECOMMENDED` priors would block upshot landing; mitigated by JD-only prep and explicit prior extension.
+
+#### chuckles — 2026-07-29T21:51:00.044Z
+[thread-missing] Cursor chat `5a599caa-2ab6-4227-bcba-bb38795f62bd` has no local `store.db` on **chuckles** (expected `/home/susan/.cursor/chats/b36a807f3f90f0412c9849e1018d0e22/5a599caa-2ab6-4227-bcba-bb38795f62bd/store.db`; blob-search also empty).
+
+Minting a **new** conversation on this host and continuing (history from the old UUID is not recovered).
+
+— Chuckles
+
+---
+
 # AST-1055 — meteorite_like + meteorite upshot agent tasks
 
 **Linear:** [AST-1055](https://linear.app/astralcareermatch/issue/AST-1055/meteorite-like-meteorite-upshot-agent-tasks-processing-meteorites)

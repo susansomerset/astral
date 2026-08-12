@@ -34,7 +34,12 @@ from src.data.database import (
 )
 from src.core.timesheets import record_timesheet_entry
 from src.external.anthropic import send_to_anthropic, getTimestampPrefix
-from src.utils.llm_external import extract_api_response_text, is_provider_balance_refusal
+from src.utils.llm_external import (
+    extract_api_response_text,
+    is_provider_balance_refusal,
+    is_provider_empty_response,
+    normalize_provider_error,
+)
 from src.external.deepseek import send_to_deepseek
 from src.utils.config import (
     TASK_CONFIG, BASE_SCHEMA, BLOCK_TYPES, ASTRAL_CONFIG, BUILD_CONFIG,
@@ -59,6 +64,9 @@ from src.utils.config import (
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
     rubric_owner_task_key,
     JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK,
+    resolve_task_key_for_content,
+    is_task_alias,
+    METEORITE_EMAIL_PARSE_CONFIG,
 )
 from src.utils.rubric_feedback import (
     format_hydrated_review_debug_line,
@@ -81,6 +89,7 @@ _PB_SLOT_OMIT = object()
 _STRICT_ENCODED_BATCH_CONSULT_KEYS = frozenset({
     "qualify_job_listings",
     "evaluate_jd",
+    "evaluate_meteorite",
     "grade_do",
     "grade_get",
     "grade_like",
@@ -88,9 +97,14 @@ _STRICT_ENCODED_BATCH_CONSULT_KEYS = frozenset({
 })
 
 
+def _is_strict_encoded_batch_consult(task_key: str) -> bool:
+    """True when task_key (or its content master) is in the strict encoded-batch set."""
+    return resolve_task_key_for_content(task_key) in _STRICT_ENCODED_BATCH_CONSULT_KEYS
+
+
 def _strict_encoded_batch_consult_envelope_err(task_key: str, parsed: Any) -> Optional[str]:
     """Return error detail if encoded-batch consult response bypasses envelope rules; otherwise None."""
-    if task_key not in _STRICT_ENCODED_BATCH_CONSULT_KEYS or parsed is None:
+    if not _is_strict_encoded_batch_consult(task_key) or parsed is None:
         return None
     if isinstance(parsed, str):
         return (
@@ -350,6 +364,8 @@ def _job_context_for_call(
     ctx: Optional[Dict[str, Any]],
     index: Optional[str],
     cd: dict,
+    *,
+    debug: bool = False,
 ) -> Optional[Dict[str, str]]:
     if not _single_job_in_scope(ctx, index):
         return None
@@ -363,7 +379,58 @@ def _job_context_for_call(
     cid = str((ctx or {}).get("astral_candidate_id") or "")
     if cid:
         cd_copy["_astral_candidate_id"] = cid
-    return builder(_job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid)
+    return builder(
+        _job_row_from_ctx(ctx or {}, str(index)), cd_copy, candidate_id=cid, debug=debug
+    )
+
+
+# Last branch label from _token_view_for_do_task (Style D found line; AST-1192 resolve).
+_token_view_branch_last: str = "fallback"
+
+
+def _token_view_for_do_task(
+    ctx: Optional[Dict[str, Any]],
+    candidate_data: Optional[Dict[str, Any]],
+) -> dict:
+    """Walkable resolve_tokens dict: name columns + library blobs (AST-1192 / AST-1014)."""
+    global _token_view_branch_last
+    # Lazy import breaks agent↔candidate cycle (candidate imports agent paths).
+    from src.core.candidate import (
+        build_candidate_token_view,
+        get_candidate,
+        is_candidate_row_with_name_columns,
+        is_candidate_token_view,
+    )
+
+    cid = str((ctx or {}).get("astral_candidate_id") or "").strip()
+    if cid:
+        row = get_candidate(cid)
+        if row:
+            _token_view_branch_last = "load_by_id"
+            return build_candidate_token_view(row)
+    if is_candidate_row_with_name_columns(ctx):
+        _token_view_branch_last = "full_row_ctx"
+        return build_candidate_token_view(ctx)  # type: ignore[arg-type]
+    if is_candidate_token_view(candidate_data):
+        _token_view_branch_last = "already_view"
+        return dict(candidate_data)  # type: ignore[arg-type]
+    _token_view_branch_last = "raw_blob"
+    return dict(candidate_data or (ctx or {}).get("candidate_data") or {})
+
+
+def _candidate_identity_material_present(cd: dict) -> bool:
+    """True when first/last/full or contact/context hold non-empty identity material."""
+    if str(cd.get("first") or "").strip() or str(cd.get("last") or "").strip():
+        return True
+    if str(cd.get("full") or "").strip():
+        return True
+    for key in ("contact", "context"):
+        blob = cd.get(key)
+        if not isinstance(blob, dict):
+            continue
+        if any(isinstance(v, str) and v.strip() for v in blob.values()):
+            return True
+    return False
 
 
 def resolved_task_system(
@@ -394,17 +461,39 @@ def resolved_task_system(
 
 
 def _resolve_task_prompts(task_key: str):
-    """Fetch and validate agent_task + agent rows for a task_key.
-    Returns (agent_row, agent_task_row). Raises ValueError on misconfiguration."""
-    agent_task_row = get_agent_task(task_key)
+    """Fetch and validate agent_task + agent rows for prompt/content lookup.
+
+    Alias keys resolve to master_task_key for DB rows (AST-1221); caller identity
+    stays the original task_key at do_task / preview call sites.
+    """
+    content_key = resolve_task_key_for_content(task_key)
+    agent_task_row = get_agent_task(content_key)
+    # AST-1212/1282: TASK_CONFIG key is meteorite_email; live Ruth prompts still on
+    # parse_meteorite_email until seed rename. Empty stub rows have no agent_id.
+    cfg = METEORITE_EMAIL_PARSE_CONFIG
+    if content_key == cfg["task_key"] and (
+        not agent_task_row or not (agent_task_row.get("agent_id") or "").strip()
+    ):
+        legacy_row = get_agent_task(cfg["legacy_agent_task_key"])
+        if legacy_row and (legacy_row.get("agent_id") or "").strip():
+            agent_task_row = legacy_row
+            content_key = cfg["legacy_agent_task_key"]
     if not agent_task_row:
-        raise ValueError(f"No agent_task row for '{task_key}'. Run sync_agent_tasks or configure via Manage Tasks.")
+        raise ValueError(
+            f"No agent_task row for '{content_key}'"
+            + (f" (alias '{task_key}')" if content_key != (task_key or "").strip() else "")
+            + ". Run sync_agent_tasks or configure via Manage Tasks."
+        )
     agent_id = (agent_task_row.get("agent_id") or "").strip()
     if not agent_id:
-        raise ValueError(f"agent_task '{task_key}' has no agent_id assigned. Configure via Manage Tasks.")
+        raise ValueError(
+            f"agent_task '{content_key}' has no agent_id assigned. Configure via Manage Tasks."
+        )
     agent_row = get_agent(agent_id)
     if not agent_row:
-        raise ValueError(f"Agent '{agent_id}' referenced by task '{task_key}' not found.")
+        raise ValueError(
+            f"Agent '{agent_id}' referenced by task '{content_key}' not found."
+        )
     return agent_row, agent_task_row
 
 
@@ -1005,6 +1094,14 @@ def _maybe_graduate_dispatch_chain(
         dbg.debug_detail(f"from_state={before!r} to_state={to_state!r} trigger={trigger_state!r}")
 
 
+# Outcome of dispatch-chain hop failure side effects (AST-1191); every exit returns a dict.
+_HOP_FAILURE_NOOP = {
+    "apply_error_state": False,
+    "error_state": "",
+    "batch_released": False,
+}
+
+
 def _apply_dispatch_chain_hop_failure(
     *,
     entity_type: str,
@@ -1013,27 +1110,65 @@ def _apply_dispatch_chain_hop_failure(
     task_config: Dict[str, Any],
     error: str,
     debug: bool,
-) -> None:
+    provider_failed: bool = False,
+    failure_class: Optional[str] = None,
+) -> Dict[str, Any]:
     trigger_state, _ = _dispatch_chain_ctx(ctx)
+    from src.core import tracker as tracker_mod
+    # Hop-label-false: no error_state write; defense-in-depth claim release only (AST-1298).
     if not _should_write_dispatch_hop_label(
         entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
     ):
-        return
+        batch_released = False
+        if provider_failed and index and entity_type == "job":
+            tracker_mod.release_job_dispatch_claim(index)
+            batch_released = True
+        if debug:
+            _do_task_debug_logger(debug).debug_detail(
+                f"chain_hop_failed apply_error_state=False "
+                f"error_state= batch_released={batch_released} "
+                f"failure_class={failure_class!r} error={error!r}"
+            )
+        return {
+            "apply_error_state": False,
+            "error_state": "",
+            "batch_released": batch_released,
+        }
     err_state = (task_config.get("error_state") or "").strip()
-    hard = err_state and (
+    balance_hold = provider_failed and is_provider_balance_refusal(
+        {"failure_class": failure_class}
+    )
+    hard = bool(err_state) and (
         "Job not found" in error
         or "Missing candidate_data" in error
+        or (provider_failed and not balance_hold)
     )
-    if hard and err_state and index:
-        from src.core import tracker as tracker_mod
-        try:
-            tracker_mod.transition_job_state([index], err_state)
-        except ValueError as exc:
-            logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
+    apply_error_state = False
+    batch_released = False
+    # Transition first (history stamps in-flight batch_id); release in finally so
+    # non-ValueError from transition cannot skip claim clear (AST-1298 / AST-1191).
+    try:
+        if hard and err_state and index:
+            try:
+                tracker_mod.transition_job_state([index], err_state)
+                apply_error_state = True
+            except ValueError as exc:
+                logger.warning("[%s] dispatch chain error_state=%s failed: %s", index, err_state, exc)
+    finally:
+        if provider_failed and index:
+            tracker_mod.release_job_dispatch_claim(index)
+            batch_released = True
     if debug:
         _do_task_debug_logger(debug).debug_detail(
-            f"chain_hop_failed retryable={not hard} error={error!r}"
+            f"chain_hop_failed apply_error_state={apply_error_state} "
+            f"error_state={err_state or ''} batch_released={batch_released} "
+            f"failure_class={failure_class!r} error={error!r}"
         )
+    return {
+        "apply_error_state": apply_error_state,
+        "error_state": err_state if apply_error_state else "",
+        "batch_released": batch_released,
+    }
 
 
 def _log_chain_entry(task_key: str, batch_id: Optional[str]) -> None:
@@ -1525,24 +1660,56 @@ def _store_response_block(
 # Validation helpers
 # ---------------------------------------------------------------------------
 
-def _coerce_schema_str_fields_from_list(parsed: Dict[str, Any], schema: Dict[str, Dict]) -> None:
-    """Join list-of-strings into newline text before str validation (common LLM JSON habit)."""
+def _coerce_schema_str_fields_from_list(
+    parsed: Dict[str, Any], schema: Dict[str, Dict], *, debug: bool = False
+) -> None:
+    """Soft-coerce schema-str fields before type validation (list→join, int→str; nested items_schema)."""
     payload = _inner_task_payload(parsed)
     if not isinstance(payload, dict):
         return
-    for field_name, field_spec in schema.items():
-        if not isinstance(field_spec, dict) or field_spec.get("type", "str") != "str":
-            continue
-        val = payload.get(field_name)
-        if isinstance(val, list):
-            lines = [str(item).strip() for item in val if item is not None and str(item).strip()]
-            payload[field_name] = "\n".join(lines)
-            if log_batch_id.get():
-                logger.info(
-                    "do_task: coerced field %r from list (%d items) to newline string",
-                    field_name,
-                    len(val),
-                )
+    # Collect int→str events; emit Style D once after the walk (index/total stable).
+    int_coerce_events: list[tuple[str, int, str]] = []
+
+    def _walk(obj: Dict[str, Any], fields_schema: Dict[str, Dict], path_prefix: str) -> None:
+        for field_name, field_spec in fields_schema.items():
+            if not isinstance(field_spec, dict):
+                continue
+            type_spec = field_spec.get("type", "str")
+            val = obj.get(field_name)
+            field_path = f"{path_prefix}.{field_name}" if path_prefix else field_name
+            if type_spec == "str" and isinstance(val, list):
+                lines = [str(item).strip() for item in val if item is not None and str(item).strip()]
+                obj[field_name] = "\n".join(lines)
+                if log_batch_id.get():
+                    logger.info(
+                        "do_task: coerced field %r from list (%d items) to newline string",
+                        field_name,
+                        len(val),
+                    )
+            elif type_spec == "str" and type(val) is int:
+                # type() is int — bool is a subclass of int; isinstance would soft-accept True/False.
+                coerced = str(val)
+                obj[field_name] = coerced
+                int_coerce_events.append((field_path, val, coerced))
+            elif type_spec == "list" and field_spec.get("items_schema") and isinstance(val, list):
+                items_schema = field_spec["items_schema"]
+                for idx, item in enumerate(val):
+                    if isinstance(item, dict):
+                        _walk(item, items_schema, f"{field_path}[{idx}]")
+
+    _walk(payload, schema, "")
+    if debug and int_coerce_events:
+        dbg = _do_task_debug_logger(True)
+        total = len(int_coerce_events)
+        for i, (identifier, raw, coerced) in enumerate(int_coerce_events, start=1):
+            dbg.debug_index(
+                func="_coerce_schema_str_fields_from_list",
+                index=i,
+                total=total,
+                identifier=identifier,
+                outcome="coerced int→str",
+            )
+            dbg.debug_detail(f"found={raw!r} ({type(raw).__name__}) recorded={coerced!r}")
 
 
 def _validate_schema_object_fields(
@@ -1852,9 +2019,26 @@ async def do_task(
             "Add response_schema to TASK_CONFIG for this task."
         )
 
-    cd = (ctx.get("candidate_data") or {}) if ctx else (candidate_data or {})
+    # AST-1221: Style D alias → master when debug=True (gated; no ungated noise).
+    if debug and is_task_alias(task_key):
+        logger.set_debug_flag(True)
+        master = resolve_task_key_for_content(task_key)
+        logger.debug_index(
+            func=f"do_task({task_key})",
+            index=1,
+            total=1,
+            identifier=index or task_key,
+            outcome="alias_resolve",
+        )
+        logger.debug_detail(
+            f"alias={task_key} content_master={master} "
+            f"orchestration=TASK_CONFIG[{task_key}] prompts=agent_task[{master}]"
+        )
 
-    if task_config.get("requires_candidate_key") and not cd:
+    cd = _token_view_for_do_task(ctx, candidate_data)
+
+    # Dict truthiness is always true for the 8-key view; check identity material (AST-1192 resolve).
+    if task_config.get("requires_candidate_key") and not _candidate_identity_material_present(cd):
         logger.warning("do_task(%s): requires_candidate_key is True but no candidate_data provided", task_key)
 
     api_key_override = None
@@ -1880,25 +2064,33 @@ async def do_task(
             parent_for_hydration = _parent_hop_task_key_for_child(task_key)
     if parent_for_hydration and index and entity_type_pre:
         if _task_references_caller_tokens(agent_task_row, live_content):
-            hydrated, hydr_err = _hydrate_caller_chain_context(
-                entity_type_pre,
-                index,
-                task_key,
-                parent_for_hydration,
-                chain_context,
-                debug=debug,
+            # AST-1264: fail-open to live CALLER — skip hydrate when persist recurse has CALLER_*
+            # (re-inject on parent). Dead hydr_err fallback removed (Radia).
+            _live_caller = bool((ctx or {}).get("persist_candidate_craft_hops")) and any(
+                ((chain_context or {}).get(k) or "").strip() for k in CALLER_HOP_TOKEN_NAMES
             )
-            if hydr_err:
-                return {
-                    "success": False,
-                    "error": hydr_err,
-                    "api_response": None,
-                    "parsed_response": None,
-                    "timesheet": {},
-                }
-            effective_chain_context = _merge_hydrated_caller_context(
-                chain_context, hydrated
-            )
+            if _live_caller:
+                effective_chain_context = chain_context
+            else:
+                hydrated, hydr_err = _hydrate_caller_chain_context(
+                    entity_type_pre,
+                    index,
+                    task_key,
+                    parent_for_hydration,
+                    chain_context,
+                    debug=debug,
+                )
+                if hydr_err:
+                    return {
+                        "success": False,
+                        "error": hydr_err,
+                        "api_response": None,
+                        "parsed_response": None,
+                        "timesheet": {},
+                    }
+                effective_chain_context = _merge_hydrated_caller_context(
+                    chain_context, hydrated
+                )
     in_chain = _in_run_next_chain(chain_context=chain_context, agent_task_row=agent_task_row)
     _resume_hop_debug_index(task_key, debug=debug, ctx=ctx, index=index)
     hop_ledger_batch_id: Optional[str] = None
@@ -1911,7 +2103,7 @@ async def do_task(
         for k in CALLER_HOP_TOKEN_NAMES
         if k in (effective_chain_context or {})
     }
-    _jc = _job_context_for_call(ctx, index, cd)
+    _jc = _job_context_for_call(ctx, index, cd, debug=debug)
     _cc = _chain_context(
         agent_row,
         cd,
@@ -2096,31 +2288,67 @@ async def do_task(
         if _jc:
             populated = [k for k, v in _jc.items() if (v or "").strip()]
             dbg.debug_detail(f"job_context tokens={','.join(populated) if populated else 'none'}")
+        # AST-1192: name-token found/recorded on the walkable candidate view.
+        first_s = str(cd.get("first") or "").strip()
+        last_s = str(cd.get("last") or "").strip()
+        full_s = str(cd.get("full") or "").strip()
+        if first_s and last_s:
+            name_outcome = "success — name tokens"
+        elif first_s or last_s:
+            name_outcome = "partial — name tokens"
+        else:
+            name_outcome = "empty — name tokens"
+        dbg.debug_index(
+            func="do_task.candidate_token_view",
+            index=1,
+            total=1,
+            identifier=str(candidate_id or cd.get("_astral_candidate_id") or ""),
+            outcome=name_outcome,
+        )
+        dbg.debug_detail(
+            f"found first={'nonempty' if first_s else 'empty'} "
+            f"last={'nonempty' if last_s else 'empty'} "
+            f"full={'nonempty' if full_s else 'empty'} "
+            f"branch={_token_view_branch_last}"
+        )
+        dbg.debug_detail(
+            f"recorded FIRST_NAME={(cd.get('first') or '')!r} "
+            f"LAST_NAME={(cd.get('last') or '')!r} "
+            f"FULL_NAME={(cd.get('full') or '')!r}"
+        )
 
     def _close_hop_ledger(
         *,
         success: bool,
         clear_log: bool = False,
         failure_error: Optional[str] = None,
-    ) -> None:
+        provider_failed: bool = False,
+        failure_class: Optional[str] = None,
+    ) -> Dict[str, Any]:
         nonlocal hop_ledger_closed
         if not success and failure_error:
-            _apply_dispatch_chain_hop_failure(
+            outcome = _apply_dispatch_chain_hop_failure(
                 entity_type=entity_type or "",
                 index=index,
                 ctx=ctx,
                 task_config=task_config,
                 error=failure_error,
                 debug=debug,
+                provider_failed=provider_failed,
+                failure_class=failure_class,
             )
+        else:
+            outcome = dict(_HOP_FAILURE_NOOP)
+        # Must return outcome — hop_ledger_batch_id is None for non-chain / no candidate.
         if hop_ledger_closed or not hop_ledger_batch_id:
-            return
+            return outcome
         _finalize_run_next_hop_ledger(
             hop_ledger_batch_id, success=success, batch_size=batch_size
         )
         hop_ledger_closed = True
         if clear_log:
             log_batch_id.set(None)
+        return outcome
 
     if debug:
         logger.info(
@@ -2200,11 +2428,16 @@ async def do_task(
     result["runtime_prompt"] = runtime_prompt
 
     if batch_id and not result.get("success"):
+        err = normalize_provider_error(
+            result.get("error"), fallback=result.get("failure_class")
+        )
+        if not (isinstance(result.get("error"), str) and result.get("error").strip()):
+            result["error"] = err
         logger.error(
             "do_task(%s) provider call failed batch_id=%s error=%s",
             task_key,
             batch_id,
-            result.get("error"),
+            err,
         )
 
     # Store prompt blocks in agent_data (non-blocking; best-effort)
@@ -2256,10 +2489,64 @@ async def do_task(
                     f"provider_balance_refusal failure_class={result.get('failure_class')!r} "
                     f"error={result.get('error')!r}"
                 )
-        _close_hop_ledger(
-            success=False, clear_log=True,
+            if is_provider_empty_response(result):
+                _do_task_debug_logger(debug).debug_detail(
+                    f"provider_empty_response failure_class={result.get('failure_class')!r} "
+                    f"error={result.get('error')!r}"
+                )
+            # AST-1191: found/recorded on provider failure (real timesheet keys; n/a not silent 0).
+            ts = result.get("timesheet") if isinstance(result.get("timesheet"), dict) else {}
+            dur_v = ts.get("duration")
+            duration_s = (
+                f"{float(dur_v):.1f}s" if isinstance(dur_v, (int, float)) else "n/a"
+            )
+            api = result.get("api_response")
+            stop_raw = getattr(api, "stop_reason", None) if api is not None else None
+            stop_s = (
+                stop_raw.strip()
+                if isinstance(stop_raw, str) and stop_raw.strip()
+                else "?"
+            )
+
+            def _ts_num(key: str) -> str:
+                v = ts.get(key)
+                return str(int(v)) if isinstance(v, (int, float)) else "n/a"
+
+            fc_raw = result.get("failure_class")
+            fc_s = (
+                str(fc_raw).strip()
+                if fc_raw is not None and str(fc_raw).strip()
+                else "n/a"
+            )
+            _do_task_debug_logger(debug).debug_detail(
+                f"found duration={duration_s} stop={stop_s} "
+                f"tokens fresh={_ts_num('inputtotal')} cache_read={_ts_num('inputcached')} "
+                f"cache_write={_ts_num('cache_creation_tokens')} output={_ts_num('outputtotal')} "
+                f"failure_class={fc_s}"
+            )
+        hop_fail_outcome = _close_hop_ledger(
+            success=False,
+            clear_log=True,
             failure_error=str(result.get("error") or "provider_failed"),
+            provider_failed=True,
+            failure_class=(
+                str(result.get("failure_class")).strip()
+                if result.get("failure_class") is not None
+                else None
+            ) or None,
         )
+        hop_fail_outcome = hop_fail_outcome or _HOP_FAILURE_NOOP
+        if debug:
+            err_disp = str(result.get("error") or "provider_failed")
+            es_disp = (
+                hop_fail_outcome["error_state"]
+                if hop_fail_outcome["apply_error_state"]
+                else "held"
+            )
+            br = "true" if hop_fail_outcome["batch_released"] else "false"
+            _do_task_debug_logger(debug).debug_detail(
+                f"recorded error={err_disp} error_state={es_disp} batch_released={br}"
+            )
         return result
 
     # Capture raw_text now; RESPONSE block storage is deferred until after validation/decode.
@@ -2282,7 +2569,7 @@ async def do_task(
     parsed = result.get("parsed_response")
     output_type = task_config.get("output_type", "")
     rubric_encoded = "_encoded" in output_type and bool(task_config.get("rubric_artifact"))
-    strict_batch = task_key in _STRICT_ENCODED_BATCH_CONSULT_KEYS
+    strict_batch = _is_strict_encoded_batch_consult(task_key)
     if strict_batch and isinstance(parsed, dict) and parsed.get("agent_payload") is not None and parsed.get("agent_performance") is None:
         parsed = {**parsed, "agent_performance": {}}
         result["parsed_response"] = parsed
@@ -2333,8 +2620,8 @@ async def do_task(
             if task_key == "draft_job_resume":
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
-                normalize_draft_job_resume_agent_payload(parsed)
-            _coerce_schema_str_fields_from_list(parsed, schema)
+                normalize_draft_job_resume_agent_payload(parsed, debug=debug)
+            _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task validation failed. task_key=%r error=%s", task_key, err)
@@ -2368,7 +2655,7 @@ async def do_task(
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
-            cat_err = validate_draft_job_resume_payload(parsed, cd)
+            cat_err = validate_draft_job_resume_payload(parsed, cd, debug=debug)
             if cat_err:
                 logger.error("do_task validation failed. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
@@ -2522,8 +2809,8 @@ async def do_task(
             if task_key == "draft_job_resume":
                 from src.core.candidate import normalize_draft_job_resume_agent_payload
 
-                normalize_draft_job_resume_agent_payload(parsed)
-            _coerce_schema_str_fields_from_list(parsed, schema)
+                normalize_draft_job_resume_agent_payload(parsed, debug=debug)
+            _coerce_schema_str_fields_from_list(parsed, schema, debug=debug)
         err = _validate_response_schema(parsed, schema, task_key)
         if err:
             logger.error("do_task schema validation failed after decode. task_key=%r error=%s", task_key, err)
@@ -2546,7 +2833,7 @@ async def do_task(
         if task_config.get("resume_section_payload") and cd:
             from src.core.candidate import validate_draft_job_resume_payload
 
-            cat_err = validate_draft_job_resume_payload(parsed, cd)
+            cat_err = validate_draft_job_resume_payload(parsed, cd, debug=debug)
             if cat_err:
                 logger.error("do_task validation failed after decode. task_key=%r error=%s", task_key, cat_err)
                 if log_batch_id.get():
@@ -2677,6 +2964,72 @@ async def do_task(
                 f"artifact_pin key={pin_slot} skipped reason={reason}"
             )
 
+    # AST-1271: retain draft deviations as job artifact metadata (best-effort; do not fail hop).
+    if task_key == "draft_job_resume" and result.get("success") and index:
+        try:
+            # Lazy import breaks agent↔tracker cycle (consult imports agent).
+            from src.core.tracker import persist_draft_job_resume_deviations
+            persist_draft_job_resume_deviations(index, parsed)
+        except Exception as persist_err:
+            logger.error(
+                "persist_draft_job_resume_deviations failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
+            )
+
+    # AST-1252: per-hop candidate craft persist (dispatch path; UI keeps suppress_run_next).
+    candidate_craft_persisted = False
+    if result.get("success") and (ctx or {}).get("persist_candidate_craft_hops") and index:
+        try:
+            # Lazy import breaks agent↔candidate cycle (candidate imports agent).
+            from src.core.candidate import _persist_craft_dispatch_success
+            from src.utils.config import CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
+            from src.utils.logging import truncate_debug_content
+
+            parsed_for_persist = result.get("parsed_response")
+            _persist_craft_dispatch_success(str(index), task_key, parsed_for_persist)
+            candidate_craft_persisted = True
+            if debug:
+                art = CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.get(task_key) or (
+                    "company_search_terms" if task_key == "craft_company_search_terms" else task_key
+                )
+                dbg = _do_task_debug_logger(debug)
+                dbg.debug_index(
+                    func=f"do_task({task_key}).persist_candidate_craft",
+                    index=1,
+                    total=1,
+                    identifier=str(index),
+                    outcome="recorded",
+                )
+                dbg.debug_detail(f"found task_key={task_key} artifact={art}")
+                blob = (
+                    json.dumps(parsed_for_persist)
+                    if isinstance(parsed_for_persist, (dict, list))
+                    else str(parsed_for_persist or "")
+                )
+                for line in truncate_debug_content(blob):
+                    dbg.debug_detail(line)
+        except Exception as persist_err:
+            logger.error(
+                "persist_candidate_craft_hops failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
+            )
+            if debug:
+                _do_task_debug_logger(debug).debug_detail(f"persist failed: {persist_err}")
+            _close_hop_ledger(
+                success=False, clear_log=True, failure_error=str(persist_err),
+            )
+            return {
+                "success": False,
+                "api_response": result.get("api_response"),
+                "parsed_response": None,
+                "error": str(persist_err),
+                "timesheet": result.get("timesheet") or {},
+            }
+
     # Lightweight agent_ref for batch callers (roster/consult tag RESPONSE entity_ids)
     if _should_store:
         try:
@@ -2779,6 +3132,13 @@ async def do_task(
             dbg.debug_detail(
                 f"task_key={task_key} batch_id={batch_id or ''} success={result.get('success')}"
             )
+            # AST-1264: why candidate-craft succession stopped after a recorded persist.
+            if candidate_craft_persisted:
+                dbg.debug_detail(
+                    f"persist_candidate_craft succession stopped task_key={task_key} "
+                    f"planned_next={planned_next!r} "
+                    f"suppress_run_next={bool((ctx or {}).get('suppress_run_next'))}"
+                )
         _close_hop_ledger(success=True, clear_log=True)
         return result
     if effective_next not in TASK_CONFIG:
@@ -2788,9 +3148,15 @@ async def do_task(
             effective_next,
         )
         if debug:
-            _do_task_debug_logger(debug).debug_detail(
+            dbg = _do_task_debug_logger(debug)
+            dbg.debug_detail(
                 f"run_next suppressed invalid_child={effective_next!r} parent={task_key}"
             )
+            if candidate_craft_persisted:
+                dbg.debug_detail(
+                    f"persist_candidate_craft succession stopped task_key={task_key} "
+                    f"invalid_child={effective_next!r} planned_next={planned_next!r}"
+                )
         _close_hop_ledger(success=True, clear_log=True)
         return result
 
@@ -2808,6 +3174,12 @@ async def do_task(
     for k in CALLER_HOP_TOKEN_NAMES:
         merged_ctx.pop(k, None)
     merged_ctx.pop("_caller_hydration_source", None)
+    # AST-1264: re-inject live CALLER_* for candidate-craft recurse (child skip/fail-open).
+    if (ctx or {}).get("persist_candidate_craft_hops") and effective_next:
+        for k in CALLER_HOP_TOKEN_NAMES:
+            val = caller_only_hop.get(k)
+            if (val or "").strip():
+                merged_ctx[k] = val
     if debug:
         dbg = _do_task_debug_logger(debug)
         dbg.debug_detail(

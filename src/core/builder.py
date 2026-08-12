@@ -23,7 +23,14 @@ from urllib.parse import urlparse
 from src.core import candidate as candidate_mod
 from src.core import tracker as tracker_mod
 from src.data import database
-from src.utils.config import BUILD_CONFIG, RESUME_STRUCTURE_CONTACT_SECTION_IDS
+from src.utils.config import (
+    BUILD_CONFIG,
+    RESUME_STRUCTURE_BODY_FORMATS,
+    RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
+    RESUME_STRUCTURE_EMPHASIS_TAG_NAMES,
+    get_cover_letter_render_token,
+)
 from src.utils.formatting import split_to_list
 from src.utils.logging import get_logger
 
@@ -56,6 +63,15 @@ _KEY_TO_HEADING: Dict[str, str] = {
     "education_certifications": "Education & Certifications",
     "technical_skills": "Technical Skills",
 }
+
+_EMPHASIS_TAG_RE = re.compile(
+    r"</?(?:" + "|".join(re.escape(n) for n in RESUME_STRUCTURE_EMPHASIS_TAG_NAMES) + r")>",
+    re.IGNORECASE,
+)
+
+
+def _html_section_dom_id(sid: str) -> str:
+    return _KEY_TO_SECTION_ID[sid] if sid in _KEY_TO_SECTION_ID else sid.replace("_", "-")
 
 
 def _coerce_candidate_blob(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -227,6 +243,9 @@ def build_resume_from_job(
         cover_profile=cd.get("contact") or {},
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_resume_from_job",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -306,7 +325,7 @@ def build_cover_letter_from_job(
     *,
     debug: bool = False,
 ) -> str:
-    """Render cover-letter HTML only from job artifacts (no resume body sections)."""
+    """Render cover-only Print Cover Letter as SomersetCover (fromBlock + golden CSS)."""
     cd = _coerce_candidate_blob(candidate_data)
     if debug:
         _log.set_debug_flag(True)
@@ -324,41 +343,42 @@ def build_cover_letter_from_job(
             debug=debug,
         )
         raise ValueError(msg)
-    render: Dict[str, Any] = {}
-    _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
-    markers = _apply_resume_text_markers(render)
-    style = _merge_effective_style(cd)
-    html_out = _emit_html_document(
-        markers,
-        style,
-        include_cover=True,
-        cover_letter=cover,
-        critical_keywords=None,
-        emit_prior_experience=False,
-        cover_profile=cd.get("contact") or {},
-        body_section_ids=[],
-        body_section_titles={},
+
+    # AST-1138: SomersetCover path — no resume header/contact shell for cover-only.
+    from_res = candidate_mod.resolve_cover_from_block(
+        _candidate_for_cover_from_block(cd), debug=debug
+    )
+    contact = cd.get("contact") or {}
+    cover_sig = cover.get("signature") or ""
+    token_status, sig_src, image_status = _signature_image_token_status(
+        cover_sig, {"contact": contact}
+    )
+    fields = _job_cover_somerset_fields(cover, from_res["text"])
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    doc_title = BUILD_CONFIG[job_cfg["document_title_key"]]["document_title"]
+    html_out = _emit_somerset_cover_html_document(
+        fields, signature_image_src=sig_src, document_title=doc_title
     )
     if debug:
         cover_src = _cover_letter_source_label(job_data, cd)
-        contact = cd.get("contact") or {}
-        safe_sig = _safe_image_src(contact.get("cover_letter_signature_image"))
         _log.debug_index(
             func="builder.build_cover_letter_from_job",
             index=1,
             total=1,
             identifier=identifier,
-            outcome="success — cover letter html",
+            outcome="success — somerset cover html",
         )
+        _log.debug_detail(f"from_block_source={from_res['source']}")
+        _log.debug_detail(f"from_block_chars={len(from_res['text'])}")
+        _log.debug_detail("document_path=somerset_cover")
         _log.debug_detail(f"cover_source={cover_src!r}")
         _log.debug_detail(
             f"fields re_line={bool((cover.get('re_line') or '').strip())} "
             f"body={bool((cover.get('body') or '').strip())} "
             f"signature={bool((cover.get('signature') or '').strip())}"
         )
-        _log.debug_detail(
-            f"signature_image={'accepted' if safe_sig else 'absent_or_rejected'}"
-        )
+        _log.debug_detail(f"signature_image_token={token_status}")
+        _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
@@ -401,6 +421,9 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_base_resume",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -460,7 +483,7 @@ def build_session_base_resume(
         },
         "contact": {},
     }
-    structure = candidate_mod.resolve_resume_structure(cd)
+    structure = _resume_structure_for_emit(resume_structure)
     render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
     # Skip _apply_contact_to_render_dict — contact/header from paste section strings.
     style = _merge_effective_style(cd)
@@ -476,6 +499,9 @@ def build_session_base_resume(
         emit_prior_experience=bool((markers.get("prior_experience") or "").strip()),
         body_section_ids=ordered_body,
         body_section_titles=titles,
+        resume_structure=structure,
+        debug=debug,
+        debug_func="builder.build_session_base_resume",
     )
     if debug:
         enabled = candidate_mod.enabled_resume_section_ids(structure)
@@ -504,7 +530,7 @@ def build_session_cover_letter(
     candidate_id: Optional[str] = None,
     debug: bool = False,
 ) -> str:
-    """AST-1024: SomersetCover HTML from in-memory fields — no job load / artifact write."""
+    """AST-1024 / AST-1139: SomersetCover HTML from in-memory fields — no job load / artifact write."""
     if debug:
         _log.set_debug_flag(True)
     identifier = (
@@ -523,6 +549,24 @@ def build_session_cover_letter(
         raise ValueError(msg)
     cfg = BUILD_CONFIG["session_cover_letter"]
     field_defs = cfg["fields"]
+
+    # Load candidate before from_block required check (empty → resolve when configured).
+    cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
+    candidate_root: Dict[str, Any] = {}
+    if cid:
+        row = candidate_mod.get_candidate(cid)
+        if not row:
+            msg = f"Candidate not found: {cid}"
+            _emit_builder_failure(
+                func="builder.build_session_cover_letter",
+                identifier=identifier,
+                message=msg,
+                debug=debug,
+            )
+            raise ValueError(msg)
+        candidate_root = _coerce_candidate_blob(row)
+
+    from_block_source: Optional[str] = None
     normalized: Dict[str, str] = {}
     for key, meta in field_defs.items():
         raw = fields.get(key, "")
@@ -537,6 +581,35 @@ def build_session_cover_letter(
                 debug=debug,
             )
             raise ValueError(msg)
+        if key == "from_block":
+            if raw.strip():
+                # AST-1148: session-typed From — same token / |→• / empty-segment expand.
+                from_block_source = cfg["from_block_sources"][0]  # session
+                if candidate_root:
+                    shaped = _candidate_for_cover_from_block(candidate_root)
+                else:
+                    shaped = {"full": "", "first": "", "last": "", "contact": {}}
+                normalized[key] = candidate_mod.expand_cover_from_block_text(
+                    raw, shaped, source=from_block_source, debug=debug
+                )
+            elif meta.get("empty_uses_candidate_resolve") and candidate_root:
+                from_res = candidate_mod.resolve_cover_from_block(
+                    _candidate_for_cover_from_block(candidate_root), debug=debug
+                )
+                normalized[key] = from_res["text"]
+                from_block_source = from_res["source"]
+            elif meta.get("required"):
+                msg = f"{key} is required"
+                _emit_builder_failure(
+                    func="builder.build_session_cover_letter",
+                    identifier=identifier,
+                    message=msg,
+                    debug=debug,
+                )
+                raise ValueError(msg)
+            else:
+                normalized[key] = raw
+            continue
         if meta.get("required") and not raw.strip():
             msg = f"{key} is required"
             _emit_builder_failure(
@@ -548,25 +621,11 @@ def build_session_cover_letter(
             raise ValueError(msg)
         normalized[key] = raw
 
-    sig_src: Optional[str] = None
-    sig_image_status = "skipped_no_candidate"
-    cid = candidate_id.strip() if isinstance(candidate_id, str) else ""
-    if cid:
-        row = candidate_mod.get_candidate(cid)
-        if not row:
-            msg = f"Candidate not found: {cid}"
-            _emit_builder_failure(
-                func="builder.build_session_cover_letter",
-                identifier=identifier,
-                message=msg,
-                debug=debug,
-            )
-            raise ValueError(msg)
-        profile = _coerce_candidate_blob(row).get("profile") or {}
-        sig_src = _safe_image_src(profile.get("cover_letter_signature_image"))
-        sig_image_status = "accepted" if sig_src else "absent_or_rejected"
+    token_status, sig_src, image_status = _signature_image_token_status(
+        normalized.get("signature") or "", candidate_root
+    )
 
-    html_out = _emit_session_cover_html_document(normalized, signature_image_src=sig_src)
+    html_out = _emit_somerset_cover_html_document(normalized, signature_image_src=sig_src)
     if debug:
         _log.debug_index(
             func="builder.build_session_cover_letter",
@@ -585,7 +644,11 @@ def build_session_cover_letter(
             f"subject={'present' if normalized['subject'].strip() else 'omitted'}"
         )
         _log.debug_detail(f"candidate_id={'used' if cid else 'not_used'}")
-        _log.debug_detail(f"signature_image={sig_image_status}")
+        _log.debug_detail(f"from_block_source={from_block_source}")
+        _log.debug_detail(f"from_block_chars={len(normalized['from_block'])}")
+        _log.debug_detail("document_path=somerset_cover")
+        _log.debug_detail(f"signature_image_token={token_status}")
+        _log.debug_detail(f"signature_image={image_status}")
         _log.debug_detail(f"html_chars={len(html_out)}")
         _log.debug_detail("html_preview:")
         _log.debug_detail_block(html_out)
@@ -601,12 +664,40 @@ def _session_cover_letter_paragraphs(letter: str) -> List[str]:
     return chunks
 
 
-def _emit_session_cover_html_document(
+def _candidate_for_cover_from_block(cd: dict) -> dict:
+    """Shape coerced builder candidate blob for ``resolve_cover_from_block``."""
+    out: Dict[str, Any] = {
+        "full": cd.get("_full") or "",
+        "first": cd.get("_first") or "",
+        "last": cd.get("_last") or "",
+        "contact": cd.get("contact") or {},
+    }
+    if "astral_candidate_id" in cd:
+        out["astral_candidate_id"] = cd["astral_candidate_id"]
+    if "_astral_candidate_id" in cd:
+        out["_astral_candidate_id"] = cd["_astral_candidate_id"]
+    return out
+
+
+def _job_cover_somerset_fields(cover: dict, from_block_text: str) -> dict:
+    """Map normalized job cover + resolved from-block into session field keys."""
+    job_cfg = BUILD_CONFIG["job_cover_somerset"]
+    fields: Dict[str, str] = {
+        key: "" for key in BUILD_CONFIG["session_cover_letter"]["fields"]
+    }
+    for artifact_key, field_key in job_cfg["artifact_to_fields"].items():
+        fields[field_key] = str(cover.get(artifact_key) or "")
+    fields["from_block"] = from_block_text
+    return fields
+
+
+def _emit_somerset_cover_html_document(
     fields: dict,
     *,
     signature_image_src: Optional[str] = None,
+    document_title: Optional[str] = None,
 ) -> str:
-    """Standalone SomersetCover DOM/CSS (session-only; does not touch job cover emit)."""
+    """Standalone SomersetCover DOM/CSS (session + job cover-only Print Cover Letter)."""
     style = BUILD_CONFIG["default_style"]
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -621,7 +712,11 @@ def _emit_session_cover_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
-    doc_title = BUILD_CONFIG["session_cover_letter"]["document_title"]
+    doc_title = (
+        document_title
+        if document_title is not None
+        else BUILD_CONFIG["session_cover_letter"]["document_title"]
+    )
     sig_name = (fields.get("signature") or "").strip()
     meta_content = f"Cover Letter - {sig_name}" if sig_name else doc_title
     meta_tag = f'\n  <meta name="description" content="{html.escape(meta_content)}" />'
@@ -651,14 +746,27 @@ def _emit_session_cover_html_document(
     )
     blocks.append(f'      <div class="lettercontent">\n{p_html}\n      </div>')
 
-    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
-    if signature_image_src:
-        src_esc = html.escape(signature_image_src, quote=True)
-        signoff_parts.append(
-            f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+    # AST-1126: image only where {$SIGNATURE_IMAGE} resolves — no auto-inject above name.
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if "cover_letter" not in tok.get("surfaces", []):
+        raise ValueError(
+            "SIGNATURE_IMAGE surfaces missing cover_letter — AST-1125 contract broken"
         )
-        signoff_parts.append("<br>")
-    signoff_parts.append(html.escape(sig_name))
+    raw_sig = fields.get("signature") or ""
+    token_status = "present" if tok["literal"] in raw_sig else "absent"
+    img_html = ""
+    if signature_image_src and token_status == "present":
+        src_esc = html.escape(signature_image_src, quote=True)
+        img_html = f'<img src="{src_esc}" class="signature-img" alt="Signature">'
+    sig_fragment = _html_with_signature_image_token(
+        raw_sig,
+        safe_src=signature_image_src if token_status == "present" else None,
+        token_status=token_status,
+        img_html=img_html,
+    )
+    signoff_parts = [html.escape((fields.get("signoff_closing") or "").strip()), "<br>"]
+    if sig_fragment:
+        signoff_parts.append(sig_fragment)
     blocks.append(
         "      <div class=\"letterSignoff\">\n        "
         + "\n        ".join(signoff_parts)
@@ -751,7 +859,7 @@ body {{
 .signature-img {{
   display: block;
   height: 61px;
-  margin: 8px 0 -25px 0;
+  margin: 8px 0 8px 0;
 }}
 @page {{
   margin-top: 1in;
@@ -920,6 +1028,14 @@ def _structure_ordered_body_ids(resume_structure: dict) -> List[str]:
     return [sid for sid in candidate_mod.enabled_resume_section_ids(resume_structure) if sid not in contact]
 
 
+def _resume_structure_for_emit(raw: dict) -> dict:
+    """Normalize when valid; keep raw when an extra lacks format so emit can skip it."""
+    try:
+        return candidate_mod.normalize_resume_structure(raw)
+    except ValueError:
+        return raw
+
+
 def _apply_resume_text_markers(render: dict) -> dict:
     """Deep-walk dict/list nests; apply ``_resume_site_markers`` to every string leaf."""
     return {k: _mark_resume_value(v) for k, v in render.items()}
@@ -937,11 +1053,11 @@ def _mark_resume_value(val: Any) -> Any:
 
 
 def _render_content_keys(markers: dict) -> List[str]:
-    """Keys present for Style D — strings with content, plus non-empty experience job arrays."""
+    """Keys present for Style D — strings with content, plus non-empty job arrays."""
     keys = [k for k, v in markers.items() if isinstance(v, str) and v.strip()]
-    exp = markers.get("experience")
-    if candidate_mod.is_experience_job_array(exp) and exp:
-        keys.append("experience")
+    for k, v in markers.items():
+        if candidate_mod.is_experience_job_array(v) and v:
+            keys.append(k)
     return sorted(set(keys))
 
 
@@ -955,6 +1071,44 @@ def _resume_site_markers(text: str) -> str:
     return t
 
 
+def _emit_inline_emphasis_html(text: str) -> str:
+    """Escape HTML, then restore paired italic/bold tags from the config allowlist."""
+    if not text:
+        return ""
+    parts: List[str] = []
+    pos = 0
+    open_counts: Dict[str, int] = {}
+    for match in _EMPHASIS_TAG_RE.finditer(text):
+        parts.append(html.escape(text[pos:match.start()]))
+        raw = match.group(0)
+        name = raw.strip("</>").lower()
+        if raw.startswith("</"):
+            if open_counts.get(name, 0) > 0:
+                open_counts[name] -= 1
+                parts.append(f"</{name}>")
+            else:
+                parts.append(html.escape(raw))
+        else:
+            open_counts[name] = open_counts.get(name, 0) + 1
+            parts.append(f"<{name}>")
+        pos = match.end()
+    parts.append(html.escape(text[pos:]))
+    return "".join(parts)
+
+
+def _emit_bullet_list_html(text: str) -> str:
+    """Standalone section of lines as ``<li>`` items."""
+    items: List[str] = []
+    for line in str(text).splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        items.append(f"        <li>{_emit_inline_emphasis_html(line)}</li>")
+    if not items:
+        return ""
+    return "      <ul>\n" + "\n".join(items) + "\n      </ul>"
+
+
 def _emit_html_document(
     render: dict,
     style: dict,
@@ -966,6 +1120,9 @@ def _emit_html_document(
     cover_profile: Optional[dict] = None,
     body_section_ids: Optional[List[str]] = None,
     body_section_titles: Optional[Dict[str, str]] = None,
+    resume_structure: Optional[dict] = None,
+    debug: bool = False,
+    debug_func: str = "",
 ) -> str:
     fonts = style.get("fonts") or {}
     colors = style.get("colors") or {}
@@ -1010,6 +1167,9 @@ def _emit_html_document(
         render,
         body_section_ids or list(_RESUME_BODY_KEYS),
         body_section_titles or {},
+        resume_structure=resume_structure,
+        debug=debug,
+        debug_func=debug_func,
     )
 
     cover_html = ""
@@ -1176,12 +1336,12 @@ h2::after {{ margin-left: 12px; }}
   font-style: italic;
   font-size: 14.5px;
 }}
-.role ul {{
+section ul, .role ul {{
   margin: 4px 0 0;
   padding-left: 20px;
 }}
-.role li {{ margin-bottom: 6px; }}
-.role li:last-child {{ margin-bottom: 0; }}
+section li, .role li {{ margin-bottom: 6px; }}
+section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
 .education-list {{
   margin: 8px 0 0;
   margin-left: 0.5in;
@@ -1286,10 +1446,10 @@ def _emit_education_list_html(text: str) -> str:
         if bullet in line:
             cred, _, rest = line.partition(bullet)
             rows.append(
-                f"        <p><strong>{html.escape(cred)}</strong>{bullet}{html.escape(rest)}</p>"
+                f"        <p><strong>{_emit_inline_emphasis_html(cred)}</strong>{bullet}{_emit_inline_emphasis_html(rest)}</p>"
             )
         else:
-            rows.append(f"        <p><strong>{html.escape(line)}</strong></p>")
+            rows.append(f"        <p><strong>{_emit_inline_emphasis_html(line)}</strong></p>")
     if not rows:
         return ""
     return "      <div class=\"education-list\">\n" + "\n".join(rows) + "\n      </div>"
@@ -1306,14 +1466,14 @@ def _emit_skills_grid_html(text: str) -> str:
             category, _, items = line.partition(": ")
             cats.append(
                 "        <div class=\"skill-category\">\n"
-                f"          <h4>{html.escape(category)}</h4>\n"
-                f"          <p>{html.escape(items)}</p>\n"
+                f"          <h4>{_emit_inline_emphasis_html(category)}</h4>\n"
+                f"          <p>{_emit_inline_emphasis_html(items)}</p>\n"
                 "        </div>"
             )
         else:
             cats.append(
                 "        <div class=\"skill-category\">\n"
-                f"          <p>{html.escape(line)}</p>\n"
+                f"          <p>{_emit_inline_emphasis_html(line)}</p>\n"
                 "        </div>"
             )
     if not cats:
@@ -1325,89 +1485,111 @@ def _emit_body_sections_html(
     render: dict,
     ordered_ids: List[str],
     titles: Dict[str, str],
+    resume_structure: Optional[dict] = None,
+    debug: bool = False,
+    debug_func: str = "",
 ) -> str:
     chunks: List[str] = []
+    skip_reasons: Dict[str, str] = {}
+    emitted_ids: set = set()
+    sections = (resume_structure or {}).get("sections") or {}
     for key in ordered_ids:
         raw = render.get(key)
+        spec = sections.get(key) or {}
+        fmt = spec.get("format") or RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.get(key)
         if raw is None:
+            skip_reasons[key] = "skipped — empty"
             continue
-        sid = _KEY_TO_SECTION_ID.get(key, key)
-        heading = html.escape(titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title())))
-        # Experience job array: emit per-role HTML before generic dict/list → JSON coercion.
-        if key == "experience" and candidate_mod.is_experience_job_array(raw):
+        if fmt not in RESUME_STRUCTURE_BODY_FORMATS:
+            skip_reasons[key] = "skipped — missing format"
+            continue
+        sid = _html_section_dom_id(key)
+        heading = html.escape(
+            titles.get(key, _KEY_TO_HEADING.get(key, key.replace("_", " ").title()))
+        )
+        inner_html = ""
+        if fmt == "experience_detail":
+            if not candidate_mod.is_experience_job_array(raw):
+                skip_reasons[key] = (
+                    "skipped — leftover prose" if key == "experience" else "skipped — not job array"
+                )
+                continue
             roles_html = _emit_experience_jobs_html(raw)
             if not roles_html.strip():
+                skip_reasons[key] = "skipped — empty"
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{roles_html}
-    </section>"""
-            )
-            continue
-        if isinstance(raw, (dict, list)):
-            text = _format_experience_value(raw)
+            inner_html = roles_html
         else:
-            text = str(raw) if raw is not None else ""
-        if not str(text).strip():
-            continue
-        if key == "professional_summary":
-            # Blank lines first; single-\n fallback (same as cover letter) → multiple .summary-intro
-            paras = _session_cover_letter_paragraphs(str(text))
-            body = "\n".join(
-                f'      <p class="summary-intro">{html.escape(p)}</p>' for p in paras
-            )
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{body}
-    </section>"""
-            )
-            continue
-        if key == "education_certifications":
-            edu_html = _emit_education_list_html(str(text))
-            if not edu_html.strip():
+            if isinstance(raw, str):
+                text = raw
+            elif isinstance(raw, list) and raw and all(not isinstance(item, dict) for item in raw):
+                text = "\n".join(str(item) for item in raw)
+            elif isinstance(raw, (dict, list)):
+                text = _format_experience_value(raw)
+            else:
+                text = str(raw) if raw is not None else ""
+            if not str(text).strip():
+                skip_reasons[key] = "skipped — empty"
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-{edu_html}
-    </section>"""
-            )
-            continue
-        if key == "technical_skills":
-            skills_html = _emit_skills_grid_html(str(text))
-            if not skills_html.strip():
+            if fmt == "free_prose":
+                paras = _session_cover_letter_paragraphs(str(text))
+                inner_html = "\n".join(
+                    f'      <p class="summary-intro">{_emit_inline_emphasis_html(p)}</p>'
+                    for p in paras
+                )
+            elif fmt == "bullet_list":
+                inner_html = _emit_bullet_list_html(str(text))
+                if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
+                    continue
+            elif fmt == "word_cloud":
+                inner_html = (
+                    f'      <p class="competencies-list">{_emit_inline_emphasis_html(str(text))}</p>'
+                )
+            elif fmt == "dual_column":
+                inner_html = _emit_skills_grid_html(str(text))
+                if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
+                    continue
+            elif fmt == "indented_bold_single":
+                inner_html = _emit_education_list_html(str(text))
+                if not inner_html.strip():
+                    skip_reasons[key] = "skipped — empty"
+                    continue
+            else:
+                skip_reasons[key] = "skipped — empty"
                 continue
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
+        emitted_ids.add(key)
+        chunks.append(
+            f"""    <section aria-labelledby="{sid}">
       <h2 id="{sid}">{heading}</h2>
-{skills_html}
+{inner_html}
     </section>"""
+        )
+    if debug:
+        enabled = candidate_mod.enabled_resume_section_ids(resume_structure or {})
+        total = len(enabled) or 1
+        contact = set(RESUME_STRUCTURE_CONTACT_SECTION_IDS)
+        for i, sid in enumerate(enabled, start=1):
+            spec = sections.get(sid) or {}
+            title = spec.get("title") or titles.get(sid) or ""
+            fmt = spec.get("format")
+            if sid in contact:
+                outcome = (
+                    "emitted" if str(render.get(sid) or "").strip() else "skipped — empty"
+                )
+            elif sid in emitted_ids:
+                outcome = "emitted"
+            else:
+                outcome = skip_reasons.get(sid, "skipped — empty")
+            _log.debug_index(
+                func=debug_func or "builder._emit_body_sections_html",
+                index=i,
+                total=total,
+                identifier=sid,
+                outcome=outcome,
             )
-            continue
-        inner = html.escape(str(text))
-        if key == "core_competencies":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
-        elif key == "experience":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <div class="prose-block">{inner}</div>
-    </section>"""
-            )
-        elif key == "prior_experience":
-            chunks.append(
-                f"""    <section aria-labelledby="{sid}">
-      <h2 id="{sid}">{heading}</h2>
-      <p class="competencies-list">{inner}</p>
-    </section>"""
-            )
+            _log.debug_detail(f"title={title!r} format={fmt!r}")
     return "\n".join(chunks)
 
 
@@ -1486,19 +1668,19 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         lines: List[str] = ['      <article class="role">', '        <div class="role-header">']
         if title_text:
             lines.append(
-                f'          <p class="compact-title"><strong>{html.escape(title_text)}</strong></p>'
+                f'          <p class="compact-title"><strong>{_emit_inline_emphasis_html(title_text)}</strong></p>'
             )
         if loc_text:
             lines.append(
-                f'          <p class="compact-location"><em>{html.escape(loc_text)}</em></p>'
+                f'          <p class="compact-location"><em>{_emit_inline_emphasis_html(loc_text)}</em></p>'
             )
         lines.append("        </div>")
         for lead in leads:
-            lines.append(f'        <p class="role-description">{html.escape(lead)}</p>')
+            lines.append(f'        <p class="role-description">{_emit_inline_emphasis_html(lead)}</p>')
         if bullets:
             lines.append("        <ul>")
             for bullet in bullets:
-                lines.append(f"          <li>{html.escape(bullet)}</li>")
+                lines.append(f"          <li>{_emit_inline_emphasis_html(bullet)}</li>")
             lines.append("        </ul>")
         lines.append("      </article>")
         role_chunks.append("\n".join(lines))
@@ -1538,24 +1720,126 @@ def _safe_image_src(raw: Any) -> Optional[str]:
     return None
 
 
+def _lookup_dotted_path(root: Any, dotted: str) -> Any:
+    """Walk ``a.b.c`` on nested dicts; return ``None`` if any segment missing/non-dict."""
+    cur: Any = root
+    for part in (dotted or "").split("."):
+        if not part or not isinstance(cur, dict):
+            return None
+        cur = cur.get(part)
+    return cur
+
+
+def _signature_image_token_status(
+    signature_text: str,
+    candidate_root: dict,
+) -> tuple[str, Optional[str], str]:
+    """Return ``(token_status, safe_src_or_None, image_status)``.
+
+    ``token_status``: ``present`` | ``absent``
+    ``image_status``: ``accepted`` | ``absent`` | ``rejected``
+    """
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    literal = tok["literal"]
+    token_status = "present" if literal in (signature_text or "") else "absent"
+    raw = _lookup_dotted_path(candidate_root, tok["path"])
+    if not isinstance(raw, str) or not raw.strip():
+        return token_status, None, "absent"
+    safe = _safe_image_src(raw)
+    if safe is None:
+        return token_status, None, "rejected"
+    return token_status, safe, "accepted"
+
+
+def _html_with_signature_image_token(
+    signature_text: str,
+    *,
+    safe_src: Optional[str],
+    token_status: str,
+    img_html: str,
+) -> str:
+    """Escape signature text; replace or omit ``SIGNATURE_IMAGE`` literal per contract."""
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if tok.get("absent_token_policy") != "omit" or tok.get(
+        "missing_or_rejected_image_policy"
+    ) != "omit":
+        raise ValueError(
+            "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
+        )
+
+    # AST-1165: authored newlines → <br> after escape (same as letter body).
+    def _esc_br(segment: str) -> str:
+        return html.escape((segment or "").replace("\r\n", "\n")).replace(
+            chr(10), "<br>"
+        )
+
+    if token_status == "absent":
+        return _esc_br(signature_text or "")
+    parts = (signature_text or "").split(tok["literal"])
+    sep = img_html if safe_src else ""
+    return sep.join(_esc_br(part) for part in parts)
+
+
 def _emit_cover_signoff_html(cover: dict, profile: dict) -> str:
-    """Cover sign-off: optional profile image (validated ``src``) then signature text."""
-    sig = (cover.get("signature") or "").strip()
-    safe_src = _safe_image_src((profile or {}).get("cover_letter_signature_image"))
-    if not sig and not safe_src:
+    """Cover sign-off: token-position image (AST-1126) + signature text — no auto-prepend."""
+    tok = get_cover_letter_render_token("SIGNATURE_IMAGE")
+    if "cover_letter" not in tok.get("surfaces", []):
+        raise ValueError(
+            "SIGNATURE_IMAGE surfaces missing cover_letter — AST-1125 contract broken"
+        )
+    if tok.get("absent_token_policy") != "omit" or tok.get(
+        "missing_or_rejected_image_policy"
+    ) != "omit":
+        raise ValueError(
+            "SIGNATURE_IMAGE omit policies changed — do not improvise (AST-1126)"
+        )
+    # Call sites pass contact dict; wrap so tok["path"] (contact.…) resolves.
+    raw_sig = cover.get("signature") or ""
+    candidate_root = {"contact": profile or {}}
+    token_status, safe_src, _image_status = _signature_image_token_status(
+        raw_sig, candidate_root
+    )
+    # Image alone (no token / no text) must not create a signoff section.
+    if not (raw_sig or "").strip() and token_status == "absent":
         return ""
-    inner_lines: List[str] = []
+
+    literal = tok["literal"]
+    if token_status == "absent":
+        body_esc = html.escape(raw_sig)
+        if not body_esc.strip():
+            return ""
+        return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+      <p>{body_esc}</p>
+    </section>"""
+
+    parts = raw_sig.split(literal)
+    img_html = ""
     if safe_src:
         src_esc = html.escape(safe_src, quote=True)
-        inner_lines.append(
-            # Non-empty alt: Radia review (a11y); static label only (src is already escaped).
-            f'      <img src="{src_esc}" alt="Cover letter signature" style="max-width:240px;height:auto;" />'
+        img_html = (
+            f'<img src="{src_esc}" alt="Cover letter signature" '
+            f'style="max-width:240px;height:auto;" />'
         )
-    if sig:
-        inner_lines.append(f'      <p>{html.escape(sig)}</p>')
-    inner = "\n".join(inner_lines)
-    return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+        # Concrete shape: <p>before</p>{img}<p>after</p> (omit empty sides).
+        inner_chunks: List[str] = []
+        for i, part in enumerate(parts):
+            if (part or "").strip():
+                inner_chunks.append(f"      <p>{html.escape(part)}</p>")
+            if i < len(parts) - 1:
+                inner_chunks.append(f"      {img_html}")
+        if not inner_chunks:
+            return ""
+        inner = "\n".join(inner_chunks)
+        return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
 {inner}
+    </section>"""
+
+    # Token present, image omitted — one <p> with literal removed.
+    joined = "".join(html.escape(p) for p in parts)
+    if not joined.strip():
+        return ""
+    return f"""    <section class="cover-block cover-signoff" aria-label="Cover sign-off">
+      <p>{joined}</p>
     </section>"""
 
 

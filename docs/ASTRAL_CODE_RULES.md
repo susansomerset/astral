@@ -81,7 +81,7 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 
 **Narrative (not a statute):** see `canon/statutes/HARVEST.md` § Narrative leftovers — `code-rules-2.1-config-block-catalog`
 
-- **TASK_CONFIG**: Task definitions (prompts, response_format, context_format, response_schema). For graded tasks, also `grading_mode`, `vectors`, scoring keys (`grades_key`), and **job-consult orchestration**: pass/fail/error states, `save_prefix`, `pass_threshold`, readiness keys (`min_job_title_length`, `min_jd_chars`, `not_ready_state`), `requires_company`, and `fallback_batch_size` as the config default (`dispatch_tasks.batch_size` overrides at runtime). Single source for Anthropic task specs plus those orchestration literals.
+- **TASK_CONFIG**: Task definitions (prompts, response_format, context_format, response_schema). For graded tasks, also `grading_mode`, `vectors`, scoring keys (`grades_key`), and **job-consult orchestration**: pass/fail/error states, `save_prefix`, readiness keys (`min_job_title_length`, `min_jd_chars`, `not_ready_state`), `requires_company`, and `fallback_batch_size` as the config default (`dispatch_tasks.batch_size` overrides at runtime). Single source for Anthropic task specs plus those orchestration literals.
 - **GAZER_CONFIG**: Orchestration for gazer-batch steps (`validate_title`, `scrape_jd`, `gaze`): states, JD scrape `error_states`, and fallback batch sizes. `ROSTER_CONFIG["gaze"]["error_state"]` remains the gaze hook used by roster code until gazer reads this block (`gaze.error_state` must stay the same string).
 - **JOB_STATES**: Job state registry. Each entry has `prior_states` (list of valid predecessor states, or `None` for unrestricted entry) and optionally `retry_state` (name of the holding state for per-job validation failures on the first attempt). Absence of `retry_state` means validation failures go directly to `error_state` with no retry.
 - **TRACKER_CONFIG**: Job ingest config and JD processing rules. `job_state_transitions` has been removed — transitions are now validated using `prior_states` in `JOB_STATES`.
@@ -97,13 +97,13 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 - **DISPATCH_TASKS**: Removed. See `dispatch_tasks` DB table above.
 - **NAV_CONFIG**: UI navigation structure — sidebar groups, labels, and route paths. Groups may declare `visible` and items may declare `enabled` as candidate state strings or `False` (permanently disabled). The `/api/nav_config` endpoint in `system.py` resolves these against the selected candidate's state before serving. The frontend renders the resolved structure with no additional visibility logic.
 
-#### pass_threshold vs dispatch_task.score_floor
+#### dispatch_task.score_floor (sole numeric floor)
 
-**Statute:** `astral.config.pass-threshold-vs-score-floor`
+**Pattern:** `pattern.dispatch.score-floor`
 
-- **`pass_threshold`** (on **TASK_CONFIG** for scored consult tasks): used by **`render_verdict`** / scoring to decide **pass vs fail** from model output after a run. Do **not** feed **`dispatch_task.score_floor`** into this path.
-- **`score_floor`** (on **`dispatch_task`** rows): read only from the DB row for **dispatch eligibility** — batch claim/count (`claim_job_batch`, `count_eligible_for_dispatch_task`, dispatcher orchestration): jobs must satisfy **`latest_score >= score_floor`** before a scored step runs (with existing **`NULL` → 1.0** normalization where applicable).
-- **Precedence:** Different lifecycle stages — neither replaces the other. If **`score_floor`** is **`NULL`** for a scored task row, **`1.0`** applies to **dispatch gating**, not **`pass_threshold`** grading math.
+- **`score_floor`** (on the candidate’s matching **`dispatch_task`** row) is the **only** numeric floor for a scored step: dispatch eligibility (claim/count) and post-run scored soft-fail / pass both read that row value via `effective_dispatch_score_floor` (explicit `0` valid; `NULL` → `1.0`).
+- Do **not** put a parallel floor on **TASK_CONFIG**. Do **not** cite retired statute `astral.config.pass-threshold-vs-score-floor`.
+- Dealbreaker and technical-error fails are unchanged; admin Score Floor options include `0` (`DISPATCH_SCORE_FLOOR_VALUES`).
 
 Environment variables for secrets (listed at top of `config.py`). Paths, limits, and state machines from config.
 
@@ -116,7 +116,7 @@ Environment variables for secrets (listed at top of `config.py`). Paths, limits,
 
 **Statute:** `astral.agent.do-task-delegation`
 
-All config blocks live in `src/utils/config.py`, which means any layer that imports utils has access to config values. Core reads config freely for business logic decisions (e.g., grading_mode, vectors, pass_threshold, state transitions). However, core must use external layer functions for technical execution (API calls, page navigation, scraping). Config informs decisions; external performs I/O.
+All config blocks live in `src/utils/config.py`, which means any layer that imports utils has access to config values. Core reads config freely for business logic decisions (e.g., grading_mode, vectors, state transitions). However, core must use external layer functions for technical execution (API calls, page navigation, scraping). Config informs decisions; external performs I/O.
 
 **Core → Agent → Anthropic: do_task pattern.** Core calls `do_task` (from `src/core/agent.py`), which resolves prompts, assembles blocks, stores agent_data, and delegates the API call to `send_to_anthropic` (from `src/external/anthropic.py`). Core does not assemble task params for the AI call.
 
@@ -154,7 +154,7 @@ Every graded row carries integer `confidence`: `1`–`5` for letter grades `A`�
 **Statute:** `astral.batch.batch-id-format`
 **Statute:** `astral.batch.batch-id-first`
 
-All batch jobs that process entities by state use batch locking. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks (including RESPONSE `entity_id` latest-per-task refs), dispatch_ledger entries, and timesheets.
+All batch jobs that process entities by state use batch locking. Every `ENTITY_TYPES` member used as a dispatch claim queue (`candidate`, `company`, `job`) uses the same pool claim → process → release shape. Candidate is not exempt: no unlocked single-ctx claim path, no empty release stub. The `batch_id` is the **golden ticket** — one ID per dispatch run that ties together row-locking, state transitions, agent_data blocks (including RESPONSE `entity_id` latest-per-task refs), dispatch_ledger entries, and timesheets.
 
 **batch_id format:** `f"{task_key}-{uuid}"` — prefixed with the task_key for human readability in foreign-key references (e.g. `prefilter-3f8a2b1c-...`). For non-dispatch calls (e.g. artifact generation), the prefix is the function context.
 
@@ -184,7 +184,7 @@ finally:
     database.clear_company_batch(batch_id)
 ```
 
-Do not select by state and process without batch_id. Use claim / get / clear and batch_id-first order consistently for all entity types.
+Do not select by state (or single-ctx) and process without batch_id. Use claim / get / clear and batch_id-first order consistently for every `ENTITY_TYPES` claim queue, including candidate.
 
 ### 2.4.1 Entity latest agent refs (via agent_data)
 
@@ -266,7 +266,7 @@ Companions: waiting stages may define `stale_after_hours` / `stale_state`; `REQU
 
 ### 2.7 render_verdict Pattern
 
-**Statute:** `astral.patterns.render-verdict-orchestrates-consult`
+**Statute:** `astral.idioms.render-verdict-orchestrates-consult`
 
 `render_verdict(task_type, astral_job_id)` is the standard orchestrator for per-job consult tasks in `src/core/consult.py`. It handles the full lifecycle for one job through one agent task:
 
@@ -288,7 +288,7 @@ Technical failures (job not found, content prep failed, API error, schema valida
 
 ### 2.8 Coat-Check Pattern
 
-**Statute:** `astral.patterns.coat-check-never-store-empty`
+**Statute:** `astral.idioms.coat-check-never-store-empty`
 
 Some data fields need to be lazily populated — the value may or may not exist in the database when a caller first asks for it. The **coat-check pattern** handles this transparently: the caller asks for a value by key, and the handler either returns the cached value or fetches it on-demand, saves it, and returns it. The caller never knows which path was taken.
 
@@ -317,7 +317,7 @@ Some data fields need to be lazily populated — the value may or may not exist 
 
 ### 2.9 Authentication Decorator
 
-**Statute:** `astral.patterns.require-auth-on-protected-endpoints`
+**Statute:** `astral.idioms.require-auth-on-protected-endpoints`
 
 UI API endpoints use `@require_auth` to enforce authentication. The decorator checks for an `Authorization: Bearer <token>` header, validates the token, and sets `g.user` with the authenticated user's identity. Endpoints without the decorator are open (e.g., health checks).
 

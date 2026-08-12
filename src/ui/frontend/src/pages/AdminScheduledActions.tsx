@@ -4,6 +4,7 @@ import AdminCandidateFilterControl from "../components/AdminCandidateFilterContr
 import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
 import api from "../lib/api"
+import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 import Time from "../components/Time"
 import CollapsiblePanel from "../components/CollapsiblePanel"
 import SectionExpandChrome from "../components/SectionExpandChrome"
@@ -201,8 +202,8 @@ function ScheduledPhaseTable({
                 <td style={{ textAlign: "center" }}>
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <button
-                      className="list-page-bulk-btn"
-                      style={{ padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
+                      className="btn primary in-row"
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
                       disabled={isRunning || !!row.auto_mode}
                       onClick={e => handleRun(e, row)}
                     >
@@ -210,8 +211,8 @@ function ScheduledPhaseTable({
                     </button>
                     {isRunning && (
                       <button
-                        className="list-page-bulk-btn"
-                        style={{ position: "absolute", inset: 0, padding: "2px 10px", fontSize: "0.78rem", whiteSpace: "nowrap", background: isDraining ? "#7d6608" : "#c0392b", color: "#fff" }}
+                        className="btn danger in-row"
+                        style={{ position: "absolute", inset: 0, whiteSpace: "nowrap" }}
                         onClick={e => handleStop(e, row)}
                         disabled={isDraining}
                       >
@@ -269,6 +270,7 @@ export default function ScheduledActions() {
 
   const [allTaskKeys, setAllTaskKeys] = useState<Record<string, TaskKeyMeta>>({})
   const [stateOptions, setStateOptions] = useState<{ job: string[]; company: string[]; candidate: string[] }>({ job: [], company: [], candidate: [] })
+  const [scoreFloorOptions, setScoreFloorOptions] = useState<string[]>([])
   const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -316,10 +318,6 @@ export default function ScheduledActions() {
   const [minCountFilter, setMinCountFilter] = useState("")
   const [batchSizeFilter, setBatchSizeFilter] = useState("")
   const [maxRunsFilter, setMaxRunsFilter] = useState("")
-  const scoreFloorOptions = useMemo(
-    () => Array.from({ length: 19 }, (_, i) => (1 + i * 0.5).toFixed(2)),
-    [],
-  )
   const inputStateOptions = useMemo(
     () => (
       form.entity_type === "company"
@@ -334,10 +332,11 @@ export default function ScheduledActions() {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const [tasksRes, keysRes, statesRes] = await Promise.all([
+      const [tasksRes, keysRes, statesRes, floorsRes] = await Promise.all([
         api("/api/admin/dispatch_tasks"),
         api("/api/admin/dispatch_tasks/task_keys"),
         api("/api/admin/dispatch_tasks/state_options"),
+        api("/api/admin/dispatch_tasks/score_floor_options"),
       ])
       if (tasksRes.ok) setData(await tasksRes.json())
       else setToast({ text: `Failed to load dispatch tasks (${tasksRes.status})`, variant: "error" })
@@ -352,6 +351,10 @@ export default function ScheduledActions() {
           company: Array.isArray(states?.company) ? states.company : [],
           candidate: Array.isArray(states?.candidate) ? states.candidate : [],
         })
+      }
+      if (floorsRes.ok) {
+        const floors = await floorsRes.json()
+        setScoreFloorOptions(Array.isArray(floors?.values) ? floors.values : [])
       }
     } finally {
       setLoading(false)
@@ -369,7 +372,7 @@ export default function ScheduledActions() {
     }
   }, [threadStatus, data, loadData])
 
-  const taskKeys = useMemo(() => [...new Set(data.map(d => d.task_key))].sort(), [data])
+  const taskKeys = useMemo(() => sortedTaskKeys(new Set(data.map(d => d.task_key))), [data])
 
   const sectionGroupOptions = useMemo(() => {
     const seen = new Map<string, string>()
@@ -396,7 +399,7 @@ export default function ScheduledActions() {
         const as_ = allTaskKeys[a.task_key]?.task_seq ?? 999
         const bs_ = allTaskKeys[b.task_key]?.task_seq ?? 999
         if (as_ !== bs_) return sortDir === "asc" ? as_ - bs_ : bs_ - as_
-        const tk = a.task_key.localeCompare(b.task_key)
+        const tk = compareTaskKeys(a.task_key, b.task_key)
         if (tk !== 0) return tk
         if (!candidateFilter) {
           const av = a.available_count ?? 0
@@ -615,7 +618,12 @@ export default function ScheduledActions() {
             task_key: form.task_key,
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
+            score_floor: form.is_scored
+              ? (() => {
+                  const n = parseFloat(form.score_floor)
+                  return Number.isFinite(n) ? n : 1
+                })()
+              : null,
             auto_mode: form.auto_mode,
             debug: form.debug,
           }),
@@ -640,7 +648,12 @@ export default function ScheduledActions() {
             min_count: parseInt(form.min_count, 10),
             batch_size: form.batch_size ? parseInt(form.batch_size, 10) : null,
             max_runs: form.max_runs !== "" ? parseInt(form.max_runs, 10) : 1,
-            score_floor: form.is_scored ? (parseFloat(form.score_floor) || 1) : null,
+            score_floor: form.is_scored
+              ? (() => {
+                  const n = parseFloat(form.score_floor)
+                  return Number.isFinite(n) ? n : 1
+                })()
+              : null,
             auto_mode: form.auto_mode,
           }),
         })
@@ -671,14 +684,13 @@ export default function ScheduledActions() {
             </span>
           )}
           <button
-            className="list-page-bulk-btn"
-            style={{ background: activeThreads.length > 0 ? "#c0392b" : undefined, color: activeThreads.length > 0 ? "#fff" : undefined }}
+            className="btn danger"
             onClick={() => setShowStopAll(true)}
             disabled={activeThreads.length === 0}
           >
             Stop All
           </button>
-          <button className="list-page-bulk-btn" onClick={openAdd}>+ Add Task</button>
+          <button className="btn primary" onClick={openAdd}>+ Add Task</button>
         </div>
       </div>
 
@@ -824,7 +836,7 @@ export default function ScheduledActions() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">Kill Running Threads</span>
-              <button className="modal-close" onClick={() => setShowStopAll(false)}>&times;</button>
+              <button type="button" className="icon-control" onClick={() => setShowStopAll(false)} title="Close" aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               <p style={{ marginBottom: "0.75rem" }}>The following tasks will be immediately killed:</p>
@@ -838,8 +850,8 @@ export default function ScheduledActions() {
               </ul>
             </div>
             <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowStopAll(false)}>Cancel</button>
-              <button className="modal-btn save" style={{ background: "#c0392b" }} onClick={handleKillAll} disabled={stoppingAll}>
+              <button className="btn secondary" onClick={() => setShowStopAll(false)}>Cancel</button>
+              <button className="btn danger" onClick={handleKillAll} disabled={stoppingAll}>
                 {stoppingAll ? "Killing…" : "Kill Now"}
               </button>
             </div>
@@ -853,7 +865,7 @@ export default function ScheduledActions() {
           <div className="modal-card" onClick={e => e.stopPropagation()}>
             <div className="modal-header">
               <span className="modal-title">{editRow ? "Edit Task" : "Add Task"}</span>
-              <button className="modal-close" onClick={() => setShowModal(false)}>&times;</button>
+              <button type="button" className="icon-control" onClick={() => setShowModal(false)} title="Close" aria-label="Close">×</button>
             </div>
             <div className="modal-body">
               {!editRow && (
@@ -881,7 +893,7 @@ export default function ScheduledActions() {
                   }
                 }}>
                   <option value="">Select…</option>
-                  {Object.keys(allTaskKeys).sort().map(k => <option key={k} value={k}>{k}</option>)}
+                  {sortedTaskKeys(Object.keys(allTaskKeys)).map(k => <option key={k} value={k}>{k}</option>)}
                 </select>
               </div>
               <div className="modal-detail-row">
@@ -932,8 +944,8 @@ export default function ScheduledActions() {
               </div>
             </div>
             <div className="modal-footer">
-              <button className="modal-btn cancel" onClick={() => setShowModal(false)}>Cancel</button>
-              <button className="modal-btn save" onClick={handleSave} disabled={saving || (!editRow && !form.candidate_id)}>
+              <button className="btn secondary" onClick={() => setShowModal(false)}>Cancel</button>
+              <button className="btn primary" onClick={handleSave} disabled={saving || (!editRow && !form.candidate_id)}>
                 {saving ? "Saving…" : "Save"}
               </button>
             </div>

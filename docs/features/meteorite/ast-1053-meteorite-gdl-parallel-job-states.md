@@ -1,3 +1,307 @@
+<!-- linear-archive: AST-1053 archived 2026-08-07 -->
+
+## Linear archive (AST-1053)
+
+**Archived:** 2026-08-07  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1053/meteorite-gdl-parallel-job-states-processing-meteorites  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1052 — Processing meteorites  
+**Blocked by / blocks / related:** parent: AST-1052; blocks: AST-1057; blocks: AST-1056; blocks: AST-1055; blocks: AST-1054
+
+### Description
+
+## What this implements
+
+Owns `JOB_STATES` for **METEORITE_NEW** and **METEORITE_PASSED_JD / DO / GET / LIKE** (plus fail / technical-fail siblings), priors, and UI manifests as needed. Does **not** own dispatch rows, agent_task prompt bodies, Create retarget, or Recommended section.
+
+## Citations
+
+`pattern.state.entity-state-transitions`; `pattern.config.config-block`; `astral.state.job-prior-states-enforced`; `astral.state.core-decides-transitions`; `astral.config.config-source-of-truth`; `astral.standards.no-hardcoded-sets`.
+
+## Acceptance criteria
+
+- [X] 1. Config registers **METEORITE_NEW**, **METEORITE_PASSED_JD**, **METEORITE_PASSED_DO**, **METEORITE_PASSED_GET**, **METEORITE_PASSED_LIKE** (and needed fail / technical-fail siblings) with legal `prior_states`.
+- [X] 2. Genuine step failures still land on meteorite fail / technical-fail states; non-meteorite GDL + Recommended behavior unchanged (smoke).
+
+## Boundaries
+
+- [X] Does **not** own dispatch rows (sibling 2), agent_task prompt bodies (sibling 3), Create retarget (sibling 4), or Recommended section (sibling 5).
+
+## Notes for planning
+
+Citations above. Parallel meteorite GDL state track — sibling chain entry **METEORITE_NEW**.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1052-processing-meteorites`, child `sub/AST-1052/AST-NNNN-<slug>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-07-29T21:46:53.505Z
+[thread-missing] Radia Team store.db missing for prior UUID 4d96be2b-0d9c-4387-85d8-0d498478153a on this host; minted and resumed 796b52dd-2830-43c6-a8aa-cf6897426e99 for review-child. — Chuckles
+
+#### radia — 2026-07-29T21:46:01.796Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1053
+**Publish ref:** `8392c4c52627b48e5d4b225c26fd23e389210d3c` (`origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`)
+**Overall:** DISCUSS
+
+**Diff:** `origin/dev...origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states` — layers `{utils, docs}`; paths `src/utils/config.py`, `docs/features/meteorite/ast-1053-…md`, `docs/test-bible/utils/config.md`, `tests/component/utils/test_config.py`.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| `astral.agent.confidence-bounds` | scoped | conforms | No confidence / CONFIDENCE_MULTIPLIERS edits |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | layers miss (['core']); paths miss (['src/core/**']) |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | layers miss (['core']); paths miss (['src/core/**']) |
+| `astral.batch.batch-id-first` | scoped | not-applicable | layers miss (['data', 'core']); paths miss (['src/data/**', 'src/core/**']) |
+| `astral.batch.batch-id-format` | scoped | not-applicable | layers miss (['core', 'data']); paths miss (['src/core/**', 'src/data/**']) |
+| `astral.batch.claim-process-release` | scoped | not-applicable | layers miss (['core', 'data']); paths miss (['src/core/**', 'src/data/**']) |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | layers miss (['core', 'data']); paths miss (['src/core/**', 'src/data/**']) |
+| `astral.config.config-source-of-truth` | scoped | conforms | JOB_STATES + In Review/Skipped manifests only in config.py |
+| `astral.config.pass-threshold-vs-score-floor` | scoped | conforms | PASSED_SCORE_GATED_STATES untouched; no pass_threshold/score_floor mix |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No secrets or env-specific values |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss (['artifacts/**', 'scripts/spikes/**']) |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | Plan doc under docs/features/; no spike notes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single plan file docs/features/meteorite/ast-1053-…md |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty test()/merge-tests only; code() owns src; docs() plan |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | test() commit owns tests/ + bible; engineer code() only config.py |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | layers miss (['core', 'external']); paths miss (['src/core/**', 'src/external/**']) |
+| `astral.layers.import-direction` | scoped | conforms | utils config registry only; no new imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers miss (['scripts']); paths miss (['scripts/**']) |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Jobs UI via IN_REVIEW/SKIPPED manifests + grade maps |
+| `astral.patterns.coat-check-never-store-empty` | scoped | not-applicable | layers miss (['core']); paths miss (['src/core/**']) |
+| `astral.patterns.render-verdict-orchestrates-consult` | scoped | not-applicable | layers miss (['core']); paths miss (['src/core/**']) |
+| `astral.patterns.require-auth-on-protected-endpoints` | scoped | not-applicable | layers miss (['ui']); paths miss (['src/ui/**']) |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | layers miss (['data', 'core', 'ui']) |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | layers miss (['data']); paths miss (['src/data/**']) |
+| `astral.standards.debug-contract-gated` | scoped | conforms | No debug= paths added |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Registry + list appends only |
+| `astral.standards.in-scope-only` | scoped | conforms | No dispatch/prompts/create/Recommended; siblings 1054–1057 |
+| `astral.standards.logging-via-utils` | scoped | conforms | No logging changes |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Config-only; non-meteorite GDL untouched |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | State names only in JOB_STATES + UI list constants |
+| `astral.standards.public-then-helpers` | scoped | conforms | No new helpers |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | No utils→data |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | layers miss (['core', 'data']); paths miss (['src/core/**', 'src/data/**']) |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | Explicit prior graph; METEORITE_NEW None; LIKE from PASSED_GET |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | layers miss (['core']); paths miss (['src/core/**']) |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | layers miss (['ui']); paths miss (['src/ui/frontend/**']) |
+| `astral.ui.naming-conventions` | scoped | not-applicable | layers miss (['ui']); paths miss (['src/ui/**']) |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No gunicorn/worker edits |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single merge-tests(AST-1053) onto tip |
+| `orch.git.commit-vocabulary` | universal | conforms | docs/code/test/merge-tests vocabulary used |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Work on sub/* only; no reverse merge into dev |
+| `orch.git.ftr-sub-topology` | universal | conforms | sub/AST-1052/AST-1053-… under parent ftr |
+| `orch.git.merge-on-checkout` | universal | conforms | No conflicting checkout rewrite |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No rewrite ops in history |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Publish ref is ticket sub, not agent/dev-* |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | astral-AST-1052 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | No new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Product call locked in parent AST-1052 definition |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Diff matches Stage 1 keys/priors/UI lists; boundaries held |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Meteorite child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon/statutes edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty test() + bible; merge-tests one SHA |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Ada through Tests Passed |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Assignee remains Ada |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Role-appropriate paths per commit vocabulary |
+
+## Pattern conformance
+
+- `pattern.state.entity-state-transitions` — conforms (parallel track with explicit priors; no culture hop)
+- `pattern.config.config-block` — conforms (JOB_STATES + UI list constants)
+- Cited statutes (`astral.state.job-prior-states-enforced`, `astral.state.core-decides-transitions`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) covered in Statutes checked (`core-decides` N/A — utils-only)
+
+## Plan adherence
+
+Stage 1 delivered as written: 14 meteorite `JOB_STATES` keys with planned priors; In Review / Skipped membership, section order/labels, grade maps. Self-Assessment Scope `Single-Component` matches footprint. Boundaries held — no TASK_CONFIG/DISPATCH/create retarget/Recommended/`PASSED_SCORE_GATED_STATES`. Betty tests assert priors + UI + non-meteorite smoke.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+1. **straggler ×3** — Joan excluded at plan time; in-scope on three-dot vs `origin/dev` (all substance **conforms**):
+   - `astral.debug.spikes-under-debug-dir`
+   - `astral.docs.features-single-file-per-ticket`
+   - `astral.git.engineer-test-tree-ban`
+
+### advisory
+(none)
+
+### What’s solid
+- Prior graph + UI manifests match plan; AC2 smoke (Recommended / score-gated / create default) held.
+
+### Recommended actions
+- Ada: acknowledge stragglers → resolve-child → User Testing.
+
+**Notes:** Joan plan-rubric verdict attached (APPROVED). Docs append on plan file @ `8392c4c5`.
+
+context_tokens≈28000
+
+#### betty — 2026-07-29T21:42:00.742Z
+1. `tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates` — meteorite GDL priors; In Review/Skipped membership + UI labels/order + grade maps; score-gated / Recommended / `job_create_state` smoke
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  -q
+```
+
+**Pass:** pytest green on narrowed args.
+
+**Broken/revised:** none — additive.
+**Integration:** none.
+
+**Publish:** `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states` @ `e0256021` (`merge-tests(AST-1053): origin/tests 3c4426542ad9f47bd885f6be50159b1061095283`)
+
+**Bible shasums on publish ref:**
+- `docs/test-bible/utils/config.md` `47b5e13bebeab9adff3202690b48e84b870f683f`
+
+— Betty
+
+#### joan — 2026-07-29T21:35:36.349Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1053
+**Overall:** APPROVED
+
+**Notes:** First Plan Ready pass. Tip `57409ca7`. Publish ref `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states`. Parallel meteorite GDL track authorized by parent AST-1052 definition (dispatched; Open questions none).
+**Implementer:** Ada (parent Team table / plan author).
+
+## Traceability
+
+### Parent AC → plan stages
+
+| Parent AC | Plan coverage |
+| -- | -- |
+| 1 Register METEORITE_* pass + fail/technical siblings with legal priors | Stage 1 |
+| 2 Meteorite dispatch rows score_floor 0 | N/A — boundary: AST-1054 |
+| 3 No culture hop; meteorite_like after PASSED_GET | N/A — states omit CULTURE_READY (Stage 1); prompts AST-1055; dispatch AST-1054 |
+| 4 Meteorite upshot after LIKE | N/A — prompts AST-1055; `METEORITE_PASSED_LIKE_RETRY` registered here for lawful hold |
+| 5 Recommended Meteorites section | N/A — boundary: AST-1057 |
+| 6 Create lands in METEORITE_NEW | N/A — boundary: AST-1056; `prior_states: None` on METEORITE_NEW enables lawful entry |
+| 7 Failures land on meteorite fail/technical; non-meteorite unchanged | Stage 1 registers fail/technical siblings; leaves non-meteorite GDL + `RECOMMENDED` / `PASSED_SCORE_GATED_STATES` untouched |
+| 8 Style D debug on meteorite GDL paths | N/A — no processing paths in this child (dispatch/debug AST-1054+) |
+
+### Child AC → plan stages
+
+| Child AC | Stages |
+| -- | -- |
+| 1 Config registers METEORITE_* + priors | Stage 1 |
+| 2 Fail/technical siblings exist; non-meteorite smoke unchanged | Stage 1 |
+
+### Plan stages → definition
+
+| Stage | Maps to |
+| -- | -- |
+| 1 JOB_STATES + In Review/Skipped UI manifests | Purpose parallel track; Functional scope state registration; AC1/AC7; Boundaries (no dispatch/prompts/create/Recommended) |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| orch.git.betty-merge-tests-one-sha | conforms | No Betty merge-tests |
+| orch.git.commit-vocabulary | conforms | Plan `docs(AST-1053):` path |
+| orch.git.flow-direction-inviolable | conforms | Child `sub/*` only |
+| orch.git.ftr-sub-topology | conforms | Matches parent Git table |
+| orch.git.merge-on-checkout | conforms | No conflicting checkout procedure |
+| orch.git.no-cherry-pick-rebase-force | conforms | No rewrite ops |
+| orch.git.no-dev-agent-branches | conforms | Ticket sub only |
+| orch.git.one-epic-worktree-per-parent | conforms | `astral-AST-1052` |
+| orch.git.three-permanent-branches | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | conforms | Parallel-track product call already locked in parent definition |
+| orch.pipeline.plan-is-bible | conforms | Stages binding; siblings excluded |
+| orch.pipeline.project-scoped-queues | conforms | Single-child Astral Meteorite |
+| orch.pipeline.status-gates-skill-entry | conforms | Plan Ready |
+| orch.roles.archie-approves-statutes | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | conforms | tests/bible out of scope |
+| orch.roles.chuckles-never-ticket-assignee | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | conforms | Reassign Ada on approve |
+| orch.roles.pre-commit-path-bans | conforms | No banned paths |
+| astral.agent.confidence-bounds | conforms | Untouched |
+| astral.config.config-source-of-truth | conforms | States + UI manifests only in `config.py` |
+| astral.config.pass-threshold-vs-score-floor | conforms | Leaves `PASSED_SCORE_GATED_STATES` unchanged (AST-1054 owns floors) |
+| astral.config.secrets-and-env-specific-from-environ | conforms | No secrets/env |
+| astral.git.betty-no-src-or-features | conforms | Engineer-owned config |
+| astral.layers.import-direction | conforms | utils-only change |
+| astral.layers.ui-config-driven-business-logic | conforms | Jobs UI via existing config manifests / `build_state_ui_manifest` |
+| astral.standards.debug-contract-gated | conforms | No new debug paths |
+| astral.standards.dry-and-focused-functions | conforms | Registry + list appends only |
+| astral.standards.in-scope-only | conforms | Explicit out-of-scope for 1054–1057 |
+| astral.standards.logging-via-utils | conforms | Untouched |
+| astral.standards.no-cross-contamination | conforms | Config only |
+| astral.standards.no-hardcoded-sets | conforms | State names only in JOB_STATES + UI list constants |
+| astral.standards.public-then-helpers | conforms | No new scattered helpers |
+| astral.standards.utils-data-late-import-only | conforms | No utils→data |
+| astral.state.job-prior-states-enforced | conforms | Explicit prior graph; METEORITE_NEW unrestricted entry; LIKE from PASSED_GET (no culture) |
+| astral.ui.single-gunicorn-worker | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** orch.git.betty-merge-tests-one-sha, orch.git.commit-vocabulary, orch.git.flow-direction-inviolable, orch.git.ftr-sub-topology, orch.git.merge-on-checkout, orch.git.no-cherry-pick-rebase-force, orch.git.no-dev-agent-branches, orch.git.one-epic-worktree-per-parent, orch.git.three-permanent-branches, orch.pipeline.call-susan-for-product-decisions, orch.pipeline.plan-is-bible, orch.pipeline.project-scoped-queues, orch.pipeline.status-gates-skill-entry, orch.roles.archie-approves-statutes, orch.roles.betty-owns-test-tree, orch.roles.chuckles-never-ticket-assignee, orch.roles.engineer-assignee-through-resolve, orch.roles.pre-commit-path-bans, astral.agent.confidence-bounds, astral.config.config-source-of-truth, astral.config.pass-threshold-vs-score-floor, astral.config.secrets-and-env-specific-from-environ, astral.git.betty-no-src-or-features, astral.layers.import-direction, astral.layers.ui-config-driven-business-logic, astral.standards.debug-contract-gated, astral.standards.dry-and-focused-functions, astral.standards.in-scope-only, astral.standards.logging-via-utils, astral.standards.no-cross-contamination, astral.standards.no-hardcoded-sets, astral.standards.public-then-helpers, astral.standards.utils-data-late-import-only, astral.state.job-prior-states-enforced, astral.ui.single-gunicorn-worker
+
+**Excluded:**
+- astral.agent.do-task-delegation — layers/paths miss
+- astral.agent.grade-vector-validation — layers/paths miss
+- astral.batch.batch-id-first — layers/paths miss
+- astral.batch.batch-id-format — layers/paths miss
+- astral.batch.claim-process-release — layers/paths miss
+- astral.batch.entity-agent-responses-latest-only — layers/paths miss
+- astral.debug.no-repo-root-artifacts-dir — paths miss
+- astral.debug.spikes-under-debug-dir — paths miss
+- astral.docs.features-single-file-per-ticket — layers/paths miss
+- astral.git.engineer-test-tree-ban — paths miss
+- astral.layers.core-vs-external-bright-line — layers/paths miss
+- astral.layers.scripts-exempt-from-layer-rules — layers/paths miss
+- astral.patterns.coat-check-never-store-empty — layers/paths miss
+- astral.patterns.render-verdict-orchestrates-consult — layers/paths miss
+- astral.patterns.require-auth-on-protected-endpoints — layers/paths miss
+- astral.standards.data-raises-caller-logs — layers miss
+- astral.standards.database-header-inventory — layers/paths miss
+- astral.state.core-decides-transitions — layers `core`/`data` / paths miss (utils-only Files Changed)
+- astral.state.no-daisy-chain-in-run — layers/paths miss
+- astral.ui.frontend-file-placement — layers/paths miss
+- astral.ui.naming-conventions — layers/paths miss
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### acceptable
+1. `METEORITE_PASSED_LIKE_RETRY` beyond the bare AC name list — mirrors `PASSED_LIKE_RETRY` for upshot technical hold; documented; needed by AST-1055.
+2. No meteorite JD retry-hold states — matches parent “pass + fail/technical” and plan decision; AST-1054 owns claim/error wiring.
+3. `METEORITE_NEW` with `prior_states: None` while Create retarget stays AST-1056 — correct split.
+4. Self-assessment Single-Component / high / Medium — honest.
+5. Parent “new pattern” flag satisfied by dispatched parent definition, not a live product open question.
+
+— Joan
+context_tokens≈45000
+
+#### ada — 2026-07-29T21:32:59.501Z
+Plan published on `origin/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states` @ tip (see attachment).
+
+**Plan:** [docs/features/meteorite/ast-1053-meteorite-gdl-parallel-job-states.md](https://github.com/susansomerset/astral/blob/sub/AST-1052/AST-1053-meteorite-gdl-parallel-job-states/docs/features/meteorite/ast-1053-meteorite-gdl-parallel-job-states.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — `JOB_STATES` parallel meteorite GDL track + Jobs In Review/Skipped UI manifests in `config.py` only.
+- **Conf:** high — mirrors existing GDL prior graph and UI list patterns; no dispatch/create/Recommended.
+- **Risk:** Medium — wrong priors block sibling hops or legalize illegal ones; mitigated by explicit prior table and leaving `RECOMMENDED` / `PASSED_SCORE_GATED_STATES` untouched.
+
+---
+
 # AST-1053 — Meteorite GDL parallel job states
 
 **Linear:** [AST-1053](https://linear.app/astralcareermatch/issue/AST-1053/meteorite-gdl-parallel-job-states-processing-meteorites)

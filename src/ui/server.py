@@ -15,7 +15,7 @@ _repo_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(_repo_root))
 sys.path.insert(0, str(_repo_root / "src"))
 
-from flask import Flask, request, send_from_directory
+from flask import Flask, jsonify, request, send_from_directory
 
 from src.core.auth_bootstrap import wire_stytch_token_authenticator
 
@@ -37,6 +37,9 @@ app.register_blueprint(candidate_bp)
 from ui.api.api_intake import intake_bp  # noqa: E402
 app.register_blueprint(intake_bp)
 
+from ui.api.api_surfer import surfer_bp  # noqa: E402
+app.register_blueprint(surfer_bp)
+
 from ui.api.api_admin import admin_bp  # noqa: E402
 app.register_blueprint(admin_bp)
 
@@ -54,6 +57,7 @@ app.register_blueprint(jobs_bp)
 
 from ui.api.api_meteorite import meteorite_bp  # noqa: E402
 app.register_blueprint(meteorite_bp)
+
 
 from ui.api.api_resume_html import resume_html_bp  # noqa: E402
 app.register_blueprint(resume_html_bp)
@@ -110,7 +114,10 @@ def _warn_stale_frontend_dist() -> None:
 @app.route("/", defaults={"path": ""})
 @app.route("/<path:path>")
 def serve_react(path):
-    """Catch-all: serve React static assets (auth enforced on /api/* routes)."""
+    """Catch-all: React static assets. Never steal /candidate/* HTML routes."""
+    # Blueprint should match first; if not, do not serve SPA (would redirect to /jobs/recommended).
+    if path == "candidate" or path.startswith("candidate/"):
+        return jsonify({"error": "Not found"}), 404
     if (_DIST / path).is_file():
         return send_from_directory(_DIST, path)
     return send_from_directory(_DIST, "index.html")
@@ -118,4 +125,5 @@ def serve_react(path):
 
 if __name__ == "__main__":  # pragma: no cover
     _warn_stale_frontend_dist()
-    app.run(debug=True, port=5001)
+    # use_reloader=False: avoid mid-run restarts when any .py mtime changes (e.g. git/editor).
+    app.run(debug=True, use_reloader=False, port=5001)

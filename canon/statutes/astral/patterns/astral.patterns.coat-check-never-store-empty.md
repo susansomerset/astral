@@ -3,7 +3,7 @@ id: astral.patterns.coat-check-never-store-empty
 title: Coat-check never stores empty
 tier: scoped
 checkable: judgment
-status: active
+status: retired
 applies_when:
   layers: ["core"]
   paths: ["src/core/**"]
@@ -11,7 +11,7 @@ applies_when:
 source_docs:
   - docs/ASTRAL_CODE_RULES.md
 supersedes: null
-superseded_by: null
+superseded_by: astral.idioms.coat-check-never-store-empty
 approved_by: Archie
 approved_at: "2026-07-23"
 ---

@@ -3,7 +3,7 @@ Core business logic for job consulting/analysis.
 
 render_verdict(task_type, astral_job_id): single orchestrator for per-job consult tasks.
   Fetches job/company internally, preps live content, calls agent, audits, derives verdict.
-  Per-job orchestration (pass/fail/error, thresholds, rubric refs) from TASK_CONFIG[task_type] — dispatch and catalog share one string (AST-736).
+  Per-job orchestration (pass/fail/error, rubric refs) from TASK_CONFIG[task_type] — soft-fail floor from dispatch_task.score_floor; dispatch and catalog share one string (AST-736).
 _render_pass_fail: binary grading (PASS/F) for qualify_job_listings and evaluate_jd_batch.
 _render_score: scored grading (AST-358 importance × universal grade values × confidence) for batch qualify/evaluate_jd and grade_get/do/like.
 When TASK_CONFIG[task_key].scored, transitions persist latest_score only when a numeric score exists.
@@ -14,13 +14,15 @@ evaluate_jd_batch: batch JD dealbreaker screen (Pattern A) — thin wrapper over
 grade_*_batch: scored DO/GET/LIKE Pattern A batching (AST-503) via _run_batch_consult(task_key=grade_*).
 """
 
+import html
 import json
 import re
 from typing import Any, Dict, List, Optional, Tuple
 
 from src.core import tracker
-from src.data.database import ensure_batch_response_entity_ids
 from src.core.agent import do_task
+from src.core.meteorite import is_meteorite_company
+from src.data.database import ensure_batch_response_entity_ids
 from src.utils import rubric_text
 from src.utils.config import (
     TASK_CONFIG,
@@ -33,14 +35,18 @@ from src.utils.config import (
     RUBRIC_TOTAL,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
-    METEORITE_GDL_OUTCOME_BY_TASK,
+    METEORITE_CONFIG,
     dispatch_chain_row_matches_job,
     dispatch_chain_registry_trigger,
+    dispatch_row_task_key,
+    effective_dispatch_score_floor,
     grade_value,
     importance_multiplier,
     is_dispatch_chain_trigger,
+    resolve_task_key_for_content,
+    is_task_alias,
 )
-from src.utils.formatting import enumerate_array
+from src.utils.formatting import enumerate_array, normalize_link, uuid_path_segment_from_url
 from src.utils.logging import get_logger
 from src.utils.llm_external import is_provider_balance_refusal
 
@@ -63,7 +69,9 @@ _INPUT_STATE_TO_TASK = {
     "JD_READY":           "evaluate_jd",
     "JD_READY_RETRY":     "evaluate_jd",
     "PASSED_JD":          "grade_do",
+    "PASSED_JD_RETRY":    "grade_do",
     "PASSED_DO":          "grade_get",
+    "PASSED_DO_RETRY":    "grade_get",
     "PASSED_GET":         "grade_like",
     "PASSED_LIKE":        "analysis_upshot",
     "PASSED_LIKE_RETRY":  "analysis_upshot",
@@ -83,12 +91,13 @@ def _entity_state_is_meteorite(state: Optional[str]) -> bool:
 
 
 def _consult_orchestration_for_entity(task_key: str, entity_state: Optional[str] = None) -> Dict[str, Any]:
-    """TASK_CONFIG row, with meteorite pass/fail/error overlay for shared GDL keys."""
-    cfg = dict(_consult_orchestration(task_key))
-    overlay = METEORITE_GDL_OUTCOME_BY_TASK.get((task_key or "").strip())
-    if overlay and _entity_state_is_meteorite(entity_state):
-        cfg.update(overlay)
-    return cfg
+    """TASK_CONFIG orchestration for dispatch/catalog task_key.
+
+    AST-1221: meteorite Do/Get outcomes live on alias TASK_CONFIG entries
+    (meteorite_grade_do / meteorite_grade_get). Entity-state overlay retired.
+    entity_state retained for call-site compatibility; unused.
+    """
+    return dict(_consult_orchestration(task_key))
 
 
 def _render_pass_fail(task_key: str, grades: list, entity_state: Optional[str] = None) -> str:
@@ -124,8 +133,48 @@ def _strip_code(name: str) -> str:
     return _CODE_SUFFIX.sub('', name).strip()
 
 
+def _find_rubric_criterion(rubric_criteria: list, vector_label: str):
+    """Return the criterion dict matching vector by stripped label or code (AST-707 / AST-1193)."""
+    target = _strip_code((vector_label or "").strip())
+    t_upper = target.upper()
+    for item in rubric_criteria or []:
+        if not isinstance(item, dict):
+            continue
+        lab = _strip_code(str(item.get("label") or "").strip())
+        code = str(item.get("code") or "").strip().upper()
+        if lab != target and code != t_upper:
+            continue
+        return item
+    return None
+
+
 def _candidate_id_from_ctx(ctx: Optional[Dict[str, Any]]) -> str:
     return str((ctx or {}).get("astral_candidate_id") or "")
+
+
+def _dispatch_score_floor_for_task(
+    candidate_id: str,
+    task_key: str,
+    trigger_state: Optional[str] = None,
+) -> float:
+    """Resolve effective score_floor from the candidate's matching dispatch_task row."""
+    cid = (candidate_id or "").strip()
+    dispatch_tk = dispatch_row_task_key((task_key or "").strip())
+    if not cid or not dispatch_tk:
+        return effective_dispatch_score_floor(None)
+    ts = (trigger_state or "").strip() or None
+    if ts is not None:
+        rows = tracker.list_dispatch_tasks_for_candidate(cid, trigger_state=ts)
+    else:
+        rows = tracker.list_dispatch_tasks_for_candidate(cid)
+    matched = [r for r in rows if (r.get("task_key") or "").strip() == dispatch_tk]
+    if not matched and ts is not None:
+        rows = tracker.list_dispatch_tasks_for_candidate(cid)
+        matched = [r for r in rows if (r.get("task_key") or "").strip() == dispatch_tk]
+    if not matched:
+        return effective_dispatch_score_floor(None)
+    # First match = newest id (tracker walks list_dispatch_tasks ORDER BY id DESC).
+    return effective_dispatch_score_floor(matched[0].get("score_floor"))
 
 
 def _rubric_criteria_for_cfg(candidate_id: str, cfg: dict) -> list:
@@ -145,33 +194,25 @@ def _vector_labels_map(rubric_criteria: list) -> Dict[str, str]:
 
 def _lookup_rubric_reason_for_grade(rubric_criteria: list, vector_label: str, letter: str) -> str:
     """Rubric line description for this vector + grade letter (AST-351). Raises ValueError if missing."""
-    target = _strip_code((vector_label or "").strip())
+    item = _find_rubric_criterion(rubric_criteria, vector_label)
+    if item is None:
+        raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
     lt = (letter or "").upper()
-    for item in rubric_criteria:
-        if not isinstance(item, dict):
-            continue
-        lab = _strip_code(str(item.get("label") or "").strip())
-        code = str(item.get("code") or "").strip().upper()
-        t_upper = target.upper()
-        if lab != target and code != t_upper:
-            continue
-        gd = item.get("grade_descriptions")
-        if isinstance(gd, list):
-            for row in gd:
-                if str(row.get("grade", "")).upper() == lt:
-                    desc = row.get("description")
-                    if desc is not None and str(desc).strip():
-                        return str(desc).strip()
-        try:
-            rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
-        except ValueError:
-            rows = []
-        for row in rows:
-            if row["grade"].upper() == lt:
-                return row["description"]
-        raise ValueError(f"No rubric description for vector {vector_label!r} grade {letter}")
-    raise ValueError(f"No rubric criterion matching vector {vector_label!r}")
-
+    gd = item.get("grade_descriptions")
+    if isinstance(gd, list):
+        for row in gd:
+            if str(row.get("grade", "")).upper() == lt:
+                desc = row.get("description")
+                if desc is not None and str(desc).strip():
+                    return str(desc).strip()
+    try:
+        rows = rubric_text.parse_trailing_grade_table_lines(item.get("content") or "")
+    except ValueError:
+        rows = []
+    for row in rows:
+        if row["grade"].upper() == lt:
+            return row["description"]
+    raise ValueError(f"No rubric description for vector {vector_label!r} grade {letter}")
 
 def _hydrate_grade_reasons_from_rubric(grades: list, rubric_criteria: list) -> None:
     if not rubric_criteria:
@@ -425,6 +466,52 @@ def _bind_response_jobs_to_claimed(response_jobs: list, claimed_jobs: list) -> N
             rj["astral_job_id"] = claimed_ids[i]
 
 
+def _bind_response_jobs_by_job_link(response_jobs: list, claimed_jobs: list) -> None:
+    """Bind unmatched response rows to claimed jobs by normalized job_link (AST-1133).
+
+    Used when Ruth puts a non-digit wrong value in astral_job_id on multi-job
+    qualify_meteorite batches. Does not overwrite ids already in the claim set.
+    """
+    if not response_jobs or not claimed_jobs:
+        return
+    claimed_ids = [j["astral_job_id"] for j in claimed_jobs if j.get("astral_job_id")]
+    claimed_set = set(claimed_ids)
+    # Unique normalized link → claim id; drop keys that collide across claims.
+    claimed_by_link: Dict[str, str] = {}
+    ambiguous: set = set()
+    for j in claimed_jobs:
+        aid = j.get("astral_job_id")
+        if not aid:
+            continue
+        norm = normalize_link(j.get("job_link") or "")
+        if not norm or norm in ambiguous:
+            continue
+        if norm in claimed_by_link:
+            claimed_by_link.pop(norm, None)
+            ambiguous.add(norm)
+            continue
+        claimed_by_link[norm] = aid
+    assigned = {
+        (rj.get("astral_job_id") or "").strip()
+        for rj in response_jobs
+        if isinstance(rj, dict) and (rj.get("astral_job_id") or "").strip() in claimed_set
+    }
+    for rj in response_jobs:
+        if not isinstance(rj, dict):
+            continue
+        aid = (rj.get("astral_job_id") or "").strip()
+        if aid in claimed_set:
+            continue
+        norm = normalize_link(rj.get("job_link") or "")
+        if not norm:
+            continue
+        target = claimed_by_link.get(norm)
+        if not target or target in assigned:
+            continue
+        rj["astral_job_id"] = target
+        assigned.add(target)
+
+
 def _job_from_rubric_json(obj: dict, task_config: dict, ctx: dict) -> dict:
     rubric = _rubric_criteria_for_cfg(_candidate_id_from_ctx(ctx), task_config)
     grade_rows: List[Dict[str, Any]] = []
@@ -542,28 +629,76 @@ def _effective_no_signal_for_score(g: dict) -> bool:
 
 
 def _importance_for_label(rubric_criteria: list, vector_label: str) -> float:
-    target = _strip_code((vector_label or "").strip())
     default = ASTRAL_CONFIG["consult_importance"]["default_vector_importance"]
-    for item in rubric_criteria:
-        if not isinstance(item, dict):
-            continue
-        lab = _strip_code(str(item.get("label") or "").strip())
-        code = str(item.get("code") or "").strip().upper()
-        t_upper = target.upper()
-        if lab != target and code != t_upper:
-            continue
-        imp = item.get("importance")
-        if imp is None:
-            return importance_multiplier(int(default))
-        return importance_multiplier(int(imp))
-    raise ValueError(f"_render_score: no rubric criterion matching vector {vector_label!r}")
+    item = _find_rubric_criterion(rubric_criteria, vector_label)
+    if item is None:
+        raise ValueError(f"_render_score: no rubric criterion matching vector {vector_label!r}")
+    imp = item.get("importance")
+    if imp is None:
+        return importance_multiplier(int(default))
+    return importance_multiplier(int(imp))
+
+
+class IncompleteGradeSetError(ValueError):
+    """Decoded grades are not an exact match to live rubric labels (AST-1155)."""
+
+
+def _grade_set_vector_diff(
+    rubric_criteria: list,
+    grades: list,
+) -> tuple:
+    """Return (missing_labels, unexpected_labels) using _strip_code on rubric labels vs grade vectors."""
+    expected = {
+        _strip_code(str(item.get("label") or "").strip())
+        for item in (rubric_criteria or [])
+        if item.get("label")
+    }
+    actual = {
+        _strip_code(str(g.get("vector") or "").strip())
+        for g in (grades or [])
+        if isinstance(g, dict) and g.get("vector")
+    }
+    return expected - actual, actual - expected
+
+
+def _require_complete_grade_set(rubric_criteria: list, grades: list) -> None:
+    """Raise IncompleteGradeSetError when grades are not an exact match to live rubric labels."""
+    missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    if missing:
+        raise IncompleteGradeSetError(f"_render_score: missing vectors {sorted(missing)}")
+    if extra:
+        raise IncompleteGradeSetError(f"_render_score: unknown vectors {sorted(extra)}")
+
+
+def _debug_incomplete_grade_set(
+    *,
+    func: str,
+    identifier: str,
+    rubric_criteria: list,
+    grades: list,
+    dest: Optional[str],
+    index: int = 1,
+    total: int = 1,
+) -> None:
+    missing, extra = _grade_set_vector_diff(rubric_criteria, grades)
+    logger.debug_index(
+        func=func,
+        index=index,
+        total=total,
+        identifier=identifier,
+        outcome=f"incomplete grade set -> {dest or '?'}",
+    )
+    logger.debug_detail(
+        f"missing={sorted(missing)} | unexpected={sorted(extra)} | "
+        f"decoded_vectors={sorted(_strip_code(str(g.get('vector') or '')) for g in (grades or []) if isinstance(g, dict))}"
+    )
 
 
 def _render_score(
     consult_cfg: dict,
     rubric_criteria: list,
     grades: list,
-    pass_threshold: float,
+    score_floor: float,
 ) -> Tuple[str, Optional[float]]:
     """Scored grading (AST-358): base × grade density × importance × confidence (AST-357).
     F with confidence 2–5 = instant fail. X / conf-1 / F1 excluded from V. Score normalized 0–10 vs RUBRIC_TOTAL."""
@@ -575,18 +710,7 @@ def _render_score(
     ):
         logger.debug_detail(f"branch=F2_dealbreaker scored_fail grades={grades!r}")
         return (consult_cfg["fail_state"], None)
-    expected = {
-        _strip_code(str(item.get("label") or "").strip())
-        for item in rubric_criteria
-        if item.get("label")
-    }
-    actual = {_strip_code(g["vector"]) for g in grades}
-    missing = expected - actual
-    if missing:
-        raise ValueError(f"_render_score: missing vectors {sorted(missing)}")
-    extra = actual - expected
-    if extra:
-        raise ValueError(f"_render_score: unknown vectors {sorted(extra)}")
+    _require_complete_grade_set(rubric_criteria, grades)
     counted = [g for g in grades if not _effective_no_signal_for_score(g)]
     v = len(counted)
     rubric_score = 0.0
@@ -610,15 +734,15 @@ def _render_score(
             )
     score = (rubric_score / float(RUBRIC_TOTAL)) * 10.0
     logger.debug_detail(
-        f"rubric_score={rubric_score} score={score} threshold={pass_threshold} v={v}"
+        f"rubric_score={rubric_score} score={score} score_floor={score_floor} v={v}"
     )
-    if score < pass_threshold:
+    if score < score_floor:
         logger.debug_detail(
-            f"branch=below_threshold -> fail score={score} threshold={pass_threshold}"
+            f"branch=below_score_floor -> fail score={score} score_floor={score_floor}"
         )
         return (consult_cfg["fail_state"], score)
     logger.debug_detail(
-        f"branch=pass -> {consult_cfg['pass_state']} score={score} threshold={pass_threshold}"
+        f"branch=pass -> {consult_cfg['pass_state']} score={score} score_floor={score_floor}"
     )
     return (consult_cfg["pass_state"], score)
 
@@ -685,24 +809,74 @@ async def _prep_live_content(
     return f"{content}\n\n=== COMPANY CONTEXT ===\n{vibes}" if vibes else content
 
 
-def _format_analysis_phase_text(phase_token: str, job_data: dict, candidate_data: dict) -> str:
-    """Human-readable consult recap for one ANALYSIS_* token (AST-513)."""
-    phase_cfg = (JOB_TOKEN_CONFIG.get("analysis_phases") or {}).get(phase_token)
+def _analysis_phase_rubric_snapshot_key(grades_key: str) -> str:
+    """Job-carried snapshot key for a grades_key (AST-1063 write: ``{save_prefix}_rubric``).
+
+    Couples to ``grades_key == f\"{save_prefix}_grades\"`` — same stem both sides today.
+    """
+    if not isinstance(grades_key, str) or not grades_key.endswith("_grades"):
+        return ""
+    return grades_key[:-7] + "_rubric"
+
+
+def _format_analysis_phase_text(
+    phase_token: str,
+    job_data: dict,
+    candidate_data: dict,
+    *,
+    debug: bool = False,
+    job_id: str = "",
+    phase_index: int = 1,
+    phase_total: int = 1,
+) -> str:
+    """Human-readable consult recap for one ANALYSIS_* token (AST-513 / AST-1193).
+
+    Meteorite-sourced jobs score ANALYSIS_JD against evaluate_meteorite's own rubric, not
+    evaluate_jd's — analysis_phases_meteorite_override supplies the swapped owner/artifact.
+    Live label-or-code first; on miss, job-carried ``*_rubric`` snapshot identity + live content-by-code.
+    """
+    log = get_logger(__name__, debug_flag=debug)
+    phases = dict(JOB_TOKEN_CONFIG.get("analysis_phases") or {})
+    if _entity_state_is_meteorite((job_data or {}).get("state")):
+        phases.update(JOB_TOKEN_CONFIG.get("analysis_phases_meteorite_override") or {})
+    phase_cfg = phases.get(phase_token)
+    live_criteria: list = []
+    snapshot: list = []
+    found = 0
+    recorded = 0
+
+    def _emit_debug(text: str) -> None:
+        if not debug:
+            return
+        log.debug_index(
+            func="_format_analysis_phase_text",
+            index=phase_index,
+            total=phase_total,
+            identifier=f"{job_id}:{phase_token}",
+            outcome="formatted" if text else "empty",
+        )
+        log.debug_detail(
+            f"found_grades={found} recorded_vectors={recorded} "
+            f"live_criteria={len(live_criteria)} snapshot_criteria={len(snapshot)}"
+        )
+
     if not phase_cfg:
+        _emit_debug("")
         return ""
-    grades = job_data.get(phase_cfg.get("grades_key") or "")
+    grades_key = phase_cfg.get("grades_key") or ""
+    grades = job_data.get(grades_key)
     if not isinstance(grades, list) or not grades:
+        _emit_debug("")
         return ""
+    snap_key = _analysis_phase_rubric_snapshot_key(str(grades_key))
+    raw_snap = job_data.get(snap_key) if snap_key else None
+    snapshot = raw_snap if isinstance(raw_snap, list) else []
     owner = phase_cfg.get("rubric_owner_task_key")
     cid = str((candidate_data or {}).get("_astral_candidate_id") or "")
     if owner and cid:
         from src.core.candidate import rubric_criteria_for_task
 
-        rubric_criteria = rubric_criteria_for_task(cid, owner)
-    else:
-        rubric_criteria = []
-    if not rubric_criteria:
-        return ""
+        live_criteria = rubric_criteria_for_task(cid, owner)
     blocks: List[str] = []
     for g in grades:
         if not isinstance(g, dict):
@@ -710,36 +884,47 @@ def _format_analysis_phase_text(phase_token: str, job_data: dict, candidate_data
         vector_label = str(g.get("vector") or "").strip()
         if not vector_label:
             continue
-        criterion = None
-        target = _strip_code(vector_label)
-        for item in rubric_criteria:
-            if not isinstance(item, dict):
-                continue
-            if _strip_code(str(item.get("label") or "").strip()) == target:
-                criterion = item
-                break
-        if criterion is None:
+        found += 1
+        criterion = _find_rubric_criterion(live_criteria, vector_label)
+        title = ""
+        rubric_blob = ""
+        snapshot_hit = False
+        if criterion is not None:
+            title = str(criterion.get("label") or vector_label).strip()
+            rubric_blob = str(criterion.get("content") or "").strip()
+        else:
+            snap_row = _find_rubric_criterion(snapshot, vector_label) if snapshot else None
+            if snap_row is not None:
+                snapshot_hit = True
+                title = str(snap_row.get("label") or vector_label).strip()
+                code = str(snap_row.get("code") or "").strip()
+                live_by_code = _find_rubric_criterion(live_criteria, code) if code else None
+                if live_by_code is not None:
+                    title = str(live_by_code.get("label") or title).strip()
+                    rubric_blob = str(live_by_code.get("content") or "").strip()
+        if criterion is None and not snapshot_hit:
             logger.warning(
                 "_format_analysis_phase_text: no rubric criterion for vector %r (phase=%s)",
                 vector_label,
                 phase_token,
             )
             continue
-        title = str(criterion.get("label") or vector_label).strip()
-        rubric_blob = str(criterion.get("content") or "").strip()
         letter = str(g.get("grade") or "").strip().upper()
         conf = g.get("confidence")
         conf_s = f"{int(conf)}/5" if isinstance(conf, (int, float)) else "0/5"
         blocks.append(
             f"CONSIDER: {title}\n{rubric_blob}\nANALYSIS RESULT: {letter} ({conf_s} confidence)"
         )
-    return "\n\n".join(blocks)
+        recorded += 1
+    text = "\n\n".join(blocks)
+    _emit_debug(text)
+    return text
 
 
 def build_job_token_context(
-    job: Dict[str, Any], candidate_data: dict, *, candidate_id: str = ""
+    job: Dict[str, Any], candidate_data: dict, *, candidate_id: str = "", debug: bool = False
 ) -> Dict[str, str]:
-    """Precomputed job-scoped prompt tokens for artifact single-job calls (AST-513)."""
+    """Precomputed job-scoped prompt tokens for artifact single-job calls (AST-513 / AST-1193)."""
     from src.core.candidate import enabled_resume_structure_sections, resolve_resume_structure
 
     cd = dict(candidate_data or {})
@@ -749,8 +934,13 @@ def build_job_token_context(
     jd_data = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     visible = (jd_data.get("job_description") or "").strip()
     out: Dict[str, str] = {"VISIBLE_JD": visible}
-    for key in ("ANALYSIS_JD", "ANALYSIS_DO", "ANALYSIS_GET", "ANALYSIS_LIKE"):
-        out[key] = _format_analysis_phase_text(key, jd_data, cd)
+    phase_tokens = tuple((JOB_TOKEN_CONFIG.get("analysis_phases") or {}).keys())
+    job_id = str(job.get("astral_job_id") or "")
+    total = len(phase_tokens)
+    for i, key in enumerate(phase_tokens, start=1):
+        out[key] = _format_analysis_phase_text(
+            key, jd_data, cd, debug=debug, job_id=job_id, phase_index=i, phase_total=total
+        )
     structure = resolve_resume_structure(cd)
     catalog_lines: List[str] = []
     sections = (structure.get("sections") or {}) if isinstance(structure.get("sections"), dict) else {}
@@ -919,8 +1109,8 @@ def _apply_render_verdict_decoded_job(
     nt = response_job.get("notes")
     notes_tail = nt.strip() if isinstance(nt, str) and nt.strip() else ""
 
+    job_row = tracker.get_job(astral_job_id) or {}
     if mode == "binary":
-        job_row = tracker.get_job(astral_job_id) or {}
         to_state = _render_pass_fail(
             dispatch_task_key, grades, entity_state=job_row.get("state"),
         )
@@ -932,9 +1122,17 @@ def _apply_render_verdict_decoded_job(
             raise ValueError(f"TASK_CONFIG[{orch_key}] missing rubric_artifact")
         if not rubric_criteria:
             raise ValueError(f"Candidate missing rubric artifact: {rubric_key}")
-        artifacts = (ctx or {}).get("candidate_data", {}).get("artifacts", {})
-        threshold = artifacts.get(f"{rubric_key}_threshold", cfg.get("pass_threshold", 6.0))
-        to_state, score = _render_score(cfg, rubric_criteria, grades, float(threshold))
+        candidate_id = _candidate_id_from_ctx(ctx)
+        if not candidate_id:
+            candidate_id = str(
+                job_row.get("astral_candidate_id") or job_row.get("candidate_id") or ""
+            )
+        floor = _dispatch_score_floor_for_task(
+            candidate_id, dispatch_task_key, (job_row.get("state") or None),
+        )
+        # Exact set match before score math — incompleteness retries via caller (AST-1155).
+        _require_complete_grade_set(rubric_criteria, grades)
+        to_state, score = _render_score(cfg, rubric_criteria, grades, floor)
     else:
         raise ValueError(f"Unknown grading_mode: {mode}")
 
@@ -1061,6 +1259,21 @@ async def render_verdict(task_type: str, astral_job_id: str, ctx: Optional[Dict[
         to_state, score, grades_out = _apply_render_verdict_decoded_job(
             task_type, astral_job_id, row_for_apply, cfg, ctx, debug=debug,
         )
+    except IncompleteGradeSetError as e:
+        # Incomplete/extra → retry holding, never first-touch technical (AST-1155).
+        dest = _consult_batch_fail_dest(job.get("state"), error_state)
+        if debug:
+            grades_dbg = row_for_apply.get("grades") if isinstance(row_for_apply.get("grades"), list) else []
+            _debug_incomplete_grade_set(
+                func="consult.render_verdict",
+                identifier=astral_job_id,
+                rubric_criteria=rubric_criteria,
+                grades=grades_dbg,
+                dest=dest,
+            )
+        if dest:
+            _transition_job_state_for_task(agent_task, [astral_job_id], dest)
+        return {"success": False, "to_state": dest, "error": str(e)}
     except ValueError as e:
         # Config defect (TASK_CONFIG typo) — not a runtime job failure — matches legacy raise contract.
         es = str(e)
@@ -1221,6 +1434,15 @@ async def _run_batch_consult(
         }
 
     _bind_response_jobs_to_claimed(response_jobs, jobs)
+    if task_key == "qualify_meteorite":
+        _bind_response_jobs_by_job_link(response_jobs, jobs)
+        if debug:
+            bound_ids = [
+                (rj.get("astral_job_id") or "").strip()
+                for rj in response_jobs
+                if isinstance(rj, dict)
+            ]
+            logger.debug_detail(f"qualify_meteorite bound astral_job_ids={bound_ids}")
 
     if debug:
         ts = result.get("timesheet", {})
@@ -1272,7 +1494,17 @@ async def _run_batch_consult(
             to_state = process_fn(input_job, response_job, cfg)
         except Exception as e:
             bad_grades.add(aid)
-            if debug:
+            if debug and isinstance(e, IncompleteGradeSetError):
+                _debug_incomplete_grade_set(
+                    func=f"consult._run_batch_consult({task_key})",
+                    identifier=_consult_job_identifier(input_job),
+                    rubric_criteria=rubric_criteria,
+                    grades=response_job.get("grades") or [],
+                    dest=_consult_batch_fail_dest(input_job.get("state"), error_state),
+                    index=job_idx,
+                    total=len(response_jobs),
+                )
+            elif debug:
                 logger.debug_index(
                     func=f"consult._run_batch_consult({task_key})",
                     index=job_idx,
@@ -1400,10 +1632,28 @@ async def qualify_job_listings(
         from src.core.gazer import validate_title_batch
 
         new_jobs = [j for j in jobs if (j.get("state") or "") == "NEW"]
-        tr = await validate_title_batch(batch_id, new_jobs, ctx or {}, debug=debug)
-        title_screen_failed = int(tr.get("failed", 0))
+        meteorite_new = [j for j in new_jobs if is_meteorite_company(j.get("company"))]
+        roster_new = [j for j in new_jobs if not is_meteorite_company(j.get("company"))]
+        # AST-1152: candidate submission is title qualification — never pattern-screen meteorites.
+        meteorite_landing = METEORITE_CONFIG["job_create_state"]
+        if debug and meteorite_new:
+            logger.set_debug_flag(True)
+        for mi, j in enumerate(meteorite_new, start=1):
+            aid = j["astral_job_id"]
+            tracker.transition_job_state([aid], meteorite_landing)
+            if debug:
+                logger.debug_index(
+                    func="consult.qualify_job_listings",
+                    index=mi,
+                    total=len(meteorite_new),
+                    identifier=_consult_job_identifier(j),
+                    outcome=f"re-home meteorite NEW -> {meteorite_landing}",
+                )
+        if roster_new:
+            tr = await validate_title_batch(batch_id, roster_new, ctx or {}, debug=debug)
+            title_screen_failed = int(tr.get("failed", 0))
         for j in jobs:
-            if (j.get("state") or "") == "NEW":
+            if (j.get("state") or "") == "NEW" or is_meteorite_company(j.get("company")):
                 fresh = tracker.get_job(j["astral_job_id"])
                 if fresh:
                     j["state"] = fresh.get("state")
@@ -1452,6 +1702,9 @@ async def qualify_job_listings(
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
         grades = response_job["grades"]
+        # Incomplete/extra sets must raise into bad_grades — do not swallow (AST-1155).
+        if rubric_list:
+            _require_complete_grade_set(rubric_list, grades)
         to_state = _render_pass_fail(task_key, grades)
 
         def _score_from_grades() -> Optional[float]:
@@ -1531,6 +1784,29 @@ async def qualify_job_listings(
     return result
 
 
+def _qualify_meteorite_email_subject(html_body: str) -> str:
+    """Unescaped subject from AST-1049 email-subject wrapper; '' when absent (AST-1197 Style D)."""
+    m = re.search(
+        r'class="email-subject"[^>]*>.*?<h1>(.*?)</h1>',
+        html_body or "",
+        re.I | re.S,
+    )
+    if not m:
+        return ""
+    return html.unescape(m.group(1)).strip()
+
+
+def _qualify_meteorite_title_source(job_title: str, subject: str) -> str:
+    """Style D label: subject vs content vs neither (collapsed whitespace, casefold)."""
+    title_n = " ".join((job_title or "").split())
+    subject_n = " ".join((subject or "").split())
+    if title_n and subject_n and title_n.casefold() == subject_n.casefold():
+        return "subject"
+    if title_n:
+        return "content"
+    return "neither"
+
+
 async def qualify_meteorite(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -1539,7 +1815,7 @@ async def qualify_meteorite(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Meteorite pre-AI enrich (Pattern A). Same claim/process shape as qualify_job_listings;
-    fields output (no grades). AST-1062."""
+    fields output (no grades). AST-1062 / AST-1197."""
     task_key = "qualify_meteorite"
     cfg = _consult_orchestration(task_key)
     jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
@@ -1562,29 +1838,88 @@ async def qualify_meteorite(
 
     def assemble(jobs):
         # 0-based numbered format — astral_job_id excluded from live content (position map in decode/response).
+        # AST-1197: CONTENT label matches qualify_meteorite agent_task (stored email HTML / scraped JD).
         lines = [
             f"{i:03d}: job_link: {j.get('job_link') or ''}\n"
-            f"job_description: {(j.get('job_data') or {}).get(jd_key, '') or ''}"
+            f"CONTENT:\n{(j.get('job_data') or {}).get(jd_key, '') or ''}"
             for i, j in enumerate(jobs)
         ]
         return "METEORITE JOBS:\n" + "\n".join(lines)
 
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
-        company_job_id = (response_job.get("company_job_id") or "").strip()
+        ai_company_job_id = (response_job.get("company_job_id") or "").strip()
         job_title = (response_job.get("job_title") or "").strip()
-        job_link = (response_job.get("job_link") or "").strip()
+        ruth_link = (response_job.get("job_link") or "").strip()
+        input_link = (input_job.get("job_link") or "").strip()
         jd_text = (response_job.get("jd_text") or "").strip()
+        input_jd = ((input_job.get("job_data") or {}).get(jd_key, "") or "")
+        email_prefix = cfg["email_link_prefix"]
+        # Ruth http(s) wins; else Create-time ATS URL; else Ruth email- / other token.
+        if ruth_link.startswith("http"):
+            job_link = ruth_link
+            link_source = "http-AI"
+        elif input_link.startswith("http"):
+            job_link = input_link
+            link_source = "http-input"
+        elif ruth_link.startswith(email_prefix):
+            job_link = ruth_link
+            link_source = "email-synthesized"
+        else:
+            job_link = ruth_link
+            link_source = "neither"
+        company_job_id = _resolve_company_job_id(ai_company_job_id, job_link)
+        if ai_company_job_id:
+            id_source = "AI"
+        elif company_job_id:
+            id_source = "UUID-from-job_link"
+        else:
+            id_source = "neither"
+        subject = _qualify_meteorite_email_subject(input_jd)
+        title_source = _qualify_meteorite_title_source(job_title, subject)
         min_title = int(cfg.get("min_job_title_length", 5))
         min_jd = int(cfg.get("min_jd_chars", 40))
 
+        # Bot/challenge before content fails — lazy gazer classify (shared jd_classifier).
+        from src.core.gazer import _classify_jd
+
+        if _classify_jd(input_jd) == "bot" or (jd_text and _classify_jd(jd_text) == "bot"):
+            to_state = cfg["bot_blocked_state"]
+            if debug:
+                logger.debug_index(
+                    func="consult.qualify_meteorite",
+                    index=1,
+                    total=1,
+                    identifier=_consult_job_identifier(input_job),
+                    outcome=f"bot block -> {to_state}",
+                )
+                logger.debug_detail(
+                    " ".join(
+                        [
+                            "gate=bot_classification",
+                            f"link_source={link_source}",
+                            f"title_source={title_source}",
+                            f"company_job_id={company_job_id!r}",
+                            f"title={job_title!r}",
+                            f"link={job_link!r}",
+                            f"jd_chars={len(jd_text)}",
+                        ]
+                    )
+                )
+            else:
+                logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [bot_classification]")
+            _transition_job_state_for_task(task_key, [aid], to_state)
+            return to_state
+
+        is_email_link = job_link.startswith(email_prefix)
         fail_reason = None
-        if not company_job_id:
+        if not company_job_id and not is_email_link:
             fail_reason = "empty company_job_id"
+        # AST-1152: length/blank content gate only — not roster title-pattern screening.
         elif len(job_title) < min_title:
             fail_reason = f"title too short len={len(job_title)} min={min_title}"
-        elif not job_link.startswith("http"):
-            fail_reason = f"job_link not http: {job_link!r}"
+        elif not job_link.startswith("http") and not is_email_link:
+            fail_reason = f"job_link not http/email: {job_link!r}"
         elif len(jd_text) < min_jd:
             fail_reason = f"jd_text too short len={len(jd_text)} min={min_jd}"
 
@@ -1598,10 +1933,23 @@ async def qualify_meteorite(
                     identifier=_consult_job_identifier(input_job),
                     outcome=f"content fail -> {to_state}",
                 )
-                logger.debug_detail(
-                    f"gate={fail_reason} found company_job_id={company_job_id!r} "
-                    f"title={job_title!r} link={job_link!r} jd_chars={len(jd_text)}"
+                fail_bits = [
+                    f"gate={fail_reason}",
+                    f"found source={id_source}",
+                    f"link_source={link_source}",
+                    f"title_source={title_source}",
+                ]
+                if id_source != "AI":
+                    fail_bits.append(f"fallback_job_link={job_link!r}")
+                fail_bits.extend(
+                    [
+                        f"company_job_id={company_job_id!r}",
+                        f"title={job_title!r}",
+                        f"link={job_link!r}",
+                        f"jd_chars={len(jd_text)}",
+                    ]
                 )
+                logger.debug_detail(" ".join(fail_bits))
             else:
                 logger.info(f"  {input_job.get('job_title') or aid} -> {to_state} [{fail_reason}]")
             _transition_job_state_for_task(task_key, [aid], to_state)
@@ -1631,9 +1979,23 @@ async def qualify_meteorite(
                 identifier=_consult_job_identifier(input_job),
                 outcome=str(to_state),
             )
+            found_bits = [
+                f"found source={id_source}",
+                f"link_source={link_source}",
+                f"title_source={title_source}",
+            ]
+            if id_source == "UUID-from-job_link":
+                found_bits.append(f"fallback_job_link={job_link!r}")
+            found_bits.extend(
+                [
+                    f"company_job_id={company_job_id!r}",
+                    f"title={job_title!r}",
+                    f"link={job_link!r}",
+                    f"jd_chars={len(jd_text)}",
+                ]
+            )
             logger.debug_detail(
-                f"found company_job_id={company_job_id!r} title={job_title!r} "
-                f"link={job_link!r} jd_chars={len(jd_text)} | "
+                f"{' '.join(found_bits)} | "
                 f"recorded company_job_id={recorded.get('company_job_id')!r} "
                 f"title={recorded.get('job_title')!r} link={recorded.get('job_link')!r} "
                 f"jd_chars={rec_jd}"
@@ -1647,6 +2009,18 @@ async def qualify_meteorite(
     )
 
 
+def _resolve_company_job_id(ai_company_job_id: str, job_link: str) -> str:
+    """Prefer non-empty AI company_job_id; else UUID path segment from job_link; else ''."""
+    ai = (ai_company_job_id or "").strip()
+    if ai:
+        return ai
+    link = (job_link or "").strip()
+    if not link:
+        return ""
+    fallback = uuid_path_segment_from_url(link, TRACKER_CONFIG["uuid_path_segment_pattern"])
+    return fallback or ""
+
+
 def _jd_ready_for_evaluate(job: Dict[str, Any], min_chars: int) -> bool:
     jd = ((job.get("job_data") or {}).get("job_description") or "").strip()
     return len(jd) >= min_chars
@@ -1658,13 +2032,17 @@ async def evaluate_jd_batch(
     ctx: Optional[Dict[str, Any]] = None,
     debug: bool = False,
     batch_chunk_index: Optional[int] = None,
+    task_key: str = "evaluate_jd",
 ) -> Dict[str, Any]:
     """Batch JD dealbreaker screen (Pattern A, ast-326). Thin wrapper over _run_batch_consult.
 
     Jobs short on JD are transitioned separately; JD-ready remainder run together in one `_run_batch_consult`
     / one `do_task` when dispatcher ``batch_call_mode=1`` (AST-501). Expects scraped JD in ``job_data``.
+
+    ``task_key`` defaults to "evaluate_jd" (regular gazer-discovered jobs); pass "evaluate_meteorite"
+    for candidate-submitted jobs, which score against their own meteorite_jobdesc_rubric and land on
+    METEORITE_* pass/fail/error states — see evaluate_meteorite_batch.
     """
-    task_key = "evaluate_jd"
     cfg = _consult_orchestration(task_key)
     min_chars = cfg.get("min_jd_chars", 80)
     not_ready_state = cfg.get("not_ready_state", "PASSED_JOBLIST")
@@ -1680,7 +2058,7 @@ async def evaluate_jd_batch(
     if debug:
         logger.set_debug_flag(True)
         logger.debug_detail(
-            f"evaluate_jd batch_id={batch_id} ready={len(ready_jobs)} "
+            f"{task_key} batch_id={batch_id} ready={len(ready_jobs)} "
             f"not_ready={len(not_ready_jobs)} min_chars={min_chars}"
         )
 
@@ -1697,7 +2075,7 @@ async def evaluate_jd_batch(
         _transition_job_state_for_task(task_key, [aid], not_ready_state, score=None)
         if debug:
             logger.debug_index(
-                func="consult.evaluate_jd_batch",
+                func=f"consult.evaluate_jd_batch[{task_key}]",
                 index=ni,
                 total=len(not_ready_jobs),
                 identifier=_consult_job_identifier(job),
@@ -1711,7 +2089,7 @@ async def evaluate_jd_batch(
     if not ready_jobs:
         if debug:
             logger.debug_detail(
-                f"evaluate_jd batch_id={batch_id} all jobs not JD-ready skipped={len(not_ready_jobs)}"
+                f"{task_key} batch_id={batch_id} all jobs not JD-ready skipped={len(not_ready_jobs)}"
             )
         return {
             "success": True,
@@ -1734,8 +2112,10 @@ async def evaluate_jd_batch(
     def process(input_job, response_job, cfg):
         aid = response_job["astral_job_id"]
         grades = response_job["grades"]
+        # Incomplete/extra before pass/fail or score — retries via _run_batch_consult (AST-1155).
+        if rubric_list:
+            _require_complete_grade_set(rubric_list, grades)
         to_state = _render_pass_fail(task_key, grades, entity_state=input_job.get("state"))
-        # Validate grades against rubric vectors; invalid/incomplete payloads retry via _run_batch_consult.
         score = None
         if rubric_list:
             _, score = _render_score(cfg, rubric_list, grades, 0.0)
@@ -1772,6 +2152,24 @@ async def evaluate_jd_batch(
     return result
 
 
+async def evaluate_meteorite_batch(
+    batch_id: str,
+    jobs: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    batch_chunk_index: Optional[int] = None,
+) -> Dict[str, Any]:
+    """Meteorite JD dealbreaker screen — candidate-submitted jobs, own rubric.
+
+    Standalone twin of evaluate_jd_batch (own TASK_CONFIG pass/fail/error states),
+    same pattern as meteorite_like_batch / alias Do/Get.
+    """
+    return await evaluate_jd_batch(
+        batch_id, jobs, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        task_key="evaluate_meteorite",
+    )
+
+
 async def _consult_scored_dispatch_batch_encoded(
     dispatch_task_key: str,
     batch_id: str,
@@ -1781,7 +2179,9 @@ async def _consult_scored_dispatch_batch_encoded(
     batch_chunk_index: Optional[int] = None,
 ) -> Dict[str, Any]:
     """One encoded grade_* Pattern-A call across N sequentially pre-prepped JD rows (AST-503); mirrors evaluate_jd exclusions."""
-    hdr = _GRADE_DISPATCH_TO_HEADER[dispatch_task_key]
+    hdr = _GRADE_DISPATCH_TO_HEADER.get(dispatch_task_key)
+    if hdr is None:
+        hdr = _GRADE_DISPATCH_TO_HEADER[resolve_task_key_for_content(dispatch_task_key)]
     entity_state = jobs[0].get("state") if jobs else None
     cfg_dispatch = _consult_orchestration_for_entity(dispatch_task_key, entity_state)
     agent_tk = cfg_dispatch.get("agent_task") or dispatch_task_key
@@ -1982,12 +2382,17 @@ async def _run_dispatch_chain_job_batch(
                 task_ctx["astral_candidate_id"] = str(co["candidate_id"])
         if "vector_labels" not in task_ctx:
             task_ctx["vector_labels"] = {}
-        result = await do_task(
-            dispatch_task_key,
-            index=aid,
-            ctx=task_ctx,
-            debug=debug,
-        )
+        # AST-1298: release on raise as well as success=False (dispatcher finally is third belt).
+        try:
+            result = await do_task(
+                dispatch_task_key,
+                index=aid,
+                ctx=task_ctx,
+                debug=debug,
+            )
+        except BaseException:
+            tracker.release_job_dispatch_claim(aid)
+            raise
         if not result.get("success"):
             tracker.release_job_dispatch_claim(aid)
             errors += 1
@@ -2102,7 +2507,6 @@ async def run_consult_task(
         from src.utils.config import CANDIDATE_STAGE_DISPATCH, INFLOW_CONFIG
         from src.core.candidate import (
             run_requested_artifacts_dispatch,
-            run_requested_resume_dispatch,
         )
         tk = (dispatch_task_key or "").strip()
         cid = (entities[0].get("astral_candidate_id") or entities[0].get("candidate_id") or "")
@@ -2110,8 +2514,6 @@ async def run_consult_task(
             return await roster.run_inflow_discovery_batch(
                 entities[0], batch_id, ctx, debug,
             )
-        if tk == CANDIDATE_STAGE_DISPATCH["requested_resume"]["task_key"]:
-            return await run_requested_resume_dispatch(cid, debug=debug)
         if tk == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
             return await run_requested_artifacts_dispatch(cid, debug=debug)
         logger.warning(
@@ -2146,7 +2548,17 @@ async def run_consult_task(
         r = await evaluate_jd_batch(
             batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
         )
-    elif task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
+    elif task_key == "evaluate_meteorite":
+        r = await evaluate_meteorite_batch(
+            batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+        )
+    elif (
+        task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like")
+        or (
+            is_task_alias(task_key)
+            and resolve_task_key_for_content(task_key) in ("grade_do", "grade_get")
+        )
+    ):
         if len(entities) == 1:
             aid = entities[0]["astral_job_id"]
             orch = _consult_orchestration_for_entity(task_key, entities[0].get("state"))
@@ -2155,13 +2567,19 @@ async def run_consult_task(
                 passed = 1 if rv.get("to_state") == orch.get("pass_state") else 0
                 return {"total_processed": 1, "total_passed": passed, "total_failed": 1 - passed, "total_errors": 0}
             return {"total_processed": 1, "total_passed": 0, "total_failed": 0, "total_errors": 1}
-        _batch = {
-            "grade_do": grade_do_batch,
-            "grade_get": grade_get_batch,
-            "grade_like": grade_like_batch,
-            "meteorite_like": meteorite_like_batch,
-        }[task_key]
-        r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
+        if task_key in ("grade_do", "grade_get", "grade_like", "meteorite_like"):
+            _batch = {
+                "grade_do": grade_do_batch,
+                "grade_get": grade_get_batch,
+                "grade_like": grade_like_batch,
+                "meteorite_like": meteorite_like_batch,
+            }[task_key]
+            r = await _batch(batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index)
+        else:
+            # Alias Do/Get — same encoded path; dispatch_task_key is the alias identity.
+            r = await _consult_scored_dispatch_batch_encoded(
+                task_key, batch_id, entities, ctx=ctx, debug=debug, batch_chunk_index=batch_chunk_index,
+            )
     elif task_key in ("analysis_upshot", "meteorite_upshot"):
         return await _run_analysis_upshot_batch(batch_id, entities, ctx, debug, task_key=task_key)
     elif is_dispatch_chain_trigger((input_state or "").strip()) and task_key in TASK_CONFIG:

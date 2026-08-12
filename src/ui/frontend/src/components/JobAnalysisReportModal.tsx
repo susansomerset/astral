@@ -18,6 +18,7 @@ import {
   gradesForHeader,
   isArtifactsBuildInProgress,
   jobGradesForField,
+  jobRubricForField,
   printCoverVisible,
   printResumeVisible,
   type ReportPrimaryAction,
@@ -35,6 +36,10 @@ interface JobDetail {
   do_grades?: unknown
   get_grades?: unknown
   like_grades?: unknown
+  jd_rubric?: unknown
+  do_rubric?: unknown
+  get_rubric?: unknown
+  like_rubric?: unknown
 }
 
 interface Props {
@@ -62,13 +67,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     () => candidates.find(c => c.astral_candidate_id === selectedId),
     [candidates, selectedId],
   )
-  const candidateArtifacts = useMemo(
-    () =>
-      ((candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as
-        | Record<string, unknown>
-        | undefined) ?? {},
-    [candidate],
-  )
 
   const load = useCallback(async () => {
     if (!jobId) return
@@ -78,7 +76,15 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setCompanyNotes(null)
     try {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
-      if (!res.ok) throw new Error("Job not found")
+      if (!res.ok) {
+        if (res.status === 404) throw new Error("Job not found")
+        const errBody = (await res.json().catch(() => ({}))) as { error?: string }
+        const msg =
+          typeof errBody.error === "string" && errBody.error.trim()
+            ? errBody.error.trim()
+            : `Load failed (HTTP ${res.status})`
+        throw new Error(msg)
+      }
       const data = (await res.json()) as JobDetail
       setJob(data)
       if (data.company) {
@@ -172,7 +178,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => ({
       section_id: p.tab_id,
       nav_label: p.nav_label,
-      default_expanded: p.tab_id === "phase_jd",
+      default_expanded: false,
     }))
   }, [manifest])
 
@@ -287,9 +293,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (!job || !manifest) return null
     const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
     if (!phase) return null
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
-    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
-    return buildPhaseSectionGradeConfidenceRow(gradesRaw, rubricKey, candidateArtifacts)
+    const jobRec = job as unknown as Record<string, unknown>
+    const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
+    return buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field)
   }
 
   function renderAnalysisSection(sectionId: string): ReactNode {
@@ -299,14 +305,20 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     const parsed = parseAnalysisUpshot(job.job_data?.analysis_upshot)
     const takeRaw = parsed?.[phase.take_key as keyof AnalysisUpshot]
     const takeBody = typeof takeRaw === "string" ? takeRaw.trim() : ""
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const jobRec = job as unknown as Record<string, unknown>
+    const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
     const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
     const grades = gradesForHeader(gradesRaw)
+    const rubricItems = jobRubricForField(jobRec, phase.grades_field)
     return (
       <div>
         {takeBody ? <p className="job-analysis-upshot-body">{takeBody}</p> : null}
         {grades.length > 0 ? (
-          <AgentAnalysisHeader grades={grades} rubricArtifact={rubricKey} />
+          <AgentAnalysisHeader
+            grades={grades}
+            rubricItems={rubricItems}
+            rubricArtifact={rubricKey}
+          />
         ) : (
           <p className="recommended-report-empty">No consult detail on file.</p>
         )}
@@ -357,14 +369,14 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       const cancelActions = artifactActions.filter(a => a.action_key === "cancel_build")
       return (
         <div className="recommended-report-artifacts-actions">
-          <button type="button" className="modal-btn save in-flight" disabled>
+          <button type="button" className="btn primary in-flight" disabled>
             Generating…
           </button>
           {cancelActions.map(action => (
             <button
               key={action.action_key}
               type="button"
-              className="modal-btn save"
+              className="btn secondary"
               disabled={primaryBusy}
               onClick={() => runPrimaryAction(action)}
             >
@@ -383,7 +395,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
         <div className="recommended-report-artifacts-actions">
           <button
             type="button"
-            className={`modal-btn save${primaryBusy ? " in-flight" : ""}`}
+            className={`btn primary${primaryBusy ? " in-flight" : ""}`}
             disabled={primaryBusy}
             onClick={() => runPrimaryAction(generate)}
           >
@@ -457,6 +469,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       onClose={onClose}
       title={job?.company || "Recommended Job Report"}
       size="wide"
+      showFooter={false}
     >
       {loading && <p className="entity-loading">Loading…</p>}
       {error && <p className="entity-error">{error}</p>}
