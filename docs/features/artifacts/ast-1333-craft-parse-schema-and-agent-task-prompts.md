@@ -197,3 +197,10 @@ AC4→S1 (`_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` shared object); AC5→S2 (`craft_
 **In-session (R1–R4, not printed):** Cited statutes/patterns conform (`astral.config.config-source-of-truth`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `pattern.config.config-block`). `astral.agent.do-task-delegation` excluded (no `src/core/**`). Layer/import discipline holds. Sibling boundary vs AST-1332 explicit. Plan Discuss completed rounds: 1 (concern + reply).
 
 context_tokens≈58000
+
+## Review
+
+- **Publish ref:** `sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts`
+- **Tip:** `26806660af85b384aaf7c318111f649cf8e21ab4`
+- **Stages:** Stage 1 shared craft/parse `highlights` schema; Stage 2 `craft_resume_base` / `simple_resume_parse` prompts + AST-756 fixture twin
+
