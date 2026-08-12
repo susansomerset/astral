@@ -72,3 +72,9 @@ AC1–AC4 → Stage 1 (`showFooter` opt-out on `Modal.tsx`; `showFooter={false}`
 No `fix-now` or `discuss` findings.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer` @ `fe131a0f6aac18f51214f7a0d984b132cc7d764e`
+
+Stage 1: `Modal` `showFooter` opt-out (default true); `JobAnalysisReportModal` passes `showFooter={false}`. Header × and Artifacts Cancel unchanged. Tests deferred to Betty.
