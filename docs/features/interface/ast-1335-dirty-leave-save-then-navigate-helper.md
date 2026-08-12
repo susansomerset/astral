@@ -182,3 +182,28 @@ Shared in-app dirty-leave affordance for pages that own unsaved drafts: when dir
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1335
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper` @ `2e6037f73b8cb4bcf018976988dff25f274744b6`
+
+### Traceability
+AC1→S1+S2 (data router + `useBlocker`/`useUserConfirm`, Save=`btn primary` via `variant: "default"`); AC2→S2 (`ok===false` → `blocker.reset()`); AC3→S2 (`onSave` reject → `blocker.reset()`, no `proceed`); AC4→S2 (`isDirty` gate); parent AC6 (in-page tab switches)→S2 (`pathname` change only — sibling AST-1336 wires Profile); parent AC1–5 Profile-visible outcomes→AST-1336 per child boundary; parent AC7→AST-1336 (header Save/Cancel untouched here).
+
+### Findings
+
+#### acceptable — `src/hooks/` vs statute table `src/lib/`
+**Location:** Stage 2 file placement; `astral.ui.frontend-file-placement`
+**Finding:** ASTRAL_CODE_RULES §3.5 table still lists shared hooks under `lib/`, but the live tree already uses `src/hooks/` (`useSectionExpandPolicy`, `useCandidateJobActions`). Plan follows established convention with an explicit decision note.
+**Recommendation:** Proceed as written; optional follow-up to amend the statute/table separately (out of AST-1335 scope).
+
+#### acceptable — no explicit self-assessment block
+**Location:** plan doc overall
+**Finding:** Plan omits a formal self-assessment/conf section, but stages, decisions, execution contract, and estimate confirm line are specific and match complexity.
+**Recommendation:** None required before build.
+
+context_tokens≈38000
