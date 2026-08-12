@@ -252,3 +252,11 @@ AC1 → Stages 2–4 (API derive + `formatPhaseSectionScoreTitle` on JD Analysis
 **Procedural:** Status `Plan Ready` ✓; assignee Joan ✓; no Plan Discuss rounds.
 
 context_tokens≈48000
+
+---
+
+## Review
+
+**Built:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome` @ `1a899283958046206b2e24221e461d5016e3b4a5`
+
+Stages 1–4: `PHASE_SCORE_HEADER_TITLE_TEMPLATE` + manifest; `_flatten_grades` read-time derive via `_phase_score_breakdown`; frontend breakdown lookup + title format; Analysis section headers wired in `JobAnalysisReportModal`. Stage 5 smoke: derive when score+grades+rubric present; stored trio wins; no-score omits key. Tests deferred to Betty.
