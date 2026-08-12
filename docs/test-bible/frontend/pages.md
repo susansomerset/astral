@@ -22,6 +22,24 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
 ```
 
+### AST-1343 · AST-1315 (bug — virgin restore dirty)
+
+**Parent:** AST-1315. **Publish:** `origin/sub/AST-1315/AST-1343-dirty-flag-not-cleared-after-undo-virgin-restore`. Board: `[board-betty] TESTS: REVISE` — nullish nested field touch+clear/Undo misses FormFields null↔`""` coerce.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Virgin empty after touch+clear (§6c) | `CandidateProfile.tsx` `isDirty` | `test_CandidateProfile.test.tsx` — **`AST-1343: nullish nested field touch+clear clears dirty (virgin empty)`** — load `contact.phone: null`, type then clear; expect `isDirty` false (fails pre-fix on raw stringify; passes after compare-time normalize) |
+
+**Broken / obsolete:** none in existing AST-1336 Cancel/exact-string cases (those still pass).
+
+**AST-1343** narrowed Vitest (bug-repro):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  --testNamePattern="AST-1343"
+```
+
 ### AST-436 · AST-442
 
 Parent UAT on **`origin/ftr/AST-436-quickie-bugs`** surfaced gaps when manifests tested components or API defaults only. Use **§6c** for all future UI QA.
