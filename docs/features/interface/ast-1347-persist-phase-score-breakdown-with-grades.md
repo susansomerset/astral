@@ -220,7 +220,7 @@ Confirm Chuckles estimate: 3 — agree
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown` (tip set at Code Complete)
+**Built:** `origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown` @ `1abd0afa8a3c4ed850a2e004271f407f36ee79e1`
 
 Stages 1–4: `PHASE_SCORE_BREAKDOWN_*` in config; `_phase_score_breakdown` + `_render_score` reuse; persist on verdict + `evaluate_jd` score saves; `_flatten_grades` lift. Stage 5 smoke: earned drives 0–10; max > possible with X present; F2 returns no score. Tests deferred to Betty.
 
