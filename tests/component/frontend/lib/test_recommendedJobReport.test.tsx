@@ -86,17 +86,14 @@ describe("recommendedJobReport — AST-565", () => {
 })
 
 describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
-  it("buildPhaseSectionGradeConfidenceRow renders grade dots with ConfidenceBullets", () => {
+  it("buildPhaseSectionGradeConfidenceRow paints from job-carried jd_rubric", () => {
+    const grades = [{ vector: "Job Description (JD)", grade: "A", confidence: 4, reason: "ok" }]
+    const job = {
+      jd_grades: grades,
+      jd_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+    }
     const { container } = render(
-      <>
-        {buildPhaseSectionGradeConfidenceRow(
-          [{ vector: "JD", grade: "A", confidence: 4, reason: "ok" }],
-          "jobdesc_rubric",
-          {
-            jobdesc_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
-          },
-        )}
-      </>,
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
     )
     expect(container.querySelector(".recommended-report-phase-grade-row")).toBeTruthy()
     expect(container.querySelector(".grade-dot.dot-a")).toHaveTextContent("A")
@@ -104,18 +101,39 @@ describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
     expect(container.querySelectorAll(".confidence-bullet--on").length).toBe(4)
   })
 
-  it("buildPhaseSectionGradeConfidenceRow falls back to array order without rubric", () => {
+  it("buildPhaseSectionGradeConfidenceRow falls back to grades-only when jd_rubric absent", () => {
+    const grades = [{ vector: "X", grade: "B", confidence: 2 }]
+    const job = { jd_grades: grades }
     const { container } = render(
-      <>
-        {buildPhaseSectionGradeConfidenceRow(
-          [{ vector: "X", grade: "B", confidence: 2 }],
-          undefined,
-          {},
-        )}
-      </>,
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
     )
     expect(container.querySelector(".grade-dot.dot-b")).toHaveTextContent("B")
     expect(container.querySelectorAll(".confidence-bullet--on").length).toBe(2)
+  })
+
+  // AST-1328 bug-repro: meteorite mismatch — header follows job-carried *_rubric, not live artifact underlap.
+  it("AST-1328: header shows every job-carried vector when live jobdesc_rubric underlaps", () => {
+    const grades = [
+      { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5 },
+      { vector: "Quality Check", grade: "B", confidence: 4 },
+    ]
+    const job = {
+      jd_grades: grades,
+      jd_rubric: [
+        { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+        { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+      ],
+      // Decoy — helper must not read live candidate artifacts (AST-1327).
+      artifacts: {
+        jobdesc_rubric: [{ code: "QC", label: "Quality Check", importance: 5 }],
+      },
+    }
+    const { container } = render(
+      <>{buildPhaseSectionGradeConfidenceRow(grades, job, "jd_grades")}</>,
+    )
+    expect(container.querySelectorAll(".recommended-report-phase-grade-cell").length).toBe(2)
+    expect(container.querySelector(".grade-dot.dot-a")).toBeTruthy()
+    expect(container.querySelector(".grade-dot.dot-b")).toBeTruthy()
   })
 
   it("gradesForHeader normalizes array and object maps", () => {
@@ -126,7 +144,6 @@ describe("recommendedJobReport — AST-950 grade+confidence header row", () => {
     expect(gradesForHeader(null)).toEqual([])
   })
 })
-
 describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
   it("isArtifactsBuildInProgress covers base and hop, not ERROR", () => {
     expect(isArtifactsBuildInProgress("BUILD_ARTIFACTS")).toBe(true)
