@@ -871,3 +871,61 @@ context_tokens≈95000
 — Radia
 
 ---
+
+## Bug: AST-1325 — Structure header row: name | style | Enabled | Job Edit | up/down
+
+### As-is
+AST-1323 put structure controls on each `CollapsiblePanel` header with body text between panels, but the header still does not match the requested single-row shape. Today’s `structure-authoring-header` uses checkbox-then-label (`[X] Enabled`, `[X] Job edit`), allows `flex-wrap` so controls break onto multiple lines, and does not size the name vs style fields like the mock. Optional **Remove** also sits in that same flex group.
+
+### To-be
+Each section header is one horizontal row in this order and labeling:
+
+```
+[SECTION NAME           ] [STYLE    V] Enabled:[X] Job Edit:[ ]  [up][down]
+```
+
+Section body text remains in the panel body between headers (AST-1323). Catalog-driven style `<select>`, required cannot disable/remove, Add section + Save sections unchanged.
+
+### Repro
+1. Open Artifacts → Base Resume Content with a candidate that has structure authoring (catalog + rows).
+2. Look at one collapsible section header.
+3. **Broken:** controls wrap / label order is `[checkbox] Enabled` and `Job edit` (not `Enabled:[checkbox]` / `Job Edit:[checkbox]`), or the row does not read as name | style | Enabled | Job Edit | up/down.
+4. **Fixed:** one row matching the mock above; body still between headers.
+
+### Root cause
+AST-1323 delivered “controls on the header” without locking the **visual contract** Susan specified: label-before-checkbox copy (`Enabled:` / `Job Edit:`), single-line flex (no wrap for the primary controls), and name/style field widths. Partial fix left markup/CSS that still reads as a wrapped control cluster.
+
+### Proposed change
+UI-only in `ArtifactEditor` + `App.css`. No GET/PUT, slug, normalize, catalog, or config changes.
+
+1. In `src/ui/frontend/src/components/ArtifactEditor.tsx`, inside `.structure-authoring-header` for each `structureRow`, render controls **in this order**:
+   1. Section name — `<input className="dep-input structure-authoring-name" type="text">` bound to `structureRow.title` (id unchanged).
+   2. Style — `<select className="dep-input structure-authoring-style">` options from `structureCatalog.body_formats` only (same locked rules as today for contact / `experience`).
+   3. Enabled — label text exactly `Enabled:` then the checkbox (`disabled` when `row.required`). DOM order: text then `<input type="checkbox">` so it reads `Enabled:[X]`.
+   4. Job Edit — label text exactly `Job Edit:` then the checkbox bound to `job_agent_editable`. DOM order: text then checkbox → `Job Edit:[ ]`.
+   5. Up / Down — keep move handlers; button visible labels may stay `Up`/`Down` or use compact glyphs, but they remain the last primary pair in the mock.
+   6. **Remove** — keep for `!row.required` (AST-1306 AC). Place it after Up/Down (not between Job Edit and up/down). Do not drop Remove; it is outside Susan’s ASCII mock but still required for optional extras.
+
+2. In `src/ui/frontend/src/App.css`:
+   - `.structure-authoring-header`: single row — `display: flex; flex-wrap: nowrap; align-items: center; gap: …; min-width: 0`. If the viewport is too narrow, prefer horizontal scroll on the header row over wrapping the primary five controls onto a second line.
+   - `.structure-authoring-name`: flex-grow so the name field is the wide slot (`[SECTION NAME           ]`).
+   - `.structure-authoring-style`: compact width for the style dropdown (`[STYLE    V]`).
+   - Enabled / Job Edit labels: nowrap, muted/normal weight so they sit as `Enabled:[X]` / `Job Edit:[ ]` without blowing the row.
+   - Do not change non-structure `CollapsiblePanel` header rules globally beyond what this row needs (chevron stays left of the label wrap as today).
+
+3. Leave `JobAnalysisReportModal` without authoring props. Leave Add-section / Save sections / content Save split as AST-1323.
+
+⚠️ **Decision:** This bug is **layout/label polish** on the AST-1323 header — not another move of controls off/on the panel. Body-between-headers stays.
+
+⚠️ **Decision:** Literal label strings in TSX are `Enabled:` and `Job Edit:` (Susan’s mock). Format option values still come only from `catalog.body_formats`.
+
+### Blast radius
+- `ArtifactEditor.tsx` structure-authoring header markup + related CSS only.
+- Component/page tests that assert header checkbox label text or order (AST-1323 bug-repro / AST-1306 migrated asserts) may need Betty updates if they lock the old `[X] Enabled` / `Job edit` copy.
+- No API, builder, or structure persist changes.
+
+### What must still hold
+- AST-1323: structure authoring on collapsible headers; section body between headers; types-only `ResumeStructureEditor`.
+- AST-1306: catalog formats only; required rows no Remove / enabled disabled; Add section + Save sections PUT replace; content Save separate.
+- No hardcoded format-name array in TSX; no GET/PUT contract change.
+
