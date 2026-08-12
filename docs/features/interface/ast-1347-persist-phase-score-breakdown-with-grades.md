@@ -258,3 +258,138 @@ AC3 → Stages 2–3 (`_phase_score_breakdown` extract + persist `{prefix}_score
 
 context_tokens≈32000
 ```
+
+
+---
+
+## Radia review
+
+```
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1347
+**Publish ref:** `sub/AST-1346/AST-1347-persist-phase-score-breakdown` @ `4e0bca03`
+**Overall:** DISCUSS
+```
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | Breakdown reuses existing confidence multiplier checks in `_phase_score_breakdown`. |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No `do_task` / delegation signature changes. |
+| `astral.agent.grade-vector-validation` | scoped | conforms | Same `_effective_no_signal_for_score` / `_require_complete_grade_set` gates as `_render_score`. |
+| `astral.batch.batch-id-first` | scoped | conforms | `evaluate_jd_batch` save-path edit only; batch API signatures untouched. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch_id format changes. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process/finally edits. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No agent_response persistence changes. |
+| `astral.config.config-source-of-truth` | scoped | conforms | Suffix + field tuple live in `config.py`; API imports suffix. |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env handling. |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No repo-root artifact dirs. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No committed spike files. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch seed paths. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run-next / chain edits. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Plan doc at `docs/features/interface/ast-1347-…`. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Product `src/` from engineer commit; bible/tests from Betty merge. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer product commit is `src/` only; tests landed via Betty/`merge-tests`. |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Core math only; no external imports added. |
+| `astral.layers.import-direction` | scoped | conforms | `api_jobs` lifts stored keys only; no consult import in UI. |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/` changes. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No hardcoded business state in frontend product code. |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | conforms | Persist beside existing verdict save; orchestration unchanged. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No route/auth changes. |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed table edits. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog conflicts. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No seed boot paths. |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed work. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator seed rows. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage-join seed logic. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `src/data/` changes. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migration changes. |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Per-vector `debug_detail` moved into helper; still gated via existing logger contract. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single `_phase_score_breakdown` shared by render + persist. |
+| `astral.standards.in-scope-only` | scoped | conforms | Product `src/` touches only plan files (config/consult/api_jobs). |
+| `astral.standards.logging-via-utils` | scoped | conforms | Uses module `get_logger` / `debug_detail`; no `print()`. |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Runtime keys are `score_breakdown` / `earned|possible|max`; ticket id only in comments. |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Layer imports unchanged and legal. |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Breakdown keys/fields from config; phase prefix tuple mirrors existing flatten pattern. |
+| `astral.standards.public-then-helpers` | scoped | conforms | Private `_phase_score_breakdown` helper above `_render_score`. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data late-import edits. |
+| `astral.state.core-decides-transitions` | scoped | conforms | `_transition_job_state_for_task` calls unchanged. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No prior-state enforcement edits. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run/daisy-chain edits. |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No `src/ui/frontend/` product changes. |
+| `astral.ui.naming-conventions` | scoped | conforms | Snake_case breakdown keys consistent with `{prefix}_score` / `{prefix}_rubric`. |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server worker config. |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Tip is `merge-tests(AST-1347): origin/tests 981dbead`. |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary on branch. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Sub off parent epic; no dev/main writes. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child on `sub/AST-1346/AST-1347-…`. |
+| `orch.git.merge-on-checkout` | universal | conforms | No checkout/merge violations in diff. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | None observed. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Publish ref is `sub/…`, not agent dev branch. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Reviewed in `astral-AST-1346` worktree. |
+| `orch.git.three-permanent-branches` | universal | conforms | Diff vs `origin/dev` only. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | No product-policy decisions smuggled in code. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–4 match plan; product commit is plan-faithful. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to code diff. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Review at Tests Passed per pipeline. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to implementation. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Tests/bible from Betty + merge-tests. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to code. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada remains assignee; no status flip by Radia. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No hook-ban violations in product paths. |
+
+**Active set count:** 65 scored in-session.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `PHASE_SCORE_BREAKDOWN_*` added beside `RUBRIC_TOTAL`; callers read config. |
+
+## Plan adherence
+
+Stages 1–4 land as specified. Out-of-scope items respected. Estimate **3** still fits. Betty manifest covers helper math, persist/omit gates, config constants, and flatten lift.
+
+## Findings
+
+### discuss — Sibling ticket commits on AST-1347 sub-branch
+
+**Location:** Branch history + diff beyond product commit `1abd0afa`  
+**Finding:** Sub tip includes `test(AST-1341)` and `test(AST-1342)` commits (AST-1314 Print bug lane) plus bible deltas. AST-1347 plan scopes product to consult/config/api_jobs.  
+**Recommendation:** Not a product fix for Ada on this ticket. Chuckles should confirm whether sibling bug-lane test commits stay bundled through `ftr` merge or get split/rebased before parent integration.
+
+### discuss — All-no-signal edge (`n_counted == 0`)
+
+**Location:** `src/core/consult.py` `_phase_score_breakdown` / persist gate  
+**Finding:** Joan flagged: earned=possible=0 with non-zero `max` while `_render_score` may still persist `0.0` score — plan accepts; AST-1348 owns header display when trio is `0/0`.  
+**Recommendation:** No AST-1347 code change; ensure AST-1348 plan explicitly handles this stored shape.
+
+### advisory — Double helper invocation at save time
+
+**Location:** `_render_score` + persist sites  
+**Finding:** `_phase_score_breakdown` runs inside `_render_score` and again when writing breakdown key (plan-allowed).  
+**Recommendation:** Optional micro-optimization only; not required for merge.
+
+### advisory — get/like persist paths not named in tests
+
+**Location:** `tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown`  
+**Finding:** Persist tests cover `do` (verdict apply) and `jd` (evaluate_jd); `get`/`like` share `_apply_render_verdict_decoded_job`.  
+**Recommendation:** Coverage likely sufficient via shared path.
+
+## What's solid
+
+- Clean extraction: one helper, earned drives existing normalization, debug lines preserved.
+- Persist gate mirrors `{prefix}_score` write.
+- API lift uses `PHASE_SCORE_BREAKDOWN_KEY_SUFFIX` — correct import direction.
+- F2 / unscored omit paths tested; X exclusion + max>possible tested.
+
+## Notes
+
+- No fix-now product defects identified; engineer resolve-child not required for product code on this pass.
+- `merge-tests` tip bundles Betty SHA `981dbead` including AST-1347 tests plus pre-existing AST-1341/1342 test commits on the same sub ref.
+
+context_tokens≈52000
+```
