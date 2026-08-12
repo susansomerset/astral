@@ -4,6 +4,7 @@ import TabbedTextArea from "../components/TabbedTextArea"
 import type { TextTab } from "../components/TabbedTextArea"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
+import { useDirtyLeaveSaveThenNavigate } from "../hooks/useDirtyLeaveSaveThenNavigate"
 import api from "../lib/api"
 import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Section } from "../components/FormFields"
@@ -89,15 +90,20 @@ export default function Profile() {
   }, [selectedId])
 
   const data = fetched?.id === selectedId ? fetched.data : null
+  const isDirty =
+    data !== null && JSON.stringify(values) !== JSON.stringify(data)
 
   function set(key: string, value: unknown) {
     setValues(prev => setByPath(prev, key, value))
   }
 
-  function handleSave() {
-    if (!selectedId) return
+  // Shared by header Save and dirty-leave onSave — snapshot clear before resolve.
+  const persistProfile = useCallback((): Promise<void> => {
+    if (!selectedId) {
+      return Promise.reject(new Error("No candidate selected"))
+    }
     setError(null)
-    api(`/api/candidates/${selectedId}/data`, {
+    return api(`/api/candidates/${selectedId}/data`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(values),
@@ -115,14 +121,28 @@ export default function Profile() {
       })
       .catch(e => {
         setError(e.message)
-        setToast(e instanceof ApiError ? errorToastFromApiError(e) : { text: "Save failed", variant: "error" })
+        setToast(
+          e instanceof ApiError
+            ? errorToastFromApiError(e)
+            : { text: "Save failed", variant: "error" },
+        )
+        throw e
       })
+  }, [selectedId, values, refreshCandidate])
+
+  function handleSave() {
+    void persistProfile()
   }
 
   function handleCancel() {
     if (data) setValues({ ...data })
     setError(null)
   }
+
+  useDirtyLeaveSaveThenNavigate({
+    isDirty,
+    onSave: persistProfile,
+  })
 
   const hasBaseResume = Boolean(getByPath(values, "artifacts.base_resume"))
   const sigImg = String(getByPath(values, "contact.cover_letter_signature_image") ?? "")
