@@ -113,3 +113,30 @@ Wire Candidate Profile to the shared dirty-leave helper from AST-1335 so unsaved
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1336
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring` @ `fd57bab1f9ad0eadd90ee101d5eb24f4cfb936bf`
+
+## Traceability
+AC1→S1 (`isDirty` + `useDirtyLeaveSaveThenNavigate`); AC2→S1 (`persistProfile` success clears snapshot then helper `proceed`); AC3→S1 (helper cancel/`blocker.reset` + header Cancel unchanged); AC4→S1 (`persistProfile` rethrow + error/toast, no `proceed`); AC5→S1 (`isDirty` false when `values` matches `fetched.data`); AC6→S1 (AST-1335 pathname-only blocker; no tab guards); AC7→S1 (header Save/Cancel labels, classes, and Cancel revert behavior preserved).
+
+## Findings
+
+### acceptable — `JSON.stringify` dirty check
+**Location:** Stage 1 step 2
+**Finding:** Stringify equality is a blunt instrument, but both trees share `editValuesFromCandidate` / `setByPath` origin; plan documents the rejected alternatives explicitly.
+**Recommendation:** Proceed as written; revisit only if Profile field shapes introduce ordering instability (unlikely on this page).
+
+### acceptable — no explicit self-assessment block
+**Location:** plan doc overall
+**Finding:** Plan omits formal self-assessment/conf prose, but single-stage scope, prerequisite gate, hook-order rule, and `persistProfile` contract are specific and match estimate 2.
+**Recommendation:** None required before build.
+
+context_tokens≈52000
+
+[plan-rubric] PROCEED (Commit: fd57bab1f9ad0eadd90ee101d5eb24f4cfb936bf) Profile wiring faithful
