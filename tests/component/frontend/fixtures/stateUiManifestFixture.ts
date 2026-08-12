@@ -141,6 +141,9 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
         { field: "get_score", label: "GET" },
         { field: "like_score", label: "LIKE" },
       ],
+      // AST-1348 — Analysis section header score title template
+      phase_score_header_title_template:
+        "{phase_label} - score: {earned} out of {possible} possible ({max} max total)",
       primary_actions_by_state: {
         RECOMMENDED: [
           {

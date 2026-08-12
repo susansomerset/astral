@@ -711,3 +711,49 @@ describe("JobAnalysisReportModal — AST-1274 load error honesty", () => {
   })
 })
 
+describe("JobAnalysisReportModal — AST-1348 Analysis score title chrome", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("shows formatted score title when breakdown is present; plain label when absent", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j1348" && !init) {
+        return jsonResponse({
+          astral_job_id: "j1348",
+          job_title: "Analyst",
+          company: "Globex",
+          state: "RECOMMENDED",
+          state_changed_at: "2026-01-03T00:00:00Z",
+          job_link: "https://jobs.example/apply",
+          jd_grades: [
+            { vector: "Job Description (JD)", grade: "A", reason: "Strong match", confidence: 4 },
+          ],
+          jd_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+          jd_score: 8.5,
+          jd_score_breakdown: { earned: 137.4, possible: 150.2, max: 320.9 },
+          // DO: grades present but no breakdown / score → plain label
+          do_grades: [{ vector: "Technical (TE)", grade: "B", reason: "Solid", confidence: 3 }],
+          do_rubric: [{ code: "TE", label: "Technical (TE)", importance: 2 }],
+          job_data: {
+            job_description: "Full JD body text",
+            analysis_upshot: fullUpshot(),
+          },
+        })
+      }
+      if (url === "/api/companies/Globex") {
+        return jsonResponse({ company_website: "https://globex.example" })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j1348" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
+    expect(
+      screen.getByText("JD Analysis - score: 137 out of 150 possible (321 max total)"),
+    ).toBeInTheDocument()
+    expect(screen.getByText("DO Analysis")).toBeInTheDocument()
+    expect(screen.queryByText(/^DO Analysis - score:/)).not.toBeInTheDocument()
+    expect(screen.getByText("GET Analysis")).toBeInTheDocument()
+    expect(screen.getByText("LIKE Analysis")).toBeInTheDocument()
+  })
+})
+

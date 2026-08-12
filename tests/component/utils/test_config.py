@@ -58,6 +58,25 @@ class TestAst1347PhaseScoreBreakdownConfig:
             assert f"{p}_{cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" not in fields
 
 
+class TestAst1348PhaseScoreHeaderTitleConfig:
+    """AST-1348: Analysis header title template on recommended manifest."""
+
+    def test_header_title_template_constant_and_manifest(self) -> None:
+        assert "{phase_label}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        assert "{earned}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        assert "{possible}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        assert "{max}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
+        assert rec["phase_score_header_title_template"] == cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        # Base phase nav labels unchanged
+        assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
+            "JD Analysis",
+            "DO Analysis",
+            "GET Analysis",
+            "LIKE Analysis",
+        ]
+
+
 # Branches: known model; unknown model.
 class TestGetModel:
     def test_returns_model_entry(self) -> None:
