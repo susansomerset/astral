@@ -200,7 +200,6 @@ describe("JobsRecommended", () => {
       expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j-rec-only/skip", { method: "POST" }),
     )
   })
-})
 
   it("AST-1057: prepends Meteorites for meteorite- company jobs; leaves vetted sections intact", async () => {
     const mixed = [
@@ -257,3 +256,138 @@ describe("JobsRecommended", () => {
     expect(screen.getByRole("heading", { name: /Recommended \(2\)/ })).toBeInTheDocument()
   })
 
+  // AST-1331: sortable State column (raw JOB_STATES key) on every Recommended section table.
+  it("AST-1331: State column on every section; Meteorites show distinct raw state keys", async () => {
+    const mixed = [
+      ...sectionedJobs,
+      {
+        astral_job_id: "j-met-rec",
+        job_title: "Meteorite Rec",
+        company: "meteorite-cand-1",
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-04T00:00:00Z",
+        jd_score: 8.0,
+        do_score: 8.0,
+        get_score: 8.0,
+        like_score: 8.0,
+      },
+      {
+        astral_job_id: "j-met-build",
+        job_title: "Meteorite Build",
+        company: "meteorite-cand-1",
+        state: "BUILD_ARTIFACTS",
+        state_changed_at: "2026-01-05T00:00:00Z",
+        jd_score: 7.0,
+        do_score: 7.0,
+        get_score: 7.0,
+        like_score: 7.0,
+      },
+      {
+        astral_job_id: "j-met-ready",
+        job_title: "Meteorite Ready",
+        company: "meteorite-cand-1",
+        state: "CANDIDATE_REVIEW",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        jd_score: 9.0,
+        do_score: 9.0,
+        get_score: 9.0,
+        like_score: 9.0,
+      },
+    ]
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", mixed))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Meteorite Rec")).toBeInTheDocument())
+
+    // One State header per visible section (Meteorites + Recommended + In Progress + Ready).
+    expect(screen.getAllByRole("columnheader", { name: /^State/ }).length).toBe(4)
+
+    const met = screen.getByRole("heading", { name: /Meteorites \(3\)/ }).parentElement!
+    expect(within(met).getByText("RECOMMENDED")).toBeInTheDocument()
+    expect(within(met).getByText("BUILD_ARTIFACTS")).toBeInTheDocument()
+    expect(within(met).getByText("CANDIDATE_REVIEW")).toBeInTheDocument()
+
+    // Non-Meteorite sections also show the stored key (not a label map).
+    const rec = screen.getByRole("heading", { name: /Recommended \(2\)/ }).parentElement!
+    expect(within(rec).getAllByText("RECOMMENDED").length).toBeGreaterThan(0)
+    const prog = screen.getByRole("heading", { name: /In Progress \(1\)/ }).parentElement!
+    expect(within(prog).getByText("BUILD_ARTIFACTS")).toBeInTheDocument()
+    const ready = screen.getByRole("heading", { name: /Ready \(1\)/ }).parentElement!
+    expect(within(ready).getByText("CANDIDATE_REVIEW")).toBeInTheDocument()
+  })
+
+  it("AST-1331: State header sorts Meteorites by raw state asc then desc", async () => {
+    const metJobs = [
+      {
+        astral_job_id: "j-met-rec",
+        job_title: "Meteorite Rec",
+        company: "meteorite-cand-1",
+        state: "RECOMMENDED",
+        state_changed_at: "2026-01-04T00:00:00Z",
+        jd_score: 8.0,
+        do_score: 8.0,
+        get_score: 8.0,
+        like_score: 8.0,
+      },
+      {
+        astral_job_id: "j-met-build",
+        job_title: "Meteorite Build",
+        company: "meteorite-cand-1",
+        state: "BUILD_ARTIFACTS",
+        state_changed_at: "2026-01-05T00:00:00Z",
+        jd_score: 7.0,
+        do_score: 7.0,
+        get_score: 7.0,
+        like_score: 7.0,
+      },
+      {
+        astral_job_id: "j-met-ready",
+        job_title: "Meteorite Ready",
+        company: "meteorite-cand-1",
+        state: "CANDIDATE_REVIEW",
+        state_changed_at: "2026-01-06T00:00:00Z",
+        jd_score: 9.0,
+        do_score: 9.0,
+        get_score: 9.0,
+        like_score: 9.0,
+      },
+    ]
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", metJobs))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Meteorite Rec")).toBeInTheDocument())
+
+    const met = screen.getByRole("heading", { name: /Meteorites \(3\)/ }).parentElement!
+    const stateHeader = within(met).getByRole("columnheader", { name: /^State/ })
+    // First click: col change → asc (localeCompare on state keys).
+    await userEvent.click(stateHeader)
+    const rowsAsc = within(met).getAllByRole("row").slice(1).map(r => r.textContent ?? "")
+    expect(rowsAsc[0]).toContain("BUILD_ARTIFACTS")
+    expect(rowsAsc[1]).toContain("CANDIDATE_REVIEW")
+    expect(rowsAsc[2]).toContain("RECOMMENDED")
+    await userEvent.click(stateHeader)
+    const rowsDesc = within(met).getAllByRole("row").slice(1).map(r => r.textContent ?? "")
+    expect(rowsDesc[0]).toContain("RECOMMENDED")
+    expect(rowsDesc[1]).toContain("CANDIDATE_REVIEW")
+    expect(rowsDesc[2]).toContain("BUILD_ARTIFACTS")
+  })
+
+  it("AST-1331: empty state cell shows em dash", async () => {
+    // Empty state is skipped by unmappedJobStates for vetted sections; Meteorites keep the row.
+    const blank = {
+      astral_job_id: "j-blank-state",
+      job_title: "Blank State Role",
+      company: "meteorite-cand-1",
+      state: "",
+      state_changed_at: "2026-01-02T00:00:00Z",
+      jd_score: 5.0,
+      do_score: 5.0,
+      get_score: 5.0,
+      like_score: 5.0,
+    }
+    installBaseApiMocks(mockedApi, jobsViewHandler("recommended", [blank]))
+    renderWithProviders(<JobsRecommended />)
+    await waitFor(() => expect(screen.getByText("Blank State Role")).toBeInTheDocument())
+    const met = screen.getByRole("heading", { name: /Meteorites \(1\)/ }).parentElement!
+    // Scores are finite; only the State cell is the em dash.
+    expect(within(met).getByText("\u2014")).toBeInTheDocument()
+  })
+})
