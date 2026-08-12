@@ -976,3 +976,33 @@ context_tokens≈85000
 — Radia
 
 ---
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/384aa3b51a34365db9e143e387122623/8fb511d9-bf1b-4e2e-b03f-01b193daf8f2/store.db` |
+| Hedy | engineer | `/home/susan/.cursor/chats/384aa3b51a34365db9e143e387122623/93227902-6efa-4640-84d5-7b156608583c/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/384aa3b51a34365db9e143e387122623/4cd9e6f8-62fc-4982-ba3f-5b3152183635/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ea953b54-e724-42dc-bc5e-9a1196a20699/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/384aa3b51a34365db9e143e387122623/fb4d5589-a26f-48a0-a42e-f908de8ebe28/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1299 (parent) | ftr/AST-1299-support-alternative-resume-sections |
+| AST-1303 | sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids |
+| AST-1304 | sub/AST-1299/AST-1304-builder-emit-by-section-format |
+| AST-1305 | sub/AST-1299/AST-1305-hops-content-blobs-and-legacy-extra-labels |
+| AST-1306 | sub/AST-1299/AST-1306-author-extra-sections-title-and-format |
+| AST-1322 | sub/AST-1299/AST-1322-saving-base-resume-drops-highlights-extra-sections |
+| AST-1323 | sub/AST-1299/AST-1323-structure-editor-collapsible-header-row-body-between |
+| AST-1324 | sub/AST-1299/AST-1324-base-resume-content-must-load-render-existing-artifact-secti |
+| AST-1325 | sub/AST-1299/AST-1325-structure-header-row-name-style-enabled-job-edit-up-down-sup |
+
+**Epic worktree:** `astral-AST-1299/` — one active sub checked out at a time.
