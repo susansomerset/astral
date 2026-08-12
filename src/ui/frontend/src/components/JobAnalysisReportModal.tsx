@@ -18,6 +18,7 @@ import {
   gradesForHeader,
   isArtifactsBuildInProgress,
   jobGradesForField,
+  jobRubricForField,
   printCoverVisible,
   printResumeVisible,
   type ReportPrimaryAction,
@@ -35,6 +36,10 @@ interface JobDetail {
   do_grades?: unknown
   get_grades?: unknown
   like_grades?: unknown
+  jd_rubric?: unknown
+  do_rubric?: unknown
+  get_rubric?: unknown
+  like_rubric?: unknown
 }
 
 interface Props {
@@ -61,13 +66,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
     [candidates, selectedId],
-  )
-  const candidateArtifacts = useMemo(
-    () =>
-      ((candidate?.candidate_data as Record<string, unknown> | undefined)?.artifacts as
-        | Record<string, unknown>
-        | undefined) ?? {},
-    [candidate],
   )
 
   const load = useCallback(async () => {
@@ -180,7 +178,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     return (manifest?.jobs.recommended.report_phase_tabs ?? []).map(p => ({
       section_id: p.tab_id,
       nav_label: p.nav_label,
-      default_expanded: p.tab_id === "phase_jd",
+      default_expanded: false,
     }))
   }, [manifest])
 
@@ -295,9 +293,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     if (!job || !manifest) return null
     const phase = manifest.jobs.recommended.report_phase_tabs?.find(p => p.tab_id === sectionId)
     if (!phase) return null
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
-    const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
-    return buildPhaseSectionGradeConfidenceRow(gradesRaw, rubricKey, candidateArtifacts)
+    const jobRec = job as unknown as Record<string, unknown>
+    const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
+    return buildPhaseSectionGradeConfidenceRow(gradesRaw, jobRec, phase.grades_field)
   }
 
   function renderAnalysisSection(sectionId: string): ReactNode {
@@ -307,14 +305,20 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     const parsed = parseAnalysisUpshot(job.job_data?.analysis_upshot)
     const takeRaw = parsed?.[phase.take_key as keyof AnalysisUpshot]
     const takeBody = typeof takeRaw === "string" ? takeRaw.trim() : ""
-    const gradesRaw = jobGradesForField(job as unknown as Record<string, unknown>, phase.grades_field)
+    const jobRec = job as unknown as Record<string, unknown>
+    const gradesRaw = jobGradesForField(jobRec, phase.grades_field)
     const rubricKey = manifest.jobs.grade_rubric_by_field[phase.grades_field]
     const grades = gradesForHeader(gradesRaw)
+    const rubricItems = jobRubricForField(jobRec, phase.grades_field)
     return (
       <div>
         {takeBody ? <p className="job-analysis-upshot-body">{takeBody}</p> : null}
         {grades.length > 0 ? (
-          <AgentAnalysisHeader grades={grades} rubricArtifact={rubricKey} />
+          <AgentAnalysisHeader
+            grades={grades}
+            rubricItems={rubricItems}
+            rubricArtifact={rubricKey}
+          />
         ) : (
           <p className="recommended-report-empty">No consult detail on file.</p>
         )}
