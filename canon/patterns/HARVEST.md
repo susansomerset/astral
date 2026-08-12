@@ -35,5 +35,6 @@ Supporting harvest packages (also citable):
 | create (AST-1279) | `pattern.dispatch.score-floor` | dispatch | `dispatch/pattern.dispatch.score-floor.md` | AST-1275 / CODE_RULES §2.1 | approved — sole numeric floor; retires pass-threshold statute teaching |
 | create (AST-1300) | `pattern.ui.shared-button-roles` | ui | `ui/pattern.ui.shared-button-roles.md` | AST-1166 catalog | approved — labeled `btn` roles + `in-row` size (AST-1317); CSS in `App.css` |
 | create (AST-1300) | `pattern.ui.icon-control` | ui | `ui/pattern.ui.icon-control.md` | AST-1166 catalog | approved — icon-only compact actions; CSS in `App.css` |
+| create (AST-1335) | `pattern.ui.dirty-leave-save-then-navigate` | ui | `ui/pattern.ui.dirty-leave-save-then-navigate.md` | AST-1315 | proposed — dirty-leave save-then-navigate; Archie approval pending |
 
 Propose→approve lifecycle prose lives in [AUTHORING.md](AUTHORING.md). This ticket exercised it once on `pattern.state.entity-state-transitions` (Stage 2 proposed → Stage 3 approved).

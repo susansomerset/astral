@@ -1202,6 +1202,8 @@ Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug i
 
 **Broken / obsolete this pass:** AST-1303 config required-seven / format-map tuples — now eight required + `highlights: bullet_list`; KNOWN is eleven. AST-1303 `test_extra_requires_closed_format` / highlights-as-extra mint used `highlights` — switched to `publications` (required ids fill format from the map). AST-1306 pending-slug fixture titled "Highlights" — switched to "Publications". AST-1324 hydrate fixture popped required `highlights` (resolve fell back to DEFAULT `bullet_list`) — now hydrates open extra `publications` → `free_prose`.
 
+**Return pass ([qa-handoff]):** Restored AST-1334 test-tree paths from `origin/dev` onto this publish ref (`docs/test-bible/frontend/components.md` § AST-1334; `test_Modal.test.tsx`; `test_JobAnalysisReportModal.test.tsx`) after a bad sync dropped them — AST-1332 bible/tests unchanged.
+
 **Integration:** none — no existing scenario pins required-seven / Highlights optional; do not invent new integration coverage (hop/prompt = AST-1333).
 
 ```bash
