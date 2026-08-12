@@ -1750,12 +1750,32 @@ Structure authoring moves onto each `ArtifactEditor` `CollapsiblePanel` header (
 | --- | --- | --- |
 | Routed page (**§6c**) header-row + body-between | `ArtifactsBaseResumeContent.tsx`, `ArtifactEditor.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1323: structure controls on collapsible header with body between`** (bug-repro); **`AST-1306:`** catalog PUT / no Remove (migrated off deleted flat editor test) |
 
-**Broken / obsolete this pass:** none — flat `ResumeStructureEditor` UI + `test_ResumeStructureEditor.test.tsx` removed; module is types-only.
+**Broken / obsolete this pass:** none — flat `ResumeStructureEditor` UI + `test_ResumeStructureEditor.test.tsx` removed; module is types-only. Header label copy (`Job edit` → `Job Edit:`) locked under **AST-1325**.
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
   -t "AST-1323|AST-1306"
+```
+
+---
+
+### AST-1325 · AST-1299 (bug — structure header row layout)
+
+**Parent:** [AST-1299 — Support alternative resume sections](https://linear.app/astralcareermatch/issue/AST-1299/support-alternative-resume-sections). **Publish:** `origin/sub/AST-1299/AST-1325-structure-header-row-name-style-enabled-job-edit-up-down-sup`.
+
+Single header row: name | style | `Enabled:` | `Job Edit:` | up/down (label-before-checkbox). Body still between headers (AST-1323). UI/CSS only.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) header row contract | `ArtifactEditor.tsx`, `App.css` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1325: header row is name | style | Enabled: | Job Edit: | up/down`** (bug-repro); AST-1323/1306 no longer lock old `Job edit` copy |
+
+**Broken / obsolete this pass:** AST-1323/1306 cases that asserted `Job edit` — rewritten to `.structure-authoring-header` / catalog PUT only.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  -t "AST-1325"
 ```
 
 ---
