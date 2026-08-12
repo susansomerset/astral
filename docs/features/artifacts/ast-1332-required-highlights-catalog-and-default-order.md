@@ -142,3 +142,27 @@ Parent ACs 4–5 (schema + agent_task prompts) are AST-1333. Do not implement th
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1332
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order` @ `17530d63a5a31f94f6a615bbdaeb2c7807437bc4`
+
+## Traceability
+AC1→S1+existing normalize checks; AC2→S1; AC3→S2 (`normalize_resume_structure` coerce on resolve/save); AC4→S1 default `bullet_list` + explicit builder out-of-scope (parent AC4–5 → AST-1333).
+
+## Findings
+
+### acceptable — No explicit Self-assessment line
+- **Location:** `## Estimate` (end of plan)
+- **Finding:** Peer artifacts plans usually include `**Self-assessment:**` scope/conf/risk; this plan only has Estimate confirm.
+- **Recommendation:** Optional hygiene — add `Single-Component / high conf / low risk` before build; not blocking given explicit ⚠️ Decision blocks and two-file footprint.
+
+**In-session (R1–R4, not printed):** 56 statutes considered (18 universal + 38 scoped via `src/**`); 8 excluded (docs/ui/data/scripts paths). Cited statutes/patterns conform: `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.layers.import-direction`, `astral.standards.in-scope-only`, `pattern.config.config-block`, `pattern.layers.import-discipline`. Orchestration universals conform. No `fix-now` / `discuss` statute violations. Plan Discuss round count: 0.
+
+context_tokens≈42000
+
+[plan-rubric] PROCEED (Commit: 17530d63a5a31f94f6a615bbdaeb2c7807437bc4) config coerce highlights order
