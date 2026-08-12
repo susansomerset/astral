@@ -170,5 +170,5 @@ context_tokens≈42000
 ## Review
 
 - **Publish ref:** `sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`
-- **Tip:** `1bf6c7c9f34bd8c89389573c0b154cf35e7bb189`
+- **Tip:** `31c06b674f2cbf0c5ff4b72f88a2d55c5420d124`
 - **Stages:** Stage 1 config catalog + default order; Stage 2 normalize Highlights↔Experience coerce
