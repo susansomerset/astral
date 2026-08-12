@@ -345,3 +345,15 @@ context_tokens≈38000
 
 ```
 [code-rubric] REVIEW (Commit: 5a74865a) AST-1334 merge regression
+
+## Resolution
+
+**2026-08-12** — Ada · resolve-child after Radia FIX-NOW
+
+- **fix-now (AST-1334 regression):** Restored from `origin/dev` (product + feature doc only):
+  - `src/ui/frontend/src/components/Modal.tsx` (`showFooter` prop + conditional footer)
+  - `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` (`showFooter={false}`)
+  - `docs/features/interface/ast-1334-remove-recommended-job-report-modal-footer.md`
+- **AST-1332 product retained:** `src/utils/config.py` + `src/core/candidate.py` (required `highlights` + order coerce) unchanged.
+- **Test-tree still diverges from `origin/dev`:** `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_Modal.test.tsx`, `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — engineer cannot commit those paths; `[qa-handoff]` to Betty to restore AST-1334 coverage from `origin/dev` while keeping AST-1332 bible/tests.
+- **discuss (sync merge gate):** Process question for Chuckles/orchestration — not a product change on this ticket; left unanswered in code.
