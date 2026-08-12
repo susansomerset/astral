@@ -57,7 +57,7 @@ def _three_section_structure() -> dict[str, Any]:
 
 
 def _catalog_structure() -> dict[str, Any]:
-    """Default ten-id catalog (normalize-valid) with the AST-517 custom titles."""
+    """Default known-id catalog (normalize-valid) with the AST-517 custom titles."""
     out = candidate_mod.default_resume_structure()
     out["sections"]["professional_summary"]["title"] = "Custom Summary"
     out["sections"]["experience"]["title"] = "Custom Jobs"
@@ -66,6 +66,7 @@ def _catalog_structure() -> dict[str, Any]:
 
 
 def _required_seven_structure() -> dict[str, Any]:
+    """Required-id-only blob (name kept; membership follows RESUME_STRUCTURE_REQUIRED_SECTION_IDS)."""
     full = candidate_mod.default_resume_structure()
     keep = set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
     full["sections"] = {sid: spec for sid, spec in full["sections"].items() if sid in keep}
@@ -4490,9 +4491,9 @@ class TestAst1287ForceTransition:
         assert save.call_args.kwargs["state_history"][-1]["to_state"] == "INTAKE_INITIATED"
 
 
-# Branches: required-seven gate; extra slug accept/reject; format default/lock/strip.
+# Branches: required-id gate; extra slug accept/reject; format default/lock/strip.
 class TestAst1303ResumeStructureCatalog:
-    """AST-1303: required seven + open extras + closed format on normalize."""
+    """AST-1303: required catalog + open extras + closed format on normalize."""
 
     def test_seven_only_fills_formats_and_strips_contact_format(self) -> None:
         raw = _required_seven_structure()
@@ -4501,18 +4502,13 @@ class TestAst1303ResumeStructureCatalog:
         assert set(out["sections"]) == set(RESUME_STRUCTURE_REQUIRED_SECTION_IDS)
         for sid in RESUME_STRUCTURE_CONTACT_SECTION_IDS:
             assert "format" not in out["sections"][sid]
-        for sid in ("professional_summary", "core_competencies", "experience"):
+        for sid in ("professional_summary", "core_competencies", "highlights", "experience"):
             assert out["sections"][sid]["format"] == RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[sid]
 
     def test_highlights_and_publications_persist_as_bullet_list(self) -> None:
+        # highlights is required (AST-1332); publications remains an open extra.
         raw = _required_seven_structure()
-        raw["sections"]["highlights"] = {
-            "id": "highlights",
-            "title": "Highlights",
-            "enabled": True,
-            "order": 10,
-            "format": "bullet_list",
-        }
+        raw["sections"]["highlights"]["format"] = "bullet_list"
         raw["sections"]["publications"] = {
             "id": "publications",
             "title": "Publications",
@@ -4569,17 +4565,18 @@ class TestAst1303ResumeStructureCatalog:
                 candidate_mod.normalize_resume_structure(raw)
 
     def test_extra_requires_closed_format(self) -> None:
+        # Use publications — highlights is required and fills format from the map (AST-1332).
         raw = _required_seven_structure()
-        raw["sections"]["highlights"] = {
-            "id": "highlights",
-            "title": "Highlights",
+        raw["sections"]["publications"] = {
+            "id": "publications",
+            "title": "Publications",
             "enabled": True,
             "order": 10,
             "job_agent_editable": True,
         }
         with pytest.raises(ValueError, match="requires format"):
             candidate_mod.normalize_resume_structure(raw)
-        raw["sections"]["highlights"]["format"] = "header"
+        raw["sections"]["publications"]["format"] = "header"
         with pytest.raises(ValueError, match="must be one of"):
             candidate_mod.normalize_resume_structure(raw)
 
@@ -4603,6 +4600,51 @@ class TestAst1303ResumeStructureCatalog:
         assert set(RESUME_STRUCTURE_BODY_FORMATS) >= {"bullet_list", "experience_detail"}
 
 
+class TestAst1332RequiredHighlightsNormalize:
+    """AST-1332: omit/disable gates + Highlights↔Experience order coerce on normalize."""
+
+    def test_omitting_highlights_raises_missing_required(self) -> None:
+        raw = _required_seven_structure()
+        del raw["sections"]["highlights"]
+        with pytest.raises(ValueError, match="missing required"):
+            candidate_mod.normalize_resume_structure(raw)
+
+    def test_disabling_highlights_raises(self) -> None:
+        raw = _required_seven_structure()
+        raw["sections"]["highlights"]["enabled"] = False
+        with pytest.raises(ValueError, match="cannot be disabled"):
+            candidate_mod.normalize_resume_structure(raw)
+
+    def test_default_places_highlights_immediately_above_experience(self) -> None:
+        out = candidate_mod.normalize_resume_structure(candidate_mod.default_resume_structure())
+        ordered = [
+            sid
+            for sid, _spec in sorted(
+                out["sections"].items(),
+                key=lambda kv: (kv[1]["order"], kv[0]),
+            )
+        ]
+        assert ordered.index("highlights") == ordered.index("experience") - 1
+
+    def test_coerce_moves_highlights_immediately_above_experience(self) -> None:
+        raw = candidate_mod.default_resume_structure()
+        # Invert adjacency: Highlights after Experience (and after prior_experience).
+        raw["sections"]["highlights"]["order"] = 20
+        raw["sections"]["experience"]["order"] = 7
+        raw["sections"]["prior_experience"]["order"] = 8
+        out = candidate_mod.normalize_resume_structure(raw)
+        ordered = [
+            sid
+            for sid, _spec in sorted(
+                out["sections"].items(),
+                key=lambda kv: (kv[1]["order"], kv[0]),
+            )
+        ]
+        assert ordered.index("highlights") == ordered.index("experience") - 1
+        # Contiguous rewrite 0..n-1 after coerce.
+        assert [out["sections"][sid]["order"] for sid in ordered] == list(range(len(ordered)))
+
+
 # Branches: slug title→id; reserved/empty reject; pending rekey; duplicate after slug.
 class TestAst1306ResumeStructureSavePrep:
     """AST-1306: slug_resume_section_id + prepare_resume_structure_sections_for_save."""
@@ -4616,22 +4658,23 @@ class TestAst1306ResumeStructureSavePrep:
             candidate_mod.slug_resume_section_id("Content")
 
     def test_prepare_rekeys_pending_and_rejects_duplicate_slug(self) -> None:
+        # publications — highlights is already a required id (AST-1332).
         raw = _required_seven_structure()["sections"]
         raw["_pending_0"] = {
             "id": "_pending_0",
-            "title": "Highlights",
+            "title": "Publications",
             "enabled": True,
             "order": 10,
             "format": "bullet_list",
             "job_agent_editable": True,
         }
         out = candidate_mod.prepare_resume_structure_sections_for_save(raw)
-        assert "highlights" in out
-        assert out["highlights"]["id"] == "highlights"
+        assert "publications" in out
+        assert out["publications"]["id"] == "publications"
         assert "_pending_0" not in out
         raw["_pending_1"] = {
             "id": "_pending_1",
-            "title": "Highlights",
+            "title": "Publications",
             "enabled": True,
             "order": 11,
             "format": "bullet_list",

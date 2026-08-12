@@ -4464,9 +4464,10 @@ class TestAst1214DispatchAdminDefaultsWidened:
 
 # Branches: required/historical compose KNOWN; DEFAULT format keys from the map.
 class TestAst1303ResumeStructureCatalog:
-    """AST-1303: RESUME_STRUCTURE_* required seven, closed formats, extra-id rules."""
+    """AST-1303: RESUME_STRUCTURE_* required catalog, closed formats, extra-id rules."""
 
     def test_known_is_required_plus_historical_in_order(self) -> None:
+        # AST-1332: highlights joins required immediately before experience.
         assert cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS == (
             "candidate_name",
             "candidate_title",
@@ -4474,6 +4475,7 @@ class TestAst1303ResumeStructureCatalog:
             "candidate_contact_detail",
             "professional_summary",
             "core_competencies",
+            "highlights",
             "experience",
         )
         assert cfg.RESUME_STRUCTURE_HISTORICAL_OPTIONAL_SECTION_IDS == (
@@ -4498,6 +4500,7 @@ class TestAst1303ResumeStructureCatalog:
         assert cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID == {
             "professional_summary": "free_prose",
             "core_competencies": "word_cloud",
+            "highlights": "bullet_list",
             "experience": "experience_detail",
             "prior_experience": "word_cloud",
             "education_certifications": "indented_bold_single",
@@ -4514,6 +4517,27 @@ class TestAst1303ResumeStructureCatalog:
         for sid, fmt in cfg.RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.items():
             assert sections[sid]["format"] is fmt
         assert set(sections) == set(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS)
+
+
+class TestAst1332RequiredHighlightsCatalog:
+    """AST-1332: highlights required + default order immediately above experience."""
+
+    def test_required_places_highlights_before_experience(self) -> None:
+        req = cfg.RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+        assert "highlights" in req
+        assert req.index("highlights") == req.index("experience") - 1
+
+    def test_default_orders_highlights_immediately_above_experience(self) -> None:
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        assert sections["highlights"]["order"] == 6
+        assert sections["experience"]["order"] == 7
+        assert sections["highlights"]["title"] == "Highlights"
+        assert sections["highlights"]["enabled"] is True
+        assert sections["highlights"]["format"] == "bullet_list"
+        ordered = sorted(sections.values(), key=lambda s: (s["order"], s["id"]))
+        ids = [s["id"] for s in ordered]
+        assert ids.index("highlights") == ids.index("experience") - 1
+        assert len(cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS) == 11
 
 
 class TestAst1306ResumeStructureCatalog:
