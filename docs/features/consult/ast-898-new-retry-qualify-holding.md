@@ -495,3 +495,7 @@ AST-1338 shipped registry/UI without a concurrent test/bible revise; Betty board
 **fix-now:** (none)
 
 **Discuss:** (none)
+
+## docs-acceptance (AST-1339)
+
+Test/bible-only gap — Betty `qa-fix` + `merge-tests` delivered coverage. No product `src/` delta beyond AST-1338 already on ftr. `code(AST-1339)` marks docs-acceptance for merge-child.
