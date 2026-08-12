@@ -22,7 +22,12 @@ from src.core.tracker import (
     start_artifact_build,
     transition_job_state,
 )
-from src.utils.config import IN_REVIEW_STATES, RECOMMENDED_JOB_STATES, SKIPPED_STATES
+from src.utils.config import (
+    IN_REVIEW_STATES,
+    PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
+    RECOMMENDED_JOB_STATES,
+    SKIPPED_STATES,
+)
 from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
@@ -32,12 +37,17 @@ logger = get_logger(__name__)
 def _flatten_grades(job: dict) -> dict:
     """Lift grade dicts, scores, and job-carried rubrics from job_data for list/detail."""
     jd = job.get("job_data") or {}
+    # AST-1347: {prefix}_score_breakdown for Analysis phases
+    breakdown_keys = tuple(
+        f"{p}_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" for p in ("jd", "do", "get", "like")
+    )
     for key in (
         "joblist_grades", "joblist_score", "joblist_rubric",
         "jd_grades", "jd_score", "jd_rubric",
         "get_grades", "get_score", "get_rubric",
         "do_grades", "do_score", "do_rubric",
         "like_grades", "like_score", "like_rubric",
+        *breakdown_keys,
     ):
         if key in jd:
             job[key] = jd[key]

@@ -1048,6 +1048,9 @@ CONFIDENCE_MULTIPLIERS = {1: 0.0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
 GRADE_VALUES = {"A": 7, "B": 6, "C": 3, "D": 0}
 MAX_GRADE_VALUE = max(GRADE_VALUES.values())
 RUBRIC_TOTAL = 3000
+# AST-1347 — job_data phase contribution breakdown beside {prefix}_score
+PHASE_SCORE_BREAKDOWN_KEY_SUFFIX = "score_breakdown"  # → f"{prefix}_score_breakdown"
+PHASE_SCORE_BREAKDOWN_FIELDS = ("earned", "possible", "max")
 def grade_value(letter: str) -> int:
     key = (letter or "").strip().upper()
     if key not in GRADE_VALUES:
