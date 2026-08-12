@@ -207,3 +207,8 @@ AC1→S1+S2 (data router + `useBlocker`/`useUserConfirm`, Save=`btn primary` via
 **Recommendation:** None required before build.
 
 context_tokens≈38000
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper`  
+**Product commits:** `e9123957` (data router), `f8e55aa7` (hook), `d1545f4b` (proposed pattern + README/HARVEST)
