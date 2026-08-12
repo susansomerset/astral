@@ -373,3 +373,19 @@ Config-driven mirror of AST-898 Stage 1; **no** VALID_TITLE intermediate and **n
 - One-retry only: holding has no `retry_state`; second recoverable failure terminals at **METEORITE_ERROR_QUALIFY**.
 - No reopen/re-parent of archived AST-898; Skipped operator Retry maps stay AST-1156's lane.
 - With `debug=True`, fail→dest emissions remain Style D `debug_index` + `|` detail only (§1.5.1).
+
+## Radia review (AST-1338 review-fix)
+
+**Verdict:** CLEAN / PROCEED — Commit `62c6764e`
+
+**fix-now:** (none)
+
+**Discuss:** (none)
+
+**Advisory:**
+1. Module-load assert for `BOT_BLOCKED` priors could also name `METEORITE_NEW_RETRY` (belt-and-suspenders; behavior OK).
+2. Test/bible coverage owned by sibling gap **AST-1339**.
+
+## docs-acceptance (AST-1338)
+
+Test/bible coverage for this fix is owned by sibling gap **AST-1339** (Betty board TESTS: REVISE). Product code on this ref is docs-acceptance for merge-child — no fabricated `test(AST-1338)` noop.
