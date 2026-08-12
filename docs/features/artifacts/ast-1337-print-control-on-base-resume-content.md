@@ -292,3 +292,75 @@ context_tokens≈52000
 ```
 [code-rubric] PROCEED (Commit: 63ba62d5) Print control clean
 ```
+
+## Bug: AST-1342 — Print button placement next to Regenerate
+
+### As-is
+
+Print is rendered in a standalone row above `<ArtifactEditor>` on Base Resume Content (`ArtifactsBaseResumeContent.tsx`), separate from the page’s `dep-header` / `dep-actions` chrome where Generate/Regenerate lives — so it looks orphaned and not of the same control family as the other primary actions.
+
+### To-be
+
+Print sits in the Base Resume Content header action row **next to** the Generate/Regenerate control (same `dep-actions` strip), still `btn secondary`, still validate-then-blob Print behavior from AST-1337.
+
+### Repro
+
+1. Open Artifacts → Base Resume Content with a candidate selected that has saved `artifacts.base_resume` (so the Generate control shows as **Regenerate**).
+2. Observe **Print** above the editor title/header, not beside **Regenerate** in `dep-actions`.
+3. Compare styling/placement to Generate/Regenerate / status chrome in that header.
+
+### Root cause
+
+AST-1337 Stage 1 deliberately kept Print page-local and **rejected** an ArtifactEditor header slot (`⚠️ Decision` — avoid touching every ArtifactEditor consumer). That placement choice is the defect relative to UAT chrome expectations: Regenerate is inside `ArtifactEditor`’s `dep-actions`, so a page-level row above the editor cannot sit “next to” it.
+
+### Proposed change
+
+Placement/styling delta only — do **not** change Print fetch/validate/blob logic, labels (`Print` / `Opening…`), disable rules (`!selectedId || printing`), toast, or error copy.
+
+1. In `src/ui/frontend/src/components/ArtifactEditor.tsx`:
+   - Add optional prop `headerActions?: React.ReactNode` on `ArtifactEditorProps` (import `ReactNode` from `react` if needed).
+   - Destructure it with default `undefined`.
+   - In the existing `dep-actions` div (around the Generate/Regenerate button), render `{headerActions}` **immediately after** the `{canGenerate && (…Generate/Regenerate…)}` block and **before** the Cancel/Save vs status-span branch — so Print sits next to Regenerate when both show, and still appears in the header when Generate is hidden (`canGenerate` false) as long as the editor chrome is up.
+   - Do **not** move Print logic into ArtifactEditor. Do **not** change Generate/Regenerate classes, margins, or confirm modal. Other ArtifactEditor call sites omit `headerActions` → no visual change.
+
+2. In `src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx`:
+   - Remove the standalone Print wrapper div above `<ArtifactEditor>` (the `display: flex` row with the Print button).
+   - Keep `printing` / `printError` / `handlePrint` / Toast on this page.
+   - Pass Print into the editor:
+
+     ```tsx
+     <ArtifactEditor
+       …existing props…
+       headerActions={
+         <button
+           type="button"
+           className="btn secondary"
+           onClick={() => void handlePrint()}
+           disabled={!selectedId || printing}
+           style={{ marginRight: 8 }}
+         >
+           {printing ? "Opening…" : "Print"}
+         </button>
+       }
+     />
+     ```
+
+   - Keep the on-page `{printError && (…)}` block **above** `<ArtifactEditor>` (same styles as today) so failed Print still surfaces without opening a tab — toast unchanged.
+   - Accent bar stays above the editor; do not put Print back in a page-level action row.
+
+3. From `src/ui/frontend`, run `npx tsc -b --noEmit` (and eslint on the two touched files). Fix only breaks from this delta.
+
+⚠️ **Decision:** Optional `headerActions` slot on ArtifactEditor (not a base_resume-only special case inside the editor). Reverses the AST-1337 “no ArtifactEditor slot” decision for placement only; Print behavior stays owned by the page. Rejected: CSS repositioning the orphan row; rejected: hardcoding Print inside ArtifactEditor.
+
+### Blast radius
+
+- `ArtifactEditor` — shared by other artifact pages; opt-in prop defaults off. make-fix must not alter Generate/Save paths.
+- Betty’s AST-1337 §6c cases in `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` query Print by role/name — they should still find the button after the move; if selectors assume a page-level row above the title, fix-board / qa-fix may need a placement assertion update (engineer does not edit `tests/`).
+- Session Resume Paste Open HTML and job Print Resume / Cover Letter — untouched.
+- AST-1337 validate-then-blob contract — unchanged; this bug is chrome only.
+
+### What must still hold
+
+- AST-1337 AC1–5: Print still opens print-ready HTML via auth `GET /candidate/resume/base?candidate_id=…` + validate-then-blob; no blank tab on failure; on-page error + toast; disabled with no candidate; Session/job Print paths unchanged; prints **saved** base resume only (not editor buffer).
+- Print remains `btn secondary` (`pattern.ui.shared-button-roles`).
+- No new emit endpoint; no Admin session HTML; no job id.
