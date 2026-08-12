@@ -609,3 +609,17 @@ Frontend-only consumer of AST-1063 payload on the Recommended report Analysis ta
 - AST-950: horizontal grade+confidence header row; expanded body = phase `take_*` above per-vector rows; four phase sections (JD/DO/GET/LIKE); no Overview.
 - AST-1064 contract: `grade_field.replace("_grades", "_rubric")`; grades-only fallback when snapshot missing — Analysis reuses that consumer pattern, does not invent a third source.
 - Live candidate rubric edits without re-grade must not retitle Analysis header columns for already-graded jobs.
+
+## Radia review (AST-1327 review-fix)
+
+**Verdict:** REVIEW (DISCUSS, no fix-now) — Commit `a4549715`
+
+**fix-now:** (none)
+
+**Discuss:**
+1. Stale AST-950 component tests still call old 3-arg `buildPhaseSectionGradeConfidenceRow` — tracked on sibling gap **AST-1328**; not product fix-now.
+2. Meteorite “show rubric” content may still use `jobdesc_rubric` live key for modal content (headers fixed; content out of header-bug scope).
+
+**Advisory:** `buildJobListRubricColumnsForGroup` top-level-only vs `jobRubricForField` job_data asymmetry — safe with API flatten; optional follow-up. Bible rows for AST-950 still live-artifact wording — AST-1328.
+
+**What’s solid:** Analysis headers consume job-carried `*_rubric` via AST-1064 path; Analysis sections default collapsed; engineer test-tree ban held.
