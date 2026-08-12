@@ -389,3 +389,101 @@ Config-driven mirror of AST-898 Stage 1; **no** VALID_TITLE intermediate and **n
 ## docs-acceptance (AST-1338)
 
 Test/bible coverage for this fix is owned by sibling gap **AST-1339** (Betty board TESTS: REVISE). Product code on this ref is docs-acceptance for merge-child — no fabricated `test(AST-1338)` noop.
+
+---
+
+## Bug: AST-1339 — gap: METEORITE_NEW_RETRY fail-dest/claim tests (AST-1319)
+
+Test/bible gap spun from sibling **AST-1338** `[board-betty] TESTS: REVISE`. Product/config already on `origin/ftr/AST-1319-implement-retry-for-new-meteorite-states` (`code(AST-1338)` @ `62c6764e`). This ticket owns **tests + bible only** — no further product config unless an assert is blocked by a missing registry edge (none expected). Publish ref: `origin/sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests`.
+
+### As-is
+
+- No bible/test coverage for the meteorite twin of AST-898: `METEORITE_NEW` → `METEORITE_NEW_RETRY` fail-dest / claim companions.
+- `TestConsultBatchFailDest` / `TestAst898NewRetryQualifyHolding` cover roster **NEW**/**NEW_RETRY** only — no meteorite rows.
+- `TestAst1053MeteoriteGdlJobStates` still asserts pre-cutover priors/UI (`METEORITE_FAILED_QUALIFY` / `METEORITE_ERROR_QUALIFY` priors == `["METEORITE_NEW"]` only; `METEORITE_QUALIFIED` priors omit **METEORITE_NEW_RETRY**; In Review order/labels omit the holding).
+- `TestAst1195…::test_bot_blocked_registry_and_skipped_ui` equality still expects `BOT_BLOCKED.prior_states == ["PASSED_JOBLIST", "METEORITE_NEW"]` (product now also lists **METEORITE_NEW_RETRY**).
+
+### To-be
+
+Bible + component tests lock AST-1338's contract: claim companion, first-strike fail-dest → **METEORITE_NEW_RETRY**, second-strike → **METEORITE_ERROR_QUALIFY**, AST-1053 priors/UI include the holding, **BOT_BLOCKED** prior equality includes **METEORITE_NEW_RETRY**. Regular **NEW_RETRY** / AST-898 coverage stays green.
+
+### Repro
+
+Against the post–AST-1338 product tree (already on this ftr):
+
+1. `ASTRAL_PYTHON=… ./scripts/testing/run_component_tests.sh tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates tests/component/utils/test_config.py::TestAst1195SchemaNullsBotBlocked::test_bot_blocked_registry_and_skipped_ui -q` → red on prior/UI equality (product ahead of asserts).
+2. No existing node asserts `_consult_batch_fail_dest("METEORITE_NEW", …) == "METEORITE_NEW_RETRY"` or `dispatch_claim_states("METEORITE_NEW","job") == ["METEORITE_NEW","METEORITE_NEW_RETRY"]`.
+
+### Root cause
+
+AST-1338 shipped registry/UI without a concurrent test/bible revise; Betty boarded **TESTS: REVISE** and Chuckles filed this gap. Not a product defect.
+
+### Proposed change
+
+**Scope:** `tests/component/utils/test_config.py`, `tests/component/core/test_consult.py`, `docs/test-bible/utils/config.md`, `docs/test-bible/core/consult.md` only. Do **not** edit `src/` unless an assert proves a missing registry edge (should not happen — AST-1338 already landed).
+
+1. **New config twin class** in `tests/component/utils/test_config.py` (mirror `TestAst898NewRetryQualifyHolding` shape, meteorite names):
+
+   - `dispatch_claim_states("METEORITE_NEW", "job") == ["METEORITE_NEW", "METEORITE_NEW_RETRY"]`
+   - `dispatch_claim_states("METEORITE_NEW_RETRY", "job") == ["METEORITE_NEW_RETRY"]` (retry-only trigger stays singleton)
+   - `JOB_STATES["METEORITE_NEW"]["retry_state"] == "METEORITE_NEW_RETRY"`
+   - `"retry_state" not in JOB_STATES["METEORITE_NEW_RETRY"]`
+   - `IN_REVIEW_STATES` / `JOBS_IN_REVIEW_UI_SECTIONS`: **METEORITE_NEW_RETRY** immediately after **METEORITE_NEW**; label `"Meteorite New (retry)"`
+   - `"METEORITE_NEW_RETRY" not in JOBS_IN_REVIEW_GRADE_FIELD` (fields hop — same as **METEORITE_NEW**)
+
+2. **Extend `TestConsultBatchFailDest`** in `tests/component/core/test_consult.py` (do not fork a parallel helper):
+
+   - `_consult_batch_fail_dest("METEORITE_NEW", TASK_CONFIG["qualify_meteorite"]["error_state"]) == "METEORITE_NEW_RETRY"`
+   - `_consult_batch_fail_dest("METEORITE_NEW_RETRY", same_error) == "METEORITE_ERROR_QUALIFY"` (terminal; no nested retry)
+
+   Optional thin consult twin (only if board wants parity with `TestAst898QualifyNewRetry`): one missing-ID / bad-row path from `state=METEORITE_NEW` lands **METEORITE_NEW_RETRY**, second strike from holding lands **METEORITE_ERROR_QUALIFY**. Prefer extending fail-dest matrix first; full batch twin only if existing Pattern-A qualify_meteorite fixtures make it cheap.
+
+3. **Revise `TestAst1053MeteoriteGdlJobStates`** to match AST-1338 product:
+
+   - `_PASS` tuple: insert `"METEORITE_NEW_RETRY"` after `"METEORITE_NEW"`.
+   - `METEORITE_QUALIFIED["prior_states"]` includes `"METEORITE_NEW_RETRY"` (keep **METEORITE_NEW**, **METEORITE_FAILED_JD**, **METEORITE_ERROR_EVALUATE_JD**).
+   - `METEORITE_FAILED_QUALIFY` / `METEORITE_ERROR_QUALIFY` priors == `["METEORITE_NEW", "METEORITE_NEW_RETRY"]`.
+   - UI order: `review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")`.
+   - Label: `labels["METEORITE_NEW_RETRY"] == "Meteorite New (retry)"`.
+   - Grade field: `"METEORITE_NEW_RETRY" not in JOBS_IN_REVIEW_GRADE_FIELD`.
+
+4. **Revise BOT_BLOCKED prior equality** in `TestAst1195…::test_bot_blocked_registry_and_skipped_ui`:
+
+   ```python
+   assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == [
+       "PASSED_JOBLIST", "METEORITE_NEW", "METEORITE_NEW_RETRY",
+   ]
+   ```
+
+   Keep `TestAst1197QualifyMeteoriteApplyKnobs::test_task_config_email_and_bot_knobs` membership assert (`"METEORITE_NEW" in …`) — still true; optionally also assert **METEORITE_NEW_RETRY** membership there for belt-and-suspenders (Radia advisory on AST-1338).
+
+5. **Bible** — append AST-1339 (or AST-1319 gap) sections:
+
+   - `docs/test-bible/utils/config.md`: registry / claim / UI / BOT_BLOCKED prior equality; point at the new twin class + revised AST-1053 / AST-1195 nodes; cross-link AST-898 section as roster twin.
+   - `docs/test-bible/core/consult.md`: `_consult_batch_fail_dest` meteorite matrix (and optional batch twin if landed); do **not** claim content-gate → retry holding.
+
+6. **Manifest (for qa-fix / Tests Ready handoff)** — at minimum:
+
+   ```bash
+   ./scripts/testing/run_component_tests.sh \
+     tests/component/utils/test_config.py::<new twin class> \
+     tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+     tests/component/utils/test_config.py::TestAst1195SchemaNullsBotBlocked::test_bot_blocked_registry_and_skipped_ui \
+     tests/component/core/test_consult.py::TestConsultBatchFailDest \
+     -q
+   ```
+
+   Plus existing AST-898 nodes to prove "what must still hold" (roster track unchanged).
+
+### Blast radius
+
+- Touches only test-tree + bible paths named above.
+- AST-1053 / AST-1195 historical asserts become the cutover record — mark obsolete lines in bible "Broken / obsolete" prose the same way other supersessions do.
+- Does not reopen AST-898 product; does not edit Skipped Retry maps (AST-1156); does not add `JOBS_IN_REVIEW_GRADE_FIELD` for the holding.
+
+### What must still hold
+
+- AST-1338 product contract (see sibling `## Bug: AST-1338` Proposed change / What must still hold) — tests assert it, do not weaken it.
+- Roster AST-898: `NEW`/`NEW_RETRY`/`VALID_TITLE_RETRY` drain-only behavior and existing `TestAst898*` / `TestConsultBatchFailDest` roster rows stay green.
+- Content-gate / bot paths in `qualify_meteorite.process` still target `fail_state` / `bot_blocked_state`, not the retry holding.
+- `_consult_batch_fail_dest` remains the sole fail→dest helper — tests call it, do not invent a meteorite-only dest map.
