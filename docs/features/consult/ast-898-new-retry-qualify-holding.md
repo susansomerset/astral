@@ -487,3 +487,11 @@ AST-1338 shipped registry/UI without a concurrent test/bible revise; Betty board
 - Roster AST-898: `NEW`/`NEW_RETRY`/`VALID_TITLE_RETRY` drain-only behavior and existing `TestAst898*` / `TestConsultBatchFailDest` roster rows stay green.
 - Content-gate / bot paths in `qualify_meteorite.process` still target `fail_state` / `bot_blocked_state`, not the retry holding.
 - `_consult_batch_fail_dest` remains the sole fail→dest helper — tests call it, do not invent a meteorite-only dest map.
+
+## Radia review (AST-1339 review-fix)
+
+**Verdict:** CLEAN / PROCEED — Commit `8d8876d1`
+
+**fix-now:** (none)
+
+**Discuss:** (none)
