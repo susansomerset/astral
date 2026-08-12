@@ -56,3 +56,21 @@ Display the stored key only. Do not map through section labels, `legacyStateSect
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1331
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1330/AST-1331-recommended-list-state-column` @ `68ff11567decff69ee7a7efc8793637f135e8428`
+
+### Traceability
+
+AC1–AC5 → Stage 1 (`JobsRecommended.tsx`: `sortRecommendedJobs` `state` branch, State header/cell after Company before phase scores, per-section sort via existing `sections.map` loop).
+
+### Findings
+
+(none)
+
+context_tokens≈22000
