@@ -469,6 +469,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
       onClose={onClose}
       title={job?.company || "Recommended Job Report"}
       size="wide"
+      showFooter={false}
     >
       {loading && <p className="entity-loading">Loading…</p>}
       {error && <p className="entity-error">{error}</p>}
