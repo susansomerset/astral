@@ -39,6 +39,22 @@ function readJpegDataUrl(file: File, maxW: number, maxH: number): Promise<string
   })
 }
 
+/** Align edit trees with FormFields display coerce before dirty stringify. */
+function normalizeProfileEditTreeForDirtyCompare(value: unknown): unknown {
+  if (value === null || value === undefined) return ""
+  if (Array.isArray(value)) {
+    return value.map(normalizeProfileEditTreeForDirtyCompare)
+  }
+  if (typeof value === "object") {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      out[k] = normalizeProfileEditTreeForDirtyCompare(v)
+    }
+    return out
+  }
+  return value
+}
+
 export default function Profile() {
   const { selectedId, refresh: refreshCandidate } = useCandidate()
   const [sections, setSections] = useState<Section[] | null>(null)
@@ -91,7 +107,9 @@ export default function Profile() {
 
   const data = fetched?.id === selectedId ? fetched.data : null
   const isDirty =
-    data !== null && JSON.stringify(values) !== JSON.stringify(data)
+    data !== null &&
+    JSON.stringify(normalizeProfileEditTreeForDirtyCompare(values)) !==
+      JSON.stringify(normalizeProfileEditTreeForDirtyCompare(data))
 
   function set(key: string, value: unknown) {
     setValues(prev => setByPath(prev, key, value))
