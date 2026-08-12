@@ -2053,6 +2053,23 @@ def normalize_resume_structure(raw: dict) -> dict:
                 )
             row["format"] = fmt
         out["sections"][sid] = row
+    secs = out["sections"]
+    if "highlights" in secs and "experience" in secs:
+        ordered_ids = [
+            sid
+            for sid, _spec in sorted(
+                secs.items(),
+                key=lambda kv: (
+                    kv[1]["order"] if isinstance(kv[1].get("order"), int) else 0,
+                    kv[0],
+                ),
+            )
+        ]
+        ordered_ids = [sid for sid in ordered_ids if sid != "highlights"]
+        exp_i = ordered_ids.index("experience")
+        ordered_ids.insert(exp_i, "highlights")
+        for i, sid in enumerate(ordered_ids):
+            secs[sid]["order"] = i
     if not out["sections"]:
         raise ValueError("resume_structure must include at least one section")
     return out
