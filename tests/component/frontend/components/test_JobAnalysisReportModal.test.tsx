@@ -3,6 +3,7 @@ import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import JobAnalysisReportModal from "../../../../src/ui/frontend/src/components/JobAnalysisReportModal"
+import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { baseCandidate, installBaseApiMocks, jsonResponse } from "../pages/page-mocks"
 import { renderWithProviders } from "../test-utils"
 
@@ -88,7 +89,8 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.getByText("Raw Job Description")).toBeInTheDocument()
   })
 
-  it("shows Analysis section chrome with JD Analysis expanded by default", async () => {
+  it("shows Analysis section chrome with all phases collapsed by default", async () => {
+    // AST-1327/1328: Analysis collapse-all (was JD-expanded under AST-948).
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)
     await waitForShell()
@@ -97,12 +99,9 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.getByText("DO Analysis")).toBeInTheDocument()
     expect(screen.getByText("GET Analysis")).toBeInTheDocument()
     expect(screen.getByText("LIKE Analysis")).toBeInTheDocument()
-    // JD default expanded → Collapse control present; others start collapsed
-    const collapses = screen.getAllByRole("button", { name: "Collapse section" })
-    expect(collapses.length).toBe(1)
-    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(3)
+    expect(screen.queryAllByRole("button", { name: "Collapse section" }).length).toBe(0)
+    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(4)
   })
-
   it("empty Artifacts tab shows Generate only (no section chrome)", async () => {
     // AST-951 supersedes AST-948 always-on empty section chrome for Artifacts.
     installBaseApiMocks(mockedApi, (url, init) => {
@@ -362,9 +361,13 @@ describe("JobAnalysisReportModal — AST-949 Summary tab sections", () => {
 describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence", () => {
   beforeEach(() => mockedApi.mockReset())
 
+  const jdRubric = [{ code: "JD", label: "Job Description (JD)", importance: 1 }]
+  const doRubric = [{ code: "TE", label: "Technical (TE)", importance: 2 }]
+
   function analysisJobHandler(jobId: string) {
     return (url: string, init?: RequestInit) => {
       if (url === `/api/jobs/${jobId}` && !init) {
+        // Top-level *_rubric / *_grades mirror AST-1063 API flatten (header columns read top-level).
         return jsonResponse({
           astral_job_id: jobId,
           job_title: "Analyst",
@@ -372,15 +375,23 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
           state: "RECOMMENDED",
           state_changed_at: "2026-01-03T00:00:00Z",
           job_link: "https://jobs.example/apply",
+          jd_grades: [
+            { vector: "Job Description (JD)", grade: "A", reason: "Strong match", confidence: 4 },
+          ],
+          jd_rubric: jdRubric,
+          do_grades: [{ vector: "Technical (TE)", grade: "B", reason: "Solid skills", confidence: 3 }],
+          do_rubric: doRubric,
           job_data: {
             job_description: "Full JD body text",
             analysis_upshot: fullUpshot(),
             jd_grades: [
-              { vector: "JD", grade: "A", reason: "Strong match", confidence: 4 },
+              { vector: "Job Description (JD)", grade: "A", reason: "Strong match", confidence: 4 },
             ],
             do_grades: [
-              { vector: "TE", grade: "B", reason: "Solid skills", confidence: 3 },
+              { vector: "Technical (TE)", grade: "B", reason: "Solid skills", confidence: 3 },
             ],
+            jd_rubric: jdRubric,
+            do_rubric: doRubric,
           },
         })
       }
@@ -391,7 +402,7 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
     }
   }
 
-  it("shows JD/DO/GET/LIKE only with JD expanded by default (no Overview)", async () => {
+  it("shows JD/DO/GET/LIKE only with all phases collapsed (no Overview)", async () => {
     installBaseApiMocks(mockedApi, analysisJobHandler("j950"))
     renderWithProviders(<JobAnalysisReportModal jobId="j950" onClose={() => {}} />)
     await waitForShell()
@@ -401,31 +412,34 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
     expect(screen.getByText("GET Analysis")).toBeInTheDocument()
     expect(screen.getByText("LIKE Analysis")).toBeInTheDocument()
     expect(screen.queryByText("Overview")).not.toBeInTheDocument()
-    expect(screen.getAllByRole("button", { name: "Collapse section" }).length).toBe(1)
-    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(3)
+    expect(screen.queryAllByRole("button", { name: "Collapse section" }).length).toBe(0)
+    expect(screen.getAllByRole("button", { name: "Expand section" }).length).toBe(4)
   })
 
-  it("header grade+confidence row visible when JD collapsed; take_* above rubric when expanded", async () => {
+  it("header grade+confidence row visible while collapsed; take_* above rubric when expanded", async () => {
     installBaseApiMocks(mockedApi, analysisJobHandler("j950"))
     renderWithProviders(<JobAnalysisReportModal jobId="j950" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
 
-    // JD expanded: Estelle take above AgentAnalysisHeader
-    expect(await screen.findByText("JD phase thought")).toBeVisible()
-    expect(screen.getByText("Strong match")).toBeVisible()
-    expect(document.querySelector(".recommended-report-phase-grade-row")).toBeTruthy()
-    expect(
-      document.querySelectorAll(".recommended-report-phase-grade-cell .confidence-bullets").length,
-    ).toBeGreaterThan(0)
-
-    // Collapse JD — header metadata (grade+confidence) stays; body take/reason hide
-    await userEvent.click(screen.getByRole("button", { name: "Collapse section" }))
-    expect(screen.getByText("JD phase thought")).not.toBeVisible()
+    // All collapsed: header metadata (grade+confidence) still painted
     expect(document.querySelector(".recommended-report-phase-grade-row")).toBeTruthy()
     expect(
       document.querySelector(".recommended-report-phase-grade-cell .grade-dot.dot-a"),
     ).toBeTruthy()
+    expect(
+      document.querySelectorAll(".recommended-report-phase-grade-cell .confidence-bullets").length,
+    ).toBeGreaterThan(0)
+    expect(screen.queryByText("JD phase thought")).not.toBeVisible()
+
+    // Expand JD — take above AgentAnalysisHeader; collapse again keeps header
+    const expands = screen.getAllByRole("button", { name: "Expand section" })
+    await userEvent.click(expands[0])
+    expect(await screen.findByText("JD phase thought")).toBeVisible()
+    expect(screen.getByText("Strong match")).toBeVisible()
+    await userEvent.click(screen.getByRole("button", { name: "Collapse section" }))
+    expect(screen.getByText("JD phase thought")).not.toBeVisible()
+    expect(document.querySelector(".recommended-report-phase-grade-row")).toBeTruthy()
   })
 
   it("expanded DO shows take_do above consult grades", async () => {
@@ -434,8 +448,8 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
     const expands = screen.getAllByRole("button", { name: "Expand section" })
-    // DO is first collapsed section after JD
-    await userEvent.click(expands[0])
+    // Phase order: JD, DO, GET, LIKE — all start collapsed
+    await userEvent.click(expands[1])
     expect(await screen.findByText("DO phase thought")).toBeVisible()
     expect(screen.getByText("Solid skills")).toBeVisible()
   })
@@ -461,13 +475,78 @@ describe("JobAnalysisReportModal — AST-950 Analysis tab grades and confidence"
     await waitForShell()
     await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
     expect(screen.getByText("JD Analysis")).toBeInTheDocument()
+    const expands = screen.getAllByRole("button", { name: "Expand section" })
+    await userEvent.click(expands[0])
     const jdPanel = document.querySelector(".collapsible-panel.is-expanded") as HTMLElement
     expect(jdPanel).toBeTruthy()
     expect(within(jdPanel).getByText("No consult detail on file.")).toBeVisible()
     expect(document.querySelector(".recommended-report-phase-grade-row")).toBeNull()
   })
-})
 
+  // AST-1328 bug-repro: live gazer artifact underlaps job-carried jd_rubric — header still full.
+  it("AST-1328: Analysis header uses job-carried jd_rubric when live jobdesc_rubric underlaps", async () => {
+    const grades = [
+      { vector: "Embedded/Firmware/Hardware Domain", grade: "A", confidence: 5, reason: "fit" },
+      { vector: "Quality Check", grade: "B", confidence: 4, reason: "ok" },
+    ]
+    const rubric = [
+      { code: "EFW", label: "Embedded/Firmware/Hardware Domain", importance: 1, grade_descriptions: [] },
+      { code: "QC", label: "Quality Check", importance: 5, grade_descriptions: [] },
+    ]
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return jsonResponse({ user_id: "u1", name: "Test User", is_admin: true })
+      }
+      if (url === "/api/candidates") {
+        return jsonResponse([
+          {
+            ...baseCandidate,
+            candidate_data: {
+              ...baseCandidate.candidate_data,
+              artifacts: {
+                ...baseCandidate.candidate_data.artifacts,
+                // Live underlap — pre-AST-1327 header would show only QC
+                jobdesc_rubric: [{ code: "QC", label: "Quality Check", importance: 5 }],
+              },
+            },
+          },
+        ])
+      }
+      if (url === "/api/state_ui_manifest") {
+        return jsonResponse(STATE_UI_MANIFEST_FIXTURE)
+      }
+      if (url === "/api/jobs/j950-meteorite" && !init) {
+        return jsonResponse({
+          astral_job_id: "j950-meteorite",
+          job_title: "Firmware",
+          company: "meteorite-co",
+          state: "RECOMMENDED",
+          state_changed_at: "2026-01-03T00:00:00Z",
+          jd_grades: grades,
+          jd_rubric: rubric,
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            jd_grades: grades,
+            jd_rubric: rubric,
+          },
+        })
+      }
+      if (url === "/api/companies/meteorite-co") {
+        return jsonResponse({ company_website: null })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j950-meteorite" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
+    await waitFor(() =>
+      expect(document.querySelectorAll(".recommended-report-phase-grade-cell").length).toBe(2),
+    )
+    expect(document.querySelector(".grade-dot.dot-a")).toBeTruthy()
+    expect(document.querySelector(".grade-dot.dot-b")).toBeTruthy()
+  })
+})
 describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
   beforeEach(() => mockedApi.mockReset())
 

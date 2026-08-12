@@ -106,11 +106,12 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-950 · AST-858
 
-**AST-950:** `buildPhaseSectionGradeConfidenceRow` + `gradesForHeader` for Analysis section headers / `AgentAnalysisHeader` payloads.
+**AST-950 / AST-1327 / AST-1328:** `buildPhaseSectionGradeConfidenceRow(gradesRaw, job, gradesField)` builds Analysis header columns via `buildJobListRubricColumnsForGroup` / job-carried `*_rubric` (grades-only when snapshot absent) — **not** live `jobdesc_rubric` / `candidateArtifacts`. `gradesForHeader` still normalizes body payloads for `AgentAnalysisHeader`.
 
 | Child | Behavior | Sources | Manifest tests |
 | --- | --- | --- | --- |
-| **AST-950** | Grade+confidence header helper | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+| **AST-950** | Grade+confidence header helper (job-carried arity) | `src/ui/frontend/src/lib/recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-950 grade+confidence header row`** |
+| **AST-1328** | Meteorite mismatch: header cell count follows `jd_rubric` ∩ graded vectors when live gazer artifact underlaps | same | same describe — **`AST-1328: header shows every job-carried vector when live jobdesc_rubric underlaps`** (bug-repro) |
 
 ---
 
