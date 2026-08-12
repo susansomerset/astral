@@ -1186,3 +1186,32 @@ Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug i
   -q
 ```
 
+---
+
+### AST-1332 · AST-1326
+
+**Parent:** [AST-1326 — Make "Highlights" a REQUIRED resume section](https://linear.app/astralcareermatch/issue/AST-1326/make-highlights-a-required-resume-section). **Publish:** `origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`.
+
+`highlights` joins `RESUME_STRUCTURE_REQUIRED_SECTION_IDS` (before `experience`), default format `bullet_list`, DEFAULT order immediately above Experience; `normalize_resume_structure` coerces Highlights↔Experience adjacency on every successful normalize. Does **not** own hop schema / agent_task prompts (**AST-1333**) or builder HTML emit.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Required catalog + default order/format | `src/utils/config.py` | **`TestAst1332RequiredHighlightsCatalog`**; revised **`TestAst1303ResumeStructureCatalog`** (config) |
+| Omit/disable gates + order coerce | `src/core/candidate.py` | **`TestAst1332RequiredHighlightsNormalize`**; revised **`TestAst1303ResumeStructureCatalog`** (candidate), **`TestAst1306ResumeStructureSavePrep`** |
+| Hydrate extra fixture (not required id) | `api_candidate.py` GET | revised **`TestAst1324HydrateResumeStructureFromBaseResumeGet`** (`publications` extra) |
+
+**Broken / obsolete this pass:** AST-1303 config required-seven / format-map tuples — now eight required + `highlights: bullet_list`; KNOWN is eleven. AST-1303 `test_extra_requires_closed_format` / highlights-as-extra mint used `highlights` — switched to `publications` (required ids fill format from the map). AST-1306 pending-slug fixture titled "Highlights" — switched to "Publications". AST-1324 hydrate fixture popped required `highlights` (resolve fell back to DEFAULT `bullet_list`) — now hydrates open extra `publications` → `free_prose`.
+
+**Integration:** none — no existing scenario pins required-seven / Highlights optional; do not invent new integration coverage (hop/prompt = AST-1333).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1332RequiredHighlightsCatalog \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1332RequiredHighlightsNormalize \
+  tests/component/core/test_candidate.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
