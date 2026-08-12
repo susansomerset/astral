@@ -172,3 +172,188 @@ context_tokens≈42000
 - **Publish ref:** `sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`
 - **Tip:** `31c06b674f2cbf0c5ff4b72f88a2d55c5420d124`
 - **Stages:** Stage 1 config catalog + default order; Stage 2 normalize Highlights↔Experience coerce
+
+## Radia review
+
+# Radia review — AST-1332
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1332  
+**Publish ref:** `sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order` @ `5a74865a2ea8e9e1b52e36533943091d5a4c69f6`  
+**Overall:** FIX-NOW
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order` (13 paths; merge-tests tip `5a74865a`)
+
+**Change set (layers):** `src/utils/config.py`, `src/core/candidate.py` (in-scope); Betty `tests/**` + `docs/test-bible/core/candidate.md` (expected); **out-of-scope regression:** `Modal.tsx`, `JobAnalysisReportModal.tsx`, deleted `docs/features/interface/ast-1334-*.md`, removed AST-1334 frontend tests + bible section.
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent/LLM paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `do_task` / delegation |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade-vector paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch/dispatcher |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent-response paths |
+| `astral.config.config-source-of-truth` | scoped | conforms | resume catalog extended in `config.py` only |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact dirs |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next / chain |
+| `astral.docs.features-single-file-per-ticket` | scoped | violates | diff **deletes** `docs/features/interface/ast-1334-*.md` present on `origin/dev` |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty commits tests/bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | product commits `111161d7` / `1bf6c7c9` test-tree-free |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | core/utils only for product |
+| `astral.layers.import-direction` | scoped | conforms | no new cross-layer imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/` changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | ui diff is unintended revert, not new UI logic |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/verdict |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth handlers |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no boot/seed hot path |
+| `astral.seed.define-approved` | scoped | not-applicable | no define/seed flow |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator-row seed |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no data layer |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no backend `debug=` |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | coercion block matches plan; minimal |
+| `astral.standards.in-scope-only` | scoped | violates | plan is `config.py` + `candidate.py`; diff also reverts AST-1334 ui + docs |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no logging added |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `highlights` is domain slug |
+| `astral.standards.no-cross-contamination` | scoped | violates | rolls back shipped AST-1334 Modal/JAR/tests on `origin/dev` |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | catalog tuples/maps in config block |
+| `astral.standards.public-then-helpers` | scoped | conforms | no helper reorder noise |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils→data imports |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job-state enforcement |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run/daisy-chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | unintended ui revert only |
+| `astral.ui.naming-conventions` | scoped | not-applicable | unintended ui revert only |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server/worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | single `merge-tests(AST-1332): origin/tests 1883ec76` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `merge-tests` / `docs` prefixes |
+| `orch.git.flow-direction-inviolable` | universal | conforms | child on `sub/AST-1326/...`; tests via `origin/tests` |
+| `orch.git.ftr-sub-topology` | universal | conforms | correct `sub/<parent>/<slug>` publish ref |
+| `orch.git.merge-on-checkout` | universal | needs-discussion | `d63d0338 sync(publish-ref)` merge kept pre-AST-1334 `Modal.tsx` over `864bb872 sync(dev)` |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no cherry-pick/rebase signals |
+| `orch.git.no-dev-agent-branches` | universal | conforms | no agent-named publish branches |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1326 epic worktree pattern |
+| `orch.git.three-permanent-branches` | universal | conforms | sub + tests merge; no fourth permanent branch |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | plan ⚠️ decisions documented |
+| `orch.pipeline.plan-is-bible` | universal | violates | AST-1332 stages delivered; diff also undoes AST-1334 work not in this plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | pipeline placement correct |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a to diff content |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test + bible on Betty SHA, merged once |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Ada (engineer) |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | engineer still assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no hook-evasion observed |
+
+**Sweep count:** 64 active statutes scored (per `canon/statutes/README.md` harvested corpus; registry notes 65 — no extra leaf opened for this diff).
+
+**Straggler (C4):** Joan plan-rubric APPROVED attached; no Excluded-statute list — no straggler callout.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `highlights` catalog/default in `RESUME_STRUCTURE_*` blocks per plan |
+| `pattern.layers.import-discipline` | conforms | no new cross-layer imports in product diff |
+
+Joan cited both; no other pattern ids in plan.
+
+---
+
+## Plan adherence
+
+**AST-1332 in-scope product (conforms):**
+
+- Stage 1: `RESUME_STRUCTURE_REQUIRED_SECTION_IDS` gains `highlights` before `experience`; `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["highlights"] = "bullet_list"`; DEFAULT `sections` entry with orders 6/7/8/9/10 renumber — matches plan verbatim.
+- Stage 2: `normalize_resume_structure` coercion block matches plan algorithm literally (remove `highlights` from sorted list, insert at `experience` index, rewrite `0..n-1`).
+- Boundaries respected: no `builder.py`, hop schema, agent_task, `DATA_SHAPES`, or `resolve_resume_structure` edits.
+- Estimate **3** matches real footprint for intended scope.
+- Betty coverage: `TestAst1332RequiredHighlightsCatalog`, `TestAst1332RequiredHighlightsNormalize`, sensible AST-1303/1306/1324 fixture pivots (`publications` as open extra now that `highlights` is required).
+
+**Out-of-plan diff (fix-now):** `origin/dev` @ `5267c986` already ships AST-1334 (`fe131a0f` — `Modal` `showFooter`, `JobAnalysisReportModal` `showFooter={false}`, issue doc, frontend tests, bible). This branch **removes** that work:
+
+| Path | vs `origin/dev` |
+|------|-----------------|
+| `src/ui/frontend/src/components/Modal.tsx` | drops `showFooter` prop + conditional footer |
+| `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` | drops `showFooter={false}` |
+| `docs/features/interface/ast-1334-*.md` | **deleted** |
+| `docs/test-bible/frontend/components.md` | AST-1334 section removed |
+| `tests/component/frontend/components/test_Modal.test.tsx` | AST-1334 case removed |
+| `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` | AST-1334 describe block removed |
+
+**Root cause:** `d63d0338 sync(publish-ref)` merged pre-AST-1334 sub tip (`baa485fa`) with `864bb872 sync(dev)`; conflict resolution kept the older `Modal.tsx` (no `showFooter`). `864bb872` had the correct dev tree (3 `showFooter` hits); tip `5a74865a` has 0.
+
+**C6 lenses (§5a–§5g):** No import/layer/logging/debug/external/batch concerns on the **intended** AST-1332 product paths. UI regression is cross-ticket contamination, not new layer violations.
+
+---
+
+## Findings
+
+### fix-now — AST-1334 regression smuggled into publish ref
+
+- **Location:** `d63d0338` merge → `Modal.tsx`, `JobAnalysisReportModal.tsx`, `docs/features/interface/ast-1334-remove-recommended-job-report-modal-footer.md`, `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_Modal.test.tsx`, `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx`
+- **Finding:** Three-dot diff vs `origin/dev` **reverts** AST-1334 (already on dev, parent AST-1329). AST-1332 plan explicitly scopes only `config.py` + `candidate.py`; sibling AST-1334 is unrelated.
+- **Recommendation (resolve-child):** Re-merge `origin/dev` into publish ref; for conflicted ui/docs/test paths, **keep dev (AST-1334)** while retaining AST-1332 `config.py` / `candidate.py` / AST-1332 tests + bible. Re-run manifest green. Verify `Modal.tsx` still has `showFooter` and `JobAnalysisReportModal` still passes `showFooter={false}`.
+
+### discuss — `sync(publish-ref)` merge resolution
+
+- **Location:** `d63d0338 sync(publish-ref): origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`
+- **Finding:** Merge of `864bb872 sync(dev)` with `baa485fa` (sub tip branched before AST-1334 landed) took the wrong side for frontend files already on dev.
+- **Question for downstream:** Should `sync(publish-ref)` after `sync(dev)` be gated on a quick `git diff origin/dev -- src/ui/...` smoke check when dev has landed sibling tickets since sub fork?
+
+---
+
+## What's solid
+
+- AST-1332 config catalog and default order match Joan-approved plan exactly.
+- Coercion algorithm in `normalize_resume_structure` is plan-literal and correctly gated on both ids present.
+- Engineer product commits are test-tree-clean; Betty delivered one `merge-tests` SHA.
+- AST-1332 test/bible coverage is well-scoped; fixture migrations from `highlights`-as-extra → `publications` are correct.
+
+---
+
+## Frame diff
+
+**Drift:** Diff includes full AST-1334 rollback (ui + docs + tests) not present in AST-1332 plan frame. Intended frame (`config.py` + `candidate.py` + Betty tests) is otherwise aligned. Merge `origin/dev` and restore AST-1334 artifacts before User Testing.
+
+---
+
+## Notes
+
+- Joan verdict present; no plan exclusions to reconcile.
+- **Do not advance to User Testing** until AST-1334 regression is cleared — shipping this tip would undo a dev-landed sibling on ftr rollup.
+- Downstream: Chuckles → **Review Posted** after doc writeback; datt → **resolve-child** (REVIEW path).
+
+context_tokens≈38000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 5a74865a) AST-1334 merge regression
+
+## Resolution
+
+**2026-08-12** — Ada · resolve-child after Radia FIX-NOW
+
+- **fix-now (AST-1334 regression):** Restored from `origin/dev` (product + feature doc only):
+  - `src/ui/frontend/src/components/Modal.tsx` (`showFooter` prop + conditional footer)
+  - `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` (`showFooter={false}`)
+  - `docs/features/interface/ast-1334-remove-recommended-job-report-modal-footer.md`
+- **AST-1332 product retained:** `src/utils/config.py` + `src/core/candidate.py` (required `highlights` + order coerce) unchanged.
+- **Test-tree still diverges from `origin/dev`:** `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_Modal.test.tsx`, `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — engineer cannot commit those paths; `[qa-handoff]` to Betty to restore AST-1334 coverage from `origin/dev` while keeping AST-1332 bible/tests.
+- **discuss (sync merge gate):** Process question for Chuckles/orchestration — not a product change on this ticket; left unanswered in code.
