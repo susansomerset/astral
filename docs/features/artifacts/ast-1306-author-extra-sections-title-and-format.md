@@ -705,3 +705,82 @@ context_tokens≈105000
 
 **2026-08-12** — Radia **REVIEW** fix-now cleared. Betty dropped obsolete `tests/component/frontend/components/test_ResumeStructureEditor.test.tsx` and migrated catalog asserts into the page suite (`e5b5710a` / `merge-tests` `42d006f8`). Module remains types-only; product tip `963af116` / `21986a9e` unchanged. §9a next → User Testing.
 
+## Bug: AST-1324 — base_resume_content must load/render existing artifact sections (default prose)
+
+### As-is
+On `/artifacts/base_resume_content`, collapsible section tabs and structure chrome come only from `GET /api/candidates/<id>/resume_structure` → `resolve_resume_structure` (reads `artifacts.resume_structure`, else the default seven/ten). `ArtifactEditor` then loads `candidate_data.artifacts.base_resume` but `mapFixedFieldsFromRaw` only fills tabs for those structure ids. Section keys that already exist on `base_resume` (e.g. operator-applied Highlights and the intended set) but are missing from `resume_structure` never appear. Body sections present in structure with no `format` surface in the UI as `catalog.new_extra_default_format` (`bullet_list`), not prose.
+
+### To-be
+Opening Base Resume Content loads and renders freely from what is already in `candidate_data.artifacts.base_resume`: every usable content section key on that artifact gets a collapsible panel with its stored body. When a section’s format/style is missing, the load path defaults it to `free_prose` (Susan: “prose”). This is a **load/render** fix — not a change to the content Save contract from AST-1322.
+
+### Repro
+1. Select a candidate whose `candidate_data.artifacts.base_resume` is an id-keyed dict that already includes the intended sections (at least `professional_summary` plus an extra such as `highlights` with nonempty string body), while `artifacts.resume_structure.sections` either omits that extra or lists it with `format` absent/null.
+2. Open Artifacts → Base Resume Content (do not Save first).
+3. **Broken:** the extra’s body is not shown as its own panel (or format does not read as prose when missing). **Fixed:** every content key present on that `base_resume` appears with its body; missing format shows/selects `free_prose`.
+
+Fixture shape (illustrative — file/JSON candidate_data, not a DB row):
+
+```json
+{
+  "artifacts": {
+    "base_resume": {
+      "professional_summary": "Existing summary",
+      "highlights": "Line A\nLine B",
+      "experience": [{"title": "Role", "company": "Co", "dates": "", "location": "", "accomplishments": ""}]
+    },
+    "resume_structure": {
+      "sections": {
+        "professional_summary": {
+          "id": "professional_summary",
+          "title": "Professional Summary",
+          "enabled": true,
+          "order": 4,
+          "job_agent_editable": true,
+          "format": "free_prose"
+        }
+      }
+    }
+  }
+}
+```
+
+(Required contact/header + experience rows may be completed by normalize/default on read; the point of the fixture is **extra content on `base_resume` that structure does not yet declare**.)
+
+### Root cause
+Read path never unions `artifacts.base_resume` keys into the structure served to the page. PUT already runs `ingest_legacy_label_content_base_resume` (which can append missing ids), but GET/`resolve_resume_structure` does not. The content page therefore cannot render an artificially applied (or otherwise present) `base_resume` until structure catches up. Separately, missing format falls through to `RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT` / `bullet_list` in the authoring select, which is not Susan’s load default of prose (`free_prose`).
+
+### Proposed change
+Scope: hydrate on the **read** path used by Base Resume Content. Do not change AST-1322 PUT title-key ingest, AST-1306 Save-sections replace semantics, or AST-1323 header layout.
+
+1. In `src/core/candidate.py`, add a read-only helper (name may vary; behavior fixed), e.g. `hydrate_resume_structure_from_base_resume(resolved: dict, base_resume: Any) -> dict`:
+   - Deep-copy `resolved` (already normalized / defaulted).
+   - If `base_resume` is a dict, for each key `k` that is a usable content section id (`_is_resume_content_section_id(k)` / same eligibility as the id-keyed branch of `ingest_legacy_label_content_base_resume` — skip `accent_color` and `RESUME_STRUCTURE_RESERVED_EXTRA_IDS`):
+     - If `k` is not already in `sections`, append an enabled row: `id=k`, `title=k.replace("_", " ").title()`, `job_agent_editable=True`, next `order`, and `format` = `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID[k]` when known, else **`free_prose`** (do **not** use `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` / `bullet_list` here).
+     - If `k` is already in `sections` and the row is a body section (not contact, not `experience`) and `format` is missing or not in `RESUME_STRUCTURE_BODY_FORMATS`, set `format` to `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID.get(k, "free_prose")`.
+   - If `base_resume` is a `{label, content}` list, reuse the same title→id / append rules as ingest’s list branch for **structure rows only** (still default new/missing format to `free_prose` for this hydrate), without requiring a PUT.
+   - Return the hydrated structure. **Do not write** candidate_data in this helper.
+
+2. In `src/ui/api/api_candidate.py` `get_candidate_resume_structure`: after `resolve_resume_structure(cd)`, call the hydrate helper with `artifacts.base_resume`, then build `sections` / `all_sections` / catalog from the **hydrated** structure (same response shape as today).
+
+3. Confirm `ArtifactsBaseResumeContent` + `ArtifactEditor` need no layout change once GET returns hydrated enabled sections: existing `structureSections` → `fixedFields` → `mapFixedFieldsFromRaw(artifacts.base_resume)` must show each hydrated id’s body. Only touch the frontend if a gap remains after (2) (e.g. tabs still keyed solely to a stale subset) — prefer fixing hydrate over a second client-side union.
+
+4. Config: do **not** change `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` or `RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT` (stay `bullet_list` for Add-section / list-ingest). Load/missing-format default for this bug is **`free_prose`** inside the hydrate helper (literal allowed only as the value already present in `RESUME_STRUCTURE_BODY_FORMATS` / summary default — prefer reading from `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"]` or a small named constant if one exists; do not invent a parallel format list in React).
+
+⚠️ **Decision:** Hydrate is read-time for GET `/resume_structure` (page load/render). Persisting the merged structure remains the operator’s **Save sections** (or a later PUT that runs ingest). Content Save must not be required to “discover” sections that are already on `base_resume`.
+
+⚠️ **Decision:** “Prose” means catalog format `free_prose`, not a new style string and not `bullet_list`.
+
+### Blast radius
+- `GET /api/candidates/<id>/resume_structure` callers: Base Resume Content, `JobAnalysisReportModal` structure fetch, any other consumer of enabled `sections` / `all_sections`.
+- `resolve_resume_structure` itself stays as today unless make-fix inlines hydrate there — prefer GET-only call so builder/token paths are unchanged until structure is saved (print HTML still follows persisted structure).
+- PUT ingest / `filter_base_resume_to_structure` / AST-1322 title-keyed save — untouched.
+- Frontend AST-1323 header authoring — unchanged except it receives more/complete rows from GET.
+
+### What must still hold
+- AST-1306: catalog-driven formats; required rows not removable; Save sections still PUT-replaces `resume_structure.sections`; content Save separate from structure Save.
+- AST-1323: structure controls remain on collapsible headers with body between; types-only `ResumeStructureEditor`.
+- AST-1322: title-keyed `base_resume` on PUT still ingests into id-keyed content + structure.
+- AST-1305: list ingest / new-extra default remains `bullet_list`; leftover prose Experience rules unchanged.
+- Required seven section ids still present after normalize; hydrate must not drop them.
+- No new format names; no React-owned format allowlist.
+
