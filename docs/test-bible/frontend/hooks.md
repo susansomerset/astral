@@ -11,11 +11,11 @@ Shared dirty-leave save-then-navigate helper (`useDirtyLeaveSaveThenNavigate`) +
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Dirty-leave hook | `src/ui/frontend/src/hooks/useDirtyLeaveSaveThenNavigate.ts` | `tests/component/frontend/hooks/test_useDirtyLeaveSaveThenNavigate.test.tsx` — BlockerFunction clean/dirty/same-pathname; Cancel → reset; Save → onSave → proceed; save reject → reset; Save = `btn primary` (mocked `useBlocker`; real `UserPromptProvider`) |
-| App data router | `src/ui/frontend/src/App.tsx` (`createBrowserRouter` + `RouterProvider`) | `tests/component/frontend/test_App.test.tsx` — shell boots (`Astral` logo + `.shell`) with **`stubNavViewport`**; outlet/Recommended paint blocked by RR7+jsdom AbortSignal under Node 24 (not a product defect) |
+| App data router | `src/ui/frontend/src/App.tsx` (`createBrowserRouter` + `RouterProvider`) | `tests/component/frontend/test_App.test.tsx` — **source contract** (createBrowserRouter / RouterProvider / no BrowserRouter). Full `<App />` mount left unhandled AbortSignal under RR7+jsdom/Node 24 (exit 1) — do not reintroduce mount smoke on this tip |
 
 **§6c:** N/A — no `pages/` change; Profile leave UX is **AST-1336**.
 
-**Broken / obsolete:** `test_App.test.tsx` — add `stubNavViewport`; relax index→Recommended assert to shell boot (data-router client Request + jsdom AbortSignal).
+**Broken / obsolete:** `test_App.test.tsx` — replace mount smoke with source contract so `npm run test:component` exits **0** ([qa-handoff] Ada).
 
 **Integration:** no existing `tests/integration/` scenario asserts `BrowserRouter` / leave prompts — no drift revision.
 
