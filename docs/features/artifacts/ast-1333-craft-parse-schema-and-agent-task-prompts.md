@@ -173,3 +173,27 @@ AC4→S1 (`_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` shared object); AC5→S2 (`craft_
 **In-session (R1–R4, not printed):** Considered statutes conform for cited scope — `astral.config.config-source-of-truth`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `pattern.config.config-block`. `astral.agent.do-task-delegation` excluded (no `src/core/**` in Files Changed). Layer table respects import discipline (utils + seed JSON + fixture twin only). Sibling boundary vs AST-1332 is explicit and correct. Plan Discuss round count after this pass: would be 1.
 
 context_tokens≈52000
+
+## Joan validate (round 2 — APPROVED)
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1333
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` @ `df4946127a6f449fbe8db704967b657b7d8806f4`
+
+### Traceability
+AC4→S1 (`_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` shared object); AC5→S2 (`craft_resume_base` + `simple_resume_parse` `cache_prompt` + fixture `cp`, including step 1d checklist fix). Parent AC1–3 / AC6 → AST-1332 (explicitly out of scope).
+
+### Findings
+
+#### acceptable — No explicit Self-assessment line
+- **Location:** `## Estimate`
+- **Finding:** Still no `**Self-assessment:**` scope/conf/risk line.
+- **Recommendation:** Optional hygiene before build; not blocking given narrow footprint and explicit ⚠️ Decision / `## Revisions` blocks.
+
+**Round 1 resolution:** Prior `fix-now` (QUALITY CHECKLIST vs empty `highlights`) is addressed by Stage 2 step **1d** — replaces the blanket non-empty bullet with required-key + empty-string language consistent with Stage 1 ⚠️ Decision and `### highlights` bodies. Assignee is Joan at fetch time (procedural gap closed).
+
+**In-session (R1–R4, not printed):** Cited statutes/patterns conform (`astral.config.config-source-of-truth`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `pattern.config.config-block`). `astral.agent.do-task-delegation` excluded (no `src/core/**`). Layer/import discipline holds. Sibling boundary vs AST-1332 explicit. Plan Discuss completed rounds: 1 (concern + reply).
+
+context_tokens≈58000
