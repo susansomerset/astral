@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest"
 import {
   artifactHasContent,
   buildPhaseSectionGradeConfidenceRow,
+  formatPhaseSectionScoreTitle,
   gradesForHeader,
+  jobScoreBreakdownForGradesField,
   materialsPreviewVisible,
   primaryActionsForState,
   anyReportArtifactContent,
@@ -166,5 +168,48 @@ describe("recommendedJobReport — AST-951 Artifacts helpers", () => {
     expect(
       anyReportArtifactContent({ job_resume: { professional_summary: "x" } }, tabs),
     ).toBe(true)
+  })
+})
+
+describe("recommendedJobReport — AST-1348 phase score header helpers", () => {
+  const tpl =
+    STATE_UI_MANIFEST_FIXTURE.jobs.recommended.phase_score_header_title_template!
+
+  it("jobScoreBreakdownForGradesField reads top-level and job_data", () => {
+    const trio = { earned: 137.4, possible: 150.2, max: 320.9 }
+    expect(
+      jobScoreBreakdownForGradesField({ jd_score_breakdown: trio }, "jd_grades"),
+    ).toEqual(trio)
+    expect(
+      jobScoreBreakdownForGradesField(
+        { job_data: { do_score_breakdown: trio } },
+        "do_grades",
+      ),
+    ).toEqual(trio)
+    expect(jobScoreBreakdownForGradesField({}, "jd_grades")).toBeNull()
+    expect(jobScoreBreakdownForGradesField({ jd_score_breakdown: trio }, "jd_score")).toBeNull()
+    expect(
+      jobScoreBreakdownForGradesField(
+        { jd_score_breakdown: { earned: 1, possible: "x", max: 3 } },
+        "jd_grades",
+      ),
+    ).toBeNull()
+  })
+
+  it("formatPhaseSectionScoreTitle rounds and fills template", () => {
+    expect(
+      formatPhaseSectionScoreTitle(
+        "JD Analysis",
+        { earned: 137.4, possible: 150.2, max: 320.9 },
+        tpl,
+      ),
+    ).toBe("JD Analysis - score: 137 out of 150 possible (321 max total)")
+    expect(
+      formatPhaseSectionScoreTitle(
+        "DO Analysis",
+        { earned: 0, possible: 0, max: 300 },
+        "",
+      ),
+    ).toBe("DO Analysis - score: 0 out of 0 possible (300 max total)")
   })
 })

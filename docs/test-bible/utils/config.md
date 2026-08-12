@@ -10,6 +10,14 @@
 
 ---
 
+### AST-1348 · AST-1346
+
+**`PHASE_SCORE_HEADER_TITLE_TEMPLATE`** + `build_state_ui_manifest()["jobs"]["recommended"]["phase_score_header_title_template"]`. Base `report_phase_tabs` `nav_label`s unchanged. Breakdown persist: **AST-1347**. Chrome: **`docs/test-bible/frontend/`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Template constant + manifest | `src/utils/config.py` | **`TestAst1348PhaseScoreHeaderTitleConfig`** |
+
 ### AST-1347 · AST-1346
 
 **`PHASE_SCORE_BREAKDOWN_KEY_SUFFIX`** (`score_breakdown`) + **`PHASE_SCORE_BREAKDOWN_FIELDS`** (`earned`, `possible`, `max`). Not added to **`JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS`** (list Score columns stay 0–10). Persist/lift: **`docs/test-bible/core/consult.md`** / **`docs/test-bible/ui/api/api_jobs.md`**.

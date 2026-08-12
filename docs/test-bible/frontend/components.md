@@ -758,3 +758,25 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
   -t "AST-1334|AST-1301|AST-1302|shows Generating|Cancel closes modal after cancel_build"
 ```
+
+### AST-1348 · AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome`.
+
+Analysis-tab section `nav_label` uses formatted score title when `jobScoreBreakdownForGradesField` returns a trio; plain `report_phase_tabs` label otherwise. No page-file product diff — §6c routed-page rule N/A (modal component). Helpers: **`docs/test-bible/frontend/lib.md`**. API derive: **`docs/test-bible/ui/api/api_jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Analysis header score chrome | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1348 Analysis score title chrome`** |
+| Fixture template | `stateUiManifestFixture.ts` | same + lib helpers |
+
+**Broken / obsolete:** none — AST-950 cases stay on plain labels (mocks lack `*_score_breakdown`).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  -t "AST-1348|AST-950"
+```

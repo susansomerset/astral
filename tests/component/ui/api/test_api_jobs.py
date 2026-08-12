@@ -32,6 +32,7 @@ class TestAst1347FlattenScoreBreakdown:
         assert job["jd_score"] == 7.5
 
     def test_absent_breakdown_not_invented(self) -> None:
+        # Grades + score without rubric — AST-1348 derive gate also requires rubric
         suffix = cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
         job = jobs_mod._flatten_grades(
             {"job_data": {"jd_grades": [{"vector": "fit"}], "jd_score": 8.0}}
@@ -39,6 +40,59 @@ class TestAst1347FlattenScoreBreakdown:
         assert job["jd_score"] == 8.0
         for p in ("jd", "do", "get", "like"):
             assert f"{p}_{suffix}" not in job
+
+
+class TestAst1348FlattenDeriveBreakdown:
+    """AST-1348: derive missing breakdown at read; never invent on unscored / incomplete."""
+
+    _RUBRIC = [{"label": "fit", "importance": 5}]
+    _GRADES = [{"vector": "fit", "grade": "A", "confidence": 5}]
+
+    def test_derives_when_stored_trio_absent(self) -> None:
+        suffix = cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+        job = jobs_mod._flatten_grades(
+            {
+                "job_data": {
+                    "jd_grades": list(self._GRADES),
+                    "jd_score": 10.6,
+                    "jd_rubric": list(self._RUBRIC),
+                }
+            }
+        )
+        key = f"jd_{suffix}"
+        assert key in job
+        assert set(job[key]) == set(cfg.PHASE_SCORE_BREAKDOWN_FIELDS)
+        assert all(isinstance(job[key][f], float) for f in cfg.PHASE_SCORE_BREAKDOWN_FIELDS)
+        # Response-only: job_data blob unchanged
+        assert key not in (job.get("job_data") or {})
+
+    def test_keeps_stored_trio_without_recompute(self) -> None:
+        suffix = cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+        stored = {"earned": 1.0, "possible": 2.0, "max": 3.0}
+        job = jobs_mod._flatten_grades(
+            {
+                "job_data": {
+                    "jd_grades": list(self._GRADES),
+                    "jd_score": 9.0,
+                    "jd_rubric": list(self._RUBRIC),
+                    f"jd_{suffix}": dict(stored),
+                }
+            }
+        )
+        assert job[f"jd_{suffix}"] == stored
+
+    def test_omits_when_score_missing(self) -> None:
+        # Dealbreaker / unscored — grades + rubric but no *_score
+        suffix = cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+        job = jobs_mod._flatten_grades(
+            {
+                "job_data": {
+                    "jd_grades": list(self._GRADES),
+                    "jd_rubric": list(self._RUBRIC),
+                }
+            }
+        )
+        assert f"jd_{suffix}" not in job
 
 
 class TestJobsRoutes:
