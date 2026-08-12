@@ -698,6 +698,28 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
   -q
 ```
 
+### AST-1339 · AST-1319 (gap — tests)
+
+**Parent:** [AST-1319](https://linear.app/astralcareermatch/issue/AST-1319). **Publish:** `origin/sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests`. Product: sibling **AST-1338**.
+
+`_consult_batch_fail_dest("METEORITE_NEW", qualify_meteorite error)` → **METEORITE_NEW_RETRY**; holding second strike → **METEORITE_ERROR_QUALIFY**. Does **not** claim content-gate → retry holding. Config / claim / UI twin: **`docs/test-bible/utils/config.md`** (**AST-1339**). Roster twin: **AST-898** above.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail-dest meteorite matrix | `src/core/consult.py` | revised **`TestConsultBatchFailDest`** (`[bug-repro]` rows); twin also in **`TestAst1339MeteoriteNewRetryQualifyHolding::test_consult_batch_fail_dest_matrix`** |
+
+**Broken / obsolete:** none — additive meteorite rows on existing helper tests.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  -q
+```
+
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`run_consult_task`** routes stage `task_key` (`craft_get_rubric`) to `run_requested_artifacts_dispatch`; wrapper keys no longer routed.

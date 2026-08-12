@@ -756,6 +756,35 @@ Primary roster batch manifest: **`docs/test-bible/core/roster.md`** (**AST-891**
 
 Consult qualify hop: **`docs/test-bible/core/consult.md`** (**AST-898**).
 
+### AST-1339 · AST-1319 (gap — tests)
+
+**Parent:** [AST-1319 — Implement retry for NEW meteorite states](https://linear.app/astralcareermatch/issue/AST-1319). **Publish:** `origin/sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests`. Product holding: sibling **AST-1338** (`code(AST-1338)`).
+
+**`METEORITE_NEW_RETRY`** qualify holding (roster twin of **AST-898**): `METEORITE_NEW.retry_state` → **METEORITE_NEW_RETRY**; primary claim `["METEORITE_NEW","METEORITE_NEW_RETRY"]`; first-strike fail-dest → holding; second-strike → **METEORITE_ERROR_QUALIFY**; UI label **"Meteorite New (retry)"**; no `JOBS_IN_REVIEW_GRADE_FIELD` entry. **BOT_BLOCKED** priors include **METEORITE_NEW_RETRY**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Registry / claim / UI / fail-dest twin | `src/utils/config.py` | **`TestAst1339MeteoriteNewRetryQualifyHolding`** (`[bug-repro]`) |
+| AST-1053 priors / In Review membership / order / label | same | revised **`TestAst1053MeteoriteGdlJobStates`** |
+| BOT_BLOCKED prior equality | same | revised **`TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui`**; membership belt **`TestAst1197…::test_task_config_email_and_bot_knobs`** |
+
+Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). Roster twin: **AST-898** above.
+
+**Broken / obsolete:** AST-1053 priors that omit **METEORITE_NEW_RETRY**; AST-1195 `BOT_BLOCKED.prior_states == ["PASSED_JOBLIST","METEORITE_NEW"]` equality.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst1053MeteoriteGdlJobStates \
+  tests/component/utils/test_config.py::TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui \
+  tests/component/utils/test_config.py::TestAst1197QualifyMeteoriteApplyKnobs::test_task_config_email_and_bot_knobs \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  -q
+```
+
 
 ### AST-1189 · AST-1164
 
@@ -1158,7 +1187,7 @@ Parallel meteorite GDL `JOB_STATES` track (`METEORITE_NEW` → PASSED_JD/DO/GET/
 | --- | --- | --- |
 | Meteorite priors + UI manifests + non-meteorite smoke | `src/utils/config.py` | **`TestAst1053MeteoriteGdlJobStates`** (priors/labels revised **AST-1060**) |
 
-**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**; GDL-entry priors + NEW label + QUALIFIED UI revised by **AST-1060**.
+**Broken / obsolete:** RECOMMENDED prior absence assert superseded by **AST-1055**; score-gated membership smoke revised by **AST-1054**; create-state smoke superseded by **AST-1056** / **`TestAst1056MeteoriteCreateLanding`**; GDL-entry priors + NEW label + QUALIFIED UI revised by **AST-1060**; qualify-holding priors / In Review **METEORITE_NEW_RETRY** cutover revised by **AST-1339**.
 
 **Integration:** no existing scenarios assert meteorite JOB_STATES — none revised.
 
@@ -2432,14 +2461,14 @@ Seven graded-trigger `*_RETRY` holdings + `retry_state` on primaries; `dispatch_
 
 **Parent:** [AST-1188 — Errors for qualify_meteorite dispatch task](https://linear.app/astralcareermatch/issue/AST-1188/errors-for-qualify-meteorite-dispatch-task). **Publish:** `origin/sub/AST-1188/AST-1195-schema-nulls-bot-blocked`.
 
-`qualify_meteorite` schema: `job_link` / `job_title` → `required: False` so omit/`null` do not abort `do_task`. Universal rename `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** in `JOB_STATES` (priors `PASSED_JOBLIST` + `METEORITE_NEW`), `GAZER_CONFIG` fetch_jd error_states, `SKIPPED_STATES`, skipped section order + bulk-retry map (retry → `PASSED_JOBLIST`). Gazer map: **`docs/test-bible/core/gazer.md`**. Fixture: **`docs/test-bible/frontend/pages.md`**.
+`qualify_meteorite` schema: `job_link` / `job_title` → `required: False` so omit/`null` do not abort `do_task`. Universal rename `JD_SCRAPE_FAIL_BOT` → **`BOT_BLOCKED`** in `JOB_STATES` (priors `PASSED_JOBLIST` + `METEORITE_NEW` + **`METEORITE_NEW_RETRY`** after **AST-1339**), `GAZER_CONFIG` fetch_jd error_states, `SKIPPED_STATES`, skipped section order + bulk-retry map (retry → `PASSED_JOBLIST`). Gazer map: **`docs/test-bible/core/gazer.md`**. Fixture: **`docs/test-bible/frontend/pages.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Schema optional + `_validate_response_schema` omit/null | `src/utils/config.py` / `src/core/agent.py` | **`TestAst1195SchemaNullsAndBotBlocked`**; revised **`TestAst1127QualifyMeteoriteCompanyJobIdOptional`**, **`TestAst1060QualifyMeteoriteConfig`** |
 | `BOT_BLOCKED` registry + skipped UI + gazer error_states | `src/utils/config.py` | **`TestAst1195SchemaNullsAndBotBlocked::test_bot_blocked_registry_and_skipped_ui`**; **`TestAst1156SkippedBulkRetryMap`** (covers map completeness / priors) |
 
-**Broken / obsolete:** AST-1060 / AST-1127 asserts that `job_title` / `job_link` stay `required: True`; AST-1127 sibling-missing check on `job_title` → `jd_text`. Frontend fixture `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` (see pages bible).
+**Broken / obsolete:** AST-1060 / AST-1127 asserts that `job_title` / `job_link` stay `required: True`; AST-1127 sibling-missing check on `job_title` → `jd_text`. Frontend fixture `JD_SCRAPE_FAIL_BOT` → `BOT_BLOCKED` (see pages bible). Pre–AST-1339 `BOT_BLOCKED.prior_states` equality without **METEORITE_NEW_RETRY**.
 
 **Integration:** none revised (no existing scenarios pin `JD_SCRAPE_FAIL_BOT` / qualify schema required flags).
 
