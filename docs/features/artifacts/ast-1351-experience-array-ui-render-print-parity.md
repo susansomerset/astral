@@ -149,3 +149,9 @@ context_tokens≈62000
 [plan-rubric] PROCEED (Commit: a6e36b19) array UI + emit parity
 
 AST-1351 plan approved.
+
+## Review (build stub)
+
+- **Publish ref:** `sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`
+- **Tip:** `eac6612ab20f3854b4840e921727b470522d7b7d`
+- **Stages:** S1 `experience_job_ui_fields` + ui_config; S2 `ExperienceJobsEditor`; S3 ArtifactEditor structured present/persist; S4 builder Style D `debug_experience_jobs` on base/session/job emit
