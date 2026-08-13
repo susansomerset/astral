@@ -605,3 +605,16 @@ context_tokens≈48000
 ```
 [code-rubric] REVIEW (Commit: 0402abdc) strip sync dev product
 ```
+
+## Resolution (AST-1355)
+
+**Resolved:** 2026-08-13 — Radia FIX-NOW + merge-child `validate-sub-log` block.
+
+Rebuilt `origin/sub/AST-1316/AST-1355-gap-agent-story-tests` as linear tip on `origin/ftr/AST-1316-cant-find-agent-data-for-proposed-application-responses` @ `22347825` plus AST-1355 keepers only:
+
+1. `docs(AST-1355): plan-fix`
+2. `merge-tests(AST-1355)` ← `origin/tests` @ `3b11fdf0` (`test(AST-1355)` second parent)
+3. `docs(AST-1355): Radia review`
+4. `resolve(AST-1355)` — this rebuild
+
+No `sync(dev)`, no `Merge remote-tracking branch`, no AST-1341/1342/1343 product on the tip. Plan **Product: none** honored.
