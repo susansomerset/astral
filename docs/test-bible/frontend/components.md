@@ -54,7 +54,7 @@ Ten Phase E **`task_key`** values replace **`craft_job_*`**. **Dispatch entry** 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Registry + BUILD/CANDIDATE entry keys | `src/utils/config.py` (`TASK_CONFIG`, `BUILD_CONFIG` chain `first_task_key`), `src/core/consult.py` `run_consult_task(dispatch_task_key=…)`, `src/core/dispatcher.py`, `src/data/database.py` (`dispatch_task_admin_defaults`) | `tests/component/utils/test_config.py` (`TestAst450ArtifactPipelineTaskKeys`, `TestAst520AnticipateScanTaskKey`, `TestAst309CoverLetterTaskConfig`), `tests/component/core/test_consult.py` (`TestRunConsultTask`, `TestAst369CoverLetterDispatch`, `TestAst371ResumeArtifactDispatch`, `TestAst534DispatchTaskKeyHonesty`), `tests/component/core/test_dispatcher.py` (`test_ast534_forwards_dispatch_task_key_to_consult`), `tests/component/core/test_agent.py` (artifact chain + `do_task` paths using **`draft_job_resume`** / **`draft_cover_letter`**) |
-| Agent story phase + display label | `src/core/roster.py` (`get_entity_agent_story`) | `tests/component/core/test_roster.py` (`TestEntityAgentStory::test_ast520_agent_story_phase_and_print_label`) |
+| Agent story phase + display label | `src/core/agent.py` (`get_entity_agent_story`) | `tests/component/core/test_agent.py` (`TestEntityAgentStory::test_ast520_agent_story_phase_and_print_label`) |
 | Recommended Job Analysis Report — Phase E hops | `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` | `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` (Phase E **`agent_story`** panel — **AST-520**) |
 
 ---

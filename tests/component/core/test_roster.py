@@ -2965,70 +2965,6 @@ class TestValidateParseJobListRawJobListings:
         assert err is None and listings and not missing
 
 
-class TestEntityAgentStory:
-    def test_returns_empty_without_entries(self) -> None:
-        assert roster_mod.get_entity_agent_story({}) == []
-
-    def test_enriches_scored_response_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        # AST-984: story from list_entity_latest_agent_refs, not entity JSON column.
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            lambda et, eid: [
-                {
-                    "task_key": "qualify_job_listings",
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
-                }
-            ],
-        )
-        monkeypatch.setattr(
-            roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"block-1": {"block_data": json.dumps({"jobs": [{"astral_job_id": "job-1", "title": "Role"}]})}}),
-        )
-        entity = {
-            "astral_job_id": "job-1",
-            "job_data": {"joblist_grades": {"fit": "A"}},
-        }
-        story = roster_mod.get_entity_agent_story(entity)
-        assert story[0]["vector_grades"] == {"fit": "A"}
-        assert story[0]["blocks"][0]["content"]
-
-    def test_ast520_agent_story_phase_and_print_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            lambda et, eid: [
-                {
-                    "task_key": "anticipate_scan",
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
-                }
-            ],
-        )
-        monkeypatch.setattr(
-            roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"block-1": {"block_data": '{"note": "scan insight"}'}}),
-        )
-        entity = {"astral_job_id": "job-520"}
-        story = roster_mod.get_entity_agent_story(entity)
-        assert story[0]["task_key"] == "anticipate_scan"
-        assert story[0]["blocks"][0]["content"] == '{"note": "scan insight"}'
-
-
-class TestFilterResponseBlock:
-    def test_non_json_and_single_job_responses(self) -> None:
-        assert roster_mod._filter_response_block("plain text", "job-1") == "plain text"
-        assert roster_mod._filter_response_block(json.dumps({"title": "Role"}), "job-1") == json.dumps({"title": "Role"})
-
-    def test_batch_response_filters_matching_job(self) -> None:
-        payload = {"jobs": [{"astral_job_id": "job-1", "title": "Role"}]}
-        out = roster_mod._filter_response_block(json.dumps(payload), "job-1")
-        assert '"job-1"' in out
-        assert roster_mod._filter_response_block(json.dumps({"jobs": [{"title": "old"}]}), "job-1") == ""
-        assert roster_mod._filter_response_block(json.dumps({"jobs": [{"astral_job_id": "other"}]}), "job-1") == ""
-
-
 class TestGetCompanyJobStateCounts:
     def test_delegates_to_database(self, monkeypatch: pytest.MonkeyPatch) -> None:
         counts = MagicMock(return_value={"WATCH": 2})
@@ -3512,81 +3448,6 @@ class TestFetchPrefilterNotesMoreBranches:
             ),
         )
         assert await roster_mod._fetch_prefilter_notes(_company()) is None
-
-
-class TestEntityAgentStoryBranches:
-    def test_skips_invalid_block_refs_and_labels_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            lambda et, eid: [
-                {
-                    "task_key": "parse_job_list",
-                    "prompt_blocks": ["bad", {"type": "NO_CACHE", "id": "b1"}, {"type": "NO_CACHE", "id": "b2"}],
-                }
-            ],
-        )
-        monkeypatch.setattr(
-            roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"b1": {"block_data": "one"}, "b2": {"block_data": "two"}}),
-        )
-        entity = {"short_name": "acme"}
-        story = roster_mod.get_entity_agent_story(entity)
-        assert story[0]["blocks"][0]["type"] == "NO_CACHE"
-        assert story[0]["blocks"][1]["type"] == "NO_CACHE (2)"
-
-    def test_scored_response_without_job_id_keeps_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        scored_key = next(key for key, cfg in TASK_CONFIG.items() if cfg.get("scored"))
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            lambda et, eid: [
-                {"task_key": scored_key, "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}]},
-            ],
-        )
-        monkeypatch.setattr(
-            roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"block-1": {"block_data": json.dumps({"jobs": [{"title": "Role"}]})}}),
-        )
-        entity = {"astral_job_id": "job-1"}
-        story = roster_mod.get_entity_agent_story(entity)
-        assert story[0]["blocks"][0]["content"] == ""
-
-
-class TestAst1274AgentStorySoftFail:
-    """AST-1274: corrupt ref graphs must not raise out of get_entity_agent_story."""
-
-    def test_list_refs_failure_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            MagicMock(side_effect=ValueError("ref target missing")),
-        )
-        assert roster_mod.get_entity_agent_story({"astral_job_id": "job-1274"}) == []
-
-    def test_get_agent_data_failure_yields_empty_block_content(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            lambda et, eid: [
-                {
-                    "task_key": "qualify_job_listings",
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
-                }
-            ],
-        )
-        monkeypatch.setattr(
-            roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(side_effect=ValueError("ref cycle detected")),
-        )
-        story = roster_mod.get_entity_agent_story({"astral_job_id": "job-1274"})
-        assert len(story) == 1
-        assert story[0]["blocks"][0]["content"] == ""
 
 
 class TestRosterCoverageGaps:
@@ -5358,37 +5219,16 @@ class TestAst692JobsiteScrapeIssue:
 
 
 class TestAst726LatestOnlyRosterStory:
-    """AST-726/984: modal story from list API + latest-only company prefilter outcomes."""
+    """AST-726/984: retired column helpers + latest-only company prefilter outcomes.
+
+    Entity story coverage moved to test_agent.py (AST-1355).
+    """
 
     def test_dedupe_and_normalize_helpers_retired(self) -> None:
         # AST-984: column helpers gone; latest-per-task lives in list_entity_latest_agent_refs.
         assert not hasattr(roster_mod, "dedupe_agent_responses_latest")
         assert not hasattr(roster_mod, "normalize_agent_responses_for_backfill")
 
-    def test_company_prefilter_vector_grades_from_company_data(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        monkeypatch.setattr(
-            roster_mod,
-            "list_entity_latest_agent_refs",
-            lambda et, eid: [
-                {
-                    "task_key": "prefilter_company",
-                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
-                }
-            ],
-        )
-        monkeypatch.setattr(
-            roster_mod,
-            "get_agent_data_for_ids",
-            MagicMock(return_value={"block-726": {"block_data": "{}"}}),
-        )
-        entity = {
-            "short_name": "acme",
-            "company_data": {"prefilter_grades": [{"grade": "A", "vector": "fit"}]},
-        }
-        story = roster_mod.get_entity_agent_story(entity)
-        assert story[0]["vector_grades"] == [{"grade": "A", "vector": "fit"}]
 
     def test_prefilter_fail_clears_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
         save = MagicMock()
