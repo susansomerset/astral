@@ -222,3 +222,155 @@ Do **not** reopen AST-1274’s primary `_resolve_agent_data_block_data` contract
 - AST-984 / code-rules §2.4: story still from latest-per-task RESPONSE refs + `prompt_blocks` ids (not entity JSON columns); RESPONSE content still shown when present.  
 - Layer imports: UI → core/utils only; no UI→data.  
 - Roster remains company coat-check / company data — not entity agent story.
+
+## Radia review (AST-1354)
+
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.pipeline.plan-is-bible | universal | conforms | plan-fix patch followed; no scope smuggling |
+| orch.pipeline.project-scoped-queues | universal | conforms | single fix ticket |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | n/a to diff |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product decisions taken in diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | no test-tree edits on sub |
+| orch.git.commit-vocabulary | universal | conforms | uses `code`/`docs`/`test` types (see advisory on `test`+`src/`) |
+| orch.git.flow-direction-inviolable | universal | conforms | sub stacked on ftr |
+| orch.git.ftr-sub-topology | universal | conforms | publish ref naming correct |
+| orch.git.merge-on-checkout | universal | conforms | n/a |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | n/a |
+| orch.git.no-dev-agent-branches | universal | conforms | n/a |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | n/a |
+| orch.git.three-permanent-branches | universal | conforms | n/a |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | engineer left tests to Betty/gap child |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | n/a |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits in diff |
+| astral.agent.confidence-bounds | scoped | not-applicable | no confidence/scoring logic touched |
+| astral.agent.do-task-delegation | scoped | not-applicable | do_task path unchanged |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector edits |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-id authority changes |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-id format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release touched |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | metadata listing + entity_id on dedup RESPONSE copies strengthen latest-ref lookup |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config authority changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env edits |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug/artifact-dir changes |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike files |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | run_next chain untouched |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | plan-fix patched existing AST-1274 feature doc |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | engineer diff is src-only (Betty lane) |
+| astral.git.engineer-test-tree-ban | scoped | conforms | no tests/ edits on publish ref |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check writes |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | consult/render untouched |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `GET /api/jobs/<id>` keeps `@require_auth` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no external I/O added to story path |
+| astral.layers.import-direction | scoped | conforms | ui→core only; core→data via existing agent imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/ changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | story logic stays in core, not React |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON changes |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed boot path |
+| astral.seed.define-approved | scoped | not-applicable | n/a |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | n/a |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | n/a |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `_resolve_agent_data_block_data` still raises; core/ui catch+log warning |
+| astral.standards.database-header-inventory | scoped | not-applicable | no new DB headers |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug contract changes |
+| astral.standards.dry-and-focused-functions | scoped | conforms | listing vs hydrate split is focused |
+| astral.standards.in-scope-only | scoped | conforms | entity_id dedup write is root-cause-adjacent, not drive-by |
+| astral.standards.logging-via-utils | scoped | conforms | `logger.warning` via utils logger |
+| astral.standards.names-not-ticket-ids | scoped | conforms | n/a |
+| astral.standards.no-cross-contamination | scoped | conforms | fix scoped to story/list/hydrate |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | no new hardcoded sets |
+| astral.standards.public-then-helpers | scoped | conforms | `get_entity_agent_story` public, `_filter_response_block` private in same block |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils↔data import changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | no job-state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | n/a |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | n/a |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no frontend files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | n/a |
+
+**Notes:** no plan-rubric / Joan fix-mode verdict attached for AST-1354 (fix-lane norm). No straggler callout.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | `detail` keeps `@require_auth`; soft-fail in API/core |
+| pattern.layers.import-discipline | conforms | `api_jobs`/`api_companies` import `src.core.agent` only; no new ui→data |
+
+## Plan adherence
+
+Delivers all five numbered **Proposed change** items:
+
+1. **`list_entity_latest_agent_refs`** — metadata-only batch read (`agent_data_id`, `block_type`); no `_resolve_agent_data_block_data` on listing. Final SHA has loop inside `_with_conn` (commit `3bc5c8cf` corrected the brief regression in `c5ca227b` that left work after `conn.close()`).
+2. **`get_entity_agent_story` in `agent.py`** — moved from roster with per-id hydration, partial story on per-block failure, `logger.warning` (no traceback) on list/content errors.
+3. **`roster.py`** — story helpers deleted; unused imports dropped; no shim.
+4. **Call sites** — `api_jobs` / `api_companies` import from `src.core.agent`; `api_jobs.detail` soft-fail uses `logger.warning`.
+5. **Out of scope** — `_resolve` raise semantics, LLM/task behavior, modal copy untouched.
+
+Extra **`save_agent_data` entity_id on content-dedup INSERT** is not in the numbered bullets but is root-cause-adjacent (dedup RESPONSE copies without `entity_id` break `list_entity_latest_agent_refs`); conforms to `astral.batch.entity-agent-responses-latest-only`.
+
+## Fix-specific checks
+
+**[bug-repro]** — not applicable — clean board opt-out (no `[board-betty] TESTS: REVISE`, no qa-fix thread, no `[bug-repro]` test in diff or on `origin/tests` for AST-1354). Blast radius explicitly deferred roster/agent-story test retarget to gap sibling **AST-1355**.
+
+**## What must still hold** — OK
+
+| item | verdict |
+|------|---------|
+| AST-1274: data raises on missing ref/cycle; detail 200 + usable payload on story fail; `@require_auth`; 404 when missing | OK — `_resolve` unchanged; `detail` try/except + 404 path intact |
+| AST-984: story from latest-per-task refs + `prompt_blocks` ids; RESPONSE content when present | OK — listing shape preserved; per-id `_get_agent_data_row` hydration |
+| Layer imports: UI → core/utils only | OK |
+| Roster = company coat-check, not entity story | OK — function removed from roster |
+
+## Findings
+
+### Advisory
+
+1. **Plan doc optional line** — `save_agent_data` entity_id on dedup copies is implemented and commented but not listed under numbered **Proposed change**; worth a one-line plan patch when Chuckles appends this review.
+2. **Commit hygiene** — two commits labeled `test(AST-1354)` touch `src/data/database.py` product code (`c5ca227b`, `3bc5c8cf`); functionally fine, vocabulary is misleading (`code` would be clearer).
+3. **Test gap (expected)** — `tests/component/core/test_roster.py` still calls `roster_mod.get_entity_agent_story`; publish ref has no test-tree changes. Plan blast radius + **AST-1355** gap child own retarget + dangling-sibling repro. Not a product defect on this SHA.
+4. **Hydration log nuance** — plan text says log on “missing row”; implementation logs on `Exception` (e.g. dangling ref `ValueError`) but treats `get_agent_data` → `None` as silent `""`. Reasonable soft-fail; only matters if Susan wants a warning on absent PK rows too.
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+## What's solid
+
+- Root cause addressed at the right layer: listing no longer requires resolving optional sibling `block_data`, so dangling TASK refs cannot abort the entire latest-ref list.
+- Story hydration is per-block with partial results — one bad id no longer blanks healthy RESPONSE text or other tasks.
+- Log noise fixed: `logger.exception` → `logger.warning` in story path and `api_jobs.detail`.
+- Ownership corrected: entity story lives in `agent.py` beside agent_data orchestration; roster imports cleaned.
+- Hop blast radius preserved: `_hop_agent_ref_for_parent` still uses `list_entity_latest_agent_refs` for metadata; content fetch via `_block_text_by_type` / `get_agent_data_for_ids` unchanged (content readers still raise when ids are fetched).
+
+## Frame diff
+
+(none) — AST-1354 plan-fix sections in `docs/features/interface/ast-1274-restore-recommended-job-detail-open.md` match the product diff.
+
+## Chuckles branching
+
+| Gate | Parent | Next action |
+|------|--------|-------------|
+| **PROCEED** (C7 complete) | Normal AST-1316 | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+Spawn **AST-1355** (or confirm already queued) for roster→agent test retarget + metadata-only listing / dangling-sibling repro — parallel hygiene, not a blocker for this product SHA.
+
+context_tokens≈55000
+— Radia
+```
+
+```
+[code-rubric] PROCEED (Commit: 3bc5c8cf) metadata story soft-fail
+```
