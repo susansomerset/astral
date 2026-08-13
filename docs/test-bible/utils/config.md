@@ -934,6 +934,16 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1349 · AST-1345
+
+**AST-1349:** Config experience schemas confirm-only (shared `_EXPERIENCE_JOB_*` already locked). Prompt + draft-validate contract: **`docs/test-bible/core/candidate.md`** § AST-1349.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft / finalize schema identity (reuse) | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`**, **`TestAst997FinalizeExperienceJobArray`** |
+
+---
+
 ### AST-998 · AST-994
 
 **AST-998:** `BUILD_CONFIG["supported_sections"]["experience"]["body_kind"]` = `"experience_jobs"`. Primary HTML emit coverage: **`docs/test-bible/core/builder.md`**.

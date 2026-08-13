@@ -2523,12 +2523,14 @@ class TestAst997JobTailoredExperience:
         assert payload["experience"][1]["location"] == "NYC"
 
     def test_validate_accepts_legacy_string_experience(self) -> None:
+        # AST-1349: string experience is not a success path; contract message drops body_kind jargon.
         err = candidate_mod.validate_draft_job_resume_payload(
             {"experience": "legacy prose"},
             self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
         )
         assert err is not None
-        assert "experience_detail" in err
+        assert err == "Section 'experience' must be a job array"
+        assert "experience_detail" not in err
 
     def test_validate_rejects_non_job_array_experience_object(self) -> None:
         err = candidate_mod.validate_draft_job_resume_payload(
@@ -2536,21 +2538,95 @@ class TestAst997JobTailoredExperience:
             self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
         )
         assert err is not None
-        assert "experience_detail" in err
+        assert err == "Section 'experience' must be a job array"
+        assert "experience_detail" not in err
 
     def test_tailor_hop_prompts_teach_job_array_and_pin_policy(self) -> None:
         from pathlib import Path
 
-        # AST-1270: draft seed teaches nested resume + experience value types (string or job array).
-        # Pin-by-(company, title) remains covered by validate/pin unit tests above; obsolete
-        # literal prompt phrases from the AST-997 seed era are not re-asserted here.
+        # AST-1349: draft teaches array-only experience (no prose-string success path).
+        # Pin-by-(company, title) remains covered by validate/pin unit tests above.
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
         draft = by_key["draft_job_resume"]["user_prompt"]
         assert '"resume":' in draft
         assert '"deviations"' in draft
-        assert "prose string or job array" in draft
+        assert "ordered array of job objects" in draft
+        assert "prose string or job array" not in draft
         assert "experience remains a single string" not in draft
+        assert "Do **not** emit experience as a prose string" in draft
+
+
+class TestAst1349ExperienceArrayContract:
+    """AST-1349: craft/parse/finalize prompts + draft validate — array-only experience."""
+
+    def _current(self, task_key: str) -> dict[str, Any]:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        return next(r for r in rows if r.get("task_key") == task_key and r.get("current") == 1)
+
+    def test_craft_resume_base_cache_prompt_array_only(self) -> None:
+        # Closes the Judith craft gap: ### experience is job-array, not COMPANY NAME prose blocks.
+        prompt = self._current("craft_resume_base").get("cache_prompt") or ""
+        exp_i = prompt.find("### experience")
+        assert exp_i >= 0
+        segment = prompt[exp_i : prompt.find("### prior_experience", exp_i)]
+        assert "Ordered JSON array of job objects" in segment
+        for key in ("company", "title", "dates", "location", "accomplishments"):
+            assert f"`{key}`" in segment
+        assert "Do **not** return `experience` as a single prose string" in segment
+        assert "COMPANY NAME" not in segment
+        assert "Format each role as:" not in prompt
+        assert "`experience` is a job array when roles exist" in prompt
+        # LinkedIn may enrich summary — not experience job fields.
+        assert "Enriches professional summary and experience sections" not in prompt
+
+    def test_finalize_and_advise_prompts_array_contract(self) -> None:
+        finalize = self._current("finalize_job_resume").get("user_prompt") or ""
+        assert "ordered job-array" in finalize
+        assert "`company`, `title`, `dates`, `location`, `accomplishments`" in finalize
+        assert "do **not** collapse experience into a prose string" in finalize
+        advise = self._current("advise_job_resume").get("user_prompt") or ""
+        assert "Brief Judith **per role**" in advise
+        assert "never rewrite company/title/dates/location" in advise
+
+    def test_validate_rejects_string_experience_contract_message(self) -> None:
+        base = {
+            "artifacts": {
+                "base_resume": {
+                    "experience": [dict(j) for j in _SAMPLE_EXPERIENCE_JOBS],
+                    "professional_summary": "S",
+                }
+            }
+        }
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"experience": "legacy prose", "professional_summary": "S"},
+            base,
+        )
+        assert err == "Section 'experience' must be a job array"
+
+    def test_validate_accepts_five_key_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        base = {
+            "artifacts": {
+                "base_resume": {"experience": jobs, "professional_summary": "S"}
+            }
+        }
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"experience": jobs, "professional_summary": "S"},
+                base,
+            )
+            is None
+        )
+
+    def test_uat_fixture_twin_matches_catalog_after_prompt_edits(self) -> None:
+        from pathlib import Path
+
+        catalog = Path("data/admin/agent_task.json").read_bytes()
+        twin = Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_bytes()
+        assert catalog == twin
 
 
 class TestAst1005FalseMissingCandidateName:
@@ -4322,7 +4398,9 @@ class TestAst1270NestedDraftJobResumeContract:
         assert '"resume":' in draft
         assert '"deviations"' in draft
         assert "experience remains a single string" not in draft
-        assert "prose string or job array" in draft
+        # AST-1349: array-only (retired "prose string or job array").
+        assert "prose string or job array" not in draft
+        assert "ordered array of job objects" in draft
         # Nested envelope example only (no flat-only agent_payload section-key sample).
         assert '"agent_payload": {\n    "resume"' in draft
 
