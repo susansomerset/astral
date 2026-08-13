@@ -618,3 +618,25 @@ Rebuilt `origin/sub/AST-1316/AST-1355-gap-agent-story-tests` as linear tip on `o
 4. `resolve(AST-1355)` — this rebuild
 
 No `sync(dev)`, no `Merge remote-tracking branch`, no AST-1341/1342/1343 product on the tip. Plan **Product: none** honored.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/b795dcab1f52977524ed7785d011d2b1/4f33b37a-f82a-459f-adf8-557760e2fd57/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/37525f18-cbca-4cd2-880b-798a1b353737/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/b795dcab1f52977524ed7785d011d2b1/ea8ba71b-2397-40d1-bac5-191c6ddfb534/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1316 (parent) | ftr/AST-1316-cant-find-agent-data-for-proposed-application-responses |
+| AST-1354 | sub/AST-1316/AST-1354-fix-agent-story-no-require-artifacts |
+| AST-1355 | sub/AST-1316/AST-1355-gap-agent-story-tests |
+
+**Epic worktree:** `astral-AST-1316/` — one active sub checked out at a time.
