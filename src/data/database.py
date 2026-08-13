@@ -5857,13 +5857,15 @@ def save_agent_data(
                         f"agent_data non-canonical match rejected: {match_id!r} "
                         f"ref_agent_data_id={match_ref!r}"
                     )
+                # AST-1354: keep entity_id on content-dedup RESPONSE copies so
+                # ensure_batch_response_entity_ids / list_entity_latest_agent_refs work.
                 conn.execute(
                     """INSERT OR IGNORE INTO agent_data
-                       (agent_data_id, entity_type, task_key, batch_id, created_at,
+                       (agent_data_id, entity_type, entity_id, task_key, batch_id, created_at,
                         block_type, block_data, token_size, ref_agent_data_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        agent_data_id, entity_type, task_key, batch_id, ts,
+                        agent_data_id, entity_type, entity_id, task_key, batch_id, ts,
                         block_type, None, token_size, match_id,
                     ),
                 )
@@ -6126,39 +6128,33 @@ def list_entity_latest_agent_refs(entity_type: str, entity_id: str) -> List[Dict
                    ORDER BY created_at DESC""",
                 (entity_type, entity_id),
             ).fetchall()
-            # latest wins per task_key (rows already newest-first)
-            latest_by_task: Dict[str, Any] = {}
-            for row in rows:
-                d = _row_to_dict(row)
-                tk = (d.get("task_key") or "").strip()
-                if not tk or tk in latest_by_task:
-                    continue
-                latest_by_task[tk] = d
-            refs: List[Dict[str, Any]] = []
-            for tk, resp in latest_by_task.items():
-                batch_id = resp["batch_id"]
-                # AST-1354: metadata only — listing must not resolve sibling block_data
-                # (dangling TASK refs must not abort the whole latest-ref list).
-                block_rows = conn.execute(
-                    "SELECT agent_data_id, block_type FROM agent_data "
-                    "WHERE batch_id = ? ORDER BY created_at",
-                    (batch_id,),
-                ).fetchall()
-                prompt_blocks = [
-                    {"type": b["block_type"], "id": b["agent_data_id"]}
-                    for b in (_row_to_dict(r) for r in block_rows)
-                    if b.get("block_type") != "RESPONSE"
-                ]
-                prompt_blocks.append({"type": "RESPONSE", "id": resp["agent_data_id"]})
-                refs.append({
-                    "task_key": tk,
-                    "batch_id": batch_id,
-                    "created_at": resp["created_at"],
-                    "prompt_blocks": prompt_blocks,
-                })
-            return refs
         finally:
             conn.close()
+        # latest wins per task_key (rows already newest-first)
+        latest_by_task: Dict[str, Any] = {}
+        for row in rows:
+            d = _row_to_dict(row)
+            tk = (d.get("task_key") or "").strip()
+            if not tk or tk in latest_by_task:
+                continue
+            latest_by_task[tk] = d
+        refs: List[Dict[str, Any]] = []
+        for tk, resp in latest_by_task.items():
+            batch_id = resp["batch_id"]
+            blocks = get_agent_data_by_batch(batch_id)
+            prompt_blocks = [
+                {"type": b["block_type"], "id": b["agent_data_id"]}
+                for b in blocks
+                if b.get("block_type") != "RESPONSE"
+            ]
+            prompt_blocks.append({"type": "RESPONSE", "id": resp["agent_data_id"]})
+            refs.append({
+                "task_key": tk,
+                "batch_id": batch_id,
+                "created_at": resp["created_at"],
+                "prompt_blocks": prompt_blocks,
+            })
+        return refs
 
     return _run_with_retry(_with_conn)
 
