@@ -152,4 +152,5 @@ context_tokens≈48000
 ## Review (build stub)
 
 - **Publish ref:** `sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent`
+- **Tip:** `66a29148ae15f87d9b6e7c518bf2802c90460b86`
 - **Stages:** S1 confirm-only (`_EXPERIENCE_JOB_*` already locked); S2–S3 candidate + job prompts array-only; S4 draft validate contract message / no string success; S5 AST-756 `agent_task` twin `cp`
