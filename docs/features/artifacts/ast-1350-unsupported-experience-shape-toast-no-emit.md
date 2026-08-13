@@ -115,3 +115,9 @@ Stages S1–S2 map to parent AC 7 and functional-scope unsupported-shape operato
 No `fix-now` or `discuss` findings. In-session statute sweep: cited patterns/statutes (`pattern.layers.import-discipline`, `astral.layers.import-direction`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) all `conforms`; plan correctly gates in core before `filter_content_to_resume_structure` so string experience cannot be dropped then silently omitted; reuses `is_experience_job_array` per AST-1349 contract without redefining schema.
 
 context_tokens≈52000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `3b30b01bc7ff13ead7899a289d8b04c215436eb2`
+
+Stage 1: `BUILD_CONFIG.unsupported_resume_structure_message` + `_reject_unsupported_experience_shape` in `build_base_resume` / `build_resume_from_job` / `build_session_base_resume`; leftover-prose skip → raise. Stage 2: `api_resume_html` 400 for unsupported; JAR Print Resume fetch-then-blob + toast (Base/Session already toast API `error`). Tests deferred to Betty.
