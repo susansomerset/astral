@@ -64,6 +64,17 @@ Wire the existing successful Save Base Resume path so that after live `candidate
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`
+**Plan path:** `docs/features/artifacts/ast-1353-save-base-resume-writes-base-resume-snapshot.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `6e534039` | `snapshot_saved_base_resume_astral_artifact` + wire after Save Base Resume PUT |
+
+**Tip:** `6e534039` on `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`
+
 ## Joan validate
 
 **Rubric:** plan-rubric.v1
