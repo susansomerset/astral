@@ -70,3 +70,25 @@ Remove the Candidate Profile ad-hoc lock that disables Original Resume Text when
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1357
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1356/AST-1357-unlock-profile-original-resume-text` @ `58dd9eccca6aebbb7be87d0f4668691acaf5dea3`
+
+## Traceability
+AC 1–6 → Stage 1 (remove `hasBaseResume` lock in `CandidateProfile.tsx`; existing `values` / PUT persist / `handleCancel` / `isDirty` / `useDirtyLeaveSaveThenNavigate` unchanged; AC4 verify-only via `context.raw_resume` save path).
+
+## Findings
+
+### acceptable
+- **Location:** Parent Architectural definition — `pattern.ui.dirty-leave-save-then-navigate`
+- **Finding:** Pattern catalog entry is `status: proposed` (not `approved`).
+- **Recommendation:** Acceptable here — citation inherited from parent AST-1356; plan does not invent new dirty-leave wiring and matches the pattern’s solution shape (hook unchanged; enabling the textarea lets `context.raw_resume` participate in existing dirty/save flow).
+
+No `fix-now` or `discuss` findings. R1–R6 pass: single-file `ui` scope; lock removal aligns with `astral.layers.ui-config-driven-business-logic`; placement and in-scope boundaries honored; DRY via deletion not parallel paths; layer/import surface untouched.
+
+context_tokens≈15000
