@@ -151,3 +151,14 @@ AC1→Stage 1 (ensure/migrate + header inventory); AC2→Stage 2 writers (`save_
 
 context_tokens≈38000
 ```
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers`
+**Plan path:** `docs/features/artifacts/ast-1352-astral-artifacts-table-and-current-flag-writers.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | `294e76fa` | `astral_artifacts` ensure + inventory; `save_astral_artifact` / `get_current_astral_artifact` / `list_astral_artifacts` retire-and-insert |
+
+**Tip:** `294e76fa` on `origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers`
