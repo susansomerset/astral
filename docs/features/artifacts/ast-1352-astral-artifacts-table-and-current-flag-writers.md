@@ -162,3 +162,166 @@ context_tokens≈38000
 | 1–2 | `294e76fa` | `astral_artifacts` ensure + inventory; `save_astral_artifact` / `get_current_astral_artifact` / `list_astral_artifacts` retire-and-insert |
 
 **Tip:** `294e76fa` on `origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers`
+
+## Radia review
+
+# Radia review — AST-1352
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1352
+**Publish ref:** origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers @ 74712e64b4990c68684541c3cf9aebe15be87288
+**Overall:** CLEAN
+```
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers` (524 lines, 8 files)
+
+**Product commit:** `294e76fa` — `src/data/database.py` only (+175 lines)  
+**Tests/docs:** Betty `merge-tests` tip `74712e64` (expected per `orch.git.betty-merge-tests-one-sha`)
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core` agent paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatcher/agent-task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch-id emission |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch-id formatting |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity_agent_responses changes |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config-block edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug/artifacts dir paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan doc for AST-1352 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty-owned test-bible/tests merge; engineer product commit is `database.py` only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code()` commit touches only `src/data/database.py` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | data-only; no external I/O |
+| astral.layers.import-direction | scoped | conforms | data uses existing `ENTITY_TYPES` from `utils.config`; no forbidden imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI paths |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render/verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API endpoints |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON changes |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot seed paths |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed |
+| astral.standards.data-raises-caller-logs | scoped | conforms | helpers raise `ValueError`; no logging in new data paths |
+| astral.standards.database-header-inventory | scoped | conforms | `astral_artifacts` bullet added after `rubric_vector` in module inventory |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no `debug=` surfaces |
+| astral.standards.dry-and-focused-functions | scoped | conforms | shared `_normalize_astral_artifact_identity` / `_astral_artifact_row_dict`; public API thin |
+| astral.standards.in-scope-only | scoped | conforms | data writers only; no Save/UI/candidate_data wiring (AST-1353 boundary held) |
+| astral.standards.logging-via-utils | scoped | conforms | no new `print` / `getLogger` in touched product code |
+| astral.standards.names-not-ticket-ids | scoped | conforms | public symbols are domain-named, not ticket-prefixed |
+| astral.standards.no-cross-contamination | scoped | conforms | artifacts table isolated; not registered in config upsert maps per plan |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `entity_type` validated via `ENTITY_TYPES`, not a parallel hardcoded list |
+| astral.standards.public-then-helpers | scoped | conforms | public save/get/list precede private normalize/row-dict helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no `src/utils/**` changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transition paths |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run-chain paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip is `merge-tests(AST-1352): origin/tests 7f7444a7` |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `docs` / `test` / `merge-tests` vocabulary correct |
+| orch.git.flow-direction-inviolable | universal | conforms | sub-branch publish; no dev bypass |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/AST-1340/AST-1352-…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase/cherry-pick signals in commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | clean linear child history |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1340` worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product forks in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches staged plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Artifacts child; scoped correctly |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child gate satisfied |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/test-bible via Betty merge, not engineer product commit |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code diff |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee; review does not reassign |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits evident |
+
+**Active corpus swept:** 64 statutes on tree (README claims 65; file count is 64).
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.layers.import-discipline | conforms | data→utils only (`ENTITY_TYPES`); no ui/core/external bends (Joan R6 citation honored) |
+| pattern.data.versioned-current-row | not cited | parent-proposed catalog entry still undrafted; plan correctly refuses to invent it here |
+
+---
+
+## Plan adherence
+
+Implementation matches both plan stages:
+
+- **Stage 1:** `_astral_artifacts_schema_ensured`, `_ensure_astral_artifacts_table` with exact column set, index `idx_astral_artifacts_entity_type_current`, header inventory bullet placement, no `ALLOWED_CONFIG_TABLES` registration, no ALTER backfill.
+- **Stage 2:** `save_astral_artifact` / `get_current_astral_artifact` / `list_astral_artifacts` with strip/empty/`ENTITY_TYPES` validation, natural-key `UPDATE … current=1` retire, always-insert new UUID, `json.dumps` / string-as-is storage, `json.loads` on read with raw fallback, `ORDER BY created_at ASC`, no logging in data helpers.
+- **Boundaries:** No core/UI/Save Base Resume / `candidate_data.artifacts.base_resume` wiring — deferred to AST-1353 as planned.
+- **Estimate 5:** Footprint fits (single product file + Betty tests/docs).
+- **Joan plan-rubric:** APPROVED @ `d5137e65`; no Excluded-statute stragglers on this diff.
+
+**C6 lenses (§5a):** Imports/layers OK; no silent failure (JSON decode fallback is plan-specified, not a swallow); no `or {}` sentinels on required data; no debug/LLM/external/UI surfaces touched; SQL column/`?` counts consistent on INSERT/UPDATE/SELECT.
+
+---
+
+## Findings
+
+### fix-now
+
+*(none)*
+
+### discuss
+
+*(none blocking)*
+
+### advisory
+
+- **Parent catalog — `pattern.data.versioned-current-row`:** Implementation shape matches the intended versioned-current-row idiom (`rubric_vector` / `agent_task` precedents in-file), but the catalog entry remains undrafted on AST-1340. No change required on this child; Archie/parent owns catalog harvest before downstream reuse citations.
+- **Duplicate `current=1` rows:** No partial unique index at DB level; retire `UPDATE` heals on save (plan decision). `get_current_astral_artifact` uses `LIMIT 1` if duplicates exist pre-save — acceptable per plan; optional hardening belongs on a future ticket if desired.
+
+---
+
+## What's solid
+
+- Clean engineer footprint: product code is one file, one commit.
+- Retire-by-natural-key semantics match plan decision and parent “exactly one current=1” intent.
+- Betty coverage maps 1:1 to plan branches (ensure, round-trip, history, identical-payload new UUID, validation, string/JSON-text edge cases).
+- Conftest `_astral_artifacts_schema_ensured` resets in data/core/ui — correct isolation hygiene.
+
+---
+
+## Frame diff
+
+(none)
+
+---
+
+## Notes
+
+- Joan plan-rubric verdict attached; no Excluded-statute straggler.
+- Tests/test-bible in three-dot diff ride Betty `merge-tests` SHA — not engineer scope creep.
+- C7 complete; recommend Chuckles append to issue doc, commit `docs(AST-1352): Radia review — clean`, post slim upshot, advance to **Review Posted** → **User Testing** (PROCEED path).
+
+context_tokens≈22000
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: 74712e64) data-layer writers clean
+```
