@@ -112,3 +112,40 @@ UI editor fields must use these keys only (labels from `BUILD_CONFIG["experience
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1351
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity` @ `a6e36b1908841ddb5640bf572f30e12784ef5618`
+
+## Traceability
+
+| AC | Plan stage(s) |
+|----|----------------|
+| 5 | S1 (`experience_job_ui_fields` + `ui_config` exposure), S2 (`ExperienceJobsEditor`), S3 (`ArtifactEditor` structured present/persist; legacy non-array read-only + Save abort) |
+| 6 | S4 (audit happy-path `_emit_experience_jobs_html` on base/session/job builds; no prose-merge regression; Style D per-job detail when `debug=True`) |
+
+Stages S1–S4 map to child scope (array UI template + emit parity); parent AC 7 and toast/no-emit correctly deferred to AST-1350; schema/prompt contract to AST-1349.
+
+## Findings
+
+**acceptable** — Assignee is Katherine (Linear: Joan Clarke display name); Chuckles-spawned pass; no review block.
+
+**acceptable** — Plan assumes AST-1349 contract + AST-1350 gate on ftr tip (`unsupported_resume_structure_message`, `_reject_unsupported_experience_shape` already present on worktree); `sync-child` merge expectation is explicit.
+
+**acceptable** — As-is verified: `ArtifactEditor` still round-trips experience via pretty-printed JSON `LabeledTextArea` (`sectionValueToTabContent` / `tabContentToSectionValue`); `structureMode` `shapeFields` currently omit `type: "experience_jobs"` (plan S3.1 fixes); builder emit already uses `_emit_experience_jobs_html` with AST-1350 refuse on non-array; no `debug_experience_jobs` on build entrypoints yet (plan S4 adds).
+
+**acceptable** — `JobAnalysisReportModal` mounts `ArtifactEditor` with `useCandidateResumeStructure` + `structureSections` — plan’s “fix once in ArtifactEditor” covers job resume without a separate JAR file change.
+
+No `fix-now` or `discuss` findings. In-session statute/pattern sweep: cited entries (`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.debug-contract-gated`, `astral.config.config-source-of-truth`, `astral.layers.import-direction`, `astral.standards.in-scope-only`) all `conforms`; field keys sourced from config via `ui_config`; no UI→data/core shortcuts; sibling boundaries respected (no prompt/schema edits, no Print toast gate changes).
+
+context_tokens≈62000
+
+---
+
+[plan-rubric] PROCEED (Commit: a6e36b19) array UI + emit parity
+
+AST-1351 plan approved.
