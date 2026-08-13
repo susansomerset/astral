@@ -51,3 +51,20 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
 | Behavior | Tests |
 | --- | --- |
 | ui_config cover_from_block slice | `TestSystemAuthRoutes::test_ui_config_includes_cover_from_block` |
+
+### AST-1351 · AST-1345
+
+**Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+`GET /api/ui_config` (system blueprint) exposes `experience_job_ui_fields` + `unsupported_resume_structure_message` from `BUILD_CONFIG`. Primary UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| ui_config field spine + message | `src/ui/api/api_system.py` | **`TestAst1351ExperienceJobUiConfig`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1351ExperienceJobUiConfig \
+  -q
+```
+
