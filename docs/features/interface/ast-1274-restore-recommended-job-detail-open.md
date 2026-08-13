@@ -433,3 +433,175 @@ fix-board `[board-betty] TESTS: REVISE` on AST-1354: product moved story ownersh
 - AST-1274 soft-fail semantics preserved in tests (list fail → `[]`; resolve fail → empty block content, detail still openable).
 - AST-984 latest-per-task story via `list_entity_latest_agent_refs` + `prompt_blocks` ids (not entity JSON columns).
 - This gap does not regress non-story roster tests or change Joan’s CANON: OK surface.
+
+## Radia review (AST-1355)
+
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.pipeline.plan-is-bible | universal | violates | plan says **Product: none**; publish ref includes AST-1341/1342/1343 product via `sync(dev)` |
+| orch.pipeline.project-scoped-queues | universal | conforms | single gap ticket |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | n/a |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | n/a |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1355)` @ `0402abdc` lands tests SHA `3b11fdf0` |
+| orch.git.commit-vocabulary | universal | conforms | `docs`/`test`/`merge-tests` types used |
+| orch.git.flow-direction-inviolable | universal | needs-discussion | `sync(dev)` merged foreign product onto gap sub before test work |
+| orch.git.ftr-sub-topology | universal | violates | sub should be ftr + this ticket only; carries 1341/1342/1343 product not on ftr |
+| orch.git.merge-on-checkout | universal | conforms | n/a |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | n/a |
+| orch.git.no-dev-agent-branches | universal | conforms | n/a |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | n/a |
+| orch.git.three-permanent-branches | universal | conforms | n/a |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | test/bible work on `origin/tests` + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | n/a |
+| orch.roles.pre-commit-path-bans | universal | conforms | n/a |
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent scoring changes in **AST-1355 commits** |
+| astral.agent.do-task-delegation | scoped | not-applicable | n/a |
+| astral.agent.grade-vector-validation | scoped | not-applicable | n/a |
+| astral.batch.batch-id-first | scoped | not-applicable | n/a |
+| astral.batch.batch-id-format | scoped | not-applicable | n/a |
+| astral.batch.claim-process-release | scoped | not-applicable | n/a |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | tests retarget to `list_entity_latest_agent_refs` + agent story |
+| astral.config.config-source-of-truth | scoped | not-applicable | n/a |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | n/a |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | n/a |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | n/a |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | n/a |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | n/a |
+| astral.docs.features-single-file-per-ticket | scoped | violates | `sync(dev)` appends AST-1342/1343 plan-fix to **other** feature docs on this sub |
+| astral.git.betty-no-src-or-features | scoped | violates | publish ref modifies `src/**` + foreign `docs/features/**` (not merge-tests exception) |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | Betty lane; tests on `origin/tests` |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | n/a |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | n/a |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API route changes in AST-1355 commits |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | foreign product diff only |
+| astral.layers.import-direction | scoped | not-applicable | foreign product diff only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | n/a |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | foreign product diff only |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | n/a |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | n/a |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | n/a |
+| astral.seed.define-approved | scoped | not-applicable | n/a |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | n/a |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | n/a |
+| astral.standards.data-raises-caller-logs | scoped | conforms | soft-fail tests assert `warning` not `exception` |
+| astral.standards.database-header-inventory | scoped | not-applicable | n/a |
+| astral.standards.debug-contract-gated | scoped | not-applicable | n/a |
+| astral.standards.dry-and-focused-functions | scoped | conforms | moved classes mirror roster originals with API retarget |
+| astral.standards.in-scope-only | scoped | violates | gap ticket is test/bible-only; `sync(dev)` @ `04b876aa` smuggles 1341/1342/1343 product |
+| astral.standards.logging-via-utils | scoped | conforms | logger assertions on `agent_mod.logger` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | n/a |
+| astral.standards.no-cross-contamination | scoped | not-applicable | layer imports unchanged in AST-1355 test commits |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | n/a |
+| astral.standards.public-then-helpers | scoped | not-applicable | no new product public API |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | n/a |
+| astral.state.core-decides-transitions | scoped | not-applicable | n/a |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | n/a |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | n/a |
+| astral.ui.frontend-file-placement | scoped | violates | foreign frontend edits on gap sub (`ArtifactEditor`, `CandidateProfile`, …) |
+| astral.ui.naming-conventions | scoped | not-applicable | foreign diff |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | n/a |
+
+**Notes:** no Joan fix-mode verdict attached. AST-1355 **test/bible commits** (`9e982b62`, `3b11fdf0`) are clean; violation is branch topology (`sync(dev)`), not Betty's test content.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | not-applicable | no API changes in AST-1355 test commits |
+| pattern.layers.import-discipline | not-applicable | test-only commits |
+
+## Plan adherence
+
+**AST-1355 commits only** (`9e982b62` + `3b11fdf0` + `merge-tests`):
+
+| # | item | verdict |
+|---|------|---------|
+| 1 | Remove roster story classes | OK — `TestEntityAgentStory`, `TestEntityAgentStoryBranches`, `TestFilterResponseBlock`, `TestAst1274AgentStorySoftFail` deleted; `TestAst726LatestOnlyRosterStory` story method removed, non-story kept |
+| 2 | Add `test_agent.py` classes with agent imports/patches | OK — `agent_mod.database.list_entity_latest_agent_refs`, per-id `_get_agent_data_row`, no `get_agent_data_for_ids` |
+| 3 | New dangling-sibling repro | OK — `TestAst1354AgentStoryDanglingTaskSibling` |
+| 4 | Bible retarget | OK — `agent.md` section, `roster.md` + `frontend/components.md` rows |
+| 5 | Out of scope | OK in test commits — no product re-implementation |
+
+**Publish ref vs plan:** **FAIL** — `sync(dev)` @ `04b876aa` (parent `978435c5` merge-child refresh) adds product + foreign plan-fix docs **before** AST-1355 work. Ftr tip `22347825` already has AST-1354; it does **not** have AST-1341 (`1abf0e4e` not ancestor of ftr). Six files outside AST-1355 scope on tip:
+
+- `src/core/builder.py` (AST-1341)
+- `src/ui/frontend/src/components/ArtifactEditor.tsx`, `ArtifactsBaseResumeContent.tsx` (AST-1342)
+- `src/ui/frontend/src/pages/CandidateProfile.tsx` (AST-1343)
+- `docs/features/artifacts/ast-1337-print-control-on-base-resume-content.md` (AST-1342 plan-fix append)
+- `docs/features/interface/ast-1336-candidate-profile-dirty-leave-wiring.md` (AST-1343 plan-fix append)
+
+## Fix-specific checks
+
+**[bug-repro]** — OK
+
+`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_no_exception_stack` (`test_agent.py` ~7739):
+
+- Tagged `[bug-repro]` in class docstring; bible row cites it.
+- Pins concrete **To-be** values: 2-task partial story; `propose_application_responses` RESPONSE retains `"healthy propose response"`; dangling TASK `content == ""`; second task intact; `logger.warning` called; `logger.exception` **not** called.
+- Exercises AST-1354 per-id hydrate path (`_get_agent_data_row` raises `ValueError` only for bad id) — would fail pre-move roster `get_agent_data_for_ids` all-or-nothing / roster import.
+- List step mocked (plan allows); repro targets hydration soft-fail + partial story, matching gap AC2.
+
+**## What must still hold** — OK (for test/bible commits)
+
+| item | verdict |
+|------|---------|
+| AST-1354 product contracts preserved in tests | OK — metadata list mocked; per-id soft-fail; warning not exception |
+| AST-1274 semantics in tests | OK — list fail → `[]`; single-block fail → `content == ""` |
+| AST-984 latest-per-task via list API | OK — patches target `database.list_entity_latest_agent_refs` |
+| Non-story roster tests untouched | OK — only story classes removed |
+
+## Findings
+
+### fix-now
+
+1. **Strip foreign product from publish ref** — `origin/sub/AST-1316/AST-1355-gap-agent-story-tests` must rebase onto ftr tip `22347825` **without** `sync(dev)` `04b876aa` / `978435c5` ancestry. Keep only:
+   - `docs(AST-1355): plan-fix`
+   - `test(AST-1355): bug-repro` (already on `origin/tests` @ `3b11fdf0`)
+   - `merge-tests(AST-1355)`
+   
+   **Why:** Plan §Proposed change line 399: **Product: none.** Ftr already has AST-1354. AST-1341/1342/1343 product belongs on their own subs merged to ftr via normal fix/feature lane — not piggybacked on a Betty gap sub. Until stripped, this sub cannot merge without shipping unreviewed-on-ftr product and violates `astral.git.betty-no-src-or-features`, `orch.git.ftr-sub-topology`, `astral.standards.in-scope-only`.
+
+   **Locations:** `sync(dev)` `04b876aa`; product files listed above.
+
+### discuss
+
+1. **Repro uses mocks not sqlite seed** — plan allows “list returns TASK id + per-id get raises”; optional follow-up component test against real `list_entity_latest_agent_refs` metadata-only path (database layer) could harden AC2. Not blocking once branch topology is fixed.
+
+### advisory
+
+1. `TestAst1274AgentStorySoftFail::test_get_agent_data_failure_yields_empty_block_content` — `_get_agent_data_row` `side_effect` hits every id; still valid for “single RESPONSE block fails” shape.
+2. After rebase, confirm `merge-tests` SHA still matches `origin/tests` tip containing `3b11fdf0`.
+
+## What's solid (test/bible commits only)
+
+- Complete roster → agent retarget: imports, monkeypatch targets, and bible command nodes aligned.
+- Soft-fail tests updated for AST-1354 shape (`warning` asserted, `exception` forbidden).
+- `[bug-repro]` dangling TASK sibling test is substantive — partial story, concrete content assertions, logging contract.
+- `TestAst726LatestOnlyRosterStory` correctly trimmed to non-story coverage with pointer comment.
+- Bible manifest in `agent.md` lists all moved classes + narrowed `run_component_tests.sh` command.
+
+## Frame diff
+
+AST-1355 plan-fix section matches **test/bible** commits. Publish ref **drifts** via foreign `sync(dev)` product/docs — not frame drift in the AST-1355 patch itself.
+
+## Chuckles branching
+
+| Gate | Parent | Next action |
+|------|--------|-------------|
+| **REVIEW** (fix-now, C7 complete) | Normal AST-1316 | → **Review Posted** → rebase/strip `sync(dev)` on sub (Chuckles/git hygiene) → re-run **Tests Passed** → re-review or fast-path if only topology fix → then UT |
+
+Do **not** merge this sub to ftr until product churn is removed. AST-1341/1342/1343 should land on ftr through their own tickets first if not already there.
+
+context_tokens≈48000
+— Radia
+```
+
+```
+[code-rubric] REVIEW (Commit: 0402abdc) strip sync dev product
+```
