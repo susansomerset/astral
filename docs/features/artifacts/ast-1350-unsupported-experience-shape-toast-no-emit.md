@@ -121,3 +121,151 @@ context_tokens≈52000
 **Built:** `origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `3b30b01bc7ff13ead7899a289d8b04c215436eb2`
 
 Stage 1: `BUILD_CONFIG.unsupported_resume_structure_message` + `_reject_unsupported_experience_shape` in `build_base_resume` / `build_resume_from_job` / `build_session_base_resume`; leftover-prose skip → raise. Stage 2: `api_resume_html` 400 for unsupported; JAR Print Resume fetch-then-blob + toast (Base/Session already toast API `error`). Tests deferred to Betty.
+
+## Radia review — AST-1350
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1350  
+**Publish ref:** `origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `81463c4c8edbad4920c88697117d5a1f06df435a`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent confidence paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No `agent.py` / task dispatch edits |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector validation |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No entity response persistence |
+| `astral.config.config-source-of-truth` | scoped | conforms | Toast literal in `BUILD_CONFIG["unsupported_resume_structure_message"]`; builder/API read config |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No chain edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single issue doc |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Engineer commits: `src/` + `data/admin` n/a; tests/bible via Betty |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer commits exclude `tests/` and `docs/test-bible/` |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render/verdict |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | Resume routes remain `@require_auth`; no auth regression |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Core owns refuse gate; UI surfaces API error only |
+| `astral.layers.import-direction` | scoped | conforms | `api_resume_html` → `core` + `utils/config`; no layer bends |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/` |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Operator message config-owned; React does not encode shape rules |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No `agent_task.json` (AST-1349 scope) |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No boot seed |
+| `astral.seed.define-approved` | scoped | not-applicable | Implementation ticket |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `src/data/` |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migration edits |
+| `astral.standards.debug-contract-gated` | scoped | conforms | No new ungated debug emission on touched paths |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single `_reject_unsupported_experience_shape` helper reused in three builders |
+| `astral.standards.in-scope-only` | scoped | conforms | Engineer commits limited to plan files; no AST-1349/1351 smuggle |
+| `astral.standards.logging-via-utils` | scoped | conforms | No new `print()` / raw logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | No ticket-id symbols |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Toast/no-emit only; no schema/prompt/array-layout work |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Message not duplicated in builder (config read) |
+| `astral.standards.public-then-helpers` | scoped | conforms | Private helper after public `build_*` |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state machine |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run chain |
+| `astral.ui.frontend-file-placement` | scoped | conforms | JAR modal edit in `components/` |
+| `astral.ui.naming-conventions` | scoped | conforms | No naming regressions |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `81463c4c merge-tests(AST-1350)` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code(AST-1350)` / `test(AST-1350)` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | `sub/AST-1345/...` off epic line |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child publish ref topology correct |
+| `orch.git.merge-on-checkout` | universal | conforms | No checkout violations |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history |
+| `orch.git.no-dev-agent-branches` | universal | conforms | `sub/` publish ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | `astral-AST-1345` worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | Baseline `origin/dev` |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Implements Joan-approved plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | S1–S2 delivered |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Artifacts / AST-1345 child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed spawn |
+| `orch.roles.archie-approves-statutes` | universal | conforms | Joan APPROVED @ `8984d14e` |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | `test(AST-1350)` + merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Hedy assignee |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Hedy at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Engineer path set clean |
+
+**Active-set count scored in-session:** 64 rows; no `violates` / `needs-discussion` statute rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.layers.import-discipline` | conforms | Core gate + thin API/UI; UI does not import `data`/`external` |
+| `pattern.config.config-block` | conforms | `BUILD_CONFIG` owns operator message; builder/API consume it |
+| *(Joan informal citations)* `astral.layers.ui-config-driven-business-logic`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets` | conforms | Covered by statute rows above |
+
+## Plan adherence
+
+**Engineer product commits** (`83ca5619` + `3b30b01b`) touch exactly four planned layers:
+
+| Stage | Plan | Tip |
+|-------|------|-----|
+| **S1** | Config message + `_reject_unsupported_experience_shape` in `build_base_resume` / `build_resume_from_job` / `build_session_base_resume` **before** filter; defense-in-depth in `_emit_body_sections_html` | Delivered — gate uses `is_experience_job_array` (AST-1349 contract); leftover-prose `continue` removed → `ValueError` |
+| **S2** | `api_resume_html` 400 for unsupported; JAR fetch-then-blob; Base/Session toast exact API `error` | API + JAR delivered; Base Print (`ArtifactsBaseResumeContent.handlePrint`) and Session Open HTML (`AdminSessionResumePaste.handleOpenHtml`) already fetch-then-toast API `error` without tab — from **AST-1337** / **AST-987**; no rewrite needed per plan “already mostly true” |
+| **S2 session API** | `session_resume_html` already 400 + `str(exc)` | Confirmed on tip (`api_admin.py` L1563–1564) |
+
+**Contract table verified:** key absent → allow; `[]` / list-of-dicts → allow; string / dict / non-array list → refuse with exact config message.
+
+**Estimate 3:** Footprint matches (2 code commits, focused).
+
+**Dependency:** Blocked by AST-1349 (UT) — `is_experience_job_array` predicate present on epic line; satisfied.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+1. **Three-dot diff vs `origin/dev` is ftr-aggregate noise** — `git diff origin/dev...publish-ref` warns multiple merge bases and includes sibling epic work (AST-1347/1348 config+JAR chrome, AST-1338 meteorite retry, `consult.py`, etc.) not authored in AST-1350 commits. For product review, filter to `83ca5619..3b30b01b` (4 files). No resolve-child action on AST-1350 product code.
+2. **merge-tests piggyback** — Branch history includes `test(AST-1353)` (`b8b8771d`) before `merge-tests(AST-1350)`; pipeline-legal, unrelated to AC 7.
+3. **Legacy builder fixture outside narrowed manifest** — `TestBuildResumeFromJob::test_renders_job_resume_with_keywords_resume_only_by_default` still passes `experience="Role A"` (string) into `build_resume_from_job`, which now raises. Betty bible documents revised AST-987/998/1304 rows but not this one; narrowed manifest excludes it. Recommend flipping that fixture to job-array (or expect `ValueError`) before a full `test_builder.py` module run — downstream hygiene, not an AST-1350 product defect.
+4. **Session Open HTML** — No new AST-1350 frontend component test; coverage is core `TestAst1350UnsupportedExperienceShape` + existing Session fetch/toast pattern. Acceptable per bible manifest; optional UT could add Session unsupported-toast assertion later.
+5. **`MaterialsPreviewModal`** — Joan noted unused iframe path; core gate still blocks Experience-omitted emit if wired later (out of ticket scope).
+
+## What's solid
+
+- Core refuses emit **before** `filter_content_to_resume_structure`, closing the “drop then omit Experience” hole the plan called out.
+- Defense-in-depth: any `experience_detail` non-array in `_emit_body_sections_html` now raises (not only `experience` key).
+- API maps unsupported `ValueError` → **400** + exact `error` string; other builder errors stay **404**.
+- JAR Print Resume: fetch-then-blob + toast; no blind `window.open` on failure (component tests assert).
+- Reuses AST-1349 `is_experience_job_array` without redefining schema or touching prompts.
+
+## Frame diff
+
+Since Joan APPROVED @ `8984d14e` and build stub @ `3b30b01b`:
+
+| Commit | Delta |
+|--------|-------|
+| `83ca5619` | S1: `BUILD_CONFIG` message + builder gate + emit defense |
+| `3b30b01b` | S2: `api_resume_html` 400 mapping + JAR `handlePrintResume` + Toast |
+| `22925f50` | Betty: `TestAst1350*` + revised AST-987/998/1304 + bible rows |
+| `81463c4c` | `merge-tests(AST-1350)` |
+
+context_tokens≈48000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 81463c4c) unsupported shape toast no emit
+```
