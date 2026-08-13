@@ -148,3 +148,8 @@ Stages S1–S5 map to child scope and parent functional bullets 1–4 + debug (p
 No `fix-now` or `discuss` findings. Statute sweep (R1–R4) in-session: all universal `orch.*` conform; scoped statutes considered for `utils`/`core`/`data/admin` touch set — all `conforms`. Cited patterns `pattern.config.config-block` and `pattern.layers.import-discipline` match plan shape. As-is diagnosis verified on publish ref: `craft_resume_base` `### experience` still teaches prose blocks; `draft_job_resume` still authorizes `"prose string or job array"`.
 
 context_tokens≈48000
+
+## Review (build stub)
+
+- **Publish ref:** `sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent`
+- **Stages:** S1 confirm-only (`_EXPERIENCE_JOB_*` already locked); S2–S3 candidate + job prompts array-only; S4 draft validate contract message / no string success; S5 AST-756 `agent_task` twin `cp`
