@@ -63,3 +63,41 @@ Wire the existing successful Save Base Resume path so that after live `candidate
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1353
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot` @ `cced2c74`
+
+## Traceability
+AC2→Stage 1 (core re-read + `save_astral_artifact` after successful PUT persist); AC3→Stage 1 (second PUT with `base_resume` delegates retire-and-insert to AST-1352 writer); AC4→Stage 1 boundary (wire only `update_candidate_data` PUT; craft/Generate/Regenerate use `database.save_candidate` directly — verified `parse_candidate_resume`, `_persist_craft_dispatch_success`, `run_candidate_artifact_generation`); AC5→Stage 1 (no frontend changes; API/DB UAT).
+
+## Findings
+
+### acceptable
+- **Location:** Plan structure — no Scope/Conf/Risk self-assessment
+- **Finding:** Only `## Estimate` confirm; no formal axes block.
+- **Recommendation:** Acceptable for a two-file, single-stage wire; estimate 2 matches footprint.
+
+### discuss
+- **Location:** Stage 1 step 3 — autosave path
+- **Finding:** `ArtifactEditor` debounced autosave uses the same `PUT …/data` with `artifacts.base_resume`; each successful autosave will snapshot (and retire prior), not only explicit Save clicks.
+- **Recommendation:** Plan explicitly names Save/autosave — intentional; operators may accumulate more history rows than manual Save alone. No plan change required unless product wants explicit-Save-only snapshots.
+
+### discuss
+- **Location:** Stage 1 step 3 — error handling after `save_candidate_data`
+- **Finding:** Snapshot failure after a successful live persist returns 400 (Save failed) while `candidate_data` is already committed; no cross-table transaction.
+- **Recommendation:** Reasonable fail-closed surface for this epic; note for UAT that a failed snapshot is a partial persist edge case, not a silent drop.
+
+### acceptable
+- **Location:** Stage 1 step 2 — literal `"base_resume"` / `"candidate"`
+- **Finding:** No new config block for artifact types; plan documents epic-scoped literal contract matching AST-1352.
+- **Recommendation:** Acceptable given sibling writer + parent scope; `ENTITY_TYPES` validation remains in data layer.
+
+**R6 checklist (summary):** Definition fidelity ✓ — Save-path wire only; explicit do-not-touch for table, frontend, craft/Print, backfill. Layer compliance ✓ — `ui` → `core.candidate` → `database.save_astral_artifact`; no `ui`→`data`. Scope ✓ — does not reimplement AST-1352 writers; dependency present on publish ref (`save_astral_artifact` @ database.py). Pattern ✓ — mirrors `apply_rubric_vectors_save` orchestration from `update_candidate_data`. DRY ✓ — single core helper, no duplicate versioning.
+
+**Statute pass (in-session):** All 18 universal orch statutes conform. Considered scoped statutes on `src/core/candidate.py` + `src/ui/api/api_candidate.py` modify — including `astral.layers.import-direction`, `astral.standards.in-scope-only`, `astral.standards.data-raises-caller-logs`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.no-hardcoded-sets` — all `conforms`; no `violates`.
+
+context_tokens≈52000
