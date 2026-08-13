@@ -223,3 +223,24 @@ Stage 1 delivered exactly as specified:
 context_tokens≈28000
 
 ---
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/7d9f0e0c5031f3db0250aa3b43be29ac/50da2ad6-1623-4bb4-9ddb-ba6a99d9105b/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/5c36b5bc-2db5-424d-ba93-c09a61b5ed04/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/7d9f0e0c5031f3db0250aa3b43be29ac/78027369-eb97-460a-b4ca-993ff37068d3/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1329 (parent) | ftr/AST-1329-remove-cancel-footer-recommended-job-modal |
+| AST-1334 | sub/AST-1329/AST-1334-remove-recommended-job-report-modal-footer |
+
+**Epic worktree:** `astral-AST-1329/` — one active sub checked out at a time.

@@ -861,18 +861,27 @@ class TestAst987BuildSessionBaseResume:
         get_c = MagicMock()
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
         monkeypatch.setattr(builder_mod.database, "get_candidate", get_c)
+        # AST-1350: string experience refuses emit — session happy path uses job array.
+        jobs = [
+            {
+                "company": "Paste Co",
+                "title": "Role",
+                "dates": "2024",
+                "location": "",
+                "accomplishments": "Paste jobs",
+            }
+        ]
         html = builder_mod.build_session_base_resume(
             self._structure(),
             {
                 "candidate_name": "Session User",
                 "professional_summary": "Paste summary",
-                "experience": "Paste jobs",
+                "experience": jobs,
             },
         )
         assert "Paste summary" in html
-        # AST-1304: leftover Experience prose is not printed (job array still is).
-        assert "Paste jobs" not in html
-        assert 'id="experience"' not in html
+        assert "Paste Co" in html
+        assert 'id="experience"' in html
         # Name from paste section strings — not profile (get_candidate never called).
         assert "Session User" in html
         get_c.assert_not_called()
@@ -882,7 +891,18 @@ class TestAst987BuildSessionBaseResume:
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", get_c)
         html = builder_mod.build_session_base_resume(
             self._structure(),
-            {"professional_summary": "Debug session", "experience": "Jobs"},
+            {
+                "professional_summary": "Debug session",
+                "experience": [
+                    {
+                        "company": "Dbg",
+                        "title": "T",
+                        "dates": "2024",
+                        "location": "",
+                        "accomplishments": "Jobs",
+                    }
+                ],
+            },
             debug=True,
         )
         assert "Debug session" in html
@@ -988,17 +1008,14 @@ class TestAst998ExperienceJobRender:
         assert ".compact-title" in html  # CSS present
         assert '"accomplishments"' not in html
 
-    def test_session_legacy_string_experience_still_prose(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_session_legacy_string_experience_refuses_emit(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1350: string experience is not a silent omit — refuse emit entirely.
         monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
-        html = builder_mod.build_session_base_resume(
-            self._structure(),
-            {"professional_summary": "Summary", "experience": "Legacy prose blob"},
-        )
-        # AST-1304: required Experience has no prose-block fallback.
-        assert "Legacy prose blob" not in html
-        assert 'id="experience"' not in html
-        assert '<article class="role">' not in html
-        assert "Summary" in html
+        with pytest.raises(ValueError, match="unsupported resume structure, please regenerate"):
+            builder_mod.build_session_base_resume(
+                self._structure(),
+                {"professional_summary": "Summary", "experience": "Legacy prose blob"},
+            )
 
     def test_base_resume_renders_job_array(self, monkeypatch: pytest.MonkeyPatch) -> None:
         structure = self._structure()
@@ -1046,6 +1063,174 @@ class TestAst998ExperienceJobRender:
         assert 'class="compact-title"><strong>Engineer\u00a0• Acme Corp</strong></p>' in html
         assert "<li>Shipped widgets</li>" in html
         assert "Job summary" in html
+
+
+class TestAst1350UnsupportedExperienceShape:
+    """AST-1350: refuse emit when experience is present but not a job array."""
+
+    _MSG = "unsupported resume structure, please regenerate"
+    _JOBS = [
+        {
+            "company": "Acme Corp",
+            "title": "Engineer",
+            "dates": "2020-2023",
+            "location": "Remote",
+            "accomplishments": "Shipped widgets",
+        }
+    ]
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_config_message_literal(self) -> None:
+        assert builder_mod.BUILD_CONFIG["unsupported_resume_structure_message"] == self._MSG
+
+    def test_session_string_experience_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        with pytest.raises(ValueError, match=self._MSG):
+            builder_mod.build_session_base_resume(
+                self._structure(),
+                {"professional_summary": "S", "experience": "legacy prose"},
+            )
+
+    def test_session_non_array_object_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        with pytest.raises(ValueError, match=self._MSG):
+            builder_mod.build_session_base_resume(
+                self._structure(),
+                {"professional_summary": "S", "experience": {"company": "Acme"}},
+            )
+
+    def test_session_job_array_still_emits(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {"professional_summary": "S", "experience": [dict(j) for j in self._JOBS]},
+        )
+        assert "Acme Corp" in html
+        assert self._MSG not in html
+
+    def test_session_experience_key_absent_still_emits(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {"professional_summary": "Summary only"},
+        )
+        assert "Summary only" in html
+
+    def test_base_resume_string_experience_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        structure = self._structure()
+        cd = {
+            "first": "Ada",
+            "last": "Lovelace",
+            "full": "Ada Lovelace",
+            "candidate_data": {
+                "contact": {"contact_email": "a@b.c"},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {
+                        "professional_summary": "Base summary",
+                        "experience": "legacy string",
+                    },
+                },
+            },
+        }
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", lambda cid: cd)
+        monkeypatch.setattr(builder_mod.database, "get_candidate", lambda cid: cd)
+        with pytest.raises(ValueError, match=self._MSG):
+            builder_mod.build_base_resume("cand-1")
+
+    def test_emit_body_refuses_non_array_experience_detail(self) -> None:
+        # Defense in depth: experience_detail extras that are not job arrays also refuse.
+        structure = {
+            "sections": {
+                "consulting_roles": {
+                    "id": "consulting_roles",
+                    "title": "Consulting",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                    "format": "experience_detail",
+                }
+            }
+        }
+        with pytest.raises(ValueError, match=self._MSG):
+            builder_mod._emit_body_sections_html(
+                {"consulting_roles": "not jobs"},
+                ["consulting_roles"],
+                {"consulting_roles": "Consulting"},
+                resume_structure=structure,
+            )
+
+
+
+
+class TestAst1351ExperienceDebugJobs:
+    """AST-1351: debug=True emit paths list experience jobs (Style D)."""
+
+    _JOBS = [
+        {
+            "company": "Acme Corp",
+            "title": "Engineer",
+            "dates": "2020-2023",
+            "location": "Remote",
+            "accomplishments": "Shipped widgets",
+        }
+    ]
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_session_debug_lists_experience_jobs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_index", lambda **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "professional_summary": "S",
+                "experience": [dict(j) for j in self._JOBS],
+            },
+            debug=True,
+        )
+        assert "Acme Corp" in html
+        assert any(m.startswith("experience[0] company=") for m in details)
 
 
 class TestAst1007NestedTypographyMarkers:
@@ -3435,14 +3620,16 @@ class TestAst1304BuilderEmitByFormat:
             ),
             mystery=_ast1304_extra("mystery", "Mystery", None, 12),
         )
+        # AST-1350: leftover Experience prose / non-array experience_detail refuse emit —
+        # Style D trail uses a valid job array for experience; omit unsupported extras.
+        jobs = [dict(_AST1304_JOB)]
         html = builder_mod.build_session_base_resume(
             structure,
             {
                 "candidate_name": "Ada",
                 "professional_summary": "Pitch",
-                "experience": "Leftover prose",
+                "experience": jobs,
                 "highlights": "Won award",
-                "consulting_roles": "not jobs",
                 "mystery": "secret",
             },
             debug=True,
@@ -3456,9 +3643,9 @@ class TestAst1304BuilderEmitByFormat:
         assert by_id["candidate_name"] == "emitted"
         assert by_id["candidate_title"] == "skipped — empty"
         assert by_id["professional_summary"] == "emitted"
-        assert by_id["experience"] == "skipped — leftover prose"
+        assert by_id["experience"] == "emitted"
         assert by_id["highlights"] == "emitted"
-        assert by_id["consulting_roles"] == "skipped — not job array"
+        assert by_id["consulting_roles"] == "skipped — empty"
         assert by_id["mystery"] == "skipped — missing format"
         assert any(
             row.get("total") == 1 and "success" in str(row.get("outcome") or "")

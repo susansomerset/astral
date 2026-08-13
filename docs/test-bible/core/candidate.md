@@ -541,6 +541,45 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1349 · AST-1345
+
+**Parent:** [AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent`.
+
+Locks craft/parse/finalize prompts + draft validate on the shared experience job-array contract (five keys). String experience is not a success path; error text is `Section 'experience' must be a job array` (no `experience_detail` jargon). Config schemas were already locked (**AST-996** / **AST-997**) — confirm-only. Does **not** own toast/no-emit (**AST-1350**) or UI/HTML emit (**AST-1351**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft-base / finalize / advise array-only prompts + AST-756 twin | `data/admin/agent_task.json`, UAT twin | **`TestAst1349ExperienceArrayContract`** |
+| Draft validate contract message / array accept | `src/core/candidate.py` | **`TestAst1349ExperienceArrayContract`**; revised **`TestAst997JobTailoredExperience`** (string/object reject + draft prompt); revised **`TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`** |
+| Shared schema identity (existing) | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`**, **`TestAst997FinalizeExperienceJobArray`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Preserve / pin / Style D (existing) | `src/core/candidate.py` | **`TestAst996ExperienceJobArray`**, **`TestAst997JobTailoredExperience`** |
+
+**Broken / obsolete this pass:** AST-997 / AST-1270 asserts on `"prose string or job array"` and `"experience_detail"` in draft-validate errors — flipped to array-only contract phrases.
+
+**Integration:** no existing scenario asserts craft/draft experience prompts or draft-validate error text — no revision (artifact pipeline remains a should-have gap).
+
+## QA test manifest
+
+1. Existing schema identity: `TestAst996ExperienceJobArrayConfig` + `TestAst997FinalizeExperienceJobArray`
+2. Existing preserve/pin/debug: `TestAst996ExperienceJobArray` + `TestAst997JobTailoredExperience` (incl. revised reject/prompt rows)
+3. New array-only prompts + contract validate: `TestAst1349ExperienceArrayContract`
+4. Nested draft prompt regression: `TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`
+
+**AST-1349** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract \
+  tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig \
+  tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
+  -q
+```
+
+---
+
 ### AST-1005 · AST-994
 
 **AST-1005 (UAT bug):** Craft-base normalize promotes known section ids from **direct keys** on `resume_structure` (e.g. `candidate_name`, experience job arrays) even when `sections` is missing — before `default_resume_structure()` replace — so validation no longer false-misses `candidate_name` beside a well-formed experience job array. Does not loosen required `candidate_name`. Items-schema hardening: **`docs/test-bible/core/agent.md`**.
@@ -1217,3 +1256,40 @@ Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug i
   -q
 ```
 
+---
+
+### AST-1353 · AST-1340
+
+**Parent:** [AST-1340 — Create a table called astral_artifacts](https://linear.app/astralcareermatch/issue/AST-1340/create-a-table-called-astral-artifacts). **Publish:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`.
+
+Core helper **`snapshot_saved_base_resume_astral_artifact`** re-reads live `artifacts.base_resume` after Save and calls AST-1352 **`save_astral_artifact`**. Wired only from **`PUT /api/candidates/<id>/data`** when the body includes dict/list `base_resume` — not from craft/Generate `database.save_candidate` paths. Data writers: **`docs/test-bible/data/database/astral_artifacts.md`**. API: **`docs/test-bible/ui/api/api_candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** |
+| Craft generate does not write astral_artifacts | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume::test_craft_generation_does_not_call_save_astral_artifact`** |
+
+**Broken / obsolete this pass:** none in core (API mock revisions live under **`api_candidate.md`**).
+
+**Integration:** no existing scenario asserts Save→`astral_artifacts` — no revision (artifact pipeline remains a should-have gap).
+
+## QA test manifest
+
+1. Core snapshot helper: `tests/component/core/test_candidate.py::TestAst1353SnapshotSavedBaseResume`
+2. API Save wire + AC4: `tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi`
+3. Revised mock PUT base_resume (snapshot stub): `TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys` + `TestAst1305LegacyLabelIngestApi`
+4. Sibling writers regression: `tests/component/data/database/test_astral_artifacts.py`
+
+**AST-1353** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1353SnapshotSavedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/data/database/test_astral_artifacts.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

@@ -698,6 +698,28 @@ Config / claim registry: **`docs/test-bible/utils/config.md`** (**AST-898**).
   -q
 ```
 
+### AST-1339 · AST-1319 (gap — tests)
+
+**Parent:** [AST-1319](https://linear.app/astralcareermatch/issue/AST-1319). **Publish:** `origin/sub/AST-1319/AST-1339-gap-meteorite-new-retry-tests`. Product: sibling **AST-1338**.
+
+`_consult_batch_fail_dest("METEORITE_NEW", qualify_meteorite error)` → **METEORITE_NEW_RETRY**; holding second strike → **METEORITE_ERROR_QUALIFY**. Does **not** claim content-gate → retry holding. Config / claim / UI twin: **`docs/test-bible/utils/config.md`** (**AST-1339**). Roster twin: **AST-898** above.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fail-dest meteorite matrix | `src/core/consult.py` | revised **`TestConsultBatchFailDest`** (`[bug-repro]` rows); twin also in **`TestAst1339MeteoriteNewRetryQualifyHolding::test_consult_batch_fail_dest_matrix`** |
+
+**Broken / obsolete:** none — additive meteorite rows on existing helper tests.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestConsultBatchFailDest \
+  tests/component/utils/test_config.py::TestAst1339MeteoriteNewRetryQualifyHolding \
+  tests/component/utils/test_config.py::TestAst898NewRetryQualifyHolding \
+  -q
+```
+
 ### AST-972 · AST-871
 
 Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-1252**. **`run_consult_task`** routes stage `task_key` (`craft_get_rubric`) to `run_requested_artifacts_dispatch`; wrapper keys no longer routed.
@@ -1052,5 +1074,43 @@ Strip every **`TASK_CONFIG` `pass_threshold`**. Scored soft-fail / pass uses **`
   tests/component/core/test_consult.py::TestRenderVerdict \
   tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes::test_apply_render_verdict_always_persists_notes_including_empty \
   tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states \
+  -q
+```
+
+### AST-1347 · AST-1346
+
+**Parent:** [AST-1346 — Add rubric score to analysis header](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1347-persist-phase-score-breakdown`.
+
+Persist `{prefix}_score_breakdown` `{earned, possible, max}` beside Analysis-phase grades/scores at score-save (`_phase_score_breakdown` shared with `_render_score` earned path). X/no-signal excluded from earned/possible; max uses full grade-set capacity. F2 / unscored omit the key. API lift: **`docs/test-bible/ui/api/api_jobs.md`**. Config constants: **`docs/test-bible/utils/config.md`**. Header chrome / read-time derive: sibling **AST-1348**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Helper + earned → 0–10 | `src/core/consult.py` (`_phase_score_breakdown`, `_render_score`) | **`TestAst1347PhaseScoreBreakdown`** (`test_breakdown_*`) |
+| Persist on verdict / evaluate_jd | same (`_apply_render_verdict_decoded_job`, `evaluate_jd_batch`) | **`TestAst1347PhaseScoreBreakdown`** (apply + evaluate_jd persist/omit) |
+| Config suffix + list columns | `src/utils/config.py` | **`TestAst1347PhaseScoreBreakdownConfig`** |
+| Flatten lift | `src/ui/api/api_jobs.py` | **`TestAst1347FlattenScoreBreakdown`** |
+
+**Broken / obsolete:** `TestEvaluateJdBatch::test_runs_debug_and_passing_job_path` / `test_logs_failed_vectors` — stub `_rubric_criteria_for_cfg` (table-backed AST-723); ctx artifact rubric is not the score source. Passing path also asserts `jd_score_breakdown`.
+
+**Integration:** none — no existing scenario pins Analysis score-save breakdown keys; do not invent new integration coverage.
+
+## QA test manifest
+
+1. **Existing coverage (bible-backed):** `TestRenderScore` / `TestRenderScoreBranches` / `TestAst1277DispatchScoreFloorVerdict` (0–10 + soft-fail unchanged); `TestFlattenGrades::test_lifts_job_data_fields_and_latest_score`.
+2. **Broken / obsolete:** revised `TestEvaluateJdBatch` two paths above (rubric stub + breakdown assert on pass).
+3. **Gaps (this pass):**
+   - `tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown`
+   - `tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig`
+   - `tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1347PhaseScoreBreakdown \
+  tests/component/core/test_consult.py::TestRenderScore \
+  tests/component/core/test_consult.py::TestEvaluateJdBatch::test_runs_debug_and_passing_job_path \
+  tests/component/core/test_consult.py::TestEvaluateJdBatch::test_logs_failed_vectors \
+  tests/component/utils/test_config.py::TestAst1347PhaseScoreBreakdownConfig \
+  tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
+  tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
   -q
 ```

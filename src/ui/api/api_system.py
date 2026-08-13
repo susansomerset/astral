@@ -165,6 +165,11 @@ def ui_config():
     return jsonify({
         **UI_CONFIG,
         "base_resume_accent_palette": BUILD_CONFIG.get("accent_palette", []),
+        # AST-1351: experience job-array editor field spine + unsupported notice text.
+        "experience_job_ui_fields": BUILD_CONFIG["experience_job_ui_fields"],
+        "unsupported_resume_structure_message": BUILD_CONFIG[
+            "unsupported_resume_structure_message"
+        ],
         # AST-1016: Intro + mechanical steps for AST-1017 (no page chrome here).
         "preamble": PREAMBLE_CONFIG,
         # AST-1075: Estelle Topic Menu confirm/generate UI labels.

@@ -1048,6 +1048,15 @@ CONFIDENCE_MULTIPLIERS = {1: 0.0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
 GRADE_VALUES = {"A": 7, "B": 6, "C": 3, "D": 0}
 MAX_GRADE_VALUE = max(GRADE_VALUES.values())
 RUBRIC_TOTAL = 3000
+# AST-1347 — job_data phase contribution breakdown beside {prefix}_score
+PHASE_SCORE_BREAKDOWN_KEY_SUFFIX = "score_breakdown"  # → f"{prefix}_score_breakdown"
+PHASE_SCORE_BREAKDOWN_FIELDS = ("earned", "possible", "max")
+# AST-1348 — Analysis section header title when a phase breakdown is available
+PHASE_SCORE_HEADER_TITLE_TEMPLATE = (
+    "{phase_label} - score: {earned} out of {possible} possible ({max} max total)"
+)
+
+
 def grade_value(letter: str) -> int:
     key = (letter or "").strip().upper()
     if key not in GRADE_VALUES:
@@ -2348,7 +2357,7 @@ JOB_STATES = {
     "JD_READY":               {"prior_states": ["PASSED_JOBLIST", "FAILED_JD", "ERROR_EVALUATE_JD"],    "retry_state": "JD_READY_RETRY"},
     "JD_SCRAPE_FAIL":         {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_COOKIE":  {"prior_states": ["PASSED_JOBLIST"]},
-    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW"]},  # AST-1195: universal bot/challenge
+    "BOT_BLOCKED":            {"prior_states": ["PASSED_JOBLIST", "METEORITE_NEW", "METEORITE_NEW_RETRY"]},  # AST-1195: universal bot/challenge
     "JD_SCRAPE_FAIL_MISSING": {"prior_states": ["PASSED_JOBLIST"]},
     "JD_SCRAPE_FAIL_CLOSED":  {"prior_states": ["PASSED_JOBLIST"]},
     "JD_READY_RETRY":         {"prior_states": ["JD_READY"]},                                   # evaluate_jd retry holding state
@@ -2389,11 +2398,12 @@ JOB_STATES = {
     # AST-1052 / AST-1053 / AST-1058: parallel meteorite track (no CULTURE_READY hop).
     # METEORITE_NEW = pre-AI landing (create / gazer ingest). Ruth qualify_meteorite →
     # METEORITE_QUALIFIED (GDL entry). evaluate_meteorite claims METEORITE_QUALIFIED only (AST-1060).
-    "METEORITE_NEW":                  {"prior_states": None},
-    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
+    "METEORITE_NEW":                  {"prior_states": None, "retry_state": "METEORITE_NEW_RETRY"},
+    "METEORITE_NEW_RETRY":            {"prior_states": ["METEORITE_NEW"]},  # qualify_meteorite retry holding (AST-1338)
+    "METEORITE_QUALIFIED":            {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_FAILED_JD", "METEORITE_ERROR_EVALUATE_JD"], "retry_state": "METEORITE_QUALIFIED_RETRY"},
     "METEORITE_QUALIFIED_RETRY":      {"prior_states": ["METEORITE_QUALIFIED"]},                 # meteorite evaluate_meteorite incomplete-grade holding (AST-1155)
-    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW"]},
-    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW"]},
+    "METEORITE_FAILED_QUALIFY":       {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
+    "METEORITE_ERROR_QUALIFY":        {"prior_states": ["METEORITE_NEW", "METEORITE_NEW_RETRY"]},
     "METEORITE_PASSED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY", "METEORITE_FAILED_DO", "METEORITE_FAILED_TECHNICAL_DO"], "retry_state": "METEORITE_PASSED_JD_RETRY"},
     "METEORITE_PASSED_JD_RETRY":      {"prior_states": ["METEORITE_PASSED_JD"]},                 # meteorite grade_do incomplete-grade holding (AST-1155)
     "METEORITE_FAILED_JD":            {"prior_states": ["METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY"]},
@@ -2888,7 +2898,7 @@ IN_REVIEW_STATES = [
     "NEW", "VALID_TITLE", "VALID_TITLE_RETRY", "NEW_RETRY", "PASSED_JOBLIST", "JD_READY", "JD_READY_RETRY",
     "PASSED_JD", "PASSED_JD_RETRY", "PASSED_DO", "PASSED_DO_RETRY", "PASSED_GET", "CULTURE_READY",
     "CULTURE_READY_RETRY", "PASSED_LIKE", "PASSED_LIKE_RETRY",
-    "METEORITE_NEW", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
+    "METEORITE_NEW", "METEORITE_NEW_RETRY", "METEORITE_QUALIFIED", "METEORITE_QUALIFIED_RETRY",
     "METEORITE_PASSED_JD", "METEORITE_PASSED_JD_RETRY", "METEORITE_PASSED_DO", "METEORITE_PASSED_DO_RETRY",
     "METEORITE_PASSED_GET", "METEORITE_PASSED_GET_RETRY",
     "METEORITE_PASSED_LIKE", "METEORITE_PASSED_LIKE_RETRY",
@@ -3336,6 +3346,7 @@ JOBS_IN_REVIEW_UI_SECTIONS = [
     {"state": "PASSED_LIKE", "label": "Passed LIKE"},
     {"state": "PASSED_LIKE_RETRY", "label": "LIKE upshot (retry)"},
     {"state": "METEORITE_NEW", "label": "Meteorite New (pre-AI)"},
+    {"state": "METEORITE_NEW_RETRY", "label": "Meteorite New (retry)"},
     {"state": "METEORITE_QUALIFIED", "label": "Meteorite Qualified"},
     {"state": "METEORITE_QUALIFIED_RETRY", "label": "Meteorite Qualified (retry)"},
     {"state": "METEORITE_PASSED_JD", "label": "Meteorite Passed JD"},
@@ -3610,6 +3621,7 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_artifact_tabs": list(JOBS_RECOMMENDED_ARTIFACT_TABS),
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
+                "phase_score_header_title_template": PHASE_SCORE_HEADER_TITLE_TEMPLATE,
                 "meteorite_section": {
                     "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
                     "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],
@@ -5057,6 +5069,14 @@ BUILD_CONFIG = {
         # Splits freeform `location` into place + arrangement for compact-location phrasing.
         "location_arrangement_sep": " / ",
     },
+    # AST-1351: Base Resume / job ArtifactEditor labels — keys == _EXPERIENCE_JOB_ITEM_SCHEMA.
+    "experience_job_ui_fields": [
+        {"key": "company", "label": "Company"},
+        {"key": "title", "label": "Title"},
+        {"key": "dates", "label": "Dates"},
+        {"key": "location", "label": "Location"},
+        {"key": "accomplishments", "label": "Accomplishments"},
+    ],
     # resume_content: documents known section ids; runtime allowed keys are per-candidate structure subset.
     # cover_letter: canonical Subject/Letter; legacy tasks may still output re_line/body until prompts update.
     "artifact_shapes": {
@@ -5078,6 +5098,10 @@ BUILD_CONFIG = {
             "signature": {"type": "str", "required": False},
         },
     },
+    # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
+    "unsupported_resume_structure_message": (
+        "unsupported resume structure, please regenerate"
+    ),
     # AST-300 / AST-370 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "resume_artifact_chain": {
         "first_task_key": "contemplate_job",

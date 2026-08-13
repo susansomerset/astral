@@ -283,3 +283,24 @@ context_tokens≈18500
 - **discuss (sibling AST-1334 test/bible on this ref):** closed on this tip by the same `origin/dev` merge — `Modal.showFooter` and JAR `showFooter={false}` are now present; optional Modal/JAR component tests + Betty’s `test_JobsRecommended` manifest all green (49 tests). No `[qa-handoff]` / no product edit.
 - **advisory:** noted; no action required for UT.
 - **AST-1331 product:** unchanged since `a7c0738f` (State column + sort only).
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/141dc5d154781aec8b155fc2f3a2e16f/87e18447-9b90-46dd-8689-04d7d00e732e/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/67531181-8bbd-4a59-9e6a-02c1fb06fa6d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/141dc5d154781aec8b155fc2f3a2e16f/d06c7b53-f9d0-43bd-bff9-d104679c45ed/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1330 (parent) | ftr/AST-1330-add-job-state-to-recommended-job-list-tables |
+| AST-1331 | sub/AST-1330/AST-1331-recommended-list-state-column |
+
+**Epic worktree:** `astral-AST-1330/` — one active sub checked out at a time.

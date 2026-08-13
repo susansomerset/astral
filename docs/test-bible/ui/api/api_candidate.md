@@ -87,3 +87,28 @@ Admin `confirm_state_override` + structured illegal-hop 400 + same-state skip. P
 ### AST-1014 · AST-952
 
 PUT refuse legacy `profile`; signature under `contact`. Primary: **`docs/test-bible/core/candidate.md`** § AST-1014 — **`TestCandidateRoutes::test_update_rejects_legacy_profile_body`**.
+
+---
+
+### AST-1353 · AST-1340
+
+**Publish:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`.
+
+After successful **`save_candidate_data`** on PUT `/data` when the request included dict/list **`artifacts.base_resume`**, call **`snapshot_saved_base_resume_astral_artifact`**. Primary core helper + craft non-wire: **`docs/test-bible/core/candidate.md`** § AST-1353.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT Save snapshots + second Save history + AC4 craft overwrite | `src/ui/api/api_candidate.py` | **`TestAst1353SaveBaseResumeSnapshotApi`** |
+| Mocked PUT base_resume still green (snapshot stubbed) | `src/ui/api/api_candidate.py` | revised **`TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`**; revised **`TestAst1305LegacyLabelIngestApi`** |
+
+**Broken / obsolete this pass:** mocked `save_candidate_data` PUT tests that include `base_resume` must stub **`snapshot_saved_base_resume_astral_artifact`** (otherwise snapshot hits real DB / missing candidate).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  -q
+```

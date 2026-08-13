@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
+from src.core.consult import _phase_score_breakdown
 from src.core.roster import get_entity_agent_story
 from src.core.tracker import (
     cancel_artifact_build,
@@ -22,7 +23,12 @@ from src.core.tracker import (
     start_artifact_build,
     transition_job_state,
 )
-from src.utils.config import IN_REVIEW_STATES, RECOMMENDED_JOB_STATES, SKIPPED_STATES
+from src.utils.config import (
+    IN_REVIEW_STATES,
+    PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
+    RECOMMENDED_JOB_STATES,
+    SKIPPED_STATES,
+)
 from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
@@ -32,18 +38,40 @@ logger = get_logger(__name__)
 def _flatten_grades(job: dict) -> dict:
     """Lift grade dicts, scores, and job-carried rubrics from job_data for list/detail."""
     jd = job.get("job_data") or {}
+    # AST-1347: {prefix}_score_breakdown for Analysis phases
+    breakdown_keys = tuple(
+        f"{p}_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" for p in ("jd", "do", "get", "like")
+    )
     for key in (
         "joblist_grades", "joblist_score", "joblist_rubric",
         "jd_grades", "jd_score", "jd_rubric",
         "get_grades", "get_score", "get_rubric",
         "do_grades", "do_score", "do_rubric",
         "like_grades", "like_score", "like_rubric",
+        *breakdown_keys,
     ):
         if key in jd:
             job[key] = jd[key]
     # Prefer column latest_score; blob-only joblist_score (legacy) fills gap for list UI
     if job.get("latest_score") is None and jd.get("joblist_score") is not None:
         job["latest_score"] = jd["joblist_score"]
+    # AST-1348: derive missing breakdown at read (response only; never write job_data)
+    for prefix in ("jd", "do", "get", "like"):
+        bk = f"{prefix}_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"
+        if bk in job:
+            continue
+        sk = f"{prefix}_score"
+        score = job[sk] if sk in job else jd.get(sk)
+        grades = job.get(f"{prefix}_grades")
+        rubric = job.get(f"{prefix}_rubric")
+        if score is None or not isinstance(grades, list) or not grades:
+            continue
+        if not isinstance(rubric, list) or not rubric:
+            continue
+        try:
+            job[bk] = _phase_score_breakdown(rubric, grades)
+        except (ValueError, TypeError, KeyError):
+            pass
     return job
 
 

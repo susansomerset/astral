@@ -466,6 +466,8 @@ class TestAst519ResumeStructureApi:
     ) -> None:
         save_data = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        # AST-1353: snapshot runs after save when base_resume present — stub when save is mocked
+        monkeypatch.setattr(candidate_mod, "snapshot_saved_base_resume_astral_artifact", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._three_section_cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
@@ -1056,6 +1058,7 @@ class TestAst1305LegacyLabelIngestApi:
     ) -> None:
         save_data = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "snapshot_saved_base_resume_astral_artifact", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
@@ -1088,6 +1091,7 @@ class TestAst1305LegacyLabelIngestApi:
         # AST-1322 bug-repro: title-case keys must mint extras before orphan filter.
         save_data = MagicMock()
         monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "snapshot_saved_base_resume_astral_artifact", MagicMock())
         monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
         monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
         monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
@@ -1165,3 +1169,122 @@ class TestAst1324HydrateResumeStructureFromBaseResumeGet:
         # Load default is free_prose — not Add-section / list-ingest bullet_list.
         assert by_id["publications"]["format"] == "free_prose"
         assert "publications" in {s["id"] for s in body["sections"]}
+
+# Branches: PUT base_resume snapshots; second save retires; craft overwrite leaves snapshot.
+class TestAst1353SaveBaseResumeSnapshotApi:
+    def test_put_base_resume_writes_current_astral_artifact(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as core_candidate
+
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1353",
+            state="NEW_CANDIDATE",
+            candidate_data={
+                "artifacts": {"resume_structure": core_candidate.default_resume_structure()}
+            },
+        )
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        payload = {"professional_summary": "saved v1", "experience": []}
+        resp = candidate_client.put(
+            "/api/candidates/c1353/data",
+            json={"artifacts": {"base_resume": payload}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        row = db.get_current_astral_artifact("candidate", "c1353", "base_resume")
+        assert row is not None
+        assert row["current"] == 1
+        assert row["artifact_data"]["professional_summary"] == "saved v1"
+
+    def test_second_put_retires_prior_snapshot(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core import candidate as core_candidate
+
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1353b",
+            state="NEW_CANDIDATE",
+            candidate_data={
+                "artifacts": {"resume_structure": core_candidate.default_resume_structure()}
+            },
+        )
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        r1 = candidate_client.put(
+            "/api/candidates/c1353b/data",
+            json={"artifacts": {"base_resume": {"professional_summary": "v1"}}},
+            headers=auth_headers,
+        )
+        assert r1.status_code == 200
+        uid1 = db.get_current_astral_artifact("candidate", "c1353b", "base_resume")[
+            "astral_artifact_uuid"
+        ]
+        r2 = candidate_client.put(
+            "/api/candidates/c1353b/data",
+            json={"artifacts": {"base_resume": {"professional_summary": "v2"}}},
+            headers=auth_headers,
+        )
+        assert r2.status_code == 200
+        current = db.get_current_astral_artifact("candidate", "c1353b", "base_resume")
+        assert current["astral_artifact_uuid"] != uid1
+        assert current["artifact_data"]["professional_summary"] == "v2"
+        history = db.list_astral_artifacts(
+            "candidate", "c1353b", "base_resume", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+        assert history[0]["artifact_data"]["professional_summary"] == "v1"
+
+    def test_direct_save_candidate_does_not_replace_snapshot(
+        self,
+        candidate_client: FlaskClient,
+        auth_headers: dict[str, str],
+        sqlite_in_memory,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """AC4: craft-style database.save_candidate overwrite leaves prior Save snapshot."""
+        from src.core import candidate as core_candidate
+
+        db = sqlite_in_memory
+        db.save_candidate(
+            "c1353c",
+            state="NEW_CANDIDATE",
+            candidate_data={
+                "artifacts": {"resume_structure": core_candidate.default_resume_structure()}
+            },
+        )
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        resp = candidate_client.put(
+            "/api/candidates/c1353c/data",
+            json={"artifacts": {"base_resume": {"professional_summary": "intentional"}}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        before = db.get_current_astral_artifact("candidate", "c1353c", "base_resume")
+        assert before is not None
+        # Simulate Generate/Regenerate persist (bypasses update_candidate_data snapshot wire)
+        db.save_candidate(
+            "c1353c",
+            candidate_data={
+                "artifacts": {"base_resume": {"professional_summary": "craft overwrite"}}
+            },
+            merge=True,
+        )
+        live = db.get_candidate("c1353c")["candidate_data"]["artifacts"]["base_resume"]
+        assert live["professional_summary"] == "craft overwrite"
+        after = db.get_current_astral_artifact("candidate", "c1353c", "base_resume")
+        assert after["astral_artifact_uuid"] == before["astral_artifact_uuid"]
+        assert after["artifact_data"]["professional_summary"] == "intentional"

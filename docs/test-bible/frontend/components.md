@@ -758,3 +758,78 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
   -t "AST-1334|AST-1301|AST-1302|shows Generating|Cancel closes modal after cancel_build"
 ```
+
+### AST-1348 · AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome`.
+
+Analysis-tab section `nav_label` uses formatted score title when `jobScoreBreakdownForGradesField` returns a trio; plain `report_phase_tabs` label otherwise. No page-file product diff — §6c routed-page rule N/A (modal component). Helpers: **`docs/test-bible/frontend/lib.md`**. API derive: **`docs/test-bible/ui/api/api_jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Analysis header score chrome | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1348 Analysis score title chrome`** |
+| Fixture template | `stateUiManifestFixture.ts` | same + lib helpers |
+
+**Broken / obsolete:** none — AST-950 cases stay on plain labels (mocks lack `*_score_breakdown`).
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  -t "AST-1348|AST-950"
+```
+
+### AST-1350 · AST-1345
+
+**AST-1350:** JAR **Print Resume** fetch-then-blob + toast exact API `error` (no `window.open` on failure). Cover Letter print unchanged. Base Resume / Session Open HTML already toast API errors — **`test_ArtifactsBaseResumeContent`** / **`test_AdminSessionResumePaste`**. Core/API: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **Print Resume fetch-then-blob…**, **AST-1350: Print Resume unsupported toast — no tab** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="Print Resume|AST-1350"
+```
+
+### AST-1351 · AST-1345
+
+**Parent:** [AST-1345](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+Base Resume / job structureMode experience uses **`ExperienceJobsEditor`** (job-array template) via **`ArtifactEditor`**. Legacy non-array → read-only + unsupported message; Save aborts with that toast. Config/API spine: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**. Builder Style D: **`docs/test-bible/core/builder.md`**. Does **not** own prompts (AST-1349) or Print toast/no-tab (AST-1350).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Per-role add/remove/reorder | `ExperienceJobsEditor.tsx` | **`test_ExperienceJobsEditor.test.tsx`** — AST-1351 |
+| Array load/Save + legacy abort | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **AST-996/AST-1351**, **AST-1351: legacy string…** |
+
+**Broken / obsolete this pass:** AST-996 experience pretty-printed JSON textarea asserts — flipped to ExperienceJobsEditor / unsupported notice.
+
+**§6c:** Base Resume Content mounts ArtifactEditor — no separate page file in product diff; component coverage above is the UI gate.
+
+## QA test manifest
+
+1. ExperienceJobsEditor add/remove/reorder: `tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx`
+2. ArtifactEditor array Save + legacy abort: `test_ArtifactEditor.test.tsx` AST-996/AST-1351 + AST-1351 legacy
+3. Config field spine: `TestAst1351ExperienceJobUiFields`
+4. ui_config exposure: `TestAst1351ExperienceJobUiConfig`
+5. Builder Style D debug jobs: `TestAst1351ExperienceDebugJobs`
+
+**AST-1351** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1351ExperienceJobUiFields \
+  tests/component/ui/api/test_api_system.py::TestAst1351ExperienceJobUiConfig \
+  tests/component/core/test_builder.py::TestAst1351ExperienceDebugJobs \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1351|AST-996"
+```
+
+

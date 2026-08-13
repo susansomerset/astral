@@ -55,6 +55,7 @@ const profileSections = {
           },
           { key: "contact.github", label: "GitHub (username or URL)", type: "text" },
           { key: "contact.linkedin_url", label: "LinkedIn (username or URL)", type: "text" },
+          { key: "contact.phone", label: "Phone", type: "text" },
           { key: "contact.websites", label: "Websites", type: "string_list" },
           { key: "contact.reason_codes", label: "Reason Codes", type: "textarea" },
         ],
@@ -536,5 +537,33 @@ describe("CandidateProfile — AST-1336 dirty-leave wiring", () => {
       expect(screen.getAllByText("leave-save-failed").length).toBeGreaterThan(0),
     )
     expect(latestDirtyLeave().isDirty).toBe(true)
+  })
+
+  it("AST-1343: nullish nested field touch+clear clears dirty (virgin empty)", async () => {
+    // Pre-fix: snapshot keeps phone:null; FormFields writes "" on clear → stringify still dirty.
+    installProfileMocks({
+      candidate: {
+        ...candidateData,
+        contact: { phone: null },
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(dirtyLeave).toHaveBeenCalled())
+    expect(latestDirtyLeave().isDirty).toBe(false)
+
+    const phoneField = screen
+      .getByText("Phone", { selector: "label.dep-field-label" })
+      .closest(".dep-field")!
+    const phone = within(phoneField as HTMLElement).getByRole("textbox")
+    expect(phone).toHaveDisplayValue("")
+    await userEvent.type(phone, "x")
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(true))
+    await userEvent.clear(phone)
+    expect(phone).toHaveDisplayValue("")
+    // Display-equivalent to virgin empty — must not leave-prompt (fails until compare coerce).
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(false))
   })
 })
