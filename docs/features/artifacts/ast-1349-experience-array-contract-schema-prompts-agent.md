@@ -154,3 +154,140 @@ context_tokens≈48000
 - **Publish ref:** `sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent`
 - **Tip:** `e8c4066c835d4587f2ab3dc310ee3c9d8397c098`
 - **Stages:** S1 confirm-only (`_EXPERIENCE_JOB_*` already locked); S2–S3 candidate + job prompts array-only; S4 draft validate contract message / no string success; S5 AST-756 `agent_task` twin `cp`
+
+
+## Radia review
+
+# Radia review — AST-1349
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1349  
+**Publish ref:** `origin/sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent` @ `bab06e6582f4811307e1918050c1e8c47f4b66e3`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent confidence / grading paths in diff |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | `src/core/agent.py` untouched |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector / consult schema edits |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch claim/process paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No dispatcher/tracker batch helpers |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No entity response persistence |
+| `astral.config.config-source-of-truth` | scoped | conforms | Experience schemas remain single `_EXPERIENCE_JOB_*` block in `config.py` (confirm-only; already locked) |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifact dirs |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No `run_next` / chain edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single issue doc for AST-1349 |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Product commit `66a29148` touches only `data/admin/`, `src/core/candidate.py`, UAT twin; test/bible via Betty merge |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer commit excludes `tests/` and `docs/test-bible/` |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render/verdict orchestration |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No API/auth surface |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Core-only product edit; no external I/O |
+| `astral.layers.import-direction` | scoped | conforms | `candidate.py` diff adds comment + error strings only; no new imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/` changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | No `src/ui/` changes |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | Prompt contract committed in `data/admin/agent_task.json` + AST-756 twin |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | Catalog JSON is source of truth; whole-file twin `cp` per plan |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No boot/hot-path seed logic |
+| `astral.seed.define-approved` | scoped | not-applicable | Child implementation ticket |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator-row resurrection |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage-join seed edits |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `src/data/` product changes |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `database.py` / migration edits in product diff |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Existing Style D on `validate_draft_job_resume_payload` / `debug_experience_jobs` unchanged; no new ungated debug |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Minimal validate-message change; prompts centralized in catalog |
+| `astral.standards.in-scope-only` | scoped | conforms | Product scope matches plan; AST-1352 files arrive via `merge-tests` (see advisory) |
+| `astral.standards.logging-via-utils` | scoped | conforms | No new `print()` / raw `logging` imports |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | No ticket-id symbol names in product code |
+| `astral.standards.no-cross-contamination` | scoped | conforms | No AST-1350/1351 UI/builder/toast scope; cross-epic test merge is pipeline convention |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Experience keys stay in config block |
+| `astral.standards.public-then-helpers` | scoped | conforms | No helper-order regression |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No `utils→data` import changes |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state machine edits |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run-chain edits |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No frontend files |
+| `astral.ui.naming-conventions` | scoped | not-applicable | No UI naming surface |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `bab06e65 merge-tests(AST-1349): origin/tests 99ffa38` present |
+| `orch.git.commit-vocabulary` | universal | conforms | `code(AST-1349)` / `test(AST-1349)` / `merge-tests(AST-1349)` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | `sub/AST-1345/...` off `dev`; no reverse flow |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child on `sub/AST-1345/AST-1349-...` |
+| `orch.git.merge-on-checkout` | universal | conforms | No checkout/merge violations observed |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history; no force/rebase |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Publish ref is `sub/`, not agent branch |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in `astral-AST-1345` worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | Diff baseline `origin/dev` |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Implements approved plan; no new product forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages S1–S5 delivered per plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Artifacts child under AST-1345 |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Spawned at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | Joan APPROVED @ `2342855c` |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Tests/bible from `test(AST-1349)` + merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Ada |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada assignee at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Engineer commit respects path bans |
+
+**Active-set count scored in-session:** 64 rows (registry table); no `violates` / `needs-discussion` statute rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | S1 confirm-only: `_EXPERIENCE_JOB_*` shared identity for craft/parse/finalize/`BUILD_CONFIG` (unchanged on tip) |
+| `pattern.layers.import-discipline` | conforms | Core-only touch; no layer bends or new cross-layer imports |
+
+## Plan adherence
+
+Engineer commit `66a29148` delivers the planned footprint:
+
+- **S1 (config):** Confirm-only — no `config.py` diff; tip still has shared `_EXPERIENCE_JOB_ITEM_SCHEMA` / `_EXPERIENCE_JOB_ARRAY_FIELD` / `_EXPERIENCE_JOB_ARRAY_FIELD_OPTIONAL` wired to craft/parse/finalize/`BUILD_CONFIG`.
+- **S2 (candidate prompts):** `craft_resume_base` `cache_prompt` `### experience` is array-only (five keys, no `COMPANY NAME` prose blocks, LinkedIn enrichment line removed from experience, checklist uses job-array wording). `simple_resume_parse` already aligned.
+- **S3 (job prompts):** `draft_job_resume` `user_prompt` retires `"prose string or job array"`; `finalize_job_resume` and `advise_job_resume` `user_prompt`s teach job-array + pin policy. `check_job_resume` already speaks per-role job-array metadata (no edit required).
+- **S4 (agent):** `validate_draft_job_resume_payload` rejects non-array experience with contract-facing `Section 'experience' must be a job array` (no `experience_detail` jargon); empty/`""`/`None` still skip before experience branch; `pin_experience_job_facts_from_base` and Style D hooks untouched in `agent.py` per plan.
+- **S5 (UAT twin):** Whole-file `cp` — `TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits` asserts byte identity.
+
+**Estimate 5:** Footprint matches (prompt JSON + small validate + Betty tests); no scope creep into AST-1350/1351.
+
+**C6 lenses (§5a):** Imports/layers/silent-failure/fallbacks/logging/debug/external — no issues on touched product paths. §5f/§5g not triggered (`agent.py` / `src/external/` untouched).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **merge-tests piggyback (AST-1352):** Three-dot diff also includes `test(AST-1352)` artifacts (`tests/component/data/database/test_astral_artifacts.py`, `docs/test-bible/data/database/astral_artifacts.md`, conftest one-liners) from `origin/tests` merge commit `bab06e65`. Parent is AST-1340, not AST-1345. Pipeline-legal per `orch.git.betty-merge-tests-one-sha`; does not affect AST-1349 ACs. Downstream: when reviewing AST-1349 in isolation, filter product diff to `66a29148` if AST-1352 noise is distracting — no resolve-child action required for AST-1349.
+
+## What's solid
+
+- Closes the documented as-is gap: Judith craft and draft prompts no longer re-authorize prose-string experience.
+- Draft validate error text matches plan and Betty's flipped AST-997/AST-1270 assertions.
+- Shared five-key schema identity preserved without a parallel job-only schema.
+- AST-756 twin discipline (`cp` + `cmp`) enforced in tests.
+
+## Frame diff
+
+`(none)` — Joan APPROVED frame unchanged. Implementation delta since plan validate @ `2342855c`:
+
+| Commit | Delta |
+|--------|-------|
+| `66a29148` | Product: prompts + validate message |
+| `99ffa38c` | Betty: `TestAst1349ExperienceArrayContract` + bible rows |
+| `7f7444a7` | Betty: AST-1352 database tests (cross-epic merge artifact) |
+| `bab06e65` | `merge-tests(AST-1349)` lands tests on publish ref |
+
+context_tokens≈52000
