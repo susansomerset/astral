@@ -85,3 +85,33 @@ unsupported resume structure, please regenerate
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1350
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit` @ `8984d14e09ec7af614fd0973b3ad066d995dceef`
+
+## Traceability
+
+| AC | Plan stage(s) |
+|----|----------------|
+| 7 | S1 (core `BUILD_CONFIG` message + pre-emit gate in `build_base_resume` / `build_resume_from_job` / `build_session_base_resume`; defense-in-depth in `_emit_body_sections_html`), S2 (`api_resume_html` 400 mapping + Base Resume Print / Session Open HTML / JAR Print Resume fetch-then-blob with exact toast, no tab on failure) |
+
+Stages S1–S2 map to parent AC 7 and functional-scope unsupported-shape operator path; parent AC 1–6 and array UI/render parity correctly deferred to AST-1349/AST-1351 per child Boundaries.
+
+## Findings
+
+**acceptable** — Assignee is Hedy (not Joan); Chuckles-spawned pass; no review block.
+
+**acceptable** — `## UAT fitness` present and correctly frames AC 7 vs symptom-only fixes (wrong fix = UI toast while builder still omits Experience).
+
+**acceptable** — As-is verified on tip: `_emit_body_sections_html` still `continue`s with `skipped — leftover prose` for non-array `experience` (lines 1511–1516); `api_resume_html` maps all `ValueError` to 404; JAR `onPrintResume` still blind `window.open`s `/candidate/resume/<job_id>`.
+
+**acceptable** — `MaterialsPreviewModal.tsx` loads resume via iframe `src` without fetch-first but appears unused (no imports elsewhere); core gate still blocks Experience-omitted emit if wired later (iframe would show JSON/error body, not toast — out of this ticket’s three named surfaces).
+
+No `fix-now` or `discuss` findings. In-session statute sweep: cited patterns/statutes (`pattern.layers.import-discipline`, `astral.layers.import-direction`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`) all `conforms`; plan correctly gates in core before `filter_content_to_resume_structure` so string experience cannot be dropped then silently omitted; reuses `is_experience_job_array` per AST-1349 contract without redefining schema.
+
+context_tokens≈52000
