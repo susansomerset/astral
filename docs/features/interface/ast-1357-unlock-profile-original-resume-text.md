@@ -97,3 +97,27 @@ context_tokens≈15000
 
 **Publish ref:** `origin/sub/AST-1356/AST-1357-unlock-profile-original-resume-text`
 **Product commits:** `8e58e420` (remove hasBaseResume lock + placeholder on Original Resume Text tab)
+
+## QA test manifest
+
+`origin/sub/AST-1356/AST-1357-unlock-profile-original-resume-text` @ merge-tests → `origin/tests` `47c9bb12b8efad3566f58c19bf9ab1241657e092`
+
+1. **Existing coverage (bible-backed):**
+   - `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — Profile §6c load/save/Cancel + AST-1336 dirty-leave (still required regression)
+2. **Broken / obsolete (revised this pass):**
+   - `restores values on cancel and locks resume text when base resume exists` — dropped resume `toBeDisabled()`; Cancel-only case kept as `restores values on cancel`
+3. **Gaps (this pass):**
+   - `CandidateProfile — AST-1357 unlock original resume text` — with base resume: enabled + no lock placeholder; Save PUT `context.raw_resume`; Cancel restores last saved; without base resume still editable
+
+**Integration:** none (no existing scenario asserts Profile resume lock).
+
+**Run:**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
+**Bible:** `docs/test-bible/frontend/pages.md` shasum `85db4ed94a5602c3e9f9d3002c2f4d813c84a087`
+
+— Betty
+

@@ -2,6 +2,26 @@
 
 **Test tree:** `tests/component/pages/`
 
+### AST-1357 · AST-1356
+
+Unlock Candidate Profile **Original Resume Text** when `artifacts.base_resume` exists — remove `hasBaseResume` / `disabled` / lock placeholder on the resume tab. Field stays on existing Profile `values` / PUT / Cancel / dirty-leave (AST-1336); no Artifacts UI change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile unlock (§6c) | `CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — **`CandidateProfile — AST-1357 unlock original resume text`**: with base resume → enabled + no lock placeholder; Save PUT `context.raw_resume`; Cancel restores; without base resume still editable |
+| Cancel (non-resume) | same | Revised **`restores values on cancel`** (dropped obsolete `toBeDisabled` on resume) |
+
+**Broken / obsolete:** `restores values on cancel and locks resume text when base resume exists` — asserted resume `toBeDisabled()` when base resume present; product unlock makes that red.
+
+**Integration:** no existing scenario asserts Profile resume lock — no drift.
+
+**AST-1357** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
 ### AST-1336 · AST-1315
 
 Wire Candidate Profile to `useDirtyLeaveSaveThenNavigate` (sibling **AST-1335**): dirty vs last loaded/saved snapshot (`JSON.stringify`), shared `persistProfile` Promise for header Save + dirty-leave `onSave`, header Cancel unchanged. Profile only.
