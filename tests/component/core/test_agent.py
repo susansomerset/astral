@@ -7554,3 +7554,238 @@ class TestAst1293SoftCoerceNumericSchemaStrings:
         # AC3: no TASK_CONFIG type flips — coerce is pre-validate only.
         item = TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
         assert item["astral_job_id"]["type"] == "str"
+
+
+# ---------------------------------------------------------------------------
+# Entity agent story (moved from roster — AST-984 / AST-1274 / AST-1354 / AST-1355)
+# ---------------------------------------------------------------------------
+
+
+class TestEntityAgentStory:
+    def test_returns_empty_without_entries(self) -> None:
+        assert agent_mod.get_entity_agent_story({}) == []
+
+    def test_enriches_scored_response_blocks(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-984: story from list_entity_latest_agent_refs, not entity JSON column.
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "qualify_job_listings",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_get_agent_data_row",
+            lambda bid: {"block_data": json.dumps({"jobs": [{"astral_job_id": "job-1", "title": "Role"}]})},
+        )
+        entity = {
+            "astral_job_id": "job-1",
+            "job_data": {"joblist_grades": {"fit": "A"}},
+        }
+        story = agent_mod.get_entity_agent_story(entity)
+        assert story[0]["vector_grades"] == {"fit": "A"}
+        assert story[0]["blocks"][0]["content"]
+
+    def test_ast520_agent_story_phase_and_print_label(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "anticipate_scan",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_get_agent_data_row",
+            lambda bid: {"block_data": '{"note": "scan insight"}'},
+        )
+        entity = {"astral_job_id": "job-520"}
+        story = agent_mod.get_entity_agent_story(entity)
+        assert story[0]["task_key"] == "anticipate_scan"
+        assert story[0]["blocks"][0]["content"] == '{"note": "scan insight"}'
+
+    def test_company_prefilter_vector_grades_from_company_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-726/984: company story grades_key from company_data (was TestAst726 on roster).
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "prefilter_company",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-726"}],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_get_agent_data_row",
+            lambda bid: {"block_data": "{}"},
+        )
+        entity = {
+            "short_name": "acme",
+            "company_data": {"prefilter_grades": [{"grade": "A", "vector": "fit"}]},
+        }
+        story = agent_mod.get_entity_agent_story(entity)
+        assert story[0]["vector_grades"] == [{"grade": "A", "vector": "fit"}]
+
+
+class TestFilterResponseBlock:
+    def test_non_json_and_single_job_responses(self) -> None:
+        assert agent_mod._filter_response_block("plain text", "job-1") == "plain text"
+        assert agent_mod._filter_response_block(json.dumps({"title": "Role"}), "job-1") == json.dumps({"title": "Role"})
+
+    def test_batch_response_filters_matching_job(self) -> None:
+        payload = {"jobs": [{"astral_job_id": "job-1", "title": "Role"}]}
+        out = agent_mod._filter_response_block(json.dumps(payload), "job-1")
+        assert '"job-1"' in out
+        assert agent_mod._filter_response_block(json.dumps({"jobs": [{"title": "old"}]}), "job-1") == ""
+        assert agent_mod._filter_response_block(json.dumps({"jobs": [{"astral_job_id": "other"}]}), "job-1") == ""
+
+
+class TestEntityAgentStoryBranches:
+    def test_skips_invalid_block_refs_and_labels_duplicates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "parse_job_list",
+                    "prompt_blocks": ["bad", {"type": "NO_CACHE", "id": "b1"}, {"type": "NO_CACHE", "id": "b2"}],
+                }
+            ],
+        )
+
+        def _rows(bid: str) -> Dict[str, Any]:
+            return {"b1": {"block_data": "one"}, "b2": {"block_data": "two"}}[bid]
+
+        monkeypatch.setattr(agent_mod, "_get_agent_data_row", _rows)
+        entity = {"short_name": "acme"}
+        story = agent_mod.get_entity_agent_story(entity)
+        assert story[0]["blocks"][0]["type"] == "NO_CACHE"
+        assert story[0]["blocks"][1]["type"] == "NO_CACHE (2)"
+
+    def test_scored_response_without_job_id_keeps_content(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        scored_key = next(key for key, cfg in TASK_CONFIG.items() if cfg.get("scored"))
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {"task_key": scored_key, "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}]},
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_get_agent_data_row",
+            lambda bid: {"block_data": json.dumps({"jobs": [{"title": "Role"}]})},
+        )
+        entity = {"astral_job_id": "job-1"}
+        story = agent_mod.get_entity_agent_story(entity)
+        assert story[0]["blocks"][0]["content"] == ""
+
+
+class TestAst1274AgentStorySoftFail:
+    """AST-1274/AST-1354: corrupt ref graphs must not raise out of get_entity_agent_story."""
+
+    def test_list_refs_failure_returns_empty(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            MagicMock(side_effect=ValueError("ref target missing")),
+        )
+        warn = MagicMock()
+        monkeypatch.setattr(agent_mod.logger, "warning", warn)
+        monkeypatch.setattr(agent_mod.logger, "exception", MagicMock())
+        assert agent_mod.get_entity_agent_story({"astral_job_id": "job-1274"}) == []
+        warn.assert_called()
+        agent_mod.logger.exception.assert_not_called()
+
+    def test_get_agent_data_failure_yields_empty_block_content(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "qualify_job_listings",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": "block-1"}],
+                }
+            ],
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "_get_agent_data_row",
+            MagicMock(side_effect=ValueError("ref cycle detected")),
+        )
+        warn = MagicMock()
+        monkeypatch.setattr(agent_mod.logger, "warning", warn)
+        monkeypatch.setattr(agent_mod.logger, "exception", MagicMock())
+        story = agent_mod.get_entity_agent_story({"astral_job_id": "job-1274"})
+        assert len(story) == 1
+        assert story[0]["blocks"][0]["content"] == ""
+        warn.assert_called()
+        agent_mod.logger.exception.assert_not_called()
+
+
+class TestAst1354AgentStoryDanglingTaskSibling:
+    """AST-1354/AST-1355 [bug-repro]: missing TASK sibling must not blank healthy story / stack."""
+
+    def test_partial_story_no_exception_stack(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        missing_task = "propose_application_responses-task-bb404bc0bb2e68f4"
+        response_id = "propose_application_responses-response-healthy"
+        other_task_response = "other-task-response-healthy"
+
+        monkeypatch.setattr(
+            agent_mod.database,
+            "list_entity_latest_agent_refs",
+            lambda et, eid: [
+                {
+                    "task_key": "propose_application_responses",
+                    "batch_id": "propose_application_responses-fafe75d0-e41d-48d7-95d6-d489483832dc",
+                    "prompt_blocks": [
+                        {"type": "TASK", "id": missing_task},
+                        {"type": "RESPONSE", "id": response_id},
+                    ],
+                },
+                {
+                    "task_key": "anticipate_scan",
+                    "batch_id": "anticipate-scan-batch",
+                    "prompt_blocks": [{"type": "RESPONSE", "id": other_task_response}],
+                },
+            ],
+        )
+
+        def _row(bid: str) -> Dict[str, Any]:
+            if bid == missing_task:
+                raise ValueError(f"agent_data ref target missing: '{missing_task}'")
+            if bid == response_id:
+                return {"block_data": '{"answers": ["healthy propose response"]}'}
+            if bid == other_task_response:
+                return {"block_data": '{"note": "other task intact"}'}
+            raise AssertionError(f"unexpected id {bid}")
+
+        monkeypatch.setattr(agent_mod, "_get_agent_data_row", _row)
+        warn = MagicMock()
+        exc = MagicMock()
+        monkeypatch.setattr(agent_mod.logger, "warning", warn)
+        monkeypatch.setattr(agent_mod.logger, "exception", exc)
+
+        story = agent_mod.get_entity_agent_story({"astral_job_id": "job-1354"})
+        assert len(story) == 2
+        propose = next(e for e in story if e["task_key"] == "propose_application_responses")
+        other = next(e for e in story if e["task_key"] == "anticipate_scan")
+        by_type = {b["type"]: b for b in propose["blocks"]}
+        assert by_type["TASK"]["content"] == ""
+        assert "healthy propose response" in by_type["RESPONSE"]["content"]
+        assert other["blocks"][0]["content"] == '{"note": "other task intact"}'
+        warn.assert_called()
+        exc.assert_not_called()
