@@ -541,6 +541,45 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1349 · AST-1345
+
+**Parent:** [AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1349-experience-array-contract-schema-prompts-agent`.
+
+Locks craft/parse/finalize prompts + draft validate on the shared experience job-array contract (five keys). String experience is not a success path; error text is `Section 'experience' must be a job array` (no `experience_detail` jargon). Config schemas were already locked (**AST-996** / **AST-997**) — confirm-only. Does **not** own toast/no-emit (**AST-1350**) or UI/HTML emit (**AST-1351**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft-base / finalize / advise array-only prompts + AST-756 twin | `data/admin/agent_task.json`, UAT twin | **`TestAst1349ExperienceArrayContract`** |
+| Draft validate contract message / array accept | `src/core/candidate.py` | **`TestAst1349ExperienceArrayContract`**; revised **`TestAst997JobTailoredExperience`** (string/object reject + draft prompt); revised **`TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`** |
+| Shared schema identity (existing) | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`**, **`TestAst997FinalizeExperienceJobArray`** (primary: **`docs/test-bible/utils/config.md`**) |
+| Preserve / pin / Style D (existing) | `src/core/candidate.py` | **`TestAst996ExperienceJobArray`**, **`TestAst997JobTailoredExperience`** |
+
+**Broken / obsolete this pass:** AST-997 / AST-1270 asserts on `"prose string or job array"` and `"experience_detail"` in draft-validate errors — flipped to array-only contract phrases.
+
+**Integration:** no existing scenario asserts craft/draft experience prompts or draft-validate error text — no revision (artifact pipeline remains a should-have gap).
+
+## QA test manifest
+
+1. Existing schema identity: `TestAst996ExperienceJobArrayConfig` + `TestAst997FinalizeExperienceJobArray`
+2. Existing preserve/pin/debug: `TestAst996ExperienceJobArray` + `TestAst997JobTailoredExperience` (incl. revised reject/prompt rows)
+3. New array-only prompts + contract validate: `TestAst1349ExperienceArrayContract`
+4. Nested draft prompt regression: `TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`
+
+**AST-1349** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract \
+  tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig \
+  tests/component/utils/test_config.py::TestAst997FinalizeExperienceJobArray \
+  -q
+```
+
+---
+
 ### AST-1005 · AST-994
 
 **AST-1005 (UAT bug):** Craft-base normalize promotes known section ids from **direct keys** on `resume_structure` (e.g. `candidate_name`, experience job arrays) even when `sections` is missing — before `default_resume_structure()` replace — so validation no longer false-misses `candidate_name` beside a well-formed experience job array. Does not loosen required `candidate_name`. Items-schema hardening: **`docs/test-bible/core/agent.md`**.
