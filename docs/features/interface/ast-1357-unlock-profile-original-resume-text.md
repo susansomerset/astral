@@ -92,3 +92,8 @@ AC 1–6 → Stage 1 (remove `hasBaseResume` lock in `CandidateProfile.tsx`; exi
 No `fix-now` or `discuss` findings. R1–R6 pass: single-file `ui` scope; lock removal aligns with `astral.layers.ui-config-driven-business-logic`; placement and in-scope boundaries honored; DRY via deletion not parallel paths; layer/import surface untouched.
 
 context_tokens≈15000
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1356/AST-1357-unlock-profile-original-resume-text`
+**Product commits:** `8e58e420` (remove hasBaseResume lock + placeholder on Original Resume Text tab)
