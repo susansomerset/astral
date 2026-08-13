@@ -4,7 +4,8 @@ Core candidate: candidate lifecycle management (AST-216).
 In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
 contact uniqueness enforcement on save (AST-1080),
-get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259).
+get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
+snapshot_saved_base_resume_astral_artifact (AST-1353).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -1322,6 +1323,28 @@ def rubric_criteria_for_task(candidate_id: str, owner_task_key: str) -> list:
 def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
     """Token resolver entry — same list shape as rubric_criteria_for_task."""
     return rubric_criteria_for_task(candidate_id, owner_task_key)
+
+
+def snapshot_saved_base_resume_astral_artifact(candidate_id: str) -> str:
+    """Record live artifacts.base_resume into astral_artifacts after Save Base Resume.
+
+    Reads the post-persist candidate blob so the snapshot matches deep-merged
+    candidate_data (AC2). Returns the new astral_artifact_uuid from the data layer.
+    """
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    cd = candidate.get("candidate_data") or {}
+    if not isinstance(cd, dict):
+        cd = {}
+    arts = cd.get("artifacts") or {}
+    if not isinstance(arts, dict):
+        arts = {}
+    base = arts.get("base_resume")
+    if base is None:
+        raise ValueError("artifacts.base_resume missing after save")
+    # Literal artifact_type matches AST-1352 Save Base Resume contract
+    return database.save_astral_artifact("candidate", candidate_id, "base_resume", base)
 
 
 def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
