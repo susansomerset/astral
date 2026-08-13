@@ -4997,3 +4997,92 @@ class TestAst1322TitleKeyedBaseResumeDict:
             from src.utils.config import RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
 
             assert spec["format"] == RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
+
+# Branches: snapshot live blob; retire on second; missing candidate/base; craft path no astral write.
+class TestAst1353SnapshotSavedBaseResume:
+    def test_snapshots_live_base_resume_blob(self, seeded_db) -> None:
+        from src.core import candidate as candidate_mod
+
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={"artifacts": {"base_resume": {"professional_summary": "live"}}},
+            merge=True,
+        )
+        uid = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        row = db.get_current_astral_artifact("candidate", "cand-1", "base_resume")
+        assert row is not None
+        assert row["astral_artifact_uuid"] == uid
+        assert row["artifact_data"] == {"professional_summary": "live"}
+        assert row["current"] == 1
+
+    def test_second_snapshot_retires_prior(self, seeded_db) -> None:
+        from src.core import candidate as candidate_mod
+
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={"artifacts": {"base_resume": {"v": 1}}},
+            merge=True,
+        )
+        uid1 = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        db.save_candidate(
+            "cand-1",
+            candidate_data={"artifacts": {"base_resume": {"v": 2}}},
+            merge=True,
+        )
+        uid2 = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        assert uid1 != uid2
+        current = db.get_current_astral_artifact("candidate", "cand-1", "base_resume")
+        assert current["astral_artifact_uuid"] == uid2
+        assert current["artifact_data"] == {"v": 2}
+        history = db.list_astral_artifacts(
+            "candidate", "cand-1", "base_resume", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_missing_candidate_raises(self, sqlite_in_memory) -> None:
+        from src.core import candidate as candidate_mod
+
+        with pytest.raises(ValueError, match="Candidate not found"):
+            candidate_mod.snapshot_saved_base_resume_astral_artifact("missing-id")
+
+    def test_missing_base_resume_raises(self, seeded_db) -> None:
+        from src.core import candidate as candidate_mod
+
+        with pytest.raises(ValueError, match="artifacts.base_resume missing"):
+            candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+
+    def test_craft_generation_does_not_call_save_astral_artifact(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        astral_calls: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_astral_artifact",
+            lambda *a, **k: astral_calls.append((a, k)) or "uuid",
+        )
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        parsed = _craft_resume_base_payload(_catalog_structure())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_resume_base", "resume text"
+        )
+        assert status == 200
+        assert body["success"] is True
+        assert astral_calls == []

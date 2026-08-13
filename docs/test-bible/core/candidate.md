@@ -1256,3 +1256,40 @@ Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug i
   -q
 ```
 
+---
+
+### AST-1353 · AST-1340
+
+**Parent:** [AST-1340 — Create a table called astral_artifacts](https://linear.app/astralcareermatch/issue/AST-1340/create-a-table-called-astral-artifacts). **Publish:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`.
+
+Core helper **`snapshot_saved_base_resume_astral_artifact`** re-reads live `artifacts.base_resume` after Save and calls AST-1352 **`save_astral_artifact`**. Wired only from **`PUT /api/candidates/<id>/data`** when the body includes dict/list `base_resume` — not from craft/Generate `database.save_candidate` paths. Data writers: **`docs/test-bible/data/database/astral_artifacts.md`**. API: **`docs/test-bible/ui/api/api_candidate.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** |
+| Craft generate does not write astral_artifacts | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume::test_craft_generation_does_not_call_save_astral_artifact`** |
+
+**Broken / obsolete this pass:** none in core (API mock revisions live under **`api_candidate.md`**).
+
+**Integration:** no existing scenario asserts Save→`astral_artifacts` — no revision (artifact pipeline remains a should-have gap).
+
+## QA test manifest
+
+1. Core snapshot helper: `tests/component/core/test_candidate.py::TestAst1353SnapshotSavedBaseResume`
+2. API Save wire + AC4: `tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi`
+3. Revised mock PUT base_resume (snapshot stub): `TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys` + `TestAst1305LegacyLabelIngestApi`
+4. Sibling writers regression: `tests/component/data/database/test_astral_artifacts.py`
+
+**AST-1353** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1353SnapshotSavedBaseResume \
+  tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
+  tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
+  tests/component/data/database/test_astral_artifacts.py \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
