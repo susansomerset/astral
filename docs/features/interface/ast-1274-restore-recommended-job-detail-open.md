@@ -378,3 +378,58 @@ context_tokens≈55000
 ## Docs-acceptance (AST-1354)
 
 No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1355**.
+
+## Bug: AST-1355 — Gap: retarget agent-story tests/bible after move to agent.py
+
+### As-is
+Component tests and bible still assume `get_entity_agent_story` lives in `src/core/roster.py` (`tests/component/core/test_roster.py` classes `TestEntityAgentStory`, `TestEntityAgentStoryBranches`, `TestAst1274AgentStorySoftFail`, `TestAst726LatestOnlyRosterStory`; `docs/test-bible/core/roster.md` + `docs/test-bible/frontend/components.md` rows pointing at roster). After AST-1354 the symbol is only on `src/core/agent.py`, so those imports/monkeypatches are wrong. There is also **no** coverage for the AST-1354 repro shape: dangling / missing `propose_application_responses` TASK sibling → **partial** story without an exception stacktrace.
+
+### To-be
+Bible + component tests own entity story under **agent** (`test_agent.py` / `docs/test-bible/core/agent.md`), with imports and patches matching AST-1354’s implementation (`database.list_entity_latest_agent_refs`, per-id `get_agent_data` / `_get_agent_data_row`, `logger.warning` without traceback). A repro-shaped case asserts partial story (healthy RESPONSE/other tasks kept; bad sibling content `""`) and **no** `logger.exception` stack for that expected miss. Product code unchanged (already on ftr via AST-1354).
+
+### Repro
+1. Product already fixed on `origin/ftr/AST-1316-…` / AST-1354 publish: story in `agent.get_entity_agent_story`; `list_entity_latest_agent_refs` metadata-only; soft-fail via `logger.warning`.
+2. Run existing roster story tests as-written → `AttributeError` / import failure on `roster_mod.get_entity_agent_story` (or patches targeting removed `list_entity_latest_agent_refs` / `get_agent_data_for_ids` on roster).
+3. Gap (missing coverage): fixture batch for `propose_application_responses` with a RESPONSE row for the job plus a sibling TASK row whose `ref_agent_data_id` points at a missing id (or TASK id absent) while another task’s content is healthy — no test yet asserts partial story + warning-without-stack.
+
+### Root cause
+fix-board `[board-betty] TESTS: REVISE` on AST-1354: product moved story ownership and soft-fail shape, but test-tree / bible were deferred to this sibling gap. Soft-fail tests still patch the pre-move roster API (`get_agent_data_for_ids` all-or-nothing) instead of AST-1354’s per-id resolve path.
+
+### Proposed change
+**Product:** none (AST-1354 already shipped). This ticket is test/bible only (Betty / astral-tests conventions as applicable).
+
+1. **`tests/component/core/test_roster.py`** — remove story-ownership classes (or leave thin redirects **only if** bible still needs a one-line pointer; prefer delete):
+   - `TestEntityAgentStory`
+   - `TestEntityAgentStoryBranches`
+   - `TestAst1274AgentStorySoftFail`
+   - `TestAst726LatestOnlyRosterStory` (story assertions only; keep any non-story roster tests untouched)
+
+2. **`tests/component/core/test_agent.py`** — add equivalent classes importing `src.core.agent` as `agent_mod`:
+   - Retarget every `roster_mod.get_entity_agent_story` → `agent_mod.get_entity_agent_story`.
+   - Monkeypatch **`src.data.database.list_entity_latest_agent_refs`** (or `agent_mod.database.list_entity_latest_agent_refs`) for list failures — not `roster_mod.list_entity_latest_agent_refs`.
+   - Soft-fail content path: patch **per-id** `agent_mod._get_agent_data_row` (or `database.get_agent_data`) to raise `ValueError` for the bad id; do **not** patch removed `get_agent_data_for_ids` all-or-nothing behavior.
+   - Keep AST-1274 behaviors: list failure → `[]`; single-block resolve failure → entry present with `content == ""`.
+   - Logging: soft-fail paths use `logger.warning` (no `exc_info` / no `logger.exception`). Assert with `caplog` or mock logger that **exception** was not called for the expected missing-ref case.
+
+3. **New coverage (AST-1354 repro / this gap’s AC2)** — e.g. `TestAst1354AgentStoryDanglingTaskSibling` in `test_agent.py`:
+   - Seed (sqlite fixture / in-memory DB): job entity_id `job-1354`; latest RESPONSE for `propose_application_responses` with real content; same batch includes a TASK (or sibling) row with `ref_agent_data_id` → missing target **or** list returns that TASK id and per-id get raises `ValueError("agent_data ref target missing: …-task-…")`.
+   - Optionally include a second healthy task entry so “partial” is observable (not empty story).
+   - **Assert:** `get_entity_agent_story(job)` returns non-empty story; `propose_application_responses` RESPONSE content still present (or other task intact); dangling TASK block `content == ""` if listed; call does not raise; **no** exception-level stack log for that miss (`warning` OK).
+
+4. **Bible**
+   - `docs/test-bible/core/roster.md`: retarget/remove rows that name `roster.py` (`get_entity_agent_story`); point to agent bible section / `test_agent.py` nodes.
+   - `docs/test-bible/core/agent.md`: add (or extend) entity-story section — ownership AST-984/AST-1354, soft-fail AST-1274, dangling TASK sibling AST-1354/AST-1355 — with command nodes for the moved classes + new dangling-sibling test.
+   - `docs/test-bible/frontend/components.md`: change Agent story phase row from `src/core/roster.py` / `test_roster.py` → `src/core/agent.py` / `test_agent.py` (`TestEntityAgentStory::test_ast520_…`).
+
+5. **Out of scope:** re-implementing AST-1354 product; canon/statute edits (Joan CANON: OK); other roster non-story coverage.
+
+### Blast radius
+- Any CI / manifests that still invoke `test_roster.py::TestEntityAgentStory*` / `TestAst1274AgentStorySoftFail` / `TestAst726LatestOnlyRosterStory` must be updated to `test_agent.py` nodes (bible is the source of those commands).
+- UI API tests that monkeypatch `jobs_mod` / `companies_mod.get_entity_agent_story` stay valid (they patch the API module binding, not roster).
+- Product import surface already `api_*` → `agent`; no further product callers expected.
+
+### What must still hold
+- AST-1354 product contracts: data still raises on missing ref target / cycle; story soft-fails at caller with warning (no stack) for expected misses; metadata-only `list_entity_latest_agent_refs`; story lives in `agent.py` only.
+- AST-1274 soft-fail semantics preserved in tests (list fail → `[]`; resolve fail → empty block content, detail still openable).
+- AST-984 latest-per-task story via `list_entity_latest_agent_refs` + `prompt_blocks` ids (not entity JSON columns).
+- This gap does not regress non-story roster tests or change Joan’s CANON: OK surface.
