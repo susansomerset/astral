@@ -172,3 +172,53 @@ context_tokens≈45000
 Dropped the `has_local` early return in `_resolve_agent_data_block_data`. Plan Stage 1 and pre-AST-1274 behavior: when `ref_agent_data_id` is populated, follow the ref chain; when it is not, return local `block_data`. Null/empty local + populated ref still resolves (primary bug). Both-present rows keep following the ref (no new tie-break invent).
 
 Betty's `test_local_body_preferred_over_ref` asserted the removed branch — `[qa-handoff]` for test/bible update; stay Review Posted until she republishes.
+
+## Bug: AST-1354 — Fix agent story soft-fail + move to agent.py
+
+### As-is
+Opening a job whose latest `propose_application_responses` batch has a dangling / missing TASK (or other sibling) `agent_data` ref causes `list_entity_latest_agent_refs` → `get_agent_data_by_batch` → `_resolve_agent_data_block_data` to raise `ValueError: agent_data ref target missing: '…-task-…'`. AST-1274’s soft-fail in `roster.get_entity_agent_story` catches it with `logger.exception` (full stacktrace) and returns `[]`, so detail stays up but logs are noisy and **one** broken optional prompt-block piece empties the **entire** entity story. `get_entity_agent_story` still lives in `roster.py` (company coat-check module).
+
+### To-be
+Expected missing optional prompt-block / `agent_data` pieces for proposed application responses do **not** dump a stacktrace; they do **not** abort story (or detail) as if required. Story still soft-fails for truly corrupt graphs (AST-1274 contract). `get_entity_agent_story` lives in `src/core/agent.py`; `api_jobs` / `api_companies` import it from agent; roster no longer owns entity story.
+
+### Repro
+1. Entity has a latest RESPONSE for `propose_application_responses` (example batch `propose_application_responses-fafe75d0-e41d-48d7-95d6-d489483832dc`) whose batch also contains a row whose `ref_agent_data_id` points at a missing TASK id (`…-task-bb404bc0bb2e68f4`), or the TASK row is absent while siblings remain.
+2. `GET /api/jobs/<astral_job_id>` (observed job `8178a846-d026-4ca3-be3f-1f5a0d3113a5` on Susan’s local).
+3. Server log shows `get_entity_agent_story: list_entity_latest_agent_refs failed …` with a full `ValueError` traceback from `_resolve_agent_data_block_data`; story is `[]` even when other tasks’ refs are healthy.
+
+### Root cause
+`list_entity_latest_agent_refs` rebuilds `prompt_blocks` via `get_agent_data_by_batch(batch_id)`, which **resolves** every batch row’s `block_data` (including optional SYSTEM/CACHE/TASK siblings). Listing only needs `{type, id}`; the resolve step makes optional / missing sibling pieces required for **any** latest-ref list, and AST-1274’s catch-all `logger.exception` turns that expected miss into a stack dump. Secondary: story ownership is misplaced in `roster.py` (Susan: roster = company data; entity story → `agent.py`).
+
+### Proposed change
+Do **not** reopen AST-1274’s primary `_resolve_agent_data_block_data` contract (missing target / cycle still raise `ValueError` from data). Soft-fail remains at callers.
+
+1. **`src/data/database.py` — `list_entity_latest_agent_refs` (listing must not require resolved siblings)**  
+   For each latest RESPONSE, build `prompt_blocks` from a **metadata-only** batch read (`agent_data_id`, `block_type` ordered like today’s batch list — **no** `_resolve_agent_data_block_data`). Keep ref shape `{task_key, batch_id, created_at, prompt_blocks}` (non-RESPONSE siblings + this RESPONSE).  
+   ⚠️ **Decision:** Listing ids/types without resolve is in scope; changing `_resolve_agent_data_block_data` / silent `None` on missing target is **out**. If a batch has zero sibling rows, `prompt_blocks` may be RESPONSE-only — that is valid (do not invent TASK/SYSTEM).
+
+2. **`src/core/agent.py` — own entity story**  
+   Move `get_entity_agent_story` and `_filter_response_block` from `roster.py` into `agent.py` (public then private helper; keep entity-type detection + scored-task enrichment behavior).  
+   Soft-fail adjustments inside the moved function:  
+   - Wrap `list_entity_latest_agent_refs` / content load in `try/except Exception` as today, but log **`logger.warning` without traceback** for expected missing-ref / `ValueError` (and any soft-fail that previously used `logger.exception`). Message still includes `entity_type` / `entity_id` / exception text.  
+   - When hydrating block content: do **not** all-or-nothing on one bad id — load per `prompt_blocks[].id` (reuse `get_agent_data` or equivalent) and on `ValueError`/missing row log a one-line warning and leave that block’s `content` as `""`; continue other blocks/tasks so a missing TASK does not blank healthy RESPONSE text or other tasks.  
+   - Outer catch may still return `[]` only when the **list** itself fails for a non-degraded reason; prefer partial story over empty when list succeeds.
+
+3. **`src/core/roster.py`** — delete `get_entity_agent_story` / `_filter_response_block` and drop imports used only by them (`list_entity_latest_agent_refs`, `get_agent_data_for_ids`, etc. if unused). **No** roster re-export shim.
+
+4. **Call sites**  
+   - `src/ui/api/api_jobs.py`: import `get_entity_agent_story` from `src.core.agent`; keep detail soft-fail wrap; change its log from `logger.exception` → `logger.warning` (no stack) for the same expected class of failure.  
+   - `src/ui/api/api_companies.py`: import from `src.core.agent` (same).
+
+5. **Out of scope**  
+   Artifact pin write (AST-1099), `propose_application_responses` LLM/task behavior, modal copy, and AST-1274 data-layer raise semantics.
+
+### Blast radius
+- Shared `list_entity_latest_agent_refs` consumers (`agent.py` hop hydrate, story): listing no longer throws solely because a sibling block’s content-ref is dangling; content readers still raise when those ids are fetched.  
+- UI imports flip roster → agent; any code/tests still importing story from `roster` break (Betty owns `tests/` — expect fix-board / qa-fix if roster story tests need retarget).  
+- Quieter logs: missing expected pieces no longer look like unhandled crashes.
+
+### What must still hold
+- AST-1274: data still raises on missing ref target / cycle; detail still returns 200 with usable job payload when story hydration fails; `@require_auth` + 404-when-missing job unchanged; modal 404 vs non-404 honesty unchanged.  
+- AST-984 / code-rules §2.4: story still from latest-per-task RESPONSE refs + `prompt_blocks` ids (not entity JSON columns); RESPONSE content still shown when present.  
+- Layer imports: UI → core/utils only; no UI→data.  
+- Roster remains company coat-check / company data — not entity agent story.
