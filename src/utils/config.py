@@ -5090,6 +5090,10 @@ BUILD_CONFIG = {
             "signature": {"type": "str", "required": False},
         },
     },
+    # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
+    "unsupported_resume_structure_message": (
+        "unsupported resume structure, please regenerate"
+    ),
     # AST-300 / AST-370 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "resume_artifact_chain": {
         "first_task_key": "contemplate_job",
