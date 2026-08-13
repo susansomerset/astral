@@ -355,5 +355,5 @@ context_tokens≈38000
   - `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` (`showFooter={false}`)
   - `docs/features/interface/ast-1334-remove-recommended-job-report-modal-footer.md`
 - **AST-1332 product retained:** `src/utils/config.py` + `src/core/candidate.py` (required `highlights` + order coerce) unchanged.
-- **Test-tree still diverges from `origin/dev`:** `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_Modal.test.tsx`, `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — engineer cannot commit those paths; `[qa-handoff]` to Betty to restore AST-1334 coverage from `origin/dev` while keeping AST-1332 bible/tests.
+- **Betty `[qa-handoff]` cleared:** tip `6649ab66` restored AST-1334 test-tree from `origin/dev` (`docs/test-bible/frontend/components.md` § AST-1334; `test_Modal.test.tsx`; `test_JobAnalysisReportModal.test.tsx`). Three-dot `origin/dev...HEAD` no longer diffs any AST-1334 paths. AST-1332 manifest re-run: **21 passed**.
 - **discuss (sync merge gate):** Process question for Chuckles/orchestration — not a product change on this ticket; left unanswered in code.

@@ -43,6 +43,40 @@ class TestGradeValuesConfig:
             cfg.grade_value("")
 
 
+class TestAst1347PhaseScoreBreakdownConfig:
+    """AST-1347: breakdown key suffix + fields; list Score columns stay 0–10 only."""
+
+    def test_breakdown_constants(self) -> None:
+        assert cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX == "score_breakdown"
+        assert cfg.PHASE_SCORE_BREAKDOWN_FIELDS == ("earned", "possible", "max")
+
+    def test_breakdown_not_in_recommended_phase_score_columns(self) -> None:
+        fields = {row["field"] for row in cfg.JOBS_RECOMMENDED_PHASE_SCORE_COLUMNS}
+        assert fields == {"jd_score", "do_score", "get_score", "like_score"}
+        assert cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX not in "".join(fields)
+        for p in ("jd", "do", "get", "like"):
+            assert f"{p}_{cfg.PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" not in fields
+
+
+class TestAst1348PhaseScoreHeaderTitleConfig:
+    """AST-1348: Analysis header title template on recommended manifest."""
+
+    def test_header_title_template_constant_and_manifest(self) -> None:
+        assert "{phase_label}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        assert "{earned}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        assert "{possible}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        assert "{max}" in cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        rec = cfg.build_state_ui_manifest()["jobs"]["recommended"]
+        assert rec["phase_score_header_title_template"] == cfg.PHASE_SCORE_HEADER_TITLE_TEMPLATE
+        # Base phase nav labels unchanged
+        assert [p["nav_label"] for p in rec["report_phase_tabs"]] == [
+            "JD Analysis",
+            "DO Analysis",
+            "GET Analysis",
+            "LIKE Analysis",
+        ]
+
+
 # Branches: known model; unknown model.
 class TestGetModel:
     def test_returns_model_entry(self) -> None:
@@ -2007,6 +2041,45 @@ class TestAst898NewRetryQualifyHolding:
         assert consult_mod._consult_batch_fail_dest("VALID_TITLE_RETRY", err) == err
 
 
+class TestAst1339MeteoriteNewRetryQualifyHolding:
+    """[bug-repro] AST-1339 — METEORITE_NEW_RETRY qualify holding (twin of AST-898)."""
+
+    def test_meteorite_new_claim_companion(self) -> None:
+        assert cfg.dispatch_claim_states("METEORITE_NEW", "job") == [
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        ]
+        assert cfg.dispatch_claim_states("METEORITE_NEW_RETRY", "job") == [
+            "METEORITE_NEW_RETRY"
+        ]
+
+    def test_registry_retry_pointer_no_nested(self) -> None:
+        assert cfg.JOB_STATES["METEORITE_NEW"]["retry_state"] == "METEORITE_NEW_RETRY"
+        assert "retry_state" not in cfg.JOB_STATES["METEORITE_NEW_RETRY"]
+        assert cfg.JOB_STATES["METEORITE_NEW_RETRY"]["prior_states"] == ["METEORITE_NEW"]
+
+    def test_ui_sections_label_no_grade_field(self) -> None:
+        assert "METEORITE_NEW_RETRY" in cfg.IN_REVIEW_STATES
+        review = [row["state"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS]
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY")
+        assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
+        row = next(
+            r for r in cfg.JOBS_IN_REVIEW_UI_SECTIONS if r["state"] == "METEORITE_NEW_RETRY"
+        )
+        assert row["label"] == "Meteorite New (retry)"
+        assert "METEORITE_NEW_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
+
+    def test_consult_batch_fail_dest_matrix(self) -> None:
+        from src.core import consult as consult_mod
+
+        err = cfg.TASK_CONFIG["qualify_meteorite"]["error_state"]
+        assert consult_mod._consult_batch_fail_dest("METEORITE_NEW", err) == "METEORITE_NEW_RETRY"
+        assert (
+            consult_mod._consult_batch_fail_dest("METEORITE_NEW_RETRY", err)
+            == "METEORITE_ERROR_QUALIFY"
+        )
+
+
 class TestAst955RegisteredKeyDispatchAdminDefaults:
     """AST-955: admin defaults for any registered TASK_CONFIG key (+ optional trigger)."""
 
@@ -2392,6 +2465,29 @@ class TestAst998ExperienceBodyKind:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
 
+class TestAst1350UnsupportedResumeStructureMessage:
+    """AST-1350: BUILD_CONFIG owns the exact Print/Open HTML toast string."""
+
+    def test_unsupported_resume_structure_message_literal(self) -> None:
+        assert cfg.BUILD_CONFIG["unsupported_resume_structure_message"] == (
+            "unsupported resume structure, please regenerate"
+        )
+
+
+class TestAst1351ExperienceJobUiFields:
+    """AST-1351: BUILD_CONFIG experience_job_ui_fields keys match schema."""
+
+    def test_experience_job_ui_fields_match_item_schema(self) -> None:
+        fields = cfg.BUILD_CONFIG["experience_job_ui_fields"]
+        assert isinstance(fields, list)
+        keys = [f["key"] for f in fields]
+        assert keys == ["company", "title", "dates", "location", "accomplishments"]
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]["items_schema"]
+        assert set(keys) == set(schema)
+        for f in fields:
+            assert isinstance(f["label"], str) and f["label"]
+
+
 class TestAst1020DefaultStyleColorTokens:
     """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
 
@@ -2537,6 +2633,48 @@ class TestAst1037SimpleResumeParseConfig:
         keys = cfg._CRAFT_RESUME_NORMALIZE_TASK_KEYS
         assert isinstance(keys, frozenset)
         assert keys == frozenset({"craft_resume_base", "simple_resume_parse"})
+
+
+class TestAst1333CraftParseHighlightsSchema:
+    """AST-1333: shared craft/parse schema requires highlights before experience."""
+
+    def test_highlights_required_str_before_experience_on_shared_schema(self) -> None:
+        schema = cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        assert schema is cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]
+        assert schema is cfg.TASK_CONFIG["simple_resume_parse"]["response_schema"]
+        assert schema["highlights"] == {"type": "str", "required": True}
+        keys = list(schema.keys())
+        assert keys.index("highlights") == keys.index("experience") - 1
+
+    def test_omitting_highlights_fails_schema_empty_string_passes(self) -> None:
+        from src.core.agent import _validate_response_schema
+
+        schema = cfg._CRAFT_RESUME_BASE_RESPONSE_SCHEMA
+        base = {
+            "resume_structure": {"sections": {}},
+            "candidate_name": "A",
+            "candidate_title": "T",
+            "candidate_contact_detail": "a@b.c",
+            "professional_summary": "S",
+            "core_competencies": "C",
+            "experience": [
+                {
+                    "company": "Co",
+                    "title": "Eng",
+                    "dates": "",
+                    "location": "",
+                    "accomplishments": "",
+                }
+            ],
+        }
+        missing = {"agent_payload": dict(base)}
+        err = _validate_response_schema(missing, schema, "craft_resume_base")
+        assert err is not None
+        assert "Missing required field 'highlights'" in err
+        ok = {"agent_payload": {**base, "highlights": ""}}
+        assert _validate_response_schema(ok, schema, "simple_resume_parse") is None
+
+
 class TestAst1041MeteoriteConfig:
     """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
 
@@ -2596,6 +2734,7 @@ class TestAst1053MeteoriteGdlJobStates:
 
     _PASS = (
         "METEORITE_NEW",
+        "METEORITE_NEW_RETRY",  # AST-1339 / AST-1338 qualify holding
         "METEORITE_QUALIFIED",  # AST-1060: pre-AI → Ruth qualify → GDL entry
         "METEORITE_QUALIFIED_RETRY",  # AST-1155 incomplete-grade holding
         "METEORITE_PASSED_JD",
@@ -2625,13 +2764,21 @@ class TestAst1053MeteoriteGdlJobStates:
         assert js["METEORITE_NEW"]["prior_states"] is None
         # AST-1060: GDL entry is METEORITE_QUALIFIED (not unenriched METEORITE_NEW).
         # AST-1156: Skipped Retry from meteorite JD fail/error → METEORITE_QUALIFIED.
+        # AST-1339 / AST-1338: METEORITE_NEW_RETRY is also a leave-holding prior.
         assert js["METEORITE_QUALIFIED"]["prior_states"] == [
             "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
             "METEORITE_FAILED_JD",
             "METEORITE_ERROR_EVALUATE_JD",
         ]
-        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
-        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == ["METEORITE_NEW"]
+        assert js["METEORITE_FAILED_QUALIFY"]["prior_states"] == [
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        ]
+        assert js["METEORITE_ERROR_QUALIFY"]["prior_states"] == [
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
+        ]
         # AST-1155: graded-trigger *_RETRY holdings are also priors on hop outcomes.
         assert js["METEORITE_PASSED_JD"]["prior_states"] == [
             "METEORITE_QUALIFIED",
@@ -2678,13 +2825,16 @@ class TestAst1053MeteoriteGdlJobStates:
         for state in self._PASS:
             assert state in review, state
         assert review.index("PASSED_LIKE_RETRY") < review.index("METEORITE_NEW")
-        assert review.index("METEORITE_NEW") < review.index("METEORITE_QUALIFIED")
+        assert review.index("METEORITE_NEW") < review.index("METEORITE_NEW_RETRY")
+        assert review.index("METEORITE_NEW_RETRY") < review.index("METEORITE_QUALIFIED")
         assert review.index("METEORITE_QUALIFIED") < review.index("METEORITE_PASSED_JD")
         assert review.index("METEORITE_PASSED_GET") < review.index("METEORITE_PASSED_LIKE")
         labels = {row["state"]: row["label"] for row in cfg.JOBS_IN_REVIEW_UI_SECTIONS}
         assert labels["METEORITE_NEW"] == "Meteorite New (pre-AI)"
+        assert labels["METEORITE_NEW_RETRY"] == "Meteorite New (retry)"
         assert labels["METEORITE_QUALIFIED"] == "Meteorite Qualified"
         assert labels["METEORITE_PASSED_LIKE_RETRY"] == "Meteorite LIKE upshot (retry)"
+        assert "METEORITE_NEW_RETRY" not in cfg.JOBS_IN_REVIEW_GRADE_FIELD
 
         order = cfg.JOBS_SKIPPED_SECTION_ORDER
         for state in self._FAIL:
@@ -2962,7 +3112,9 @@ class TestAst1195SchemaNullsAndBotBlocked:
         assert "BOT_BLOCKED" in cfg.JOB_STATES
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES
         assert cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"] == [
-            "PASSED_JOBLIST", "METEORITE_NEW",
+            "PASSED_JOBLIST",
+            "METEORITE_NEW",
+            "METEORITE_NEW_RETRY",
         ]
         assert "BOT_BLOCKED" in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
         assert "JD_SCRAPE_FAIL_BOT" not in cfg.JOB_STATES["PASSED_JOBLIST"]["prior_states"]
@@ -2988,6 +3140,7 @@ class TestAst1197QualifyMeteoriteApplyKnobs:
         assert tc["email_link_prefix"] == "email-"
         assert tc["bot_blocked_state"] == "BOT_BLOCKED"
         assert "METEORITE_NEW" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
+        assert "METEORITE_NEW_RETRY" in cfg.JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
     def test_challenge_bot_signals_present(self) -> None:
         from src.utils import config as cfg

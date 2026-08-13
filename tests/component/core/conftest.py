@@ -36,6 +36,7 @@ _SCHEMA_FLAGS = (
     "_intake_session_schema_ensured",
     "_rubric_vector_schema_ensured",
     "_vector_feedback_schema_ensured",
+    "_astral_artifacts_schema_ensured",  # AST-1352
     "_ast723_rubric_token_migration_applied",
 )
 

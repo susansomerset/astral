@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import CollapsiblePanel from "./CollapsiblePanel"
 import type { Catalog, SectionRow } from "./ResumeStructureEditor"
+import ExperienceJobsEditor, { type ExperienceJobField } from "./ExperienceJobsEditor"
 import LabeledTextArea from "./LabeledTextArea"
 import type { SideTab } from "./SideTabPanel"
 import Toast, { type ToastMessage } from "./Toast"
@@ -13,6 +14,52 @@ import { formatRubricVectorHeader, RUBRIC_DEFAULT_IMPORTANCE, rubricItemImportan
 
 interface ShapeField { key: string; label: string; type?: string }
 
+/** AST-1351: contract keys when ui_config fetch fails (Title-Case labels). */
+const EXPERIENCE_JOB_FIELD_FALLBACK: ExperienceJobField[] = [
+  { key: "company", label: "Company" },
+  { key: "title", label: "Title" },
+  { key: "dates", label: "Dates" },
+  { key: "location", label: "Location" },
+  { key: "accomplishments", label: "Accomplishments" },
+]
+
+function isExperienceTab(key: string, fieldType?: string): boolean {
+  return fieldType === "experience_jobs" || key === "experience"
+}
+
+function normalizeExperienceJob(
+  raw: Record<string, unknown>,
+  fieldKeys: string[],
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const k of fieldKeys) {
+    const v = raw[k]
+    out[k] = typeof v === "string" ? v : v == null ? "" : String(v)
+  }
+  return out
+}
+
+function parseExperienceJobs(
+  content: string,
+  fieldKeys: string[],
+): { ok: true; jobs: Record<string, string>[] } | { ok: false; raw: string } {
+  const t = content.trim()
+  if (!t) return { ok: true, jobs: [] }
+  try {
+    const parsed = JSON.parse(t) as unknown
+    if (!Array.isArray(parsed)) return { ok: false, raw: content }
+    if (!parsed.every(item => item != null && typeof item === "object" && !Array.isArray(item))) {
+      return { ok: false, raw: content }
+    }
+    return {
+      ok: true,
+      jobs: parsed.map(item => normalizeExperienceJob(item as Record<string, unknown>, fieldKeys)),
+    }
+  } catch {
+    return { ok: false, raw: content }
+  }
+}
+
 function sectionValueToTabContent(val: unknown): string {
   if (typeof val === "string") return val
   if (val == null) return ""
@@ -21,7 +68,7 @@ function sectionValueToTabContent(val: unknown): string {
 
 function tabContentToSectionValue(key: string, content: string, fieldType?: string): unknown {
   // experience_jobs from DATA_SHAPES, or structureMode tabs that only carry key/label
-  if (fieldType === "experience_jobs" || key === "experience") {
+  if (isExperienceTab(key, fieldType)) {
     const t = content.trim()
     if (!t) return []
     return JSON.parse(t)
@@ -138,6 +185,42 @@ export default function ArtifactEditor({
   const [addFormat, setAddFormat] = useState(
     structureCatalog?.new_extra_default_format || structureCatalog?.body_formats?.[0] || "",
   )
+  // AST-1351: experience job UI spine from BUILD_CONFIG via ui_config
+  const [experienceJobFields, setExperienceJobFields] = useState<ExperienceJobField[]>(
+    EXPERIENCE_JOB_FIELD_FALLBACK,
+  )
+  const [unsupportedExperienceMessage, setUnsupportedExperienceMessage] = useState(
+    "unsupported resume structure, please regenerate",
+  )
+  useEffect(() => {
+    api("/api/system/ui_config")
+      .then(r => r.json())
+      .then(cfg => {
+        const fields = cfg.experience_job_ui_fields
+        if (Array.isArray(fields) && fields.length > 0) {
+          setExperienceJobFields(
+            fields
+              .filter((f: { key?: string; label?: string }) => typeof f?.key === "string")
+              .map((f: { key: string; label?: string }) => ({
+                key: f.key,
+                label:
+                  typeof f.label === "string" && f.label
+                    ? f.label
+                    : f.key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase()),
+              })),
+          )
+        }
+        if (
+          typeof cfg.unsupported_resume_structure_message === "string"
+          && cfg.unsupported_resume_structure_message
+        ) {
+          setUnsupportedExperienceMessage(cfg.unsupported_resume_structure_message)
+        }
+      })
+      .catch(() => {
+        setExperienceJobFields(EXPERIENCE_JOB_FIELD_FALLBACK)
+      })
+  }, [])
   useEffect(() => {
     if (!structureCatalog) return
     setAddFormat(structureCatalog.new_extra_default_format || structureCatalog.body_formats[0] || "")
@@ -298,7 +381,12 @@ export default function ArtifactEditor({
     if (structureSections.length === 0) setShapeError(true)
     else {
       setShapeError(false)
-      setShapeFields(structureSections.map(s => ({ key: s.id, label: s.label })))
+      // AST-1351: mark experience so Save + editor use job-array path
+      setShapeFields(structureSections.map(s => ({
+        key: s.id,
+        label: s.label,
+        ...(s.id === "experience" ? { type: "experience_jobs" as const } : {}),
+      })))
     }
   }, [structureMode, structureSections])
 
@@ -310,7 +398,11 @@ export default function ArtifactEditor({
     api(`/api/candidates/${selectedId}/resume_structure`).then(r => r.json()).then(data => {
       const sections = Array.isArray(data.sections) ? data.sections : []
       if (sections.length === 0) setShapeError(true)
-      else setShapeFields(sections.map((s: { id: string; label: string }) => ({ key: s.id, label: s.label })))
+      else setShapeFields(sections.map((s: { id: string; label: string }) => ({
+        key: s.id,
+        label: s.label,
+        ...(s.id === "experience" ? { type: "experience_jobs" as const } : {}),
+      })))
     }).catch(() => setShapeError(true))
   }, [structureMode, structureSections, selectedId])
 
@@ -421,11 +513,22 @@ export default function ArtifactEditor({
 
   // Save to backend
   const doSave = useCallback(async (t: SideTab[]) => {
+    const fieldKeys = experienceJobFields.map(f => f.key)
+    for (const tab of t) {
+      const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+      if (isExperienceTab(tab.id, fieldType)) {
+        const parsed = parseExperienceJobs(tab.content, fieldKeys)
+        if (!parsed.ok) {
+          setToast({ text: unsupportedExperienceMessage, variant: "error" })
+          return
+        }
+      }
+    }
     let payload: ReturnType<typeof buildPayload>
     try {
       payload = buildPayload(t)
     } catch {
-      setToast({ text: "Experience must be valid JSON", variant: "error" })
+      setToast({ text: unsupportedExperienceMessage, variant: "error" })
       return
     }
     if (jobPersistence) {
@@ -479,7 +582,7 @@ export default function ArtifactEditor({
       setSaving(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobPersistence, selectedId, artifactKey])
+  }, [jobPersistence, selectedId, artifactKey, experienceJobFields, unsupportedExperienceMessage, fixedFields])
 
   function handleChange(next: SideTab[]) {
     setTabs(next)
@@ -896,23 +999,56 @@ export default function ArtifactEditor({
                   else setExpandedTabId("")
                 }}
               >
-                <LabeledTextArea
-                  label={tab.label}
-                  value={tab.content}
-                  onChange={v => updateTab(tab.id, { content: v })}
-                  onLabelChange={undefined}
-                  code={tab.code}
-                  onCodeChange={editable ? v => updateTab(tab.id, { code: v }) : undefined}
-                  importance={tab.importance}
-                  onImportanceChange={
-                    editable && rubricMode ? n => updateTab(tab.id, { importance: n }) : undefined
+                {(() => {
+                  const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+                  if (isExperienceTab(tab.id, fieldType)) {
+                    const fieldKeys = experienceJobFields.map(f => f.key)
+                    const parsed = parseExperienceJobs(tab.content, fieldKeys)
+                    if (parsed.ok) {
+                      return (
+                        <ExperienceJobsEditor
+                          fields={experienceJobFields}
+                          value={parsed.jobs}
+                          onChange={jobs => updateTab(tab.id, { content: JSON.stringify(jobs) })}
+                        />
+                      )
+                    }
+                    return (
+                      <>
+                        <p className="experience-jobs-editor-unsupported">
+                          {unsupportedExperienceMessage}
+                        </p>
+                        <LabeledTextArea
+                          label={tab.label}
+                          value={parsed.raw}
+                          onChange={() => {}}
+                          onLabelChange={undefined}
+                          disabled
+                          hideTitle
+                        />
+                      </>
+                    )
                   }
-                  onImportanceFocus={
-                    editable && rubricMode ? () => setRailOrderFreeze(tabsSortedForRail.map(t => t.id)) : undefined
-                  }
-                  onImportanceBlur={editable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
-                  hideTitle
-                />
+                  return (
+                    <LabeledTextArea
+                      label={tab.label}
+                      value={tab.content}
+                      onChange={v => updateTab(tab.id, { content: v })}
+                      onLabelChange={undefined}
+                      code={tab.code}
+                      onCodeChange={editable ? v => updateTab(tab.id, { code: v }) : undefined}
+                      importance={tab.importance}
+                      onImportanceChange={
+                        editable && rubricMode ? n => updateTab(tab.id, { importance: n }) : undefined
+                      }
+                      onImportanceFocus={
+                        editable && rubricMode ? () => setRailOrderFreeze(tabsSortedForRail.map(t => t.id)) : undefined
+                      }
+                      onImportanceBlur={editable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
+                      hideTitle
+                    />
+                  )
+                })()}
               </CollapsiblePanel>
               )
             })}

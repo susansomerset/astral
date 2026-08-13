@@ -18,5 +18,6 @@ Public API lives on `src.data.database`. Cluster files under this directory map 
 | `test_dispatch_ledger.py` | `dispatch_ledger` |
 | `test_app_log.py` | `app_log` |
 | `test_state_helpers.py` | batch helpers, score floors, legacy wrappers |
+| `test_astral_artifacts.py` | `astral_artifacts` (AST-1352) |
 
 Adjust boundaries only with a Linear note and this file.

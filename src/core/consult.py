@@ -33,6 +33,8 @@ from src.utils.config import (
     CONFIDENCE_MULTIPLIERS,
     MAX_GRADE_VALUE,
     RUBRIC_TOTAL,
+    PHASE_SCORE_BREAKDOWN_FIELDS,
+    PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
     JOB_TOKEN_CONFIG,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
     METEORITE_CONFIG,
@@ -694,6 +696,48 @@ def _debug_incomplete_grade_set(
     )
 
 
+def _phase_score_breakdown(
+    rubric_criteria: list,
+    grades: list,
+) -> dict:
+    """Earned / possible / max contribution totals (AST-1347).
+
+    Uses the same per-vector math as _render_score (base × density × importance).
+    No-signal rows (_effective_no_signal_for_score) are excluded from earned and
+    possible (and from the counted denominator). Max uses full grade-set capacity
+    (every vector, including no-signal slots) at density 1.0.
+    """
+    earned_key, possible_key, max_key = PHASE_SCORE_BREAKDOWN_FIELDS
+    counted = [g for g in grades if not _effective_no_signal_for_score(g)]
+    n_all = len(grades)
+    n_counted = len(counted)
+    base_counted = float(RUBRIC_TOTAL) / n_counted if n_counted > 0 else 0.0
+    base_all = float(RUBRIC_TOTAL) / n_all if n_all > 0 else 0.0
+    earned = 0.0
+    possible = 0.0
+    for g in counted:
+        conf = g.get("confidence")
+        if not isinstance(conf, int):
+            raise ValueError(f"_render_score: confidence must be int for vector {g.get('vector')!r}")
+        m = CONFIDENCE_MULTIPLIERS.get(conf)
+        if m is None:
+            raise ValueError(f"_render_score: invalid confidence {conf!r} for vector {g.get('vector')!r}")
+        gv = grade_value(g["grade"])
+        density = (gv / MAX_GRADE_VALUE) * m
+        imp = _importance_for_label(rubric_criteria, g["vector"])
+        contrib = base_counted * density * imp
+        earned += contrib
+        possible += base_counted * 1.0 * imp
+        logger.debug_detail(
+            f"vec={g.get('vector')!r} grade={g.get('grade')} conf={conf} "
+            f"base={base_counted} density={density} imp={imp} contrib={contrib}"
+        )
+    max_total = 0.0
+    for g in grades:
+        max_total += base_all * 1.0 * _importance_for_label(rubric_criteria, g["vector"])
+    return {earned_key: earned, possible_key: possible, max_key: max_total}
+
+
 def _render_score(
     consult_cfg: dict,
     rubric_criteria: list,
@@ -711,27 +755,10 @@ def _render_score(
         logger.debug_detail(f"branch=F2_dealbreaker scored_fail grades={grades!r}")
         return (consult_cfg["fail_state"], None)
     _require_complete_grade_set(rubric_criteria, grades)
-    counted = [g for g in grades if not _effective_no_signal_for_score(g)]
-    v = len(counted)
-    rubric_score = 0.0
-    if v > 0:
-        base = float(RUBRIC_TOTAL) / v
-        for g in counted:
-            conf = g.get("confidence")
-            if not isinstance(conf, int):
-                raise ValueError(f"_render_score: confidence must be int for vector {g.get('vector')!r}")
-            m = CONFIDENCE_MULTIPLIERS.get(conf)
-            if m is None:
-                raise ValueError(f"_render_score: invalid confidence {conf!r} for vector {g.get('vector')!r}")
-            gv = grade_value(g["grade"])
-            density = (gv / MAX_GRADE_VALUE) * m
-            imp = _importance_for_label(rubric_criteria, g["vector"])
-            contrib = base * density * imp
-            rubric_score += contrib
-            logger.debug_detail(
-                f"vec={g.get('vector')!r} grade={g.get('grade')} conf={conf} "
-                f"base={base} density={density} imp={imp} contrib={contrib}"
-            )
+    breakdown = _phase_score_breakdown(rubric_criteria, grades)
+    earned_key = PHASE_SCORE_BREAKDOWN_FIELDS[0]
+    rubric_score = breakdown[earned_key]
+    v = len([g for g in grades if not _effective_no_signal_for_score(g)])
     score = (rubric_score / float(RUBRIC_TOTAL)) * 10.0
     logger.debug_detail(
         f"rubric_score={rubric_score} score={score} score_floor={score_floor} v={v}"
@@ -1138,11 +1165,17 @@ def _apply_render_verdict_decoded_job(
 
     prefix = cfg.get("save_prefix", dispatch_task_key)
     save_data: Dict[str, Any] = {f"{prefix}_grades": grades}
+    score_key = f"{prefix}_score"
     normalized_score = _latest_score_value(score)
     if _task_config_scored(agent_task) and normalized_score is not None:
-        save_data[f"{prefix}_score"] = normalized_score
+        save_data[score_key] = normalized_score
     elif score is not None:
-        save_data[f"{prefix}_score"] = score
+        save_data[score_key] = score
+    # AST-1347: earned/possible/max beside score (same gate as writing *_score)
+    if score_key in save_data:
+        save_data[f"{prefix}_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"] = _phase_score_breakdown(
+            rubric_criteria, grades
+        )
     save_data[f"{prefix}_notes"] = notes_tail
     # AST-1063: job-carried rubric for list headers (same criteria as hydrate/score)
     save_data[f"{prefix}_rubric"] = _rubric_snapshot_for_job_data(rubric_criteria)
@@ -2126,6 +2159,10 @@ async def evaluate_jd_batch(
         normalized_score = _latest_score_value(score)
         if _task_config_scored(task_key) and normalized_score is not None:
             save_data["jd_score"] = normalized_score
+            # AST-1347: earned/possible/max beside jd_score
+            save_data[f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"] = _phase_score_breakdown(
+                rubric_list, grades
+            )
         tracker.save_job_data(aid, save_data)
         _transition_job_state_for_task(task_key, [aid], to_state, score)
         title = input_job.get("job_title") or aid
