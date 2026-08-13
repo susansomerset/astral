@@ -162,7 +162,6 @@ export default function Profile() {
     onSave: persistProfile,
   })
 
-  const hasBaseResume = Boolean(getByPath(values, "artifacts.base_resume"))
   const sigImg = String(getByPath(values, "contact.cover_letter_signature_image") ?? "")
   const maxSigW = sigLimits?.max_width_px
   const maxSigH = sigLimits?.max_height_px
@@ -225,15 +224,10 @@ export default function Profile() {
 
   const textTabs: TextTab[] = tabSections.map(sec => {
     const f = sec.fields[0]
-    const isResume = f.key === "context.raw_resume"
     return {
       label: sec.label,
       key: f.key,
-      disabled: isResume && hasBaseResume,
-      // Prefer shapes placeholder; resume-lock override when base resume exists.
-      placeholder: f.placeholder ?? (isResume && hasBaseResume
-        ? "Locked — base resume has been generated from this text"
-        : undefined),
+      placeholder: f.placeholder,
       help: typeof f.help === "string" && f.help.trim() ? f.help : undefined,
     }
   })
