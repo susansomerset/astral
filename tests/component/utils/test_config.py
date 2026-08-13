@@ -2465,6 +2465,15 @@ class TestAst998ExperienceBodyKind:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
 
+class TestAst1350UnsupportedResumeStructureMessage:
+    """AST-1350: BUILD_CONFIG owns the exact Print/Open HTML toast string."""
+
+    def test_unsupported_resume_structure_message_literal(self) -> None:
+        assert cfg.BUILD_CONFIG["unsupported_resume_structure_message"] == (
+            "unsupported resume structure, please regenerate"
+        )
+
+
 class TestAst1020DefaultStyleColorTokens:
     """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
 

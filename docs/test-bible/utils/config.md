@@ -942,6 +942,15 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 | --- | --- | --- |
 | Craft / finalize schema identity (reuse) | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`**, **`TestAst997FinalizeExperienceJobArray`** |
 
+
+### AST-1350 · AST-1345
+
+**AST-1350:** `BUILD_CONFIG["unsupported_resume_structure_message"]` exact toast string. Primary refuse/emit: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Message literal | `src/utils/config.py` | **`TestAst1350UnsupportedResumeStructureMessage`** |
+
 ---
 
 ### AST-998 · AST-994
