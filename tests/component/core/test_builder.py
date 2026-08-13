@@ -1181,6 +1181,58 @@ class TestAst1350UnsupportedExperienceShape:
 
 
 
+
+class TestAst1351ExperienceDebugJobs:
+    """AST-1351: debug=True emit paths list experience jobs (Style D)."""
+
+    _JOBS = [
+        {
+            "company": "Acme Corp",
+            "title": "Engineer",
+            "dates": "2020-2023",
+            "location": "Remote",
+            "accomplishments": "Shipped widgets",
+        }
+    ]
+
+    def _structure(self) -> dict[str, Any]:
+        return {
+            "sections": {
+                "professional_summary": {
+                    "id": "professional_summary",
+                    "title": "Summary",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                },
+                "experience": {
+                    "id": "experience",
+                    "title": "Experience",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": True,
+                },
+            }
+        }
+
+    def test_session_debug_lists_experience_jobs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        details: list[str] = []
+        monkeypatch.setattr(builder_mod._log, "debug_detail", details.append)
+        monkeypatch.setattr(builder_mod._log, "debug_index", lambda **_k: None)
+        monkeypatch.setattr(builder_mod._log, "debug_detail_block", lambda *_a, **_k: None)
+        html = builder_mod.build_session_base_resume(
+            self._structure(),
+            {
+                "professional_summary": "S",
+                "experience": [dict(j) for j in self._JOBS],
+            },
+            debug=True,
+        )
+        assert "Acme Corp" in html
+        assert any(m.startswith("experience[0] company=") for m in details)
+
+
 class TestAst1007NestedTypographyMarkers:
     """AST-1007: deep-walk markers on nested leaves; three-surface HTML proof."""
 

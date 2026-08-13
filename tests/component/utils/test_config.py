@@ -2474,6 +2474,20 @@ class TestAst1350UnsupportedResumeStructureMessage:
         )
 
 
+class TestAst1351ExperienceJobUiFields:
+    """AST-1351: BUILD_CONFIG experience_job_ui_fields keys match schema."""
+
+    def test_experience_job_ui_fields_match_item_schema(self) -> None:
+        fields = cfg.BUILD_CONFIG["experience_job_ui_fields"]
+        assert isinstance(fields, list)
+        keys = [f["key"] for f in fields]
+        assert keys == ["company", "title", "dates", "location", "accomplishments"]
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]["items_schema"]
+        assert set(keys) == set(schema)
+        for f in fields:
+            assert isinstance(f["label"], str) and f["label"]
+
+
 class TestAst1020DefaultStyleColorTokens:
     """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
 

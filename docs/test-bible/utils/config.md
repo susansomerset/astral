@@ -953,6 +953,16 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ---
 
+### AST-1351 · AST-1345
+
+**AST-1351:** `BUILD_CONFIG["experience_job_ui_fields"]` keys match craft schema. Primary UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Field spine keys + labels | `src/utils/config.py` | **`TestAst1351ExperienceJobUiFields`** |
+
+---
+
 ### AST-998 · AST-994
 
 **AST-998:** `BUILD_CONFIG["supported_sections"]["experience"]["body_kind"]` = `"experience_jobs"`. Primary HTML emit coverage: **`docs/test-bible/core/builder.md`**.

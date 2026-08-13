@@ -631,6 +631,17 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1351 · AST-1345
+
+**Parent:** [AST-1345](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+When `debug=True`, session/base/job emit paths call `candidate.debug_experience_jobs` (Style D per-job detail). Happy-path role HTML remains `_emit_experience_jobs_html` (AST-998/1008). Refuse gate unchanged (AST-1350). UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Style D experience jobs on debug emit | `src/core/builder.py` | **`TestAst1351ExperienceDebugJobs`** |
+
+
 ### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
 
 **Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.

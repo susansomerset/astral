@@ -795,3 +795,41 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="Print Resume|AST-1350"
 ```
 
+### AST-1351 · AST-1345
+
+**Parent:** [AST-1345](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+Base Resume / job structureMode experience uses **`ExperienceJobsEditor`** (job-array template) via **`ArtifactEditor`**. Legacy non-array → read-only + unsupported message; Save aborts with that toast. Config/API spine: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**. Builder Style D: **`docs/test-bible/core/builder.md`**. Does **not** own prompts (AST-1349) or Print toast/no-tab (AST-1350).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Per-role add/remove/reorder | `ExperienceJobsEditor.tsx` | **`test_ExperienceJobsEditor.test.tsx`** — AST-1351 |
+| Array load/Save + legacy abort | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **AST-996/AST-1351**, **AST-1351: legacy string…** |
+
+**Broken / obsolete this pass:** AST-996 experience pretty-printed JSON textarea asserts — flipped to ExperienceJobsEditor / unsupported notice.
+
+**§6c:** Base Resume Content mounts ArtifactEditor — no separate page file in product diff; component coverage above is the UI gate.
+
+## QA test manifest
+
+1. ExperienceJobsEditor add/remove/reorder: `tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx`
+2. ArtifactEditor array Save + legacy abort: `test_ArtifactEditor.test.tsx` AST-996/AST-1351 + AST-1351 legacy
+3. Config field spine: `TestAst1351ExperienceJobUiFields`
+4. ui_config exposure: `TestAst1351ExperienceJobUiConfig`
+5. Builder Style D debug jobs: `TestAst1351ExperienceDebugJobs`
+
+**AST-1351** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1351ExperienceJobUiFields \
+  tests/component/ui/api/test_api_system.py::TestAst1351ExperienceJobUiConfig \
+  tests/component/core/test_builder.py::TestAst1351ExperienceDebugJobs \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1351|AST-996"
+```
+
+
