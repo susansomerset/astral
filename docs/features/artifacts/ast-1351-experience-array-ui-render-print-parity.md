@@ -155,3 +155,151 @@ AST-1351 plan approved.
 - **Publish ref:** `sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`
 - **Tip:** `eac6612ab20f3854b4840e921727b470522d7b7d`
 - **Stages:** S1 `experience_job_ui_fields` + ui_config; S2 `ExperienceJobsEditor`; S3 ArtifactEditor structured present/persist; S4 builder Style D `debug_experience_jobs` on base/session/job emit
+
+## Radia review
+
+# Radia review — AST-1351
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1351  
+**Publish ref:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity` @ `863871fb4e29b12d0522d396d57ab69eeb950a68`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent confidence paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No `agent.py` edits |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector work |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No entity responses |
+| `astral.config.config-source-of-truth` | scoped | conforms | `experience_job_ui_fields` + unsupported message in `BUILD_CONFIG`; API/UI consume via `ui_config` |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No chain edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single issue doc |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Engineer commit: `src/` only; tests/bible via Betty |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer commit excludes `tests/` and `docs/test-bible/` |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render/verdict |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | `ui_config` route unchanged auth-wise |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Core debug reuse only; UI does not own emit gate |
+| `astral.layers.import-direction` | scoped | conforms | UI → `api`/`utils`; `ExperienceJobsEditor` has no core/data imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/` |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Field keys/labels from `BUILD_CONFIG` via `ui_config`; no React shape business rules beyond parse/save |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No `agent_task.json` (AST-1349) |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No boot seed |
+| `astral.seed.define-approved` | scoped | not-applicable | Implementation ticket |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `src/data/` |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | conforms | `debug_experience_jobs` only when `debug=True` on build entrypoints |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Focused helpers in `ArtifactEditor`; dedicated `ExperienceJobsEditor` |
+| `astral.standards.in-scope-only` | scoped | conforms | No AST-1349 schema/prompt or AST-1350 toast/gate edits |
+| `astral.standards.logging-via-utils` | scoped | conforms | Reuses `candidate.debug_experience_jobs` / builder `_log` |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | No ticket-id symbols |
+| `astral.standards.no-cross-contamination` | scoped | conforms | UI/render parity only; `_reject_unsupported_experience_shape` / `_emit_experience_jobs_html` layout untouched |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Five keys sourced from config; session fallback keys match contract (plan-allowed) |
+| `astral.standards.public-then-helpers` | scoped | conforms | Private parse helpers in component module |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state machine |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run chain |
+| `astral.ui.frontend-file-placement` | scoped | conforms | New component under `components/` |
+| `astral.ui.naming-conventions` | scoped | conforms | `ExperienceJobsEditor.tsx` naming |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `863871fb merge-tests(AST-1351)` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code(AST-1351)` / `test(AST-1351)` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | `sub/AST-1345/...` epic line |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child publish ref correct |
+| `orch.git.merge-on-checkout` | universal | conforms | Branch includes expected ftr/sync ancestry |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history |
+| `orch.git.no-dev-agent-branches` | universal | conforms | `sub/` publish ref |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | `astral-AST-1345` worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | Baseline `origin/dev` |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Implements Joan-approved plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | S1–S4 delivered |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Artifacts / AST-1345 child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed spawn |
+| `orch.roles.archie-approves-statutes` | universal | conforms | Joan APPROVED @ `a6e36b19` |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | `test(AST-1351)` + merge-tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Katherine assignee |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Engineer path set clean |
+
+**Active-set count scored in-session:** 64 rows; no `violates` / `needs-discussion` statute rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `BUILD_CONFIG["experience_job_ui_fields"]` is single source; `ui_config` exposes it |
+| `pattern.layers.import-discipline` | conforms | UI editor is presentation-only; emit gate stays in core (AST-1350) |
+| *(Joan informal)* `astral.layers.ui-config-driven-business-logic`, `astral.standards.debug-contract-gated` | conforms | Covered above |
+
+## Plan adherence
+
+**Engineer product commit** `eac6612a` — six planned files, no scope creep:
+
+| Stage | Plan | Tip |
+|-------|------|-----|
+| **S1** | `experience_job_ui_fields` (5 keys) + `ui_config` exposure + unsupported message | Delivered in `config.py` / `api_system.py`; keys match `_EXPERIENCE_JOB_ITEM_SCHEMA` order |
+| **S2** | `ExperienceJobsEditor` — add/remove/reorder, five fields, `dep-field`/`dep-input`, `App.css` | Delivered; Add role initializes all keys from `fields` |
+| **S3** | `ArtifactEditor` structured editor; `type: "experience_jobs"` on experience; legacy non-array read-only + Save abort; no Print changes | Delivered — `parseExperienceJobs`, `ExperienceJobsEditor` branch, unsupported inline notice, `doSave` pre-check; `JobAnalysisReportModal` unchanged (plan §3.6) |
+| **S4** | Audit emit path; add `debug_experience_jobs` on `build_base_resume` / `build_resume_from_job` / `build_session_base_resume` when `debug=True`; no gate/layout changes | Delivered — three `if debug:` calls after resolve/filter; `_reject_unsupported_experience_shape` and `_emit_experience_jobs_html` unchanged |
+
+**Sibling boundaries:** No `agent_task.json`, no AST-1350 refuse/toast/JAR changes, no schema redefinition. Branch ancestry correctly includes AST-1349/1350 work via epic sync.
+
+**Estimate 5:** Footprint matches (new component + ArtifactEditor integration + config/ui_config + builder debug).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+1. **Three-dot diff vs `origin/dev` is epic-aggregate** — Includes AST-1349/1350 (and other ftr siblings) because publish ref sits on merged epic line. For AST-1351 product review, filter to `eac6612a` (6 files). No resolve-child action required on unrelated paths.
+2. **Builder Style D test coverage is session-only** — `TestAst1351ExperienceDebugJobs::test_session_debug_lists_experience_jobs` exercises one of three entrypoints; `build_base_resume` / `build_resume_from_job` use the same `debug_experience_jobs(_log, render)` pattern. Optional manifest extension before broader UT.
+3. **Unsupported-message fallback** — `ArtifactEditor` seeds `unsupportedExperienceMessage` with the literal before `ui_config` fetch; matches `BUILD_CONFIG` today and plan’s field-key fallback pattern. If the config string ever changes, fetch still wins after load.
+4. **`ExperienceJobsEditor` uses `key={index}`** — Acceptable for MVP reorder list; downstream may prefer stable role ids if drag/reorder bugs appear in UT.
+
+## What's solid
+
+- Replaces JSON textarea happy path with structured per-role editing while preserving `SideTab` string model (`JSON.stringify` on change).
+- Legacy string experience: read-only display + exact unsupported message + Save abort (no PUT) — component test proves.
+- Config field spine validated against craft schema keys (`TestAst1351ExperienceJobUiFields`).
+- Core emit parity preserved; AST-1350 refuse gate untouched; Style D reuses existing `debug_experience_jobs` helper.
+
+## Frame diff
+
+Since Joan APPROVED @ `a6e36b19` and build stub @ `eac6612a`:
+
+| Commit | Delta |
+|--------|-------|
+| `eac6612a` | S1–S4 product: config, ui_config, `ExperienceJobsEditor`, `ArtifactEditor`, `App.css`, builder debug |
+| `88ddcc5b` | Betty: `TestAst1351*` + bible rows |
+| `863871fb` | `merge-tests(AST-1351)` |
+
+Branch also carries resolved AST-1350 + synced AST-1349/1350 epic line (expected pre-UT rollup).
+
+context_tokens≈50000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 863871fb) experience job UI emit parity
+```
