@@ -115,3 +115,39 @@ Data-layer only: create `astral_artifacts` (ensure/migrate + header inventory) a
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1352
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1340/AST-1352-astral-artifacts-table-writers` @ `d5137e65`
+
+## Traceability
+AC1→Stage 1 (ensure/migrate + header inventory); AC2→Stage 2 writers (`save_astral_artifact` / `get_current_astral_artifact`; end-to-end Save proof deferred to AST-1353 per child boundary); AC3→Stage 2 retire-and-insert semantics + `list_astral_artifacts` history query.
+
+## Findings
+
+### acceptable
+- **Location:** Plan structure — no Scope/Conf/Risk self-assessment block
+- **Finding:** Only `## Estimate` confirm line; no formal self-assessment axes.
+- **Recommendation:** Acceptable for this narrow data-layer-only footprint; complexity matches estimate 5.
+
+### discuss
+- **Location:** Parent Architectural definition — `pattern.data.versioned-current-row`
+- **Finding:** Proposed catalog entry still undrafted (parent already flags Archie); plan correctly refuses to invent the pattern file here.
+- **Recommendation:** No plan change required; Archie approval remains a parent/epic catalog task before downstream reuse.
+
+### acceptable
+- **Location:** Stage 2 — retire-by-natural-key vs `agent_task` UUID retire
+- **Finding:** Plan deliberately uses `UPDATE … WHERE entity_type/entity_id/artifact_type AND current=1` rather than UUID lookup first.
+- **Recommendation:** Documented decision is sound (duplicate-current safety); matches parent “exactly one current=1” intent.
+
+**R6 checklist (summary):** Definition fidelity ✓ — data-only scope, explicit do-not-touch list, no Save/UI/candidate_data wiring. Layer/config/placement ✓ — single `data` file, `ENTITY_TYPES` from config, no magic sets, no logging in data helpers. Pattern ✓ — `pattern.layers.import-discipline` honored; versioning shape aligned with `agent_task` / `rubric_vector` precedents in-file. DRY/scope ✓ — reuses `_get_connection`, `_run_with_retry`, `_utc_now`, existing ensure-table idioms; no sibling creep.
+
+**Statute pass (in-session):** All 18 `tier: universal` orch statutes conform (plan touches no git/test-tree/Linear workflow surfaces). Considered scoped statutes on `src/data/database.py` modify — including `astral.standards.database-header-inventory`, `astral.standards.in-scope-only`, `astral.standards.data-raises-caller-logs`, `astral.layers.import-direction`, `astral.standards.no-hardcoded-sets`, batch/state/seed statutes whose path/layer predicates matched — all `conforms`; no `violates`.
+
+context_tokens≈38000
+```
