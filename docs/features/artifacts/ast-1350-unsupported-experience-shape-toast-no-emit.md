@@ -274,4 +274,4 @@ context_tokens≈48000
 
 **2026-08-13** — Radia CLEAN (no fix-now / discuss). Advisory left as-is (ftr-aggregate diff noise; AST-1353 piggyback; legacy fixture hygiene for Betty; Session/Materials out of scope).
 
-§9a: `origin/dev` dry-run clean. `origin/ftr/AST-1345-clarify-candidate-data-artifacts-base-resume-experience-node` merge-tree had “changed in both” on `candidate.py` / `JobAnalysisReportModal.tsx` / `config.py` — resolved by merging ftr onto sub (`merge-resume(AST-1350)`); both dry-runs clean after.
+§9a: `origin/dev` dry-run clean. `origin/ftr/AST-1345-clarify-candidate-data-artifacts-base-resume-experience-node` merge-tree previously flagged overlap on `candidate.py` / `JobAnalysisReportModal.tsx` / `config.py` — resolved by merging ftr onto sub (`merge-resume(AST-1350)`); both dry-runs clean after (line-anchored conflict check).
