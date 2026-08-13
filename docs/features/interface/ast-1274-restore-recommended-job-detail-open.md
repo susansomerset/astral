@@ -374,3 +374,7 @@ context_tokens≈55000
 ```
 [code-rubric] PROCEED (Commit: 3bc5c8cf) metadata story soft-fail
 ```
+
+## Docs-acceptance (AST-1354)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1355**.
