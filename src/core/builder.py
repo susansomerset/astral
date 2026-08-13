@@ -227,6 +227,8 @@ def build_resume_from_job(
         raise
     _reject_unsupported_experience_shape(render)
     render = candidate_mod.filter_content_to_resume_structure(render, structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
     cover = _resolve_cover_letter(job_data, cd)
@@ -409,6 +411,8 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
     _reject_unsupported_experience_shape(br)
     structure = candidate_mod.resolve_resume_structure(cd)
     render = candidate_mod.filter_content_to_resume_structure(dict(br), structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
@@ -488,6 +492,8 @@ def build_session_base_resume(
     }
     structure = _resume_structure_for_emit(resume_structure)
     render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     # Skip _apply_contact_to_render_dict — contact/header from paste section strings.
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)

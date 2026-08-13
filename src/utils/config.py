@@ -5069,6 +5069,14 @@ BUILD_CONFIG = {
         # Splits freeform `location` into place + arrangement for compact-location phrasing.
         "location_arrangement_sep": " / ",
     },
+    # AST-1351: Base Resume / job ArtifactEditor labels — keys == _EXPERIENCE_JOB_ITEM_SCHEMA.
+    "experience_job_ui_fields": [
+        {"key": "company", "label": "Company"},
+        {"key": "title", "label": "Title"},
+        {"key": "dates", "label": "Dates"},
+        {"key": "location", "label": "Location"},
+        {"key": "accomplishments", "label": "Accomplishments"},
+    ],
     # resume_content: documents known section ids; runtime allowed keys are per-candidate structure subset.
     # cover_letter: canonical Subject/Letter; legacy tasks may still output re_line/body until prompts update.
     "artifact_shapes": {
