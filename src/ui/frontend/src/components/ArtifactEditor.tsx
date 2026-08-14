@@ -349,6 +349,10 @@ export default function ArtifactEditor({
     () => new Set(manifest?.candidate.artifact_generate_states ?? []),
     [manifest?.candidate.artifact_generate_states],
   )
+  const inflightHideStates = useMemo(
+    () => new Set(manifest?.candidate.artifact_generate_inflight_hide_states ?? []),
+    [manifest?.candidate.artifact_generate_inflight_hide_states],
+  )
   const chainTaskKeys = useMemo(
     () => new Set(manifest?.candidate.artifacts_chain_task_keys ?? []),
     [manifest?.candidate.artifacts_chain_task_keys],
@@ -358,9 +362,26 @@ export default function ArtifactEditor({
     () => manifest?.candidate.artifacts_chain_artifact_keys ?? [],
     [manifest?.candidate.artifacts_chain_artifact_keys],
   )
+  // Same parse failure that drives the unsupported experience notice (message + affordance).
+  const experienceUnsupported = useMemo(() => {
+    const fieldKeys = experienceJobFields.map(f => f.key)
+    return tabs.some(tab => {
+      const fieldType = fixedFields?.find(f => f.key === tab.id)?.type
+      if (!isExperienceTab(tab.id, fieldType)) return false
+      return !parseExperienceJobs(tab.content, fieldKeys).ok
+    })
+  }, [tabs, fixedFields, experienceJobFields])
   // AST-1253: craft-chain pages hand off to REQUESTED_ARTIFACTS (not per-artifact generate)
   const isChainHandoff = !jobPersistence && chainTaskKeys.has(taskKey)
-  const canGenerate = !jobPersistence && generateStates.has(candidateState)
+  // Base Resume: show Generate/Regenerate when experience is unsupported, except in-flight hide states.
+  const baseResumeUnsupportedEscape =
+    !jobPersistence
+    && artifactKey === "base_resume"
+    && experienceUnsupported
+    && !inflightHideStates.has(candidateState)
+  const canGenerate =
+    !jobPersistence
+    && (generateStates.has(candidateState) || baseResumeUnsupportedEscape)
   const hasData = useMemo(() => tabs.some(t => t.content.trim() !== ""), [tabs])
   const showAsRegenerate = isChainHandoff ? hasChainData : hasData
 

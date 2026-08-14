@@ -3600,6 +3600,13 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         "PAUSE_SEARCH",
     ]
     assert all(s in CANDIDATE_STATES for s in gen_states)
+    # States that must keep Generate/Regenerate hidden even when Base Resume
+    # experience is unsupported (AST-1253 in-flight chain claim).
+    inflight_hide_states = [
+        "REQUESTED_ARTIFACTS",
+        "REQUESTED_ARTIFACTS_RETRY",
+    ]
+    assert all(s in CANDIDATE_STATES for s in inflight_hide_states)
 
     bulk_company = {
         "inactive_list_to_state": "WEBSITE_FOUND",
@@ -3648,7 +3655,10 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 },
             },
         },
-        "candidate": {"artifact_generate_states": gen_states},
+        "candidate": {
+            "artifact_generate_states": gen_states,
+            "artifact_generate_inflight_hide_states": inflight_hide_states,
+        },
         "company": {
             "watch_readonly_states": ["WATCH"],
             "bulk_transitions": bulk_company,
