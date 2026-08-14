@@ -93,3 +93,183 @@ context_tokens≈48000
 
 [plan-rubric] PROCEED (Commit: 329b52c9618915d62126f486c8cf5d2995a668ab) nav page route peer
 
+## Review (build stub)
+
+**Built:** `astral-AST-1360` @ `7251385e` on `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `329b52c9` | Plan doc |
+| 1 | `7251385e` | `NAV_CONFIG` Ideal Day + `CandidateIdealDay.tsx` + `routes.tsx` |
+
+**Verify:** `python3 -m py_compile` on `src/utils/config.py` — pass; `npx tsc -b --noEmit` in `src/ui/frontend` — pass.
+
+**Note for Betty:** Thin `ContextTextPage` peer only — no API/save-path change; existing ContextTextPage coverage should still hold.
+
+## Radia review
+
+# Radia review — AST-1366
+
+**Ticket:** AST-1366  
+**Parent:** AST-1360  
+**Publish ref:** `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` @ `4cdd9cb748ecc7d24be76606c95966a555066fbc`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` (16 files, +827/−8)  
+**Status gate:** Tests Passed (spawn prompt; trusted)  
+**Relation:** `blockedBy AST-1365` — prerequisite satisfied on branch tip (`ideal_day` library + `{$IDEAL_DAY}` present from AST-1365 ancestry)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1366  
+**Publish ref:** `4cdd9cb748ecc7d24be76606c95966a555066fbc`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent grading changes |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `do_task` routing |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no rubric vectors |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch ids |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no agent-response persistence |
+| `astral.config.config-source-of-truth` | scoped | conforms | nav item in `NAV_CONFIG`; 1366 does not duplicate library/token config |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | `ast-1366-ideal-day-candidate-edit-surface.md` present |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty merge is test-tree only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | `code(AST-1366)` touches `src/` only; tests via `merge-tests` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no external layer |
+| `astral.layers.import-direction` | scoped | conforms | no new layer bends in 1366 commit |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | nav in `NAV_CONFIG`; page is thin `ContextTextPage` caller |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult render |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth changes |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON in 1366 commit |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed hot-path |
+| `astral.seed.define-approved` | scoped | not-applicable | no DEFINE seed |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no `src/data/` changes in 1366 commit |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no schema |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug logging |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | 3-file, 5-line product commit |
+| `astral.standards.in-scope-only` | scoped | conforms | nav + page + route only; no Topic Menu / craft / API |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | domain keys `ideal_day`, `Ideal Day`; ticket refs in docs/tests only |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no AST-1367/1368 surfaces touched in 1366 code commit |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | nav path/label in config, not inline React rules |
+| `astral.standards.public-then-helpers` | scoped | conforms | thin page export matches peer pattern |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils→data imports |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run loop |
+| `astral.ui.frontend-file-placement` | scoped | conforms | `CandidateIdealDay.tsx` in flat `pages/` |
+| `astral.ui.naming-conventions` | scoped | conforms | peer naming matches `CandidateStrengths.tsx` pattern |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | tip is `merge-tests(AST-1366)` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `docs` / `test` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub-branch topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | child `sub/AST-1360/...` |
+| `orch.git.merge-on-checkout` | universal | conforms | AST-1365 prerequisite on ancestry |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear stack |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/...` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1360 epic |
+| `orch.git.three-permanent-branches` | universal | conforms | diff vs `origin/dev` |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no product-policy forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | implementation matches staged plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | n/a |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | page + nav tests + bible via Betty |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | n/a |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Hedy assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path product commits |
+
+**Active set count:** 64 rows (per `canon/statutes/README.md` harvested table). No `violates` or `needs-discussion` rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | Plan cites `ContextTextPage` peer pattern in prose only; no `canon/patterns/**` id |
+
+## Plan adherence
+
+**AST-1366 product commit (`7251385e`):** exactly three files, five insertions — matches plan Stage 1.
+
+| Plan item | Tip state |
+|-----------|-----------|
+| `NAV_CONFIG` Ideal Day after Backstory, before Writing Preferences | ✓ `{"label": "Ideal Day", "path": "/candidate/ideal_day"}` |
+| `CandidateIdealDay.tsx` thin `ContextTextPage` wrapper | ✓ matches `CandidateStrengths.tsx` one-liner shape |
+| `routes.tsx` import + `candidate/ideal_day` route after Backstory | ✓ SYNC comment honored |
+| No `ContextTextPage.tsx` edit | ✓ unchanged in 1366 commit |
+| No Flask/API changes | ✓ |
+| No `CANDIDATE_DATA_MODEL.md` edit in 1366 commit | ✓ (1365 doc change on branch ancestry only) |
+| No Topic Menu / craft / `DATA_SHAPES` | ✓ |
+
+**Estimate (2):** Footprint matches — nav line + page + route.
+
+**AST-1365 dependency:** Branch ancestry includes AST-1365 library/token/gate (`ideal_day` in `context_keys`, `TOKEN_SOURCES["IDEAL_DAY"]`). `blockedBy` satisfied for build/review on this tip.
+
+**Test manifest:** Betty `test_CandidateIdealDay.test.tsx` (§6c render + PUT save), `TestAst1366IdealDayCandidateNav`, `ContextTextPage` regression (mock harness fix only). Bible entries aligned.
+
+**Joan straggler (C4):** Plan-rubric APPROVED attached; no Excluded-statute list.
+
+## Findings
+
+### fix-now
+
+*(none)*
+
+### discuss
+
+*(none)*
+
+### advisory
+
+- **Three-dot diff breadth:** Full diff vs `origin/dev` also carries AST-1365 product/docs/tests and (via `merge-tests` ancestry) AST-1368 seed tests in `test_repo_admin_json.py` — rollup on shared tests tip, not AST-1366 product scope. Epic merge/UAT should treat siblings independently.
+- **UAT:** Ideal Day page is live once this lands with AST-1365 token/gate; operators can now fill `context.ideal_day` via UI (completeness gate from 1365 will start passing when prose is saved).
+
+## What’s solid
+
+- Textbook peer implementation: same `ContextTextPage` pattern as Strengths/Backstory with config-owned nav.
+- `routes.tsx` / `NAV_CONFIG` kept in sync per file header contract.
+- Betty page test proves PUT merge path for `context.ideal_day` without inventing new API surface.
+- Surgical product commit — no scope creep into siblings.
+
+## Frame diff
+
+**AST-1366 frame:** Candidate nav + edit page + route — **matches**.
+
+**Rollup note:** three-dot diff vs `origin/dev` includes AST-1365 prerequisite stack (required for `contextKey="ideal_day"` to resolve); not part of AST-1366’s planned Files Changed but expected on branch tip.
+
+## Notes
+
+- §5f / §5g not triggered.
+- Build stub reports `py_compile` + `tsc -b --noEmit` pass.
+- C7 artifact complete.
+
+context_tokens≈38000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 4cdd9cb7) nav page route peer
+
+## Resolution
+
+**Date:** 2026-08-14  
+**Review tip:** `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` @ `52d331b6` (Radia docs) / product+tests @ `4cdd9cb7`
+
+Radia **CLEAN** / **PROCEED** — no fix-now or discuss items. Advisory notes (three-dot rollup breadth; UAT can fill Ideal Day via UI) acknowledged; no product or plan change required.
+
+**Outcome:** resolve clean → User Testing.
+```
+
