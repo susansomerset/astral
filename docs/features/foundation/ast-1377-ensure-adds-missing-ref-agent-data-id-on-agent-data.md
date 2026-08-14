@@ -173,3 +173,136 @@ context_tokens≈52000
 - **Build:** Stage 1 complete — `_ensure_agent_data_schema` existing-table path ADDs nullable `ref_agent_data_id` when absent; inventory notes the column; registry/bootstrap unchanged.
 - **Publish ref:** `origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data` @ `d4522b16aee95d4a5c6115a70b2a5906673ea190`
 - **PR:** none yet
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1377
+**Publish ref:** `origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data` @ `fc347a37a9c4eaa5579e7be16e6fec4081d9ac74`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | diff layers miss `core` |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | diff layers miss `core` |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | diff layers miss `core` |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch/dispatcher path changes |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch path changes |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no batch path changes |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no batch/entity-response write-path edits |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no `config.py` / config path changes in diff |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | diff layers miss `utils`/`core` |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | paths miss `artifacts/**` |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | paths miss `debug/**` |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | layers miss `dispatcher`/`config` |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | layers miss `dispatcher`/`core` |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single `docs/features/foundation/ast-1377-…md` for this ticket |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty bible/tests; engineer `code(AST-1377)` touches `src/` only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer commit `d4522b16` is `src/data/database.py` only; tests via Betty `merge-tests` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | diff layers miss `core`/`external` product paths |
+| `astral.layers.import-direction` | scoped | conforms | data-layer DDL only; no new cross-layer imports |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | layers miss `scripts` |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | layers miss `ui` product paths |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check write-path edits |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | layers miss `core` |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | layers miss `ui` API paths |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | paths miss bootstrap/repo JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | paths miss dispatcher/admin seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | uses existing `_UPSERT_LAZY_SCHEMA_HANDLERS` / startup loop |
+| `astral.seed.define-approved` | scoped | not-applicable | no seed catalog work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no seed row edits |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage/seed changes |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | no new data-layer logging in `database.py` diff |
+| `astral.standards.database-header-inventory` | scoped | conforms | `agent_data` inventory bullet documents `ref_agent_data_id` |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug/logging layer touches |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | mirrors `entity_id` ALTER in `_ensure_agent_data_schema`; no parallel migrator |
+| `astral.standards.in-scope-only` | scoped | conforms | product commit scoped to planned ensure + inventory |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no logging changes |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | column name is domain term |
+| `astral.standards.no-cross-contamination` | scoped | needs-discussion | three-dot diff carries AST-1374 bible/tests unrelated to AST-1377 plan |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | nullable `TEXT` DDL; no new enums |
+| `astral.standards.public-then-helpers` | scoped | conforms | extends existing private ensure helper |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | layers miss `utils` |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state-transition logic |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state logic |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | layers miss `core` |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no `src/ui/frontend` product diff |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI product diff |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no UI/server worker config diff |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1377)` pins `origin/tests` @ `4e17a64c` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code`/`test`/`docs`/`merge-tests` vocabulary on publish ref |
+| `orch.git.flow-direction-inviolable` | universal | conforms | tests delivered via `merge-tests` onto `sub`, not `dev` |
+| `orch.git.ftr-sub-topology` | universal | conforms | child publishes to `sub/AST-1376/…` |
+| `orch.git.merge-on-checkout` | universal | needs-discussion | `sync(dev)` at `0598756e` predates 13 commits now on `origin/dev` tip |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | no cherry-pick/rebase in AST-1377 commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `origin/sub/…` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | worktree `astral-AST-1376` |
+| `orch.git.three-permanent-branches` | universal | conforms | no new permanent branches |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | closed schema gap; no product ambiguity |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stage 1 product steps implemented in `d4522b16` |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Astral Foundation child |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed from Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no canon/statute edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty manifest + `merge-tests`; engineer did not author tests |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Radia review only |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada assignee through Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | engineer path ban respected on product commit |
+
+(64 rows from active registry table; corpus README cites 65 — no additional active id surfaced in registry beyond this set.)
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | parent/plan: no established pattern cited |
+
+## Plan adherence
+
+- **Stage 1 product (`d4522b16`):** matches plan — inventory bullet updated; existing-table branch ADDs nullable `ref_agent_data_id TEXT` beside `entity_id`; CREATE path unchanged; no bootstrap rewrite; no dedupe/backfill scope.
+- **Registry (step 3):** `"agent_data": _ensure_agent_data_schema` still in `_UPSERT_LAZY_SCHEMA_HANDLERS`; `ensure_all_upsert_registry_schemas_at_startup` loops registry — confirmed on publish ref.
+- **Betty coverage:** `TestAst1377EnsureRefAgentDataId` exercises idempotent legacy ALTER, post-ensure write/read (`ref_existing`), and startup registry path — aligns with parent AC 1–5 and qa manifest.
+- **Estimate 2:** footprint still fits (single-helper DDL + docstring).
+- **Joan straggler:** `astral.docs.features-single-file-per-ticket` was excluded at plan time but applies on diff — **conforms** (required issue doc), not a violation.
+
+## Findings
+
+### discuss
+
+1. **Publish ref stale vs `origin/dev`** — `origin/dev` tip (`04f3d5c9`) and `origin/sub/…AST-1377` tip (`fc347a37`) are mutually unreachable. Thirteen commits on `origin/dev` are not on the sub tip, including full **AST-1373/AST-1374** product stack (`api_system.py`, `AuthContext.tsx`, `authSessionPolicy.ts`, `sessionExtend.ts`, config/API wiring). Two-dot `origin/dev` → `origin/sub` shows those product files **removed** on sub relative to dev. `sync(dev)` at `0598756e` merged `62769042`, before AST-1373/1374 landed on dev. **Downstream:** merge `origin/dev` into the epic/sub integration line before `merge-child` / ftr rollup (orientation § Merge integration line + § Merge-clean gate). Not a product-code defect in `d4522b16`, but rollup-unsafe today.
+
+2. **Three-dot diff noise (AST-1374 artifacts on AST-1377 publish ref)** — vs merge base `62769042`, the diff includes `docs/test-bible/frontend/lib.md` AST-1374 section and frontend component tests (`test_authSessionPolicy`, `test_sessionExtend`, revised AuthContext/Authenticate/handoff tests) without AST-1374 **product** code on this sub tip. Cross-ticket bible/test carryover from diverged history; confuses ticket-scoped review and risks green tests against missing product code on sub until dev is merged.
+
+### advisory
+
+1. **Hot-reload edge** — `_ensure_agent_data_schema` returns early when `_agent_data_schema_ensured` is True; a long-lived process that ensured before deploy could skip the new ALTER until restart. Single-worker deploy restart likely bounds this; Betty’s idempotency test resets the flag explicitly.
+
+## Frame diff
+
+| Planned (`Files Changed`) | In three-dot diff vs `origin/dev` | Notes |
+|---------------------------|-----------------------------------|-------|
+| `src/data/database.py` | yes (`+4` inventory, `+3` ALTER) | matches plan |
+| `tests/` / bible | yes — `test_agent_data.py`, `docs/test-bible/data/database/agent_data.md` | Betty-owned; expected at Tests Passed |
+| `docs/features/…ast-1377…md` | yes (new) | workflow artifact |
+| — | `docs/test-bible/frontend/lib.md` + 6 frontend test files | **AST-1374** scope; not in AST-1377 plan |
+| — | no `src/ui/**` product changes | AST-1377 product surface correct |
+
+## What’s solid
+
+- ALTER mirrors shipped `entity_id` idiom: nullable `TEXT`, no DEFAULT/FK, idempotent `cols` check.
+- Betty tests cover legacy table without `ref_agent_data_id`, second ensure no-op, write/read `ref_existing`, and startup registry — direct AC coverage.
+- No new data-layer logging; header inventory updated per `astral.standards.database-header-inventory`.
+
+## Recommended actions (downstream — not executed here)
+
+1. Chuckles / merge lane: merge latest `origin/dev` into `sub/AST-1376/AST-1377-…` (or ftr integration line per workflow), run merge-clean gate, re-publish if needed.
+2. Re-run Betty narrowed manifest after sync to confirm agent_data tests still green against integrated tip.
+3. No `resolve-child` product edits required for AST-1377 DDL itself.
+
+context_tokens≈52000
+
+---
+
+[code-rubric] REVIEW (Commit: fc347a37) ALTER clean; sync dev
