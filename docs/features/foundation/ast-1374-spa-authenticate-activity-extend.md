@@ -344,3 +344,8 @@ context_tokens≈26000
 ```
 [code-rubric] PROCEED (Commit: adbbdade) SPA policy wiring clean
 ```
+
+## Resolution
+
+**2026-08-14** — Radia CLEAN (no fix-now / discuss). No product changes.
+§9a: merged `origin/dev` onto this sub (`sync(dev)` @ `85960ea7`) so publish-ref dry-runs clean into `origin/dev` and `origin/ftr/ast-1372-extend-stytch-sessions`.
