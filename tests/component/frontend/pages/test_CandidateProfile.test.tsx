@@ -55,6 +55,7 @@ const profileSections = {
           },
           { key: "contact.github", label: "GitHub (username or URL)", type: "text" },
           { key: "contact.linkedin_url", label: "LinkedIn (username or URL)", type: "text" },
+          { key: "contact.phone", label: "Phone", type: "text" },
           { key: "contact.websites", label: "Websites", type: "string_list" },
           { key: "contact.reason_codes", label: "Reason Codes", type: "textarea" },
         ],
@@ -196,7 +197,7 @@ describe("CandidateProfile", () => {
     await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
   })
 
-  it("restores values on cancel and locks resume text when base resume exists", async () => {
+  it("restores values on cancel", async () => {
     installProfileMocks({
       candidate: {
         ...candidateData,
@@ -210,8 +211,6 @@ describe("CandidateProfile", () => {
     await userEvent.type(bio, " draft")
     await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
     expect(bio).toHaveValue("builder")
-    await userEvent.click(screen.getByRole("button", { name: "Original Resume Text" }))
-    expect(screen.getByDisplayValue("resume text")).toBeDisabled()
   })
 
   it("renders profile page and signature image tab (hooks-safe load path)", async () => {
@@ -536,5 +535,100 @@ describe("CandidateProfile — AST-1336 dirty-leave wiring", () => {
       expect(screen.getAllByText("leave-save-failed").length).toBeGreaterThan(0),
     )
     expect(latestDirtyLeave().isDirty).toBe(true)
+  })
+
+  it("AST-1343: nullish nested field touch+clear clears dirty (virgin empty)", async () => {
+    // Pre-fix: snapshot keeps phone:null; FormFields writes "" on clear → stringify still dirty.
+    installProfileMocks({
+      candidate: {
+        ...candidateData,
+        contact: { phone: null },
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument(),
+    )
+    await waitFor(() => expect(dirtyLeave).toHaveBeenCalled())
+    expect(latestDirtyLeave().isDirty).toBe(false)
+
+    const phoneField = screen
+      .getByText("Phone", { selector: "label.dep-field-label" })
+      .closest(".dep-field")!
+    const phone = within(phoneField as HTMLElement).getByRole("textbox")
+    expect(phone).toHaveDisplayValue("")
+    await userEvent.type(phone, "x")
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(true))
+    await userEvent.clear(phone)
+    expect(phone).toHaveDisplayValue("")
+    // Display-equivalent to virgin empty — must not leave-prompt (fails until compare coerce).
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(false))
+  })
+})
+
+// AST-1357: Original Resume Text stays editable when base resume exists (lock removed).
+describe("CandidateProfile — AST-1357 unlock original resume text", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    mockedApi.mockReset()
+    dirtyLeave.mockClear()
+  })
+
+  it("with base resume: Original Resume Text enabled, no lock placeholder; Save persists; Cancel restores", async () => {
+    let savedBody: Record<string, unknown> | null = null
+    installProfileMocks({
+      candidate: {
+        ...candidateData,
+        artifacts: { base_resume: [{ label: "Summary", content: "generated" }] },
+      },
+      save: async (init) => {
+        savedBody = JSON.parse(String(init?.body))
+        return jsonResponse({
+          first: "Ada",
+          last: "Lovelace",
+          full: "Ada Lovelace",
+          pronouns: "they/them",
+          candidate_data: {
+            ...candidateData,
+            context: { bio_summary: "builder", raw_resume: "fresh paste" },
+            artifacts: { base_resume: [{ label: "Summary", content: "generated" }] },
+          },
+        })
+      },
+    })
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Original Resume Text" }))
+    const resume = screen.getByDisplayValue("resume text")
+    expect(resume).not.toBeDisabled()
+    expect(screen.queryByPlaceholderText(/Locked — base resume/i)).not.toBeInTheDocument()
+
+    fireEvent.change(resume, { target: { value: "fresh paste" } })
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(true))
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Profile saved")).toBeInTheDocument())
+    expect((savedBody?.context as Record<string, unknown>)?.raw_resume).toBe("fresh paste")
+
+    fireEvent.change(screen.getByDisplayValue("fresh paste"), { target: { value: "oops draft" } })
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(true))
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(false))
+    expect(screen.getByDisplayValue("fresh paste")).toBeInTheDocument()
+  })
+
+  it("without base resume: Original Resume Text stays editable (no regression)", async () => {
+    installProfileMocks()
+    renderWithProviders(<CandidateProfile />)
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Candidate Profile" })).toBeInTheDocument(),
+    )
+    await userEvent.click(screen.getByRole("button", { name: "Original Resume Text" }))
+    const resume = screen.getByDisplayValue("resume text")
+    expect(resume).not.toBeDisabled()
+    fireEvent.change(resume, { target: { value: "still editable" } })
+    await waitFor(() => expect(latestDirtyLeave().isDirty).toBe(true))
+    expect(screen.getByDisplayValue("still editable")).toBeInTheDocument()
   })
 })

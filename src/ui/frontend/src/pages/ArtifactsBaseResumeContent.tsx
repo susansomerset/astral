@@ -149,6 +149,13 @@ export default function BaseResumeContent() {
           const data = await r.json()
           if (typeof data.error === "string" && data.error) msg = data.error
         } catch { /* non-JSON error body */ }
+        // Operator copy for empty/unusable saved base (incl. legacy internal key-path).
+        if (
+          msg === "No printable base resume content for this candidate"
+          || msg === "Candidate missing artifacts.base_resume"
+        ) {
+          msg = "No printable base resume content for this candidate"
+        }
         setPrintError(msg)
         setToast({ text: msg, variant: "error" })
         return
@@ -201,16 +208,6 @@ export default function BaseResumeContent() {
           </div>
         </div>
       )}
-      <div style={{ display: "flex", gap: 8, padding: "8px 20px 0", alignItems: "center" }}>
-        <button
-          type="button"
-          className="btn secondary"
-          onClick={() => void handlePrint()}
-          disabled={!selectedId || printing}
-        >
-          {printing ? "Opening…" : "Print"}
-        </button>
-      </div>
       {printError && (
         <p style={{ margin: "8px 20px 0", color: "var(--danger, #c44)", fontSize: 13 }}>
           {printError}
@@ -228,6 +225,17 @@ export default function BaseResumeContent() {
         onStructureSave={saveStructure}
         structureSaving={structureSaving}
         structureError={structureError}
+        headerActions={
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={() => void handlePrint()}
+            disabled={!selectedId || printing}
+            style={{ marginRight: 8 }}
+          >
+            {printing ? "Opening…" : "Print"}
+          </button>
+        }
       />
       <Toast message={toast} onDone={clearToast} />
     </>

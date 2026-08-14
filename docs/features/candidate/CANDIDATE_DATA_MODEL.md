@@ -54,6 +54,7 @@ Raw text passable whole-cloth into AI prompts. Completeness gate fields do not w
 | `context.priorities` | `{$PRIORITIES}` | Yes | Job search priorities |
 | `context.deal_breakers` | `{$DEAL_BREAKERS}` | Yes | Deal breakers |
 | `context.backstory` | `{$BACKSTORY}` | Yes | Career backstory |
+| `context.ideal_day` | `{$IDEAL_DAY}` | Yes | Ideal workday prose |
 | `context.writing_preferences` | `{$WRITING_PREFERENCES}` | No | Style constraints for artifact prompts |
 | `context.hopes` | — | No | Topic Menu input (seeded empty) |
 | `context.interests` | — | No | Topic Menu input (seeded empty) |
@@ -153,7 +154,7 @@ Side paths: `PAUSE_SEARCH` ↔ `ACTIVE_SEARCH`; unrestricted entry to `INACTIVE`
 
 **DELETED reap:** entering `DELETED` writes `candidate_data.lifecycle.reap_started_at` + `reap_after_hours` from the registry. Hard-delete / legacy row remap is AST-973.
 
-`check_context_complete()` only reports whether the four context fields are populated — it does **not** write state.
+`check_context_complete()` only reports whether the gated context fields (`CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]`, including Ideal Day) are populated — it does **not** write state.
 
 
 ### Legacy cutover (AST-973)

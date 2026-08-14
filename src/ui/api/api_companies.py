@@ -3,12 +3,12 @@
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
+from src.core.agent import get_entity_agent_story
 from src.core.roster import (
     count_companies,
     get_active_trigger_states,
     get_company,
     get_company_job_state_counts,
-    get_entity_agent_story,
     list_companies,
     list_company_job_scans,
     save_company,

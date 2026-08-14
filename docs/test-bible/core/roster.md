@@ -498,7 +498,7 @@ Regression: **`TestAst702PrefilterDispatchMigration`** (AST-702 base/retry cases
 | Area | Source | Component tests |
 | --- | --- | --- |
 | `dedupe_agent_responses_latest` (retired AST-984) | `src/core/roster.py` | `TestAst726LatestOnlyRosterStory::test_dedupe_and_normalize_helpers_retired` |
-| Company `vector_grades` via `grades_key` | `src/core/roster.py` (`get_entity_agent_story`) | `TestAst726LatestOnlyRosterStory::test_company_prefilter_vector_grades_from_company_data` |
+| Company `vector_grades` via `grades_key` | `src/core/agent.py` (`get_entity_agent_story`) | `tests/component/core/test_agent.py::TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data` (**AST-1355** retarget) |
 | Fail clears `prefilter_score` (explicit None) | `src/core/roster.py` (`_apply_prefilter_decoded_company_outcome`) | `TestAst726LatestOnlyRosterStory::test_prefilter_fail_clears_score` |
 
 Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md`**, **`docs/test-bible/core/consult.md`** (**AST-726**). Config `grades_key`: **`docs/test-bible/utils/config.md`** (**AST-726**).
@@ -508,6 +508,7 @@ Data upsert + consult saves: **`docs/test-bible/data/database/agent_responses.md
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_roster.py::TestAst726LatestOnlyRosterStory \
+  tests/component/core/test_agent.py::TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data \
   tests/component/utils/test_config.py::TestAst726PrefilterGradesKey \
   -q
 ```
@@ -716,11 +717,11 @@ Consult / dispatcher / config: **`docs/test-bible/core/consult.md`** · **`docs/
 
 ### AST-984 · AST-975
 
-**Scope:** `get_entity_agent_story` reads `list_entity_latest_agent_refs`; `dedupe_agent_responses_latest` / `normalize_agent_responses_for_backfill` removed.
+**Scope:** `get_entity_agent_story` reads `list_entity_latest_agent_refs`; `dedupe_agent_responses_latest` / `normalize_agent_responses_for_backfill` removed. **AST-1355:** story ownership + tests live under **`docs/test-bible/core/agent.md`** / `test_agent.py` (not roster).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Story from list API | `src/core/roster.py` | `TestEntityAgentStory`, `TestEntityAgentStoryBranches` |
-| Dedupe/normalize retired | same | `TestAst726LatestOnlyRosterStory`, `TestAst727NormalizeAgentResponsesForBackfill` |
+| Story from list API | `src/core/agent.py` | `tests/component/core/test_agent.py::TestEntityAgentStory`, `::TestEntityAgentStoryBranches` |
+| Dedupe/normalize retired | `src/core/roster.py` | `TestAst726LatestOnlyRosterStory`, `TestAst727NormalizeAgentResponsesForBackfill` |
 
-**AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md`.
+**AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` + agent story nodes in **`docs/test-bible/core/agent.md`**.

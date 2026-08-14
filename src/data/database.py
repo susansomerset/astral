@@ -26,6 +26,10 @@ Tables used (inventory):
   task_key TEXT, task_key_uuid TEXT, code, label, content, importance INTEGER, content_fingerprint TEXT,
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
+- astral_artifacts — Versioned entity-scoped artifact blobs (astral_artifact_uuid TEXT PK,
+  entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT, current INTEGER 0|1,
+  created_at, updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
+  Versioning follows agent_task / rubric_vector current=1 retire-and-insert (AST-1340 / AST-1352).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
   candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
   batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
@@ -177,6 +181,7 @@ _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
 _vector_feedback_schema_ensured = False
+_astral_artifacts_schema_ensured = False
 _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
@@ -3746,6 +3751,176 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
     _vector_feedback_schema_ensured = True
 
 
+
+def _ensure_astral_artifacts_table(conn: sqlite3.Connection) -> None:
+    """Create astral_artifacts if missing (AST-1352). No ALTER backfill — table is new."""
+    global _astral_artifacts_schema_ensured
+    if _astral_artifacts_schema_ensured:
+        return
+    cursor = conn.execute(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='astral_artifacts'"
+    )
+    if cursor.fetchone()[0] == 0:
+        conn.execute("""
+            CREATE TABLE astral_artifacts (
+                astral_artifact_uuid TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                entity_id TEXT NOT NULL,
+                artifact_type TEXT NOT NULL,
+                artifact_data TEXT NOT NULL,
+                current INTEGER NOT NULL DEFAULT 1,
+                created_at TIMESTAMP NOT NULL,
+                updated_at TIMESTAMP NOT NULL
+            )
+        """)
+        conn.execute(
+            "CREATE INDEX idx_astral_artifacts_entity_type_current "
+            "ON astral_artifacts (entity_type, entity_id, artifact_type, current)"
+        )
+        conn.commit()
+    _astral_artifacts_schema_ensured = True
+
+
+
+def _normalize_astral_artifact_identity(
+    entity_type: str, entity_id: str, artifact_type: str
+) -> tuple[str, str, str]:
+    """Strip identity fields; raise ValueError on empty or unknown entity_type."""
+    et = (entity_type or "").strip()
+    eid = (entity_id or "").strip()
+    at = (artifact_type or "").strip()
+    if not et:
+        raise ValueError("entity_type required")
+    if not eid:
+        raise ValueError("entity_id required")
+    if not at:
+        raise ValueError("artifact_type required")
+    if et not in ENTITY_TYPES:
+        raise ValueError(f"invalid entity_type {et!r}")
+    return et, eid, at
+
+
+def _astral_artifact_row_dict(row: tuple) -> Dict[str, Any]:
+    """Map SELECT tuple → public dict; JSON-parse artifact_data when possible."""
+    raw = row[4]
+    try:
+        artifact_data = json.loads(raw)
+    except (TypeError, json.JSONDecodeError):
+        artifact_data = raw
+    return {
+        "astral_artifact_uuid": row[0],
+        "entity_type": row[1],
+        "entity_id": row[2],
+        "artifact_type": row[3],
+        "artifact_data": artifact_data,
+        "current": row[5],
+        "created_at": row[6],
+        "updated_at": row[7],
+    }
+
+
+_ASTRAL_ARTIFACT_SELECT = (
+    "astral_artifact_uuid, entity_type, entity_id, artifact_type, "
+    "artifact_data, current, created_at, updated_at"
+)
+
+
+def save_astral_artifact(
+    entity_type: str,
+    entity_id: str,
+    artifact_type: str,
+    artifact_data: Any,
+) -> str:
+    """Retire prior current=1 row for the natural key; insert new current row. Returns UUID."""
+    et, eid, at = _normalize_astral_artifact_identity(entity_type, entity_id, artifact_type)
+    if artifact_data is None:
+        raise ValueError("artifact_data required")
+    payload = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
+    now = _utc_now()
+    new_uuid = str(uuid.uuid4())
+
+    def _with_conn() -> str:
+        conn = _get_connection()
+        try:
+            _ensure_astral_artifacts_table(conn)
+            # Retire any current row(s) for this entity + artifact type
+            conn.execute(
+                """UPDATE astral_artifacts
+                      SET current = 0, updated_at = ?
+                    WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
+                      AND current = 1""",
+                (now, et, eid, at),
+            )
+            conn.execute(
+                """INSERT INTO astral_artifacts (
+                       astral_artifact_uuid, entity_type, entity_id, artifact_type,
+                       artifact_data, current, created_at, updated_at)
+                   VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
+                (new_uuid, et, eid, at, payload, now, now),
+            )
+            conn.commit()
+            return new_uuid
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def get_current_astral_artifact(
+    entity_type: str, entity_id: str, artifact_type: str
+) -> Optional[Dict[str, Any]]:
+    """Return the current=1 row for the natural key, or None."""
+    et, eid, at = _normalize_astral_artifact_identity(entity_type, entity_id, artifact_type)
+
+    def _with_conn() -> Optional[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_astral_artifacts_table(conn)
+            row = conn.execute(
+                f"""SELECT {_ASTRAL_ARTIFACT_SELECT}
+                      FROM astral_artifacts
+                     WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
+                       AND current = 1
+                     LIMIT 1""",
+                (et, eid, at),
+            ).fetchone()
+            return _astral_artifact_row_dict(row) if row else None
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
+def list_astral_artifacts(
+    entity_type: str,
+    entity_id: str,
+    artifact_type: str,
+    *,
+    current_only: bool = False,
+) -> List[Dict[str, Any]]:
+    """List version rows for the natural key; oldest created_at first."""
+    et, eid, at = _normalize_astral_artifact_identity(entity_type, entity_id, artifact_type)
+
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_astral_artifacts_table(conn)
+            sql = (
+                f"""SELECT {_ASTRAL_ARTIFACT_SELECT}
+                      FROM astral_artifacts
+                     WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?"""
+            )
+            if current_only:
+                sql += " AND current = 1"
+            sql += " ORDER BY created_at ASC"
+            rows = conn.execute(sql, (et, eid, at)).fetchall()
+            return [_astral_artifact_row_dict(r) for r in rows]
+        finally:
+            conn.close()
+
+    return _run_with_retry(_with_conn)
+
+
 def store_feedback_block(
     entity_type: str,
     task_key: str,
@@ -5682,13 +5857,15 @@ def save_agent_data(
                         f"agent_data non-canonical match rejected: {match_id!r} "
                         f"ref_agent_data_id={match_ref!r}"
                     )
+                # AST-1354: keep entity_id on content-dedup RESPONSE copies so
+                # ensure_batch_response_entity_ids / list_entity_latest_agent_refs work.
                 conn.execute(
                     """INSERT OR IGNORE INTO agent_data
-                       (agent_data_id, entity_type, task_key, batch_id, created_at,
+                       (agent_data_id, entity_type, entity_id, task_key, batch_id, created_at,
                         block_type, block_data, token_size, ref_agent_data_id)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
-                        agent_data_id, entity_type, task_key, batch_id, ts,
+                        agent_data_id, entity_type, entity_id, task_key, batch_id, ts,
                         block_type, None, token_size, match_id,
                     ),
                 )
@@ -5951,33 +6128,39 @@ def list_entity_latest_agent_refs(entity_type: str, entity_id: str) -> List[Dict
                    ORDER BY created_at DESC""",
                 (entity_type, entity_id),
             ).fetchall()
+            # latest wins per task_key (rows already newest-first)
+            latest_by_task: Dict[str, Any] = {}
+            for row in rows:
+                d = _row_to_dict(row)
+                tk = (d.get("task_key") or "").strip()
+                if not tk or tk in latest_by_task:
+                    continue
+                latest_by_task[tk] = d
+            refs: List[Dict[str, Any]] = []
+            for tk, resp in latest_by_task.items():
+                batch_id = resp["batch_id"]
+                # AST-1354: metadata only — listing must not resolve sibling block_data
+                # (dangling TASK refs must not abort the whole latest-ref list).
+                block_rows = conn.execute(
+                    "SELECT agent_data_id, block_type FROM agent_data "
+                    "WHERE batch_id = ? ORDER BY created_at",
+                    (batch_id,),
+                ).fetchall()
+                prompt_blocks = [
+                    {"type": b["block_type"], "id": b["agent_data_id"]}
+                    for b in (_row_to_dict(r) for r in block_rows)
+                    if b.get("block_type") != "RESPONSE"
+                ]
+                prompt_blocks.append({"type": "RESPONSE", "id": resp["agent_data_id"]})
+                refs.append({
+                    "task_key": tk,
+                    "batch_id": batch_id,
+                    "created_at": resp["created_at"],
+                    "prompt_blocks": prompt_blocks,
+                })
+            return refs
         finally:
             conn.close()
-        # latest wins per task_key (rows already newest-first)
-        latest_by_task: Dict[str, Any] = {}
-        for row in rows:
-            d = _row_to_dict(row)
-            tk = (d.get("task_key") or "").strip()
-            if not tk or tk in latest_by_task:
-                continue
-            latest_by_task[tk] = d
-        refs: List[Dict[str, Any]] = []
-        for tk, resp in latest_by_task.items():
-            batch_id = resp["batch_id"]
-            blocks = get_agent_data_by_batch(batch_id)
-            prompt_blocks = [
-                {"type": b["block_type"], "id": b["agent_data_id"]}
-                for b in blocks
-                if b.get("block_type") != "RESPONSE"
-            ]
-            prompt_blocks.append({"type": "RESPONSE", "id": resp["agent_data_id"]})
-            refs.append({
-                "task_key": tk,
-                "batch_id": batch_id,
-                "created_at": resp["created_at"],
-                "prompt_blocks": prompt_blocks,
-            })
-        return refs
 
     return _run_with_retry(_with_conn)
 

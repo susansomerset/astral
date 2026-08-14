@@ -2913,6 +2913,9 @@ class TestEvaluateJdBatch:
         save = MagicMock()
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        rubric = [_rubric_item()]
+        # Table-backed rubric (AST-723): tests must stub criteria — ctx artifacts are not the source.
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric)
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2934,11 +2937,10 @@ class TestEvaluateJdBatch:
                 "job_data": {"job_description": self._JD_READY_TEXT},
             }
         ]
-        rubric = [_rubric_item()]
         out = await consult_mod.evaluate_jd_batch(
             "batch-1",
             jobs,
-            {"candidate_data": {"artifacts": {"jobdesc_rubric": {"criteria": rubric}}}},
+            {"astral_candidate_id": "c1"},
             debug=True,
         )
         assert out["passed"] == 1
@@ -2951,11 +2953,18 @@ class TestEvaluateJdBatch:
         jd_score = payload["jd_score"]
         assert isinstance(jd_score, float)
         assert jd_score >= 0.0
+        # AST-1347: breakdown rides beside jd_score
+        from src.utils.config import PHASE_SCORE_BREAKDOWN_FIELDS, PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+
+        key = f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"
+        assert key in payload
+        assert set(payload[key]) == set(PHASE_SCORE_BREAKDOWN_FIELDS)
 
     @pytest.mark.asyncio
     async def test_logs_failed_vectors(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
         monkeypatch.setattr(consult_mod.tracker, "save_job_data", MagicMock())
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: [_rubric_item()])
         monkeypatch.setattr(
             consult_mod,
             "do_task",
@@ -2975,11 +2984,10 @@ class TestEvaluateJdBatch:
             ),
         )
         jobs = [{"astral_job_id": "job-1", "state": "JD_READY", "job_data": {"job_description": self._JD_READY_TEXT}}]
-        rubric = [_rubric_item()]
         out = await consult_mod.evaluate_jd_batch(
             "batch-2",
             jobs,
-            {"candidate_data": {"artifacts": {"jobdesc_rubric": rubric}}},
+            {"astral_candidate_id": "c1"},
             debug=True,
         )
         assert out["failed"] == 1
@@ -5909,3 +5917,206 @@ class TestAst1277DispatchScoreFloorVerdict:
         )
         assert to_state_zero == cfg["pass_state"]
         assert score_zero is not None and score_zero >= 0.0
+
+
+class TestAst1347PhaseScoreBreakdown:
+    """AST-1347: earned/possible/max helper + persist beside Analysis scores."""
+
+    def test_breakdown_excludes_x_from_earned_possible_max_includes_capacity(self) -> None:
+        from src.utils.config import PHASE_SCORE_BREAKDOWN_FIELDS, RUBRIC_TOTAL
+
+        # Unequal importance so max (full set) exceeds possible (counted-only) when X is present
+        rubric = [
+            {"label": "Fit", "importance": 10},
+            {"label": "Other", "importance": 5},
+        ]
+        grades = [
+            {"vector": "Fit", "grade": "X", "confidence": 0},
+            {"vector": "Other", "grade": "A", "confidence": 5},
+        ]
+        bd = consult_mod._phase_score_breakdown(rubric, grades)
+        assert set(bd) == set(PHASE_SCORE_BREAKDOWN_FIELDS)
+        assert bd["earned"] > 0.0
+        assert bd["possible"] > 0.0
+        assert bd["max"] > bd["possible"]
+        # Single counted vector at full density → earned == possible for that set
+        assert bd["earned"] == pytest.approx(bd["possible"])
+        base_all = float(RUBRIC_TOTAL) / 2.0
+        assert bd["max"] == pytest.approx(
+            base_all * importance_multiplier(10) + base_all * importance_multiplier(5)
+        )
+
+    def test_breakdown_earned_drives_render_score_normalization(self) -> None:
+        from src.utils.config import RUBRIC_TOTAL
+
+        cfg = TASK_CONFIG["grade_do"]
+        rubric = [
+            {"label": "Fit", "importance": 5},
+            {"label": "Other", "importance": 5},
+        ]
+        grades = [
+            {"vector": "Fit", "grade": "X", "confidence": 0},
+            {"vector": "Other", "grade": "A", "confidence": 5},
+        ]
+        bd = consult_mod._phase_score_breakdown(rubric, grades)
+        state, score = consult_mod._render_score(cfg, rubric, grades, 0.0)
+        assert state == cfg["pass_state"]
+        assert score == pytest.approx((bd["earned"] / float(RUBRIC_TOTAL)) * 10.0)
+
+    def test_apply_persists_breakdown_beside_score(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import PHASE_SCORE_BREAKDOWN_FIELDS, PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda astral_job_id: {
+                "astral_job_id": astral_job_id,
+                "astral_candidate_id": "c1",
+                "state": "PASSED_JD",
+            },
+        )
+        rubric = [_rubric_item("fit")]
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
+        cfg = consult_mod._consult_orchestration("grade_do")
+        ctx = {"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}}
+        consult_mod._apply_render_verdict_decoded_job(
+            "grade_do",
+            "job-1347",
+            {"grades": [_pass_grade()], "notes": ""},
+            cfg,
+            ctx,
+        )
+        payload = save.call_args.args[1]
+        key = f"do_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"
+        assert "do_score" in payload
+        assert key in payload
+        bd = payload[key]
+        assert set(bd) == set(PHASE_SCORE_BREAKDOWN_FIELDS)
+        assert all(isinstance(bd[f], float) for f in PHASE_SCORE_BREAKDOWN_FIELDS)
+
+    def test_apply_omits_breakdown_on_f2_dealbreaker(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+
+        save = MagicMock()
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            lambda astral_job_id: {
+                "astral_job_id": astral_job_id,
+                "astral_candidate_id": "c1",
+                "state": "PASSED_JD",
+            },
+        )
+        rubric = [_rubric_item("fit")]
+        _patch_scored_render_verdict_fixtures(monkeypatch, rubric=rubric, score_floor=0.0)
+        cfg = consult_mod._consult_orchestration("grade_do")
+        ctx = {"astral_candidate_id": "c1", "candidate_data": {"artifacts": {"do_rubric": rubric}}}
+        to_state, score, _ = consult_mod._apply_render_verdict_decoded_job(
+            "grade_do",
+            "job-1347-f2",
+            {"grades": [{"grade": "F", "confidence": 2, "vector": "fit"}], "notes": ""},
+            cfg,
+            ctx,
+        )
+        assert to_state == cfg["fail_state"]
+        assert score is None
+        payload = save.call_args.args[1]
+        assert "do_score" not in payload
+        assert f"do_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" not in payload
+
+    @pytest.mark.asyncio
+    async def test_evaluate_jd_persists_jd_score_breakdown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import PHASE_SCORE_BREAKDOWN_FIELDS, PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+
+        save = MagicMock()
+        rubric = [_rubric_item()]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{"astral_job_id": "job-1347", "grades": [_pass_grade()]}]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {
+                "astral_job_id": "job-1347",
+                "state": "JD_READY",
+                "job_title": "Engineer",
+                "job_data": {"job_description": "x" * 80},
+            }
+        ]
+        out = await consult_mod.evaluate_jd_batch(
+            "batch-1347",
+            jobs,
+            {"astral_candidate_id": "c1"},
+            debug=False,
+        )
+        assert out["passed"] == 1
+        payload = save.call_args.args[1]
+        key = f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}"
+        assert "jd_score" in payload
+        assert key in payload
+        assert set(payload[key]) == set(PHASE_SCORE_BREAKDOWN_FIELDS)
+
+    @pytest.mark.asyncio
+    async def test_evaluate_jd_f2_omits_jd_score_breakdown(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import PHASE_SCORE_BREAKDOWN_KEY_SUFFIX
+
+        save = MagicMock()
+        rubric = [_rubric_item()]
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", MagicMock())
+        monkeypatch.setattr(consult_mod.tracker, "save_job_data", save)
+        monkeypatch.setattr(consult_mod, "_rubric_criteria_for_cfg", lambda _cid, _cfg: rubric)
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [
+                            {
+                                "astral_job_id": "job-1347-f2",
+                                "grades": [{"grade": "F", "confidence": 2, "vector": "fit"}],
+                            }
+                        ]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        jobs = [
+            {
+                "astral_job_id": "job-1347-f2",
+                "state": "JD_READY",
+                "job_data": {"job_description": "x" * 80},
+            }
+        ]
+        out = await consult_mod.evaluate_jd_batch(
+            "batch-1347-f2",
+            jobs,
+            {"astral_candidate_id": "c1"},
+            debug=False,
+        )
+        assert out["failed"] == 1
+        payload = save.call_args.args[1]
+        assert "jd_score" not in payload
+        assert f"jd_{PHASE_SCORE_BREAKDOWN_KEY_SUFFIX}" not in payload

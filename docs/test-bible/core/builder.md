@@ -585,3 +585,81 @@ Resume HTML emit dispatches by each enabled section’s `format` (not by id). Hi
   tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
   -q
 ```
+
+---
+
+### AST-1350 · AST-1345
+
+**Parent:** [AST-1345 — Clarify candidate_data.artifacts.base_resume.experience node](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1350-unsupported-experience-shape-toast-no-emit`.
+
+When `experience` is present and not `is_experience_job_array`, builders raise `ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])` before HTML assembly — no Experience-omitted resume. Defense in depth: `_emit_body_sections_html` raises the same for any `experience_detail` non-array. API/UI: **`docs/test-bible/ui/api/api_resume_html.md`**, **`docs/test-bible/frontend/components.md`**. Does **not** own array layout (**AST-1351**) or schema/prompts (**AST-1349**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Config message + session/base refuse + emit defense | `src/utils/config.py`, `src/core/builder.py` | **`TestAst1350UnsupportedExperienceShape`**; **`TestAst1350UnsupportedResumeStructureMessage`** (config) |
+| Revised silent-omit paths | `src/core/builder.py` | revised **`TestAst987BuildSessionBaseResume`** (job-array happy path); revised **`TestAst998ExperienceJobRender::test_session_legacy_string_experience_refuses_emit`**; revised **`TestAst1304BuilderEmitByFormat::test_debug_true_style_d_per_enabled_section`** |
+
+**Broken / obsolete this pass:** AST-987 / AST-998 / AST-1304 asserts that string experience still returns HTML (omit Experience) — flipped to refuse or job-array fixtures.
+
+**Integration:** no existing scenario asserts resume Print / unsupported toast — no revision.
+
+## QA test manifest
+
+1. Core refuse + happy array: `TestAst1350UnsupportedExperienceShape`
+2. Config literal: `TestAst1350UnsupportedResumeStructureMessage`
+3. API 400/404: `TestAst1350UnsupportedResumeHtml` + existing `TestResumeHtmlRoutes` 404 rows
+4. JAR fetch-then-blob + unsupported toast: `test_JobAnalysisReportModal.test.tsx` AST-1350 / revised Print Resume
+5. Revised regressions: AST-987 / AST-998 / AST-1304 rows above
+6. Existing Base Resume Print error (no tab): `test_ArtifactsBaseResumeContent` AST-1337 error row (message passthrough)
+
+**AST-1350** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1350UnsupportedExperienceShape \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender::test_session_legacy_string_experience_refuses_emit \
+  tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat::test_debug_true_style_d_per_enabled_section \
+  tests/component/utils/test_config.py::TestAst1350UnsupportedResumeStructureMessage \
+  tests/component/ui/api/test_api_resume_html.py::TestAst1350UnsupportedResumeHtml \
+  tests/component/ui/api/test_api_resume_html.py::TestResumeHtmlRoutes \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="Print Resume|AST-1350"
+```
+
+---
+
+### AST-1351 · AST-1345
+
+**Parent:** [AST-1345](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+When `debug=True`, session/base/job emit paths call `candidate.debug_experience_jobs` (Style D per-job detail). Happy-path role HTML remains `_emit_experience_jobs_html` (AST-998/1008). Refuse gate unchanged (AST-1350). UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Style D experience jobs on debug emit | `src/core/builder.py` | **`TestAst1351ExperienceDebugJobs`** |
+
+
+### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
+
+**Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error`.
+
+`build_base_resume` must ingest list-shaped / legacy `{label, content}` `artifacts.base_resume` the same way Base Resume Content already displays (via `ingest_legacy_label_content_base_resume`). Empty / unusable content raises **`No printable base resume content for this candidate`** (not `Candidate missing artifacts.base_resume`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| List-shaped print success (bug-repro) | `src/core/builder.py` | **`TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints`** |
+| Empty / missing message | same | **`TestBuildBaseResume::test_requires_base_resume_artifact`**; **`TestBuildBaseResumeDebugPaths::test_failures_with_debug`** — match new empty copy |
+| Page error copy (AST-1337 revised) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — Print error asserts new operator sentence (primary: **`docs/test-bible/frontend/pages.md`**) |
+
+**Broken / obsolete this pass:** empty-gate asserts matching `missing artifacts.base_resume`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_ast1341_list_shaped_base_resume_prints \
+  tests/component/core/test_builder.py::TestBuildBaseResume::test_requires_base_resume_artifact \
+  tests/component/core/test_builder.py::TestBuildBaseResumeDebugPaths::test_failures_with_debug \
+  -q
+```

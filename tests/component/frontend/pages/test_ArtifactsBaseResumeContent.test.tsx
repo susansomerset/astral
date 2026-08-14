@@ -379,12 +379,15 @@ describe("ArtifactsBaseResumeContent", () => {
   })
 
   it("AST-1337: Print disabled with no candidate; success opens blob tab (§6c)", async () => {
-    // No candidate → Print unavailable; with c1 + HTML → validate-then-blob (not window.open of URL).
+    // No candidate → Print unavailable (disabled page-level, or absent once AST-1342 moves it into headerActions).
     installMocks([])
     const { unmount } = renderWithProviders(<ArtifactsBaseResumeContent />)
     await waitFor(() => expect(screen.getByText("No candidate selected.")).toBeInTheDocument())
-    expect(screen.getByRole("button", { name: "Print" })).toBeDisabled()
-    expect(screen.getByRole("button", { name: "Print" })).toHaveClass("btn", "secondary")
+    const printNoCandidate = screen.queryByRole("button", { name: "Print" })
+    if (printNoCandidate) {
+      expect(printNoCandidate).toBeDisabled()
+      expect(printNoCandidate).toHaveClass("btn", "secondary")
+    }
     unmount()
 
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -466,7 +469,7 @@ describe("ArtifactsBaseResumeContent", () => {
         return {
           ok: false,
           status: 404,
-          json: async () => ({ error: "Candidate missing artifacts.base_resume" }),
+          json: async () => ({ error: "No printable base resume content for this candidate" }),
         } as Response
       }
       throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
@@ -475,7 +478,7 @@ describe("ArtifactsBaseResumeContent", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
     await userEvent.click(screen.getByRole("button", { name: "Print" }))
     await waitFor(() =>
-      expect(screen.getAllByText("Candidate missing artifacts.base_resume").length).toBeGreaterThan(0),
+      expect(screen.getAllByText("No printable base resume content for this candidate").length).toBeGreaterThan(0),
     )
     expect(window.open).not.toHaveBeenCalled()
     unmount()
@@ -516,5 +519,49 @@ describe("ArtifactsBaseResumeContent", () => {
     await userEvent.click(screen.getByRole("button", { name: "Print" }))
     await waitFor(() => expect(screen.getAllByText("HTML response was empty").length).toBeGreaterThan(0))
     expect(window.open).not.toHaveBeenCalled()
+  })
+
+  it("AST-1342: Print sits in dep-actions next to Regenerate", async () => {
+    // bug-repro: orphaned page-level Print must live in ArtifactEditor dep-actions beside Regenerate.
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/system/ui_config") {
+        return { json: async () => ({ column_types: {}, base_resume_accent_palette: [] }) } as Response
+      }
+      if (url === "/api/candidates/c1/resume_structure" && !init) {
+        return { json: async () => structureByCandidate.c1 } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: baseResumeByCandidate.c1 } },
+          }),
+        } as Response
+      }
+      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Base Resume Content" })).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByRole("button", { name: "Print" })).toBeEnabled())
+    const actions = document.querySelector(".dep-actions")
+    expect(actions).toBeTruthy()
+    const printBtn = screen.getByRole("button", { name: "Print" })
+    expect(actions!.contains(printBtn)).toBe(true)
+    expect(printBtn).toHaveClass("btn", "secondary")
+    const labels = Array.from(actions!.querySelectorAll("button")).map(b => (b.textContent || "").trim())
+    const regenIdx = labels.findIndex(t => t === "Regenerate" || t === "Generate")
+    const printIdx = labels.findIndex(t => t === "Print" || t === "Opening…")
+    expect(regenIdx).toBeGreaterThanOrEqual(0)
+    expect(printIdx).toBe(regenIdx + 1)
   })
 })

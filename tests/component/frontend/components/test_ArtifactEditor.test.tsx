@@ -18,6 +18,22 @@ function stateUiManifestResponse(): Response {
   return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
 }
 
+const EXPERIENCE_UI_CONFIG = {
+  experience_job_ui_fields: [
+    { key: "company", label: "Company" },
+    { key: "title", label: "Title" },
+    { key: "dates", label: "Dates" },
+    { key: "location", label: "Location" },
+    { key: "accomplishments", label: "Accomplishments" },
+  ],
+  unsupported_resume_structure_message: "unsupported resume structure, please regenerate",
+}
+
+function uiConfigResponse(): Response {
+  return { ok: true, json: async () => EXPERIENCE_UI_CONFIG } as Response
+}
+
+
 /** AST-902 recovery GETs …/generate/<task>/pending after load; 404 = no-op. */
 function pendingNotFoundResponse(): Response {
   return {
@@ -34,6 +50,7 @@ function isPendingGenerateUrl(url: string): boolean {
 function mockApis(state = "ACTIVE_SEARCH") {
   mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
     if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+    if (url === "/api/system/ui_config") return uiConfigResponse()
     if (url === "/api/candidates") {
       return {
         json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }],
@@ -87,6 +104,7 @@ describe("ArtifactEditor", () => {
   it("shows no-candidate and shape error states", async () => {
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [] } as Response
       }
@@ -100,6 +118,7 @@ describe("ArtifactEditor", () => {
 
     mockedApi.mockImplementation(async (url: string) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -137,6 +156,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -192,6 +212,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -277,6 +298,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -314,6 +336,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -361,6 +384,7 @@ describe("ArtifactEditor", () => {
     let pendingCalls = 0
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -411,6 +435,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -447,6 +472,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -500,7 +526,7 @@ describe("ArtifactEditor", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument()
   })
 
-  it("AST-996: experience job array loads as JSON and Saves as parsed array", async () => {
+  it("AST-996/AST-1351: experience job array loads in ExperienceJobsEditor and Saves as array", async () => {
     const jobs = [
       {
         company: "Acme Corp",
@@ -514,6 +540,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -550,18 +577,22 @@ describe("ArtifactEditor", () => {
       />,
     )
     await waitFor(() => expect(screen.getByDisplayValue("Summary body")).toBeInTheDocument())
-    // Pretty-printed JSON for the job array (not "[object Object]")
-    expect(screen.getByDisplayValue(/"company": "Acme Corp"/)).toBeInTheDocument()
+    // AST-1351: structured role editor (not pretty-printed JSON textarea)
+    expect(screen.getByText("Role 1")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Engineer")).toBeInTheDocument()
+    expect(screen.queryByDisplayValue(/"company": "Acme Corp"/)).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     expect(putBodies.at(-1)?.artifacts?.base_resume?.experience).toEqual(jobs)
     expect(typeof putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toBe("string")
   })
 
-  it("AST-996: invalid experience JSON shows toast and aborts Save", async () => {
+  it("AST-1351: legacy string experience shows unsupported notice and Save aborts", async () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
       }
@@ -571,7 +602,7 @@ describe("ArtifactEditor", () => {
             candidate_data: {
               artifacts: {
                 base_resume: {
-                  experience: [{ company: "Acme", title: "Eng", dates: "2020", location: "", accomplishments: "x" }],
+                  experience: "legacy prose blob",
                 },
               },
             },
@@ -592,10 +623,15 @@ describe("ArtifactEditor", () => {
         structureSections={[{ id: "experience", label: "Custom Jobs" }]}
       />,
     )
-    const field = await screen.findByDisplayValue(/"company": "Acme"/)
-    fireEvent.change(field, { target: { value: "not-valid-json{{{" } })
+    await waitFor(() =>
+      expect(screen.getByText("unsupported resume structure, please regenerate")).toBeInTheDocument(),
+    )
+    expect(screen.getByDisplayValue("legacy prose blob")).toBeDisabled()
+    expect(screen.queryByText("Role 1")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "Save" }))
-    await waitFor(() => expect(screen.getByText("Experience must be valid JSON")).toBeInTheDocument())
+    await waitFor(() =>
+      expect(screen.getAllByText("unsupported resume structure, please regenerate").length).toBeGreaterThan(0),
+    )
     expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(
       false,
     )
@@ -605,6 +641,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -643,6 +680,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -723,6 +761,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -752,6 +791,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -803,6 +843,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
@@ -835,6 +876,7 @@ describe("ArtifactEditor", () => {
     mockApis("ACTIVE_SEARCH")
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
       if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
       if (url === "/api/candidates") {
         return {
           json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],

@@ -166,8 +166,12 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
     expect(screen.getByRole("heading", { name: "Globex" })).toHaveClass("modal-title")
   })
 
-  it("Print Resume / Print Cover Letter open AST-605 HTML routes when artifacts exist", async () => {
+  it("Print Resume fetch-then-blob; Print Cover still window.open (AST-1350)", async () => {
+    // AST-1350: Resume uses fetch-then-blob so unsupported shapes can toast without a tab.
     const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    const createSpy = vi.fn(() => "blob:jar-resume-html")
+    const revokeSpy = vi.fn()
+    vi.stubGlobal("URL", { createObjectURL: createSpy, revokeObjectURL: revokeSpy })
     installBaseApiMocks(mockedApi, (url, init) => {
       if (url === "/api/jobs/j-print" && !init) {
         return jsonResponse({
@@ -187,14 +191,67 @@ describe("JobAnalysisReportModal — AST-948 horizontal shell", () => {
           },
         })
       }
+      if (url === "/candidate/resume/j-print" && !init) {
+        return {
+          ok: true,
+          text: async () => "<html><body>job resume</body></html>",
+        } as Response
+      }
       return undefined
     })
     renderWithProviders(<JobAnalysisReportModal jobId="j-print" onClose={() => {}} />)
     await waitForShell()
     await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
-    expect(openSpy).toHaveBeenCalledWith("/candidate/resume/j-print", "_blank", "noopener,noreferrer")
+    await waitFor(() =>
+      expect(openSpy).toHaveBeenCalledWith("blob:jar-resume-html", "_blank", "noopener,noreferrer"),
+    )
+    expect(createSpy).toHaveBeenCalled()
+    expect(mockedApi.mock.calls.some(([u]) => u === "/candidate/resume/j-print")).toBe(true)
     await userEvent.click(screen.getByRole("button", { name: "Print Cover Letter" }))
     expect(openSpy).toHaveBeenCalledWith("/candidate/cover/j-print", "_blank", "noopener,noreferrer")
+    openSpy.mockRestore()
+    vi.unstubAllGlobals()
+  })
+
+  it("AST-1350: Print Resume unsupported toast — no tab", async () => {
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j-unsup" && !init) {
+        return jsonResponse({
+          astral_job_id: "j-unsup",
+          job_title: "Role",
+          company: "Co",
+          state: "CANDIDATE_REVIEW",
+          state_changed_at: null,
+          job_link: "https://jobs.example/apply",
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            artifacts: {
+              resume_content: { professional_summary: "Draft", experience: "legacy" },
+              cover_letter: { Letter: "Hello" },
+            },
+          },
+        })
+      }
+      if (url === "/candidate/resume/j-unsup" && !init) {
+        return {
+          ok: false,
+          status: 400,
+          json: async () => ({ error: "unsupported resume structure, please regenerate" }),
+        } as Response
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-unsup" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(screen.getByRole("button", { name: "Print Resume" }))
+    await waitFor(() =>
+      expect(
+        screen.getAllByText("unsupported resume structure, please regenerate").length,
+      ).toBeGreaterThan(0),
+    )
+    expect(openSpy).not.toHaveBeenCalled()
     openSpy.mockRestore()
   })
 
@@ -708,6 +765,52 @@ describe("JobAnalysisReportModal — AST-1274 load error honesty", () => {
     renderWithProviders(<JobAnalysisReportModal jobId="j-503" onClose={() => {}} />)
     expect(await screen.findByText("Load failed (HTTP 503)")).toBeInTheDocument()
     expect(screen.queryByText("Job not found")).not.toBeInTheDocument()
+  })
+})
+
+describe("JobAnalysisReportModal — AST-1348 Analysis score title chrome", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("shows formatted score title when breakdown is present; plain label when absent", async () => {
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j1348" && !init) {
+        return jsonResponse({
+          astral_job_id: "j1348",
+          job_title: "Analyst",
+          company: "Globex",
+          state: "RECOMMENDED",
+          state_changed_at: "2026-01-03T00:00:00Z",
+          job_link: "https://jobs.example/apply",
+          jd_grades: [
+            { vector: "Job Description (JD)", grade: "A", reason: "Strong match", confidence: 4 },
+          ],
+          jd_rubric: [{ code: "JD", label: "Job Description (JD)", importance: 1 }],
+          jd_score: 8.5,
+          jd_score_breakdown: { earned: 137.4, possible: 150.2, max: 320.9 },
+          // DO: grades present but no breakdown / score → plain label
+          do_grades: [{ vector: "Technical (TE)", grade: "B", reason: "Solid", confidence: 3 }],
+          do_rubric: [{ code: "TE", label: "Technical (TE)", importance: 2 }],
+          job_data: {
+            job_description: "Full JD body text",
+            analysis_upshot: fullUpshot(),
+          },
+        })
+      }
+      if (url === "/api/companies/Globex") {
+        return jsonResponse({ company_website: "https://globex.example" })
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j1348" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Analysis" }))
+    expect(
+      screen.getByText("JD Analysis - score: 137 out of 150 possible (321 max total)"),
+    ).toBeInTheDocument()
+    expect(screen.getByText("DO Analysis")).toBeInTheDocument()
+    expect(screen.queryByText(/^DO Analysis - score:/)).not.toBeInTheDocument()
+    expect(screen.getByText("GET Analysis")).toBeInTheDocument()
+    expect(screen.getByText("LIKE Analysis")).toBeInTheDocument()
   })
 })
 

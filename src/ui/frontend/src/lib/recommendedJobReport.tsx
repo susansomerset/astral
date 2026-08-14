@@ -243,6 +243,55 @@ export function jobGradesForField(job: Record<string, unknown>, gradesField: str
   return job[gradesField]
 }
 
+/** Top-level flatten first, then job_data — API derive writes top-level only (AST-1348). */
+export function jobScoreBreakdownForGradesField(
+  job: Record<string, unknown>,
+  gradesField: string,
+): { earned: number; possible: number; max: number } | null {
+  if (!gradesField.endsWith("_grades")) return null
+  const breakdownKey = `${gradesField.slice(0, -"_grades".length)}_score_breakdown`
+  let raw: unknown = job[breakdownKey]
+  if (raw === undefined) {
+    const jd = job.job_data
+    if (jd && typeof jd === "object" && !Array.isArray(jd)) {
+      raw = (jd as Record<string, unknown>)[breakdownKey]
+    }
+  }
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null
+  const obj = raw as Record<string, unknown>
+  const earned = obj.earned
+  const possible = obj.possible
+  const max = obj.max
+  if (
+    typeof earned !== "number" || !Number.isFinite(earned)
+    || typeof possible !== "number" || !Number.isFinite(possible)
+    || typeof max !== "number" || !Number.isFinite(max)
+  ) {
+    return null
+  }
+  return { earned, possible, max }
+}
+
+/** Analysis section header title with score chrome (AST-1348). */
+export function formatPhaseSectionScoreTitle(
+  phaseLabel: string,
+  breakdown: { earned: number; possible: number; max: number },
+  template: string,
+): string {
+  const e = String(Math.round(breakdown.earned))
+  const p = String(Math.round(breakdown.possible))
+  const m = String(Math.round(breakdown.max))
+  const tpl = template.trim()
+  if (!tpl) {
+    return `${phaseLabel} - score: ${e} out of ${p} possible (${m} max total)`
+  }
+  return tpl
+    .replaceAll("{phase_label}", phaseLabel)
+    .replaceAll("{earned}", e)
+    .replaceAll("{possible}", p)
+    .replaceAll("{max}", m)
+}
+
 /** Analysis-time job-carried `*_rubric` for a grades field (top-level flatten or job_data). */
 export function jobRubricForField(
   job: Record<string, unknown>,

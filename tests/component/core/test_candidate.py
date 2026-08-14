@@ -14,6 +14,7 @@ from src.core import candidate as candidate_mod
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
+    CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STATES,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -521,8 +522,8 @@ class TestCheckContextCompleteExtended:
     def test_returns_true_when_all_context_fields_present_without_transition(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Completeness helper no longer writes state (AST-970)
-        ctx = {key: "filled" for key in candidate_mod._CONTEXT_TEXT_KEYS}
+        # Completeness helper no longer writes state (AST-970); keys from config (AST-1365)
+        ctx = {key: "filled" for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]}
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
@@ -542,6 +543,40 @@ class TestCheckContextCompleteExtended:
             lambda candidate_id: {
                 "state": "INTAKE_INITIATED",
                 "candidate_data": {"context": {"strengths": "only"}},
+            },
+        )
+        assert candidate_mod.check_context_complete("somerset") is False
+
+    def test_returns_false_when_ideal_day_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Four legacy gated keys filled — Ideal Day still required (AST-1365)
+        ctx = {
+            key: "filled"
+            for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
+            if key != "ideal_day"
+        }
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "state": "INTAKE_INITIATED",
+                "candidate_data": {"context": ctx},
+            },
+        )
+        assert candidate_mod.check_context_complete("somerset") is False
+
+    def test_returns_false_when_ideal_day_whitespace_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ctx = {key: "filled" for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]}
+        ctx["ideal_day"] = "   "
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "state": "INTAKE_INITIATED",
+                "candidate_data": {"context": ctx},
             },
         )
         assert candidate_mod.check_context_complete("somerset") is False
@@ -2523,12 +2558,14 @@ class TestAst997JobTailoredExperience:
         assert payload["experience"][1]["location"] == "NYC"
 
     def test_validate_accepts_legacy_string_experience(self) -> None:
+        # AST-1349: string experience is not a success path; contract message drops body_kind jargon.
         err = candidate_mod.validate_draft_job_resume_payload(
             {"experience": "legacy prose"},
             self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
         )
         assert err is not None
-        assert "experience_detail" in err
+        assert err == "Section 'experience' must be a job array"
+        assert "experience_detail" not in err
 
     def test_validate_rejects_non_job_array_experience_object(self) -> None:
         err = candidate_mod.validate_draft_job_resume_payload(
@@ -2536,21 +2573,95 @@ class TestAst997JobTailoredExperience:
             self._base_cd([dict(j) for j in _SAMPLE_EXPERIENCE_JOBS]),
         )
         assert err is not None
-        assert "experience_detail" in err
+        assert err == "Section 'experience' must be a job array"
+        assert "experience_detail" not in err
 
     def test_tailor_hop_prompts_teach_job_array_and_pin_policy(self) -> None:
         from pathlib import Path
 
-        # AST-1270: draft seed teaches nested resume + experience value types (string or job array).
-        # Pin-by-(company, title) remains covered by validate/pin unit tests above; obsolete
-        # literal prompt phrases from the AST-997 seed era are not re-asserted here.
+        # AST-1349: draft teaches array-only experience (no prose-string success path).
+        # Pin-by-(company, title) remains covered by validate/pin unit tests above.
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
         by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
         draft = by_key["draft_job_resume"]["user_prompt"]
         assert '"resume":' in draft
         assert '"deviations"' in draft
-        assert "prose string or job array" in draft
+        assert "ordered array of job objects" in draft
+        assert "prose string or job array" not in draft
         assert "experience remains a single string" not in draft
+        assert "Do **not** emit experience as a prose string" in draft
+
+
+class TestAst1349ExperienceArrayContract:
+    """AST-1349: craft/parse/finalize prompts + draft validate — array-only experience."""
+
+    def _current(self, task_key: str) -> dict[str, Any]:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        return next(r for r in rows if r.get("task_key") == task_key and r.get("current") == 1)
+
+    def test_craft_resume_base_cache_prompt_array_only(self) -> None:
+        # Closes the Judith craft gap: ### experience is job-array, not COMPANY NAME prose blocks.
+        prompt = self._current("craft_resume_base").get("cache_prompt") or ""
+        exp_i = prompt.find("### experience")
+        assert exp_i >= 0
+        segment = prompt[exp_i : prompt.find("### prior_experience", exp_i)]
+        assert "Ordered JSON array of job objects" in segment
+        for key in ("company", "title", "dates", "location", "accomplishments"):
+            assert f"`{key}`" in segment
+        assert "Do **not** return `experience` as a single prose string" in segment
+        assert "COMPANY NAME" not in segment
+        assert "Format each role as:" not in prompt
+        assert "`experience` is a job array when roles exist" in prompt
+        # LinkedIn may enrich summary — not experience job fields.
+        assert "Enriches professional summary and experience sections" not in prompt
+
+    def test_finalize_and_advise_prompts_array_contract(self) -> None:
+        finalize = self._current("finalize_job_resume").get("user_prompt") or ""
+        assert "ordered job-array" in finalize
+        assert "`company`, `title`, `dates`, `location`, `accomplishments`" in finalize
+        assert "do **not** collapse experience into a prose string" in finalize
+        advise = self._current("advise_job_resume").get("user_prompt") or ""
+        assert "Brief Judith **per role**" in advise
+        assert "never rewrite company/title/dates/location" in advise
+
+    def test_validate_rejects_string_experience_contract_message(self) -> None:
+        base = {
+            "artifacts": {
+                "base_resume": {
+                    "experience": [dict(j) for j in _SAMPLE_EXPERIENCE_JOBS],
+                    "professional_summary": "S",
+                }
+            }
+        }
+        err = candidate_mod.validate_draft_job_resume_payload(
+            {"experience": "legacy prose", "professional_summary": "S"},
+            base,
+        )
+        assert err == "Section 'experience' must be a job array"
+
+    def test_validate_accepts_five_key_job_array(self) -> None:
+        jobs = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        base = {
+            "artifacts": {
+                "base_resume": {"experience": jobs, "professional_summary": "S"}
+            }
+        }
+        assert (
+            candidate_mod.validate_draft_job_resume_payload(
+                {"experience": jobs, "professional_summary": "S"},
+                base,
+            )
+            is None
+        )
+
+    def test_uat_fixture_twin_matches_catalog_after_prompt_edits(self) -> None:
+        from pathlib import Path
+
+        catalog = Path("data/admin/agent_task.json").read_bytes()
+        twin = Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_bytes()
+        assert catalog == twin
 
 
 class TestAst1005FalseMissingCandidateName:
@@ -2885,6 +2996,11 @@ class TestAst1074TopicMenuPersistence:
             candidate_mod.validate_topic(self._topic("t1", informs=["invented"]))
         with pytest.raises(ValueError, match="non-empty list"):
             candidate_mod.validate_topic(self._topic("t1", informs=[]))
+
+    def test_validate_topic_accepts_ideal_day_inform(self) -> None:
+        # AST-1367: closed informs catalog includes ideal_day
+        row = candidate_mod.validate_topic(self._topic("t1", informs=["ideal_day"]))
+        assert row["informs"] == ["ideal_day"]
 
     def test_validate_topic_menu_rejects_duplicate_ids(self) -> None:
         with pytest.raises(ValueError, match="duplicate topic id"):
@@ -4322,7 +4438,9 @@ class TestAst1270NestedDraftJobResumeContract:
         assert '"resume":' in draft
         assert '"deviations"' in draft
         assert "experience remains a single string" not in draft
-        assert "prose string or job array" in draft
+        # AST-1349: array-only (retired "prose string or job array").
+        assert "prose string or job array" not in draft
+        assert "ordered array of job objects" in draft
         # Nested envelope example only (no flat-only agent_payload section-key sample).
         assert '"agent_payload": {\n    "resume"' in draft
 
@@ -4919,3 +5037,129 @@ class TestAst1322TitleKeyedBaseResumeDict:
             from src.utils.config import RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT
 
             assert spec["format"] == RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT == "bullet_list"
+
+# Branches: snapshot live blob; retire on second; missing candidate/base; craft path no astral write.
+class TestAst1353SnapshotSavedBaseResume:
+    def test_snapshots_live_base_resume_blob(self, seeded_db) -> None:
+        from src.core import candidate as candidate_mod
+
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={"artifacts": {"base_resume": {"professional_summary": "live"}}},
+            merge=True,
+        )
+        uid = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        row = db.get_current_astral_artifact("candidate", "cand-1", "base_resume")
+        assert row is not None
+        assert row["astral_artifact_uuid"] == uid
+        assert row["artifact_data"] == {"professional_summary": "live"}
+        assert row["current"] == 1
+
+    def test_second_snapshot_retires_prior(self, seeded_db) -> None:
+        from src.core import candidate as candidate_mod
+
+        db = seeded_db
+        db.save_candidate(
+            "cand-1",
+            candidate_data={"artifacts": {"base_resume": {"v": 1}}},
+            merge=True,
+        )
+        uid1 = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        db.save_candidate(
+            "cand-1",
+            candidate_data={"artifacts": {"base_resume": {"v": 2}}},
+            merge=True,
+        )
+        uid2 = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        assert uid1 != uid2
+        current = db.get_current_astral_artifact("candidate", "cand-1", "base_resume")
+        assert current["astral_artifact_uuid"] == uid2
+        assert current["artifact_data"] == {"v": 2}
+        history = db.list_astral_artifacts(
+            "candidate", "cand-1", "base_resume", current_only=False
+        )
+        assert len(history) == 2
+        assert history[0]["current"] == 0
+
+    def test_missing_candidate_raises(self, sqlite_in_memory) -> None:
+        from src.core import candidate as candidate_mod
+
+        with pytest.raises(ValueError, match="Candidate not found"):
+            candidate_mod.snapshot_saved_base_resume_astral_artifact("missing-id")
+
+    def test_missing_base_resume_raises(self, seeded_db) -> None:
+        from src.core import candidate as candidate_mod
+
+        with pytest.raises(ValueError, match="artifacts.base_resume missing"):
+            candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+
+    def test_craft_generation_does_not_call_save_astral_artifact(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.core import candidate as candidate_mod
+
+        astral_calls: list = []
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "save_astral_artifact",
+            lambda *a, **k: astral_calls.append((a, k)) or "uuid",
+        )
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {"astral_candidate_id": candidate_id},
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod.database, "update_dispatch_ledger", MagicMock())
+        monkeypatch.setattr(candidate_mod, "compute_batch_cost", MagicMock(return_value=0.0))
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", MagicMock())
+        parsed = _craft_resume_base_payload(_catalog_structure())
+        monkeypatch.setattr(
+            candidate_mod,
+            "asyncio",
+            MagicMock(run=MagicMock(return_value={"success": True, "parsed_response": parsed})),
+        )
+        body, status = candidate_mod.run_candidate_artifact_generation(
+            "karfo", "craft_resume_base", "resume text"
+        )
+        assert status == 200
+        assert body["success"] is True
+        assert astral_calls == []
+
+
+class TestAst1365IdealDayLibrary:
+    """AST-1365: Ideal Day completeness gate + context save payload (library peer)."""
+
+    def test_save_candidate_data_merges_ideal_day_context(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "candidate_data": {"context": {"strengths": "systems"}},
+            },
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.save_candidate_data(
+            "c1", {"context": {"ideal_day": "deep focus mornings"}}
+        )
+        assert save.call_args.kwargs["merge"] is True
+        assert (
+            save.call_args.kwargs["candidate_data"]["context"]["ideal_day"]
+            == "deep focus mornings"
+        )
+
+    def test_check_context_complete_uses_config_completeness_keys(self) -> None:
+        keys = CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
+        assert "ideal_day" in keys
+        assert keys == (
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+            "ideal_day",
+        )
+        assert not hasattr(candidate_mod, "_CONTEXT_TEXT_KEYS")

@@ -1048,6 +1048,15 @@ CONFIDENCE_MULTIPLIERS = {1: 0.0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
 GRADE_VALUES = {"A": 7, "B": 6, "C": 3, "D": 0}
 MAX_GRADE_VALUE = max(GRADE_VALUES.values())
 RUBRIC_TOTAL = 3000
+# AST-1347 — job_data phase contribution breakdown beside {prefix}_score
+PHASE_SCORE_BREAKDOWN_KEY_SUFFIX = "score_breakdown"  # → f"{prefix}_score_breakdown"
+PHASE_SCORE_BREAKDOWN_FIELDS = ("earned", "possible", "max")
+# AST-1348 — Analysis section header title when a phase breakdown is available
+PHASE_SCORE_HEADER_TITLE_TEMPLATE = (
+    "{phase_label} - score: {earned} out of {possible} possible ({max} max total)"
+)
+
+
 def grade_value(letter: str) -> int:
     key = (letter or "").strip().upper()
     if key not in GRADE_VALUES:
@@ -1292,6 +1301,7 @@ CANDIDATE_LIBRARY_CONFIG = {
     ),
     "context_keys": (
         "bio_summary", "backstory", "strengths", "priorities", "deal_breakers",
+        "ideal_day",
         "writing_preferences", "hopes", "interests", "concerns",
         "raw_resume", "raw_profile", "raw_sample",
     ),
@@ -1300,11 +1310,25 @@ CANDIDATE_LIBRARY_CONFIG = {
         "linkedin_profile_text": "raw_profile",
         "sample_cover_text": "raw_sample",
     },
+    # AST-1365: gated prose keys for check_context_complete (Ideal Day joins the set).
+    "context_completeness_keys": (
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "backstory",
+        "ideal_day",
+    ),
     "name_columns": ("first", "last", "full", "pronouns"),
     "linkedin_url_base": "https://www.linkedin.com/in/",
     "github_url_base": "https://github.com/",
     "full_name_join": " ",
 }
+
+assert len(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]) == len(
+    set(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"])
+)
+for _ck in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
+    assert _ck in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ck
 
 # AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
@@ -1441,6 +1465,7 @@ TOPIC_MENU_CONFIG = {
         "priorities",
         "deal_breakers",
         "backstory",
+        "ideal_day",
     ),
     "statuses": ("open", "ready", "retired"),
     "default_status": "open",
@@ -1456,6 +1481,7 @@ assert TOPIC_MENU_CONFIG["informs"] == (
     "priorities",
     "deal_breakers",
     "backstory",
+    "ideal_day",
 )
 assert len(TOPIC_MENU_CONFIG["informs"]) == len(set(TOPIC_MENU_CONFIG["informs"]))
 assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["informs"])
@@ -1469,7 +1495,7 @@ assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["topic_re
 for _req in ("id", "name", "ask", "required", "informs", "status"):
     assert _req in TOPIC_MENU_CONFIG["topic_required_fields"], _req
 # Library homes (string contract): context keys + base_resume artifact name.
-for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+for _ctx in ("strengths", "priorities", "deal_breakers", "backstory", "ideal_day"):
     assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
 assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
 
@@ -1574,6 +1600,7 @@ TOPIC_MENU_GEN_CONFIG = {
         "strengths",
         "priorities",
         "deal_breakers",
+        "ideal_day",
         "hopes",
         "interests",
         "concerns",
@@ -1598,6 +1625,7 @@ TOPIC_MENU_GEN_CONFIG = {
         "strengths",
         "priorities",
         "deal_breakers",
+        "ideal_day",
         "hopes",
         "interests",
         "concerns",
@@ -3612,6 +3640,7 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 "report_artifact_tabs": list(JOBS_RECOMMENDED_ARTIFACT_TABS),
                 "report_top_tabs": list(JOBS_RECOMMENDED_REPORT_TOP_TABS),
                 "report_summary_sections": list(JOBS_RECOMMENDED_REPORT_SUMMARY_SECTIONS),
+                "phase_score_header_title_template": PHASE_SCORE_HEADER_TITLE_TEMPLATE,
                 "meteorite_section": {
                     "section_id": JOBS_RECOMMENDED_METEORITE_SECTION["section_id"],
                     "label": JOBS_RECOMMENDED_METEORITE_SECTION["label"],
@@ -4607,6 +4636,7 @@ NAV_CONFIG = [
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
+            {"label": "Ideal Day", "path": "/candidate/ideal_day"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
             {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
         ],
@@ -5059,6 +5089,14 @@ BUILD_CONFIG = {
         # Splits freeform `location` into place + arrangement for compact-location phrasing.
         "location_arrangement_sep": " / ",
     },
+    # AST-1351: Base Resume / job ArtifactEditor labels — keys == _EXPERIENCE_JOB_ITEM_SCHEMA.
+    "experience_job_ui_fields": [
+        {"key": "company", "label": "Company"},
+        {"key": "title", "label": "Title"},
+        {"key": "dates", "label": "Dates"},
+        {"key": "location", "label": "Location"},
+        {"key": "accomplishments", "label": "Accomplishments"},
+    ],
     # resume_content: documents known section ids; runtime allowed keys are per-candidate structure subset.
     # cover_letter: canonical Subject/Letter; legacy tasks may still output re_line/body until prompts update.
     "artifact_shapes": {
@@ -5080,6 +5118,10 @@ BUILD_CONFIG = {
             "signature": {"type": "str", "required": False},
         },
     },
+    # AST-1350: Print / Open HTML when experience is non-array — exact operator toast.
+    "unsupported_resume_structure_message": (
+        "unsupported resume structure, please regenerate"
+    ),
     # AST-300 / AST-370 / AST-450: dispatch entry TASK_CONFIG key only; further hops via run_next.
     "resume_artifact_chain": {
         "first_task_key": "contemplate_job",
@@ -5517,6 +5559,7 @@ TOKEN_SOURCES = {
     "PRIORITIES":           {"source": "candidate", "path": "context.priorities"},
     "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers"},
     "BACKSTORY":            {"source": "candidate", "path": "context.backstory"},
+    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day"},
     "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences"},
     "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns"},
     "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes"},

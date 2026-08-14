@@ -205,3 +205,21 @@ cd src/ui/frontend && npm run test:component -- \
 ### Extension Surfer libs (moved)
 
 **AST-1254** migrated `test_surfer*.test.ts` from `tests/component/frontend/lib/` → `tests/component/extension/lib/` (WXT Vitest project). Coverage maps live under **`docs/test-bible/extension/lib.md`** (AST-1236–AST-1239) and **`docs/test-bible/extension/scaffold.md`** (AST-1254). Do not re-add Surfer extension-lib manifests here.
+
+### AST-1348 · AST-1346
+
+**Parent:** [AST-1346](https://linear.app/astralcareermatch/issue/AST-1346/add-rubric-score-to-analysis-header). **Publish:** `origin/sub/AST-1346/AST-1348-analysis-header-score-title-chrome`.
+
+`jobScoreBreakdownForGradesField` + `formatPhaseSectionScoreTitle` (round for display; template from manifest). Modal wiring: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Breakdown lookup + title format | `recommendedJobReport.tsx` | **`test_recommendedJobReport.test.tsx`** — **`recommendedJobReport — AST-1348 phase score header helpers`** |
+
+**Broken / obsolete:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
+  -t "AST-1348"
+```
