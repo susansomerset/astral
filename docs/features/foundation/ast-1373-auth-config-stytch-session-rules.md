@@ -75,3 +75,39 @@ SPA must replace the hardcoded `SESSION_DURATION_MINUTES = 60` in `stytchAuthent
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1373
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules` @ `2fa02d7869802800436a5ddbed3d0ade95d16160`
+
+## Traceability
+AC1→Stage 1; AC2→Stage 1 (+ dedicated helper); AC3→Stage 2 — parent authenticate/extend/regression AC deferred to AST-1374 per child boundaries.
+
+## Findings
+
+### acceptable — missing `## Self-Assessment`
+**Location:** plan doc tail  
+**Finding:** No formal self-assessment block (scope/conf axes).  
+**Recommendation:** Optional at this footprint; engineer may add at build if Betty/Radia need it — not blocking.
+
+context_tokens≈18500
+
+---
+
+[plan-rubric] PROCEED (Commit: 2fa02d78) Config policy API ready
+
+AST-1373 plan approved.
+
+---
+
+**Gate check:** Plan Ready, assignee Joan — OK. No `[plan-discuss]` rounds.
+
+**R5 / definition fidelity:** Two-file footprint (`config.py`, `api_system.py`) matches child scope. All three child AC map to Stages 1–2. Parent functional items for authenticate handoff, activity extend, and regression are explicitly out-of-scope (AST-1374). Boundaries honored (no React, Stytch Dashboard, JWT, log-off UX).
+
+**R6 highlights:** Layer imports clean (`ui` → `utils` only). Session literals are plain ints in `AUTH_CONFIG`, not env lookups (`astral.config.secrets-and-env-specific-from-environ`). Dedicated public `GET /api/auth_session_policy` with no `@require_auth` is an explicit, documented exception (`astral.idioms.require-auth-on-protected-endpoints`); does not strip auth from `/api/ui_config`. `get_auth_session_policy()` returns only the two non-secret ints. `pattern.config.config-block` shape matches flat `AUTH_CONFIG` extension. Sibling contract table documents AST-1374 consumption.
+
+**In-session R3/R4 (slim R7):** 14 universal orchestration statutes — all `conforms` (plan is docs-shaped workflow; no git/test-tree violations). Scoped considered: `astral.config.config-source-of-truth`, `astral.config.secrets-and-env-specific-from-environ`, `astral.layers.ui-config-driven-business-logic`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`, `astral.layers.import-direction`, `astral.standards.public-then-helpers`, `astral.standards.dry-and-focused-functions`, `astral.standards.no-cross-contamination`, `astral.standards.names-not-ticket-ids`, `astral.ui.naming-conventions` — all `conforms`. Representative exclusions: `astral.standards.database-header-inventory` (no `data` layer); `astral.batch.*` / `astral.agent.*` / `astral.state.*` (no batch/agent/state touch); `astral.ui.frontend-file-placement` (no `frontend/` paths).
