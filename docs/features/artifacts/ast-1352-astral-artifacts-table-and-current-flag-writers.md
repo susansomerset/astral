@@ -325,3 +325,97 @@ context_tokens≈22000
 ```
 [code-rubric] PROCEED (Commit: 74712e64) data-layer writers clean
 ```
+
+## Bug: AST-1364 — Rename astral_artifacts table to artifacts
+
+### As-is
+The versioned artifact store table (and its ensure/helpers/public writers) is named `astral_artifacts` / `*_astral_artifact*`, unlike entity tables such as `job` and `company` which have no `astral_` table-name prefix.
+
+### To-be
+The SQLite table is named `artifacts`. Ensure helpers, schema flag, index, PK column, and public/data/core call sites use the same unprefixed naming so Save Base Resume still snapshots into this table with identical current-flag semantics.
+
+### Repro
+1. Open any DB that has run AST-1352 ensure (or read `src/data/database.py` header inventory + `_ensure_astral_artifacts_table`).
+2. Observe table name `astral_artifacts` (and symbols `save_astral_artifact`, `astral_artifact_uuid`, etc.).
+3. Compare to inventory peers `job` / `company` — no `astral_` table prefix.
+
+### Root cause
+AST-1352 named the new table `astral_artifacts` (and mirrored that prefix into PK / API / core helper names). Product naming intent was the short table name `artifacts`, consistent with other entity tables.
+
+### Proposed change
+
+Scope is **rename only** — same columns (except PK name), same retire-and-insert behavior, same Save wire. Do **not** change `candidate_data.artifacts.base_resume` (JSON path inside candidate_data — unrelated string). Do **not** invent restore/Print UI. Do **not** edit `tests/**` or `docs/test-bible/**` (Betty).
+
+⚠️ **Decision:** Drop the `astral_` prefix from the **table**, **PK column**, **index**, **schema flag**, **ensure/helper names**, and **public writer/reader names**, and update AST-1353 call sites to match. Keeping `save_astral_artifact` while renaming only the SQL table would leave a permanent mismatch and force dual vocabulary in core/UI comments.
+
+1. In `src/data/database.py` module docstring inventory, replace the `astral_artifacts` bullet with:
+
+   ```
+   - artifacts — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
+     entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT, current INTEGER 0|1,
+     created_at, updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
+     Versioning follows agent_task / rubric_vector current=1 retire-and-insert (AST-1340 / AST-1352;
+     table rename AST-1364).
+   ```
+
+2. Rename module flag `_astral_artifacts_schema_ensured` → `_artifacts_schema_ensured`.
+
+3. Replace `_ensure_astral_artifacts_table` with `_ensure_artifacts_table(conn)` that:
+   - Returns early when `_artifacts_schema_ensured` is True.
+   - If `sqlite_master` has table `artifacts`: ensure index `idx_artifacts_entity_type_current` exists on `(entity_type, entity_id, artifact_type, current)` (create if missing); if column `astral_artifact_uuid` still exists, `ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid`; then set flag and return.
+   - Elif table `astral_artifacts` exists (pre-rename DBs from AST-1352 UAT):
+     - `ALTER TABLE astral_artifacts RENAME TO artifacts`.
+     - `ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid`.
+     - `DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current`.
+     - `CREATE INDEX IF NOT EXISTS idx_artifacts_entity_type_current ON artifacts (entity_type, entity_id, artifact_type, current)`.
+     - `conn.commit()`; set flag; return.
+   - Else `CREATE TABLE artifacts` with columns:
+
+     | Column | Type / constraint |
+     |--------|-------------------|
+     | `artifact_uuid` | `TEXT PRIMARY KEY` |
+     | `entity_type` | `TEXT NOT NULL` |
+     | `entity_id` | `TEXT NOT NULL` |
+     | `artifact_type` | `TEXT NOT NULL` |
+     | `artifact_data` | `TEXT NOT NULL` |
+     | `current` | `INTEGER NOT NULL DEFAULT 1` |
+     | `created_at` | `TIMESTAMP NOT NULL` |
+     | `updated_at` | `TIMESTAMP NOT NULL` |
+
+     plus `CREATE INDEX idx_artifacts_entity_type_current ON artifacts (entity_type, entity_id, artifact_type, current)`; commit; set flag.
+
+4. Rename private helpers and SELECT list:
+   - `_normalize_astral_artifact_identity` → `_normalize_artifact_identity`
+   - `_astral_artifact_row_dict` → `_artifact_row_dict` (dict key `artifact_uuid` instead of `astral_artifact_uuid`)
+   - `_ASTRAL_ARTIFACT_SELECT` → `_ARTIFACT_SELECT` listing `artifact_uuid, …`
+
+5. Rename public API (keep signatures/behavior; swap SQL table/column names):
+   - `save_astral_artifact` → `save_artifact` (UPDATE/INSERT against `artifacts`; return new `artifact_uuid`)
+   - `get_current_astral_artifact` → `get_current_artifact`
+   - `list_astral_artifacts` → `list_artifacts`
+   - Delete the old `*_astral_artifact*` names (no dual aliases).
+
+6. In `src/core/candidate.py`:
+   - Rename `snapshot_saved_base_resume_astral_artifact` → `snapshot_saved_base_resume_artifact`.
+   - Call `database.save_artifact(...)` instead of `database.save_astral_artifact(...)`.
+   - Update the docstring to say table `artifacts` / returned `artifact_uuid`.
+
+7. In `src/ui/api/api_candidate.py`:
+   - Update the import/call of the core helper to `snapshot_saved_base_resume_artifact`.
+   - Update the AST-1353 comment to name table `artifacts` (not `astral_artifacts`).
+
+8. Grep the product tree (`src/**`) for remaining `astral_artifacts` / `save_astral_artifact` / `get_current_astral_artifact` / `list_astral_artifacts` / `astral_artifact_uuid` / `_ensure_astral_artifacts` / `_astral_artifacts_schema` / `snapshot_saved_base_resume_astral_artifact` and clear every hit before Code Complete. Do **not** "fix" hits under `tests/` or `docs/test-bible/` in this ticket — leave those for Betty after fix-board.
+
+### Blast radius
+- **AST-1352 writers** (`src/data/database.py`) — primary rename surface (this doc).
+- **AST-1353 Save wire** (`src/core/candidate.py` `snapshot_saved_base_resume_*`, `src/ui/api/api_candidate.py` PUT path) — must call the renamed public API / helper or Save snapshots break. Sibling plan `docs/features/artifacts/ast-1353-save-base-resume-writes-base-resume-snapshot.md` still documents the old names; product rename is owned here; do not rewrite that sibling plan’s stages in this patch.
+- **Component tests / bible** (Betty): `tests/component/data/database/test_astral_artifacts.py`, confest `_astral_artifacts_schema_ensured` resets, `tests/component/core/test_candidate.py` / `tests/component/ui/api/test_api_candidate.py` AST-1353 cases, `docs/test-bible/data/database/astral_artifacts.md` (+ core/candidate bible rows). Expect fix-board **TESTS: REVISE** → Betty updates symbols/table strings; engineer does not patch the test tree.
+- **Existing local/staging DBs** that already created `astral_artifacts` — covered by the RENAME path in `_ensure_artifacts_table`; no data loss of prior current/history rows.
+- Unrelated: `candidate_data["artifacts"]` JSON key, ArtifactEditor, Print — **out of scope** (different “artifacts” namespace).
+
+### What must still hold
+- Parent AST-1340 / AST-1352 AC: exactly one `current=1` row per `(entity_type, entity_id, artifact_type)` after save; second save retires prior to `current=0` and keeps history listable; UUID PK + timestamps; table listed in data-layer header inventory (now under name `artifacts`).
+- AST-1353 AC: successful Save Base Resume PUT still records live `artifacts.base_resume` into the versioned store; craft/Generate/Regenerate still do **not** write that store.
+- Data layer still raises (no logging) on bad identity / missing `artifact_data`; `entity_type` still validated against `ENTITY_TYPES`.
+- No UI→data import; Save still goes `api_candidate` → core → `database.save_artifact`.
+- No backfill of historical `candidate_data.artifacts.base_resume` for candidates who never Save — rename only, same boundary as AST-1352.
