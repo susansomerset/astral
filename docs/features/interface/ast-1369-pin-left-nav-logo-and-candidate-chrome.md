@@ -158,3 +158,163 @@ cd src/ui/frontend && npm run test:component -- \
 **Bible:** `docs/test-bible/frontend/components.md` shasum `29e2c20a771275d7e8335ff50fed59ab9bd7011c`
 
 — Betty
+
+## Radia review
+
+## Radia review — AST-1369
+
+**Publish ref:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome` @ `4de418048dcf15d81bf3df5fbe99cf5dc23b298d`  
+**Baseline:** `origin/dev`  
+**Product commit:** `8413f4ce` (`NavigationShell.tsx`, `App.css` only)  
+**Tests commit:** `54012807` merged via single `merge-tests(AST-1369)` @ `4de41804`
+
+---
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1369
+**Publish ref:** 4de418048dcf15d81bf3df5fbe99cf5dc23b298d
+**Overall:** DISCUSS
+```
+
+## Statutes checked
+
+64 active statutes scored in-session (registry lists 65; corpus has 64 `status: active`).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | diff layers ui/docs only |
+| astral.agent.do-task-delegation | scoped | not-applicable | diff layers ui/docs only |
+| astral.agent.grade-vector-validation | scoped | not-applicable | diff layers ui/docs only |
+| astral.batch.batch-id-first | scoped | not-applicable | diff layers ui/docs only |
+| astral.batch.batch-id-format | scoped | not-applicable | diff layers ui/docs only |
+| astral.batch.claim-process-release | scoped | not-applicable | diff layers ui/docs only |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | diff layers ui/docs only |
+| astral.config.config-source-of-truth | scoped | conforms | no config surface changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env handling in diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | conforms | no debug artifact paths touched |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | no spike paths touched |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | diff layers ui/docs only |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | diff layers ui/docs only |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `docs/features/interface/ast-1369-…md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty paths only on merge-tests |
+| astral.git.engineer-test-tree-ban | scoped | conforms | product commit `8413f4ce` did not touch test-tree; Betty via merge-tests |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | diff layers ui/docs only |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | diff layers ui/docs only |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | no API/auth handler changes |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | diff layers ui/docs only |
+| astral.layers.import-direction | scoped | conforms | ui-only; no layer violations |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | diff layers ui/docs only |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | layout/CSS only; no new business rules |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | diff layers ui/docs only |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | diff layers ui/docs only |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | diff layers ui/docs only |
+| astral.seed.define-approved | scoped | conforms | no seed/bootstrap changes |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | diff layers ui/docs only |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | diff layers ui/docs only |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | diff layers ui/docs only |
+| astral.standards.debug-contract-gated | scoped | conforms | no backend debug surfaces |
+| astral.standards.dry-and-focused-functions | scoped | conforms | structural wrap; no duplicated logic |
+| astral.standards.in-scope-only | scoped | conforms | footprint matches plan table |
+| astral.standards.logging-via-utils | scoped | conforms | no logging added |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `sidebar-chrome`/`sidebar-scroll` kebab CSS; ticket id only in section comments (existing pattern) |
+| astral.standards.no-cross-contamination | scoped | conforms | nav shell slice only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | no new hardcoded sets |
+| astral.standards.public-then-helpers | scoped | conforms | no new public/helper ordering issues |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | diff layers ui/docs only |
+| astral.state.core-decides-transitions | scoped | not-applicable | diff layers ui/docs only |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | diff layers ui/docs only |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | diff layers ui/docs only |
+| astral.ui.frontend-file-placement | scoped | conforms | edits in `components/` + `App.css` only |
+| astral.ui.naming-conventions | scoped | conforms | no new files; PascalCase component unchanged |
+| astral.ui.single-gunicorn-worker | scoped | conforms | no server/worker changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | exactly one `merge-tests(AST-1369): origin/tests 54012807` |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `merge-tests` / `docs` vocabulary correct |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch topology respected |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1361/AST-1369-…` publish ref |
+| orch.git.merge-on-checkout | universal | conforms | no merge violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | no dev agent branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1361 epic worktree pattern |
+| orch.git.three-permanent-branches | universal | conforms | dev/tests/sub flow intact |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-decision scope creep |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches Stage 1 plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to diff |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review path |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns test/bible delta via merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee through Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | product commit path-clean |
+
+**Straggler (C4):** Joan plan-rubric APPROVED attached; no Excluded-statute list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Parent/plan: no established pinned-chrome pattern; flex+overflow structural split is appropriate |
+
+## Plan adherence
+
+Stage 1 delivered as specified:
+
+- `NavigationShell.tsx`: exact `sidebar-chrome` (logo + candidate wide select / narrow menu) + `sidebar-scroll` (loading/error/groups + `AdminDeployFooter` / spacer) nesting; handlers, fetch, drawer, `NAV_WIDE_MIN_PX`, and admin gating unchanged.
+- `App.css`: TOC `4c` appended; `.sidebar` `overflow-y: auto` → `overflow: hidden`; `.sidebar-chrome` / `.sidebar-scroll` rules with `flex: 1`, `min-height: 0`, `overflow-y: auto`; no sticky positioning.
+- Boundaries held: no `NAV_CONFIG`, candidate APIs, footer redesign, breakpoint literals, or extra files on product commit.
+- Estimate **2** fits actual footprint (two product files, structural DOM/CSS only).
+- Betty: three AST-1369 DOM-split tests + bible entry; AST-1286 block retained for responsive regression.
+
+## Findings
+
+### discuss
+
+- **Location:** Plan Stage 1 “Done when” (≥1024px scroll pinning) vs `test_NavigationShell.test.tsx` AST-1369 block  
+  **Finding:** Plan done-when requires that when nav groups overflow, scrolling moves groups/footer while logo + candidate stay visible. Betty’s new tests assert chrome/scroll **DOM placement** only — no test drives overflow height or asserts chrome remains visible after scroll.  
+  **Recommendation:** Treat as UAT smoke (expand groups until overflow, scroll `.sidebar-scroll`, confirm chrome fixed) unless Betty adds a scroll-behavior case in a follow-up. Not a product-code defect given CSS is correct.
+
+### advisory
+
+- **Location:** `App.css` — `.sidebar-chrome` (plan Stage 1 step 7)  
+  **Finding:** Plan allows `.sidebar-chrome { overflow: visible; }` if narrow open candidate menu clips under `.sidebar { overflow: hidden }`. Implementation has only `flex-shrink: 0`; Betty’s narrow test covers menu-in-chrome DOM, not open-menu clipping.  
+  **Recommendation:** UAT narrow drawer — open candidate menu with long list; if clipped, add `overflow: visible` on chrome only (per plan).
+
+- **Location:** `NavigationShell.tsx` `loadExpanded` / `saveExpanded` (pre-existing)  
+  **Finding:** Bare `catch { }` on localStorage paths unchanged by this ticket.  
+  **Recommendation:** No action for AST-1369; grandfather per §5a silent-failure table.
+
+## What’s solid
+
+- Clean structural split — no duplicated logo/candidate trees, no sticky hacks.
+- Product commit isolated to UI/CSS; test-tree changes Betty-owned via single merge-tests SHA.
+- CSS flex/overflow pattern matches plan and should pin chrome at wide viewports.
+- Responsive shell paths (hamburger, backdrop, close-on-navigate, wide select / narrow menu) preserved; AST-1286 tests still in manifest.
+
+## Recommended actions (downstream — not Radia lane)
+
+1. **UAT:** Wide viewport — expand nav until overflow; confirm logo + candidate stay fixed while groups scroll.
+2. **UAT:** Narrow drawer — open candidate menu; confirm list not clipped (add `overflow: visible` on chrome if needed).
+3. **Optional Betty follow-up:** Component test asserting scroll pinning if team wants automated AC1 coverage.
+
+## Frame diff
+
+(none) — child plan and parent AST-1361 chrome-pin intent align with diff; no scope smuggling or description-frame drift.
+
+## Notes
+
+- Joan validate APPROVED present; no statute exclusions to straggle-check.
+- Product SHA `8413f4ce`; tip SHA `4de41804` includes docs + Betty merge.
+
+context_tokens≈48000
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] REVIEW (Commit: 4de41804) scroll pinning UAT
+```
+
+**C7:** Complete — Chuckles may append full artifact to issue doc, push `docs(AST-1369): Radia review — findings`, post slim upshot, move to **Review Posted** → **resolve-child** not required (no fix-now); datt routes REVIEW per skill. If Susan wants zero discuss items before UT, UAT scroll smoke closes the discuss gap without code changes.
