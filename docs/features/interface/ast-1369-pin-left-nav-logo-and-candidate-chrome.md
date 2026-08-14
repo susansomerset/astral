@@ -318,3 +318,15 @@ context_tokens≈48000
 ```
 
 **C7:** Complete — Chuckles may append full artifact to issue doc, push `docs(AST-1369): Radia review — findings`, post slim upshot, move to **Review Posted** → **resolve-child** not required (no fix-now); datt routes REVIEW per skill. If Susan wants zero discuss items before UT, UAT scroll smoke closes the discuss gap without code changes.
+
+## Resolution (Katherine / resolve) — 2026-08-14
+
+**Publish tip before resolve:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome` @ `46b7750d` (Radia `docs()` intake via sync-child)
+
+| Finding | Action |
+|---------|--------|
+| **discuss** — plan Done-when scroll pinning vs Betty DOM-only tests | No product change. Accept Radia recommendation: UAT smoke (expand groups until overflow, scroll `.sidebar-scroll`, confirm chrome fixed). Optional Betty scroll-behavior test is out of engineer lane. |
+| **advisory** — `.sidebar-chrome` `overflow: visible` if narrow menu clips | No preemptive CSS. Leave `flex-shrink: 0` only; add `overflow: visible` only if UAT shows clipping (plan Stage 1 step 7). |
+| **advisory** — bare `catch` on localStorage | No action (grandfather; pre-existing). |
+
+No `fix-now`. Product tree unchanged this pass.
