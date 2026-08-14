@@ -167,3 +167,166 @@ context_tokens≈52000
 **Verify:** `python3 -m py_compile` on `src/utils/config.py` — pass; import asserts + `validate_topic(..., informs=["ideal_day"])` — pass.
 
 **Note for Betty:** AST-1365 left `test_topic_menu_informs_exclude_ideal_day_until_sibling` asserting Ideal Day is *absent* from informs — that assertion must flip (or the test retire) now that this sibling landed; no test-tree edits in this build.
+
+## Radia review
+
+# Radia review — AST-1367
+
+**Ticket:** AST-1367  
+**Parent:** AST-1360  
+**Publish ref:** `origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists` @ `cc543da36fe465f1a3a142e586dcdaaccfe6d168`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists` (17 files, +1199/−14)  
+**Status gate:** Tests Passed (spawn prompt; trusted)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1367  
+**Publish ref:** `cc543da36fe465f1a3a142e586dcdaaccfe6d168`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent grading changes |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `do_task` routing |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no rubric vectors |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch ids |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no agent-response persistence |
+| `astral.config.config-source-of-truth` | scoped | conforms | informs + GEN allowlists live in `config.py`; runtime reads config |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | plan doc present |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty merge is test-tree only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | `code(AST-1367)` touches `src/utils/config.py` + seed JSON only |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no external layer |
+| `astral.layers.import-direction` | scoped | conforms | utils-only product edits in 1367 commits |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | no UI hardcoding; catalog config-driven |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult render |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | surgical two-row `agent_task.json` edit + `updated_at` bump |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | seed vocabulary aligned with config catalog |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no hot-path seed logic |
+| `astral.seed.define-approved` | scoped | not-applicable | no DEFINE seed |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no `src/data/` in 1367 commits |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no schema |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug logging |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | minimal tuple/assert extensions |
+| `astral.standards.in-scope-only` | scoped | conforms | no `intake.py` / `candidate.py` / craft / NAV edits in 1367 commits |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | domain key `ideal_day` in catalog |
+| `astral.standards.no-cross-contamination` | scoped | conforms | AST-1368 craft rows untouched; only Estelle topic-menu rows in seed |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | closed catalog remains config-owned with equality assert |
+| `astral.standards.public-then-helpers` | scoped | not-applicable | no new helpers |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils→data imports |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run loop |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend in 1367 commits |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | tip is `merge-tests(AST-1367)` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `sync` / `docs` / `test` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub + sync prerequisite |
+| `orch.git.ftr-sub-topology` | universal | conforms | child `sub/AST-1360/...` |
+| `orch.git.merge-on-checkout` | universal | conforms | `sync(publish-ref)` for Stage 0 ancestry |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear stack |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/...` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1360 epic |
+| `orch.git.three-permanent-branches` | universal | conforms | diff vs `origin/dev` |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no product-policy forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | stages 1–2 match plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | n/a |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | tests/bible via Betty merge |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | n/a |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits |
+
+**Active set count:** 64 rows (per `canon/statutes/README.md` harvested table). No `violates` or `needs-discussion` rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | Plan cites AST-1075 explicit-list pattern in prose only; no `canon/patterns/**` id |
+
+## Plan adherence
+
+**AST-1367 product commits (`5c41750e` + `8d9db131`):**
+
+**Stage 1 (config):**
+- `ideal_day` appended after `backstory` in `TOPIC_MENU_CONFIG["informs"]` ✓
+- Equality assert updated to seven-string tuple ✓
+- Library-home loop extended to include `ideal_day` ✓
+- `ideal_day` inserted after `deal_breakers` in both `packet_context_keys` and `patchable_context_keys` ✓
+- No `intake.py` / `candidate.py` edits in engineer commits ✓
+
+**Stage 2 (seed):**
+- `topic_menu_preamble_confirm.cache_prompt`: `ideal_day` after `deal_breakers` in patch allowlist ✓
+- `topic_menu_generate.cache_prompt`: `ideal_day` appended to informs vocabulary line ✓
+- Only those two rows contain `ideal_day` in `agent_task.json` on tip ✓
+- `updated_at` bumped on edited rows only ✓
+- No `craft_*` / joblist / GET / meteorite prompt edits ✓
+
+**Stage 0:** `sync(publish-ref): origin/sub/AST-1360/AST-1366-…` brought AST-1365 library/token ancestry (`ideal_day` ∈ `context_keys`, absent from `informs` pre–Stage 1) — matches plan gate.
+
+**Estimate (2):** Footprint matches — config tuple/assert edits + two seed prompt strings.
+
+**Test manifest (Betty):** `TestAst1367IdealDayTopicMenuInforms`, revised `TestAst1074TopicMenuConfig`, `TestAst1075TopicMenuCatalogRows` (ideal_day in generate cache + confirm patch list), `test_validate_topic_accepts_ideal_day_inform`; obsolete `test_topic_menu_informs_exclude_ideal_day_until_sibling` removed on tip. Bible entry in `docs/test-bible/utils/config.md` aligned.
+
+**Cross-ticket boundaries:** No AST-1368 craft edits; no AST-1366 NAV edits in 1367 commits. AST-1365 library/token changes appear in full diff vs `origin/dev` as prerequisite rollup, not 1367 scope creep.
+
+**Joan straggler (C4):** Plan-rubric APPROVED attached; no Excluded-statute list.
+
+## Findings
+
+### fix-now
+
+*(none)*
+
+### discuss
+
+*(none)*
+
+### advisory
+
+- **Sibling test/product skew on branch tip:** `merge-tests` ancestry includes `TestAst1366IdealDayCandidateNav` and `TestAst1368IdealDayCraftDoCachePrompt`, but this publish ref’s product tree lacks AST-1366 NAV and AST-1368 `craft_do_rubric` seed changes. Betty’s narrowed AST-1367 manifest is green; a broad `test_repo_admin_json` / branch-lock run may fail until siblings land on `ftr`. Expected parallel-child pattern — not an AST-1367 implementation defect.
+- **Config vs seed alignment:** Runtime `INFORMS_CATALOG` injection and seed explicit lists both include `ideal_day` — good. Operators editing seed prompts later must keep confirm patch list and generate informs line in sync with `TOPIC_MENU_CONFIG["informs"]` (existing AST-1075 discipline).
+
+## What’s solid
+
+- Closed-catalog extension done config-first; load-time asserts prevent drift.
+- Seed vocabulary mirrors config placement (`ideal_day` after `deal_breakers` in patch list; after `backstory` in informs catalog).
+- No duplicate Ideal Day rows across craft tasks — correct boundary with AST-1368.
+- Betty flipped the AST-1365 exclusion test and added `validate_topic` coverage for the new inform target.
+
+## Frame diff
+
+**AST-1367 frame:** Topic Menu informs + Estelle allowlists — **matches**.
+
+**Rollup note:** Full three-dot diff vs `origin/dev` also carries AST-1365 library/gate stack (and docs/tests from siblings via `sync` + `merge-tests`); required for token resolution, not 1367 scope inflation.
+
+## Notes
+
+- §5f / §5g not triggered.
+- `agent_task.json` diff vs `origin/dev` is surgical (two Estelle topic-menu rows only).
+- C7 artifact complete.
+
+context_tokens≈45000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: cc543da3) Topic Menu informs allowlists
+```
