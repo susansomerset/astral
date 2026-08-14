@@ -2888,3 +2888,16 @@ Shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` requires `highlights` (str) immediat
   tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
   -q
 ```
+
+
+### AST-1365 · AST-1360
+
+`ideal_day` in `CANDIDATE_LIBRARY_CONFIG["context_keys"]` + `context_completeness_keys`; `TOKEN_SOURCES["IDEAL_DAY"]`. Primary gate/save coverage: **`docs/test-bible/core/candidate.md`** § AST-1365 — **`TestAst1365IdealDayLibraryToken`**, revised **`TestCheckContextCompleteExtended`**.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary \
+  -q
+```
