@@ -100,3 +100,39 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1377 · AST-1376
+
+**Parent:** [AST-1376 — Missing bootstrap steps for ref_agent_data_id](https://linear.app/astralcareermatch/issue/AST-1376/missing-bootstrap-steps-for-ref-agent-data-id). **Publish:** `origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data`.
+
+Legacy `agent_data` tables missing `ref_agent_data_id` gain a nullable TEXT column via `_ensure_agent_data_schema` (same ADD COLUMN idiom as `entity_id`); second ensure / upsert-registry startup is idempotent; create-path unchanged. Does **not** own historical backfill (**AST-978**) or craft_do_rubric token limits.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fresh CREATE + legacy ALTER (regression) | `src/data/database.py` | **`TestAst977AgentDataSelfRefDedupe::test_ensure_schema_adds_ref_column_on_fresh_and_legacy`** |
+| Legacy ADD nullable + upsert ensure idempotent | `src/data/database.py` | **`TestAst1377EnsureRefAgentDataId::test_legacy_ensure_adds_nullable_ref_idempotent`** |
+| Write/read using `ref_agent_data_id` after ensure | `src/data/database.py` | **`TestAst1377EnsureRefAgentDataId::test_legacy_write_read_uses_ref_after_ensure`** |
+| Startup upsert-registry leaves column present | `src/data/database.py` | **`TestAst1377EnsureRefAgentDataId::test_startup_upsert_registry_ensures_ref_column`** |
+
+**Broken / obsolete:** none — AST-977 schema test remains the fresh+legacy ALTER smoke; AST-1377 adds idempotency, post-ensure write/read, and bootstrap registry reach.
+
+**Integration:** no existing `tests/integration/` scenario asserts `agent_data` schema ensure / `ref_agent_data_id` DDL — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Fresh + legacy ALTER regression: `tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_ensure_schema_adds_ref_column_on_fresh_and_legacy`
+2. Legacy nullable ADD + idempotent upsert ensure: `tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId::test_legacy_ensure_adds_nullable_ref_idempotent`
+3. Post-ensure write/read (no `OperationalError`): `tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId::test_legacy_write_read_uses_ref_after_ensure`
+4. Startup registry ensure: `tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId::test_startup_upsert_registry_ensures_ref_column`
+
+**AST-1377** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_ensure_schema_adds_ref_column_on_fresh_and_legacy \
+  tests/component/data/database/test_agent_data.py::TestAst1377EnsureRefAgentDataId \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
