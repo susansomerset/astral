@@ -2901,3 +2901,14 @@ Shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` requires `highlights` (str) immediat
   tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary \
   -q
 ```
+
+
+### AST-1366 · AST-1360
+
+Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and Writing Preferences. Routed page + save: **`docs/test-bible/frontend/pages.md`** § AST-1366.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav \
+  -q
+```

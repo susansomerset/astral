@@ -8,6 +8,8 @@ import { renderWithProviders } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", () => ({
   default: vi.fn(),
+  setAuthTokenGetter: vi.fn(),
+  setUnauthorizedHandler: vi.fn(),
 }))
 
 const mockedApi = vi.mocked(api)
