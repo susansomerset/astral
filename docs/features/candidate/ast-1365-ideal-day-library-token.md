@@ -119,3 +119,24 @@ return True
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1365
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1360/AST-1365-ideal-day-library-token` @ `30e71a61fc979894fd693df5692f865c18355c00`
+
+## Traceability
+AC1→Stage 2 (persist/read via existing `save_candidate_data` + PUT `/api/candidates/<id>/data`); AC2→Stage 1 `TOKEN_SOURCES["IDEAL_DAY"]` → `context.ideal_day`; AC3→Stage 1 `context_completeness_keys` + Stage 2 `check_context_complete` config loop.
+
+### Findings
+
+**acceptable** — Stage 2 AC1 says “POST”; live API is PUT merge on `/api/candidates/<id>/data`. Semantics match; wording only.
+
+**acceptable** — Deleting `_CONTEXT_TEXT_KEYS` will break `tests/component/core/test_candidate.py` (`TestCheckContextCompleteExtended`); plan omits test touch. Expected at `test-child` / Betty manifest — not a plan defect for this child’s stated files.
+
+**acceptable** — Linear assignee is Ada (not Joan) at fetch time; Chuckles seeded this spawn — no plan impact.
+
+context_tokens≈42000
