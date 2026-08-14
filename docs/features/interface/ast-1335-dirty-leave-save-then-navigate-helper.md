@@ -325,3 +325,27 @@ All three stages match the plan bible (data router, hook contract, proposed patt
 Clean separation (hook + data router now; wiring AST-1336). Hook matches parent AC intent. Strict Mode guarded. Betty tests cover predicates and outcomes. Engineer respects test-tree ban.
 
 context_tokens≈42000
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/59c05b5726a1fbaab248e9e096e23748/12fac989-7e27-4f78-b679-c17923aeef89/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/59c05b5726a1fbaab248e9e096e23748/d3aa3598-b0a6-4958-ba15-31edc12504c2/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ee19535e-9c82-4611-851b-0d9e59df58df/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/59c05b5726a1fbaab248e9e096e23748/e8de13f2-17ce-4338-a74f-1703f751e16a/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1315 (parent) | ftr/AST-1315-do-not-navigate-away-from-dirty-content |
+| AST-1335 | sub/AST-1315/AST-1335-dirty-leave-save-then-navigate-helper |
+| AST-1336 | sub/AST-1315/AST-1336-candidate-profile-dirty-leave-wiring |
+| AST-1343 | sub/AST-1315/AST-1343-dirty-flag-not-cleared-after-undo-virgin-restore |
+
+**Epic worktree:** `astral-AST-1315/` — one active sub checked out at a time.
