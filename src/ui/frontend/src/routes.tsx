@@ -40,6 +40,7 @@ import Strengths from "./pages/CandidateStrengths"
 import Priorities from "./pages/CandidatePriorities"
 import DealBreakers from "./pages/CandidateDealBreakers"
 import Backstory from "./pages/CandidateBackstory"
+import IdealDay from "./pages/CandidateIdealDay"
 import WritingPreferences from "./pages/CandidateWritingPreferences"
 import CandidateSurferConsent from "./pages/CandidateSurferConsent"
 import CandidateSurfer from "./pages/CandidateSurfer"
@@ -112,6 +113,7 @@ const routes: RouteObject[] = [
           { path: "candidate/priorities", element: <Priorities /> },
           { path: "candidate/deal_breakers", element: <DealBreakers /> },
           { path: "candidate/backstory", element: <Backstory /> },
+          { path: "candidate/ideal_day", element: <IdealDay /> },
           { path: "candidate/writing_preferences", element: <WritingPreferences /> },
           { path: "candidate/surfer_consent", element: <CandidateSurferConsent /> },
 

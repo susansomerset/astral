@@ -4632,6 +4632,7 @@ NAV_CONFIG = [
             {"label": "Priorities", "path": "/candidate/priorities"},
             {"label": "Deal Breakers", "path": "/candidate/deal_breakers"},
             {"label": "Backstory", "path": "/candidate/backstory"},
+            {"label": "Ideal Day", "path": "/candidate/ideal_day"},
             {"label": "Writing Preferences", "path": "/candidate/writing_preferences"},
             {"label": "Surfer Consent", "path": "/candidate/surfer_consent"},
         ],
