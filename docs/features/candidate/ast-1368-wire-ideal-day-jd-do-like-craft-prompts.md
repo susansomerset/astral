@@ -136,3 +136,25 @@ PY
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+**Rubric:** plan-rubric
+**Ticket:** AST-1368
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts` @ `482e445504320fa4296ce1cf2cd7f1e3e7578a90`
+
+### Traceability
+AC4→Stage 1 (`craft_do_rubric.cache_prompt` gains `{$IDEAL_DAY}` peer section; LIKE + Job Description inherit via existing `{$CALLER_CACHE_A}` chain — verified in plan Stage 1 §6); Stage 0 gates `TOKEN_SOURCES["IDEAL_DAY"]` from AST-1365.
+
+### Findings
+
+**acceptable** — Prior contaminated publish tip (`bb728bef`, sibling product + wrong plan) is documented on-ticket; `origin/sub/…/AST-1368-…` tip is now plan-only `482e4455`. Chuckles should keep publish ref on that clean SHA before build.
+
+**acceptable** — `craft_joblist_rubric.cache_prompt` will diverge from DO (still no `{$IDEAL_DAY}`) while DO gains it; parent in-scope-only excludes joblist — plan’s explicit non-touch is correct.
+
+**acceptable** — Meteorite hop prompt rows unchanged; enriched candidate-context text may flow through `{$CALLER_CACHE_A}` as today for Strengths/Priorities — not a meteorite prompt edit.
+
+**acceptable** — Linear assignee Joan Clarke (validator identity collision only); no plan impact.
+
+context_tokens≈52000
