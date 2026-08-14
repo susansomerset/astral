@@ -419,3 +419,16 @@ Scope is **rename only** — same columns (except PK name), same retire-and-inse
 - Data layer still raises (no logging) on bad identity / missing `artifact_data`; `entity_type` still validated against `ENTITY_TYPES`.
 - No UI→data import; Save still goes `api_candidate` → core → `database.save_artifact`.
 - No backfill of historical `candidate_data.artifacts.base_resume` for candidates who never Save — rename only, same boundary as AST-1352.
+
+## Radia review (AST-1364 review-fix)
+
+**Verdict:** REVIEW → Chuckles rebuild — Commit after clean cherry-pick onto ftr
+
+**fix-now (Chuckles mechanical — done):** publish ref had been contaminated with Ideal Day / AST-1369 history via sync(dev). Rebuilt `origin/sub/AST-1340/AST-1364-…` from `origin/ftr/AST-1340-…` + cherry-picks `docs(AST-1364)` / `test(AST-1364)` / `merge-tests(AST-1364)` / `code(AST-1364)` only.
+
+**Product (AST-1364):** PROCEED after clean rebuild — table/API rename `astral_artifacts` → `artifacts`; Betty bug-repro pins unprefixed public API.
+
+**Discuss:** (none remaining after rebuild)
+
+**Advisory:** Migration path (RENAME TABLE) untested in Betty repro (fresh-DB only); UAT should exercise one staging DB that still has `astral_artifacts`.
+
