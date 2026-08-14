@@ -330,3 +330,24 @@ context_tokens≈48000
 | **advisory** — bare `catch` on localStorage | No action (grandfather; pre-existing). |
 
 No `fix-now`. Product tree unchanged this pass.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/590b2bf25e998fe7b7c984e536bd8f7d/f0c2a361-ea40-4001-8087-cb0ed21b4f02/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/8a230259-5147-42c4-9bf9-06fe25d758ab/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/590b2bf25e998fe7b7c984e536bd8f7d/6090364c-b5d8-4920-aafa-eb6c07e759c3/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1361 (parent) | ftr/AST-1361-freeze-astral-logo-candidate-selection |
+| AST-1369 | sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome |
+
+**Epic worktree:** `astral-AST-1361/` — one active sub checked out at a time.
