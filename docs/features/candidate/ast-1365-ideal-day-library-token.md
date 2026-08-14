@@ -140,3 +140,17 @@ AC1→Stage 2 (persist/read via existing `save_candidate_data` + PUT `/api/candi
 **acceptable** — Linear assignee is Ada (not Joan) at fetch time; Chuckles seeded this spawn — no plan impact.
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Built:** `astral-AST-1360` @ `d190d916` on `origin/sub/AST-1360/AST-1365-ideal-day-library-token`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `30e71a61` | Plan doc |
+| 1 | `5caa4ebf` | `ideal_day` in library + `context_completeness_keys` + `{$IDEAL_DAY}` |
+| 2 | `d190d916` | `check_context_complete` from config + data-model row |
+
+**Verify:** `python3 -m py_compile` on `src/utils/config.py`, `src/core/candidate.py` — pass; import + `resolve_tokens` empty/set Ideal Day — pass.
+
+**Note for Betty:** Joan flagged `tests/component/core/test_candidate.py` (`TestCheckContextCompleteExtended`) will need the fifth key once Ideal Day is gated; no test-tree edits in this build.
