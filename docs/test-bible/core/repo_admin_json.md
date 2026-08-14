@@ -458,3 +458,32 @@ UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows bac
   tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows \
   -q
 ```
+
+
+### AST-1368 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts`.
+
+`craft_do_rubric.cache_prompt` gains Ideal Day / `{$IDEAL_DAY}` after Back Story and before Base Resume. LIKE + Job Description inherit via existing `{$CALLER_CACHE_A}` (no direct Ideal Day rows). Joblist / GET / meteorite craft rows intentionally omit `{$IDEAL_DAY}`. Depends on **AST-1365** `TOKEN_SOURCES["IDEAL_DAY"]`. Does **not** own Candidate UI (**AST-1366**) or Topic Menu informs (**AST-1367**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DO cache Ideal Day + inheritance / boundaries | `data/admin/agent_task.json` | **`TestAst1368IdealDayCraftDoCachePrompt`** |
+
+**Broken / obsolete this pass:** none — additive seed prompt section only (no whole-file fixture byte lock on `craft_do_rubric`).
+
+**Integration:** no existing scenario asserts craft_do Ideal Day token — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Craft DO Ideal Day + LIKE/JD caller-cache + out-of-scope omit: `tests/component/core/test_repo_admin_json.py::TestAst1368IdealDayCraftDoCachePrompt`
+
+**AST-1368** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1368IdealDayCraftDoCachePrompt \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
