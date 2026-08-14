@@ -105,3 +105,27 @@ No API, config, `AdminDeployFooter.tsx`, auth, `CandidateContext`, logo asset, p
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1369
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome` @ `e3a12a90578ac83a643ceae93a96d6b8a384df9c`
+
+## Traceability
+AC1–5 → Stage 1: restructure `<nav>` into `.sidebar-chrome` (logo + candidate, handlers unchanged) and `.sidebar-scroll` (loading/error/groups + admin footer/spacer); `.sidebar` `overflow: hidden`, `.sidebar-scroll` `flex:1; min-height:0; overflow-y:auto` pins chrome at ≥1024px; ≤1023px hamburger/backdrop/close-on-navigate/candidate-menu paths untouched; `isAdmin` / `setSelectedId` / disable rules untouched.
+
+## Findings
+
+### acceptable
+- **Location:** Stage 1 — same DOM wide and narrow  
+  **Finding:** Pinning applies on narrow as well as wide (logo/candidate stop scrolling inside the drawer); parent functional scope emphasizes wide viewports; child AC4 tests shell interactions, not narrow logo scroll.  
+  **Recommendation:** Accept as structural consequence of one markup path; optional narrow smoke during UAT.
+
+**R6 checklist (summary):** Definition fidelity ✓ — matches AST-1361 chrome-pin intent, respects boundaries (no NAV_CONFIG, candidate APIs, footer pin, asset/breakpoint changes). Layer/config ✓ — ui-only, no new business rules or config. File placement ✓ — existing `NavigationShell.tsx` + `App.css` only, flat components, TOC `4c` append. Patterns ✓ — parent cites no established pinned-chrome pattern; flex+overflow matches “small shell/CSS structure.” DRY ✓ — single structural split vs duplicated sticky rules. Self-assessment ✓ — estimate confirm present; ⚠️ decisions are specific and grounded.
+
+**In-session R3 (not printed per §7):** All 17 universal `orch.*` statutes conform (plan is docs-shaped ui slice; no git/role/pipeline violations). Considered scoped: `astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.ui.naming-conventions`, `astral.layers.import-direction` — all **conforms**. Hundreds of other scoped statutes excluded (layers/paths/change_types mismatch — e.g. batch, agent, data, config blocks).
+
+context_tokens≈52000
