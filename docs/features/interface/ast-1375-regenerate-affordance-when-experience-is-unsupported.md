@@ -92,3 +92,24 @@ const canGenerate =
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1375
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience` @ `243b372d55`
+
+## Traceability
+
+AC1–AC5 → Stage 1 (`artifact_generate_inflight_hide_states` in manifest), Stage 2 (TS typing), Stage 3 (`baseResumeUnsupportedEscape` + unchanged `craft_resume_base` / confirm / in-flight chrome). Stages 1–3 → parent Purpose, Functional scope, and all five AC bullets; no orphan stages; boundaries (no migration, no message literal change, no Print/no-emit reopen, AST-1253 in-flight hide preserved, `base_resume` + `!jobPersistence` only) explicit in Files Changed out-of-scope and Stage 3 gates.
+
+## Findings
+
+None `fix-now`. No `discuss` items that block build.
+
+**In-session statute pass (R1–R3, not repeated in slim upshot):** Universal orchestration/git statutes — all `conforms` (plan touches only `src/utils/config.py` + two frontend files; tests/bible explicitly out of scope; no git/process violations). Scoped product statutes cited by parent — `astral.layers.ui-config-driven-business-logic`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.standards.dry-and-focused-functions`, `astral.standards.names-not-ticket-ids` — all `conforms`: state hide list lives in `build_state_ui_manifest()` with `CANDIDATE_STATES` assert; escape hatch extends existing AST-1253 manifest-driven visibility rather than ad-hoc React state sets; `parseExperienceJobs` reuse aligns affordance with the unsupported notice; layer/placement/naming unchanged; identifiers domain-shaped (`artifact_generate_inflight_hide_states`, `baseResumeUnsupportedEscape`). Patterns `pattern.ui.shared-button-roles` and `pattern.config.config-block` — plan preserves `btn primary` / `in-flight` and config-block ownership. R6 adversarial checklist — layer/config/placement/DRY/scope gates pass; As-is/To-be matches code (`canGenerate` today is allowlist-only at ~363; `gen_states` at config ~3594–3601).
+
+context_tokens≈42000
+
