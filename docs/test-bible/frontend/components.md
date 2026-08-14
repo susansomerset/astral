@@ -648,6 +648,30 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1369 · AST-1361
+
+**Parent:** [AST-1361 — Freeze the Astral Logo and the candidate selection](https://linear.app/astralcareermatch/issue/AST-1361/freeze-the-astral-logo-and-the-candidate-selection). **Publish:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome`.
+
+`NavigationShell` + `App.css` split the left nav into `.sidebar-chrome` (logo + candidate control, `flex-shrink: 0`) and `.sidebar-scroll` (loading/error/groups + admin footer/spacer, `flex: 1; min-height: 0; overflow-y: auto`). `.sidebar` uses `overflow: hidden` (no whole-pane scroll). No sticky positioning; admin deploy footer stays in the scroll region. AST-1286 responsive shell (wide select / narrow drawer+menu) unchanged. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome / scroll DOM split (wide) | `NavigationShell.tsx` + `App.css` | **`test_NavigationShell.test.tsx`** — **`AST-1369 pinned left-nav chrome` → wide: logo + candidate live in sidebar-chrome; groups + footer in sidebar-scroll** |
+| Same split on narrow + menu in chrome | same | **`narrow: same chrome/scroll split; candidate menu stays in chrome`** |
+| Loading/error in scroll region | same | **`loading/error messages render inside sidebar-scroll, not chrome`** |
+| Responsive shell regression (AC4–5) | same | **`AST-1286 responsive shell`** block (hamburger/backdrop/navigate/candidate lock) — re-run |
+
+**Broken / obsolete:** none — existing shell selectors (combobox, hamburger, nav groups, deploy footer) still resolve after the wrapper divs.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` — API-only; no shell/CSS contract; no revision. Do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+---
+
 ### AST-1302 · AST-1166 (list icon-control remediation)
 
 **Parent:** [AST-1166 — Button consistency](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency). **Publish:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`.

@@ -233,4 +233,77 @@ describe("NavigationShell", () => {
       expect(localStorage.getItem("astral_selected_candidate")).toBe("c1")
     })
   })
+
+  describe("AST-1369 pinned left-nav chrome", () => {
+    it("wide: logo + candidate live in sidebar-chrome; groups + footer in sidebar-scroll", async () => {
+      stubNavViewport(true)
+      mockShellApis({ isAdmin: true })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByText("Jobs")).toBeInTheDocument())
+
+      const sidebar = document.getElementById("app-sidebar") as HTMLElement
+      const chrome = sidebar.querySelector(":scope > .sidebar-chrome") as HTMLElement
+      const scroll = sidebar.querySelector(":scope > .sidebar-scroll") as HTMLElement
+      expect(chrome).not.toBeNull()
+      expect(scroll).not.toBeNull()
+      expect(chrome.nextElementSibling).toBe(scroll)
+
+      expect(within(chrome).getByAltText("Astral")).toBeInTheDocument()
+      expect(within(chrome).getByRole("combobox")).toBeInTheDocument()
+      expect(chrome.querySelector(".nav-group")).toBeNull()
+      expect(chrome.querySelector("[aria-label='Deploy status']")).toBeNull()
+
+      expect(within(scroll).getByText("Jobs")).toBeInTheDocument()
+      expect(within(scroll).getByLabelText("Deploy status")).toBeInTheDocument()
+      expect(scroll.querySelector(".sidebar-logo")).toBeNull()
+      expect(scroll.querySelector(".sidebar-candidate-select")).toBeNull()
+    })
+
+    it("narrow: same chrome/scroll split; candidate menu stays in chrome", async () => {
+      stubNavViewport(false)
+      mockShellApis({ isAdmin: true })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByRole("button", { name: "Ada Lovelace" })).toBeInTheDocument())
+
+      const sidebar = document.getElementById("app-sidebar") as HTMLElement
+      const chrome = sidebar.querySelector(":scope > .sidebar-chrome") as HTMLElement
+      const scroll = sidebar.querySelector(":scope > .sidebar-scroll") as HTMLElement
+      expect(chrome.nextElementSibling).toBe(scroll)
+      expect(within(chrome).getByAltText("Astral")).toBeInTheDocument()
+      expect(chrome.querySelector(".sidebar-candidate-menu")).not.toBeNull()
+      expect(scroll.querySelector(".sidebar-candidate-menu")).toBeNull()
+      expect(within(scroll).getByText("Jobs")).toBeInTheDocument()
+    })
+
+    it("loading/error messages render inside sidebar-scroll, not chrome", async () => {
+      mockedApi.mockImplementation(async (url: string) => {
+        if (url === "/api/me") {
+          return {
+            ok: true,
+            json: async () => ({ user_id: "admin-1", name: "Admin", is_admin: true }),
+          } as Response
+        }
+        if (url === "/api/candidates") {
+          return { json: async () => candidatesFixture } as Response
+        }
+        if (url.startsWith("/api/nav_config")) {
+          return { ok: false, status: 500 } as Response
+        }
+        if (url === "/api/deploy_status") {
+          return {
+            ok: true,
+            json: async () => ({ environment: "local", uptime: "1m", uptime_seconds: 60 }),
+          } as Response
+        }
+        throw new Error(url)
+      })
+      renderWithProviders(<NavigationShell />)
+      expect(document.querySelector(".sidebar-chrome .sidebar-logo")).not.toBeNull()
+      expect(document.querySelector(".sidebar-scroll .sidebar-loading")).not.toBeNull()
+      await waitFor(() => {
+        expect(document.querySelector(".sidebar-scroll .sidebar-error")).not.toBeNull()
+      })
+      expect(document.querySelector(".sidebar-chrome .sidebar-error")).toBeNull()
+    })
+  })
 })
