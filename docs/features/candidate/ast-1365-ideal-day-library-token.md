@@ -154,3 +154,150 @@ context_tokens≈42000
 **Verify:** `python3 -m py_compile` on `src/utils/config.py`, `src/core/candidate.py` — pass; import + `resolve_tokens` empty/set Ideal Day — pass.
 
 **Note for Betty:** Joan flagged `tests/component/core/test_candidate.py` (`TestCheckContextCompleteExtended`) will need the fifth key once Ideal Day is gated; no test-tree edits in this build.
+
+## Radia review
+
+# Radia review — AST-1365
+
+**Ticket:** AST-1365  
+**Parent:** AST-1360  
+**Publish ref:** `origin/sub/AST-1360/AST-1365-ideal-day-library-token` @ `0437d9c87e1d8bb65396db78d86b1f171305fa06`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1360/AST-1365-ideal-day-library-token` (8 files, +350/−8)  
+**Status gate:** Tests Passed (spawn prompt; trusted)
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1365  
+**Publish ref:** `0437d9c87e1d8bb65396db78d86b1f171305fa06`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no agent/grade payload changes |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `do_task` / agent routing changes |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no rubric vector / grading changes |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch claim paths touched |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch id emission |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no dispatcher claim/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no agent-response persistence |
+| `astral.config.config-source-of-truth` | scoped | conforms | `context_completeness_keys` + `IDEAL_DAY` token live in `config.py`; gate reads config |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env wiring |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact paths |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed changes |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no run-next / chain edits |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | `docs/features/candidate/ast-1365-ideal-day-library-token.md` present |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty merge is test-tree only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | product commits touch `src/` only; tests land via `merge-tests` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no `external/` changes |
+| `astral.layers.import-direction` | scoped | conforms | `core`→`utils.config` only; no new layer bends |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/` changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | no UI layer changes |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult/render paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API/auth surface changes |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON edits |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog conflict |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed hot-path changes |
+| `astral.seed.define-approved` | scoped | not-applicable | no DEFINE seed work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator-row seeding |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage-join seed |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no `data/` layer changes |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no schema/migration |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no debug logging added |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | small, focused gate refactor |
+| `astral.standards.in-scope-only` | scoped | conforms | no NAV/TOPIC_MENU/craft/agent_task smuggling; explicit boundary test |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | domain key `ideal_day`; ticket id only in comment carve-out |
+| `astral.standards.no-cross-contamination` | scoped | conforms | sibling-owned surfaces untouched |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | `_CONTEXT_TEXT_KEYS` removed; config is source |
+| `astral.standards.public-then-helpers` | scoped | conforms | public `check_context_complete` unchanged contract |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils→data late imports |
+| `astral.state.core-decides-transitions` | scoped | conforms | gate still read-only (no state write) |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job state machine |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run loop changes |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend files |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI files |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | tip is `merge-tests(AST-1365)` @ tests SHA |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `docs` / `test` / `merge-tests` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub-branch topology respected |
+| `orch.git.ftr-sub-topology` | universal | conforms | child `sub/AST-1360/...` |
+| `orch.git.merge-on-checkout` | universal | conforms | no rebase/force signals in diff |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commit stack |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/...` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1360 epic worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | diff vs `origin/dev` only |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no product-policy forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | implementation matches staged plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | n/a to code |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test + bible updates via Betty merge |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | n/a |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada assignee; review-only pass |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits in product commits |
+
+**Active set count:** 64 rows (per `canon/statutes/README.md` harvested table). No `violates` or `needs-discussion` rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | Plan / Joan artifact cite no `canon/patterns/**` ids |
+
+## Plan adherence
+
+Implementation matches Joan **APPROVED** plan (stages 1–2) on tip `0437d9c8`:
+
+- `ideal_day` inserted after `deal_breakers` in `context_keys`.
+- `context_completeness_keys` tuple + load-time uniqueness/subset asserts added.
+- `TOKEN_SOURCES["IDEAL_DAY"]` → `context.ideal_day` after `BACKSTORY`.
+- `_CONTEXT_TEXT_KEYS` removed; `check_context_complete` iterates config keys with `isinstance(ctx, dict)` guard; `progress_rank` short-circuit preserved.
+- `CANDIDATE_DATA_MODEL.md` row + gated-field wording updated.
+- Out-of-scope surfaces correctly untouched (`TOPIC_MENU_CONFIG["informs"]`, NAV, craft prompts, intake schemas).
+
+**Estimate (2):** Footprint matches — two `src/` modules, one data-model doc, Betty test merge. No scope inflation.
+
+**Cross-ticket boundaries:** `TestAst1365IdealDayLibraryToken::test_topic_menu_informs_exclude_ideal_day_until_sibling` locks AST-1367 boundary. No AST-1366/1368 leakage.
+
+**Test manifest:** Betty bible entries + component tests align with qa-child manifest (`TestAst1365IdealDayLibraryToken`, revised `TestCheckContextCompleteExtended`, `TestAst1365IdealDayLibrary`). `merge-tests` commit present at tip.
+
+**Joan straggler (C4):** Plan-rubric verdict attached (APPROVED); no Excluded-statute list in artifact — nothing to straggle.
+
+## Findings
+
+### fix-now
+
+*(none)*
+
+### discuss
+
+*(none)*
+
+### advisory
+
+- **UAT / parent epic:** Candidates who previously satisfied the four legacy gated keys but have no `context.ideal_day` will now fail `check_context_complete` until Ideal Day is filled (via future AST-1366 UI or existing PUT merge). Plan + parent explicitly accept empty-until-edited — not a defect; worth noting for Susan’s UAT on AST-1360.
+
+## What’s solid
+
+- Config-driven completeness list with load-time asserts prevents silent drift (`astral.standards.no-hardcoded-sets` + `astral.config.config-source-of-truth`).
+- Token resolution follows existing peer pattern; empty → `""` verified in tests.
+- Defensive `ctx` dict guard is a small hardening beyond prior code.
+- Explicit sibling-boundary test prevents accidental Topic Menu informs expansion.
+
+## Frame diff
+
+(none) — product diff matches plan frame; test/bible additions are pipeline-owned (Betty) and anticipated by Joan’s “tests will break” note.
+
+## Notes
+
+- Joan plan-rubric verdict attached; no Excluded statutes listed.
+- §5f / §5g not triggered (no debug surfaces, no LLM external modules).
+- C7 artifact complete.
+
+context_tokens≈38000
+
+---
