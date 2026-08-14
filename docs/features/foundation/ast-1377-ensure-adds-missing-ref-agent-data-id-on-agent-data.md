@@ -167,3 +167,9 @@ Definition fidelity: implements parent FS 1–3 and AC 1–5; respects boundarie
 context_tokens≈52000
 
 [plan-rubric] PROCEED (Commit: 1065d54d) legacy ALTER idempotent
+
+## Review
+
+- **Build:** Stage 1 complete — `_ensure_agent_data_schema` existing-table path ADDs nullable `ref_agent_data_id` when absent; inventory notes the column; registry/bootstrap unchanged.
+- **Publish ref:** `origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data` @ `d4522b16aee95d4a5c6115a70b2a5906673ea190`
+- **PR:** none yet
