@@ -187,3 +187,160 @@ AST-1374 plan approved.
 
 - Stage 1: `authSessionPolicy.ts` + handoff fetches policy; hardcoded `60` removed
 - Stage 2: `sessionExtend.ts` + `AuthContext` interval extend while session exists
+
+## Radia review
+
+# Radia review — AST-1374
+
+**Status gate:** Tests Passed (spawn prompt; trusted).  
+**Baseline:** `origin/dev`  
+**Publish ref:** `origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend` @ `adbbdade`  
+**Diff note:** `origin/dev...origin/sub/AST-1374-…` reports multiple merge bases (82 files — sibling epic noise). Scored against AST-1374 footprint: engineer `0fa41ec6` (4 frontend `src/` files) + Betty `dc0af136` + single `merge-tests(AST-1374)` @ `adbbdade`.
+
+---
+
+```
+[code-rubric] revision=2
+```
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1374  
+**Publish ref:** `adbbdade15a7a9680a48afa9782466a4471932b2`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single `merge-tests(AST-1374)` @ `adbbdade` pins `origin/tests` `dc0af136`. |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `merge-tests` / `docs` vocabulary correct. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Product on `sub/*`; tests from `origin/tests`. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child publish ref `sub/AST-1372/AST-1374-…` correct. |
+| `orch.git.merge-on-checkout` | universal | conforms | No merge/checkout violation evident. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | No agent publish refs. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1372 epic pattern. |
+| `orch.git.three-permanent-branches` | universal | conforms | `dev` / `tests` / `main` respected. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Cadence/extend behavior pre-decided in plan/parent; no new forks. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 match implementation. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to diff substance. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child gate satisfied. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to diff substance. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty `test(AST-1374)` + one merge-tests; engineer `src/` only. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to diff substance. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine assignee; review does not reassign. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Engineer `0fa41ec6` — `src/ui/frontend/**` only. |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent/core grading paths. |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No dispatch paths. |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector paths. |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch layer. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch layer. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process paths. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No batch responses paths. |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | No `config.py` / backend config edits (AST-1373). |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No backend config/env changes. |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug paths. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike paths. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch paths. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run-next paths. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Plan at `docs/features/foundation/ast-1374-….md`. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty `dc0af136` — test-bible + `tests/` only. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer commit frontend `src/` only. |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | No core/external changes. |
+| `astral.layers.import-direction` | scoped | not-applicable | Frontend-only; no cross-layer Python imports. |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/**`. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Duration/cadence from `GET /api/auth_session_policy`; hardcoded `60` removed; plan documents raw-`fetch` pre-login exception. |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render/consult paths. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No Flask route changes (AST-1373). |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed paths. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No seed paths. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No seed paths. |
+| `astral.seed.define-approved` | scoped | not-applicable | No seed paths. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No seed paths. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No seed paths. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data layer. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `src/data/**`. |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | No `debug=` surfaces. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Small focused modules (`authSessionPolicy`, `sessionExtend`) + thin AuthContext wiring. |
+| `astral.standards.in-scope-only` | scoped | conforms | No `config.py`, `api_system.py`, RequireAuth, LogOffScreen, or Login TTL edits. |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | No logging added. |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Domain names (`fetchAuthSessionPolicy`, `startSessionExtendLoop`). |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Extend loop isolated; existing `/api/me` / log-off paths untouched. |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | `SESSION_DURATION_MINUTES = 60` removed; no fallback duration on policy failure. |
+| `astral.standards.public-then-helpers` | scoped | not-applicable | New modules are all public exports; no helper scatter issue. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils/data Python. |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state paths. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state paths. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run paths. |
+| `astral.ui.frontend-file-placement` | scoped | conforms | New files in `lib/`; AuthContext edit in `contexts/`. |
+| `astral.ui.naming-conventions` | scoped | conforms | camelCase TS modules/functions match existing frontend style. |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server config. |
+
+**Sweep count:** 65 active statutes scored (1 retired `astral.config.pass-threshold-vs-score-floor` ignored).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited in plan)* | — | No "Patterns to reuse" section; Joan informal refs align with implementation (config-backed policy, no SPA literals). |
+
+## Plan adherence
+
+- **Stage 1:** `authSessionPolicy.ts` matches plan; `completeAuthenticateFromUrl` fetches policy before `authenticateByUrl`; hardcoded `60` gone; policy failure → `outcome: "error"` with no `authenticateByUrl` call.
+- **Stage 2:** `sessionExtend.ts` interval loop (no immediate tick, swallow extend rejections with comment); `AuthContext` starts loop when `session` truthy, clears on unmount; race guard after `await` (`cancelled` + immediate `clear()`).
+- **Estimate 3:** Four frontend files + focused tests — fits.
+- **AST-1373 dependency:** Consumes `GET /api/auth_session_policy` only; does not invent keys or backend routes.
+- **AST-1372 boundaries:** `Login.tsx` `loginExpirationMinutes: 60` untouched (email-link TTL); RequireAuth / LogOffScreen / `sessionAuthMark` untouched.
+- **Joan straggler (C4):** Joan verdict attached; no excluded-statute stragglers on this footprint.
+
+## C6 judgment aids (§5a)
+
+| Topic | Result |
+|-------|--------|
+| Imports (B1) | Clean module imports; no lazy-import issues. |
+| Layer compliance (B2) | Frontend-only; no Python layer bends. |
+| Silent failure (D2) | Extend-loop `.catch(() => { /* comment */ })` and AuthContext policy `catch` are plan-documented bounded swallow — acceptable per §5b. |
+| Fallbacks (D3) | No fallback duration; policy validation rejects non-positive values. |
+| Logging (E1) | None added. |
+| Config in UI (G1) | Session policy read from server endpoint, not inlined business rules. |
+| §5f / §5g | Not triggered. |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+- **Duplicate policy fetch** — handoff and AuthContext each call `fetchAuthSessionPolicy()` independently (Joan already noted acceptable); optional shared cache later if latency matters.
+- **Cadence invariant** — no client check that `activity_extension_interval_minutes < session_duration_minutes`; relies on server config (AST-1373). Fine at this footprint.
+- **Three-dot diff pollution** — `origin/dev...publish-ref` unusable for scope (multiple merge bases). Downstream agents should use per-ticket commits or `f23fabf0..adbbdade` when reviewing this sub lineage.
+
+## What's solid
+
+- Hardcoded session lifetime fully removed from handoff path; tests explicitly assert configured `20`, not `60`.
+- Raw `fetch` for pre-login policy avoids `api()` 401 → log-off coupling — matches plan decision.
+- Extend loop tests use fake timers: no immediate tick, cadence authenticate, skip when `getSync` falsy, swallow rejection.
+- `stytchMock` extended with `getSync` / `session.authenticate` for extend coverage.
+- AuthContext tests stub policy fetch in `beforeEach` so existing cases stay stable.
+
+## Frame diff
+
+(none)
+
+## Notes
+
+- Joan plan-rubric verdict attached @ `6d2d3cbd`; no straggler.
+- AST-1373 sibling dependency present on publish-ref tip (required).
+- C7 complete; Chuckles may append to issue doc, commit `docs(AST-1374): Radia review — clean`, post slim upshot, advance to **Review Posted** → **User Testing** (PROCEED path).
+
+context_tokens≈26000
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: adbbdade) SPA policy wiring clean
+```
