@@ -76,6 +76,13 @@ SPA must replace the hardcoded `SESSION_DURATION_MINUTES = 60` in `stytchAuthent
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review (build)
+
+**Built @ `b722667f`** — `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`
+
+- Stage 1: `AUTH_CONFIG` `session_duration_minutes: 20` / `activity_extension_interval_minutes: 10`; `get_auth_session_policy()`
+- Stage 2: open `GET /api/auth_session_policy` (no `@require_auth`)
+
 ## Joan validate
 
 [plan-rubric]
