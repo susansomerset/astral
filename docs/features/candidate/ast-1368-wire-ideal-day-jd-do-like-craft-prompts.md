@@ -158,3 +158,18 @@ AC4→Stage 1 (`craft_do_rubric.cache_prompt` gains `{$IDEAL_DAY}` peer section;
 **acceptable** — Linear assignee Joan Clarke (validator identity collision only); no plan impact.
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Built:** `astral-AST-1360` @ `d261670c` on `origin/sub/AST-1360/AST-1368-wire-ideal-day-jd-do-like-craft-prompts`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `482e4455` | Plan doc |
+| sync | `7828ca89` | Merge `origin/ftr/AST-1360-ideal-day-candidate-context` (IDEAL_DAY token) |
+| 1 | `d261670c` | `craft_do_rubric.cache_prompt` + Ideal Day / `{$IDEAL_DAY}` |
+
+**Verify:** plan Stage 1 §6 asserts — pass; surgical one-line `agent_task.json` diff (no mass re-serialize).
+
+**Note for Betty:** seed catalog only; LIKE/JD inherit Ideal Day via `{$CALLER_CACHE_A}`; joblist/GET/meteorite rows intentionally unchanged.
+
