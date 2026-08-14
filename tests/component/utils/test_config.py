@@ -4797,3 +4797,46 @@ class TestAst1367IdealDayTopicMenuInforms:
             assert keys[keys.index("deal_breakers") + 1] == "ideal_day"
             assert "ideal_day" in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
 
+
+class TestAst1373AuthSessionPolicy:
+    """AST-1373: AUTH_CONFIG session literals + get_auth_session_policy()."""
+
+    def test_auth_config_session_literals(self) -> None:
+        # Defaults: 20 min lifetime, 10 min extend cadence (shorter than duration).
+        assert cfg.AUTH_CONFIG["session_duration_minutes"] == 20
+        assert cfg.AUTH_CONFIG["activity_extension_interval_minutes"] == 10
+        assert (
+            cfg.AUTH_CONFIG["activity_extension_interval_minutes"]
+            < cfg.AUTH_CONFIG["session_duration_minutes"]
+        )
+
+    def test_get_auth_session_policy_only_non_secret_ints(self) -> None:
+        policy = cfg.get_auth_session_policy()
+        assert policy == {
+            "session_duration_minutes": 20,
+            "activity_extension_interval_minutes": 10,
+        }
+        assert set(policy) == {
+            "session_duration_minutes",
+            "activity_extension_interval_minutes",
+        }
+        assert all(isinstance(v, int) for v in policy.values())
+        for forbidden in (
+            "stytch_secret",
+            "stytch_project_id",
+            "admin_user_ids",
+            "admin_emails",
+        ):
+            assert forbidden not in policy
+
+    def test_get_auth_session_policy_reflects_auth_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Retune via AUTH_CONFIG literals only — no SPA constant edits (AC2).
+        monkeypatch.setitem(cfg.AUTH_CONFIG, "session_duration_minutes", 30)
+        monkeypatch.setitem(cfg.AUTH_CONFIG, "activity_extension_interval_minutes", 12)
+        assert cfg.get_auth_session_policy() == {
+            "session_duration_minutes": 30,
+            "activity_extension_interval_minutes": 12,
+        }
+
