@@ -2090,6 +2090,24 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: w
   -q
 ```
 
+### AST-1375 · AST-1371
+
+**Parent:** [AST-1371](https://linear.app/astralcareermatch/issue/AST-1371/regenerate-resume-button-does-not-appear-for-resumes-with-unsupported). **Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+`build_state_ui_manifest()["candidate"]` adds `artifact_generate_inflight_hide_states` (`REQUESTED_ARTIFACTS`, `REQUESTED_ARTIFACTS_RETRY` — not ERROR). `artifact_generate_states` unchanged. UI escape hatch: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inflight hide list | `src/utils/config.py` | **`TestAst1375ArtifactGenerateInflightHideStates`** |
+
+**Broken / obsolete:** none — additive key.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  -q
+```
+
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
 **Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.
