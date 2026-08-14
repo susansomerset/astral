@@ -24,6 +24,7 @@ from src.utils.config import (
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     build_state_ui_manifest,
+    get_auth_session_policy,
 )
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
@@ -123,6 +124,12 @@ def _nav_config_for_user(candidate_state: str, candidate_id: Optional[str]) -> l
 @system_bp.route("/health")
 def health():
     return {"status": "ok"}
+
+
+@system_bp.route("/auth_session_policy")
+def auth_session_policy():
+    """Non-secret session duration + extend cadence for SPA (AST-1373). Public on purpose."""
+    return jsonify(get_auth_session_policy())
 
 
 # --- Authenticated endpoints ---
