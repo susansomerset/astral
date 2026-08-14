@@ -1329,3 +1329,8 @@ Core helper **`snapshot_saved_base_resume_astral_artifact`** re-reads live `arti
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1367 · AST-1360
+
+`validate_topic` accepts `informs: ["ideal_day"]` via closed `TOPIC_MENU_CONFIG["informs"]`. Primary config + seed map: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1074TopicMenuPersistence`**.
+

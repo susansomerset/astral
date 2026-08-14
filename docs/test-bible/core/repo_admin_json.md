@@ -487,3 +487,8 @@ UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows bac
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1367 · AST-1360
+
+Estelle `topic_menu_preamble_confirm` / `topic_menu_generate` `cache_prompt` vocabulary includes `ideal_day`. Primary: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1075TopicMenuCatalogRows`**.
+

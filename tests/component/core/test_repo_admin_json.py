@@ -751,8 +751,11 @@ class TestAst1075TopicMenuCatalogRows:
             "priorities",
             "deal_breakers",
             "backstory",
+            "ideal_day",  # AST-1367
         ):
             assert informs in cache
+        # Preamble confirm patch allowlist includes ideal_day (AST-1367)
+        assert "ideal_day" in confirm["cache_prompt"]
 
 
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)

@@ -2912,3 +2912,41 @@ Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and 
   tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav \
   -q
 ```
+
+### AST-1367 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists`.
+
+`ideal_day` joins `TOPIC_MENU_CONFIG["informs"]` (after `backstory`) and `TOPIC_MENU_GEN_CONFIG` `packet_context_keys` / `patchable_context_keys` (after `deal_breakers`). Estelle seed prompts for confirm/generate list the same vocabulary. Does **not** own Candidate Ideal Day UI (**AST-1366**) or JD/DO/LIKE craft prompts (**AST-1368**). Library/token: **AST-1365**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Informs + packet/patch allowlists | `src/utils/config.py` | revised **`TestAst1074TopicMenuConfig`**; **`TestAst1367IdealDayTopicMenuInforms`**; existing **`TestAst1075TopicMenuGenConfig`** (⊆ library) |
+| `validate_topic` accepts `ideal_day` | `src/core/candidate.py` | revised **`TestAst1074TopicMenuPersistence`** |
+| Estelle seed prompt vocabulary | `data/admin/agent_task.json` | revised **`TestAst1075TopicMenuCatalogRows`** |
+
+**Broken / obsolete this pass:** `TestAst1365IdealDayLibraryToken::test_topic_menu_informs_exclude_ideal_day_until_sibling` — asserted Ideal Day absent from informs until this sibling; removed. **`TestAst1074TopicMenuConfig._INFORMS`** — six-tuple → seven with `ideal_day`.
+
+**Integration:** no existing scenario asserts Topic Menu informs catalog membership — no revision.
+
+## QA test manifest
+
+1. Config informs + GEN allowlists: `tests/component/utils/test_config.py::TestAst1074TopicMenuConfig` + `TestAst1367IdealDayTopicMenuInforms` + `TestAst1075TopicMenuGenConfig`
+2. validate_topic Ideal Day: `tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform` (+ existing happy/reject)
+3. Estelle seed prompts: `tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows`
+
+**AST-1367** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1074TopicMenuConfig \
+  tests/component/utils/test_config.py::TestAst1075TopicMenuGenConfig \
+  tests/component/utils/test_config.py::TestAst1367IdealDayTopicMenuInforms \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_happy_and_rejects \
+  tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform \
+  tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
