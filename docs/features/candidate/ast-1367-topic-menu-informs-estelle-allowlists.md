@@ -126,3 +126,30 @@ for _ctx in ("strengths", "priorities", "deal_breakers", "backstory", "ideal_day
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1367
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists` @ `8d0ac348894c317106e7c355bb6f626afe81174f`
+
+## Traceability
+AC5→Stage 0 (AST-1365 library gate) + Stage 1 (`TOPIC_MENU_CONFIG["informs"]`, `packet_context_keys`, `patchable_context_keys`) + Stage 2 (`topic_menu_preamble_confirm` / `topic_menu_generate` `cache_prompt` vocabulary aligned with config); runtime `validate_topic`, `build_preamble_packet_snapshot`, `_apply_library_patches`, and `INFORMS_CATALOG` injection unchanged — already config-driven.
+
+### Findings
+
+**acceptable** — Stage 0 correctly blocks build if `ideal_day` ∉ `context_keys` or is pre-present in `informs`; defers library work to AST-1365 only.
+
+**acceptable** — `test_topic_menu_informs_exclude_ideal_day_until_sibling` on ftr (AST-1365) must flip at `test-child`; plan delegates to Betty — not a plan defect.
+
+**acceptable** — `agent_task.json` surgical edit + optional `updated_at` bump matches `astral.seed.agent-tables-in-repo-json` / AST-1075 explicit-list pattern; no `TASK_CONFIG` or core intake edits needed.
+
+**acceptable** — Linear assignee Katherine (not Joan); Chuckles spawn — no plan impact.
+
+context_tokens≈52000
+
+---
+
+[plan-rubric] PROCEED (Commit: 8d0ac348894c317106e7c355bb6f626afe81174f) informs allowlists seed
