@@ -119,3 +119,137 @@ context_tokens≈42000
 **Publish ref:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`
 **Product commits:** `89fea2df` (manifest inflight-hide + Base Resume unsupported escape hatch)
 
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1375
+**Publish ref:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience` @ `3d9486eb`
+**Overall:** CLEAN
+
+## Statutes checked
+
+Diff change set: `src/utils/config.py`, `src/ui/frontend/src/components/ArtifactEditor.tsx`, `src/ui/frontend/src/contexts/StateUiContext.tsx`, `docs/features/interface/ast-1375-*.md`, `docs/test-bible/**`, `tests/component/**` — layers `utils`, `ui`, `docs`; change_types `modify` + test/doc `add`. Product commit: `89fea2df`; tip includes Betty `merge-tests` @ `3d9486eb`. Corpus: **65** active per `canon/statutes/README.md`; **64** rows in harvested table (all scored below).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no `src/core/**` agent grading changes |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `do_task` / dispatch edits |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no grade-vector paths touched |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch-id paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch-id formatting |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no claim/process/release helpers |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no entity-agent-response paths |
+| `astral.config.config-source-of-truth` | scoped | conforms | `artifact_generate_inflight_hide_states` added in `build_state_ui_manifest()`; UI reads manifest only |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no secrets/env surface |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifact paths |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed flags |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | chain handoff logic unchanged |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single plan doc for AST-1375 |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty-owned test/bible diff (not Radia product bar) |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | product commit `89fea2df` touches only `src/` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no core/external layer edits |
+| `astral.layers.import-direction` | scoped | conforms | utils→ui manifest consumption; no layer violations |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/**` |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | hide list + allowlist from manifest; React holds no state-set literals |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no render/consult paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API route changes in product diff |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed catalog edits |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | manifest build is existing hot-path pattern |
+| `astral.seed.define-approved` | scoped | not-applicable | no seed define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no operator seed rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | no `src/data/**` |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no `debug=` emission |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | reuses `parseExperienceJobs` for notice + affordance (single definition) |
+| `astral.standards.in-scope-only` | scoped | conforms | three planned product files only; boundaries respected |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no new logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `artifact_generate_inflight_hide_states`, `baseResumeUnsupportedEscape` are domain-shaped |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Base Resume + `!jobPersistence` gate; no global allowlist expansion |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | inflight hide states in config with `CANDIDATE_STATES` assert |
+| `astral.standards.public-then-helpers` | scoped | not-applicable | no new public API surface reorder |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils→data import |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transition edits |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job-state enforcement changes |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | in-flight hide preserved; no chain logic change |
+| `astral.ui.frontend-file-placement` | scoped | conforms | edits stay in `ArtifactEditor.tsx` / `StateUiContext.tsx` |
+| `astral.ui.naming-conventions` | scoped | conforms | snake_case manifest key; camelCase TS locals |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server worker config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | single `merge-tests` tip `3d9486eb` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code(AST-1375)` / `test(AST-1375)` / `docs(AST-1375)` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub branch off ftr parent topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1371/AST-1375-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | no checkout violations in review scope |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | none observed |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/…` not agent branch |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | epic worktree `astral-AST-1371` |
+| `orch.git.three-permanent-branches` | universal | conforms | diff vs `origin/dev` only |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | plan decisions already Joan-approved |
+| `orch.pipeline.plan-is-bible` | universal | conforms | implementation matches Stages 1–3 |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | n/a to code shape |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | reviewed at Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | test/bible diff is Betty lane |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | n/a |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine assignee at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no banned-path commits in product SHA |
+
+**Straggler (C4):** Joan plan-rubric APPROVED @ `243b372d` — no Excluded statute list in attachment; no straggler rows.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `inflight_hide_states` lives in `build_state_ui_manifest()` beside existing `gen_states`; UI consumes manifest |
+| `pattern.ui.shared-button-roles` | conforms | no button-class churn; existing `btn primary` / `in-flight` / confirm flow untouched |
+
+(none cited in plan body; scored from Joan validate + implementation shape)
+
+## Plan adherence
+
+Stages 1–3 land exactly as specified:
+
+- **Stage 1:** `artifact_generate_inflight_hide_states` = `REQUESTED_ARTIFACTS` + `REQUESTED_ARTIFACTS_RETRY` with `CANDIDATE_STATES` assert; `artifact_generate_states` unchanged; `REQUESTED_ARTIFACTS_ERROR` not in hide list.
+- **Stage 2:** `StateUiManifest.candidate.artifact_generate_inflight_hide_states: string[]` added.
+- **Stage 3:** `experienceUnsupported` reuses the same `parseExperienceJobs` failure as the unsupported notice render branch; `baseResumeUnsupportedEscape` gated on `artifactKey === "base_resume" && !jobPersistence`; `canGenerate` ORs escape with allowlist; `handleGenerateClick` / `doGenerate` / confirm / Print / Save-abort / chain handoff untouched.
+
+Estimate **2** still fits footprint (config manifest key + TS typing + ~20 lines in ArtifactEditor). Betty manifest (`TestAst1375*`) covers AC spine per test-bible.
+
+**C6 lenses (§5a):** Imports/layers/logging/batch/debug/external — no issues. **§5d cross-ticket:** product `src/` diff is AST-1375-only; `merge-tests` tip also carries **AST-1373** test classes in `test_api_system.py` / `test_config.py` — sibling Betty merge, not Katherine product scope (advisory only).
+
+## Findings
+
+None **fix-now**. None **discuss** blocking User Testing.
+
+### Advisory
+
+- **`inflightHideStates` `?? []` fallback** (`ArtifactEditor.tsx`): if an old API omits the new manifest key, hide list is empty and the escape hatch could surface Regenerate during `REQUESTED_ARTIFACTS*` until server catches up. Acceptable for co-deployed SPA+API; note only if staged rollouts are ever split.
+- **Sibling tests in diff:** `TestAst1373AuthSessionPolicy*` classes ride `merge-tests` — expected; not AST-1375 product scope.
+
+## Frame diff
+
+(none) — implementation matches approved plan Stages 1–3 with no material deviations.
+
+## What's solid
+
+- Single source of “unsupported”: `experienceUnsupported` and the notice both call `parseExperienceJobs` on experience tabs — affordance cannot drift from message.
+- Config-owned hide list preserves AST-1253 in-flight suppression without globally expanding `artifact_generate_states`.
+- Tests exercise error-state escape (`REQUESTED_ARTIFACTS_ERROR`), both inflight hides, craft POST + array recovery, and allowlist-only when experience is valid.
+
+## Notes
+
+- Joan plan-rubric verdict attached (APPROVED).
+- Product SHA for traceability: `89fea2df`; reviewed tip: `3d9486eb` (includes Betty test merge).
+
+context_tokens≈52000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 3d9486eb) manifest escape hatch clean
+```
