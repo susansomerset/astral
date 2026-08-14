@@ -1262,23 +1262,23 @@ Title-keyed `base_resume` dicts (`{"Highlights": "…"}`) must resolve to slug i
 
 **Parent:** [AST-1340 — Create a table called astral_artifacts](https://linear.app/astralcareermatch/issue/AST-1340/create-a-table-called-astral-artifacts). **Publish:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`.
 
-Core helper **`snapshot_saved_base_resume_astral_artifact`** re-reads live `artifacts.base_resume` after Save and calls AST-1352 **`save_astral_artifact`**. Wired only from **`PUT /api/candidates/<id>/data`** when the body includes dict/list `base_resume` — not from craft/Generate `database.save_candidate` paths. Data writers: **`docs/test-bible/data/database/astral_artifacts.md`**. API: **`docs/test-bible/ui/api/api_candidate.md`**.
+Core helper **`snapshot_saved_base_resume_artifact`** re-reads live `artifacts.base_resume` after Save and calls AST-1352 **`save_artifact`**. Wired only from **`PUT /api/candidates/<id>/data`** when the body includes dict/list `base_resume` — not from craft/Generate `database.save_candidate` paths. Data writers: **`docs/test-bible/data/database/artifacts.md`**. API: **`docs/test-bible/ui/api/api_candidate.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Snapshot live blob / retire / validation | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** |
-| Craft generate does not write astral_artifacts | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume::test_craft_generation_does_not_call_save_astral_artifact`** |
+| Craft generate does not write artifacts store | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume::test_craft_generation_does_not_call_save_artifact`** |
 
 **Broken / obsolete this pass:** none in core (API mock revisions live under **`api_candidate.md`**).
 
-**Integration:** no existing scenario asserts Save→`astral_artifacts` — no revision (artifact pipeline remains a should-have gap).
+**Integration:** no existing scenario asserts Save→`artifacts` store — no revision (artifact pipeline remains a should-have gap).
 
 ## QA test manifest
 
 1. Core snapshot helper: `tests/component/core/test_candidate.py::TestAst1353SnapshotSavedBaseResume`
 2. API Save wire + AC4: `tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi`
 3. Revised mock PUT base_resume (snapshot stub): `TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys` + `TestAst1305LegacyLabelIngestApi`
-4. Sibling writers regression: `tests/component/data/database/test_astral_artifacts.py`
+4. Sibling writers regression: `tests/component/data/database/test_artifacts.py`
 
 **AST-1353** narrowed run:
 
@@ -1288,8 +1288,60 @@ Core helper **`snapshot_saved_base_resume_astral_artifact`** re-reads live `arti
   tests/component/ui/api/test_api_candidate.py::TestAst1353SaveBaseResumeSnapshotApi \
   tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys \
   tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
-  tests/component/data/database/test_astral_artifacts.py \
+  tests/component/data/database/test_artifacts.py \
   -q
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1364 · AST-1340 (bug — rename)
+
+Retargets AST-1353 helper/call-site names to `snapshot_saved_base_resume_artifact` / `database.save_artifact` after table rename. Primary data bible: **`docs/test-bible/data/database/artifacts.md`** § AST-1364 ([bug-repro] `TestAst1364RenameArtifacts`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Snapshot helper renamed | `src/core/candidate.py` | **`TestAst1353SnapshotSavedBaseResume`** (symbols retargeted) |
+| Craft path still skips store | `src/core/candidate.py` | **`test_craft_generation_does_not_call_save_artifact`** |
+
+
+
+### AST-1365 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1365-ideal-day-library-token`.
+
+`ideal_day` joins the candidate context library and the gated completeness set (peer of strengths / priorities / deal_breakers / backstory). `check_context_complete` reads `CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]` (module `_CONTEXT_TEXT_KEYS` retired). `{$IDEAL_DAY}` → `context.ideal_day`. Persistence via existing `save_candidate_data` merge — no new API. Does **not** own Candidate Ideal Day UI (**AST-1366**), Topic Menu informs (**AST-1367**), or JD/DO/LIKE craft prompts (**AST-1368**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Completeness gate + save payload | `src/core/candidate.py` | revised **`TestCheckContextCompleteExtended`** (config keys; Ideal Day missing / whitespace); **`TestAst1365IdealDayLibrary`** |
+| Library / token / resolve | `src/utils/config.py` | **`TestAst1365IdealDayLibraryToken`** (primary map also in **`docs/test-bible/utils/config.md`**) |
+
+**Broken / obsolete this pass:** `TestCheckContextCompleteExtended::test_returns_true_when_all_context_fields_present_without_transition` — referenced deleted `candidate_mod._CONTEXT_TEXT_KEYS`; now iterates `CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]`.
+
+**Integration:** no existing scenario asserts context completeness keys or Ideal Day token — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Config vocabulary + token + resolve: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken`
+2. Completeness gate (revised + Ideal Day gaps): `tests/component/core/test_candidate.py::TestCheckContextCompleteExtended`
+3. Save merge + config key contract: `tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary`
+4. Existing incomplete smoke: `tests/component/core/test_candidate.py::TestCheckContextComplete`
+
+**AST-1365** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken \
+  tests/component/core/test_candidate.py::TestCheckContextComplete \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1367 · AST-1360
+
+`validate_topic` accepts `informs: ["ideal_day"]` via closed `TOPIC_MENU_CONFIG["informs"]`. Primary config + seed map: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1074TopicMenuPersistence`**.

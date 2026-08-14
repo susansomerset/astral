@@ -5009,10 +5009,10 @@ class TestAst1353SnapshotSavedBaseResume:
             candidate_data={"artifacts": {"base_resume": {"professional_summary": "live"}}},
             merge=True,
         )
-        uid = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
-        row = db.get_current_astral_artifact("candidate", "cand-1", "base_resume")
+        uid = candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
+        row = db.get_current_artifact("candidate", "cand-1", "base_resume")
         assert row is not None
-        assert row["astral_artifact_uuid"] == uid
+        assert row["artifact_uuid"] == uid
         assert row["artifact_data"] == {"professional_summary": "live"}
         assert row["current"] == 1
 
@@ -5025,18 +5025,18 @@ class TestAst1353SnapshotSavedBaseResume:
             candidate_data={"artifacts": {"base_resume": {"v": 1}}},
             merge=True,
         )
-        uid1 = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        uid1 = candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
         db.save_candidate(
             "cand-1",
             candidate_data={"artifacts": {"base_resume": {"v": 2}}},
             merge=True,
         )
-        uid2 = candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+        uid2 = candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
         assert uid1 != uid2
-        current = db.get_current_astral_artifact("candidate", "cand-1", "base_resume")
-        assert current["astral_artifact_uuid"] == uid2
+        current = db.get_current_artifact("candidate", "cand-1", "base_resume")
+        assert current["artifact_uuid"] == uid2
         assert current["artifact_data"] == {"v": 2}
-        history = db.list_astral_artifacts(
+        history = db.list_artifacts(
             "candidate", "cand-1", "base_resume", current_only=False
         )
         assert len(history) == 2
@@ -5046,15 +5046,15 @@ class TestAst1353SnapshotSavedBaseResume:
         from src.core import candidate as candidate_mod
 
         with pytest.raises(ValueError, match="Candidate not found"):
-            candidate_mod.snapshot_saved_base_resume_astral_artifact("missing-id")
+            candidate_mod.snapshot_saved_base_resume_artifact("missing-id")
 
     def test_missing_base_resume_raises(self, seeded_db) -> None:
         from src.core import candidate as candidate_mod
 
         with pytest.raises(ValueError, match="artifacts.base_resume missing"):
-            candidate_mod.snapshot_saved_base_resume_astral_artifact("cand-1")
+            candidate_mod.snapshot_saved_base_resume_artifact("cand-1")
 
-    def test_craft_generation_does_not_call_save_astral_artifact(
+    def test_craft_generation_does_not_call_save_artifact(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
         from src.core import candidate as candidate_mod
@@ -5062,7 +5062,7 @@ class TestAst1353SnapshotSavedBaseResume:
         astral_calls: list = []
         monkeypatch.setattr(
             candidate_mod.database,
-            "save_astral_artifact",
+            "save_artifact",
             lambda *a, **k: astral_calls.append((a, k)) or "uuid",
         )
         monkeypatch.setattr(
