@@ -481,3 +481,26 @@ Scope: make Print succeed for the same saved shapes the Base Resume Content page
 **Discuss:** (none remaining after rebuild)
 
 **Advisory:** Empty-content gate is plan-minimum; bug-repro comment tag format advisory only.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/d2054e6f30bb0b9856726f14ea3391d2/1e528cab-21f6-426a-8d4f-4704d7b35af4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/e44b6356-c674-4f03-8c45-59fc9fa4f58d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/d2054e6f30bb0b9856726f14ea3391d2/8bbbedc9-0a2b-438a-bb21-0957051a9f8e/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1314 (parent) | ftr/AST-1314-add-a-print-button-to-base-resume-content |
+| AST-1337 | sub/AST-1314/AST-1337-print-control-on-base-resume-content |
+| AST-1341 | sub/AST-1314/AST-1341-print-base-resume-missing-artifacts-error |
+| AST-1342 | sub/AST-1314/AST-1342-print-button-placement-next-to-regenerate |
+
+**Epic worktree:** `astral-AST-1314/` — one active sub checked out at a time.
