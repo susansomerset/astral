@@ -306,6 +306,25 @@ class TestAst1253StateUiManifestChainFields:
         assert "artifact_generate_states" in cand
 
 
+class TestAst1375InflightHideStatesManifest:
+    """AST-1375: state_ui_manifest exposes artifact_generate_inflight_hide_states."""
+
+    def test_manifest_includes_inflight_hide_states(
+        self, system_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        from src.utils.config import build_state_ui_manifest
+
+        resp = system_client.get("/api/state_ui_manifest", headers=auth_headers)
+        assert resp.status_code == 200
+        cand = resp.get_json()["candidate"]
+        expected = build_state_ui_manifest()["candidate"]["artifact_generate_inflight_hide_states"]
+        assert cand["artifact_generate_inflight_hide_states"] == expected
+        assert cand["artifact_generate_inflight_hide_states"] == [
+            "REQUESTED_ARTIFACTS",
+            "REQUESTED_ARTIFACTS_RETRY",
+        ]
+
+
 class TestAst1351ExperienceJobUiConfig:
     """AST-1351: ui_config exposes experience job field spine + unsupported message."""
 

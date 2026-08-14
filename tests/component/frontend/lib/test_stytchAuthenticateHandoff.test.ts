@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest"
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest"
 import {
   completeAuthenticateFromUrl,
   type StytchAuthenticateClient,
@@ -14,7 +14,31 @@ function makeClient(
   }
 }
 
+function stubPolicy(
+  policy: {
+    session_duration_minutes: number
+    activity_extension_interval_minutes: number
+  } = {
+    session_duration_minutes: 20,
+    activity_extension_interval_minutes: 10,
+  },
+): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async () => Response.json(policy)),
+  )
+}
+
 describe("completeAuthenticateFromUrl", () => {
+  beforeEach(() => {
+    stubPolicy()
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+    vi.restoreAllMocks()
+  })
+
   it("returns no-token when parseAuthenticateUrl is missing", async () => {
     const stytch = makeClient({ parseAuthenticateUrl: undefined })
     await expect(completeAuthenticateFromUrl(stytch)).resolves.toEqual({
@@ -44,7 +68,7 @@ describe("completeAuthenticateFromUrl", () => {
     })
   })
 
-  it("returns success when authenticateByUrl handles the token", async () => {
+  it("returns success with configured session_duration_minutes (not hardcoded 60)", async () => {
     const authenticateByUrl = vi.fn(async () => ({
       handled: true,
       tokenType: "magic_links",
@@ -61,7 +85,29 @@ describe("completeAuthenticateFromUrl", () => {
       outcome: "success",
       tokenType: "magic_links",
     })
-    expect(authenticateByUrl).toHaveBeenCalledWith({ session_duration_minutes: 60 })
+    expect(authenticateByUrl).toHaveBeenCalledWith({ session_duration_minutes: 20 })
+  })
+
+  it("returns error when policy fetch fails (no fallback duration)", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => new Response("down", { status: 500 })),
+    )
+    const authenticateByUrl = vi.fn(async () => ({ handled: true }))
+    const stytch = makeClient({
+      parseAuthenticateUrl: () => ({
+        token: "t1",
+        tokenType: "oauth",
+        handled: true,
+      }),
+      authenticateByUrl,
+    })
+    await expect(completeAuthenticateFromUrl(stytch)).resolves.toEqual({
+      outcome: "error",
+      tokenType: "oauth",
+      message: "Session policy unavailable (500)",
+    })
+    expect(authenticateByUrl).not.toHaveBeenCalled()
   })
 
   it("returns error when authenticateByUrl resolves without handled", async () => {

@@ -221,6 +221,7 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
     },
   },
   // AST-1253: expanded generate states + live-chain fields (api_system merges walk).
+  // AST-1375: inflight hide list (Base Resume unsupported escape hatch consults this).
   candidate: {
     artifact_generate_states: [
       "RESUME_READY",
@@ -229,6 +230,10 @@ export const STATE_UI_MANIFEST_FIXTURE: StateUiManifest = {
       "ARTIFACTS_READY_STALE",
       "ACTIVE_SEARCH",
       "PAUSE_SEARCH",
+    ],
+    artifact_generate_inflight_hide_states: [
+      "REQUESTED_ARTIFACTS",
+      "REQUESTED_ARTIFACTS_RETRY",
     ],
     artifacts_chain_task_keys: [
       "craft_get_rubric",

@@ -95,6 +95,31 @@ function mockApis(state = "ACTIVE_SEARCH") {
   })
 }
 
+
+/** Base Resume + legacy string experience under a candidate state (AST-1375 escape hatch). */
+function mockBaseResumeUnsupported(state: string) {
+  mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+    if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+    if (url === "/api/system/ui_config") return uiConfigResponse()
+    if (url === "/api/candidates") {
+      return { json: async () => [{ astral_candidate_id: "c1", state, candidate_data: {} }] } as Response
+    }
+    if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+    if (url === "/api/candidates/c1" && !init) {
+      return {
+        json: async () => ({
+          candidate_data: {
+            artifacts: {
+              base_resume: { experience: "legacy prose blob" },
+            },
+          },
+        }),
+      } as Response
+    }
+    throw new Error(url)
+  })
+}
+
 describe("ArtifactEditor", () => {
   beforeEach(() => {
     localStorage.clear()
@@ -635,6 +660,160 @@ describe("ArtifactEditor", () => {
     expect(mockedApi.mock.calls.some(([u, init]) => u === "/api/candidates/c1/data" && init?.method === "PUT")).toBe(
       false,
     )
+  })
+
+
+  it("AST-1375: unsupported experience outside generate allowlist shows Regenerate", async () => {
+    // REQUESTED_ARTIFACTS_ERROR is not in artifact_generate_states — escape hatch must surface Regenerate.
+    mockBaseResumeUnsupported("REQUESTED_ARTIFACTS_ERROR")
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    await waitFor(() =>
+      expect(screen.getByText("unsupported resume structure, please regenerate")).toBeInTheDocument(),
+    )
+    expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument()
+  })
+
+  it("AST-1375: inflight hide states keep Generate/Regenerate hidden when unsupported", async () => {
+    for (const state of ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"] as const) {
+      mockBaseResumeUnsupported(state)
+      const { unmount } = renderWithProviders(
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+        />,
+      )
+      await waitFor(() =>
+        expect(screen.getByText("unsupported resume structure, please regenerate")).toBeInTheDocument(),
+      )
+      expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument()
+      expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument()
+      unmount()
+    }
+  })
+
+  it("AST-1375: Regenerate confirms then POSTs craft_resume_base; array experience clears notice", async () => {
+    const jobs = [
+      {
+        company: "Acme Corp",
+        title: "Engineer",
+        dates: "2020-2023",
+        location: "Remote",
+        accomplishments: "Shipped widgets",
+      },
+    ]
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [
+            { astral_candidate_id: "c1", state: "REQUESTED_ARTIFACTS_ERROR", candidate_data: {} },
+          ],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { experience: "legacy prose blob" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/generate/craft_resume_base" && init?.method === "POST") {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            success: true,
+            parsed_response: { experience: jobs },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByRole("button", { name: "Regenerate" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
+    await userEvent.click(screen.getAllByRole("button", { name: "Regenerate" })[1])
+    await waitFor(() => expect(screen.getByText("Generated — review and Save or Cancel")).toBeInTheDocument())
+    expect(
+      mockedApi.mock.calls.some(
+        ([u, init]) => u === "/api/candidates/c1/generate/craft_resume_base" && init?.method === "POST",
+      ),
+    ).toBe(true)
+    expect(screen.queryByText("unsupported resume structure, please regenerate")).not.toBeInTheDocument()
+    expect(screen.getByText("Role 1")).toBeInTheDocument()
+    expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
+  })
+
+  it("AST-1375: valid job-array experience stays allowlist-only (no escape)", async () => {
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [
+            { astral_candidate_id: "c1", state: "REQUESTED_ARTIFACTS_ERROR", candidate_data: {} },
+          ],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: {
+                  experience: [
+                    {
+                      company: "Acme",
+                      title: "Dev",
+                      dates: "2021",
+                      location: "Remote",
+                      accomplishments: "Shipped",
+                    },
+                  ],
+                },
+              },
+            },
+          }),
+        } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "experience", label: "Custom Jobs" }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Role 1")).toBeInTheDocument())
+    expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument()
+    expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument()
   })
 
   it("AST-1200: candidate criteria expand-all shows prompt bodies without chevron click", async () => {
