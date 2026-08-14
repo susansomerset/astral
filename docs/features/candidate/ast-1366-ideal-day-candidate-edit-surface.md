@@ -67,3 +67,29 @@ export default function IdealDay() { return <ContextTextPage title="Ideal Day" c
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1366
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` @ `329b52c9618915d62126f486c8cf5d2995a668ab`
+
+## Traceability
+AC2→Stage 1 (`NAV_CONFIG` Ideal Day item + `CandidateIdealDay.tsx` `ContextTextPage` wrapper + `routes.tsx` `candidate/ideal_day` route); save/load via existing `PUT /api/candidates/<id>/data` merge (same as Strengths/Backstory).
+
+### Findings
+
+**acceptable** — Build depends on AST-1365 library key on `origin/ftr/AST-1360-ideal-day-candidate-context`; plan states merge-before-code (ftr tip already has `ideal_day` / `IDEAL_DAY`). Operational, not a plan gap.
+
+**acceptable** — No frontend test touch in plan; `ContextTextPage` pattern is unchanged — Betty/`test-child` scope.
+
+**acceptable** — Linear assignee is Hedy (not Joan); Chuckles spawn — no plan impact.
+
+context_tokens≈48000
+
+---
+
+[plan-rubric] PROCEED (Commit: 329b52c9618915d62126f486c8cf5d2995a668ab) nav page route peer
+
