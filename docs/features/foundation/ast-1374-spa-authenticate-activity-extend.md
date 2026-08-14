@@ -139,3 +139,44 @@ Confirm Chuckles estimate: 3 — agree
 - AC2 (extend on cadence while session exists) → Stage 2
 - AC3 (idle → existing log-off) → Stage 2 decisions + untouched RequireAuth/LogOffScreen
 - AC4 (no regression login / Bearer / admin / Login vs log-off) → no edits to those surfaces; handoff + AuthContext only
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1374
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend` @ `6d2d3cbd9cf7b92a3cff6bb89c88f371e5b151d1`
+
+## Traceability
+AC1→Stage 1; AC2→Stage 2; AC3→Stage 2 (swallow extend errors + untouched RequireAuth/LogOffScreen); AC4→scoped footprint only — AUTH_CONFIG/policy API N/A (AST-1373).
+
+## Findings
+
+### acceptable — missing `## Self-Assessment`
+**Location:** plan doc tail  
+**Finding:** No formal self-assessment block (scope/conf axes).  
+**Recommendation:** Optional at this footprint; not blocking.
+
+### acceptable — duplicate policy fetch
+**Location:** Stage 1 handoff + Stage 2 AuthContext  
+**Finding:** `fetchAuthSessionPolicy()` called independently in handoff and extend-loop setup.  
+**Recommendation:** Fine for clarity; optional shared cache later if needed.
+
+context_tokens≈22000
+
+---
+
+[plan-rubric] PROCEED (Commit: 6d2d3cbd) SPA policy wiring ready
+
+AST-1374 plan approved.
+
+---
+
+**Gate:** Plan Ready, assignee Joan — OK. No `[plan-discuss]` rounds.
+
+**Dependency:** `GET /api/auth_session_policy` present on publish-ref tip (AST-1373 landed). `SESSION_DURATION_MINUTES = 60` confirmed in `stytchAuthenticateHandoff.ts` — plan targets the right constant; `Login.tsx` `loginExpirationMinutes` correctly left alone (email-link TTL ≠ session lifetime).
+
+**R6:** Four frontend files, correct placement (`lib/`, `contexts/`). Raw `fetch` for pre-login policy (not `api()`) is justified. No fallback duration on policy failure — conforms to `astral.standards.no-hardcoded-sets`. Policy-driven cadence/duration — conforms to `astral.layers.ui-config-driven-business-logic`. Boundaries hold (`config.py`, `api_system.py`, log-off surfaces untouched).
+
+**In-session R3:** Cited statutes + universals — all `conforms`; no `fix-now`.
