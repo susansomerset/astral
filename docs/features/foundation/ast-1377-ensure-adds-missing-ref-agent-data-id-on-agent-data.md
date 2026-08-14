@@ -58,3 +58,112 @@
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1377
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data` @ `1065d54d9115007bb3025071278f25fa6bc577ea`
+
+## Traceability
+
+### Parent AC → plan stage(s)
+
+| AC | Plan stage |
+|----|------------|
+| 1. Legacy `agent_data` missing `ref_agent_data_id` → one ensure adds nullable column | Stage 1 step 2 |
+| 2. Second ensure is no-op | Stage 1 step 2 + Done when (idempotent `cols` check / `_agent_data_schema_ensured`) |
+| 3. Fresh CREATE still includes `ref_agent_data_id` | Stage 1 step 2 explicit guard + Done when |
+| 4. Write/read using `ref_agent_data_id` no longer raises `OperationalError` | Stage 1 (column presence unblocks existing AST-977 paths; Betty verifies) |
+| 5. Bootstrap / upsert-registry startup leaves column present | Stage 1 step 3 registry confirmation + ensure entrypoints named in Done when |
+
+### Plan stage → parent definition
+
+| Stage | Parent Purpose / Functional scope / AC |
+|-------|----------------------------------------|
+| Stage 1 | FS-1 existing-table migration; FS-2 fresh-table parity; FS-3 bootstrap reach; AC 1–5 |
+
+## Statute verdicts
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `orch.roles.engineer-assignee-through-resolve` | conforms | Single data-layer stage; engineer-owned build |
+| `orch.roles.pre-commit-path-bans` | conforms | Plan excludes `tests/` / bible |
+| `orch.roles.chuckles-never-ticket-assignee` | conforms | Joan validation only |
+| `orch.roles.betty-owns-test-tree` | conforms | Explicit Betty boundary in Files Changed / Execution contract |
+| `orch.pipeline.plan-is-bible` | conforms | Ordered Stage 1 steps; 🛑 escalation on drift |
+| `orch.pipeline.project-scoped-queues` | conforms | Astral Foundation child only |
+| `orch.pipeline.status-gates-skill-entry` | conforms | Plan Ready gate satisfied |
+| `orch.roles.archie-approves-statutes` | conforms | No canon/statute edits |
+| `orch.pipeline.call-susan-for-product-decisions` | conforms | Closed gap; no product ambiguity |
+| `orch.git.no-dev-agent-branches` | conforms | `sub/AST-1376/...` publish ref |
+| `orch.git.commit-vocabulary` | conforms | Standard child publish |
+| `orch.git.ftr-sub-topology` | conforms | Parent ftr / child sub topology |
+| `orch.git.one-epic-worktree-per-parent` | conforms | `astral-AST-1376` worktree |
+| `orch.git.merge-on-checkout` | conforms | No rebase/cherry-pick in plan |
+| `orch.git.no-cherry-pick-rebase-force` | conforms | Idempotent ALTER only |
+| `orch.git.flow-direction-inviolable` | conforms | Child publishes to `origin/sub/...` |
+| `orch.git.three-permanent-branches` | conforms | No new permanent branches |
+| `orch.git.betty-merge-tests-one-sha` | conforms | Betty manifest path unchanged |
+| `astral.standards.database-header-inventory` | conforms | Stage 1 step 1 updates `agent_data` header bullet |
+| `astral.standards.in-scope-only` | conforms | One helper extension; explicit out-of-scope table |
+| `astral.standards.dry-and-focused-functions` | conforms | Mirrors `entity_id` ALTER in `_ensure_agent_data_schema`; no parallel migrator |
+| `astral.standards.data-raises-caller-logs` | conforms | Execution contract forbids new data-layer logging |
+| `astral.layers.import-direction` | conforms | `data` layer only; no new cross-layer imports |
+| `astral.standards.no-cross-contamination` | conforms | Touches only `database.py` ensure + inventory |
+| `astral.standards.no-hardcoded-sets` | conforms | Nullable `TEXT` DDL; no new config enums |
+| `astral.standards.public-then-helpers` | conforms | Extends existing private ensure helper |
+| `astral.standards.names-not-ticket-ids` | conforms | Column name is domain term, not ticket id |
+| `astral.batch.batch-id-first` | conforms | No batch API signature changes |
+| `astral.batch.batch-id-format` | conforms | Untouched |
+| `astral.batch.claim-process-release` | conforms | Untouched |
+| `astral.batch.entity-agent-responses-latest-only` | conforms | Preserves `entity_id` / latest-ref contract |
+| `astral.config.config-source-of-truth` | conforms | No new config keys |
+| `astral.git.betty-no-src-or-features` | conforms | Engineer owns `src/`; Betty excluded |
+| `astral.seed.boot-only-not-hot-path` | conforms | Schema ensure via existing lazy/startup registry |
+| `astral.seed.define-approved` | conforms | No seed catalog work |
+| `astral.seed.operator-rows-stay-deleted` | conforms | No seed rows touched |
+| `astral.seed.other-via-coverage-join` | conforms | No coverage/seed changes |
+| `astral.state.core-decides-transitions` | conforms | No state-transition logic |
+| `astral.state.job-prior-states-enforced` | conforms | Untouched |
+
+## Considered and excluded
+
+**Considered:** 36 statutes listed above (18 universal + 18 scoped).
+
+**Excluded (sample — full predicate failures):**
+
+| id | reason |
+|----|--------|
+| `astral.agent.*` | layers/paths miss (`core` / `src/core/**`) |
+| `astral.config.secrets-and-env-specific-from-environ` | layers miss (`utils`, `core`, …) |
+| `astral.debug.*` | paths miss (`debug/**`, `artifacts/**`, …) |
+| `astral.dispatch.*` | layers/paths miss (`dispatcher`, `config`) |
+| `astral.docs.features-single-file-per-ticket` | layers miss (`docs`); plan Files Changed is `src/` only |
+| `astral.git.engineer-test-tree-ban` | paths miss (`tests/**`, bible paths) |
+| `astral.idioms.*` / `astral.patterns.*` | layers/paths miss (`core`, `ui`) |
+| `astral.layers.core-vs-external-bright-line` | layers miss (`core`, `external`) |
+| `astral.layers.scripts-exempt-from-layer-rules` | layers miss (`scripts`) |
+| `astral.layers.ui-config-driven-business-logic` | layers miss (`ui`, `utils`) |
+| `astral.seed.agent-tables-in-repo-json` | paths miss (`bootstrap`, `repo_admin_json`, …) |
+| `astral.seed.archie-catalog-wins` | paths miss (`dispatcher`, `data/admin/**`) |
+| `astral.standards.debug-contract-gated` | layers miss (no debug-touching layers) |
+| `astral.standards.logging-via-utils` | layers miss (no logging changes) |
+| `astral.standards.utils-data-late-import-only` | layers miss (`utils`) |
+| `astral.state.no-daisy-chain-in-run` | layers miss (`core`) |
+| `astral.ui.*` | layers/paths miss (`ui`) |
+
+## Findings
+
+- **acceptable** — No Self-assessment (Scope/Conf/Risk) block; trivial single-file ALTER mirror of shipped `entity_id` idiom; Estimate confirm present.
+- **acceptable** — AC4 has no explicit write/read smoke step in Stage 1; column ADD is the product fix and Betty owns verification per boundaries.
+
+## R6 checklist (summary)
+
+Definition fidelity: implements parent FS 1–3 and AC 1–5; respects boundaries (no backfill, no dedupe, no bootstrap rewrite). Layers/config/placement/patterns: data-only; no config; no new files; no catalog pattern cited (parent: none). DRY/scope: extends `_ensure_agent_data_schema` only; siblings AST-978 named out of scope. Publish-tip tree confirms gap: CREATE already has `ref_agent_data_id`; existing-table branch ALTERs `entity_id` only (~5814–5816); `_UPSERT_LAZY_SCHEMA_HANDLERS["agent_data"]` registered.
+
+context_tokens≈52000
+
+[plan-rubric] PROCEED (Commit: 1065d54d) legacy ALTER idempotent
