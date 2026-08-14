@@ -262,5 +262,14 @@ context_tokens≈38000
 
 ```
 [code-rubric] PROCEED (Commit: 4cdd9cb7) nav page route peer
+
+## Resolution
+
+**Date:** 2026-08-14  
+**Review tip:** `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface` @ `52d331b6` (Radia docs) / product+tests @ `4cdd9cb7`
+
+Radia **CLEAN** / **PROCEED** — no fix-now or discuss items. Advisory notes (three-dot rollup breadth; UAT can fill Ideal Day via UI) acknowledged; no product or plan change required.
+
+**Outcome:** resolve clean → User Testing.
 ```
 
