@@ -1465,6 +1465,7 @@ TOPIC_MENU_CONFIG = {
         "priorities",
         "deal_breakers",
         "backstory",
+        "ideal_day",
     ),
     "statuses": ("open", "ready", "retired"),
     "default_status": "open",
@@ -1480,6 +1481,7 @@ assert TOPIC_MENU_CONFIG["informs"] == (
     "priorities",
     "deal_breakers",
     "backstory",
+    "ideal_day",
 )
 assert len(TOPIC_MENU_CONFIG["informs"]) == len(set(TOPIC_MENU_CONFIG["informs"]))
 assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["informs"])
@@ -1493,7 +1495,7 @@ assert all(isinstance(x, str) and x.strip() for x in TOPIC_MENU_CONFIG["topic_re
 for _req in ("id", "name", "ask", "required", "informs", "status"):
     assert _req in TOPIC_MENU_CONFIG["topic_required_fields"], _req
 # Library homes (string contract): context keys + base_resume artifact name.
-for _ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+for _ctx in ("strengths", "priorities", "deal_breakers", "backstory", "ideal_day"):
     assert _ctx in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ctx
 assert "base_resume" in TOPIC_MENU_CONFIG["informs"]  # artifacts.base_resume home (AST-1014)
 
@@ -1598,6 +1600,7 @@ TOPIC_MENU_GEN_CONFIG = {
         "strengths",
         "priorities",
         "deal_breakers",
+        "ideal_day",
         "hopes",
         "interests",
         "concerns",
@@ -1622,6 +1625,7 @@ TOPIC_MENU_GEN_CONFIG = {
         "strengths",
         "priorities",
         "deal_breakers",
+        "ideal_day",
         "hopes",
         "interests",
         "concerns",
