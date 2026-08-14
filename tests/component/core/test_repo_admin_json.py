@@ -751,8 +751,11 @@ class TestAst1075TopicMenuCatalogRows:
             "priorities",
             "deal_breakers",
             "backstory",
+            "ideal_day",  # AST-1367
         ):
             assert informs in cache
+        # Preamble confirm patch allowlist includes ideal_day (AST-1367)
+        assert "ideal_day" in confirm["cache_prompt"]
 
 
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
@@ -1144,3 +1147,45 @@ class TestAst1269AliasAgentTaskSeedRestore:
         for key in self._UUID:
             for field in fields:
                 assert cat[key].get(field) == fix[key].get(field), (key, field)
+
+
+class TestAst1368IdealDayCraftDoCachePrompt:
+    """AST-1368: craft_do_rubric cache_prompt carries Ideal Day; LIKE/JD inherit via CALLER_CACHE_A."""
+
+    _PROMPT_FIELDS = (
+        "cache_prompt",
+        "cache_prompt_b",
+        "cache_prompt_c",
+        "cache_prompt_d",
+        "nocache_prompt",
+        "user_prompt",
+        "system_prompt",
+    )
+
+    def _by_key(self) -> dict:
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        return {row["task_key"]: row for row in rows if row.get("current") == 1}
+
+    def test_craft_do_cache_prompt_ideal_day_after_backstory_before_base_resume(self) -> None:
+        from src.utils.config import TOKEN_SOURCES
+
+        assert TOKEN_SOURCES["IDEAL_DAY"]["path"] == "context.ideal_day"
+        cp = self._by_key()["craft_do_rubric"]["cache_prompt"]
+        assert "{$IDEAL_DAY}" in cp
+        assert "IDEAL DAY" in cp
+        assert cp.index("{$BACKSTORY}") < cp.index("{$IDEAL_DAY}") < cp.index("{$BASE_RESUME}")
+
+    def test_like_and_jobdesc_forward_caller_cache_a(self) -> None:
+        by = self._by_key()
+        assert "{$CALLER_CACHE_A}" in (by["craft_like_rubric"]["cache_prompt"] or "")
+        assert "{$CALLER_CACHE_A}" in (by["craft_jobdesc_rubric"]["cache_prompt"] or "")
+
+    def test_out_of_scope_craft_rows_omit_ideal_day_token(self) -> None:
+        by = self._by_key()
+        for key in (
+            "craft_joblist_rubric",
+            "craft_get_rubric",
+            "craft_evaluate_meteorite_rubric",
+        ):
+            blob = " ".join(str(by[key].get(field) or "") for field in self._PROMPT_FIELDS)
+            assert "{$IDEAL_DAY}" not in blob, key

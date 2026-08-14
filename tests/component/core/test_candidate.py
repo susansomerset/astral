@@ -2997,6 +2997,11 @@ class TestAst1074TopicMenuPersistence:
         with pytest.raises(ValueError, match="non-empty list"):
             candidate_mod.validate_topic(self._topic("t1", informs=[]))
 
+    def test_validate_topic_accepts_ideal_day_inform(self) -> None:
+        # AST-1367: closed informs catalog includes ideal_day
+        row = candidate_mod.validate_topic(self._topic("t1", informs=["ideal_day"]))
+        assert row["informs"] == ["ideal_day"]
+
     def test_validate_topic_menu_rejects_duplicate_ids(self) -> None:
         with pytest.raises(ValueError, match="duplicate topic id"):
             candidate_mod.validate_topic_menu(

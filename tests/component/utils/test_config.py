@@ -3447,6 +3447,7 @@ class TestAst1073ContactEstelleTurnConfig:
 class TestAst1074TopicMenuConfig:
     """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
 
+    # AST-1367: ideal_day joins the closed informs catalog after backstory
     _INFORMS = (
         "rubrics",
         "base_resume",
@@ -3454,6 +3455,7 @@ class TestAst1074TopicMenuConfig:
         "priorities",
         "deal_breakers",
         "backstory",
+        "ideal_day",
     )
 
     def test_informs_and_statuses_locked(self) -> None:
@@ -3467,7 +3469,7 @@ class TestAst1074TopicMenuConfig:
         tmc = cfg.TOPIC_MENU_CONFIG
         for key in ("id", "name", "ask", "required", "informs", "status"):
             assert key in tmc["topic_required_fields"]
-        for ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+        for ctx in ("strengths", "priorities", "deal_breakers", "backstory", "ideal_day"):
             assert ctx in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
         assert "base_resume" in tmc["informs"]
 
@@ -4765,6 +4767,33 @@ class TestAst1365IdealDayLibraryToken:
         )
         assert filled == "[deep focus mornings]"
 
-    def test_topic_menu_informs_exclude_ideal_day_until_sibling(self) -> None:
-        # AST-1367 owns informs catalog; this ticket must not sneak it in.
-        assert "ideal_day" not in cfg.TOPIC_MENU_CONFIG["informs"]
+
+
+class TestAst1366IdealDayCandidateNav:
+    """AST-1366: Candidate NAV Ideal Day between Backstory and Writing Preferences."""
+
+    def test_ideal_day_nav_between_backstory_and_writing_preferences(self) -> None:
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in cand["items"]]
+        paths = [i["path"] for i in cand["items"]]
+        assert labels.index("Backstory") < labels.index("Ideal Day")
+        assert labels.index("Ideal Day") < labels.index("Writing Preferences")
+        assert paths[labels.index("Ideal Day")] == "/candidate/ideal_day"
+
+
+class TestAst1367IdealDayTopicMenuInforms:
+    """AST-1367: ideal_day in Topic Menu informs + Estelle packet/patch allowlists."""
+
+    def test_informs_catalog_includes_ideal_day_after_backstory(self) -> None:
+        informs = cfg.TOPIC_MENU_CONFIG["informs"]
+        assert "ideal_day" in informs
+        assert informs[informs.index("backstory") + 1] == "ideal_day"
+
+    def test_packet_and_patch_keys_include_ideal_day_after_deal_breakers(self) -> None:
+        g = cfg.TOPIC_MENU_GEN_CONFIG
+        for key in ("packet_context_keys", "patchable_context_keys"):
+            keys = g[key]
+            assert "ideal_day" in keys
+            assert keys[keys.index("deal_breakers") + 1] == "ideal_day"
+            assert "ideal_day" in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+
