@@ -818,7 +818,7 @@
   },
   {
     "agent_id": "principal_recruiter_estelle",
-    "cache_prompt": "{$FIRST_NAME}'s BIO SUMMARY:\n{$BIO_SUMMARY}\n\n\n{$FIRST_NAME}'s STRENGTHS:\n{$STRENGTHS}\n\n\n{$FIRST_NAME}'s PRIORITIES:\n{$PRIORITIES}\n\n\n{$FIRST_NAME}'s DEAL BREAKERS:\n{$DEAL_BREAKERS}\n\n\n{$FIRST_NAME}'s BACK STORY:\n{$BACKSTORY}\n\n\n{$FIRST_NAME}'s BASE RESUME:\n{$BASE_RESUME}\n\n\n{$FIRST_NAME}'s LINKEDIN PROFILE TEXT:\n{$LINKEDIN_PROFILE_TEXT}\n",
+    "cache_prompt": "{$FIRST_NAME}'s BIO SUMMARY:\n{$BIO_SUMMARY}\n\n\n{$FIRST_NAME}'s STRENGTHS:\n{$STRENGTHS}\n\n\n{$FIRST_NAME}'s PRIORITIES:\n{$PRIORITIES}\n\n\n{$FIRST_NAME}'s DEAL BREAKERS:\n{$DEAL_BREAKERS}\n\n\n{$FIRST_NAME}'s BACK STORY:\n{$BACKSTORY}\n\n\n{$FIRST_NAME}'s IDEAL DAY:\n{$IDEAL_DAY}\n\n\n{$FIRST_NAME}'s BASE RESUME:\n{$BASE_RESUME}\n\n\n{$FIRST_NAME}'s LINKEDIN PROFILE TEXT:\n{$LINKEDIN_PROFILE_TEXT}\n",
     "cache_prompt_b": "== THE GET RUBRIC (boundary reference \u2014 do not duplicate these vectors)\n\n{$CALLER_RESPONSE}",
     "cache_prompt_c": "",
     "cache_prompt_d": "",
