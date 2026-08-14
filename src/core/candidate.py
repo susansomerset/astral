@@ -1897,11 +1897,8 @@ def requested_artifacts_chain_artifact_keys() -> list[str]:
     return keys
 
 
-_CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
-
-
 def check_context_complete(candidate_id: str) -> bool:
-    """True when all four context text fields are non-empty (no state write).
+    """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
     Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
@@ -1912,7 +1909,9 @@ def check_context_complete(candidate_id: str) -> bool:
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
-    for key in _CONTEXT_TEXT_KEYS:
+    if not isinstance(ctx, dict):
+        ctx = {}
+    for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
         if not (ctx.get(key) or "").strip():
             return False
     return True
