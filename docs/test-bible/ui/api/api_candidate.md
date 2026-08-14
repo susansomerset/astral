@@ -94,14 +94,14 @@ PUT refuse legacy `profile`; signature under `contact`. Primary: **`docs/test-bi
 
 **Publish:** `origin/sub/AST-1340/AST-1353-save-base-resume-snapshot`.
 
-After successful **`save_candidate_data`** on PUT `/data` when the request included dict/list **`artifacts.base_resume`**, call **`snapshot_saved_base_resume_astral_artifact`**. Primary core helper + craft non-wire: **`docs/test-bible/core/candidate.md`** § AST-1353.
+After successful **`save_candidate_data`** on PUT `/data` when the request included dict/list **`artifacts.base_resume`**, call **`snapshot_saved_base_resume_artifact`**. Primary core helper + craft non-wire: **`docs/test-bible/core/candidate.md`** § AST-1353.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | PUT Save snapshots + second Save history + AC4 craft overwrite | `src/ui/api/api_candidate.py` | **`TestAst1353SaveBaseResumeSnapshotApi`** |
 | Mocked PUT base_resume still green (snapshot stubbed) | `src/ui/api/api_candidate.py` | revised **`TestAst519ResumeStructureApi::test_put_base_resume_strips_orphan_keys`**; revised **`TestAst1305LegacyLabelIngestApi`** |
 
-**Broken / obsolete this pass:** mocked `save_candidate_data` PUT tests that include `base_resume` must stub **`snapshot_saved_base_resume_astral_artifact`** (otherwise snapshot hits real DB / missing candidate).
+**Broken / obsolete this pass:** mocked `save_candidate_data` PUT tests that include `base_resume` must stub **`snapshot_saved_base_resume_artifact`** (otherwise snapshot hits real DB / missing candidate).
 
 **Integration:** none.
 
@@ -112,3 +112,14 @@ After successful **`save_candidate_data`** on PUT `/data` when the request inclu
   tests/component/ui/api/test_api_candidate.py::TestAst1305LegacyLabelIngestApi \
   -q
 ```
+
+---
+
+### AST-1364 · AST-1340 (bug — rename)
+
+PUT Save stubs / real-DB AST-1353 cases call **`snapshot_saved_base_resume_artifact`** and read **`get_current_artifact`** / **`list_artifacts`** / **`artifact_uuid`**. Primary: **`docs/test-bible/data/database/artifacts.md`** § AST-1364.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Save snapshot API (retargeted) | `src/ui/api/api_candidate.py` | **`TestAst1353SaveBaseResumeSnapshotApi`** |
+| Mocked PUT base_resume snapshot stub | `src/ui/api/api_candidate.py` | **`TestAst519…`** / **`TestAst1305…`** stub renamed helper |
