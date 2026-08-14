@@ -223,3 +223,42 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
   -t "AST-1348"
 ```
+
+### AST-1374 · AST-1372
+
+**Parent:** [AST-1372 — Extend Stytch sessions](https://linear.app/astralcareermatch/issue/AST-1372). **Publish:** `origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend`.
+
+SPA consumes AST-1373 `GET /api/auth_session_policy`: authenticate handoff uses configured `session_duration_minutes` (hardcoded `60` removed); `AuthProvider` starts `startSessionExtendLoop` while a Stytch session exists. Does **not** invent policy API (**AST-1373**); does **not** redesign log-off (**AST-624/625**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Policy fetch | `authSessionPolicy.ts` | **`test_authSessionPolicy.test.ts`** |
+| Extend interval helper | `sessionExtend.ts` | **`test_sessionExtend.test.ts`** |
+| Handoff uses policy duration | `stytchAuthenticateHandoff.ts` | revised **`test_stytchAuthenticateHandoff.test.ts`** |
+| `/authenticate` page | `Authenticate.tsx` | revised **`test_Authenticate.test.tsx`** (§6c) |
+| AuthProvider extend wiring | `AuthContext.tsx` | revised **`test_AuthContext.test.tsx`** (+ `stytchMock` `getSync` / `authenticate`) |
+
+**Broken / obsolete this pass:** handoff + Authenticate expected `session_duration_minutes: 60` / unmocked policy fetch — revised to stub `GET /api/auth_session_policy` and assert configured `20`.
+
+**Integration:** no existing scenario asserts SPA session duration or extend cadence — no revision.
+
+## QA test manifest
+
+1. Policy fetch: `tests/component/frontend/lib/test_authSessionPolicy.test.ts`
+2. Extend loop helper: `tests/component/frontend/lib/test_sessionExtend.test.ts`
+3. Handoff (configured duration + no fallback): `tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts`
+4. Authenticate page §6c: `tests/component/frontend/pages/test_Authenticate.test.tsx`
+5. AuthContext extend start: `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+
+**AST-1374** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_authSessionPolicy.test.ts \
+  ../../../tests/component/frontend/lib/test_sessionExtend.test.ts \
+  ../../../tests/component/frontend/lib/test_stytchAuthenticateHandoff.test.ts \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
