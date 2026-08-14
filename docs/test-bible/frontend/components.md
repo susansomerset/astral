@@ -54,7 +54,7 @@ Ten Phase E **`task_key`** values replace **`craft_job_*`**. **Dispatch entry** 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Registry + BUILD/CANDIDATE entry keys | `src/utils/config.py` (`TASK_CONFIG`, `BUILD_CONFIG` chain `first_task_key`), `src/core/consult.py` `run_consult_task(dispatch_task_key=…)`, `src/core/dispatcher.py`, `src/data/database.py` (`dispatch_task_admin_defaults`) | `tests/component/utils/test_config.py` (`TestAst450ArtifactPipelineTaskKeys`, `TestAst520AnticipateScanTaskKey`, `TestAst309CoverLetterTaskConfig`), `tests/component/core/test_consult.py` (`TestRunConsultTask`, `TestAst369CoverLetterDispatch`, `TestAst371ResumeArtifactDispatch`, `TestAst534DispatchTaskKeyHonesty`), `tests/component/core/test_dispatcher.py` (`test_ast534_forwards_dispatch_task_key_to_consult`), `tests/component/core/test_agent.py` (artifact chain + `do_task` paths using **`draft_job_resume`** / **`draft_cover_letter`**) |
-| Agent story phase + display label | `src/core/roster.py` (`get_entity_agent_story`) | `tests/component/core/test_roster.py` (`TestEntityAgentStory::test_ast520_agent_story_phase_and_print_label`) |
+| Agent story phase + display label | `src/core/agent.py` (`get_entity_agent_story`) | `tests/component/core/test_agent.py` (`TestEntityAgentStory::test_ast520_agent_story_phase_and_print_label`) |
 | Recommended Job Analysis Report — Phase E hops | `src/ui/frontend/src/components/JobAnalysisReportModal.tsx` | `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` (Phase E **`agent_story`** panel — **AST-520**) |
 
 ---
@@ -648,6 +648,30 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1369 · AST-1361
+
+**Parent:** [AST-1361 — Freeze the Astral Logo and the candidate selection](https://linear.app/astralcareermatch/issue/AST-1361/freeze-the-astral-logo-and-the-candidate-selection). **Publish:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome`.
+
+`NavigationShell` + `App.css` split the left nav into `.sidebar-chrome` (logo + candidate control, `flex-shrink: 0`) and `.sidebar-scroll` (loading/error/groups + admin footer/spacer, `flex: 1; min-height: 0; overflow-y: auto`). `.sidebar` uses `overflow: hidden` (no whole-pane scroll). No sticky positioning; admin deploy footer stays in the scroll region. AST-1286 responsive shell (wide select / narrow drawer+menu) unchanged. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome / scroll DOM split (wide) | `NavigationShell.tsx` + `App.css` | **`test_NavigationShell.test.tsx`** — **`AST-1369 pinned left-nav chrome` → wide: logo + candidate live in sidebar-chrome; groups + footer in sidebar-scroll** |
+| Same split on narrow + menu in chrome | same | **`narrow: same chrome/scroll split; candidate menu stays in chrome`** |
+| Loading/error in scroll region | same | **`loading/error messages render inside sidebar-scroll, not chrome`** |
+| Responsive shell regression (AC4–5) | same | **`AST-1286 responsive shell`** block (hamburger/backdrop/navigate/candidate lock) — re-run |
+
+**Broken / obsolete:** none — existing shell selectors (combobox, hamburger, nav groups, deploy footer) still resolve after the wrapper divs.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` — API-only; no shell/CSS contract; no revision. Do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+---
+
 ### AST-1302 · AST-1166 (list icon-control remediation)
 
 **Parent:** [AST-1166 — Button consistency](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency). **Publish:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`.
@@ -780,3 +804,56 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_recommendedJobReport.test.tsx \
   -t "AST-1348|AST-950"
 ```
+
+### AST-1350 · AST-1345
+
+**AST-1350:** JAR **Print Resume** fetch-then-blob + toast exact API `error` (no `window.open` on failure). Cover Letter print unchanged. Base Resume / Session Open HTML already toast API errors — **`test_ArtifactsBaseResumeContent`** / **`test_AdminSessionResumePaste`**. Core/API: **`docs/test-bible/core/builder.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **Print Resume fetch-then-blob…**, **AST-1350: Print Resume unsupported toast — no tab** |
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="Print Resume|AST-1350"
+```
+
+### AST-1351 · AST-1345
+
+**Parent:** [AST-1345](https://linear.app/astralcareermatch/issue/AST-1345/clarify-candidate-data-artifacts-base-resume-experience-node). **Publish:** `origin/sub/AST-1345/AST-1351-experience-array-ui-render-print-parity`.
+
+Base Resume / job structureMode experience uses **`ExperienceJobsEditor`** (job-array template) via **`ArtifactEditor`**. Legacy non-array → read-only + unsupported message; Save aborts with that toast. Config/API spine: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**. Builder Style D: **`docs/test-bible/core/builder.md`**. Does **not** own prompts (AST-1349) or Print toast/no-tab (AST-1350).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Per-role add/remove/reorder | `ExperienceJobsEditor.tsx` | **`test_ExperienceJobsEditor.test.tsx`** — AST-1351 |
+| Array load/Save + legacy abort | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **AST-996/AST-1351**, **AST-1351: legacy string…** |
+
+**Broken / obsolete this pass:** AST-996 experience pretty-printed JSON textarea asserts — flipped to ExperienceJobsEditor / unsupported notice.
+
+**§6c:** Base Resume Content mounts ArtifactEditor — no separate page file in product diff; component coverage above is the UI gate.
+
+## QA test manifest
+
+1. ExperienceJobsEditor add/remove/reorder: `tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx`
+2. ArtifactEditor array Save + legacy abort: `test_ArtifactEditor.test.tsx` AST-996/AST-1351 + AST-1351 legacy
+3. Config field spine: `TestAst1351ExperienceJobUiFields`
+4. ui_config exposure: `TestAst1351ExperienceJobUiConfig`
+5. Builder Style D debug jobs: `TestAst1351ExperienceDebugJobs`
+
+**AST-1351** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1351ExperienceJobUiFields \
+  tests/component/ui/api/test_api_system.py::TestAst1351ExperienceJobUiConfig \
+  tests/component/core/test_builder.py::TestAst1351ExperienceDebugJobs \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1351|AST-996"
+```
+
+

@@ -57,3 +57,39 @@ class TestAst581CoverRoute:
         monkeypatch.setattr(resume_mod, "build_cover_letter", MagicMock(side_effect=ValueError("no cover")))
         resp = resume_html_client.get("/candidate/cover/missing", headers=auth_headers)
         assert resp.status_code == 404
+
+
+class TestAst1350UnsupportedResumeHtml:
+    """AST-1350: unsupported experience ValueError → 400; other ValueErrors stay 404."""
+
+    _MSG = "unsupported resume structure, please regenerate"
+
+    def test_base_unsupported_is_400(
+        self, resume_html_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            resume_mod, "build_base_resume", MagicMock(side_effect=ValueError(self._MSG))
+        )
+        resp = resume_html_client.get("/candidate/resume/base?candidate_id=x", headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == self._MSG
+
+    def test_job_unsupported_is_400(
+        self, resume_html_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            resume_mod, "build_resume", MagicMock(side_effect=ValueError(self._MSG))
+        )
+        resp = resume_html_client.get("/candidate/resume/job-1", headers=auth_headers)
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == self._MSG
+
+    def test_base_other_value_error_still_404(
+        self, resume_html_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            resume_mod, "build_base_resume", MagicMock(side_effect=ValueError("missing candidate"))
+        )
+        resp = resume_html_client.get("/candidate/resume/base?candidate_id=x", headers=auth_headers)
+        assert resp.status_code == 404
+        assert resp.get_json()["error"] == "missing candidate"

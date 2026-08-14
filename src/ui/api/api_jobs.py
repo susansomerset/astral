@@ -5,7 +5,7 @@ from flask import Blueprint, jsonify, request
 
 from ui.auth import require_auth
 from src.core.consult import _phase_score_breakdown
-from src.core.roster import get_entity_agent_story
+from src.core.agent import get_entity_agent_story
 from src.core.tracker import (
     cancel_artifact_build,
     count_jobs,
@@ -147,11 +147,11 @@ def detail(astral_job_id):
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
     job["job_data"] = {**jd, "artifacts": art}
-    # AST-1274: secondary soft-fail — primary fix is data-layer ref resolve.
+    # AST-1274/AST-1354: secondary soft-fail — no stacktrace for expected missing pieces.
     try:
         job["agent_story"] = get_entity_agent_story(job)
     except Exception as exc:
-        logger.exception(
+        logger.warning(
             "detail: get_entity_agent_story failed astral_job_id=%s: %s",
             astral_job_id,
             exc,

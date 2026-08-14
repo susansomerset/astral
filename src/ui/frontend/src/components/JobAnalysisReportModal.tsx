@@ -5,6 +5,7 @@ import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
 import { TabBar } from "./TabbedTextArea"
+import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
@@ -64,6 +65,46 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [structureError, setStructureError] = useState(false)
+  const [toast, setToast] = useState<ToastMessage | null>(null)
+  const clearToast = useCallback(() => setToast(null), [])
+
+  // AST-1350: fetch-then-blob so unsupported experience toasts without opening a tab.
+  const handlePrintResume = useCallback(async () => {
+    if (!jobId) return
+    try {
+      const r = await api(`/candidate/resume/${encodeURIComponent(jobId)}`)
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`
+        try {
+          const data = await r.json()
+          if (typeof data.error === "string" && data.error) msg = data.error
+        } catch { /* non-JSON error body */ }
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      const html = await r.text()
+      if (!html.trim()) {
+        setToast({ text: "HTML response was empty", variant: "error" })
+        return
+      }
+      const blobUrl = URL.createObjectURL(
+        new Blob([html], { type: "text/html;charset=utf-8" }),
+      )
+      const win = window.open(blobUrl, "_blank", "noopener,noreferrer")
+      if (!win) {
+        setToast({
+          text: "Popup blocked — allow popups to open the HTML tab.",
+          variant: "error",
+        })
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    } catch (e) {
+      setToast({
+        text: e instanceof Error ? e.message : "Print failed",
+        variant: "error",
+      })
+    }
+  }, [jobId])
 
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
@@ -502,14 +543,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               onCopyLinkedIn={handleCopyLinkedIn}
               showPrintResume={showPrintResume}
               showPrintCover={showPrintCover}
-              onPrintResume={() => {
-                if (!jobId) return
-                window.open(
-                  `/candidate/resume/${encodeURIComponent(jobId)}`,
-                  "_blank",
-                  "noopener,noreferrer",
-                )
-              }}
+              onPrintResume={() => { void handlePrintResume() }}
               onPrintCover={() => {
                 if (!jobId) return
                 window.open(
@@ -555,6 +589,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           )}
         </div>
       )}
+      <Toast message={toast} onDone={clearToast} />
     </Modal>
   )
 }

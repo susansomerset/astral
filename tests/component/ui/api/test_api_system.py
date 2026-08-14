@@ -304,3 +304,20 @@ class TestAst1253StateUiManifestChainFields:
         assert cand["artifacts_chain_hop_labels"] == []
         assert cand["artifacts_chain_artifact_keys"] == []
         assert "artifact_generate_states" in cand
+
+
+class TestAst1351ExperienceJobUiConfig:
+    """AST-1351: ui_config exposes experience job field spine + unsupported message."""
+
+    def test_ui_config_includes_experience_job_fields(
+        self, system_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        from src.utils.config import BUILD_CONFIG
+
+        payload = system_client.get("/api/ui_config", headers=auth_headers).get_json()
+        fields = payload.get("experience_job_ui_fields")
+        assert fields == BUILD_CONFIG["experience_job_ui_fields"]
+        assert payload.get("unsupported_resume_structure_message") == BUILD_CONFIG[
+            "unsupported_resume_structure_message"
+        ]
+

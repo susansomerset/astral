@@ -1897,11 +1897,8 @@ def requested_artifacts_chain_artifact_keys() -> list[str]:
     return keys
 
 
-_CONTEXT_TEXT_KEYS = ("strengths", "priorities", "deal_breakers", "backstory")
-
-
 def check_context_complete(candidate_id: str) -> bool:
-    """True when all four context text fields are non-empty (no state write).
+    """True when all CANDIDATE_LIBRARY_CONFIG['context_completeness_keys'] are non-empty (no state write).
     Already-advanced candidates (progress_rank >= ALL_TOPICS_READY) count as complete."""
     candidate = database.get_candidate(candidate_id)
     if not candidate:
@@ -1912,7 +1909,9 @@ def check_context_complete(candidate_id: str) -> bool:
     if rank >= ready_rank and rank >= 0:
         return True
     ctx = (candidate.get("candidate_data") or {}).get("context", {})
-    for key in _CONTEXT_TEXT_KEYS:
+    if not isinstance(ctx, dict):
+        ctx = {}
+    for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
         if not (ctx.get(key) or "").strip():
             return False
     return True
@@ -2654,12 +2653,13 @@ def validate_draft_job_resume_payload(
                         accepted.append(key)
                         continue
                     if key == "experience":
+                        # AST-1349: array-only success path (shared five-key contract); no string OK.
                         if _is_experience_job_array(val) and val:
                             bad_job = False
                             for job in val:
                                 if not isinstance(job, dict):
                                     rejected.append(key)
-                                    err = "Section 'experience' must be an experience_detail job array"
+                                    err = "Section 'experience' must be a job array"
                                     bad_job = True
                                     break
                                 if not isinstance(job.get("location"), str):
@@ -2673,7 +2673,7 @@ def validate_draft_job_resume_payload(
                             accepted.append(key)
                             continue
                         rejected.append(key)
-                        err = "Section 'experience' must be an experience_detail job array"
+                        err = "Section 'experience' must be a job array"
                         break
                     text = _coerce_resume_section_string(val)
                     if text is None:

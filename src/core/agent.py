@@ -3604,6 +3604,133 @@ async def run_adhoc(
     return result
 
 
+
+# ---------------------------------------------------------------------------
+# Entity agent story (AST-984 / AST-1354) — lives with agent_data, not roster
+# ---------------------------------------------------------------------------
+
+def get_entity_agent_story(entity: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Expand latest-per-task agent refs (agent_data.entity_id) with block content.
+
+    Entity type from astral_job_id / short_name / astral_candidate_id presence.
+    For scored tasks (TASK_CONFIG[task_key].scored == True):
+    - Attaches vector_grades and rubric_artifact to the enriched entry for display.
+    - RESPONSE blocks for batch tasks (those with a "jobs" array) are filtered to
+      just the matching astral_job_id entry. Old encoded data (no astral_job_id in
+      the jobs array) yields an empty content string so the frontend skips rendering.
+
+    Duplicate block types get a counter suffix: NO_CACHE, NO_CACHE (2).
+    """
+    if entity.get("astral_job_id"):
+        entity_type, entity_id = "job", entity["astral_job_id"]
+    elif entity.get("astral_candidate_id"):
+        entity_type, entity_id = "candidate", entity["astral_candidate_id"]
+    elif entity.get("short_name"):
+        entity_type, entity_id = "company", entity["short_name"]
+    else:
+        return []
+
+    # AST-1274/AST-1354: soft-fail without stacktrace; prefer partial story.
+    try:
+        entries = database.list_entity_latest_agent_refs(entity_type, entity_id)
+    except Exception as exc:
+        logger.warning(
+            "get_entity_agent_story: list_entity_latest_agent_refs failed "
+            "entity_type=%s entity_id=%s: %s",
+            entity_type,
+            entity_id,
+            exc,
+        )
+        return []
+    if not entries:
+        return []
+
+    # Per-id resolve: one dangling sibling must not blank healthy RESPONSE content.
+    all_ids = [
+        b["id"]
+        for e in entries
+        for b in (e.get("prompt_blocks") or [])
+        if isinstance(b, dict) and b.get("id")
+    ]
+    data_map: Dict[str, Any] = {}
+    for bid in all_ids:
+        if bid in data_map:
+            continue
+        try:
+            row = _get_agent_data_row(bid)
+            if row:
+                data_map[bid] = row
+        except Exception as exc:
+            logger.warning(
+                "get_entity_agent_story: get_agent_data failed "
+                "entity_type=%s entity_id=%s agent_data_id=%s: %s",
+                entity_type,
+                entity_id,
+                bid,
+                exc,
+            )
+
+    entity_job_id = entity.get("astral_job_id")  # None for companies
+
+    enriched = []
+    for e in entries:
+        task_key = e.get("task_key", "")
+        task_cfg = TASK_CONFIG.get(task_key, {})
+        is_scored = bool(task_cfg.get("scored"))
+
+        type_counts: Dict[str, int] = {}
+        blocks = []
+        for ref in (e.get("prompt_blocks") or []):
+            if not isinstance(ref, dict):
+                continue
+            btype = ref.get("type", "UNKNOWN")
+            bid = ref.get("id", "")
+            type_counts[btype] = type_counts.get(btype, 0) + 1
+            label = btype if type_counts[btype] == 1 else f"{btype} ({type_counts[btype]})"
+            content = data_map.get(bid, {}).get("block_data", "") or ""
+
+            if is_scored and btype == "RESPONSE" and entity_job_id:
+                content = _filter_response_block(content, entity_job_id)
+
+            blocks.append({"type": label, "id": bid, "content": content})
+
+        entry = {**e, "blocks": blocks}
+
+        if is_scored:
+            grades_key = task_cfg.get("grades_key")
+            data_blob = entity.get("job_data") if entity.get("astral_job_id") else entity.get("company_data")
+            data_blob = data_blob if isinstance(data_blob, dict) else {}
+            entry["vector_grades"] = data_blob.get(grades_key) if grades_key else None
+            entry["rubric_artifact"] = task_cfg.get("rubric_artifact")
+
+        enriched.append(entry)
+
+    return enriched
+
+
+def _filter_response_block(content: str, astral_job_id: str) -> str:
+    """For batch task RESPONSE blocks: filter the jobs array to the matching job.
+
+    Returns the matching job entry as pretty JSON, empty string for old encoded
+    data (no astral_job_id present), or the original content for non-batch responses.
+    """
+    try:
+        parsed = json.loads(content)
+    except (json.JSONDecodeError, TypeError):
+        return content  # not JSON — leave as-is
+
+    jobs = parsed.get("jobs") if isinstance(parsed, dict) else None
+    if jobs is None:
+        return content  # single-job response — show as-is
+
+    # Check if any entry has astral_job_id (i.e. decoded, not old encoded data)
+    if not any(isinstance(j, dict) and j.get("astral_job_id") for j in jobs):
+        return ""  # old encoded payload — skip
+
+    match = next((j for j in jobs if isinstance(j, dict) and j.get("astral_job_id") == astral_job_id), None)
+    return json.dumps(match, indent=2) if match else ""
+
+
 # ---------------------------------------------------------------------------
 # get_agent_data — retrieve stored blocks for a batch
 # ---------------------------------------------------------------------------

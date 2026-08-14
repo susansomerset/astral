@@ -2,6 +2,26 @@
 
 **Test tree:** `tests/component/pages/`
 
+### AST-1357 · AST-1356
+
+Unlock Candidate Profile **Original Resume Text** when `artifacts.base_resume` exists — remove `hasBaseResume` / `disabled` / lock placeholder on the resume tab. Field stays on existing Profile `values` / PUT / Cancel / dirty-leave (AST-1336); no Artifacts UI change.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Profile unlock (§6c) | `CandidateProfile.tsx` | `tests/component/frontend/pages/test_CandidateProfile.test.tsx` — **`CandidateProfile — AST-1357 unlock original resume text`**: with base resume → enabled + no lock placeholder; Save PUT `context.raw_resume`; Cancel restores; without base resume still editable |
+| Cancel (non-resume) | same | Revised **`restores values on cancel`** (dropped obsolete `toBeDisabled` on resume) |
+
+**Broken / obsolete:** `restores values on cancel and locks resume text when base resume exists` — asserted resume `toBeDisabled()` when base resume present; product unlock makes that red.
+
+**Integration:** no existing scenario asserts Profile resume lock — no drift.
+
+**AST-1357** narrowed Vitest:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx
+```
+
 ### AST-1336 · AST-1315
 
 Wire Candidate Profile to `useDirtyLeaveSaveThenNavigate` (sibling **AST-1335**): dirty vs last loaded/saved snapshot (`JSON.stringify`), shared `persistProfile` Promise for header Save + dirty-leave `onSave`, header Cancel unchanged. Profile only.
@@ -1918,3 +1938,39 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
   -t "AST-1337: Print error"
 ```
+
+
+### AST-1366 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface`.
+
+Candidate nav + Ideal Day edit page (`ContextTextPage` wrapper, `contextKey="ideal_day"`) peer of Strengths/Priorities/Deal Breakers/Backstory. Route `candidate/ideal_day` + `NAV_CONFIG` Ideal Day between Backstory and Writing Preferences. Save/load via existing `PUT /api/candidates/<id>/data` — no API change. Does **not** own Topic Menu informs (**AST-1367**) or craft prompts (**AST-1368**). Library/token/gate: **AST-1365**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Ideal Day page (§6c) | `CandidateIdealDay.tsx` | **`test_CandidateIdealDay.test.tsx`** — render heading + `ideal_day` prose; Save PUT `context.ideal_day` |
+| Nav order | `src/utils/config.py` `NAV_CONFIG` | **`TestAst1366IdealDayCandidateNav`** (`test_config.py`; map also **`docs/test-bible/utils/config.md`**) |
+| Shared editor behavior (existing) | `ContextTextPage.tsx` | **`test_ContextTextPage.test.tsx`** — unchanged; Ideal Day is another caller |
+
+**Broken / obsolete this pass:** none — new page + nav item only.
+
+**Integration:** no existing scenario asserts Candidate Ideal Day nav/page — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Ideal Day page (§6c): `tests/component/frontend/pages/test_CandidateIdealDay.test.tsx`
+2. Nav placement: `tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav`
+3. Shared ContextTextPage regression: `tests/component/frontend/components/test_ContextTextPage.test.tsx`
+
+**AST-1366** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1366IdealDayCandidateNav \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CandidateIdealDay.test.tsx \
+  ../../../tests/component/frontend/components/test_ContextTextPage.test.tsx
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

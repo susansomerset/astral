@@ -14,6 +14,7 @@ from src.core import candidate as candidate_mod
 from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
+    CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STATES,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
@@ -521,8 +522,8 @@ class TestCheckContextCompleteExtended:
     def test_returns_true_when_all_context_fields_present_without_transition(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # Completeness helper no longer writes state (AST-970)
-        ctx = {key: "filled" for key in candidate_mod._CONTEXT_TEXT_KEYS}
+        # Completeness helper no longer writes state (AST-970); keys from config (AST-1365)
+        ctx = {key: "filled" for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]}
         monkeypatch.setattr(
             candidate_mod.database,
             "get_candidate",
@@ -542,6 +543,40 @@ class TestCheckContextCompleteExtended:
             lambda candidate_id: {
                 "state": "INTAKE_INITIATED",
                 "candidate_data": {"context": {"strengths": "only"}},
+            },
+        )
+        assert candidate_mod.check_context_complete("somerset") is False
+
+    def test_returns_false_when_ideal_day_missing(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Four legacy gated keys filled — Ideal Day still required (AST-1365)
+        ctx = {
+            key: "filled"
+            for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
+            if key != "ideal_day"
+        }
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "state": "INTAKE_INITIATED",
+                "candidate_data": {"context": ctx},
+            },
+        )
+        assert candidate_mod.check_context_complete("somerset") is False
+
+    def test_returns_false_when_ideal_day_whitespace_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        ctx = {key: "filled" for key in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]}
+        ctx["ideal_day"] = "   "
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "state": "INTAKE_INITIATED",
+                "candidate_data": {"context": ctx},
             },
         )
         assert candidate_mod.check_context_complete("somerset") is False
@@ -2962,6 +2997,11 @@ class TestAst1074TopicMenuPersistence:
         with pytest.raises(ValueError, match="non-empty list"):
             candidate_mod.validate_topic(self._topic("t1", informs=[]))
 
+    def test_validate_topic_accepts_ideal_day_inform(self) -> None:
+        # AST-1367: closed informs catalog includes ideal_day
+        row = candidate_mod.validate_topic(self._topic("t1", informs=["ideal_day"]))
+        assert row["informs"] == ["ideal_day"]
+
     def test_validate_topic_menu_rejects_duplicate_ids(self) -> None:
         with pytest.raises(ValueError, match="duplicate topic id"):
             candidate_mod.validate_topic_menu(
@@ -5086,3 +5126,40 @@ class TestAst1353SnapshotSavedBaseResume:
         assert status == 200
         assert body["success"] is True
         assert astral_calls == []
+
+
+class TestAst1365IdealDayLibrary:
+    """AST-1365: Ideal Day completeness gate + context save payload (library peer)."""
+
+    def test_save_candidate_data_merges_ideal_day_context(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock()
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda candidate_id: {
+                "candidate_data": {"context": {"strengths": "systems"}},
+            },
+        )
+        monkeypatch.setattr(candidate_mod.database, "save_candidate", save)
+        candidate_mod.save_candidate_data(
+            "c1", {"context": {"ideal_day": "deep focus mornings"}}
+        )
+        assert save.call_args.kwargs["merge"] is True
+        assert (
+            save.call_args.kwargs["candidate_data"]["context"]["ideal_day"]
+            == "deep focus mornings"
+        )
+
+    def test_check_context_complete_uses_config_completeness_keys(self) -> None:
+        keys = CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
+        assert "ideal_day" in keys
+        assert keys == (
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+            "ideal_day",
+        )
+        assert not hasattr(candidate_mod, "_CONTEXT_TEXT_KEYS")

@@ -2465,6 +2465,29 @@ class TestAst998ExperienceBodyKind:
         assert cfg.BUILD_CONFIG["supported_sections"]["experience"]["body_kind"] == "experience_jobs"
         assert cfg.BUILD_CONFIG["supported_sections"]["prior_experience"]["body_kind"] != "experience_jobs"
 
+class TestAst1350UnsupportedResumeStructureMessage:
+    """AST-1350: BUILD_CONFIG owns the exact Print/Open HTML toast string."""
+
+    def test_unsupported_resume_structure_message_literal(self) -> None:
+        assert cfg.BUILD_CONFIG["unsupported_resume_structure_message"] == (
+            "unsupported resume structure, please regenerate"
+        )
+
+
+class TestAst1351ExperienceJobUiFields:
+    """AST-1351: BUILD_CONFIG experience_job_ui_fields keys match schema."""
+
+    def test_experience_job_ui_fields_match_item_schema(self) -> None:
+        fields = cfg.BUILD_CONFIG["experience_job_ui_fields"]
+        assert isinstance(fields, list)
+        keys = [f["key"] for f in fields]
+        assert keys == ["company", "title", "dates", "location", "accomplishments"]
+        schema = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]["items_schema"]
+        assert set(keys) == set(schema)
+        for f in fields:
+            assert isinstance(f["label"], str) and f["label"]
+
+
 class TestAst1020DefaultStyleColorTokens:
     """AST-1020: BUILD_CONFIG default_style colors expose golden text/border tokens."""
 
@@ -3424,6 +3447,7 @@ class TestAst1073ContactEstelleTurnConfig:
 class TestAst1074TopicMenuConfig:
     """AST-1074: TOPIC_MENU_CONFIG closed informs + status triad."""
 
+    # AST-1367: ideal_day joins the closed informs catalog after backstory
     _INFORMS = (
         "rubrics",
         "base_resume",
@@ -3431,6 +3455,7 @@ class TestAst1074TopicMenuConfig:
         "priorities",
         "deal_breakers",
         "backstory",
+        "ideal_day",
     )
 
     def test_informs_and_statuses_locked(self) -> None:
@@ -3444,7 +3469,7 @@ class TestAst1074TopicMenuConfig:
         tmc = cfg.TOPIC_MENU_CONFIG
         for key in ("id", "name", "ask", "required", "informs", "status"):
             assert key in tmc["topic_required_fields"]
-        for ctx in ("strengths", "priorities", "deal_breakers", "backstory"):
+        for ctx in ("strengths", "priorities", "deal_breakers", "backstory", "ideal_day"):
             assert ctx in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
         assert "base_resume" in tmc["informs"]
 
@@ -4696,3 +4721,79 @@ class TestAst1313InboxBindConfig:
         assert bind["inbox_address"] == cfg.GAZE_EMAIL_CONFIG["account_address"]
         assert isinstance(bind["inbox_address"], str)
         assert "@" in bind["inbox_address"]
+
+
+class TestAst1365IdealDayLibraryToken:
+    """AST-1365: ideal_day library key, completeness keys, {$IDEAL_DAY} token."""
+
+    def test_ideal_day_in_context_keys_after_deal_breakers(self) -> None:
+        keys = cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+        assert "ideal_day" in keys
+        assert keys[keys.index("deal_breakers") + 1] == "ideal_day"
+
+    def test_context_completeness_keys_include_ideal_day(self) -> None:
+        complete = cfg.CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
+        assert complete == (
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+            "ideal_day",
+        )
+        assert len(complete) == len(set(complete))
+        for key in complete:
+            assert key in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+
+    def test_ideal_day_token_source(self) -> None:
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+            "source": "candidate",
+            "path": "context.ideal_day",
+        }
+
+    def test_resolve_ideal_day_empty_and_set(self) -> None:
+        empty = cfg.resolve_tokens(
+            "[{$IDEAL_DAY}]",
+            {"context": {}, "_astral_candidate_id": "c1"},
+            "grade_get",
+        )
+        assert empty == "[]"
+        filled = cfg.resolve_tokens(
+            "[{$IDEAL_DAY}]",
+            {
+                "context": {"ideal_day": "deep focus mornings"},
+                "_astral_candidate_id": "c1",
+            },
+            "grade_get",
+        )
+        assert filled == "[deep focus mornings]"
+
+
+
+class TestAst1366IdealDayCandidateNav:
+    """AST-1366: Candidate NAV Ideal Day between Backstory and Writing Preferences."""
+
+    def test_ideal_day_nav_between_backstory_and_writing_preferences(self) -> None:
+        cand = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Candidate")
+        labels = [i["label"] for i in cand["items"]]
+        paths = [i["path"] for i in cand["items"]]
+        assert labels.index("Backstory") < labels.index("Ideal Day")
+        assert labels.index("Ideal Day") < labels.index("Writing Preferences")
+        assert paths[labels.index("Ideal Day")] == "/candidate/ideal_day"
+
+
+class TestAst1367IdealDayTopicMenuInforms:
+    """AST-1367: ideal_day in Topic Menu informs + Estelle packet/patch allowlists."""
+
+    def test_informs_catalog_includes_ideal_day_after_backstory(self) -> None:
+        informs = cfg.TOPIC_MENU_CONFIG["informs"]
+        assert "ideal_day" in informs
+        assert informs[informs.index("backstory") + 1] == "ideal_day"
+
+    def test_packet_and_patch_keys_include_ideal_day_after_deal_breakers(self) -> None:
+        g = cfg.TOPIC_MENU_GEN_CONFIG
+        for key in ("packet_context_keys", "patchable_context_keys"):
+            keys = g[key]
+            assert "ideal_day" in keys
+            assert keys[keys.index("deal_breakers") + 1] == "ideal_day"
+            assert "ideal_day" in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+

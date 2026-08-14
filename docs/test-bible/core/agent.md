@@ -768,3 +768,31 @@ Pre-validate soft-coerce on shared `do_task` path: `_coerce_schema_str_fields_fr
   tests/component/core/test_agent.py::TestResponseSchemaBranches::test_coerce_schema_str_list_to_newlines_before_validate \
   -q
 ```
+
+### AST-1355 · AST-1316 (gap — agent-story tests after AST-1354)
+
+**Parent:** [AST-1316](https://linear.app/astralcareermatch/issue/AST-1316/cant-find-agent-data-for-proposed-application-responses). **Sibling product:** AST-1354 (`get_entity_agent_story` → `agent.py`; metadata-only list; per-id soft-fail). **Publish:** `origin/sub/AST-1316/AST-1355-gap-agent-story-tests`.
+
+Retarget entity-story coverage from roster → agent; add dangling `propose_application_responses` TASK sibling → partial story / no `logger.exception` stack (**[bug-repro]**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Story ownership + enrich / AST-520 label | `src/core/agent.py` (`get_entity_agent_story`) | **`TestEntityAgentStory`** |
+| Duplicate block labels / scored filter | same + `_filter_response_block` | **`TestEntityAgentStoryBranches`**, **`TestFilterResponseBlock`** |
+| Soft-fail list / per-id resolve (AST-1274/1354) | same | **`TestAst1274AgentStorySoftFail`** |
+| Dangling TASK sibling → partial story, warning only | same | **`TestAst1354AgentStoryDanglingTaskSibling::test_partial_story_no_exception_stack`** (**[bug-repro]**) |
+| Company `vector_grades` (AST-726) | same | **`TestEntityAgentStory::test_company_prefilter_vector_grades_from_company_data`** |
+
+**Broken / obsolete:** roster `TestEntityAgentStory*` / `TestAst1274AgentStorySoftFail` / `TestFilterResponseBlock` / story method on `TestAst726LatestOnlyRosterStory` — deleted; bible rows retargeted here + `docs/test-bible/core/roster.md` / `frontend/components.md`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestEntityAgentStory \
+  tests/component/core/test_agent.py::TestFilterResponseBlock \
+  tests/component/core/test_agent.py::TestEntityAgentStoryBranches \
+  tests/component/core/test_agent.py::TestAst1274AgentStorySoftFail \
+  tests/component/core/test_agent.py::TestAst1354AgentStoryDanglingTaskSibling \
+  -q
+```
