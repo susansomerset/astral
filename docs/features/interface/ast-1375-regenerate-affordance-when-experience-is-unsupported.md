@@ -113,3 +113,9 @@ None `fix-now`. No `discuss` items that block build.
 
 context_tokens≈42000
 
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`
+**Product commits:** `89fea2df` (manifest inflight-hide + Base Resume unsupported escape hatch)
+
