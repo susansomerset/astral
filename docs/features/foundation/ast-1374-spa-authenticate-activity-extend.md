@@ -180,3 +180,10 @@ AST-1374 plan approved.
 **R6:** Four frontend files, correct placement (`lib/`, `contexts/`). Raw `fetch` for pre-login policy (not `api()`) is justified. No fallback duration on policy failure — conforms to `astral.standards.no-hardcoded-sets`. Policy-driven cadence/duration — conforms to `astral.layers.ui-config-driven-business-logic`. Boundaries hold (`config.py`, `api_system.py`, log-off surfaces untouched).
 
 **In-session R3:** Cited statutes + universals — all `conforms`; no `fix-now`.
+
+## Review (build)
+
+**Built @ `0fa41ec6`** — `origin/sub/AST-1372/AST-1374-spa-authenticate-activity-extend`
+
+- Stage 1: `authSessionPolicy.ts` + handoff fetches policy; hardcoded `60` removed
+- Stage 2: `sessionExtend.ts` + `AuthContext` interval extend while session exists
