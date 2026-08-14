@@ -2950,3 +2950,34 @@ Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and 
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1373 · AST-1372
+
+**Parent:** [AST-1372 — Extend Stytch sessions](https://linear.app/astralcareermatch/issue/AST-1372). **Publish:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`.
+
+`AUTH_CONFIG` gains non-secret `session_duration_minutes` (20) + `activity_extension_interval_minutes` (10); `get_auth_session_policy()` returns only those two ints. Public `GET /api/auth_session_policy` (no `@require_auth`) for pre-login SPA reads — route coverage: **`docs/test-bible/ui/api/api_system.md`**. Does **not** own React authenticate/extend (**AST-1374**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session literals + SPA-safe helper | `src/utils/config.py` | **`TestAst1373AuthSessionPolicy`** |
+| Public policy route | `src/ui/api/api_system.py` | **`TestAst1373AuthSessionPolicyRoute`** |
+
+**Broken / obsolete:** none — additive keys + new open route. Existing `stytchAuthenticateHandoff` hardcoded `60` remains until **AST-1374**.
+
+**Integration:** no existing scenario asserts auth session policy or `/api/auth_session_policy` — no revision.
+
+## QA test manifest
+
+1. AUTH_CONFIG literals + `get_auth_session_policy`: `tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy`
+2. Public `GET /api/auth_session_policy`: `tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute`
+
+**AST-1373** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+

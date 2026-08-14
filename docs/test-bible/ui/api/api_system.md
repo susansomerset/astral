@@ -68,3 +68,19 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
   -q
 ```
 
+### AST-1373 · AST-1372
+
+**Publish:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`.
+
+Open `GET /api/auth_session_policy` returns non-secret session duration + extend cadence (no Bearer). Primary config helper: **`docs/test-bible/utils/config.md`** § AST-1373.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public policy route | `src/ui/api/api_system.py` | **`TestAst1373AuthSessionPolicyRoute`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
+  -q
+```
+

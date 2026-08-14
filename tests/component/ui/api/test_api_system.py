@@ -321,3 +321,37 @@ class TestAst1351ExperienceJobUiConfig:
             "unsupported_resume_structure_message"
         ]
 
+
+class TestAst1373AuthSessionPolicyRoute:
+    """AST-1373: public GET /api/auth_session_policy (pre-login SPA read)."""
+
+    def test_auth_session_policy_is_open(self, system_client: FlaskClient) -> None:
+        # No Bearer — deliberately public for authenticate handoff (sibling AST-1374).
+        resp = system_client.get("/api/auth_session_policy")
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload == {
+            "session_duration_minutes": 20,
+            "activity_extension_interval_minutes": 10,
+        }
+        for forbidden in (
+            "stytch_secret",
+            "stytch_project_id",
+            "admin_user_ids",
+            "admin_emails",
+        ):
+            assert forbidden not in payload
+
+    def test_auth_session_policy_reflects_config(
+        self, system_client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils import config as cfg
+
+        monkeypatch.setitem(cfg.AUTH_CONFIG, "session_duration_minutes", 45)
+        monkeypatch.setitem(cfg.AUTH_CONFIG, "activity_extension_interval_minutes", 15)
+        payload = system_client.get("/api/auth_session_policy").get_json()
+        assert payload == {
+            "session_duration_minutes": 45,
+            "activity_extension_interval_minutes": 15,
+        }
+
