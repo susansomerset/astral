@@ -1301,6 +1301,7 @@ CANDIDATE_LIBRARY_CONFIG = {
     ),
     "context_keys": (
         "bio_summary", "backstory", "strengths", "priorities", "deal_breakers",
+        "ideal_day",
         "writing_preferences", "hopes", "interests", "concerns",
         "raw_resume", "raw_profile", "raw_sample",
     ),
@@ -1309,11 +1310,25 @@ CANDIDATE_LIBRARY_CONFIG = {
         "linkedin_profile_text": "raw_profile",
         "sample_cover_text": "raw_sample",
     },
+    # AST-1365: gated prose keys for check_context_complete (Ideal Day joins the set).
+    "context_completeness_keys": (
+        "strengths",
+        "priorities",
+        "deal_breakers",
+        "backstory",
+        "ideal_day",
+    ),
     "name_columns": ("first", "last", "full", "pronouns"),
     "linkedin_url_base": "https://www.linkedin.com/in/",
     "github_url_base": "https://github.com/",
     "full_name_join": " ",
 }
+
+assert len(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]) == len(
+    set(CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"])
+)
+for _ck in CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]:
+    assert _ck in CANDIDATE_LIBRARY_CONFIG["context_keys"], _ck
 
 # AST-1137 / AST-1147 / AST-1149: from-block field + token template/rewrite + authoring chrome.
 COVER_FROM_BLOCK_CONFIG = {
@@ -5539,6 +5554,7 @@ TOKEN_SOURCES = {
     "PRIORITIES":           {"source": "candidate", "path": "context.priorities"},
     "DEAL_BREAKERS":        {"source": "candidate", "path": "context.deal_breakers"},
     "BACKSTORY":            {"source": "candidate", "path": "context.backstory"},
+    "IDEAL_DAY":            {"source": "candidate", "path": "context.ideal_day"},
     "WRITING_PREFERENCES":  {"source": "candidate", "path": "context.writing_preferences"},
     "TITLE_PATTERNS":       {"source": "candidate", "path": "contact.title_patterns"},
     "REASON_CODES":         {"source": "candidate", "path": "contact.reason_codes"},
