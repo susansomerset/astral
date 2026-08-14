@@ -129,3 +129,8 @@ AC1–5 → Stage 1: restructure `<nav>` into `.sidebar-chrome` (logo + candidat
 **In-session R3 (not printed per §7):** All 17 universal `orch.*` statutes conform (plan is docs-shaped ui slice; no git/role/pipeline violations). Considered scoped: `astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`, `astral.standards.dry-and-focused-functions`, `astral.ui.naming-conventions`, `astral.layers.import-direction` — all **conforms**. Hundreds of other scoped statutes excluded (layers/paths/change_types mismatch — e.g. batch, agent, data, config blocks).
 
 context_tokens≈52000
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome`
+**Product commits:** `8413f4ce` (sidebar-chrome + sidebar-scroll pin)
