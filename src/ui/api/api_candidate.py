@@ -34,7 +34,7 @@ from src.core.candidate import (
     run_candidate_artifact_generation,
     save_candidate_admin,
     save_candidate_data,
-    snapshot_saved_base_resume_astral_artifact,
+    snapshot_saved_base_resume_artifact,
     start_requested_artifacts,
     transition_candidate_state,
 )
@@ -289,9 +289,9 @@ def update_candidate_data(candidate_id):
             if body:
                 # AST-1014 / AC8: gate library-write found/recorded lines on deploy debug.
                 save_candidate_data(candidate_id, body, replace=False, debug=ui_llm_debug())
-                # AST-1353: preserve intentional Save into astral_artifacts (not craft paths)
+                # AST-1353: preserve intentional Save into artifacts (not craft paths)
                 if base_resume_in_save:
-                    snapshot_saved_base_resume_astral_artifact(candidate_id)
+                    snapshot_saved_base_resume_artifact(candidate_id)
                 # Clear pending only after persist — keys captured before apply del
                 for craft_task_key, artifact_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY.items():
                     if artifact_key in rubric_keys_to_clear:

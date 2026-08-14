@@ -26,10 +26,11 @@ Tables used (inventory):
   task_key TEXT, task_key_uuid TEXT, code, label, content, importance INTEGER, content_fingerprint TEXT,
   current INTEGER 0|1, created_at, updated_at). Active set: rows with current=1 for (candidate_id, task_key).
   Versioning follows agent_task current=1 pattern (AST-722).
-- astral_artifacts — Versioned entity-scoped artifact blobs (astral_artifact_uuid TEXT PK,
+- artifacts — Versioned entity-scoped artifact blobs (artifact_uuid TEXT PK,
   entity_type TEXT, entity_id TEXT, artifact_type TEXT, artifact_data TEXT, current INTEGER 0|1,
   created_at, updated_at). Active row: current=1 for (entity_type, entity_id, artifact_type).
-  Versioning follows agent_task / rubric_vector current=1 retire-and-insert (AST-1340 / AST-1352).
+  Versioning follows agent_task / rubric_vector current=1 retire-and-insert (AST-1340 / AST-1352;
+  table rename AST-1364).
 - vector_feedback — Per-run per-vector feedback grain (vector_feedback_id TEXT PK, rubric_vector_uuid,
   candidate_id, batch_id, task_key, feedback_type TEXT, value TEXT, optional agent_data_id,
   batch_size INTEGER, completed_at TIMESTAMP, created_at TIMESTAMP).
@@ -181,7 +182,7 @@ _company_search_terms_schema_ensured = False
 _company_search_terms_migration_swept = False
 _rubric_vector_schema_ensured = False
 _vector_feedback_schema_ensured = False
-_astral_artifacts_schema_ensured = False
+_artifacts_schema_ensured = False
 _intake_session_schema_ensured = False
 _dispatch_ledger_schema_ensured = False
 _app_log_schema_ensured = False
@@ -3752,37 +3753,73 @@ def _ensure_vector_feedback_table(conn: sqlite3.Connection) -> None:
 
 
 
-def _ensure_astral_artifacts_table(conn: sqlite3.Connection) -> None:
-    """Create astral_artifacts if missing (AST-1352). No ALTER backfill — table is new."""
-    global _astral_artifacts_schema_ensured
-    if _astral_artifacts_schema_ensured:
+def _ensure_artifacts_table(conn: sqlite3.Connection) -> None:
+    """Create or rename-to artifacts table (AST-1352; rename AST-1364)."""
+    global _artifacts_schema_ensured
+    if _artifacts_schema_ensured:
         return
-    cursor = conn.execute(
-        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='astral_artifacts'"
-    )
-    if cursor.fetchone()[0] == 0:
-        conn.execute("""
-            CREATE TABLE astral_artifacts (
-                astral_artifact_uuid TEXT PRIMARY KEY,
-                entity_type TEXT NOT NULL,
-                entity_id TEXT NOT NULL,
-                artifact_type TEXT NOT NULL,
-                artifact_data TEXT NOT NULL,
-                current INTEGER NOT NULL DEFAULT 1,
-                created_at TIMESTAMP NOT NULL,
-                updated_at TIMESTAMP NOT NULL
-            )
-        """)
-        conn.execute(
-            "CREATE INDEX idx_astral_artifacts_entity_type_current "
-            "ON astral_artifacts (entity_type, entity_id, artifact_type, current)"
+
+    def _table_exists(name: str) -> bool:
+        return (
+            conn.execute(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?",
+                (name,),
+            ).fetchone()[0]
+            == 1
         )
+
+    def _column_names(table: str) -> set[str]:
+        return {r[1] for r in conn.execute(f"PRAGMA table_info({table})").fetchall()}
+
+    def _ensure_index() -> None:
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_artifacts_entity_type_current "
+            "ON artifacts (entity_type, entity_id, artifact_type, current)"
+        )
+
+    if _table_exists("artifacts"):
+        cols = _column_names("artifacts")
+        if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
+            conn.execute(
+                "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
+            )
+        _ensure_index()
         conn.commit()
-    _astral_artifacts_schema_ensured = True
+        _artifacts_schema_ensured = True
+        return
+
+    if _table_exists("astral_artifacts"):
+        # Pre-rename DBs from AST-1352 UAT — keep history rows
+        conn.execute("ALTER TABLE astral_artifacts RENAME TO artifacts")
+        cols = _column_names("artifacts")
+        if "astral_artifact_uuid" in cols and "artifact_uuid" not in cols:
+            conn.execute(
+                "ALTER TABLE artifacts RENAME COLUMN astral_artifact_uuid TO artifact_uuid"
+            )
+        conn.execute("DROP INDEX IF EXISTS idx_astral_artifacts_entity_type_current")
+        _ensure_index()
+        conn.commit()
+        _artifacts_schema_ensured = True
+        return
+
+    conn.execute("""
+        CREATE TABLE artifacts (
+            artifact_uuid TEXT PRIMARY KEY,
+            entity_type TEXT NOT NULL,
+            entity_id TEXT NOT NULL,
+            artifact_type TEXT NOT NULL,
+            artifact_data TEXT NOT NULL,
+            current INTEGER NOT NULL DEFAULT 1,
+            created_at TIMESTAMP NOT NULL,
+            updated_at TIMESTAMP NOT NULL
+        )
+    """)
+    _ensure_index()
+    conn.commit()
+    _artifacts_schema_ensured = True
 
 
-
-def _normalize_astral_artifact_identity(
+def _normalize_artifact_identity(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> tuple[str, str, str]:
     """Strip identity fields; raise ValueError on empty or unknown entity_type."""
@@ -3800,7 +3837,7 @@ def _normalize_astral_artifact_identity(
     return et, eid, at
 
 
-def _astral_artifact_row_dict(row: tuple) -> Dict[str, Any]:
+def _artifact_row_dict(row: tuple) -> Dict[str, Any]:
     """Map SELECT tuple → public dict; JSON-parse artifact_data when possible."""
     raw = row[4]
     try:
@@ -3808,7 +3845,7 @@ def _astral_artifact_row_dict(row: tuple) -> Dict[str, Any]:
     except (TypeError, json.JSONDecodeError):
         artifact_data = raw
     return {
-        "astral_artifact_uuid": row[0],
+        "artifact_uuid": row[0],
         "entity_type": row[1],
         "entity_id": row[2],
         "artifact_type": row[3],
@@ -3819,20 +3856,20 @@ def _astral_artifact_row_dict(row: tuple) -> Dict[str, Any]:
     }
 
 
-_ASTRAL_ARTIFACT_SELECT = (
-    "astral_artifact_uuid, entity_type, entity_id, artifact_type, "
+_ARTIFACT_SELECT = (
+    "artifact_uuid, entity_type, entity_id, artifact_type, "
     "artifact_data, current, created_at, updated_at"
 )
 
 
-def save_astral_artifact(
+def save_artifact(
     entity_type: str,
     entity_id: str,
     artifact_type: str,
     artifact_data: Any,
 ) -> str:
     """Retire prior current=1 row for the natural key; insert new current row. Returns UUID."""
-    et, eid, at = _normalize_astral_artifact_identity(entity_type, entity_id, artifact_type)
+    et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
     if artifact_data is None:
         raise ValueError("artifact_data required")
     payload = artifact_data if isinstance(artifact_data, str) else json.dumps(artifact_data)
@@ -3842,18 +3879,18 @@ def save_astral_artifact(
     def _with_conn() -> str:
         conn = _get_connection()
         try:
-            _ensure_astral_artifacts_table(conn)
+            _ensure_artifacts_table(conn)
             # Retire any current row(s) for this entity + artifact type
             conn.execute(
-                """UPDATE astral_artifacts
+                """UPDATE artifacts
                       SET current = 0, updated_at = ?
                     WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                       AND current = 1""",
                 (now, et, eid, at),
             )
             conn.execute(
-                """INSERT INTO astral_artifacts (
-                       astral_artifact_uuid, entity_type, entity_id, artifact_type,
+                """INSERT INTO artifacts (
+                       artifact_uuid, entity_type, entity_id, artifact_type,
                        artifact_data, current, created_at, updated_at)
                    VALUES (?, ?, ?, ?, ?, 1, ?, ?)""",
                 (new_uuid, et, eid, at, payload, now, now),
@@ -3866,32 +3903,32 @@ def save_astral_artifact(
     return _run_with_retry(_with_conn)
 
 
-def get_current_astral_artifact(
+def get_current_artifact(
     entity_type: str, entity_id: str, artifact_type: str
 ) -> Optional[Dict[str, Any]]:
     """Return the current=1 row for the natural key, or None."""
-    et, eid, at = _normalize_astral_artifact_identity(entity_type, entity_id, artifact_type)
+    et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
 
     def _with_conn() -> Optional[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_astral_artifacts_table(conn)
+            _ensure_artifacts_table(conn)
             row = conn.execute(
-                f"""SELECT {_ASTRAL_ARTIFACT_SELECT}
-                      FROM astral_artifacts
+                f"""SELECT {_ARTIFACT_SELECT}
+                      FROM artifacts
                      WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?
                        AND current = 1
                      LIMIT 1""",
                 (et, eid, at),
             ).fetchone()
-            return _astral_artifact_row_dict(row) if row else None
+            return _artifact_row_dict(row) if row else None
         finally:
             conn.close()
 
     return _run_with_retry(_with_conn)
 
 
-def list_astral_artifacts(
+def list_artifacts(
     entity_type: str,
     entity_id: str,
     artifact_type: str,
@@ -3899,22 +3936,22 @@ def list_astral_artifacts(
     current_only: bool = False,
 ) -> List[Dict[str, Any]]:
     """List version rows for the natural key; oldest created_at first."""
-    et, eid, at = _normalize_astral_artifact_identity(entity_type, entity_id, artifact_type)
+    et, eid, at = _normalize_artifact_identity(entity_type, entity_id, artifact_type)
 
     def _with_conn() -> List[Dict[str, Any]]:
         conn = _get_connection()
         try:
-            _ensure_astral_artifacts_table(conn)
+            _ensure_artifacts_table(conn)
             sql = (
-                f"""SELECT {_ASTRAL_ARTIFACT_SELECT}
-                      FROM astral_artifacts
+                f"""SELECT {_ARTIFACT_SELECT}
+                      FROM artifacts
                      WHERE entity_type = ? AND entity_id = ? AND artifact_type = ?"""
             )
             if current_only:
                 sql += " AND current = 1"
             sql += " ORDER BY created_at ASC"
             rows = conn.execute(sql, (et, eid, at)).fetchall()
-            return [_astral_artifact_row_dict(r) for r in rows]
+            return [_artifact_row_dict(r) for r in rows]
         finally:
             conn.close()
 

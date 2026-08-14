@@ -5,7 +5,7 @@ In-scope: initiate_candidate, save_candidate_data, get_candidate,
 transition_candidate_state, parse_candidate_resume, check_context_complete,
 contact uniqueness enforcement on save (AST-1080),
 get_new_candidate_batch / clear_candidate_batch (batch claim wrappers; AST-1259),
-snapshot_saved_base_resume_astral_artifact (AST-1353).
+snapshot_saved_base_resume_artifact (AST-1353; rename AST-1364).
 All writes go through database.save_candidate (upsert); state transition logic lives here.
 
 parse_candidate_resume is async (matching do_task convention). It is called from CLI/scripts,
@@ -1325,11 +1325,11 @@ def rubric_criteria_for_token(candidate_id: str, owner_task_key: str) -> list:
     return rubric_criteria_for_task(candidate_id, owner_task_key)
 
 
-def snapshot_saved_base_resume_astral_artifact(candidate_id: str) -> str:
-    """Record live artifacts.base_resume into astral_artifacts after Save Base Resume.
+def snapshot_saved_base_resume_artifact(candidate_id: str) -> str:
+    """Record live artifacts.base_resume into artifacts after Save Base Resume.
 
     Reads the post-persist candidate blob so the snapshot matches deep-merged
-    candidate_data (AC2). Returns the new astral_artifact_uuid from the data layer.
+    candidate_data (AC2). Returns the new artifact_uuid from the data layer.
     """
     candidate = database.get_candidate(candidate_id)
     if not candidate:
@@ -1344,7 +1344,7 @@ def snapshot_saved_base_resume_astral_artifact(candidate_id: str) -> str:
     if base is None:
         raise ValueError("artifacts.base_resume missing after save")
     # Literal artifact_type matches AST-1352 Save Base Resume contract
-    return database.save_astral_artifact("candidate", candidate_id, "base_resume", base)
+    return database.save_artifact("candidate", candidate_id, "base_resume", base)
 
 
 def apply_rubric_vectors_save(candidate_id: str, artifacts: dict) -> None:
