@@ -4719,3 +4719,52 @@ class TestAst1313InboxBindConfig:
         assert bind["inbox_address"] == cfg.GAZE_EMAIL_CONFIG["account_address"]
         assert isinstance(bind["inbox_address"], str)
         assert "@" in bind["inbox_address"]
+
+
+class TestAst1365IdealDayLibraryToken:
+    """AST-1365: ideal_day library key, completeness keys, {$IDEAL_DAY} token."""
+
+    def test_ideal_day_in_context_keys_after_deal_breakers(self) -> None:
+        keys = cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+        assert "ideal_day" in keys
+        assert keys[keys.index("deal_breakers") + 1] == "ideal_day"
+
+    def test_context_completeness_keys_include_ideal_day(self) -> None:
+        complete = cfg.CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]
+        assert complete == (
+            "strengths",
+            "priorities",
+            "deal_breakers",
+            "backstory",
+            "ideal_day",
+        )
+        assert len(complete) == len(set(complete))
+        for key in complete:
+            assert key in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+
+    def test_ideal_day_token_source(self) -> None:
+        assert cfg.TOKEN_SOURCES["IDEAL_DAY"] == {
+            "source": "candidate",
+            "path": "context.ideal_day",
+        }
+
+    def test_resolve_ideal_day_empty_and_set(self) -> None:
+        empty = cfg.resolve_tokens(
+            "[{$IDEAL_DAY}]",
+            {"context": {}, "_astral_candidate_id": "c1"},
+            "grade_get",
+        )
+        assert empty == "[]"
+        filled = cfg.resolve_tokens(
+            "[{$IDEAL_DAY}]",
+            {
+                "context": {"ideal_day": "deep focus mornings"},
+                "_astral_candidate_id": "c1",
+            },
+            "grade_get",
+        )
+        assert filled == "[deep focus mornings]"
+
+    def test_topic_menu_informs_exclude_ideal_day_until_sibling(self) -> None:
+        # AST-1367 owns informs catalog; this ticket must not sneak it in.
+        assert "ideal_day" not in cfg.TOPIC_MENU_CONFIG["informs"]

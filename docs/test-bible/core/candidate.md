@@ -1293,3 +1293,39 @@ Core helper **`snapshot_saved_base_resume_astral_artifact`** re-reads live `arti
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1365 · AST-1360
+
+**Parent:** [AST-1360 — Add ideal_day to candidate context](https://linear.app/astralcareermatch/issue/AST-1360/add-ideal-day-to-the-set-of-candidate-context-strengths-priorities-etc). **Publish:** `origin/sub/AST-1360/AST-1365-ideal-day-library-token`.
+
+`ideal_day` joins the candidate context library and the gated completeness set (peer of strengths / priorities / deal_breakers / backstory). `check_context_complete` reads `CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]` (module `_CONTEXT_TEXT_KEYS` retired). `{$IDEAL_DAY}` → `context.ideal_day`. Persistence via existing `save_candidate_data` merge — no new API. Does **not** own Candidate Ideal Day UI (**AST-1366**), Topic Menu informs (**AST-1367**), or JD/DO/LIKE craft prompts (**AST-1368**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Completeness gate + save payload | `src/core/candidate.py` | revised **`TestCheckContextCompleteExtended`** (config keys; Ideal Day missing / whitespace); **`TestAst1365IdealDayLibrary`** |
+| Library / token / resolve | `src/utils/config.py` | **`TestAst1365IdealDayLibraryToken`** (primary map also in **`docs/test-bible/utils/config.md`**) |
+
+**Broken / obsolete this pass:** `TestCheckContextCompleteExtended::test_returns_true_when_all_context_fields_present_without_transition` — referenced deleted `candidate_mod._CONTEXT_TEXT_KEYS`; now iterates `CANDIDATE_LIBRARY_CONFIG["context_completeness_keys"]`.
+
+**Integration:** no existing scenario asserts context completeness keys or Ideal Day token — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Config vocabulary + token + resolve: `tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken`
+2. Completeness gate (revised + Ideal Day gaps): `tests/component/core/test_candidate.py::TestCheckContextCompleteExtended`
+3. Save merge + config key contract: `tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary`
+4. Existing incomplete smoke: `tests/component/core/test_candidate.py::TestCheckContextComplete`
+
+**AST-1365** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1365IdealDayLibraryToken \
+  tests/component/core/test_candidate.py::TestCheckContextComplete \
+  tests/component/core/test_candidate.py::TestCheckContextCompleteExtended \
+  tests/component/core/test_candidate.py::TestAst1365IdealDayLibrary \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
