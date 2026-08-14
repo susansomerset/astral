@@ -2381,6 +2381,26 @@ class TestAst1253GenerateRegenerateHandoffConfig:
         assert not hasattr(cfg, "REQUESTED_ARTIFACTS_CHAIN_TASK_KEYS")
 
 
+class TestAst1375ArtifactGenerateInflightHideStates:
+    """AST-1375: Base Resume unsupported escape hatch consults inflight hide list."""
+
+    def test_inflight_hide_states_exact_membership(self) -> None:
+        cand = cfg.build_state_ui_manifest()["candidate"]
+        hide = cand["artifact_generate_inflight_hide_states"]
+        assert hide == ["REQUESTED_ARTIFACTS", "REQUESTED_ARTIFACTS_RETRY"]
+        assert "REQUESTED_ARTIFACTS_ERROR" not in hide
+        assert all(s in cfg.CANDIDATE_STATES for s in hide)
+        # Generate allowlist unchanged (escape hatch is Base Resume–local, not a global expand).
+        assert cand["artifact_generate_states"] == [
+            "RESUME_READY",
+            "RESUME_READY_STALE",
+            "ARTIFACTS_READY",
+            "ARTIFACTS_READY_STALE",
+            "ACTIVE_SEARCH",
+            "PAUSE_SEARCH",
+        ]
+
+
 class TestAst973LegacyCandidateRemap:
     """AST-973: CANDIDATE_LEGACY_* map + remap_legacy_candidate_state."""
 
@@ -4796,4 +4816,47 @@ class TestAst1367IdealDayTopicMenuInforms:
             assert "ideal_day" in keys
             assert keys[keys.index("deal_breakers") + 1] == "ideal_day"
             assert "ideal_day" in cfg.CANDIDATE_LIBRARY_CONFIG["context_keys"]
+
+
+class TestAst1373AuthSessionPolicy:
+    """AST-1373: AUTH_CONFIG session literals + get_auth_session_policy()."""
+
+    def test_auth_config_session_literals(self) -> None:
+        # Defaults: 20 min lifetime, 10 min extend cadence (shorter than duration).
+        assert cfg.AUTH_CONFIG["session_duration_minutes"] == 20
+        assert cfg.AUTH_CONFIG["activity_extension_interval_minutes"] == 10
+        assert (
+            cfg.AUTH_CONFIG["activity_extension_interval_minutes"]
+            < cfg.AUTH_CONFIG["session_duration_minutes"]
+        )
+
+    def test_get_auth_session_policy_only_non_secret_ints(self) -> None:
+        policy = cfg.get_auth_session_policy()
+        assert policy == {
+            "session_duration_minutes": 20,
+            "activity_extension_interval_minutes": 10,
+        }
+        assert set(policy) == {
+            "session_duration_minutes",
+            "activity_extension_interval_minutes",
+        }
+        assert all(isinstance(v, int) for v in policy.values())
+        for forbidden in (
+            "stytch_secret",
+            "stytch_project_id",
+            "admin_user_ids",
+            "admin_emails",
+        ):
+            assert forbidden not in policy
+
+    def test_get_auth_session_policy_reflects_auth_config(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Retune via AUTH_CONFIG literals only — no SPA constant edits (AC2).
+        monkeypatch.setitem(cfg.AUTH_CONFIG, "session_duration_minutes", 30)
+        monkeypatch.setitem(cfg.AUTH_CONFIG, "activity_extension_interval_minutes", 12)
+        assert cfg.get_auth_session_policy() == {
+            "session_duration_minutes": 30,
+            "activity_extension_interval_minutes": 12,
+        }
 

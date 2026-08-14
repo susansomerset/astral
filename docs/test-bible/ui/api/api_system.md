@@ -40,6 +40,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
   -q
 ```
 
+### AST-1375 · AST-1371
+
+**Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+`GET /api/state_ui_manifest` includes `candidate.artifact_generate_inflight_hide_states` from `build_state_ui_manifest()` (rides with existing candidate keys; chain merge unchanged). Primary UI: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inflight hide key on manifest | `src/ui/api/api_system.py` (via config build) | **`TestAst1375InflightHideStatesManifest`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest \
+  -q
+```
+
 ### AST-1016 · AST-952
 
 `GET /api/ui_config` includes `preamble` from `PREAMBLE_CONFIG`. Primary: **`docs/test-bible/utils/config.md`** § AST-1016 — **`TestSystemAuthRoutes::test_ui_config_includes_preamble_config`**.
@@ -65,6 +81,22 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-970. **`_is_at_
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/ui/api/test_api_system.py::TestAst1351ExperienceJobUiConfig \
+  -q
+```
+
+### AST-1373 · AST-1372
+
+**Publish:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`.
+
+Open `GET /api/auth_session_policy` returns non-secret session duration + extend cadence (no Bearer). Primary config helper: **`docs/test-bible/utils/config.md`** § AST-1373.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public policy route | `src/ui/api/api_system.py` | **`TestAst1373AuthSessionPolicyRoute`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
   -q
 ```
 

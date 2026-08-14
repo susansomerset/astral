@@ -857,3 +857,39 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 
+### AST-1375 · AST-1371
+
+**Parent:** [AST-1371 — Regenerate resume button does not appear for resumes with unsupported content](https://linear.app/astralcareermatch/issue/AST-1371/regenerate-resume-button-does-not-appear-for-resumes-with-unsupported). **Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+Base Resume Content (`artifactKey === "base_resume"`, not `jobPersistence`): when experience parse fails (same failure as the unsupported notice), `canGenerate` is true unless candidate state is in config-owned `artifact_generate_inflight_hide_states` (`REQUESTED_ARTIFACTS` / `REQUESTED_ARTIFACTS_RETRY`). Click still confirms-when-regenerating and POSTs `craft_resume_base`. Valid job-array experience stays allowlist-only. Config/API spine: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**. Does **not** reopen Print/no-emit or migrate legacy experience.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Escape hatch + inflight hide + craft path | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1375:*`** |
+| Fixture hide list | `stateUiManifestFixture.ts` | same (fixture feeds all ArtifactEditor mounts) |
+
+**Broken / obsolete:** none — additive escape hatch; AST-1351 legacy notice + Save abort unchanged. Fixture gains `artifact_generate_inflight_hide_states`.
+
+**§6c:** no page-file product diff — ArtifactEditor is the UI gate (same as AST-1351).
+
+**Integration:** no existing scenario asserts Generate visibility vs unsupported experience — no revision.
+
+## QA test manifest
+
+1. Inflight hide membership + generate allowlist unchanged: `tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates`
+2. Manifest key on `GET /api/state_ui_manifest`: `tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest`
+3. ArtifactEditor escape / hide / craft / allowlist-only: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1375"`
+
+**AST-1375** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1375"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
