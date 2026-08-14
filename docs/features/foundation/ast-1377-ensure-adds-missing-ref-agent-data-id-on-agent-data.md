@@ -306,3 +306,22 @@ context_tokens≈52000
 ---
 
 [code-rubric] REVIEW (Commit: fc347a37) ALTER clean; sync dev
+
+## Resolution
+
+**Date:** 2026-08-14  
+**Against:** Radia `[code-rubric]` @ `fc347a37` (Overall: DISCUSS) — `docs(AST-1377): Radia review — DISCUSS sync-dev` @ `c4bf2db4`
+
+### discuss
+
+1. **Publish ref stale vs `origin/dev`** — Closed. `sync-child.sh` merged `origin/dev` (`04f3d5c9`, includes AST-1373/AST-1374 product stack) onto this sub; `origin/dev` is an ancestor of HEAD. Tip after sync: `e63c246f` (`sync(dev): origin/dev`).
+2. **Three-dot AST-1374 bible/test noise** — Closed as a consequence of (1): integrated tip carries matching AST-1374 product + Betty test/bible together; ticket-scoped DDL remains `src/data/database.py` only for AST-1377 product.
+
+### advisory
+
+1. **Hot-reload `_agent_data_schema_ensured` early return** — Accepted as-is (no product change). Deploy/restart clears the flag; Betty’s idempotency test resets it explicitly. Matches Radia “no resolve-child product edits required for DDL.”
+
+### Verification
+
+- Betty narrowed manifest re-run after sync: 4 passed  
+  `TestAst977…::test_ensure_schema_adds_ref_column_on_fresh_and_legacy` + `TestAst1377EnsureRefAgentDataId`
