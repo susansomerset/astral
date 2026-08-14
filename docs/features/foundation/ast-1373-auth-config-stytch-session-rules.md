@@ -118,3 +118,158 @@ AST-1373 plan approved.
 **R6 highlights:** Layer imports clean (`ui` → `utils` only). Session literals are plain ints in `AUTH_CONFIG`, not env lookups (`astral.config.secrets-and-env-specific-from-environ`). Dedicated public `GET /api/auth_session_policy` with no `@require_auth` is an explicit, documented exception (`astral.idioms.require-auth-on-protected-endpoints`); does not strip auth from `/api/ui_config`. `get_auth_session_policy()` returns only the two non-secret ints. `pattern.config.config-block` shape matches flat `AUTH_CONFIG` extension. Sibling contract table documents AST-1374 consumption.
 
 **In-session R3/R4 (slim R7):** 14 universal orchestration statutes — all `conforms` (plan is docs-shaped workflow; no git/test-tree violations). Scoped considered: `astral.config.config-source-of-truth`, `astral.config.secrets-and-env-specific-from-environ`, `astral.layers.ui-config-driven-business-logic`, `astral.idioms.require-auth-on-protected-endpoints`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets`, `astral.layers.import-direction`, `astral.standards.public-then-helpers`, `astral.standards.dry-and-focused-functions`, `astral.standards.no-cross-contamination`, `astral.standards.names-not-ticket-ids`, `astral.ui.naming-conventions` — all `conforms`. Representative exclusions: `astral.standards.database-header-inventory` (no `data` layer); `astral.batch.*` / `astral.agent.*` / `astral.state.*` (no batch/agent/state touch); `astral.ui.frontend-file-placement` (no `frontend/` paths).
+
+## Radia review
+
+# Radia review — AST-1373
+
+**Status gate:** Tests Passed (spawn prompt; trusted).  
+**Baseline:** `origin/dev`  
+**Publish ref:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules` @ `f23fabf0`  
+**Diff:** 7 files — `src/utils/config.py`, `src/ui/api/api_system.py`, Betty test-tree + plan doc (265 insertions, 1 deletion)
+
+---
+
+```
+[code-rubric] revision=2
+```
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1373  
+**Publish ref:** `f23fabf0a29b9b9eca997e83678f39ec42706fa0`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Single `merge-tests(AST-1373)` @ `f23fabf0` pins `origin/tests` `af078462`. |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `merge-tests` / `docs` commits use standard vocabulary. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Product on `sub/*`; tests merged from `origin/tests`. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child publish ref `sub/AST-1372/AST-1373-…` correct. |
+| `orch.git.merge-on-checkout` | universal | conforms | No merge/checkout violation in commit history. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history; no rebase/force evidence. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | No agent-prefixed publish refs. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1372 epic worktree pattern honored. |
+| `orch.git.three-permanent-branches` | universal | conforms | `dev` / `tests` / `main` topology respected. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | 20/10 defaults pre-decided in plan/parent; no new product forks. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 implemented as written. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to diff substance. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review-child gate satisfied. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to diff substance. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty `test(AST-1373)` + one `merge-tests`; engineer `code` commit `src/` only. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to diff substance. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada assignee; review does not reassign. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Engineer commit `b722667f` touches only `src/`. |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No `src/core/**` agent grading paths. |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No dispatch/agent delegation changes. |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector paths. |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch layer. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch layer. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process/release paths. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No batch responses paths. |
+| `astral.config.config-source-of-truth` | scoped | conforms | Session literals live in `AUTH_CONFIG`; SPA reads via API. |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | New keys are plain int literals; Stytch creds still `os.environ.get` (pre-existing). |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No `debug/**` or artifacts-dir paths. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike/debug paths. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch/seed paths. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run-next/dispatcher paths. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Plan at `docs/features/foundation/ast-1373-….md`. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty commit `af078462` — test-bible + `tests/` only. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer `b722667f` — `src/` only; test tree via Betty merge. |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | No `core` or `external` layer changes. |
+| `astral.layers.import-direction` | scoped | conforms | `api_system.py` imports `get_auth_session_policy` from `utils` only. |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/**` changes. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Policy served from config helper, not hardcoded in handler. |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check/session-store paths. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No render/consult paths. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | Deliberate open route under `# --- Open endpoints ---`; docstring + plan exception. |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed/admin JSON paths. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No seed paths. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No seed boot paths. |
+| `astral.seed.define-approved` | scoped | not-applicable | No seed define paths. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No seed operator paths. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No seed coverage paths. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No `data` layer. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `src/data/**` (Joan excluded — no straggler). |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | No `debug=` surfaces added. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Thin `get_auth_session_policy()` + one-line route handler. |
+| `astral.standards.in-scope-only` | scoped | conforms | No React, `stytch.py`, JWT, or AST-1374 call sites. |
+| `astral.standards.logging-via-utils` | scoped | conforms | Handler does not log policy body (per plan). |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Domain names (`auth_session_policy`, `get_auth_session_policy`). |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Dedicated policy helper isolates non-secret surface from `get_auth_config()`. |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | 20/10 literals in `AUTH_CONFIG`, not scattered in UI/core. |
+| `astral.standards.public-then-helpers` | scoped | conforms | `get_auth_session_policy()` placed immediately after `get_auth_config()`. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data late import. |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state/tracker paths. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state paths. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run/daisy-chain paths. |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No `frontend/**` (Joan excluded — no straggler). |
+| `astral.ui.naming-conventions` | scoped | conforms | Route `/auth_session_policy` matches existing snake_case API style. |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No server/worker config changes. |
+
+**Sweep count:** 65 active statutes scored (1 retired `astral.config.pass-threshold-vs-score-floor` ignored).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | Extends flat `AUTH_CONFIG` with non-secret literals; dedicated `get_auth_session_policy()` for SPA-safe subset; secrets stay env-backed. |
+
+## Plan adherence
+
+- **Stage 1:** `AUTH_CONFIG` header inventory updated; `session_duration_minutes: 20`, `activity_extension_interval_minutes: 10` as plain literals; `get_auth_session_policy()` returns exactly two int keys.
+- **Stage 2:** Open `GET /api/auth_session_policy` placed after `health`, before authenticated block; no `@require_auth`; imports from existing `src.utils.config` block.
+- **Estimate 2:** Footprint matches — two `src/` files + tests/docs; no scope creep.
+- **AST-1374 boundary:** No `stytchAuthenticateHandoff.ts`, `AuthContext.tsx`, `src/external/stytch.py`, or dashboard work.
+- **Joan straggler (C4):** Joan verdict attached; excluded statutes (`database-header-inventory`, `batch.*`, `agent.*`, `state.*`, `frontend-file-placement`) all `not-applicable` on diff — no straggler.
+
+## C6 judgment aids (§5a)
+
+| Topic | Result |
+|-------|--------|
+| Imports (B1) | Module-top import in `api_system.py`; test-local `from src.utils import config` inside monkeypatch test only — acceptable in test tree. |
+| Layer compliance (B2) | `ui` → `utils` only. |
+| Silent failure (D2) | None introduced. |
+| Fallbacks (D3) | `int()` coercion on config values is bounded (literals are ints); no `or {}` masking. |
+| Logging (E1) | No `print()` / ad-hoc logging in new handler. |
+| Config in UI (G1) | Business policy read from config helper. |
+| §5f debug | Not triggered. |
+| §5g external | Not triggered. |
+
+## Findings
+
+**fix-now:** (none)
+
+**discuss:** (none)
+
+**advisory:**
+- **Response style consistency** — `health()` returns a bare dict; `auth_session_policy()` uses `jsonify()`. Both work under Flask; aligning style is optional polish, not blocking.
+- **Invariant enforcement** — Plan documents cadence &lt; duration; tests assert at defaults only. Retuning literals without updating both could ship an invalid pair; acceptable at this footprint — AST-1374/UAT can catch if needed.
+
+## What's solid
+
+- Clean separation: `get_auth_session_policy()` never exposes secrets; tests assert forbidden keys absent.
+- Betty workflow correct: engineer `src/` only → Betty `test` on `origin/tests` → single `merge-tests`.
+- Tests cover open route (no Bearer), default payload, and monkeypatched config reflection on both helper and route.
+- Module header inventory updated per plan.
+
+## Frame diff
+
+(none)
+
+## Notes
+
+- Joan plan-rubric verdict attached @ `2fa02d78`; no straggler.
+- Tests/test-bible in three-dot diff ride Betty `merge-tests` SHA — not engineer scope creep.
+- C7 complete; Chuckles may append to issue doc, commit `docs(AST-1373): Radia review — clean`, post slim upshot, advance to **Review Posted** → **User Testing** (PROCEED path).
+
+context_tokens≈24000
+
+---
+
+**Slim Linear upshot (Chuckles posts via `linear_proxy --as radia`):**
+
+```
+[code-rubric] PROCEED (Commit: f23fabf0) Session policy API clean
+```
