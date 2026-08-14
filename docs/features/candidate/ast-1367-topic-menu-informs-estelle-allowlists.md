@@ -153,3 +153,17 @@ context_tokens≈52000
 ---
 
 [plan-rubric] PROCEED (Commit: 8d0ac348894c317106e7c355bb6f626afe81174f) informs allowlists seed
+
+## Review (build stub)
+
+**Built:** `astral-AST-1360` @ `8d9db131` on `origin/sub/AST-1360/AST-1367-topic-menu-informs-estelle-allowlists`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `8d0ac348` | Plan doc |
+| 1 | `5c41750e` | `ideal_day` in `TOPIC_MENU_CONFIG["informs"]` + GEN packet/patch allowlists |
+| 2 | `8d9db131` | Estelle confirm/generate `cache_prompt` vocabulary includes `ideal_day` |
+
+**Verify:** `python3 -m py_compile` on `src/utils/config.py` — pass; import asserts + `validate_topic(..., informs=["ideal_day"])` — pass.
+
+**Note for Betty:** AST-1365 left `test_topic_menu_informs_exclude_ideal_day_until_sibling` asserting Ideal Day is *absent* from informs — that assertion must flip (or the test retire) now that this sibling landed; no test-tree edits in this build.
