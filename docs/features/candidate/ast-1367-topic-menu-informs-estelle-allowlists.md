@@ -330,3 +330,10 @@ context_tokens≈45000
 ```
 [code-rubric] PROCEED (Commit: cc543da3) Topic Menu informs allowlists
 ```
+
+## Resolution
+
+**Date:** 2026-08-14  
+**Radia:** CLEAN / PROCEED (`8bf4e974`) — no fix-now items.
+
+**§9a:** `origin/dev` dry-run clean. `origin/ftr/AST-1360-ideal-day-candidate-context` initially conflicted on `data/admin/agent_task.json` + `src/utils/config.py` (sibling Ideal Day craft/UI already on ftr). Merged `origin/ftr/AST-1360-ideal-day-candidate-context` into this publish ref; ort auto-resolved keeping Ideal Day informs/GEN allowlists/Estelle seeds **and** sibling craft/nav changes. Re-ran §9a — both `origin/dev` and parent ftr clean.
