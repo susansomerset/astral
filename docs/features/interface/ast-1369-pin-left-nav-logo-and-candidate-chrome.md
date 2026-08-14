@@ -134,3 +134,27 @@ context_tokens≈52000
 
 **Publish ref:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome`
 **Product commits:** `8413f4ce` (sidebar-chrome + sidebar-scroll pin)
+
+## QA test manifest
+
+`origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome` @ merge-tests → `origin/tests` `54012807ff6850c22a782e8752e911089bd1237e`
+
+1. **Existing coverage (bible-backed):**
+   - `tests/component/frontend/components/test_NavigationShell.test.tsx` — baseline groups/badges/candidate select + **AST-1286 responsive shell** (wide select, hamburger/backdrop, close-on-navigate, narrow candidate menu, non-admin lock) — AC4–5 regression
+2. **Broken / obsolete:** none — wrappers do not break existing selectors
+3. **Gaps (this pass):**
+   - `AST-1369 pinned left-nav chrome` → wide chrome/scroll DOM split (logo+select in chrome; groups+footer in scroll)
+   - narrow: same split; candidate menu stays in chrome
+   - loading/error messages render inside sidebar-scroll, not chrome
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` — API-only; no revision.
+
+**Run:**
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+**Bible:** `docs/test-bible/frontend/components.md` shasum `29e2c20a771275d7e8335ff50fed59ab9bd7011c`
+
+— Betty
