@@ -93,3 +93,16 @@ context_tokens≈48000
 
 [plan-rubric] PROCEED (Commit: 329b52c9618915d62126f486c8cf5d2995a668ab) nav page route peer
 
+## Review (build stub)
+
+**Built:** `astral-AST-1360` @ `7251385e` on `origin/sub/AST-1360/AST-1366-ideal-day-candidate-edit-surface`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `329b52c9` | Plan doc |
+| 1 | `7251385e` | `NAV_CONFIG` Ideal Day + `CandidateIdealDay.tsx` + `routes.tsx` |
+
+**Verify:** `python3 -m py_compile` on `src/utils/config.py` — pass; `npx tsc -b --noEmit` in `src/ui/frontend` — pass.
+
+**Note for Betty:** Thin `ContextTextPage` peer only — no API/save-path change; existing ContextTextPage coverage should still hold.
+
