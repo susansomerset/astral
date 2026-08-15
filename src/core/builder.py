@@ -225,7 +225,10 @@ def build_resume_from_job(
             debug=debug,
         )
         raise
+    _reject_unsupported_experience_shape(render)
     render = candidate_mod.filter_content_to_resume_structure(render, structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
     cover = _resolve_cover_letter(job_data, cd)
@@ -398,15 +401,25 @@ def build_base_resume(candidate_id: str, *, debug: bool = False) -> str:
         )
         raise ValueError(msg)
     cd = _coerce_candidate_blob(row)
-    br = (cd.get("artifacts") or {}).get("base_resume")
-    if not isinstance(br, dict) or not br:
-        msg = "Candidate missing artifacts.base_resume"
+    structure = candidate_mod.resolve_resume_structure(cd)
+    raw = (cd.get("artifacts") or {}).get("base_resume")
+    # Same ingest as candidate PUT / Base Resume Content display (list or dict).
+    if isinstance(raw, (list, dict)):
+        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
+            raw, structure
+        )
+    else:
+        content = {}
+    if not content:
+        msg = "No printable base resume content for this candidate"
         _emit_builder_failure(
             func="builder.build_base_resume", identifier=identifier, message=msg, debug=debug
         )
         raise ValueError(msg)
-    structure = candidate_mod.resolve_resume_structure(cd)
-    render = candidate_mod.filter_content_to_resume_structure(dict(br), structure)
+    _reject_unsupported_experience_shape(content)
+    render = candidate_mod.filter_content_to_resume_structure(dict(content), structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     _apply_contact_to_render_dict(render, cd.get("contact") or {}, first=cd.get("_first") or "", last=cd.get("_last") or "", full=cd.get("_full") or "")
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
@@ -475,6 +488,7 @@ def build_session_base_resume(
             debug=debug,
         )
         raise ValueError(msg)
+    _reject_unsupported_experience_shape(base_resume)
     # Synthetic blob only — never get_candidate / selected-candidate contact.
     cd = {
         "artifacts": {
@@ -485,6 +499,8 @@ def build_session_base_resume(
     }
     structure = _resume_structure_for_emit(resume_structure)
     render = candidate_mod.filter_content_to_resume_structure(dict(base_resume), structure)
+    if debug:
+        candidate_mod.debug_experience_jobs(_log, render)
     # Skip _apply_contact_to_render_dict — contact/header from paste section strings.
     style = _merge_effective_style(cd)
     markers = _apply_resume_text_markers(render)
@@ -910,6 +926,15 @@ body {{
 </body>
 </html>
 """
+
+
+def _reject_unsupported_experience_shape(content: dict) -> None:
+    """AST-1350: refuse emit when experience is present but not a job array."""
+    if "experience" not in content:
+        return
+    if candidate_mod.is_experience_job_array(content.get("experience")):
+        return
+    raise ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])
 
 
 def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:
@@ -1510,10 +1535,8 @@ def _emit_body_sections_html(
         inner_html = ""
         if fmt == "experience_detail":
             if not candidate_mod.is_experience_job_array(raw):
-                skip_reasons[key] = (
-                    "skipped — leftover prose" if key == "experience" else "skipped — not job array"
-                )
-                continue
+                # AST-1350: never omit Experience as leftover prose — refuse emit.
+                raise ValueError(BUILD_CONFIG["unsupported_resume_structure_message"])
             roles_html = _emit_experience_jobs_html(raw)
             if not roles_html.strip():
                 skip_reasons[key] = "skipped — empty"

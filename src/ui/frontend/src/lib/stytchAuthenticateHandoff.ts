@@ -1,3 +1,5 @@
+import { fetchAuthSessionPolicy } from "./authSessionPolicy"
+
 /** Outcomes from /authenticate URL token exchange (AST-830). */
 export type AuthenticateHandoffOutcome =
   | "success"
@@ -29,8 +31,6 @@ export interface StytchAuthenticateClient {
   } | null>
 }
 
-const SESSION_DURATION_MINUTES = 60
-
 /**
  * Exchange OAuth / magic-link token from current URL params for a Stytch client session.
  * Call once per /authenticate page load.
@@ -50,8 +50,9 @@ export async function completeAuthenticateFromUrl(
     }
   }
   try {
+    const policy = await fetchAuthSessionPolicy()
     const result = await stytch.authenticateByUrl({
-      session_duration_minutes: SESSION_DURATION_MINUTES,
+      session_duration_minutes: policy.session_duration_minutes,
     })
     if (result?.handled) {
       return { outcome: "success", tokenType: result.tokenType ?? parsed.tokenType }

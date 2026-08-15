@@ -19,6 +19,7 @@ export interface StateUiManifest {
     recommended: {
       sections: Array<{ state: string; label: string }>
       phase_score_columns: Array<{ field: string; label: string }>
+      phase_score_header_title_template?: string
       primary_actions_by_state?: Record<string, Array<{
         action_key: string
         label: string
@@ -54,6 +55,7 @@ export interface StateUiManifest {
   }
   candidate: {
     artifact_generate_states: string[]
+    artifact_generate_inflight_hide_states: string[]
     artifacts_chain_task_keys: string[]
     artifacts_chain_hop_labels: string[]
     artifacts_chain_artifact_keys: string[]

@@ -24,6 +24,7 @@ from src.utils.config import (
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     build_state_ui_manifest,
+    get_auth_session_policy,
 )
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
@@ -125,6 +126,12 @@ def health():
     return {"status": "ok"}
 
 
+@system_bp.route("/auth_session_policy")
+def auth_session_policy():
+    """Non-secret session duration + extend cadence for SPA (AST-1373). Public on purpose."""
+    return jsonify(get_auth_session_policy())
+
+
 # --- Authenticated endpoints ---
 
 @system_bp.route("/me")
@@ -165,6 +172,11 @@ def ui_config():
     return jsonify({
         **UI_CONFIG,
         "base_resume_accent_palette": BUILD_CONFIG.get("accent_palette", []),
+        # AST-1351: experience job-array editor field spine + unsupported notice text.
+        "experience_job_ui_fields": BUILD_CONFIG["experience_job_ui_fields"],
+        "unsupported_resume_structure_message": BUILD_CONFIG[
+            "unsupported_resume_structure_message"
+        ],
         # AST-1016: Intro + mechanical steps for AST-1017 (no page chrome here).
         "preamble": PREAMBLE_CONFIG,
         # AST-1075: Estelle Topic Menu confirm/generate UI labels.

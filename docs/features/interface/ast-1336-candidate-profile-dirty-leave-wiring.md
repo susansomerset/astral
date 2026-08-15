@@ -305,3 +305,94 @@ context_tokens≈38000
 ```
 [code-rubric] PROCEED (Commit: 92637061) Profile wiring clean
 ```
+
+## Bug: AST-1343 — Dirty flag not cleared after Undo / virgin restore
+
+### As-is
+
+After the operator Undoes edits or restores Candidate Profile controls to look virgin/clean (empty or original on-screen values), `isDirty` stays true and in-app leave still shows the save prompt.
+
+### To-be
+
+When on-screen edit values are display-equivalent to the last loaded/saved snapshot again (header Cancel, Undo/backspace to the prior text, or clearing a control that was already empty on screen), `isDirty` is false and leave does not prompt.
+
+### Repro
+
+1. Open Candidate Profile for a candidate whose loaded edit tree has at least one nullish nested field that the form shows empty (example shape after `editValuesFromCandidate`: `contact.phone: null` — input displays blank via `String(value ?? "")`).
+2. Focus that empty control, type a character, then delete it (or Undo) so the control looks empty again — same virgin appearance as step 1.
+3. Navigate away via left nav.
+4. **Broken:** save-then-navigate prompt still appears. **Expected:** no prompt (draft matches virgin/snapshot for what the operator can see).
+
+Alternate: edit a top-level string (e.g. `first`), Undo/type back to the exact loaded value — that path already clears dirty today; the failing path is nullish ↔ `""` display equivalence (and any similar coerce the form already applies on display).
+
+### Root cause
+
+AST-1336 dirty detection is raw structural equality:
+
+```ts
+const isDirty =
+  data !== null && JSON.stringify(values) !== JSON.stringify(data)
+```
+
+Form controls do **not** round-trip nullish the same way they display it. `FormFields` / text inputs use `value={String(value ?? "")}` and `onChange` writes real strings (including `""`). So after touch + restore-to-empty, `values` holds `""` while `fetched.data` still holds `null`/`undefined`. `JSON.stringify` treats those as different → `isDirty` stays true even though the screen matches virgin. Header Cancel still works when it restores the exact snapshot object (including nulls); the bug is restore-by-editing / Undo back to virgin *appearance*, not Cancel’s snapshot replace.
+
+### Proposed change
+
+In `src/ui/frontend/src/pages/CandidateProfile.tsx` only:
+
+1. Add a module-level helper (same file, above the component — not a new `lib/` module):
+
+   ```ts
+   /** Align edit trees with FormFields display coerce before dirty stringify. */
+   function normalizeProfileEditTreeForDirtyCompare(value: unknown): unknown {
+     if (value === null || value === undefined) return ""
+     if (Array.isArray(value)) {
+       return value.map(normalizeProfileEditTreeForDirtyCompare)
+     }
+     if (typeof value === "object") {
+       const out: Record<string, unknown> = {}
+       for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+         out[k] = normalizeProfileEditTreeForDirtyCompare(v)
+       }
+       return out
+     }
+     return value
+   }
+   ```
+
+   Coerce **only** `null` / `undefined` → `""`. Leave booleans, numbers, and existing strings untouched (toggles must keep `false` ≠ `""`).
+
+2. Replace the `isDirty` expression with:
+
+   ```ts
+   const isDirty =
+     data !== null &&
+     JSON.stringify(normalizeProfileEditTreeForDirtyCompare(values)) !==
+       JSON.stringify(normalizeProfileEditTreeForDirtyCompare(data))
+   ```
+
+3. Do **not** change `editValuesFromCandidate`, `persistProfile`, PUT body shape, header Cancel (`setValues({ ...data })`), `useDirtyLeaveSaveThenNavigate` wiring, `FormFields`, or other pages.
+
+⚠️ **Decision:** Normalize at **compare time** only. Rejected: rewriting the snapshot on load to replace nulls with `""` (would change the PUT payload vs today’s loaded nulls). Rejected: new deep-equal dependency or `lib/` helper (one-page fix; keep the coerce next to Profile dirty logic).
+
+### Blast radius
+
+- **Touches:** `CandidateProfile.tsx` `isDirty` only.
+- **Callers:** `useDirtyLeaveSaveThenNavigate({ isDirty, … })` — leave prompt gate only.
+- **Tests:** `tests/component/frontend/pages/test_CandidateProfile.test.tsx` (`CandidateProfile — AST-1336 dirty-leave wiring`) assumes raw stringify today; Cancel/save cases should still pass. Betty may need a new case for nullish → `""` virgin restore (fix-board / qa-fix). Hook suite (AST-1335) untouched.
+- **Siblings:** Does not change `useDirtyLeaveSaveThenNavigate` contract or other Save pages.
+
+### What must still hold
+
+- AST-1336 AC1–AC7: dirty leave prompt, Save-then-navigate, Cancel-on-prompt stays, save failure stays + error, clean leave silent, in-page text tabs not leave, header Save/Cancel unchanged when not mid-navigation.
+- Header Cancel still reverts to the last loaded/saved snapshot (including nulls in state).
+- Truly different values (e.g. `first` `"Ada"` → `"Augusta"`) still set `isDirty` true.
+- `persistProfile` still clears dirty by updating `fetched` + `values` from `editValuesFromCandidate` before resolve; still rethrows on failure.
+- No API/shapes/contract change; no `beforeunload` / autosave; Profile only.
+
+## Radia review (AST-1343)
+
+**Diff:** `origin/ftr/AST-1315-do-not-navigate-away-from-dirty-content...origin/sub/AST-1315/AST-1343-dirty-flag-not-cleared-after-undo-virgin-restore` @ `a0adf5ca`
+
+**Gate:** PROCEED (clean) — compare-time nullish↔`""` normalize in `CandidateProfile` clears dirty on virgin restore; `[bug-repro]` asserts the failing path; `## What must still hold` intact. Advisory only: optional `[bug-repro]` source tag hygiene.
+
