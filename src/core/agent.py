@@ -1378,6 +1378,21 @@ def _validation_failure_audit_body(err: str, raw_text: Optional[str], parsed: An
     return f"Validation failed: {err}\n\n--- model response ---\n{body}"
 
 
+def _provider_failure_audit_body(
+    err: str,
+    raw_text: Optional[str],
+    parsed: Any = None,
+    *,
+    failure_class: Optional[str] = None,
+) -> str:
+    """RESPONSE row for provider failures — banner so success-shaped envelopes are not mistaken for finished hops (AST-1380)."""
+    body = _audit_response_body(raw_text, parsed, None)
+    head = f"Provider failed: {err}"
+    if failure_class:
+        head = f"Provider failed ({failure_class}): {err}"
+    return f"{head}\n\n--- model response ---\n{body}"
+
+
 def _failure_response_block_data(index: Optional[str], body: str) -> str:
     """Prefix so get_entity_response can match one row when a batch has many RESPONSE failures."""
     if index and body is not None:
@@ -2156,6 +2171,10 @@ async def do_task(
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
         agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
+        # AST-1380 Decision A: DeepSeek Big thinking shares max_tokens with the JSON answer —
+        # disable thinking so craft criteria are not starved mid-string.
+        if provider == "deepseek" and tier_meta is not None:
+            tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
 
     _hop_kw = dict(
         chain_entry=chain_entry,
@@ -2467,10 +2486,14 @@ async def do_task(
                 raw_for_audit = extract_api_response_text(api_resp)
             except ValueError:
                 pass
-        audit_body = _audit_response_body(
+        # Banner so raw agent_performance.status=success envelopes are not mistaken for finished hops (AST-1380).
+        _fc = result.get("failure_class")
+        _fc_s = str(_fc).strip() if _fc is not None else ""
+        audit_body = _provider_failure_audit_body(
+            str(result.get("error") or "Generation failed"),
             raw_for_audit,
             parsed=result.get("parsed_response"),
-            err=result.get("error"),
+            failure_class=_fc_s or None,
         )
         if _should_store:
             try:
@@ -3463,10 +3486,13 @@ async def run_adhoc_workbench_test(
                     raw_for_audit = extract_api_response_text(api_resp)
                 except ValueError:
                     pass
-            audit_body = _audit_response_body(
+            _fc = result.get("failure_class")
+            _fc_s = str(_fc).strip() if _fc is not None else ""
+            audit_body = _provider_failure_audit_body(
+                str(result.get("error") or "Generation failed"),
                 raw_for_audit,
                 parsed=result.get("parsed_response"),
-                err=result.get("error"),
+                failure_class=_fc_s or None,
             )
             try:
                 _store_response_block(
