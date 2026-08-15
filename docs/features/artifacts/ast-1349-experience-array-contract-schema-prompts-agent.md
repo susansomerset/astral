@@ -363,3 +363,53 @@ AST-1349 locked `experience` as a job **array** but left `_EXPERIENCE_JOB_ITEM_S
 - Finalize may tailor `accomplishments` only; pin `company` / `title` / `dates` / `location` from base.
 - `prior_experience` stays `str`.
 - AST-756 `expected-agent_task.json` remains a whole-file twin of `data/admin/agent_task.json`.
+
+
+## Bug: AST-1382 — gap: retarget accomplishments `string[]` fixtures + bible (board-betty REVISE)
+
+Parent mini-bug: [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues) / gap child [AST-1382](https://linear.app/astralcareermatch/issue/AST-1382/gap-base-resume-issues-testsbible-board-betty-revise). Sibling product tip: [AST-1381](https://linear.app/astralcareermatch/issue/AST-1381/fix-base-resume-issues-craftuiprint) (`origin/sub/AST-1362/AST-1381-fix-base-resume-issues`) already landed schema/prompts/validate + emit/UI. Emit / `|`→`•` / collapsible / format-Save repro coverage lives in `ast-1351-…` § Bug: AST-1382. This block owns the **contract/schema fixture + candidate bible** half.
+
+### As-is
+
+Component fixtures and `docs/test-bible/core/candidate.md` / `utils` rows still treat job `accomplishments` as a required **`str`**. After AST-1381, `_EXPERIENCE_JOB_ITEM_SCHEMA["accomplishments"]` is `type: list`, draft validate rejects string accomplishments, and shared `_SAMPLE_EXPERIENCE_JOBS` (str bodies) fails `TestAst1349ExperienceArrayContract` / config schema asserts. AST-1381 `[qa-handoff]` is blocked on this retarget.
+
+### To-be
+
+Fixtures and bible for the five-key job contract use **`accomplishments: string[]`** (bare achievement strings; optional `<no bullet>` prefix on an element). Config asserts expect `accomplishments` as `{"type": "list", "required": True}` (not `str`). Candidate bible § AST-996 / AST-1349 rows name the list shape. No second product rewrite.
+
+### Repro
+
+On tip that includes AST-1381 product:
+
+```bash
+.venv/bin/python -m pytest -q \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_validate_accepts_five_key_job_array \
+  tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig::test_craft_resume_base_experience_is_job_array_field
+```
+
+Both red: validate error “accomplishments must be a list of strings”; config assert `type str` vs `type list`.
+
+### Root cause
+
+fix-board `[board-betty] TESTS: REVISE` on AST-1381: product widened accomplishments to `string[]`, but AST-996 / AST-1349 / AST-1351 fixture spine and bible still encode the old str contract. Gap was filed as this sibling instead of running `qa-fix` on AST-1381.
+
+### Proposed change
+
+1. **`tests/component/core/test_candidate.py`:** Change module `_SAMPLE_EXPERIENCE_JOBS` so each job’s `accomplishments` is a **`list[str]`** (e.g. `["Shipped widgets"]`, `["Led the team"]`). Fix the type alias (`list[dict[str, str]]` → values may be `str | list[str]`, or use `list[dict[str, Any]]`). Grep the file for other inline `"accomplishments": "<str>"` job literals and retarget the same way. Keep five keys; do not add fields.
+2. **`tests/component/utils/test_config.py`:** In `TestAst996ExperienceJobArrayConfig` (and any twin that loops `_JOB_KEYS` expecting every key `type: str`), assert `accomplishments` is `{"type": "list", "required": True}` while the other four keys remain `str`. Update `TestAst997FinalizeExperienceJobArray` / stringify examples if they hardcode str accomplishments. Leave `TestAst1351ExperienceJobUiFields` key order alone (still five keys including `accomplishments`).
+3. **`docs/test-bible/core/candidate.md`:** Under AST-996 / AST-1349 experience-array sections, rewrite “accomplishments (string)” / “one text block” wording to **ordered `string[]`**, and note draft validate rejects non-list accomplishments. Point narrowed runs at the same TestAst996 / TestAst1349 classes after fixture retarget.
+4. **`docs/test-bible/utils/config.md`:** Where AST-996 / AST-1349 schema rows say accomplishments `str`, retarget to `list`. Keep shared `_EXPERIENCE_JOB_ITEM_SCHEMA` identity callouts.
+5. Do **not** change product `src/` on this gap (AST-1381 owns that). Do **not** invent a new plan doc.
+
+### Blast radius
+
+- Shared `_SAMPLE_EXPERIENCE_JOBS` feeds many candidate tests beyond AST-1349 — retargeting it once should green a cluster; re-run `TestAst996ExperienceJobArray`, `TestAst1349ExperienceArrayContract`, and any class that deep-equals sample jobs.
+- Agent/schema stringify examples that still say `"<accomplishments item>"` as a string leaf may need a list-shaped example if asserts are structural.
+- AST-1381 stays Code Complete until this gap’s fixtures land and Betty clears the `[qa-handoff]`.
+
+### What must still hold
+
+- Experience remains an ordered job **array** (no prose-string success path) — AST-1349.
+- Exactly five job keys; `prior_experience` stays `str`.
+- Finalize may tailor accomplishments only; pin company/title/dates/location.
+- AST-756 `expected-agent_task.json` twin discipline stays a product/prompt concern (already on AST-1381); this gap does not re-open prompt edits unless a fixture asserts the old prompt prose.

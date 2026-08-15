@@ -382,3 +382,71 @@ Parent mini-bug: [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/
 - `_resume_site_markers` still applies `__` / `~~` / NBSP-bullet tightening.
 - Prior Experience default format in config may stay `word_cloud`; operator override to `free_prose` must survive Save → Print.
 - Cover from-block `|`→`•` behavior unchanged except insofar as shared helpers are reused deliberately.
+
+
+## Bug: AST-1382 — gap: bible + repro for emit / `|`→`•` / collapsible / format-Save (board-betty REVISE)
+
+Parent mini-bug: [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues) / gap child [AST-1382](https://linear.app/astralcareermatch/issue/AST-1382/gap-base-resume-issues-testsbible-board-betty-revise). Product already on sibling AST-1381. Schema/sample-job fixture half: `ast-1349-…` § Bug: AST-1382.
+
+### As-is
+
+1. Builder fixtures still feed `"accomplishments": "<prose str>"` into `_emit_experience_jobs_html` / Style D / golden-layout tests; they pass only because emit coerces legacy str — they do **not** prove `string[]` → one `<li>` without double bullets.
+2. No focused assert that `_resume_site_markers` / session-or-base emit converts authoring `|` to `•` on `candidate_contact_detail` and `core_competencies`.
+3. Frontend AST-1351 / AST-996 tests expect flat **`Role N`** labels and string accomplishments in `ExperienceJobsEditor` / `ArtifactEditor`; they fail on collapsible `{company}, {title} / {dates}` headers and `string[]` wire.
+4. No coverage that Base Resume Content **content Save** persists `resume_structure.sections[].format` (e.g. `prior_experience: free_prose`) so Print uses free_prose, not default word_cloud.
+5. `docs/test-bible/frontend/components.md` (+ builder.md rows for experience emit) still describe str accomplishments / Role N chrome.
+
+### To-be
+
+Bible + fixtures match AST-1381 product. At least one **[bug-repro]-style** coverage path each for: (a) `accomplishments: string[]` → single bullet emit (no `<li>• …`); (b) contact + competencies `|`→`•` on emit; (c) content-Save persists `prior_experience` format → free_prose print. UI tests expect collapsible headers and list accomplishments.
+
+### Repro
+
+Product tip includes AST-1381. Pre-gap:
+
+```bash
+cd src/ui/frontend && ./node_modules/.bin/vitest run \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1351|AST-996"
+```
+
+→ fails on `getByText("Role 1")` (header is now `Acme, Eng / 2020`-style). Builder suites that only pass via str coerce do not fail, but also do not lock the string[] contract.
+
+### Root cause
+
+Same board REVISE as ast-1349 § AST-1382: product moved; UI/emit/print fixtures and bible did not. Gap sibling owns test/bible only.
+
+### Proposed change
+
+**A — Retarget existing fixtures (no product edits)**
+
+1. **`tests/component/core/test_builder.py`:** Where experience jobs use string `accomplishments`, prefer `list[str]` (split lead/`<no bullet>` + bullets into array elements). Update `TestAst1008ExperienceGoldenLayout` sample that uses `f"{_LEAD}\n{_BULLET_A}\n{_BULLET_B}"` → `[f"{_LEAD}…", _BULLET_A, _BULLET_B]` (or equivalent). Keep one **legacy str coerce** case if useful (emit still newline-splits) — label it legacy, not the happy path.
+2. **`tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx`:** Fixtures use `accomplishments: ["Did stuff"]` (or multi-line arrays). Assert collapsed header text via `getByText(/Acme, Eng \/ 2020/)` (or the job’s company/title/dates), **not** `Role N`. Expect `onChange` payloads with `accomplishments` as `string[]`. Add-role empty job includes `accomplishments: []`.
+3. **`tests/component/frontend/components/test_ArtifactEditor.test.tsx`:** Same retarget for AST-1351 / AST-996 / AST-1375 experience fixtures; drop `Role 1` queries; Save payload expectations use accomplishments arrays.
+
+**B — New repro coverage (board AC — tag `[bug-repro]` on handoff when landing)**
+
+1. **string[] single-bullet emit:** New or extended test in `test_builder.py` (e.g. under `TestAst1008` / dedicated `TestAst1382…`): job with `accomplishments: ["• Shipped X", "Did Y"]` → HTML contains `<li>Shipped X</li>` and `<li>Did Y</li>`, and must **not** contain `<li>• Shipped X</li>`.
+2. **Contact + competencies `|`→`•`:** Session or base emit with `candidate_contact_detail` / `core_competencies` text containing `A | B | C` → HTML shows bullet separators, no literal `|` in those nodes (markers path / competencies-list).
+3. **prior_experience format Save → print:** Prefer an API or page-level component test that PUTs `artifacts.base_resume` **together with** `artifacts.resume_structure.sections.prior_experience.format = "free_prose"` (mirroring ArtifactEditor content-Save bundling), then `build_base_resume` / HTML route emits prior as free_prose (`summary-intro`), not `competencies-list`. If a pure builder unit is cleaner: structure with `format: "free_prose"` + prior text → assert free_prose markup; pair with an ArtifactEditor or api_candidate test that the Save payload includes `resume_structure` when structure authoring is on.
+
+**C — Bible**
+
+1. **`docs/test-bible/frontend/components.md` § AST-1351 / AST-996:** Accomplishments are `string[]`; collapsible header contract `{company}, {title} / {dates}`; update narrowed vitest patterns / obsolete “Role N” / JSON-textarea notes.
+2. **`docs/test-bible/core/builder.md`:** Add or extend an AST-1381/1382 row for string[] emit, `|`→`•` markers, and format-driven prior emit; point commands at the new repro nodes.
+3. Cross-link candidate/config bible updates from ast-1349 § AST-1382.
+
+### Blast radius
+
+- Broad builder experience fixtures (AST-998/1007/1008/1030/1350/1351 debug) — retarget carefully; keep AST-1350 non-array refuse tests unchanged.
+- Frontend ArtifactEditor suites beyond AST-1351 that mount experience tabs.
+- AST-1381 `[qa-handoff]` clears once these greens land on a publish ref Betty/Chuckles can merge for the handoff.
+
+### What must still hold
+
+- AST-1351 happy path remains ExperienceJobsEditor (not JSON textarea).
+- AST-1350 unsupported non-array experience refuse + read-only notice unchanged.
+- Five job keys; dates freeform string; markers still apply `__` / `~~` / NBSP-bullet.
+- Prior default format may stay `word_cloud` in config; operator `free_prose` override must be what repro (3) proves.
+- Cover from-block `|`→`•` stays cover’s path; resume markers reuse the same authoring/emit separators without changing cover tests’ intent.
