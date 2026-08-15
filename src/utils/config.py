@@ -129,7 +129,9 @@ _EXPERIENCE_JOB_ITEM_SCHEMA: Dict[str, Dict[str, Any]] = {
     "title": {"type": "str", "required": True},
     "dates": {"type": "str", "required": True},
     "location": {"type": "str", "required": True},
-    "accomplishments": {"type": "str", "required": True},
+    # AST-1381: ordered bare achievement strings (no embedded •/- markers).
+    # list without object items_schema — scalar string elements (agent validates type=list).
+    "accomplishments": {"type": "list", "required": True},
 }
 _EXPERIENCE_JOB_ARRAY_FIELD: Dict[str, Any] = {
     "type": "list",
