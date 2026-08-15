@@ -2440,7 +2440,10 @@ class TestAst996ExperienceJobArrayConfig:
         assert schema["required"] is True
         assert set(schema["items_schema"]) == set(self._JOB_KEYS)
         for key in self._JOB_KEYS:
-            assert schema["items_schema"][key] == {"type": "str", "required": True}
+            if key == "accomplishments":
+                assert schema["items_schema"][key] == {"type": "list", "required": True}
+            else:
+                assert schema["items_schema"][key] == {"type": "str", "required": True}
 
     def test_resume_content_shape_shares_experience_field_object(self) -> None:
         craft = cfg.TASK_CONFIG["craft_resume_base"]["response_schema"]["experience"]
@@ -2683,7 +2686,7 @@ class TestAst1333CraftParseHighlightsSchema:
                     "title": "Eng",
                     "dates": "",
                     "location": "",
-                    "accomplishments": "",
+                    "accomplishments": [],
                 }
             ],
         }

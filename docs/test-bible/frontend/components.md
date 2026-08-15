@@ -856,6 +856,37 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1351|AST-996"
 ```
 
+### AST-1382 · AST-1362 (gap — board-betty REVISE)
+
+**Parent:** [AST-1362 — Base Resume Issues](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues). **Publish:** `origin/sub/AST-1362/AST-1382-gap-base-resume-tests`. Product sibling: **AST-1381**.
+
+Retarget AST-1351/996 fixtures: job `accomplishments` is **`string[]`**; collapsible role header is `{company}, {title} / {dates}` (not `Role N`). **[bug-repro]** content Save with structure authoring bundles `artifacts.resume_structure` (e.g. `prior_experience.format = free_prose`). Emit / `|`→`•` repros: **`docs/test-bible/core/builder.md`** § AST-1382. Schema/sample spine: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| string[] + collapsible header | `ExperienceJobsEditor.tsx` | **`test_ExperienceJobsEditor.test.tsx`** — AST-1351/1382 |
+| Array Save + header + structure Save [bug-repro] | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — AST-996/1351/1375 revised; **`AST-1382 [bug-repro]: content Save bundles resume_structure…`** |
+
+**Broken / obsolete this pass:** Role N / `accomplishments: str` asserts under AST-1351/996/1375 — retargeted.
+
+## QA test manifest
+
+1. ExperienceJobsEditor string[] + header: `tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx`
+2. ArtifactEditor retarget + structure Save repro: `test_ArtifactEditor.test.tsx` — `AST-1351|AST-996|AST-1375|AST-1382`
+3. Builder [bug-repro] emit/markers/format: `TestAst1382BugReproBaseResumeIssues` (primary: **`docs/test-bible/core/builder.md`**)
+4. Candidate/config fixture retarget: `TestAst1349ExperienceArrayContract` + `TestAst996ExperienceJobArrayConfig`
+
+```bash
+cd src/ui/frontend && ./node_modules/.bin/vitest run \
+  ../../../tests/component/frontend/components/test_ExperienceJobsEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1351|AST-996|AST-1375|AST-1382"
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract \
+  tests/component/utils/test_config.py::TestAst996ExperienceJobArrayConfig \
+  -q
+```
 
 ### AST-1375 · AST-1371
 

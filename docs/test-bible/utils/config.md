@@ -942,6 +942,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 | --- | --- | --- |
 | Craft / finalize schema identity (reuse) | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig`**, **`TestAst997FinalizeExperienceJobArray`** |
 
+### AST-1382 · AST-1362 (gap — accomplishments list schema)
+
+**AST-1382:** `_EXPERIENCE_JOB_ITEM_SCHEMA["accomplishments"]` is `{"type": "list", "required": True}` (other four keys remain `str`). Primary fixture retarget: **`TestAst996ExperienceJobArrayConfig`**. Candidate/UI: **`docs/test-bible/core/candidate.md`**, **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| accomplishments type list on shared schema | `src/utils/config.py` | **`TestAst996ExperienceJobArrayConfig::test_craft_resume_base_experience_is_job_array_field`** |
 
 ### AST-1350 · AST-1345
 

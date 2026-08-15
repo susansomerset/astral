@@ -83,20 +83,20 @@ def _seven_experience(spec: Any, *, accent: Any = None) -> dict[str, Any]:
 
 
 # AST-996: craft-base Experience wire shape (shared fixture for schema-valid payloads).
-_SAMPLE_EXPERIENCE_JOBS: list[dict[str, str]] = [
+_SAMPLE_EXPERIENCE_JOBS: list[dict[str, object]] = [
     {
         "company": "Acme Corp",
         "title": "Engineer",
         "dates": "2020-2023",
         "location": "Remote",
-        "accomplishments": "Shipped widgets",
+        "accomplishments": ["Shipped widgets"],
     },
     {
         "company": "Beta LLC",
         "title": "Lead",
         "dates": "2023",
         "location": "",
-        "accomplishments": "Led the team",
+        "accomplishments": ["Led the team"],
     },
 ]
 
@@ -2248,7 +2248,7 @@ class TestAst996ExperienceJobArray:
         body, status = candidate_mod.run_session_resume_parse("multi-job resume")
         assert status == 200
         assert body["base_resume"]["experience"] == jobs
-        assert body["base_resume"]["experience"][0]["accomplishments"] == "Shipped widgets"
+        assert body["base_resume"]["experience"][0]["accomplishments"] == ["Shipped widgets"]
 
     def test_persist_craft_resume_base_keeps_job_array(
         self, monkeypatch: pytest.MonkeyPatch
@@ -2479,14 +2479,14 @@ class TestAst997JobTailoredExperience:
                 "title": "Lead",
                 "dates": "WRONG",
                 "location": "WRONG",
-                "accomplishments": "Tailored lead bullets",
+                "accomplishments": ["Tailored lead bullets"],
             },
             {
                 "company": "Acme Corp",
                 "title": "Engineer",
                 "dates": "WRONG",
                 "location": "WRONG",
-                "accomplishments": "Tailored eng bullets",
+                "accomplishments": ["Tailored eng bullets"],
             },
         ]
         payload = {"professional_summary": "S", "experience": tailored}
@@ -2495,10 +2495,10 @@ class TestAst997JobTailoredExperience:
         # Reordered: pin by company+title, not index
         assert payload["experience"][0]["dates"] == "2023"
         assert payload["experience"][0]["location"] == ""
-        assert payload["experience"][0]["accomplishments"] == "Tailored lead bullets"
+        assert payload["experience"][0]["accomplishments"] == ["Tailored lead bullets"]
         assert payload["experience"][1]["dates"] == "2020-2023"
         assert payload["experience"][1]["location"] == "Remote"
-        assert payload["experience"][1]["accomplishments"] == "Tailored eng bullets"
+        assert payload["experience"][1]["accomplishments"] == ["Tailored eng bullets"]
 
     def test_pin_does_not_index_fallback_on_unmatched(self) -> None:
         base = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
@@ -2508,7 +2508,7 @@ class TestAst997JobTailoredExperience:
                 "title": "Intern",
                 "dates": "kept-model",
                 "location": "kept-loc",
-                "accomplishments": "new role text",
+                "accomplishments": ["new role text"],
             }
         ]
         payload = {"experience": tailored}
@@ -2523,14 +2523,14 @@ class TestAst997JobTailoredExperience:
                 "title": "SPM",
                 "dates": "2018-2020",
                 "location": "SEA",
-                "accomplishments": "first tour",
+                "accomplishments": ["first tour"],
             },
             {
                 "company": "Amazon",
                 "title": "SPM",
                 "dates": "2021-2023",
                 "location": "NYC",
-                "accomplishments": "second tour",
+                "accomplishments": ["second tour"],
             },
         ]
         tailored = [
@@ -2539,21 +2539,21 @@ class TestAst997JobTailoredExperience:
                 "title": "SPM",
                 "dates": "x",
                 "location": "x",
-                "accomplishments": "tailored-1",
+                "accomplishments": ["tailored-1"],
             },
             {
                 "company": "Amazon",
                 "title": "SPM",
                 "dates": "y",
                 "location": "y",
-                "accomplishments": "tailored-2",
+                "accomplishments": ["tailored-2"],
             },
         ]
         payload = {"experience": tailored}
         candidate_mod.pin_experience_job_facts_from_base(payload, self._base_cd(base))
         assert payload["experience"][0]["dates"] == "2018-2020"
         assert payload["experience"][0]["location"] == "SEA"
-        assert payload["experience"][0]["accomplishments"] == "tailored-1"
+        assert payload["experience"][0]["accomplishments"] == ["tailored-1"]
         assert payload["experience"][1]["dates"] == "2021-2023"
         assert payload["experience"][1]["location"] == "NYC"
 

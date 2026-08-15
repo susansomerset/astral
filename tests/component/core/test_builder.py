@@ -305,7 +305,7 @@ class TestBuilderHelpers:
                         "title": "Eng",
                         "dates": "2020",
                         "location": "",
-                        "accomplishments": "Shipped",
+                        "accomplishments": ["Shipped"],
                     }
                 ],
                 "prior_experience": "Earlier",
@@ -868,7 +868,7 @@ class TestAst987BuildSessionBaseResume:
                 "title": "Role",
                 "dates": "2024",
                 "location": "",
-                "accomplishments": "Paste jobs",
+                "accomplishments": ["Paste jobs"],
             }
         ]
         html = builder_mod.build_session_base_resume(
@@ -899,7 +899,7 @@ class TestAst987BuildSessionBaseResume:
                         "title": "T",
                         "dates": "2024",
                         "location": "",
-                        "accomplishments": "Jobs",
+                        "accomplishments": ["Jobs"],
                     }
                 ],
             },
@@ -918,14 +918,14 @@ class TestAst998ExperienceJobRender:
             "title": "Engineer",
             "dates": "2020-2023",
             "location": "Remote",
-            "accomplishments": "Shipped widgets",
+            "accomplishments": ["Shipped widgets"],
         },
         {
             "company": "Beta LLC",
             "title": "",
             "dates": "2023",
             "location": "",
-            "accomplishments": "Led the team",
+            "accomplishments": ["Led the team"],
         },
     ]
 
@@ -966,7 +966,7 @@ class TestAst998ExperienceJobRender:
 
     def test_emit_skips_non_dict_and_empty_roles(self) -> None:
         html = builder_mod._emit_experience_jobs_html(
-            ["skip", {}, {"company": "", "title": "", "dates": "", "location": "", "accomplishments": ""}]
+            ["skip", {}, {"company": "", "title": "", "dates": "", "location": "", "accomplishments": []}]
         )
         assert html == ""
 
@@ -978,7 +978,7 @@ class TestAst998ExperienceJobRender:
                     "title": "Dev",
                     "dates": "2024",
                     "location": "",
-                    "accomplishments": "Did stuff",
+                    "accomplishments": ["Did stuff"],
                 }
             ]
         )
@@ -1075,7 +1075,7 @@ class TestAst1350UnsupportedExperienceShape:
             "title": "Engineer",
             "dates": "2020-2023",
             "location": "Remote",
-            "accomplishments": "Shipped widgets",
+            "accomplishments": ["Shipped widgets"],
         }
     ]
 
@@ -1191,7 +1191,7 @@ class TestAst1351ExperienceDebugJobs:
             "title": "Engineer",
             "dates": "2020-2023",
             "location": "Remote",
-            "accomplishments": "Shipped widgets",
+            "accomplishments": ["Shipped widgets"],
         }
     ]
 
@@ -1248,7 +1248,7 @@ class TestAst1007NestedTypographyMarkers:
             "title": "Principal TPM",
             "dates": "2011 to Present",
             "location": "Remote",
-            "accomplishments": "Achieved sprint~~level clarity across delivery.",
+            "accomplishments": ["Achieved sprint~~level clarity across delivery."],
         }
     ]
 
@@ -1348,7 +1348,9 @@ class TestAst1007NestedTypographyMarkers:
         )
         job0 = marked["experience"][0]
         assert job0["company"] == "Somerset\u00a0Consulting"
-        assert job0["accomplishments"] == "Achieved sprint\u2011level clarity across delivery."
+        assert job0["accomplishments"] == [
+            "Achieved sprint\u2011level clarity across delivery."
+        ]
         assert marked["nested_list"][0] == "AI\u2011Assisted\u00a0Delivery"
         assert marked["nested_list"][1]["inner"] == "sprint\u2011level"
         assert marked["keep_int"] == 7
@@ -1426,14 +1428,14 @@ class TestAst1008ExperienceGoldenLayout:
         "title": "Principal Technical Program Manager",
         "dates": "2011 to Present",
         "location": "United States / Full-time Remote",
-        "accomplishments": f"{_LEAD}\n{_BULLET_A}\n{_BULLET_B}",
+        "accomplishments": [_LEAD, _BULLET_A, _BULLET_B],
     }
     _NO_LEAD = {
         "company": "PTown.tech",
         "title": "Technical Program Manager",
         "dates": "2022 to 2024",
         "location": "United States / Full-time Remote",
-        "accomplishments": "Repaired a fractured relationship between decision makers and engineering.",
+        "accomplishments": ["Repaired a fractured relationship between decision makers and engineering."],
     }
 
     def _structure(self) -> dict[str, Any]:
@@ -2373,7 +2375,7 @@ class TestAst1030UatNoBulletLeadEmit:
                         "title": "Principal Technical Program Manager",
                         "dates": "2011 to Present",
                         "location": "United States / Full-time Remote",
-                        "accomplishments": f"{lead}\n{bullet}",
+                        "accomplishments": [lead, bullet],
                     }
                 ],
             },
@@ -2403,7 +2405,7 @@ class TestAst1030UatNoBulletLeadEmit:
                         "title": "Principal Technical Program Manager",
                         "dates": "2011 to Present",
                         "location": "United States / Full-time Remote",
-                        "accomplishments": f"{first}\n{second}",
+                        "accomplishments": [first, second],
                     }
                 ],
             },
@@ -2484,7 +2486,7 @@ class TestAst1039SummaryNewlineParagraphs:
                         "title": "TPM",
                         "dates": "2020 to 2021",
                         "location": "Remote",
-                        "accomplishments": "Bullet A\nBullet B",
+                        "accomplishments": ["Bullet A", "Bullet B"],
                     }
                 ],
             },
@@ -3430,7 +3432,7 @@ _AST1304_JOB = {
     "title": "Engineer",
     "dates": "2020-2023",
     "location": "Remote",
-    "accomplishments": "Shipped widgets",
+    "accomplishments": ["Shipped widgets"],
 }
 
 
@@ -3699,3 +3701,112 @@ class TestAst1304BuilderEmitByFormat:
         )
         assert indexes
         assert all(row.get("identifier") != "professional_summary" for row in indexes)
+
+
+
+class TestAst1382BugReproBaseResumeIssues:
+    """AST-1382 [bug-repro]: string[] emit, |→• markers, prior free_prose format (AST-1381 product)."""
+
+    def test_string_array_emit_strips_embedded_bullet_once(self) -> None:
+        html = builder_mod._emit_experience_jobs_html(
+            [
+                {
+                    "company": "Acme",
+                    "title": "PM",
+                    "dates": "2020 - 2023",
+                    "location": "Remote",
+                    "accomplishments": ["• Shipped X", "Did Y"],
+                }
+            ]
+        )
+        assert "<li>Shipped X</li>" in html
+        assert "<li>Did Y</li>" in html
+        assert "<li>• Shipped X</li>" not in html
+        assert "<li>\u2022 Shipped X</li>" not in html
+
+    def test_resume_site_markers_and_emit_convert_authoring_pipes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "candidate_name": {
+                    "id": "candidate_name",
+                    "title": "Name",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": False,
+                },
+                "candidate_contact_detail": {
+                    "id": "candidate_contact_detail",
+                    "title": "Contact",
+                    "enabled": True,
+                    "order": 1,
+                    "job_agent_editable": False,
+                },
+                "core_competencies": {
+                    "id": "core_competencies",
+                    "title": "Core Competencies",
+                    "enabled": True,
+                    "order": 2,
+                    "job_agent_editable": True,
+                    "format": "word_cloud",
+                },
+            }
+        }
+        contact = "Ada | Remote | hire@example.com"
+        comps = "Delivery | Risk | Stakeholder trust"
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {
+                "candidate_name": "Ada Lovelace",
+                "candidate_contact_detail": contact,
+                "core_competencies": comps,
+            },
+        )
+        assert "|" not in builder_mod._resume_site_markers(contact)
+        assert "|" not in builder_mod._resume_site_markers(comps)
+        assert "Ada | Remote" not in html
+        assert "Delivery | Risk" not in html
+        assert ("Ada\u00a0• Remote" in html) or ("Ada • Remote" in html)
+        assert ("Delivery\u00a0• Risk" in html) or ("Delivery • Risk" in html)
+
+    def test_prior_experience_free_prose_format_emits_summary_intro(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = {
+            "sections": {
+                "prior_experience": {
+                    "id": "prior_experience",
+                    "title": "Prior Experience",
+                    "enabled": True,
+                    "order": 0,
+                    "job_agent_editable": True,
+                    "format": "free_prose",
+                },
+            }
+        }
+        html = builder_mod.build_session_base_resume(
+            structure,
+            {"prior_experience": "Earlier roles spanned ops and delivery."},
+        )
+        assert 'class="summary-intro"' in html
+        assert "Earlier roles spanned ops and delivery." in html
+        assert 'class="competencies-list"' not in html
+
+    def test_legacy_str_accomplishments_still_emit_via_coerce(self) -> None:
+        html = builder_mod._emit_experience_jobs_html(
+            [
+                {
+                    "company": "Acme",
+                    "title": "PM",
+                    "dates": "2020",
+                    "location": "",
+                    "accomplishments": "• Alpha\n- Beta",
+                }
+            ]
+        )
+        assert "<li>Alpha</li>" in html
+        assert "<li>Beta</li>" in html
+        assert "<li>• Alpha</li>" not in html
