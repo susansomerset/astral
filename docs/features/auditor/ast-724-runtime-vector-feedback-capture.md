@@ -590,3 +590,82 @@ No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **
 
 context_tokens≈N
 
+
+## Bug: AST-1385 — gap: tests for craft_* vector_feedback exclusion
+
+### As-is
+
+`docs/test-bible/utils/config.md` § AST-724 still documents **`is_rubric_backed_task`** as the gate for `do_task` prompt-suffix injection and vector-feedback capture. Component coverage stops at `TestAst724RubricBackedTask` (`is_rubric_backed_task` True for consumer **and** craft; `prompt_suffix` present). There is **no** bible row or assertion for **`is_vector_feedback_task`** / craft exclusion — the contract AST-1384 landed in product.
+
+Betty board on AST-1384: `[board-betty] TESTS: REVISE` — missing coverage for `is_vector_feedback_task` / craft exclusion (filed as this gap sibling instead of inline `qa-fix`).
+
+### To-be
+
+Bible + component tests assert:
+
+- **`is_vector_feedback_task`** is True for grade/evaluate / other consumer rubric keys and **False** for every key in `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`.
+- **`is_rubric_backed_task`** remains True for craft (owner identity unchanged).
+- § AST-724 prose names **`is_vector_feedback_task`** as the teach/capture gate (not `is_rubric_backed_task`).
+
+Product fix stays on AST-1384 — this ticket owns **tests + bible only**.
+
+### Repro
+
+Against a tree **without** AST-1385 bible/tests (product may already include AST-1384):
+
+1. Read `docs/test-bible/utils/config.md` § AST-724 — gate prose still says `is_rubric_backed_task` for prompt/capture.
+2. Run `TestAst724RubricBackedTask` — passes, but never mentions `is_vector_feedback_task`.
+3. No failing assertion today proves craft is excluded from the feedback gate (gap, not a red product test).
+
+After this gap lands: new assertions green on the AST-1384 product tip; bible § AST-724 matches the split gate.
+
+### Root cause
+
+AST-724 bible/tests encoded the original single-gate decision (`is_rubric_backed_task` = consumer + craft). AST-1384 split teach/capture onto `is_vector_feedback_task` without a test-tree / bible update (engineer test-tree ban). Board correctly REVISE'd; orphaned mini-parent filed this gap child rather than blocking AST-1384 on inline `qa-fix`.
+
+### Proposed change
+
+**Owner of landing:** Betty (`tests/`, `docs/test-bible/**` only — via `qa-fix` / astral-tests publish to this sub). Engineer does **not** implement product code here and does **not** patch the test tree under `make-fix`.
+
+1. **`docs/test-bible/utils/config.md`** — § AST-724:
+
+   - Rewrite the gate sentence: **`is_vector_feedback_task`** gates `do_task` prompt-suffix injection and vector-feedback capture (consumers only); **`is_rubric_backed_task`** remains True for consumer **and** craft (rubric owner identity / `rubric_owner_task_key`).
+   - Extend the component-tests table with rows:
+
+     | Area | Source | Component tests |
+     | `is_vector_feedback_task` consumers True | `config.py` | new method under `TestAst724RubricBackedTask` or `TestAst1385VectorFeedbackTask` |
+     | craft keys False for `is_vector_feedback_task` | `config.py` | same — assert all `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` keys |
+     | craft still `is_rubric_backed_task` True | `config.py` | existing or adjacent assert |
+
+   - Add the new node id(s) to the § AST-724 narrowed-run bash block.
+
+2. **`tests/component/utils/test_config.py`** — add coverage (prefer extending `TestAst724RubricBackedTask` to keep the AST-724 narrowed run coherent, **or** a sibling class `TestAst1385VectorFeedbackTask` listed in that run):
+
+   ```python
+   def test_is_vector_feedback_consumers_only_excludes_craft(self) -> None:
+       assert cfg.is_vector_feedback_task("grade_get") is True
+       assert cfg.is_vector_feedback_task("prefilter_company") is True
+       assert cfg.is_vector_feedback_task("craft_get_rubric") is False
+       assert cfg.is_rubric_backed_task("craft_get_rubric") is True
+       for craft_key in cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
+           assert cfg.is_vector_feedback_task(craft_key) is False
+       assert cfg.is_vector_feedback_task("craft_resume_base") is False
+   ```
+
+3. **Out of scope:** re-implement AST-1384 product; change `agent.py` / `is_vector_feedback_task` body; raise `max_tokens`; Admin UI; rewrite `task_keys_for_rubric_owner` behavior (optional one-line bible note that Admin expansion may still list historical craft run keys is fine — do not change the helper in this gap).
+
+### Blast radius
+
+| Area | Impact |
+|------|--------|
+| AST-1384 product | Unchanged — already landed `is_vector_feedback_task` + three `do_task` gates. |
+| Existing `TestAst724RubricBackedTask` craft-backed asserts | Stay green (`is_rubric_backed_task` still True for craft). |
+| `TestAst724VectorFeedbackCapture` / rubric_feedback / DB rows | Unchanged unless Betty optionally adds a craft-skip note; not required by board. |
+| Other bible pages citing `is_rubric_backed_task` as capture gate | Update only `docs/test-bible/utils/config.md` § AST-724 unless a cross-link in `docs/test-bible/core/agent.md` still says the old gate — if so, one-line cross-fix there only. |
+
+### What must still hold
+
+1. AST-1384 product contract: craft excluded from teach/capture; consumers still included.
+2. `is_rubric_backed_task(craft_*)` remains True; `rubric_owner_task_key(craft_*)` unchanged.
+3. Existing AST-724 parse / capture / FEEDBACK-lenient tests stay green.
+4. No product max_tokens or Admin UI changes on this gap.
