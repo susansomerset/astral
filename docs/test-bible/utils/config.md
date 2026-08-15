@@ -472,12 +472,15 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 ### AST-724 · AST-378
 
-**`is_rubric_backed_task`** gates rubric-backed **`do_task`** prompt suffix injection and vector-feedback capture; **`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** documents the **`vector_reviews`** envelope contract.
+**`is_vector_feedback_task`** gates **`do_task`** prompt-suffix injection and vector-feedback capture (consumers only — not craft). **`is_rubric_backed_task`** remains True for consumer **and** craft (rubric owner identity / `rubric_owner_task_key`). **`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** documents the **`vector_reviews`** envelope contract.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Rubric-backed consumer/craft gate | `src/utils/config.py` | `TestAst724RubricBackedTask::test_is_rubric_backed_consumer_and_craft` |
 | Prompt suffix in config | `src/utils/config.py` | `TestAst724RubricBackedTask::test_prompt_suffix_present_in_rubric_feedback_config` |
+| `is_vector_feedback_task` consumers True / craft False | `src/utils/config.py` | `TestAst724RubricBackedTask::test_is_vector_feedback_consumers_only_excludes_craft` |
+
+**AST-1385** ([bug-repro]): craft exclusion on the teach/capture gate — product split landed on sibling **AST-1384**; this node asserts the contract.
 
 **AST-724** narrowed run:
 
