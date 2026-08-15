@@ -472,15 +472,12 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 ### AST-724 · AST-378
 
-**`is_vector_feedback_task`** gates **`do_task`** prompt-suffix injection and vector-feedback capture (consumers only — not craft). **`is_rubric_backed_task`** remains True for consumer **and** craft (rubric owner identity / `rubric_owner_task_key`). **`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** documents the **`vector_reviews`** envelope contract.
+**`is_rubric_backed_task`** gates rubric-backed **`do_task`** prompt suffix injection and vector-feedback capture; **`RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]`** documents the **`vector_reviews`** envelope contract.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Rubric-backed consumer/craft gate | `src/utils/config.py` | `TestAst724RubricBackedTask::test_is_rubric_backed_consumer_and_craft` |
 | Prompt suffix in config | `src/utils/config.py` | `TestAst724RubricBackedTask::test_prompt_suffix_present_in_rubric_feedback_config` |
-| `is_vector_feedback_task` consumers True / craft False | `src/utils/config.py` | `TestAst724RubricBackedTask::test_is_vector_feedback_consumers_only_excludes_craft` |
-
-**AST-1385** ([bug-repro]): craft exclusion on the teach/capture gate — product split landed on sibling **AST-1384**; this node asserts the contract.
 
 **AST-724** narrowed run:
 
@@ -1059,7 +1056,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ### AST-1025 · AST-1023
 
-**AST-1025:** Admin `NAV_CONFIG` item **Session Cover Letter** (`/admin/session_cover_letter`) immediately after **Session Resume Paste**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**.
+**AST-1025:** Tools `NAV_CONFIG` item **Cover Letter Paste** (`/admin/session_cover_letter`) immediately after **Resume Paste** (AST-1386 labels; paths unchanged). Primary page §6c: **`docs/test-bible/frontend/pages.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -1075,11 +1072,11 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 ### AST-1033 · AST-1031
 
-**AST-1033:** Admin `NAV_CONFIG` item **Read email** (`/admin/read_email`) immediately after **Session Cover Letter**. Primary page §6c: **`docs/test-bible/frontend/pages.md`**. API: **`docs/test-bible/ui/api/api_inbox.md`**.
+**AST-1033 / AST-1048 / AST-1386:** **Manage Email** (`/admin/manage_email`) lives in the **Operations** admin-only group (no longer adjacent to paste items). `/admin/read_email` remains absent. Primary page §6c: **`docs/test-bible/frontend/pages.md`**. API: **`docs/test-bible/ui/api/api_inbox.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Nav order + label | `src/utils/config.py` | **`TestAst1033ReadEmailNav`** |
+| Nav label/path + no read_email | `src/utils/config.py` | **`TestAst1033ReadEmailNav`** |
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -3004,6 +3001,47 @@ Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and 
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy \
   tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1386 · AST-1370
+
+**Parent:** [AST-1370 — Group admin in the UI into three segments](https://linear.app/astralcareermatch/issue/AST-1370/group-admin-in-the-ui-into-three-segments). **Publish:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav`.
+
+`NAV_CONFIG` replaces the single Admin group with **Operations** / **Admin** / **Tools** (`admin_only: True`); paste nav labels **Resume Paste** / **Cover Letter Paste** (paths unchanged). `nav_admin_only_group_labels()` drives `/api/nav_config` non-admin omit — route coverage: **`docs/test-bible/ui/api/api_system.md`**. No React / routes / pages / shell.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Three segments + helper + candidate anchors | `src/utils/config.py` | **`TestAst1386ThreeSegmentAdminNav`** |
+| Paste adjacency (revised) | same | **`TestAst1025SessionCoverLetterNav`** |
+| Manage Email in Operations (revised) | same | **`TestAst1033ReadEmailNav`** |
+| Admin API three segments + omit | `src/ui/api/api_system.py` | **`test_nav_config_three_admin_segments_for_admin`**, **`test_nav_config_omits_admin_group_for_non_admin`**, **`test_nav_config_admin_agent_ad_hoc_label`** |
+
+**Broken / obsolete this pass:** single-Admin inventory + `label != "Admin"` omit + Agent Ad Hoc under Admin + Manage Email after paste — revised above.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` asserts Jobs gates only — no Admin inventory; no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Three segments + `nav_admin_only_group_labels` + candidate anchors: `tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav`
+2. Cover Letter Paste after Resume Paste (Tools): `tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav`
+3. Manage Email in Operations / no read_email: `tests/component/utils/test_config.py::TestAst1033ReadEmailNav`
+4. Admin `/api/nav_config` three segments + paste labels: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin`
+5. Non-admin omits Operations/Admin/Tools: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`
+6. Agent Ad Hoc under Tools: `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label`
+
+**AST-1386** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1386ThreeSegmentAdminNav \
+  tests/component/utils/test_config.py::TestAst1025SessionCoverLetterNav \
+  tests/component/utils/test_config.py::TestAst1033ReadEmailNav \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label \
   -q
 ```
 

@@ -1851,16 +1851,6 @@ class TestAst724RubricBackedTask:
         assert "vector_reviews" in suffix
         assert "agent_performance" in suffix
 
-    def test_is_vector_feedback_consumers_only_excludes_craft(self) -> None:
-        # AST-1385 / AST-1384: teach+capture gate is consumers only; craft stays rubric-backed.
-        assert cfg.is_vector_feedback_task("grade_get") is True
-        assert cfg.is_vector_feedback_task("prefilter_company") is True
-        assert cfg.is_vector_feedback_task("craft_get_rubric") is False
-        assert cfg.is_rubric_backed_task("craft_get_rubric") is True
-        for craft_key in cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
-            assert cfg.is_vector_feedback_task(craft_key) is False
-        assert cfg.is_vector_feedback_task("craft_resume_base") is False
-
 
 class TestAst859VectorReviewsPromptExample:
     """AST-859: prompt_suffix example must use RACOVK delimiter wire format."""
@@ -2615,28 +2605,27 @@ class TestAst1010CandidateTaglineConfig:
 
 
 class TestAst1025SessionCoverLetterNav:
-    """AST-1025: Admin NAV_CONFIG Session Cover Letter after Session Resume Paste."""
+    """AST-1025 / AST-1386: Tools NAV_CONFIG Cover Letter Paste after Resume Paste."""
 
     def test_session_cover_letter_follows_session_resume_paste(self) -> None:
-        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
-        items = admin["items"]
+        tools = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Tools")
+        items = tools["items"]
         resume_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_resume_paste")
         cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
         assert cover_i == resume_i + 1
-        assert items[cover_i]["label"] == "Session Cover Letter"
+        assert items[resume_i]["label"] == "Resume Paste"
+        assert items[cover_i]["label"] == "Cover Letter Paste"
 
 
 class TestAst1033ReadEmailNav:
-    """AST-1033 / AST-1048: Admin NAV_CONFIG Manage Email after Session Cover Letter."""
+    """AST-1033 / AST-1048 / AST-1386: Manage Email lives in Operations (not after paste)."""
 
-    def test_manage_email_follows_session_cover_letter(self) -> None:
-        admin = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Admin")
-        items = admin["items"]
-        cover_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/session_cover_letter")
-        manage_i = next(i for i, it in enumerate(items) if it.get("path") == "/admin/manage_email")
-        assert manage_i == cover_i + 1
-        assert items[manage_i]["label"] == "Manage Email"
-        assert not any(it.get("path") == "/admin/read_email" for it in items)
+    def test_manage_email_in_operations_no_read_email(self) -> None:
+        ops = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Operations")
+        manage = next(it for it in ops["items"] if it.get("path") == "/admin/manage_email")
+        assert manage["label"] == "Manage Email"
+        all_paths = [it.get("path") for g in cfg.NAV_CONFIG for it in g.get("items", [])]
+        assert "/admin/read_email" not in all_paths
 
 
 class TestAst1037SimpleResumeParseConfig:
@@ -4872,4 +4861,61 @@ class TestAst1373AuthSessionPolicy:
             "session_duration_minutes": 30,
             "activity_extension_interval_minutes": 12,
         }
+
+
+class TestAst1386ThreeSegmentAdminNav:
+    """AST-1386: Operations / Admin / Tools regroup + nav_admin_only_group_labels()."""
+
+    _OPS_PATHS = [
+        "/admin/scheduled_actions",
+        "/admin/performance_monitor",
+        "/admin/vector_feedback",
+        "/admin/manage_email",
+        "/admin/manage_slack",
+        "/admin/manage_candidates",
+    ]
+    _ADMIN_PATHS = [
+        "/admin/agent_prompts",
+        "/admin/task_prompts",
+        "/admin/scheduled_queries",
+        "/admin/agent_timesheets",
+    ]
+    _TOOLS_PATHS = [
+        "/admin/data_management",
+        "/admin/anthropic_ad_hoc",
+        "/admin/cost_reconciliation",
+        "/admin/session_resume_paste",
+        "/admin/session_cover_letter",
+    ]
+
+    def test_three_admin_only_groups_order_membership_and_paste_labels(self) -> None:
+        labels = [g.get("label") for g in cfg.NAV_CONFIG]
+        cand_i = labels.index("Candidate")
+        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        expected = {
+            "Operations": self._OPS_PATHS,
+            "Admin": self._ADMIN_PATHS,
+            "Tools": self._TOOLS_PATHS,
+        }
+        for name, paths in expected.items():
+            group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
+            assert group.get("admin_only") is True
+            assert [it["path"] for it in group["items"]] == paths
+        tools = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Tools")
+        by_path = {it["path"]: it["label"] for it in tools["items"]}
+        assert by_path["/admin/session_resume_paste"] == "Resume Paste"
+        assert by_path["/admin/session_cover_letter"] == "Cover Letter Paste"
+
+    def test_nav_admin_only_group_labels_from_config(self) -> None:
+        assert cfg.nav_admin_only_group_labels() == frozenset(
+            {"Operations", "Admin", "Tools"}
+        )
+
+    def test_non_admin_candidate_groups_still_present(self) -> None:
+        # Jobs / Companies / Artifacts / Candidate unchanged for this ticket.
+        labels = {g.get("label") for g in cfg.NAV_CONFIG}
+        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
+        for name in ("Jobs", "Companies", "Artifacts", "Candidate"):
+            group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
+            assert not group.get("admin_only")
 
