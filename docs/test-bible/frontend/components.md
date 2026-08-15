@@ -648,6 +648,30 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+### AST-1369 · AST-1361
+
+**Parent:** [AST-1361 — Freeze the Astral Logo and the candidate selection](https://linear.app/astralcareermatch/issue/AST-1361/freeze-the-astral-logo-and-the-candidate-selection). **Publish:** `origin/sub/AST-1361/AST-1369-pin-left-nav-logo-and-candidate-chrome`.
+
+`NavigationShell` + `App.css` split the left nav into `.sidebar-chrome` (logo + candidate control, `flex-shrink: 0`) and `.sidebar-scroll` (loading/error/groups + admin footer/spacer, `flex: 1; min-height: 0; overflow-y: auto`). `.sidebar` uses `overflow: hidden` (no whole-pane scroll). No sticky positioning; admin deploy footer stays in the scroll region. AST-1286 responsive shell (wide select / narrow drawer+menu) unchanged. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Chrome / scroll DOM split (wide) | `NavigationShell.tsx` + `App.css` | **`test_NavigationShell.test.tsx`** — **`AST-1369 pinned left-nav chrome` → wide: logo + candidate live in sidebar-chrome; groups + footer in sidebar-scroll** |
+| Same split on narrow + menu in chrome | same | **`narrow: same chrome/scroll split; candidate menu stays in chrome`** |
+| Loading/error in scroll region | same | **`loading/error messages render inside sidebar-scroll, not chrome`** |
+| Responsive shell regression (AC4–5) | same | **`AST-1286 responsive shell`** block (hamburger/backdrop/navigate/candidate lock) — re-run |
+
+**Broken / obsolete:** none — existing shell selectors (combobox, hamburger, nav groups, deploy footer) still resolve after the wrapper divs.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` — API-only; no shell/CSS contract; no revision. Do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+---
+
 ### AST-1302 · AST-1166 (list icon-control remediation)
 
 **Parent:** [AST-1166 — Button consistency](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency). **Publish:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation`.
@@ -833,3 +857,39 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 
+### AST-1375 · AST-1371
+
+**Parent:** [AST-1371 — Regenerate resume button does not appear for resumes with unsupported content](https://linear.app/astralcareermatch/issue/AST-1371/regenerate-resume-button-does-not-appear-for-resumes-with-unsupported). **Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+Base Resume Content (`artifactKey === "base_resume"`, not `jobPersistence`): when experience parse fails (same failure as the unsupported notice), `canGenerate` is true unless candidate state is in config-owned `artifact_generate_inflight_hide_states` (`REQUESTED_ARTIFACTS` / `REQUESTED_ARTIFACTS_RETRY`). Click still confirms-when-regenerating and POSTs `craft_resume_base`. Valid job-array experience stays allowlist-only. Config/API spine: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/ui/api/api_system.md`**. Does **not** reopen Print/no-emit or migrate legacy experience.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Escape hatch + inflight hide + craft path | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1375:*`** |
+| Fixture hide list | `stateUiManifestFixture.ts` | same (fixture feeds all ArtifactEditor mounts) |
+
+**Broken / obsolete:** none — additive escape hatch; AST-1351 legacy notice + Save abort unchanged. Fixture gains `artifact_generate_inflight_hide_states`.
+
+**§6c:** no page-file product diff — ArtifactEditor is the UI gate (same as AST-1351).
+
+**Integration:** no existing scenario asserts Generate visibility vs unsupported experience — no revision.
+
+## QA test manifest
+
+1. Inflight hide membership + generate allowlist unchanged: `tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates`
+2. Manifest key on `GET /api/state_ui_manifest`: `tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest`
+3. ArtifactEditor escape / hide / craft / allowlist-only: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1375"`
+
+**AST-1375** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  tests/component/ui/api/test_api_system.py::TestAst1375InflightHideStatesManifest \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1375"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

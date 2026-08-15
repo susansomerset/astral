@@ -14,6 +14,22 @@ vi.mock("react-router-dom", async () => {
   }
 })
 
+function stubPolicyFetch(): void {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes("/api/auth_session_policy")) {
+        return Response.json({
+          session_duration_minutes: 20,
+          activity_extension_interval_minutes: 10,
+        })
+      }
+      return new Response("not found", { status: 404 })
+    }),
+  )
+}
+
 function renderAuthenticate() {
   return render(
     <MemoryRouter initialEntries={["/authenticate?stytch_token_type=oauth&token=abc"]}>
@@ -22,7 +38,7 @@ function renderAuthenticate() {
   )
 }
 
-describe("Authenticate page (AST-830)", () => {
+describe("Authenticate page (AST-830 / AST-1374)", () => {
   let replaceState: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -30,9 +46,11 @@ describe("Authenticate page (AST-830)", () => {
     navigate.mockReset()
     replaceState = vi.fn()
     vi.spyOn(window.history, "replaceState").mockImplementation(replaceState)
+    stubPolicyFetch()
   })
 
   afterEach(() => {
+    vi.unstubAllGlobals()
     vi.restoreAllMocks()
   })
 
@@ -111,5 +129,6 @@ describe("Authenticate page (AST-830)", () => {
     renderAuthenticate()
     await waitFor(() => expect(navigate).toHaveBeenCalled())
     expect(authenticateByUrl).toHaveBeenCalledTimes(1)
+    expect(authenticateByUrl).toHaveBeenCalledWith({ session_duration_minutes: 20 })
   })
 })

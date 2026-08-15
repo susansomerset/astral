@@ -1,8 +1,9 @@
-"""Component tests for agent_data table cluster (AST-392, AST-977)."""
+"""Component tests for agent_data table cluster (AST-392, AST-977, AST-1377)."""
 
 from __future__ import annotations
 
 import sqlite3
+from pathlib import Path
 from typing import Any, Optional
 
 import pytest
@@ -25,6 +26,41 @@ def _agent_data_cols(db: Any) -> set[str]:
         return {row[1] for row in conn.execute("PRAGMA table_info(agent_data)").fetchall()}
     finally:
         conn.close()
+
+
+def _create_legacy_agent_data_without_ref(db: Any, db_dir: Path) -> None:
+    """Point DB_PATH at db_dir and create pre-self-ref agent_data (no ref_agent_data_id)."""
+    db_dir.mkdir(parents=True, exist_ok=True)
+    db._agent_data_schema_ensured = False
+    conn = sqlite3.connect(str(db_dir / "astral.db"))
+    try:
+        conn.execute(
+            """CREATE TABLE agent_data (
+                agent_data_id TEXT PRIMARY KEY,
+                entity_type TEXT NOT NULL,
+                task_key TEXT NOT NULL,
+                batch_id TEXT NOT NULL,
+                created_at TIMESTAMP NOT NULL,
+                block_type TEXT NOT NULL,
+                block_data BLOB,
+                token_size INTEGER DEFAULT 0
+            )"""
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _ref_column_pragma(db: Any) -> tuple[str, int, object]:
+    """Return (type, notnull, dflt_value) for agent_data.ref_agent_data_id."""
+    conn = db._get_connection()
+    try:
+        for row in conn.execute("PRAGMA table_info(agent_data)").fetchall():
+            if row[1] == "ref_agent_data_id":
+                return (row[2], row[3], row[4])
+    finally:
+        conn.close()
+    raise AssertionError("ref_agent_data_id missing from agent_data")
 
 
 class TestSaveAgentData:
@@ -407,3 +443,95 @@ class TestAst1274ResolveNullBlockDataRef:
         assert row is not None
         assert row["block_data"] == "from-ref"
         assert row["ref_agent_data_id"] == "canon-1"
+
+
+class TestAst1377EnsureRefAgentDataId:
+    """AST-1376/1377: legacy agent_data gains nullable ref_agent_data_id via ensure / bootstrap."""
+
+    def test_legacy_ensure_adds_nullable_ref_idempotent(
+        self, sqlite_in_memory, tmp_path, monkeypatch
+    ) -> None:
+        db = sqlite_in_memory
+        legacy = tmp_path / "legacy-1377"
+        monkeypatch.setenv("ASTRAL_DB_DIR", str(legacy))
+        monkeypatch.setattr(db, "DB_PATH", legacy / "astral.db")
+        _create_legacy_agent_data_without_ref(db, legacy)
+        assert "ref_agent_data_id" not in _agent_data_cols(db)
+
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_data_schema(conn)
+        finally:
+            conn.close()
+        cols_first = _agent_data_cols(db)
+        assert "ref_agent_data_id" in cols_first
+        col_type, notnull, dflt = _ref_column_pragma(db)
+        assert col_type.upper() == "TEXT"
+        assert notnull == 0
+        assert dflt is None
+
+        # Second ensure (flag reset like upsert path) is a no-op — column once, no error.
+        conn2 = db._get_connection()
+        try:
+            db.ensure_table_schema_for_upsert(conn2, "agent_data")
+        finally:
+            conn2.close()
+        assert _agent_data_cols(db) == cols_first
+        conn3 = db._get_connection()
+        try:
+            ref_rows = [
+                r for r in conn3.execute("PRAGMA table_info(agent_data)").fetchall()
+                if r[1] == "ref_agent_data_id"
+            ]
+        finally:
+            conn3.close()
+        assert len(ref_rows) == 1
+
+    def test_legacy_write_read_uses_ref_after_ensure(
+        self, sqlite_in_memory, tmp_path, monkeypatch
+    ) -> None:
+        db = sqlite_in_memory
+        legacy = tmp_path / "legacy-1377-rw"
+        monkeypatch.setenv("ASTRAL_DB_DIR", str(legacy))
+        monkeypatch.setattr(db, "DB_PATH", legacy / "astral.db")
+        _create_legacy_agent_data_without_ref(db, legacy)
+
+        conn = db._get_connection()
+        try:
+            db._ensure_agent_data_schema(conn)
+        finally:
+            conn.close()
+
+        first = db.save_agent_data(
+            "canon-1377", "company", "qualify_job_listings", "batch-a", "SYSTEM", "shared-body",
+            created_at="2026-01-01T00:00:00+00:00",
+        )
+        assert first["outcome"] == "new_content"
+        second = db.save_agent_data(
+            "audit-1377", "company", "qualify_job_listings", "batch-b", "RESPONSE", "shared-body",
+            created_at="2026-01-02T00:00:00+00:00",
+        )
+        assert second["outcome"] == "ref_existing"
+        assert second["ref_agent_data_id"] == "canon-1377"
+        row = db.get_agent_data("audit-1377")
+        assert row is not None
+        assert row["block_data"] == "shared-body"
+        assert row["ref_agent_data_id"] == "canon-1377"
+
+    def test_startup_upsert_registry_ensures_ref_column(
+        self, sqlite_in_memory, tmp_path, monkeypatch
+    ) -> None:
+        db = sqlite_in_memory
+        legacy = tmp_path / "legacy-1377-boot"
+        monkeypatch.setenv("ASTRAL_DB_DIR", str(legacy))
+        monkeypatch.setattr(db, "DB_PATH", legacy / "astral.db")
+        _create_legacy_agent_data_without_ref(db, legacy)
+        assert "ref_agent_data_id" not in _agent_data_cols(db)
+
+        assert db._UPSERT_LAZY_SCHEMA_HANDLERS["agent_data"] is db._ensure_agent_data_schema
+        db.ensure_all_upsert_registry_schemas_at_startup()
+        assert "ref_agent_data_id" in _agent_data_cols(db)
+        _type, notnull, dflt = _ref_column_pragma(db)
+        assert _type.upper() == "TEXT"
+        assert notnull == 0
+        assert dflt is None

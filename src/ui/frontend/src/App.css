@@ -8,6 +8,7 @@
  *  3. Layout (shell)
  *  4. Sidebar
  *  4b. Responsive nav shell (AST-1286)
+ *  4c. Pinned left-nav chrome (AST-1369)
  *  5. Nav Groups & Nav Links
  *  6. Content Area
  *  7. Stub Pages
@@ -99,7 +100,7 @@ body {
   border-right: 1px solid var(--border);
   color: var(--text-primary);
   padding: 0;
-  overflow-y: auto;
+  overflow: hidden;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -136,6 +137,20 @@ body {
 .sidebar-candidate-select select:focus {
   outline: none;
   border-color: var(--accent-gold);
+}
+
+/* === 4c. Pinned left-nav chrome (AST-1369) === */
+
+.sidebar-chrome {
+  flex-shrink: 0;
+}
+
+.sidebar-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 
 .sidebar-loading,

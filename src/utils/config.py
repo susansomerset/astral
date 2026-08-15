@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  AUTH_CONFIG     — Stytch credentials and admin user lists (AST-609)
+  AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373)
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
@@ -3600,6 +3600,13 @@ def build_state_ui_manifest() -> Dict[str, Any]:
         "PAUSE_SEARCH",
     ]
     assert all(s in CANDIDATE_STATES for s in gen_states)
+    # States that must keep Generate/Regenerate hidden even when Base Resume
+    # experience is unsupported (AST-1253 in-flight chain claim).
+    inflight_hide_states = [
+        "REQUESTED_ARTIFACTS",
+        "REQUESTED_ARTIFACTS_RETRY",
+    ]
+    assert all(s in CANDIDATE_STATES for s in inflight_hide_states)
 
     bulk_company = {
         "inactive_list_to_state": "WEBSITE_FOUND",
@@ -3648,7 +3655,10 @@ def build_state_ui_manifest() -> Dict[str, Any]:
                 },
             },
         },
-        "candidate": {"artifact_generate_states": gen_states},
+        "candidate": {
+            "artifact_generate_states": gen_states,
+            "artifact_generate_inflight_hide_states": inflight_hide_states,
+        },
         "company": {
             "watch_readonly_states": ["WATCH"],
             "bulk_transitions": bulk_company,
@@ -4542,12 +4552,25 @@ AUTH_CONFIG = {
     ),
     "stytch_project_id": os.environ.get("STYTCH_PROJECT_ID", ""),
     "stytch_secret": os.environ.get("STYTCH_SECRET", ""),
+    # Non-secret Stytch client session policy (AST-1373) — retune here, not SPA constants.
+    "session_duration_minutes": 20,
+    "activity_extension_interval_minutes": 10,
 }
 
 
 def get_auth_config() -> Dict[str, Any]:
     """Return AUTH_CONFIG (shallow copy safe for read-only callers)."""
     return dict(AUTH_CONFIG)
+
+
+def get_auth_session_policy() -> Dict[str, int]:
+    """Non-secret Stytch session policy for SPA (AST-1373). Never include secrets."""
+    return {
+        "session_duration_minutes": int(AUTH_CONFIG["session_duration_minutes"]),
+        "activity_extension_interval_minutes": int(
+            AUTH_CONFIG["activity_extension_interval_minutes"]
+        ),
+    }
 
 
 def template_candidate_id() -> str:

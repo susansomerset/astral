@@ -133,99 +133,103 @@ export default function NavigationShell() {
         id="app-sidebar"
         className={"sidebar" + (drawerOpen ? " sidebar--open" : "")}
       >
-        <div className="sidebar-logo">
-          <img src={astralLogo} alt="Astral" />
-        </div>
-        {candidates.length > 0 && (
-          isWide ? (
-            <div className="sidebar-candidate-select">
-              <select
-                value={selectedId ?? ""}
-                disabled={!isAdmin}
-                onChange={e => isAdmin && setSelectedId(e.target.value)}
-              >
-                {candidates.map(c => (
-                  <option key={c.astral_candidate_id} value={c.astral_candidate_id}>
-                    {candidateLabel(c)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : (
-            <div className="sidebar-candidate-menu">
-              <button
-                type="button"
-                className="sidebar-candidate-menu-toggle"
-                aria-expanded={candidateMenuOpen}
-                onClick={() => setCandidateMenuOpen(o => !o)}
-              >
-                {selectedLabel}
-              </button>
-              {candidateMenuOpen && (
-                <ul className="sidebar-candidate-menu-list">
-                  {candidates.map(c => {
-                    const selected = c.astral_candidate_id === selectedId
-                    return (
-                      <li key={c.astral_candidate_id}>
-                        <button
-                          type="button"
-                          className={"sidebar-candidate-menu-item" + (selected ? " is-selected" : "")}
-                          disabled={!isAdmin}
-                          onClick={() => {
-                            if (!isAdmin) return
-                            setSelectedId(c.astral_candidate_id)
-                            setCandidateMenuOpen(false)
-                          }}
-                        >
-                          {selected ? "✓ " : ""}{candidateLabel(c)}
-                        </button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              )}
-            </div>
-          )
-        )}
-        {loading ? (
-          <p className="sidebar-loading">Loading...</p>
-        ) : error ? (
-          <p className="sidebar-error">Failed to load navigation. Check server connection.</p>
-        ) : (
-          navGroups.map(group => {
-            const isExpanded = expanded.has(group.label)
-            return (
-              <div key={group.label} className="nav-group">
-                <h3
-                  className="nav-group-label"
-                  onClick={() => toggleGroup(group.label)}
+        <div className="sidebar-chrome">
+          <div className="sidebar-logo">
+            <img src={astralLogo} alt="Astral" />
+          </div>
+          {candidates.length > 0 && (
+            isWide ? (
+              <div className="sidebar-candidate-select">
+                <select
+                  value={selectedId ?? ""}
+                  disabled={!isAdmin}
+                  onChange={e => isAdmin && setSelectedId(e.target.value)}
                 >
-                  <span className={`nav-group-chevron${isExpanded ? "" : " collapsed"}`}>▾</span>
-                  {group.label}
-                </h3>
-                {isExpanded && group.items.map(item => {
-                  const badge = item.count != null
-                    ? <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>[{item.count}]</span>
-                    : null
-                  return item.enabled ? (
-                    <NavLink
-                      key={item.path}
-                      to={item.path}
-                      className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
-                    >
-                      {item.label}{badge}
-                    </NavLink>
-                  ) : (
-                    <span key={item.path} className="nav-link disabled">
-                      {item.label}{badge}
-                    </span>
-                  )
-                })}
+                  {candidates.map(c => (
+                    <option key={c.astral_candidate_id} value={c.astral_candidate_id}>
+                      {candidateLabel(c)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : (
+              <div className="sidebar-candidate-menu">
+                <button
+                  type="button"
+                  className="sidebar-candidate-menu-toggle"
+                  aria-expanded={candidateMenuOpen}
+                  onClick={() => setCandidateMenuOpen(o => !o)}
+                >
+                  {selectedLabel}
+                </button>
+                {candidateMenuOpen && (
+                  <ul className="sidebar-candidate-menu-list">
+                    {candidates.map(c => {
+                      const selected = c.astral_candidate_id === selectedId
+                      return (
+                        <li key={c.astral_candidate_id}>
+                          <button
+                            type="button"
+                            className={"sidebar-candidate-menu-item" + (selected ? " is-selected" : "")}
+                            disabled={!isAdmin}
+                            onClick={() => {
+                              if (!isAdmin) return
+                              setSelectedId(c.astral_candidate_id)
+                              setCandidateMenuOpen(false)
+                            }}
+                          >
+                            {selected ? "✓ " : ""}{candidateLabel(c)}
+                          </button>
+                        </li>
+                      )
+                    })}
+                  </ul>
+                )}
               </div>
             )
-          })
-        )}
-        {isAdmin ? <AdminDeployFooter /> : <span className="nav-footer-spacer" />}
+          )}
+        </div>
+        <div className="sidebar-scroll">
+          {loading ? (
+            <p className="sidebar-loading">Loading...</p>
+          ) : error ? (
+            <p className="sidebar-error">Failed to load navigation. Check server connection.</p>
+          ) : (
+            navGroups.map(group => {
+              const isExpanded = expanded.has(group.label)
+              return (
+                <div key={group.label} className="nav-group">
+                  <h3
+                    className="nav-group-label"
+                    onClick={() => toggleGroup(group.label)}
+                  >
+                    <span className={`nav-group-chevron${isExpanded ? "" : " collapsed"}`}>▾</span>
+                    {group.label}
+                  </h3>
+                  {isExpanded && group.items.map(item => {
+                    const badge = item.count != null
+                      ? <span style={{ marginLeft: 6, fontSize: 11, color: "#888", fontWeight: 400 }}>[{item.count}]</span>
+                      : null
+                    return item.enabled ? (
+                      <NavLink
+                        key={item.path}
+                        to={item.path}
+                        className={({ isActive }) => "nav-link" + (isActive ? " active" : "")}
+                      >
+                        {item.label}{badge}
+                      </NavLink>
+                    ) : (
+                      <span key={item.path} className="nav-link disabled">
+                        {item.label}{badge}
+                      </span>
+                    )
+                  })}
+                </div>
+              )
+            })
+          )}
+          {isAdmin ? <AdminDeployFooter /> : <span className="nav-footer-spacer" />}
+        </div>
       </nav>
       <main className="content">
         <Outlet />

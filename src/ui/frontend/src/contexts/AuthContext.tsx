@@ -9,6 +9,8 @@ import {
 } from "react"
 import { useStytch, useStytchSession } from "@stytch/react"
 import api, { setAuthTokenGetter, setUnauthorizedHandler } from "../lib/api"
+import { fetchAuthSessionPolicy } from "../lib/authSessionPolicy"
+import { startSessionExtendLoop } from "../lib/sessionExtend"
 import { markHadSession, setLogOffReason } from "../lib/sessionAuthMark"
 
 export interface MeUser {
@@ -83,6 +85,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     // sessionJwt may be null when Stytch uses opaque cookies — /api/me uses cookie auth.
     loadMe()
   }, [session, sessionJwt, loadMe])
+
+  // Config-backed Stytch session extend while a client session exists (AST-1374).
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    let clear: (() => void) | undefined
+    void (async () => {
+      try {
+        const policy = await fetchAuthSessionPolicy()
+        if (cancelled) return
+        clear = startSessionExtendLoop(stytch, policy)
+        // Unmount may have won the race between await and assign.
+        if (cancelled) {
+          clear()
+          clear = undefined
+        }
+      } catch {
+        /* no loop if policy unavailable; session still expires on create-time duration */
+      }
+    })()
+    return () => {
+      cancelled = true
+      clear?.()
+    }
+  }, [session, stytch])
 
   const refreshMe = useCallback(() => {
     if (session) loadMe()

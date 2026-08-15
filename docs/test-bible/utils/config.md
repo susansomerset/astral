@@ -2090,6 +2090,24 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-1252. Config: w
   -q
 ```
 
+### AST-1375 · AST-1371
+
+**Parent:** [AST-1371](https://linear.app/astralcareermatch/issue/AST-1371/regenerate-resume-button-does-not-appear-for-resumes-with-unsupported). **Publish:** `origin/sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience`.
+
+`build_state_ui_manifest()["candidate"]` adds `artifact_generate_inflight_hide_states` (`REQUESTED_ARTIFACTS`, `REQUESTED_ARTIFACTS_RETRY` — not ERROR). `artifact_generate_states` unchanged. UI escape hatch: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inflight hide list | `src/utils/config.py` | **`TestAst1375ArtifactGenerateInflightHideStates`** |
+
+**Broken / obsolete:** none — additive key.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1375ArtifactGenerateInflightHideStates \
+  -q
+```
+
 ### AST-1108 (standalone — Track 3 cover-letter defaults)
 
 **Publish:** `origin/ftr/AST-1108-fix-broken-seed-data`.
@@ -2945,6 +2963,37 @@ Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and 
   tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_happy_and_rejects \
   tests/component/core/test_candidate.py::TestAst1074TopicMenuPersistence::test_validate_topic_accepts_ideal_day_inform \
   tests/component/core/test_repo_admin_json.py::TestAst1075TopicMenuCatalogRows \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1373 · AST-1372
+
+**Parent:** [AST-1372 — Extend Stytch sessions](https://linear.app/astralcareermatch/issue/AST-1372). **Publish:** `origin/sub/AST-1372/AST-1373-auth-config-stytch-session-rules`.
+
+`AUTH_CONFIG` gains non-secret `session_duration_minutes` (20) + `activity_extension_interval_minutes` (10); `get_auth_session_policy()` returns only those two ints. Public `GET /api/auth_session_policy` (no `@require_auth`) for pre-login SPA reads — route coverage: **`docs/test-bible/ui/api/api_system.md`**. Does **not** own React authenticate/extend (**AST-1374**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Session literals + SPA-safe helper | `src/utils/config.py` | **`TestAst1373AuthSessionPolicy`** |
+| Public policy route | `src/ui/api/api_system.py` | **`TestAst1373AuthSessionPolicyRoute`** |
+
+**Broken / obsolete:** none — additive keys + new open route. Existing `stytchAuthenticateHandoff` hardcoded `60` remains until **AST-1374**.
+
+**Integration:** no existing scenario asserts auth session policy or `/api/auth_session_policy` — no revision.
+
+## QA test manifest
+
+1. AUTH_CONFIG literals + `get_auth_session_policy`: `tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy`
+2. Public `GET /api/auth_session_policy`: `tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute`
+
+**AST-1373** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1373AuthSessionPolicy \
+  tests/component/ui/api/test_api_system.py::TestAst1373AuthSessionPolicyRoute \
   -q
 ```
 
