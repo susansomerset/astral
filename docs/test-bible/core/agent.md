@@ -428,6 +428,24 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
   tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
 ```
 
+### AST-1380 / AST-1383 · AST-1379 (fix + gap)
+
+**AST-1380** Decision A: for `CRAFT_RUBRIC_UI_TASK_KEYS` on DeepSeek, `do_task` forces `tier_meta.thinking=False` / `reasoning_effort=None` (Big thinking otherwise shares the craft `max_tokens` floor and starves mid-`criteria[].content`) while keeping the AST-903 floor. Provider-failure RESPONSE rows use `_provider_failure_audit_body` (`Provider failed …` / optional `(failure_class)` + `--- model response ---`) so a truncated success-shaped envelope cannot look like a finished hop. Gap **AST-1383** lands this bible + component coverage (product stays on AST-1380).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft DeepSeek Big thinking-off + floor | `src/core/agent.py` | **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`** |
+| Non-craft Big keeps thinking | `src/core/agent.py` | **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_non_craft_deepseek_big_keeps_thinking`** |
+| Provider-failure RESPONSE banner | `src/core/agent.py` | **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_provider_failure_response_banner_prefixes_success_shaped_envelope`** |
+
+**AST-1383** narrowed run (repro = thinking-off + banner nodes):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor
+```
+
 ### AST-977 · AST-974
 
 `agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
