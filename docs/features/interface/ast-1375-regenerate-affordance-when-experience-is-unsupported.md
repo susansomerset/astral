@@ -253,3 +253,24 @@ context_tokens≈52000
 ```
 [code-rubric] PROCEED (Commit: 3d9486eb) manifest escape hatch clean
 ```
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/cc59d8b4568ac7f6826e41af349e90f1/f39b1c0e-0837-402e-8bf5-77722901c8a4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/503fbfa4-f5fa-46e9-a29c-c4c2efc9d4ec/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/cc59d8b4568ac7f6826e41af349e90f1/97322577-1301-4647-b567-7595ae916349/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1371 (parent) | ftr/AST-1371-regenerate-resume-unsupported |
+| AST-1375 | sub/AST-1371/AST-1375-regenerate-affordance-unsupported-experience |
+
+**Epic worktree:** `astral-AST-1371/` — one active sub checked out at a time.
