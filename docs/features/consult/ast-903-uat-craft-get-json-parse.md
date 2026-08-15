@@ -371,3 +371,6 @@ Execute in order; stop when the confirmed hole is closed. Do not invent new toke
 
 **Chuckles:** clean-review shortcut → User Testing; drive AST-1383 for bible/repro coverage before parent finish-up.
 
+## Docs-acceptance (AST-1380)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1383**.
