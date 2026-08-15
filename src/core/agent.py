@@ -58,7 +58,7 @@ from src.utils.config import (
     RUBRIC_FEEDBACK_CONFIG,
     CRAFT_RUBRIC_MAX_TOKENS,
     CRAFT_RUBRIC_UI_TASK_KEYS,
-    is_rubric_backed_task,
+    is_vector_feedback_task,
     is_conversational_task,
     CONTACT_ESTELLE_CONFIG,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
@@ -2197,7 +2197,7 @@ async def do_task(
     caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
     nocache_content = resolve_tokens(agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw) or None
 
-    if is_rubric_backed_task(task_key):
+    if is_vector_feedback_task(task_key):
         _fb_suffix = (RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or "").strip()
         if _fb_suffix:
             if (user_content or "").strip():
@@ -2603,12 +2603,12 @@ async def do_task(
     if strict_batch and not envelope_err:
         envelope_err = _strict_encoded_batch_consult_envelope_err(task_key, parsed)
 
-    if is_rubric_backed_task(task_key) and isinstance(parsed, dict):
+    if is_vector_feedback_task(task_key) and isinstance(parsed, dict):
         parsed = _normalize_rubric_envelope_for_capture(parsed)
         result["parsed_response"] = parsed
 
     envelope_snapshot = None
-    if is_rubric_backed_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
+    if is_vector_feedback_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
         envelope_snapshot = copy.deepcopy(parsed)
 
     if envelope_err:
