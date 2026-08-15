@@ -303,3 +303,82 @@ context_tokens≈50000
 ```
 [code-rubric] PROCEED (Commit: 863871fb) experience job UI emit parity
 ```
+
+
+## Bug: AST-1381 — Base Resume craft/UI/print issues
+
+Parent mini-bug: [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues) / child [AST-1381](https://linear.app/astralcareermatch/issue/AST-1381/fix-base-resume-issues-craftuiprint). Schema/prompt half of symptom 1 is also patched under `ast-1349-experience-array-contract-schema-prompts-agent.md` § Bug: AST-1381. Approved ancestor context: AST-1345 (Done).
+
+### As-is
+
+1. Craft/parse still treat job `accomplishments` as one bullet-bearing string; `_emit_experience_jobs_html` wraps every non-lead line in `<li>` → double bullets.
+2. Authoring `|` is not converted to `•` on resume emit for Contact header (`candidate_contact_detail`) and Core Competencies (and any other resume string leaves that only run `_resume_site_markers`). Cover from-block already does `|`→`•`; general resume markers do not.
+3. `ExperienceJobsEditor` roles are flat always-open cards labeled `Role N` — not collapsible, no `<company>, <title> / <from> - <to>` collapsed header.
+4. Changing Prior Experience structure format from `word_cloud` → `free_prose` in Base Resume Content and using the content **Save** still prints as `word_cloud`, because format lives on `artifacts.resume_structure` and only persists via the separate **Save sections** path; Print reads `build_base_resume` → persisted structure (default `prior_experience` format remains `word_cloud`).
+
+### To-be
+
+1. After the ast-1349 schema/prompt flip, emit/UI treat `accomplishments` as `string[]` and bullet each element **once** (strip residual leading `•`/`-`/`*` if present). `<no bullet>`-prefixed elements stay role-description paragraphs.
+2. Every authoring `|` in resume content strings converts to the print bullet separator on emit (including Contact header and Core Competencies), same operator rule as cover from-block.
+3. Each experience role is a `CollapsiblePanel` (or equivalent existing chrome) whose collapsed header shows `{company}, {title} / {dates}` (dates field is the freeform from–to span; no new schema keys).
+4. After the operator saves a Prior Experience format of `free_prose`, Print/HTML uses the `free_prose` arm (`summary-intro` paragraphs), not `word_cloud` (`competencies-list`).
+
+### Repro
+
+1. **Double bullets:** Craft/parse with accomplishments string lines that already include `•`; Print base resume → `<li>• …</li>`.
+2. **Pipes:** In Base Resume Content, set `candidate_contact_detail` and/or `core_competencies` to `A | B | C`; Print → literal `|` remains (cover from-block with `|` would have become `•`).
+3. **Collapsible:** Open Base Resume Content → Experience tab → roles are always expanded as `Role N` cards.
+4. **Prior format:** On Base Resume Content, set Prior Experience format dropdown to `free_prose`, click the primary content **Save** (not Save sections), click **Print** → Prior Experience still emits as `p.competencies-list` (word_cloud). Then click **Save sections** and Print again — only then (today) does free_prose appear, proving the dual-save gap.
+
+### Root cause
+
+1. **Accomplishments type + emit:** Contract left `accomplishments: str` (ast-1349 as-is); `_split_role_accomplishments` / `_emit_experience_jobs_html` treat every non-lead line as a bullet body and do not strip existing markers. UI textarea round-trips a single string.
+2. **`|`→`•` gap:** `_resume_site_markers` only rewrites `__`, `~~`, and ` • ` → NBSP-bullet; it never maps authoring `|` → emit `•`. `_apply_contact_to_render_dict` rebuilds contact from profile fields with bullets, but session/paste and stored `candidate_contact_detail` / `core_competencies` strings go through markers only — craft even teaches competencies as `" | "`-separated.
+3. **Flat editor:** AST-1351 shipped always-visible role cards; collapsible chrome was out of that child’s scope.
+4. **Split persist paths:** `ArtifactEditor.doSave` PUTs only `artifacts.base_resume`; format edits sit in `structureRows` until `onStructureSave` / `ArtifactsBaseResumeContent.saveStructure` PUTs `artifacts.resume_structure`. Print uses `GET /candidate/resume/base` → `build_base_resume` → `resolve_resume_structure` from disk, so unsaved (content-Save-only) format changes never reach emit.
+
+### Proposed change
+
+**A — Accomplishments emit + UI (depends on ast-1349 schema flip)**
+
+1. `src/core/builder.py` `_emit_experience_jobs_html` / `_split_role_accomplishments`: accept `accomplishments` as `list[str]` (primary). For each element: if it starts with `BUILD_CONFIG["experience_role_layout"]["lead_line_prefix"]`, emit as `p.role-description`; else strip one leading bullet glyph/`-`/`*` + whitespace if present, then emit as a single `<li>`. **Do not** wrap an element that is already only a marker. Optional read-path: if a legacy `str` is still present, newline-split once into the same pipeline (do not require regenerate to Print).
+2. `ExperienceJobsEditor`: treat `accomplishments` as `string[]` on the job object. Multiline textarea may edit as one-line-per-element for operators; `onChange` writes a `string[]` (drop empties). Other fields stay strings. Widen prop types as needed (`Record<string, string | string[]>` or equivalent). `ArtifactEditor` `parseExperienceJobs` / Save payload must persist `accomplishments` as a JSON array of strings inside each job, never `str()`.
+3. Defense in depth: if emit receives a string that still contains embedded `•` lines, split+strip rather than double-wrap.
+
+**B — Resume-wide `|`→`•`**
+
+1. Extend `_resume_site_markers` in `src/core/builder.py` so authoring `|` becomes the print bullet separator for **all** resume string leaves that already deep-walk through `_apply_resume_text_markers` (Contact header text, Core Competencies, technical skills lines, etc.). Match cover-from-block intent: authoring separator `|` → emit ` • ` / ` • ` consistently with existing ` • ` NBSP tightening — prefer config constants over new literals when a shared separator already exists (`COVER_FROM_BLOCK_CONFIG` authoring/emit pair or a small BUILD_CONFIG resume-marker pair if cover config must stay cover-only).
+2. Do **not** break intentional `|` inside URLs; if a naive replace is unsafe, split on ` | ` / bare `|` with the same empty-segment drop policy cover uses, or document the chosen rule in this section before coding.
+3. Align craft prompts that still teach competencies / skills as `" | "` separators to authoring `|` **or** `•` with the understanding emit normalizes — optional prompt tweak in the same `agent_task.json` pass as ast-1349 (twin file required if prompts change).
+
+**C — Collapsible experience roles**
+
+1. In `ExperienceJobsEditor.tsx`, wrap each role in existing `CollapsiblePanel` (same component ArtifactEditor already uses).
+2. Collapsed `label`: `{company}, {title} / {dates}` using the job’s `company`, `title`, and `dates` strings (trim; omit empty segments gracefully so a missing title does not leave a dangling comma). This is the operator header for Susan’s `<company>, <title> / <from> - <to>` — `dates` already holds the freeform range; **do not** add `from`/`to` schema fields.
+3. Move up / down / remove stay in the panel `actions` slot (stop propagation so they do not toggle expand). Default: collapsed or first expanded — pick one and keep it consistent; prefer **collapsed by default** so long resumes scan by header.
+4. Minimal CSS under `.experience-jobs-editor` if CollapsiblePanel spacing needs a tweak; reuse tokens.
+
+**D — Prior Experience format Save → print**
+
+1. On Base Resume Content structure authoring, **persist `resume_structure.sections` (including `format`) whenever the operator Saves in a way that they reasonably expect format to stick.** Concrete options (pick the smallest that closes the repro; do not leave dual-save as the only path):
+   - **Preferred:** When `structureAuthoring` is on, `doSave` (content Save) also PUTs `artifacts.resume_structure.sections` from current `structureRows` (same payload shape as `saveStructure`), in one request or sequential awaits before toast success; **or**
+   - Call `onStructureSave(structureRows)` as part of content Save when any structure row (format/title/enabled/order) is dirty.
+2. Keep the explicit **Save sections** control working (idempotent).
+3. Confirm `build_base_resume` → `_emit_body_sections_html` already branches `free_prose` vs `word_cloud` from `spec.format` — no emit change required once persistence is fixed. If after persistence Print still word_clouds, then fix format resolution in `_emit_body_sections_html` / `resolve_resume_structure` (verify `prior_experience` row retains `format: "free_prose"` through normalize).
+
+### Blast radius
+
+- Experience job wire shape (shared with job resume ArtifactEditor / draft/finalize).
+- All resume HTML builders that deep-walk markers (`build_base_resume`, `build_session_base_resume`, `build_resume_from_job`).
+- Operators who author `|` in competencies/skills/contact; golden fixtures that assert literal `|` in HTML (should become `•`).
+- Base Resume Content Save UX; any test that assumes content Save never writes `resume_structure`.
+- AST-1350 unsupported-shape gate: still refuse non-array `experience`; legacy string **accomplishments** inside a valid job array should coerce or render without blocking the whole resume (see Proposed A).
+
+### What must still hold
+
+- Experience happy path remains job-array template editing (AST-1351) — not a return to JSON textarea.
+- Legacy non-array `experience` stays read-only + unsupported message; Print still refuses non-arrays (AST-1350).
+- Five job keys only; `dates` stays freeform string; no dual JSON+form editing.
+- `_resume_site_markers` still applies `__` / `~~` / NBSP-bullet tightening.
+- Prior Experience default format in config may stay `word_cloud`; operator override to `free_prose` must survive Save → Print.
+- Cover from-block `|`→`•` behavior unchanged except insofar as shared helpers are reused deliberately.

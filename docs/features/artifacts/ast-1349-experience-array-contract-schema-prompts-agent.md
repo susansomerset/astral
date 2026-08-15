@@ -291,3 +291,75 @@ Engineer commit `66a29148` delivers the planned footprint:
 | `bab06e65` | `merge-tests(AST-1349)` lands tests on publish ref |
 
 context_tokens≈52000
+
+
+## Bug: AST-1381 — accomplishments `string[]` contract (craft/parse)
+
+Parent mini-bug: [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues) / child [AST-1381](https://linear.app/astralcareermatch/issue/AST-1381/fix-base-resume-issues-craftuiprint). UI/render/print + `|`→`•` + collapsible roles + prior format Save → print live in `ast-1351-experience-array-ui-render-print-parity.md` § Bug: AST-1381. This block owns only the **schema / prompt / validate** half of symptom 1.
+
+### As-is
+
+`craft_resume_base` / `simple_resume_parse` still define each job’s `accomplishments` as one **string** and teach “paragraph and/or bullets” / newline-separated bullet lines. Agents return prose that already carries `•` / `-` markers; emit later wraps each line in `<li>` → double bullets.
+
+### To-be
+
+`accomplishments` is an ordered **`string[]`**: one bare achievement string per element (no leading bullet glyphs). Craft/parse prompts and response schemas request that shape; validation rejects a non-list `accomplishments` the same way non-array `experience` is rejected. Lead lines that must stay non-bulleted keep the existing `<no bullet>` prefix **on that array element** (config `experience_role_layout.lead_line_prefix`).
+
+### Repro
+
+1. Craft or parse a base resume whose role accomplishments come back as a single string with lines like `• Shipped X` / `- Did Y`.
+2. Persist as job-array `experience` and Print / Open HTML.
+3. Observe `<li>• Shipped X</li>` (glyph + list marker).
+
+Fixture shape (pre-fix wire):
+
+```json
+{
+  "company": "Acme",
+  "title": "PM",
+  "dates": "2020 - 2023",
+  "location": "Remote",
+  "accomplishments": "• Shipped X\n- Did Y"
+}
+```
+
+Post-fix wire:
+
+```json
+{
+  "company": "Acme",
+  "title": "PM",
+  "dates": "2020 - 2023",
+  "location": "Remote",
+  "accomplishments": ["Shipped X", "Did Y"]
+}
+```
+
+### Root cause
+
+AST-1349 locked `experience` as a job **array** but left `_EXPERIENCE_JOB_ITEM_SCHEMA["accomplishments"]` as `type: str` and rewrote prompts to “one text block … paragraph and/or bullets.” That re-authorizes embedded bullet markers inside the body field. Render (AST-1351 / `_emit_experience_jobs_html`) always wraps non-lead lines in `<li>` without stripping markers — see sibling bug block on ast-1351.
+
+### Proposed change
+
+1. In `src/utils/config.py`, change `_EXPERIENCE_JOB_ITEM_SCHEMA["accomplishments"]` from `{"type": "str", "required": True}` to a **list of strings** required field (same list+items pattern used elsewhere in TASK_CONFIG — e.g. `type: list`, `items_schema` / item type `str`, `required: True`). Keep the other four keys as required strings. Do **not** invent a sixth job key; do **not** change `prior_experience`.
+2. Confirm `stringify_response_schema` / craft+parse+finalize schemas that share `_EXPERIENCE_JOB_ITEM_SCHEMA` now show `accomplishments` as a string array. `BUILD_CONFIG["artifact_shapes"]["resume_content"]["experience"]` and `experience_job_ui_fields` stay keyed on `accomplishments` (UI type change is ast-1351).
+3. In `data/admin/agent_task.json` (and whole-file `cp` twin `docs/uat-fixtures/AST-756/expected-agent_task.json`):
+   - `craft_resume_base` `cache_prompt` `### experience`: teach `accomplishments` as an **ordered JSON array of strings** — bare achievement text only; **do not** prefix elements with `•`, `-`, `*`, or similar; `<no bullet>…` only when the source has a role-description lead.
+   - `simple_resume_parse` `### experience`: same array-of-strings contract; keep the `<no bullet>` lead rule as a **prefix on that array element**, not a reason to stay on a prose string.
+   - Job draft/finalize prompts that describe `accomplishments` as one text block: retarget to `string[]` without re-opening a prose-string `experience` path.
+4. In `src/core/candidate.py` experience validate/normalize paths that currently require `accomplishments` to be `str`: require `list` whose elements are strings (after strip, drop empty); reject string / dict / mixed. Style D found/recorded may list per-element accomplishments when `debug=True`.
+5. Do **not** change `_emit_experience_jobs_html` here — that flip is in the ast-1351 AST-1381 block (consume `list` + strip residual markers).
+
+### Blast radius
+
+- Shared `_EXPERIENCE_JOB_ITEM_SCHEMA` identity: craft, parse, finalize, `resume_content` shape, ArtifactEditor / ExperienceJobsEditor persistence, job draft pin policy (may still tailor accomplishments only).
+- Existing stored base resumes with string `accomplishments` become unsupported until regenerate/re-edit (same class of gate as AST-1350 non-array experience — decide in make-fix with the ast-1351 emit/UI path: either coerce newline-split string → list on read for emit/UI only, or refuse with the unsupported message; **prefer one-time coerce on read for string accomplishments so Print does not break mid-migration**, without writing the coerce back unless Save runs).
+- Betty tests / bible that assert `accomplishments: str` (AST-1349 / AST-1351 families) will need qa-fix if board flags TESTS: REVISE.
+
+### What must still hold
+
+- `experience` remains an ordered job **array** (no prose-string success path) — AST-1349 AC.
+- Job objects still have exactly the five keys; no new `highlights` on jobs.
+- Finalize may tailor `accomplishments` only; pin `company` / `title` / `dates` / `location` from base.
+- `prior_experience` stays `str`.
+- AST-756 `expected-agent_task.json` remains a whole-file twin of `data/admin/agent_task.json`.
