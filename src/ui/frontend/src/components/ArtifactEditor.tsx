@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react"
 import CollapsiblePanel from "./CollapsiblePanel"
 import type { Catalog, SectionRow } from "./ResumeStructureEditor"
-import ExperienceJobsEditor, { type ExperienceJobField } from "./ExperienceJobsEditor"
+import ExperienceJobsEditor, {
+  type ExperienceJob,
+  type ExperienceJobField,
+} from "./ExperienceJobsEditor"
 import LabeledTextArea from "./LabeledTextArea"
 import type { SideTab } from "./SideTabPanel"
 import Toast, { type ToastMessage } from "./Toast"
@@ -30,10 +33,21 @@ function isExperienceTab(key: string, fieldType?: string): boolean {
 function normalizeExperienceJob(
   raw: Record<string, unknown>,
   fieldKeys: string[],
-): Record<string, string> {
-  const out: Record<string, string> = {}
+): ExperienceJob {
+  const out: ExperienceJob = {}
   for (const k of fieldKeys) {
     const v = raw[k]
+    if (k === "accomplishments") {
+      // AST-1381: persist string[]; coerce legacy newline string on read.
+      if (Array.isArray(v)) {
+        out[k] = v.map(x => String(x)).map(s => s.trim()).filter(Boolean)
+      } else if (typeof v === "string" && v.trim()) {
+        out[k] = v.replace(/\r\n/g, "\n").split("\n").map(s => s.trim()).filter(Boolean)
+      } else {
+        out[k] = []
+      }
+      continue
+    }
     out[k] = typeof v === "string" ? v : v == null ? "" : String(v)
   }
   return out
@@ -42,7 +56,7 @@ function normalizeExperienceJob(
 function parseExperienceJobs(
   content: string,
   fieldKeys: string[],
-): { ok: true; jobs: Record<string, string>[] } | { ok: false; raw: string } {
+): { ok: true; jobs: ExperienceJob[] } | { ok: false; raw: string } {
   const t = content.trim()
   if (!t) return { ok: true, jobs: [] }
   try {
@@ -535,7 +549,7 @@ export default function ArtifactEditor({
     }))
   }
 
-  // Save to backend
+  // Save to backend — AST-1381: when structure authoring is on, persist formats with content Save.
   const doSave = useCallback(async (t: SideTab[]) => {
     const fieldKeys = experienceJobFields.map(f => f.key)
     for (const tab of t) {
@@ -586,10 +600,26 @@ export default function ArtifactEditor({
     if (!selectedId) return
     setSaving(true)
     try {
+      const arts: Record<string, unknown> = { [artifactKey]: payload }
+      if (structureAuthoring && structureRows) {
+        const sections: Record<string, Record<string, unknown>> = {}
+        structureRows.forEach((row, index) => {
+          const spec: Record<string, unknown> = {
+            id: row.id,
+            title: row.title,
+            enabled: row.enabled,
+            order: index,
+            job_agent_editable: row.job_agent_editable,
+          }
+          if (row.format) spec.format = row.format
+          sections[row.id] = spec
+        })
+        arts.resume_structure = { sections }
+      }
       const resp = await api(`/api/candidates/${selectedId}/data`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ artifacts: { [artifactKey]: payload } }),
+        body: JSON.stringify({ artifacts: arts }),
       })
       if (!resp.ok) {
         const err = await resp.json().catch(() => ({ error: `HTTP ${resp.status}` }))
@@ -606,7 +636,16 @@ export default function ArtifactEditor({
       setSaving(false)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobPersistence, selectedId, artifactKey, experienceJobFields, unsupportedExperienceMessage, fixedFields])
+  }, [
+    jobPersistence,
+    selectedId,
+    artifactKey,
+    experienceJobFields,
+    unsupportedExperienceMessage,
+    fixedFields,
+    structureAuthoring,
+    structureRows,
+  ])
 
   function handleChange(next: SideTab[]) {
     setTabs(next)
