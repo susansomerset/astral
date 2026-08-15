@@ -2303,6 +2303,20 @@ _CRAFT_RESUME_NESTED_CONTENT_KEYS = ("content", "text", "value", "body")
 _CRAFT_RESUME_CONTENT_DICT_KEYS = ("content", "section_content", "base_resume")
 
 
+def _normalize_job_accomplishments_list(raw: Any) -> Optional[list]:
+    """Return stripped string list, or None if shape is not a valid accomplishments list."""
+    if not isinstance(raw, list):
+        return None
+    out: list = []
+    for item in raw:
+        if not isinstance(item, str):
+            return None
+        s = item.strip()
+        if s:
+            out.append(s)
+    return out
+
+
 def _is_experience_job_array(val: Any) -> bool:
     return isinstance(val, list) and all(isinstance(item, dict) for item in val)
 
@@ -2654,6 +2668,7 @@ def validate_draft_job_resume_payload(
                         continue
                     if key == "experience":
                         # AST-1349: array-only success path (shared five-key contract); no string OK.
+                        # AST-1381: accomplishments must be string[] (reject prose string / mixed).
                         if _is_experience_job_array(val) and val:
                             bad_job = False
                             for job in val:
@@ -2668,6 +2683,18 @@ def validate_draft_job_resume_payload(
                                         if job.get("location") is None
                                         else str(job.get("location") or "")
                                     )
+                                acc = _normalize_job_accomplishments_list(
+                                    job.get("accomplishments")
+                                )
+                                if acc is None:
+                                    rejected.append(key)
+                                    err = (
+                                        "Section 'experience' job accomplishments "
+                                        "must be a list of strings"
+                                    )
+                                    bad_job = True
+                                    break
+                                job["accomplishments"] = acc
                             if bad_job or err is not None:
                                 break
                             accepted.append(key)
@@ -2849,7 +2876,11 @@ def _debug_experience_jobs(log, content_or_parsed: Any) -> None:
                 f"dates={job.get('dates')!r} location={job.get('location')!r}"
             )
             acc = job.get("accomplishments")
-            if isinstance(acc, str) and acc.strip():
+            if isinstance(acc, list) and acc:
+                for line in truncate_debug_content("\n".join(str(x) for x in acc)):
+                    log.debug_detail(f"experience[{i}] accomplishments: {line}")
+            elif isinstance(acc, str) and acc.strip():
+                # Legacy string — still surface for Style D until Save rewrites to list.
                 for line in truncate_debug_content(acc):
                     log.debug_detail(f"experience[{i}] accomplishments: {line}")
             else:

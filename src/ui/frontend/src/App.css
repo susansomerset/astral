@@ -1717,7 +1717,7 @@ input.side-tab-heading-editable:focus {
   gap: 0;
 }
 
-/* AST-1351: experience job-array editor inside ArtifactEditor */
+/* AST-1351 / AST-1381: experience job-array editor inside ArtifactEditor */
 .experience-jobs-editor {
   display: flex;
   flex-direction: column;
@@ -1725,20 +1725,11 @@ input.side-tab-heading-editable:focus {
   padding: 4px 0 8px;
 }
 
-.experience-jobs-editor-role {
-  border: 1px solid var(--border, #444);
-  border-radius: 4px;
-  padding: 10px 12px;
+.experience-jobs-editor-role-body {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-
-.experience-jobs-editor-role-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
+  padding: 4px 0 0;
 }
 
 .experience-jobs-editor-role-label {

@@ -25,6 +25,7 @@ from src.core import tracker as tracker_mod
 from src.data import database
 from src.utils.config import (
     BUILD_CONFIG,
+    COVER_FROM_BLOCK_CONFIG,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
@@ -1087,11 +1088,21 @@ def _render_content_keys(markers: dict) -> List[str]:
 
 
 def _resume_site_markers(text: str) -> str:
-    """``__`` → NBSP, ``~~`` → non-breaking hyphen (legacy ResumeSite / PS pipeline)."""
+    """``__`` → NBSP, ``~~`` → non-breaking hyphen; authoring ``|`` → emit bullet (AST-1381)."""
     if not text:
         return text
     t = text.replace("__", "\u00a0")
     t = t.replace("~~", "\u2011")
+    # Same authoring/emit separators as cover from-block; drop empty segments per line.
+    auth_sep = COVER_FROM_BLOCK_CONFIG["authoring_separator"]
+    emit_sep = COVER_FROM_BLOCK_CONFIG["emit_separator"]
+    if auth_sep in t:
+        line_sep = COVER_FROM_BLOCK_CONFIG.get("line_separator") or "\n"
+        out_lines: List[str] = []
+        for line in t.replace("\r\n", "\n").split(line_sep):
+            keepers = [seg.strip() for seg in line.split(auth_sep) if seg.strip()]
+            out_lines.append(emit_sep.join(keepers))
+        t = line_sep.join(out_lines)
     t = t.replace(" • ", "\u00a0• ")
     return t
 
@@ -1639,13 +1650,36 @@ def _format_compact_location(dates: str, location: str, sep: str) -> str:
     return _resume_site_markers(text) if text else ""
 
 
+def _accomplishments_as_lines(raw: Any) -> List[str]:
+    """Normalize accomplishments to non-empty lines; coerce legacy str via newline-split (AST-1381)."""
+    if isinstance(raw, list):
+        return [str(item).strip() for item in raw if item is not None and str(item).strip()]
+    if isinstance(raw, str) and raw.strip():
+        return [
+            ln.strip()
+            for ln in raw.replace("\r\n", "\n").split("\n")
+            if ln.strip()
+        ]
+    return []
+
+
+def _strip_one_leading_bullet_marker(line: str) -> str:
+    """Remove one leading •/-/* glyph so emit does not double-bullet."""
+    if not line:
+        return line
+    if line[0] in ("•", "\u2022", "-", "*"):
+        rest = line[1:].lstrip()
+        return rest
+    return line
+
+
 def _split_role_accomplishments(
-    accomplishments: str, lead_prefix: str
+    accomplishments: Any, lead_prefix: str
 ) -> Tuple[List[str], List[str]]:
-    """Split accomplishments into lead paragraphs (prefix lines) and bullet lines."""
+    """Split accomplishments (list[str] or legacy str) into leads vs bullet bodies."""
     leads: List[str] = []
     bullets: List[str] = []
-    for raw_line in accomplishments.split("\n"):
+    for raw_line in _accomplishments_as_lines(accomplishments):
         line = raw_line.strip()
         if not line:
             continue
@@ -1653,8 +1687,10 @@ def _split_role_accomplishments(
             rest = line.removeprefix(lead_prefix).strip()
             if rest:
                 leads.append(_resume_site_markers(rest))
-        else:
-            bullets.append(_resume_site_markers(line))
+            continue
+        body = _strip_one_leading_bullet_marker(line)
+        if body:
+            bullets.append(_resume_site_markers(body))
     return leads, bullets
 
 
@@ -1671,8 +1707,9 @@ def _emit_experience_jobs_html(jobs: list) -> str:
         company = str(item.get("company") or "").strip()
         dates = str(item.get("dates") or "").strip()
         location = str(item.get("location") or "").strip()
-        accomplishments = str(item.get("accomplishments") or "").strip()
-        if not (title or company or dates or location or accomplishments):
+        accomplishments = item.get("accomplishments")
+        acc_lines = _accomplishments_as_lines(accomplishments)
+        if not (title or company or dates or location or acc_lines):
             continue
 
         if title and company:
