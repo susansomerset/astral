@@ -4176,6 +4176,13 @@ def is_rubric_backed_task(task_key: str) -> bool:
     return rubric_owner_task_key(task_key) is not None
 
 
+def is_vector_feedback_task(task_key: str) -> bool:
+    """True when task should request/capture vector_reviews (consumers only; not craft)."""
+    if task_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
+        return False
+    return rubric_owner_task_key(task_key) is not None
+
+
 def importance_multiplier(n: int) -> float:
     """Return the configured multiplier for rubric importance (AST-359 / AST-358)."""
     ci = ASTRAL_CONFIG["consult_importance"]
