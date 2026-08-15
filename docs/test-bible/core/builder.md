@@ -641,6 +641,22 @@ When `debug=True`, session/base/job emit paths call `candidate.debug_experience_
 | --- | --- | --- |
 | Style D experience jobs on debug emit | `src/core/builder.py` | **`TestAst1351ExperienceDebugJobs`** |
 
+### AST-1382 · AST-1362 (gap — board-betty REVISE)
+
+**Parent:** [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues). **Publish:** `origin/sub/AST-1362/AST-1382-gap-base-resume-tests`. Product: **AST-1381**.
+
+**[bug-repro]** paths: `accomplishments: string[]` with leading `•`/`-` → single `<li>` (no double bullet); `_resume_site_markers` / session emit converts authoring `|` → `•` on contact + competencies; `prior_experience` `format: free_prose` emits `.summary-intro` (not `.competencies-list`). Fixtures prefer `list[str]` accomplishments; one legacy str coerce case kept. UI/structure Save: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| string[] strip / pipes / free_prose / legacy coerce | `src/core/builder.py` | **`TestAst1382BugReproBaseResumeIssues`** |
+| Golden layout samples retargeted to list | same | **`TestAst1008ExperienceGoldenLayout`**, AST-1030 emit rows |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1382BugReproBaseResumeIssues \
+  -q
+```
 
 ### AST-1341 · AST-1314 (bug — Print false-missing base_resume)
 

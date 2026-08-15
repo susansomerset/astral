@@ -558,7 +558,7 @@ describe("ArtifactEditor", () => {
         title: "Engineer",
         dates: "2020-2023",
         location: "Remote",
-        accomplishments: "Shipped widgets",
+        accomplishments: ["Shipped widgets"],
       },
     ]
     const putBodies: { artifacts?: { base_resume?: Record<string, unknown> } }[] = []
@@ -602,8 +602,9 @@ describe("ArtifactEditor", () => {
       />,
     )
     await waitFor(() => expect(screen.getByDisplayValue("Summary body")).toBeInTheDocument())
-    // AST-1351: structured role editor (not pretty-printed JSON textarea)
-    expect(screen.getByText("Role 1")).toBeInTheDocument()
+    // AST-1351/1382: collapsible header (not Role N / JSON textarea)
+    expect(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/)).toBeInTheDocument()
+    await userEvent.click(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/))
     expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
     expect(screen.getByDisplayValue("Engineer")).toBeInTheDocument()
     expect(screen.queryByDisplayValue(/"company": "Acme Corp"/)).not.toBeInTheDocument()
@@ -709,7 +710,7 @@ describe("ArtifactEditor", () => {
         title: "Engineer",
         dates: "2020-2023",
         location: "Remote",
-        accomplishments: "Shipped widgets",
+        accomplishments: ["Shipped widgets"],
       },
     ]
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -763,7 +764,8 @@ describe("ArtifactEditor", () => {
       ),
     ).toBe(true)
     expect(screen.queryByText("unsupported resume structure, please regenerate")).not.toBeInTheDocument()
-    expect(screen.getByText("Role 1")).toBeInTheDocument()
+    expect(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/)).toBeInTheDocument()
+    await userEvent.click(screen.getByText(/Acme Corp, Engineer \/ 2020-2023/))
     expect(screen.getByDisplayValue("Acme Corp")).toBeInTheDocument()
   })
 
@@ -791,7 +793,7 @@ describe("ArtifactEditor", () => {
                       title: "Dev",
                       dates: "2021",
                       location: "Remote",
-                      accomplishments: "Shipped",
+                      accomplishments: ["Shipped"],
                     },
                   ],
                 },
@@ -811,7 +813,7 @@ describe("ArtifactEditor", () => {
         structureSections={[{ id: "experience", label: "Custom Jobs" }]}
       />,
     )
-    await waitFor(() => expect(screen.getByText("Role 1")).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText(/Acme, Dev \/ 2021/)).toBeInTheDocument())
     expect(screen.queryByRole("button", { name: "Regenerate" })).not.toBeInTheDocument()
     expect(screen.queryByRole("button", { name: "Generate" })).not.toBeInTheDocument()
   })
@@ -1092,5 +1094,72 @@ describe("ArtifactEditor", () => {
     await userEvent.click(screen.getByRole("button", { name: "Regenerate" }))
     await userEvent.click(screen.getByRole("button", { name: "Yes" }))
     await waitFor(() => expect(posts).toEqual(["/api/candidates/c1/generate_artifacts"]))
+  })
+
+  it("AST-1382 [bug-repro]: content Save bundles resume_structure format (prior free_prose)", async () => {
+    const putBodies: { artifacts?: { base_resume?: unknown; resume_structure?: { sections?: Record<string, { format?: string }> } } }[] = []
+    const catalog = {
+      body_formats: ["free_prose", "word_cloud", "bullet_list"],
+      required_ids: ["prior_experience"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+    }
+    const structureRows = [
+      {
+        id: "prior_experience",
+        title: "Prior Experience",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                base_resume: { prior_experience: "Earlier ops and delivery." },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "prior_experience", label: "Prior Experience" }]}
+        structureCatalog={catalog}
+        structureRows={structureRows}
+        onStructureRowsChange={() => {}}
+        onStructureSave={() => {}}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Earlier ops and delivery.")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    const arts = putBodies.at(-1)?.artifacts
+    expect(arts?.resume_structure?.sections?.prior_experience?.format).toBe("free_prose")
+    expect(arts?.base_resume).toEqual({ prior_experience: "Earlier ops and delivery." })
   })
 })

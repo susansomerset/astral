@@ -556,6 +556,16 @@ Locks craft/parse/finalize prompts + draft validate on the shared experience job
 
 **Broken / obsolete this pass:** AST-997 / AST-1270 asserts on `"prose string or job array"` and `"experience_detail"` in draft-validate errors — flipped to array-only contract phrases.
 
+### AST-1382 · AST-1362 (gap — accomplishments `string[]` fixtures)
+
+**Parent:** [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/base-resume-issues). **Publish:** `origin/sub/AST-1362/AST-1382-gap-base-resume-tests`. Product: **AST-1381**.
+
+`_SAMPLE_EXPERIENCE_JOBS` and draft-validate happy path use **`accomplishments: list[str]`** (reject prose string per job). Bible/fixture half of board REVISE; emit/UI repros live under **`docs/test-bible/core/builder.md`** / **`frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Sample jobs + validate accept list accomplishments | `tests/component/core/test_candidate.py` | **`TestAst1349ExperienceArrayContract`**, **`TestAst996ExperienceJobArray`** |
+
 **Integration:** no existing scenario asserts craft/draft experience prompts or draft-validate error text — no revision (artifact pipeline remains a should-have gap).
 
 ## QA test manifest
