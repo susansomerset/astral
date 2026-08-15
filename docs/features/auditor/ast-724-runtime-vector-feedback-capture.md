@@ -448,3 +448,141 @@ From AST-724 / parent AST-1378 AC (do not regress):
 3. Craft SUCCESS still returns complete `agent_payload.criteria` under existing craft schema; craft `max_tokens` floor unchanged.
 4. `rubric_owner_task_key(craft_*)` still resolves the consumer owner for artifact authorship / pending craft paths.
 5. No Admin UI redesign; no letter-grade scoring math changes.
+
+## Review (Radia) — AST-1384
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No confidence validation paths touched |
+| `astral.agent.do-task-delegation` | scoped | conforms | Three `do_task` gates swapped; capture still via existing helper |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector validation logic changed |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch-id handling changed |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch-id format logic |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No dispatcher/claim paths |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No entity-agent-response queries |
+| `astral.config.config-source-of-truth` | scoped | conforms | New `is_vector_feedback_task` colocated with existing rubric gates in `config.py` |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env usage |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch/seed paths |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run_next changes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Bug patch appended to existing AST-724 feature doc |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Engineer diff only (Betty lane separate) |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | No `tests/` changes — correct fix-lane discipline |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | `agent.py` changes stay in core; no external/data imports added |
+| `astral.layers.import-direction` | scoped | conforms | Standard `src.utils.config` import in `agent.py` |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No scripts changes |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | No UI changes |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No consult/render paths |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No API auth changes |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed JSON |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog/seed edits |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | Hot-path change is intentional narrow gate swap |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed work |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator rows |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage join |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data-layer changes |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migrations |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Existing capture debug paths unchanged; craft simply skips snapshot |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single-purpose 7-line helper |
+| `astral.standards.in-scope-only` | scoped | conforms | Touches only `config.py`, `agent.py`, plan doc — matches `## Proposed change` |
+| `astral.standards.logging-via-utils` | scoped | conforms | No new logging patterns introduced |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Symbol names are domain terms, not ticket ids |
+| `astral.standards.no-cross-contamination` | scoped | conforms | No utils→data or ui→data leakage |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Craft exclusion uses existing `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`, not a new ad-hoc set |
+| `astral.standards.public-then-helpers` | scoped | conforms | Public helper placed adjacent to `is_rubric_backed_task` |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data imports added |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state logic |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No daisy-chain paths |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No frontend files |
+| `astral.ui.naming-conventions` | scoped | not-applicable | No UI naming |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No gunicorn config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Diff is product-only; Betty merge discipline unaffected |
+| `orch.git.commit-vocabulary` | universal | conforms | N/A to diff content |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Sub stacked on parent `ftr` as expected |
+| `orch.git.ftr-sub-topology` | universal | conforms | Branch topology matches fix-lane convention |
+| `orch.git.merge-on-checkout` | universal | conforms | N/A to diff content |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | N/A to diff content |
+| `orch.git.no-dev-agent-branches` | universal | conforms | N/A to diff content |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | N/A to diff content |
+| `orch.git.three-permanent-branches` | universal | conforms | N/A to diff content |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Plan already encodes Susan's truncation exclusion |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Implementation matches `## Proposed change` verbatim |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | N/A to diff content |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | N/A to diff content |
+| `orch.roles.archie-approves-statutes` | universal | conforms | N/A to diff content |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Engineer did not patch tests (Betty REVISE → AST-1385) |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | N/A to diff content |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | N/A to diff content |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | Diff paths are allowed (`src/`, `docs/features/`) |
+
+**Sweep:** 65 active statutes scored in-session. 0 `violates`. 0 `needs-discussion`.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | Bug patch cites no catalog patterns |
+
+## Plan adherence
+
+Diff implements `## Proposed change` exactly:
+
+1. **`is_vector_feedback_task`** added in `config.py` — craft keys excluded via `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY`, consumers still gated by `rubric_owner_task_key`.
+2. **`is_rubric_backed_task`** left unchanged (craft still rubric-backed for owner identity).
+3. **`agent.py`** — all three feedback-path gates swapped; unused `is_rubric_backed_task` import dropped.
+4. Out-of-scope areas untouched (Admin UI, `rubric_feedback.py`, `CRAFT_RUBRIC_MAX_TOKENS`, consumer behavior).
+
+Gate completeness verified: with `envelope_snapshot` absent for craft, the SUCCESS block at `agent.py:2886–2938` no-ops without needing a defense-in-depth guard inside `_capture_rubric_vector_feedback` — matches plan's optional note.
+
+## Fix-specific checks
+
+**`[bug-repro]`:** not applicable — clean board opt-out. `fix-board` Betty REVISE deferred test coverage to sibling **AST-1385**; no `[bug-repro]` test in diff or qa-fix thread. Documented gap, not a fix-now on this ticket.
+
+**`## What must still hold`:** OK
+
+| # | Item | Verdict |
+|---|------|---------|
+| 1 | Consumer SUCCESS still gets `prompt_suffix` + capture | OK — non-craft rubric consumers remain `is_vector_feedback_task` True; three gates unchanged for them |
+| 2 | Non-`success` `agent_performance` skips capture | OK — `_capture_rubric_vector_feedback` status gate untouched (`agent.py:1466`) |
+| 3 | Craft SUCCESS criteria + `max_tokens` unchanged | OK — no craft schema or token-floor edits |
+| 4 | `rubric_owner_task_key(craft_*)` unchanged | OK — helper and `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` mapping untouched |
+| 5 | No Admin UI / letter-grade math changes | OK — no UI or scoring edits |
+
+## Findings
+
+*(none)*
+
+### Advisory
+
+- **`task_keys_for_rubric_owner` docstring** (`config.py:2240`) still says craft writes `vector_feedback` — pre-existing, slightly stale post-fix. Betty's AST-1385 bible/test work is the right home; not blocking.
+- **`docs/test-bible/utils/config.md`** still documents `is_rubric_backed_task` as the capture gate — same AST-1385 follow-up.
+
+## What's solid
+
+- Minimal, surgical diff — one helper, three gate swaps, no behavior change for consumers.
+- Uses the canonical craft key map already maintained for rubric ownership; no parallel hardcoded craft list.
+- Capture path remains envelope-snapshot-driven, so craft runs cannot accidentally persist feedback even if a model emits stray `vector_reviews`.
+
+## Frame diff
+
+```
+docs/features/auditor/ast-724-runtime-vector-feedback-capture.md  (+82 plan-fix patch)
+src/utils/config.py                                               (+is_vector_feedback_task)
+src/core/agent.py                                                 (3 gates + import swap)
+```
+
+## Chuckles branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (`ftr/AST-1378-*` exists) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+**Notes:** `no plan-rubric verdict attached` (fix-lane; Joan validate-plan not re-litigated). Betty test gap tracked on AST-1385.
+
+context_tokens≈N
+
