@@ -374,3 +374,76 @@ Execute in order; stop when the confirmed hole is closed. Do not invent new toke
 ## Docs-acceptance (AST-1380)
 
 No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1383**.
+
+---
+
+## Bug: AST-1383 — Gap: craft rubric truncated-success RESPONSE coverage (agent bible/tests)
+
+**Parent:** AST-1379 (orphaned mini-parent).  
+**Publish ref:** `origin/sub/AST-1379/AST-1383-gap-craft-get-truncation-tests`  
+**Sibling product:** AST-1380 (`code(AST-1380)` Decision A thinking-off + provider-failure RESPONSE banner — already on `ftr` / this epic).  
+**Source verdict:** AST-1380 `[board-betty] TESTS: REVISE` — `docs/test-bible/core/agent.md` missing Decision A / truncated-success RESPONSE coverage.
+
+### As-is
+
+`docs/test-bible/core/agent.md` § AST-903 and `TestAst903CraftRubricMaxTokensFloor` / provider `TestAst903JsonMaxTokensHardFail` lock the 32000 floor and JSON `stop_reason==max_tokens` hard-fail. They do **not** cover AST-1380 Decision A (DeepSeek Big craft rubrics force `thinking=False`) or the provider-failure RESPONSE audit banner (`Provider failed …`) that prevents a truncated success-shaped envelope from looking like a finished hop (abrams-shaped path).
+
+### To-be
+
+Bible + component tests document and assert: (1) `craft_get_rubric` (and craft rubric UI keys) on DeepSeek with Big brain still floors `max_tokens` and passes `tier_meta.thinking is False` into `send_to_deepseek`; (2) when the provider returns `success=False` with a success-shaped raw JSON body, the stored RESPONSE `block_data` is prefixed with `Provider failed` (optionally `(failure_class)`) so operators/recovery cannot treat it as a completed craft payload.
+
+### Repro
+
+Fixture-shaped (no live LLM / no DB seed):
+
+1. **Thinking-off:** Monkeypatch `get_active_llm_provider` → `"deepseek"`, `_resolve_task_prompts` → `_agent_rows(brain_setting="Big")`, stub `resolve_brain_setting_to_deepseek_tier_meta` to return Big meta with `thinking=True` / `reasoning_effort="max"` (as production Big does). Mock `send_to_deepseek` success with a full craft criteria envelope. Call `do_task("craft_get_rubric", …)`.
+2. **Pre-fix vs post-fix (repro gate):** Against a tree **without** AST-1380’s `tier_meta = {**tier_meta, "thinking": False, …}` line, assert would see `send_to_deepseek` kwargs `tier_meta["thinking"] is True`. Against current product tip (AST-1380 landed), assert `tier_meta["thinking"] is False` and `reasoning_effort is None`, and `max_tokens == CRAFT_RUBRIC_MAX_TOKENS`.
+3. **Failure banner:** Monkeypatch provider to return `success=False`, `failure_class="max_tokens"`, `error="Generation truncated (max_tokens) before complete JSON"`, `api_response` whose text is truncated abrams-shaped JSON still containing `"agent_performance":{"status":"success"}`. With `store_agent_data`/batch so RESPONSE is written, capture `save_agent_data` kwargs for `block_type=="RESPONSE"`: body must start with `Provider failed` (and include `max_tokens` when `failure_class` set) and must still contain the raw model snippet after `--- model response ---`.
+
+### Root cause
+
+Coverage gap only — product fix is on AST-1380. Board correctly flagged that AST-903’s existing suite does not lock Decision A or the failure-RESPONSE banner, so a future regression could re-enable thinking on craft Big hops or store bare success-shaped failure bodies without a bible/test tripwire.
+
+### Proposed change
+
+**No product code.** Lands **test-tree + bible only** (Betty / `astral-tests` → `merge-tests` onto this `sub/*`). Ada does not edit `tests/` or `docs/test-bible/**` on the epic worktree.
+
+1. **Bible** — In `docs/test-bible/core/agent.md`, immediately after the existing **### AST-903 · AST-900 (UAT fix)** block, add **### AST-1380 / AST-1383 · AST-1379 (fix + gap)**:
+   - One paragraph: Decision A forces DeepSeek `thinking=False` / `reasoning_effort=None` for `CRAFT_RUBRIC_UI_TASK_KEYS` in `do_task` while keeping the AST-903 `max_tokens` floor; provider-failure RESPONSE rows use `_provider_failure_audit_body` (`Provider failed …` / optional `(failure_class)` + `--- model response ---`).
+   - Table rows pointing at the new test class(es) below.
+   - Narrowed run command listing those node ids (plus keep AST-903 ids as regression neighbors if useful).
+
+2. **Tests** — In `tests/component/core/test_agent.py`, add class **`TestAst1380CraftRubricThinkingOffAndFailureBanner`** (or `TestAst1383…` — prefer **1380** in the name since it locks the product behavior; bible cites AST-1383 as the gap that landed coverage):
+
+   - **`test_craft_get_rubric_deepseek_big_forces_thinking_false`**
+     - Provider deepseek; agent rows `brain_setting="Big"`.
+     - Real or stubbed Big tier meta initially `thinking=True` (must exercise the override path — if stubbing `resolve_brain_setting_to_deepseek_tier_meta`, return thinking True so the assertion proves `do_task` cleared it).
+     - Assert `send_to_deepseek` awaited with `tier_meta["thinking"] is False`, `tier_meta.get("reasoning_effort") in (None,)` / falsy, and `max_tokens == cfg.CRAFT_RUBRIC_MAX_TOKENS`.
+     - Non-goal: do not assert Anthropic path thinking (N/A).
+
+   - **`test_non_craft_deepseek_big_keeps_thinking`** (optional but preferred — blast control)
+     - Same Big deepseek setup for a **non**-`CRAFT_RUBRIC_UI_TASK_KEYS` task that still runs on deepseek in this suite (pick an existing deepseek-covered task key already used in `test_agent.py`).
+     - Assert thinking remains True when tier meta says so — Decision A must not blanket-disable Big thinking.
+
+   - **`test_provider_failure_response_banner_prefixes_success_shaped_envelope`**
+     - `do_task("craft_get_rubric", …)` with provider mock `success=False`, `failure_class="max_tokens"`, truncated raw body containing `agent_performance.status=success` mid-criteria cut (literal fixture string ending at `even though no title` without closing the content string is fine — banner path uses raw text, not parse).
+     - Ensure agent_data store path runs (`batch_id` / `store_agent_data` fixtures as in neighboring store tests).
+     - Assert saved RESPONSE `block_data` contains `Provider failed` and `max_tokens`, contains `--- model response ---`, and still embeds the success-status substring so the banner is visibly guarding the abrams-shaped blob.
+
+3. **Publish** — Betty commits on `astral-tests`, `merge-tests(AST-1383)` onto `origin/sub/AST-1379/AST-1383-gap-craft-get-truncation-tests`. No `origin/dev` / `ftr` push from this gap alone.
+
+⚠️ **Decision:** Gap ownership is **Betty test-tree** (bible + component tests). Product remains AST-1380 only — do not re-touch `src/core/agent.py` here unless a new product defect appears (then file a separate bug, do not expand this gap).
+
+### Blast radius
+
+- Extends `docs/test-bible/core/agent.md` and `tests/component/core/test_agent.py` only.
+- Neighbor AST-903 tests must stay green (floor + provider hard-fail unchanged).
+- Optional non-craft thinking-keep test protects other Big deepseek hops from accidental Decision A bleed.
+- Does not change canon (Joan CANON: OK on AST-1380).
+
+### What must still hold
+
+- AST-903 floor + JSON `max_tokens` hard-fail tests and bible wording remain accurate.
+- AST-1380 product behavior (thinking-off for craft rubrics; failure RESPONSE banner) is not weakened.
+- No prompt/schema/`grade_*`/ArtifactEditor changes.
+- Gap does not re-implement or amend AST-1380’s Decision A / banner code.
