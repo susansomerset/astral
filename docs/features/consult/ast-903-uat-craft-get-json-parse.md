@@ -447,3 +447,8 @@ Coverage gap only — product fix is on AST-1380. Board correctly flagged that A
 - AST-1380 product behavior (thinking-off for craft rubrics; failure RESPONSE banner) is not weakened.
 - No prompt/schema/`grade_*`/ArtifactEditor changes.
 - Gap does not re-implement or amend AST-1380’s Decision A / banner code.
+
+## Radia review-fix (AST-1383)
+
+**Overall:** CLEAN. Gap bible + three Decision A / failure-banner tests lock AST-1380; [bug-repro] OK; no product delta.
+
