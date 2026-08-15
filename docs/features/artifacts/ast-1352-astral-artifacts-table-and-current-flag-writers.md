@@ -432,3 +432,26 @@ Scope is **rename only** — same columns (except PK name), same retire-and-inse
 
 **Advisory:** Migration path (RENAME TABLE) untested in Betty repro (fresh-DB only); UAT should exercise one staging DB that still has `astral_artifacts`.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/52fb8c422b86c70706913d3689fdbcc4/05f820cb-e5ea-424d-9bab-356310cf3a9b/store.db` |
+| Katherine | engineer | `/home/susan/.cursor/chats/52fb8c422b86c70706913d3689fdbcc4/d5997eb3-1c80-4197-8418-6d3d4d87a7d4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/b2fc53fb-3261-4460-82fe-7c8bf41cefa9/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/52fb8c422b86c70706913d3689fdbcc4/7b9c117b-486e-4722-8b69-c249de2ff3cc/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1340 (parent) | ftr/AST-1340-astral-artifacts-table |
+| AST-1352 | sub/AST-1340/AST-1352-astral-artifacts-table-writers |
+| AST-1353 | sub/AST-1340/AST-1353-save-base-resume-snapshot |
+| AST-1364 | sub/AST-1340/AST-1364-rename-astral-artifacts-to-artifacts |
+
+**Epic worktree:** `astral-AST-1340/` — one active sub checked out at a time.
