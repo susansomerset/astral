@@ -100,3 +100,23 @@ No React files, `routes.tsx`, admin pages, auth, shell CSS, or test-tree edits. 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1386
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav` @ `08df6c51`
+
+## Traceability
+AC1–AC5 → Stage 1 (`NAV_CONFIG` three-segment regroup with paste labels; `admin_only` + `nav_admin_only_group_labels()`; `_nav_config_for_user` config-driven omit; explicit no-touch on shell, routes, pages, auth, and non-admin candidate groups)
+
+## Findings
+
+### discuss — Stage 1 step 1 (NAV_CONFIG header comment)
+**Location:** Plan Stage 1 step 1  
+**Finding:** Step 1 says the block “immediately above `NAV_CONFIG = [`” documents `visible` / `enabled`, but in the current tree those paragraphs live earlier (~4515–4519); the preamble directly above the array (~4615–4621) is SYNC / endpoint prose only.  
+**Recommendation:** Point implementers at the existing `visible` / `enabled` comment block (~4515), not the SYNC preamble — cosmetic doc placement only; no product risk.
+
+context_tokens≈42000
