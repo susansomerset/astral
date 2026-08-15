@@ -125,3 +125,142 @@ context_tokens≈42000
 
 **Publish ref:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav`
 **Product commits:** `6f6cc620` (NAV_CONFIG Operations/Admin/Tools + `nav_admin_only_group_labels`; `_nav_config_for_user` config-driven omit)
+
+
+## Radia review — AST-1386
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1386  
+**Publish ref:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav` @ `34a3307e`  
+**Overall:** CLEAN
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1370/AST-1386-three-segment-admin-nav` (8 files, +318/−29). Product commit `6f6cc620` touches only `src/utils/config.py` + `src/ui/api/api_system.py`; Betty merge `92733b1d` lands tests + bible.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `core` layer in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `core` layer in diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no `core` layer in diff |
+| astral.batch.batch-id-first | scoped | not-applicable | no `core`/`data` in diff |
+| astral.batch.batch-id-format | scoped | not-applicable | no `core`/`data` in diff |
+| astral.batch.claim-process-release | scoped | not-applicable | no `core`/`data` in diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no `core`/`data` in diff |
+| astral.config.config-source-of-truth | scoped | conforms | NAV_CONFIG + helper stay centralized in config.py |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env lookups added |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | hook paths unchanged |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | hook paths unchanged |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch layer in diff |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch layer in diff |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc on publish tip |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty owns test/bible edits on merge |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commit `6f6cc620` is src-only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | utils/ui only; no layer bleed |
+| astral.layers.import-direction | scoped | conforms | api_system imports utils.config only |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | admin nav resolved server-side from NAV_CONFIG |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no `core` in diff |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no `core` in diff |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `/api/nav_config` still `@require_auth`; route untouched |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed/boot paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed paths |
+| astral.seed.define-approved | scoped | not-applicable | no seed paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `data` layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migrations |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | small focused helper; no duplication |
+| astral.standards.in-scope-only | scoped | conforms | no shell/React/routes/pages touched |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging changes |
+| astral.standards.names-not-ticket-ids | scoped | conforms | descriptive `nav_admin_only_group_labels()` |
+| astral.standards.no-cross-contamination | scoped | conforms | nav-only change set |
+| astral.standards.no-hardcoded-sets | scoped | conforms | replaced literal `"Admin"` omit with config-derived labels |
+| astral.standards.public-then-helpers | scoped | conforms | helper follows NAV_CONFIG constant |
+| astral.standards.utils-data-late-import-only | scoped | conforms | no new utils→data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine changes |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no state machine changes |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no dispatch/run changes |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | not-applicable | no frontend source files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker/deploy changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1386)` at publish tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `docs` / `merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch; no reverse flow |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1370/AST-1386-…` |
+| orch.git.merge-on-checkout | universal | conforms | no checkout violation in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | clean three-dot range |
+| orch.git.no-dev-agent-branches | universal | conforms | standard sub topology |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1370 worktree pattern |
+| orch.git.three-permanent-branches | universal | conforms | dev/sub/tests only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | paste labels per parent scope |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches Stage 1 |
+| orch.pipeline.project-scoped-queues | universal | conforms | ticket isolated to nav regroup |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty revised tests + bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Ada remains assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee through review |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer src-only product commit |
+
+**Active corpus:** 64 harvested rows scored (README claims 65; `SCHEMA.md` frontmatter match is harness metadata, not a scored statute).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan cites statutes, not catalog patterns |
+
+## Plan adherence
+
+Stage 1 delivered cleanly against Joan APPROVED plan (`08df6c51`):
+
+- Single Admin `NAV_CONFIG` group → **Operations** / **Admin** / **Tools** with correct membership, order, `admin_only: True`, and paste labels **Resume Paste** / **Cover Letter Paste** (paths unchanged).
+- `admin_only` documented in the existing `visible`/`enabled` comment block (~4515) — Joan’s cosmetic placement note is resolved.
+- `nav_admin_only_group_labels()` added; `_nav_config_for_user` uses config-driven omit.
+- `_resolve_nav` still emits only `label` + `items` (+ item fields); `admin_only` does not leak to JSON (verified in product code + `test_nav_config_three_admin_segments_for_admin`).
+- Jobs / Companies / Artifacts / Candidate groups unchanged; no React, routes, pages, shell, or auth edits.
+- Estimate **3** matches footprint (config regroup + thin API filter).
+- Betty manifest covers three-segment order, paste labels, non-admin omit, and revised AST-1025/AST-1033 anchors.
+
+**Joan straggler:** Joan verdict attached; no Excluded-statute list → no straggler rows.
+
+## Findings
+
+### advisory — stale `nav:expanded` localStorage key
+**Location:** `NavigationShell.tsx` (`NAV_STORAGE_KEY` / `loadExpanded`) — unchanged, downstream UX  
+**Finding:** Users who previously expanded the monolithic **Admin** group may retain `"Admin"` in `localStorage` while the API now returns **Operations** / **Admin** / **Tools** as separate groups. Expand state may not carry over.  
+**Recommendation:** UAT note for Susan — not a code fix for AST-1386.
+
+### advisory — API test duplicates admin label set
+**Location:** `tests/component/ui/api/test_api_system.py` — `test_nav_config_omits_admin_group_for_non_admin`  
+**Finding:** Hardcodes `{"Operations", "Admin", "Tools"}` while `TestAst1386ThreeSegmentAdminNav` already asserts `nav_admin_only_group_labels()`. Minor drift risk if a fourth `admin_only` group is added later.  
+**Recommendation:** Betty optional follow-up — import helper in API test; not blocking.
+
+### advisory — frontend page mock still uses single Admin group
+**Location:** `tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx` (~203)  
+**Finding:** Nav mock is still one **Admin** group; sufficient for click-away test but no longer mirrors live three-segment shape.  
+**Recommendation:** Betty optional realism refresh on a future pass; not blocking.
+
+## What’s solid
+
+- Config-driven omit replaces the brittle `label != "Admin"` filter — exactly the `no-hardcoded-sets` / `config-source-of-truth` intent from the plan.
+- Layer hygiene: UI API imports one new utils helper; no frontend business-logic duplication.
+- Test + bible coverage aligns with manifest; engineer stayed out of the test tree on the product commit.
+
+## Frame diff
+
+- **Before:** One trailing **Admin** nav group; non-admins filtered by literal `"Admin"` label.
+- **After:** Three trailing admin-only groups (**Operations** → **Admin** → **Tools**); non-admins filtered via `nav_admin_only_group_labels()`; paste nav labels renamed; all admin paths preserved; shell renders API groups unchanged.
+
+## Notes
+
+- `no plan-rubric Excluded list` in Joan attachment — straggler check N/A.
+- Parent AST-1370 may have sibling tickets for shell chrome / visual grouping; this child correctly limits to config + API filter per plan.
+
+**C7:** Complete — recommend **Review Posted** → User Testing (PROCEED path).
+
+context_tokens≈55000
