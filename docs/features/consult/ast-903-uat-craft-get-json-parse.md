@@ -358,3 +358,16 @@ Execute in order; stop when the confirmed hole is closed. Do not invent new toke
 - UI generate and REQUESTED_ARTIFACTS both keep using `do_task` with `task_key=craft_get_rubric` (no parallel provider call path).
 - Empty-criteria / pending-stash failure behavior from AST-901 unchanged except that truncated runs must not look like COMPLETED success.
 - No changes to rubric grading semantics, consult batches, or craft prompt prose except as required for token/budget correctness (ticket boundaries).
+
+## Radia review-fix (AST-1380)
+
+**Overall:** DISCUSS (no fix-now). Decision A + failure banner solid; AST-903 floor/gates retained.
+
+**discuss (process):**
+1. Plan step 1 hop-confirm evidence not recorded in issue doc (code implies thinking starvation).
+2. Board TESTS:REVISE deferred to sibling gap **AST-1383** (Todo) — no merge-tests on this sub; expected orphaned-path shape.
+
+**advisory:** unrelated AST-1352 Threads mirror noise in three-dot diff; residual truncate risk if future stop_reason ≠ max_tokens.
+
+**Chuckles:** clean-review shortcut → User Testing; drive AST-1383 for bible/repro coverage before parent finish-up.
+
