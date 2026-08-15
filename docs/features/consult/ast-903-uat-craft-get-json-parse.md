@@ -456,3 +456,24 @@ Coverage gap only — product fix is on AST-1380. Board correctly flagged that A
 
 **2026-08-15** — Radia CLEAN (no fix-now). Empty vocabulary `code(AST-1383): no product delta — gap is test/bible only` so `validate-sub-log` accepts the test/bible-only gap; `resolve(AST-1383): — clean` @ `a07015e3`. Product remains AST-1380 on ftr.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/8738d45b0e8e501fc064c51e998b4704/fabb1934-558e-481e-8a0f-1ee47a129b7f/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/19092c53-1387-4f1e-8b51-6767ce09e11a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8738d45b0e8e501fc064c51e998b4704/af1904ee-91cc-461c-b59b-6ed6c841f0ab/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1379 (parent) | ftr/AST-1379-response-truncated-after-289-tokens |
+| AST-1380 | sub/AST-1379/AST-1380-fix-craft-get-rubric-truncation |
+| AST-1383 | sub/AST-1379/AST-1383-gap-craft-get-truncation-tests |
+
+**Epic worktree:** `astral-AST-1379/` — one active sub checked out at a time.
