@@ -452,3 +452,7 @@ Coverage gap only — product fix is on AST-1380. Board correctly flagged that A
 
 **Overall:** CLEAN. Gap bible + three Decision A / failure-banner tests lock AST-1380; [bug-repro] OK; no product delta.
 
+## Resolution (AST-1383)
+
+**2026-08-15** — Radia CLEAN (no fix-now). Empty vocabulary `code(AST-1383): no product delta — gap is test/bible only` so `validate-sub-log` accepts the test/bible-only gap; `resolve(AST-1383): — clean` @ `a07015e3`. Product remains AST-1380 on ftr.
+
