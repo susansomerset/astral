@@ -1071,7 +1071,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1025 · AST-1023
 
-**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab; failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav item after Session Resume Paste. Core emit = sibling **AST-1024**.
+**AST-1025:** Admin **Session Cover Letter** page (§6c) — field form mirroring `BUILD_CONFIG["session_cover_letter"]["fields"]`; `useLocalStorage` (`session_cover_letter:fields` / `session_cover_letter:last_render`); Open HTML → `POST /api/admin/session_cover_letter/html` (AST-1024) → blob URL tab; failed/empty HTML never opens a tab; optional `candidate_id` from selected candidate. Nav: **Cover Letter Paste** after **Resume Paste** in Tools (AST-1386 labels; paths unchanged). Core emit = sibling **AST-1024**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

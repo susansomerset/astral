@@ -100,3 +100,23 @@ Open `GET /api/auth_session_policy` returns non-secret session duration + extend
   -q
 ```
 
+### AST-1386 · AST-1370
+
+**Publish:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav`.
+
+`_nav_config_for_user` omits every `admin_only` group via `nav_admin_only_group_labels()` (Operations / Admin / Tools). Admin response includes those three segments after Candidate; paste item labels **Resume Paste** / **Cover Letter Paste**; `admin_only` never appears in JSON. Primary config: **`docs/test-bible/utils/config.md`** § AST-1386.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Admin three segments + paste labels | `src/ui/api/api_system.py` | **`TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin`** |
+| Non-admin omit all admin_only | same | **`TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin`** |
+| Agent Ad Hoc under Tools (revised) | same | **`TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label \
+  -q
+```
+
