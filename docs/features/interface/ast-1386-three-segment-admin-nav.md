@@ -120,3 +120,8 @@ AC1–AC5 → Stage 1 (`NAV_CONFIG` three-segment regroup with paste labels; `ad
 **Recommendation:** Point implementers at the existing `visible` / `enabled` comment block (~4515), not the SYNC preamble — cosmetic doc placement only; no product risk.
 
 context_tokens≈42000
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1370/AST-1386-three-segment-admin-nav`
+**Product commits:** `6f6cc620` (NAV_CONFIG Operations/Admin/Tools + `nav_admin_only_group_labels`; `_nav_config_for_user` config-driven omit)
