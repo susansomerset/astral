@@ -108,15 +108,33 @@ class TestSystemAuthRoutes:
 
     def test_nav_config_admin_agent_ad_hoc_label(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
-        admin = next(group for group in payload if group["label"] == "Admin")
-        ad_hoc = next(item for item in admin["items"] if item["path"] == "/admin/anthropic_ad_hoc")
+        tools = next(group for group in payload if group["label"] == "Tools")
+        ad_hoc = next(item for item in tools["items"] if item["path"] == "/admin/anthropic_ad_hoc")
         assert ad_hoc["label"] == "Agent Ad Hoc"
 
     def test_nav_config_omits_admin_group_for_non_admin(
         self, system_client: FlaskClient, non_admin_headers: dict[str, str]
     ) -> None:
+        # AST-1386: all admin_only segments (Operations / Admin / Tools) omitted for non-admins.
         payload = system_client.get("/api/nav_config", headers=non_admin_headers).get_json()
-        assert all(group.get("label") != "Admin" for group in payload)
+        assert all(
+            group.get("label") not in {"Operations", "Admin", "Tools"} for group in payload
+        )
+
+    def test_nav_config_three_admin_segments_for_admin(
+        self, system_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        # AST-1386: admin sees Operations → Admin → Tools; paste labels; no admin_only in JSON.
+        payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
+        labels = [group["label"] for group in payload]
+        cand_i = labels.index("Candidate")
+        assert labels[cand_i + 1 : cand_i + 4] == ["Operations", "Admin", "Tools"]
+        tools = next(group for group in payload if group["label"] == "Tools")
+        resume = next(it for it in tools["items"] if it["path"] == "/admin/session_resume_paste")
+        cover = next(it for it in tools["items"] if it["path"] == "/admin/session_cover_letter")
+        assert resume["label"] == "Resume Paste"
+        assert cover["label"] == "Cover Letter Paste"
+        assert all("admin_only" not in group for group in payload)
 
     def test_nav_config_omits_board_searches(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()

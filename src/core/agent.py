@@ -58,7 +58,7 @@ from src.utils.config import (
     RUBRIC_FEEDBACK_CONFIG,
     CRAFT_RUBRIC_MAX_TOKENS,
     CRAFT_RUBRIC_UI_TASK_KEYS,
-    is_rubric_backed_task,
+    is_vector_feedback_task,
     is_conversational_task,
     CONTACT_ESTELLE_CONFIG,
     CONVERSATIONAL_PERFORMANCE_SCHEMA,
@@ -1378,6 +1378,21 @@ def _validation_failure_audit_body(err: str, raw_text: Optional[str], parsed: An
     return f"Validation failed: {err}\n\n--- model response ---\n{body}"
 
 
+def _provider_failure_audit_body(
+    err: str,
+    raw_text: Optional[str],
+    parsed: Any = None,
+    *,
+    failure_class: Optional[str] = None,
+) -> str:
+    """RESPONSE row for provider failures — banner so success-shaped envelopes are not mistaken for finished hops (AST-1380)."""
+    body = _audit_response_body(raw_text, parsed, None)
+    head = f"Provider failed: {err}"
+    if failure_class:
+        head = f"Provider failed ({failure_class}): {err}"
+    return f"{head}\n\n--- model response ---\n{body}"
+
+
 def _failure_response_block_data(index: Optional[str], body: str) -> str:
     """Prefix so get_entity_response can match one row when a batch has many RESPONSE failures."""
     if index and body is not None:
@@ -2156,6 +2171,10 @@ async def do_task(
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
         agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
+        # AST-1380 Decision A: DeepSeek Big thinking shares max_tokens with the JSON answer —
+        # disable thinking so craft criteria are not starved mid-string.
+        if provider == "deepseek" and tier_meta is not None:
+            tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
 
     _hop_kw = dict(
         chain_entry=chain_entry,
@@ -2178,7 +2197,7 @@ async def do_task(
     caches_four = (_slot(rca), _slot(rcb), _slot(rcc), _slot(rcd))
     nocache_content = resolve_tokens(agent_task_row.get("nocache_prompt") or "", cd, task_key, _cc, _jc, **_hop_kw) or None
 
-    if is_rubric_backed_task(task_key):
+    if is_vector_feedback_task(task_key):
         _fb_suffix = (RUBRIC_FEEDBACK_CONFIG.get("prompt_suffix") or "").strip()
         if _fb_suffix:
             if (user_content or "").strip():
@@ -2467,10 +2486,14 @@ async def do_task(
                 raw_for_audit = extract_api_response_text(api_resp)
             except ValueError:
                 pass
-        audit_body = _audit_response_body(
+        # Banner so raw agent_performance.status=success envelopes are not mistaken for finished hops (AST-1380).
+        _fc = result.get("failure_class")
+        _fc_s = str(_fc).strip() if _fc is not None else ""
+        audit_body = _provider_failure_audit_body(
+            str(result.get("error") or "Generation failed"),
             raw_for_audit,
             parsed=result.get("parsed_response"),
-            err=result.get("error"),
+            failure_class=_fc_s or None,
         )
         if _should_store:
             try:
@@ -2580,12 +2603,12 @@ async def do_task(
     if strict_batch and not envelope_err:
         envelope_err = _strict_encoded_batch_consult_envelope_err(task_key, parsed)
 
-    if is_rubric_backed_task(task_key) and isinstance(parsed, dict):
+    if is_vector_feedback_task(task_key) and isinstance(parsed, dict):
         parsed = _normalize_rubric_envelope_for_capture(parsed)
         result["parsed_response"] = parsed
 
     envelope_snapshot = None
-    if is_rubric_backed_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
+    if is_vector_feedback_task(task_key) and isinstance(parsed, dict) and "agent_performance" in parsed:
         envelope_snapshot = copy.deepcopy(parsed)
 
     if envelope_err:
@@ -3463,10 +3486,13 @@ async def run_adhoc_workbench_test(
                     raw_for_audit = extract_api_response_text(api_resp)
                 except ValueError:
                     pass
-            audit_body = _audit_response_body(
+            _fc = result.get("failure_class")
+            _fc_s = str(_fc).strip() if _fc is not None else ""
+            audit_body = _provider_failure_audit_body(
+                str(result.get("error") or "Generation failed"),
                 raw_for_audit,
                 parsed=result.get("parsed_response"),
-                err=result.get("error"),
+                failure_class=_fc_s or None,
             )
             try:
                 _store_response_block(

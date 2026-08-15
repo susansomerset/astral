@@ -119,7 +119,7 @@ _DRAFT_EXPERIENCE_JOBS = [
         "title": "Engineer",
         "dates": "2020-2023",
         "location": "",
-        "accomplishments": "Built things.",
+        "accomplishments": ["Built things."],
     }
 ]
 
@@ -6192,6 +6192,169 @@ class TestAst903CraftRubricMaxTokensFloor:
         assert out["success"] is True
         assert send.await_args.kwargs.get("max_tokens") == 100
 
+
+class TestAst1380CraftRubricThinkingOffAndFailureBanner:
+    """AST-1380 / AST-1383: Decision A thinking-off + Provider-failed RESPONSE banner."""
+
+    # Mid-criteria cut still carrying agent_performance.status=success (abrams-shaped).
+    _ABRAMS_TRUNCATED = (
+        '{"agent_performance":{"status":"success"},"vector_reviews":[{"code":"GT"}],'
+        '"agent_payload":{"criteria":[{"code":"GT","label":"Get",'
+        '"content":"A == The JD title matches even though no title'
+    )
+
+    @pytest.mark.asyncio
+    async def test_craft_get_rubric_deepseek_big_forces_thinking_false(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Big meta starts thinking=True; do_task must clear it for craft rubrics (Decision A).
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        criteria = [
+            {"code": "GT", "label": "Get", "content": "full criterion body", "importance": 5},
+        ]
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"criteria": criteria},
+                },
+                "api_response": _api_response('{"criteria":[]}'),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="abrams",
+            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+        )
+        assert out["success"] is True
+        assert send.await_args is not None
+        tier = send.await_args.kwargs.get("tier_meta") or {}
+        assert tier.get("thinking") is False
+        assert not tier.get("reasoning_effort")
+        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
+
+    @pytest.mark.asyncio
+    async def test_non_craft_deepseek_big_keeps_thinking(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Decision A must not blanket-disable Big thinking off craft rubric keys.
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"agent_payload": "0|CRA2"},
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+        )
+        assert out["success"] is True
+        tier = send.await_args.kwargs.get("tier_meta") or {}
+        assert tier.get("thinking") is True
+        assert tier.get("reasoning_effort") == "max"
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_response_banner_prefixes_success_shaped_envelope(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Truncated success-shaped envelope must land under Provider failed banner, not bare.
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_deepseek",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Generation truncated (max_tokens) before complete JSON",
+                    "failure_class": "max_tokens",
+                    "api_response": _api_response(self._ABRAMS_TRUNCATED),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="abrams",
+            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+        )
+        assert out["success"] is False
+        assert out.get("failure_class") == "max_tokens"
+        response_calls = [
+            c
+            for c in stub_agent_storage["save"].call_args_list
+            if c.kwargs.get("block_type") == "RESPONSE"
+        ]
+        assert response_calls, "expected a RESPONSE agent_data write on provider failure"
+        body = response_calls[0].kwargs.get("block_data") or ""
+        assert "Provider failed" in body
+        assert "max_tokens" in body
+        assert "--- model response ---" in body
+        assert '"status":"success"' in body
+        assert "even though no title" in body
+
+
 class TestAst977AgentDataDedupeDebug:
     """AST-977: found/recorded debug on store/read; quiet when debug=False."""
 
@@ -6349,7 +6512,7 @@ class TestAst1005ItemsSchemaObjectValidation:
                 "title": "Engineer",
                 "dates": "2020",
                 "location": "Remote",
-                "accomplishments": "Stuff",
+                "accomplishments": ["Stuff"],
             }
         ]
         payload = {
@@ -6378,7 +6541,7 @@ class TestAst1005ItemsSchemaObjectValidation:
                 "title": "Engineer",
                 "dates": "2020-2023",
                 "location": "Remote",
-                "accomplishments": "Shipped",
+                "accomplishments": ["Shipped"],
             }
         ]
         payload = {

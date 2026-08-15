@@ -325,3 +325,24 @@ context_tokens≈52000
 
 - Betty narrowed manifest re-run after sync: 4 passed  
   `TestAst977…::test_ensure_schema_adds_ref_column_on_fresh_and_legacy` + `TestAst1377EnsureRefAgentDataId`
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/787b68891f40df41ba596392a77018d1/3ddf123d-f420-4b70-ba76-4b44b900c2fa/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/757e0bae-6a07-41c8-9934-9b9aa18cd1f1/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/787b68891f40df41ba596392a77018d1/ff8b578e-65db-40ba-9139-493be1a371ab/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1376 (parent) | ftr/AST-1376-missing-bootstrap-steps-for-ref-agent-data-id |
+| AST-1377 | sub/AST-1376/AST-1377-ensure-adds-missing-ref-agent-data-id-on-agent-data |
+
+**Epic worktree:** `astral-AST-1376/` — one active sub checked out at a time.

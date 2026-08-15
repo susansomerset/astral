@@ -1,19 +1,91 @@
-/** AST-1351: per-role experience job-array editor (keys from ui_config). */
+/** AST-1351 / AST-1381: per-role experience job-array editor (keys from ui_config). */
+
+import { useEffect, useRef, useState } from "react"
+import CollapsiblePanel from "./CollapsiblePanel"
 
 export interface ExperienceJobField {
   key: string
   label: string
 }
 
+/** Job wire shape: string fields + accomplishments as string[]. */
+export type ExperienceJob = Record<string, string | string[]>
+
 interface ExperienceJobsEditorProps {
   fields: ExperienceJobField[]
-  value: Record<string, string>[]
-  onChange: (next: Record<string, string>[]) => void
+  value: ExperienceJob[]
+  onChange: (next: ExperienceJob[]) => void
   disabled?: boolean
 }
 
-function emptyJob(fields: ExperienceJobField[]): Record<string, string> {
-  return Object.fromEntries(fields.map(f => [f.key, ""]))
+function emptyJob(fields: ExperienceJobField[]): ExperienceJob {
+  return Object.fromEntries(
+    fields.map(f => [f.key, f.key === "accomplishments" ? [] : ""]),
+  )
+}
+
+function roleCollapsedLabel(job: ExperienceJob): string {
+  const company = String(job.company ?? "").trim()
+  const title = String(job.title ?? "").trim()
+  const dates = String(job.dates ?? "").trim()
+  const left = [company, title].filter(Boolean).join(", ")
+  if (left && dates) return `${left} / ${dates}`
+  return left || dates || "Role"
+}
+
+function accomplishmentsText(job: ExperienceJob): string {
+  const raw = job.accomplishments
+  if (Array.isArray(raw)) return raw.map(String).join("\n")
+  if (typeof raw === "string") return raw
+  return ""
+}
+
+function parseAccomplishmentsInput(text: string): string[] {
+  return text
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map(s => s.trim())
+    .filter(Boolean)
+}
+
+/** Local text while focused so Enter/newlines are not eaten by array round-trip. */
+function AccomplishmentsTextarea({
+  job,
+  disabled,
+  onCommit,
+}: {
+  job: ExperienceJob
+  disabled?: boolean
+  onCommit: (next: string[]) => void
+}) {
+  const fromJob = accomplishmentsText(job)
+  const [text, setText] = useState(fromJob)
+  const focusedRef = useRef(false)
+  useEffect(() => {
+    if (!focusedRef.current) setText(fromJob)
+  }, [fromJob])
+  return (
+    <textarea
+      className="dep-input"
+      rows={5}
+      value={text}
+      disabled={disabled}
+      onFocus={() => {
+        focusedRef.current = true
+      }}
+      onChange={e => {
+        const v = e.target.value
+        setText(v)
+        onCommit(parseAccomplishmentsInput(v))
+      }}
+      onBlur={() => {
+        focusedRef.current = false
+        const next = parseAccomplishmentsInput(text)
+        onCommit(next)
+        setText(next.join("\n"))
+      }}
+    />
+  )
 }
 
 export default function ExperienceJobsEditor({
@@ -22,7 +94,7 @@ export default function ExperienceJobsEditor({
   onChange,
   disabled = false,
 }: ExperienceJobsEditorProps) {
-  function patchJob(index: number, key: string, nextVal: string) {
+  function patchJob(index: number, key: string, nextVal: string | string[]) {
     const next = value.map((job, i) => (i === index ? { ...job, [key]: nextVal } : job))
     onChange(next)
   }
@@ -48,9 +120,11 @@ export default function ExperienceJobsEditor({
   return (
     <div className="experience-jobs-editor">
       {value.map((job, index) => (
-        <div key={index} className="experience-jobs-editor-role">
-          <div className="experience-jobs-editor-role-header">
-            <span className="experience-jobs-editor-role-label">Role {index + 1}</span>
+        <CollapsiblePanel
+          key={index}
+          label={<span className="experience-jobs-editor-role-label">{roleCollapsedLabel(job)}</span>}
+          defaultExpanded={false}
+          actions={
             <span className="side-tab-controls">
               <button
                 type="button"
@@ -77,30 +151,31 @@ export default function ExperienceJobsEditor({
                 ×
               </button>
             </span>
+          }
+        >
+          <div className="experience-jobs-editor-role-body">
+            {fields.map(field => (
+              <div key={field.key} className="dep-field">
+                <label className="dep-field-label">{field.label}</label>
+                {field.key === "accomplishments" ? (
+                  <AccomplishmentsTextarea
+                    job={job}
+                    disabled={disabled}
+                    onCommit={next => patchJob(index, field.key, next)}
+                  />
+                ) : (
+                  <input
+                    className="dep-input"
+                    type="text"
+                    value={String(job[field.key] ?? "")}
+                    disabled={disabled}
+                    onChange={e => patchJob(index, field.key, e.target.value)}
+                  />
+                )}
+              </div>
+            ))}
           </div>
-          {fields.map(field => (
-            <div key={field.key} className="dep-field">
-              <label className="dep-field-label">{field.label}</label>
-              {field.key === "accomplishments" ? (
-                <textarea
-                  className="dep-input"
-                  rows={5}
-                  value={job[field.key] ?? ""}
-                  disabled={disabled}
-                  onChange={e => patchJob(index, field.key, e.target.value)}
-                />
-              ) : (
-                <input
-                  className="dep-input"
-                  type="text"
-                  value={job[field.key] ?? ""}
-                  disabled={disabled}
-                  onChange={e => patchJob(index, field.key, e.target.value)}
-                />
-              )}
-            </div>
-          ))}
-        </div>
+        </CollapsiblePanel>
       ))}
       <button
         type="button"

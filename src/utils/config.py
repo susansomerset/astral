@@ -129,7 +129,9 @@ _EXPERIENCE_JOB_ITEM_SCHEMA: Dict[str, Dict[str, Any]] = {
     "title": {"type": "str", "required": True},
     "dates": {"type": "str", "required": True},
     "location": {"type": "str", "required": True},
-    "accomplishments": {"type": "str", "required": True},
+    # AST-1381: ordered bare achievement strings (no embedded •/- markers).
+    # list without object items_schema — scalar string elements (agent validates type=list).
+    "accomplishments": {"type": "list", "required": True},
 }
 _EXPERIENCE_JOB_ARRAY_FIELD: Dict[str, Any] = {
     "type": "list",
@@ -4176,6 +4178,13 @@ def is_rubric_backed_task(task_key: str) -> bool:
     return rubric_owner_task_key(task_key) is not None
 
 
+def is_vector_feedback_task(task_key: str) -> bool:
+    """True when task should request/capture vector_reviews (consumers only; not craft)."""
+    if task_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
+        return False
+    return rubric_owner_task_key(task_key) is not None
+
+
 def importance_multiplier(n: int) -> float:
     """Return the configured multiplier for rubric importance (AST-359 / AST-358)."""
     ci = ASTRAL_CONFIG["consult_importance"]
@@ -4506,6 +4515,11 @@ def admin_brain_setting_catalog() -> list[dict[str, Any]]:
 # Optional group-level "visible": a CANDIDATE_STATES key. Group is hidden
 # unless the candidate is at or past that state. Omit = always visible.
 #
+# Optional group-level "admin_only": True. When True, /api/nav_config omits
+# the group for non-admin users (resolved via nav_admin_only_group_labels).
+# Omit the key (or False) = visible to every authenticated user subject to
+# other gates.
+#
 # Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
 # or past that state) or False (permanently disabled stub). Omit = always enabled.
 #
@@ -4665,26 +4679,46 @@ NAV_CONFIG = [
         ],
     },
     {
-        "label": "Admin",
+        "label": "Operations",
+        "admin_only": True,
         "items": [
             {"label": "Scheduled Actions", "path": "/admin/scheduled_actions"},
             {"label": "Execution History", "path": "/admin/performance_monitor"},
-            {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
             {"label": "Vector Feedback", "path": "/admin/vector_feedback"},
-            {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
-            {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
-            {"label": "Manage Agents", "path": "/admin/agent_prompts"},
-            {"label": "Manage Tasks", "path": "/admin/task_prompts"},
-            {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
-            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
-            {"label": "Data Management", "path": "/admin/data_management"},
-            {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
-            {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
             {"label": "Manage Email", "path": "/admin/manage_email"},
             {"label": "Manage Slack", "path": "/admin/manage_slack"},
+            {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
+        ],
+    },
+    {
+        "label": "Admin",
+        "admin_only": True,
+        "items": [
+            {"label": "Manage Agents", "path": "/admin/agent_prompts"},
+            {"label": "Manage Tasks", "path": "/admin/task_prompts"},
+            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
+            {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+        ],
+    },
+    {
+        "label": "Tools",
+        "admin_only": True,
+        "items": [
+            {"label": "Data Management", "path": "/admin/data_management"},
+            {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
+            {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
+            {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
         ],
     },
 ]
+
+
+def nav_admin_only_group_labels() -> frozenset[str]:
+    """Sidebar group labels omitted from /api/nav_config for non-admins (AST-1386)."""
+    return frozenset(
+        group["label"] for group in NAV_CONFIG if group.get("admin_only")
+    )
 
 
 # ---------------------------------------------------------------------------
