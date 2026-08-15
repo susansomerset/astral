@@ -15,12 +15,14 @@ from src.utils.config import (
     ASTRAL_CONFIG,
     BUILD_CONFIG,
     CANDIDATE_LIBRARY_CONFIG,
+    CANDIDATE_STAGE_DISPATCH,
     CANDIDATE_STATES,
     RESUME_STRUCTURE_BODY_FORMATS,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
+    dispatch_hop_label,
 )
 
 _RUBRIC_CONTENT = "body\nA = one\nB = two"
@@ -1896,6 +1898,38 @@ class TestAst972RequestedStageDispatch:
         import inspect
         gen_src = inspect.getsource(candidate_mod.run_candidate_artifact_generation)
         assert "suppress_run_next" in gen_src
+
+
+class TestAst1389RequestedArtifactsHopLabels:
+    """AST-1389 bug-repro: mid-chain failure leaves REQUESTED_ARTIFACTS.<hop> (AST-1388)."""
+
+    @pytest.mark.asyncio
+    async def test_mid_chain_failure_leaves_hop_label(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Pre-fix: any do_task failure → retry/error transition (wipes progress visibility).
+        # Post AST-1388: compound hop label stays when already on REQUESTED_ARTIFACTS.<hop>.
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        hop = dispatch_hop_label(trigger, "craft_get_rubric")
+        monkeypatch.setattr(
+            candidate_mod.database,
+            "get_candidate",
+            lambda cid: {
+                "astral_candidate_id": cid,
+                "state": hop,
+                "candidate_data": {},
+            },
+        )
+        monkeypatch.setattr(
+            candidate_mod,
+            "do_task",
+            AsyncMock(return_value={"success": False, "error": "mid-chain fail"}),
+        )
+        trans = MagicMock()
+        monkeypatch.setattr(candidate_mod, "transition_candidate_state", trans)
+        out = await candidate_mod.run_requested_artifacts_dispatch("c1")
+        assert out["total_failed"] == 1
+        trans.assert_not_called()
 
 
 class TestAst973HardDeleteAndReapPurge:

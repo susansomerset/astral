@@ -300,6 +300,37 @@ Primary config/migration map: **`docs/test-bible/utils/config.md`** / **`docs/te
   -q
 ```
 
+### AST-1389 · AST-1387 (gap — hop-label tests for AST-1388)
+
+**Parent:** [AST-1387 — REQUESTED_ARTIFACTS daisy-chain should advance candidate.state with hop labels](https://linear.app/astralcareermatch/issue/AST-1387). **Sibling product:** AST-1388. **Publish:** `origin/sub/AST-1387/AST-1389-requested-artifacts-hop-label-tests`.
+
+Board REVISE: no bible-backed node asserts `REQUESTED_ARTIFACTS.<hop>` after craft hop success or mid-chain leave-label. Product fix lands on AST-1388; this gap owns the [bug-repro] bar.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft hop success → compound label write | `src/core/agent.py` (`_write_dispatch_hop_label_on_success`) | **`TestAst1389RequestedArtifactsHopLabels::test_craft_hop_success_writes_requested_artifacts_hop_label`** (**[bug-repro]**) |
+| Mid-chain failure leaves hop label | `src/core/candidate.py` (`run_requested_artifacts_dispatch`) | **`TestAst1389RequestedArtifactsHopLabels::test_mid_chain_failure_leaves_hop_label`** (**[bug-repro]**) |
+
+**Broken / obsolete this pass:** none — AST-1252 persist / job-only `_should_write_dispatch_hop_label` / first-hop retry→error suites stay as-is until AST-1388 lands.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. Hop success write (bug-repro): `tests/component/core/test_agent.py::TestAst1389RequestedArtifactsHopLabels::test_craft_hop_success_writes_requested_artifacts_hop_label`
+2. Mid-chain leave-label (bug-repro): `tests/component/core/test_candidate.py::TestAst1389RequestedArtifactsHopLabels::test_mid_chain_failure_leaves_hop_label`
+
+**AST-1389** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1389RequestedArtifactsHopLabels \
+  tests/component/core/test_candidate.py::TestAst1389RequestedArtifactsHopLabels \
+  -q
+```
+
+**Pass criterion:** both nodes fail on pre-fix tree for the named gap; flip green after AST-1388 `make-fix`.
+
 ### AST-1253 · AST-1243
 
 **Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
