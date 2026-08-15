@@ -15,6 +15,7 @@ from src.utils.config import (
     NAV_CONFIG,
     DATA_SHAPES,
     CANDIDATE_STATES,
+    CANDIDATE_STAGE_DISPATCH,
     IN_REVIEW_STATES,
     RECOMMENDED_JOB_STATES,
     SKIPPED_STATES,
@@ -24,6 +25,7 @@ from src.utils.config import (
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     build_state_ui_manifest,
+    dispatch_hop_label,
     get_auth_session_policy,
     nav_admin_only_group_labels,
 )
@@ -206,6 +208,14 @@ def state_ui_manifest():
         cand["artifacts_chain_task_keys"] = requested_artifacts_chain_task_keys()
         cand["artifacts_chain_hop_labels"] = requested_artifacts_chain_hop_labels()
         cand["artifacts_chain_artifact_keys"] = requested_artifacts_chain_artifact_keys()
+        # AST-1388: hide Generate while on REQUESTED_ARTIFACTS.<hop> compound labels.
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        hide = list(cand.get("artifact_generate_inflight_hide_states") or [])
+        for tk in cand["artifacts_chain_task_keys"]:
+            label = dispatch_hop_label(trigger, tk)
+            if label not in hide:
+                hide.append(label)
+        cand["artifact_generate_inflight_hide_states"] = hide
     except Exception as exc:
         _log.warning("artifacts chain manifest walk failed: %s", exc)
         cand["artifacts_chain_task_keys"] = []

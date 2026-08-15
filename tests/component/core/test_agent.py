@@ -7952,3 +7952,34 @@ class TestAst1354AgentStoryDanglingTaskSibling:
         assert other["blocks"][0]["content"] == '{"note": "other task intact"}'
         warn.assert_called()
         exc.assert_not_called()
+
+
+class TestAst1389RequestedArtifactsHopLabels:
+    """AST-1389 bug-repro: REQUESTED_ARTIFACTS craft hops write compound state labels (AST-1388)."""
+
+    def test_craft_hop_success_writes_requested_artifacts_hop_label(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        # Pre-fix: job-only _should_write_dispatch_hop_label → no candidate write.
+        # Post AST-1388: candidate-craft gate calls write_candidate_dispatch_hop_label.
+        trigger = cfg.CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        expected = cfg.dispatch_hop_label(trigger, "craft_get_rubric")
+        write = MagicMock(return_value=expected)
+        # raising=False: helper does not exist pre-fix (AST-1388 lands it).
+        monkeypatch.setattr(
+            "src.core.candidate.write_candidate_dispatch_hop_label",
+            write,
+            raising=False,
+        )
+        agent_mod._write_dispatch_hop_label_on_success(
+            task_key="craft_get_rubric",
+            entity_type="candidate",
+            index="cand-1389",
+            ctx={
+                "persist_candidate_craft_hops": True,
+                "dispatch_trigger_state": trigger,
+            },
+            trigger_state=trigger,
+            debug=False,
+        )
+        write.assert_called_once_with("cand-1389", trigger, "craft_get_rubric")
