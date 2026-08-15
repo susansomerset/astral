@@ -584,5 +584,9 @@ src/core/agent.py                                                 (3 gates + imp
 
 **Notes:** `no plan-rubric verdict attached` (fix-lane; Joan validate-plan not re-litigated). Betty test gap tracked on AST-1385.
 
+## Docs-acceptance (AST-1384)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1385**.
+
 context_tokens≈N
 
