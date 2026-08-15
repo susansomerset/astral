@@ -669,3 +669,7 @@ AST-724 bible/tests encoded the original single-gate decision (`is_rubric_backed
 2. `is_rubric_backed_task(craft_*)` remains True; `rubric_owner_task_key(craft_*)` unchanged.
 3. Existing AST-724 parse / capture / FEEDBACK-lenient tests stay green.
 4. No product max_tokens or Admin UI changes on this gap.
+
+## Review (Radia) — AST-1385
+
+Restacked publish-ref onto `ftr/AST-1378-no-feedback-reviews-on-craft` (plan + test + merge-tests only). Prior sibling stack pollution cleared. Ticket commit scope: bible + `test_is_vector_feedback_consumers_only_excludes_craft`. PROCEED after restack.
