@@ -5270,6 +5270,20 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
     return False
 
 
+def is_valid_candidate_batch_claim_state(state: str) -> bool:
+    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (batch claim only)."""
+    s = (state or "").strip()
+    if not s:
+        return False
+    if s in CANDIDATE_STATES:
+        return True
+    parsed = parse_dispatch_hop_label(s)
+    if parsed is None:
+        return False
+    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    return parsed[0] == stage_trigger
+
+
 def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
     ts = (trigger_state or "").strip()
     tk = (completed_task_key or "").strip()

@@ -484,6 +484,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
+        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        # AST-1388: reclaim mid-chain REQUESTED_ARTIFACTS.<hop> alongside bare + retry.
+        if (
+            dispatch_task_key == (stage.get("task_key") or "").strip()
+            and (input_state or "").strip() == stage["trigger_state"]
+        ):
+            from src.core.candidate import requested_artifacts_dispatch_claim_states
+            claim_states = requested_artifacts_dispatch_claim_states()
         bid, entities = get_new_candidate_batch(
             input_state,
             limit=limit,

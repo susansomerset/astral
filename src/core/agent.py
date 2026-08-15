@@ -54,6 +54,7 @@ from src.utils.config import (
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
     get_task_keys,
     dispatch_chain_graduation_target,
+    CANDIDATE_STAGE_DISPATCH,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
     CRAFT_RUBRIC_MAX_TOKENS,
@@ -1026,6 +1027,22 @@ def _should_write_dispatch_hop_label(
     return dispatch_chain_graduation_target(trigger_state) is not None
 
 
+def _should_write_candidate_craft_hop_label(
+    *,
+    entity_type: str,
+    index: Optional[str],
+    ctx: Optional[Dict[str, Any]],
+    trigger_state: str,
+) -> bool:
+    """AST-1388: REQUESTED_ARTIFACTS craft chain success labels (parallel to job gate)."""
+    if entity_type != "candidate" or not index or not trigger_state:
+        return False
+    if not (ctx or {}).get("persist_candidate_craft_hops"):
+        return False
+    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    return trigger_state == stage_trigger
+
+
 def _write_dispatch_hop_label_on_success(
     *,
     task_key: str,
@@ -1035,18 +1052,37 @@ def _write_dispatch_hop_label_on_success(
     trigger_state: str,
     debug: bool,
 ) -> None:
-    if not _should_write_dispatch_hop_label(
+    write_job = _should_write_dispatch_hop_label(
         entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
-    ):
+    )
+    write_cand = _should_write_candidate_craft_hop_label(
+        entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
+    )
+    if not write_job and not write_cand:
         return
-    from src.core import tracker as tracker_mod
 
-    before_state = (tracker_mod.get_job(index) or {}).get("state") if index else None
+    before_state = None
+    if write_job:
+        from src.core import tracker as tracker_mod
+        before_state = (tracker_mod.get_job(index) or {}).get("state") if index else None
+    elif write_cand:
+        # Lazy import breaks agent↔candidate cycle (candidate imports agent).
+        from src.core.candidate import get_candidate
+        before_state = (get_candidate(index) or {}).get("state") if index else None
+
     if ctx is not None and "_dispatch_chain_hop_index" not in ctx:
         ctx["_dispatch_chain_hop_index"] = 1
     elif ctx is not None:
         ctx["_dispatch_chain_hop_index"] = int(ctx.get("_dispatch_chain_hop_index") or 0) + 1
-    label = tracker_mod.write_job_dispatch_hop_label(index, trigger_state, task_key)
+
+    if write_job:
+        from src.core import tracker as tracker_mod
+        label = tracker_mod.write_job_dispatch_hop_label(index, trigger_state, task_key)
+    else:
+        # Lazy import breaks agent↔candidate cycle (candidate imports agent).
+        from src.core.candidate import write_candidate_dispatch_hop_label
+        label = write_candidate_dispatch_hop_label(index, trigger_state, task_key)
+
     if debug:
         hop_idx = int((ctx or {}).get("_dispatch_chain_hop_index") or 1)
         hop_idx, hop_total = _dispatch_chain_hop_debug_counts(ctx, hop_index=hop_idx)
