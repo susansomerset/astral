@@ -167,3 +167,66 @@ context_tokens≈38000
 | discuss (duplicated retired-key frozenset in dispatcher) | Fixed — `_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS` now filters `DISPATCH_RETIRED_TASK_KEYS` by `candidate_requested_` prefix (no second literal set). |
 | discuss (two `merge-tests` commits on publish ref) | Accepted — Betty process / qa-handoff return path; not a product change. |
 | advisory (agent_task.json unicode re-serialize noise) | Accepted — no re-touch; clean re-serialize on next intentional edit. |
+
+## Bug: AST-1388 — REQUESTED_ARTIFACTS daisy-chain hop state labels
+
+### As-is
+When a candidate is in `REQUESTED_ARTIFACTS` and dispatch runs the craft daisy chain from `craft_get_rubric` onward (`persist_candidate_craft_hops`), each successful hop persists artifact fields and opens hop ledgers, but **does not** write a compound progress label on `candidate.state`. Jobs on `BUILD_ARTIFACTS` do write `{trigger}.{completed_task_key}` via `_write_dispatch_hop_label_on_success`. Mid-chain position is invisible on the entity state.
+
+### To-be
+After each successful craft hop on the `REQUESTED_ARTIFACTS` dispatch path, `candidate.state` is `REQUESTED_ARTIFACTS.<last_completed_task_key>` (same `dispatch_hop_label` shape as jobs). Terminal success still graduates to `ARTIFACTS_READY`. Mid-chain failure leaves the last successful compound label visible so UI/redispatch can see progress without reading execution history alone. Job `BUILD_ARTIFACTS` hop-label behavior is unchanged.
+
+### Repro
+1. Candidate in bare `REQUESTED_ARTIFACTS`; live `agent_task` chain `craft_get_rubric` → … with non-empty `run_next` links.
+2. Run `run_requested_artifacts_dispatch(candidate_id)` (or consult route for `craft_get_rubric` @ `REQUESTED_ARTIFACTS`) with the first hop mocked to succeed and a later hop set to fail (or pause after hop 1).
+3. **Broken:** after hop 1 success, `candidate.state` is still `REQUESTED_ARTIFACTS` (or jumps only at terminal `ARTIFACTS_READY` / retry / error). No `REQUESTED_ARTIFACTS.craft_get_rubric` (etc.) row state.
+4. **Fixed:** after each success, state is `REQUESTED_ARTIFACTS.<that_task_key>`; after a mid-chain failure, state remains the last successful compound label (not wiped to bare trigger before retry/error handling decides).
+
+### Root cause
+AST-1252 Stage 2 **Decision** intentionally left `_should_write_dispatch_hop_label` as `entity_type == "job"` (and gated on `DISPATCH_CHAIN_TERMINAL_GRADUATION`, which only maps `BUILD_ARTIFACTS`). `run_requested_artifacts_dispatch` also never sets `ctx["dispatch_trigger_state"]`, so even a widened gate would see an empty trigger. Candidate hop labels therefore never write. Separately, `_should_write_dispatch_hop_label` is shared with `_apply_dispatch_chain_hop_failure` (job error_state / claim release) — flipping that gate for candidates would incorrectly enter the job failure path. Terminal `transition_candidate_state(..., ARTIFACTS_READY)` and UI in-flight hide only know bare `REQUESTED_ARTIFACTS` / `_RETRY`, so compound labels need prior-state + hide parity.
+
+### Proposed change
+Concrete enough for `make-fix` — do **not** add `REQUESTED_ARTIFACTS` to `DISPATCH_CHAIN_TERMINAL_GRADUATION` (graduation stays in the candidate worker; job map stays uncontaminated).
+
+1. **`src/core/candidate.py` — `run_requested_artifacts_dispatch`**
+   - On `task_ctx`, set `"dispatch_trigger_state": stage["trigger_state"]` (`REQUESTED_ARTIFACTS`).
+   - Do **not** set `dispatch_chain_graduate_on_terminal` (unchanged AST-1252 Decision).
+   - Keep `persist_candidate_craft_hops: True` and native `run_next` (no `suppress_run_next`).
+
+2. **`src/core/candidate.py` — `write_candidate_dispatch_hop_label(candidate_id, trigger_state, completed_task_key) -> str`**
+   - Mirror `tracker.write_job_dispatch_hop_label`: build label via `dispatch_hop_label`, append `state_history`, `database.save_candidate(..., state=label, ...)`.
+   - Bypass `transition_candidate_state` / `CANDIDATE_STATES` membership (runtime labels are not registry keys — same carve-out as jobs in code-rules §2.6.0).
+
+3. **`src/core/agent.py` — success write path (parallel to job gate, do not widen the shared gate)**
+   - Keep `_should_write_dispatch_hop_label` **job-only** so `_apply_dispatch_chain_hop_failure` stays job-shaped.
+   - Add a candidate-craft success gate, e.g. `_should_write_candidate_craft_hop_label`: `entity_type == "candidate"` and `index` and `(ctx or {}).get("persist_candidate_craft_hops")` and `trigger_state == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]`.
+   - In `_write_dispatch_hop_label_on_success`: after the existing job branch (or beside it), when the candidate-craft gate is true, call `write_candidate_dispatch_hop_label` (lazy-import `candidate` with the usual cycle-break comment). Reuse the same `_dispatch_chain_hop_index` / debug Style D “hop ok” lines already used for jobs when `debug=True`.
+   - UI one-shot craft (`suppress_run_next` / no `persist_candidate_craft_hops`) must **not** write hop labels.
+
+4. **`src/core/candidate.py` — `_candidate_state_allowed`**
+   - Mirror `tracker._job_state_matches_prior`: if `from_state` parses as a dispatch hop label and `parsed[0]` is in the target’s `prior_states`, allow (so `ARTIFACTS_READY` / retry / error can legally follow `REQUESTED_ARTIFACTS.<hop>`).
+
+5. **Failure vs last label (supersedes AST-1252 Stage 2 “always transition to retry/error” only when a compound label is already present)**
+   - ⚠️ **Decision:** After a failed `do_task` chain, if the candidate’s current state is already a `parse_dispatch_hop_label` whose trigger equals the stage trigger, **leave that compound label** (do not call `transition_candidate_state` to `REQUESTED_ARTIFACTS_RETRY` / `REQUESTED_ARTIFACTS_ERROR`). First-hop failure while still on bare `REQUESTED_ARTIFACTS` (or `_RETRY`) still uses `_requested_stage_failure_target` as today.
+   - Partial artifact field writes remain in place (AST-1252 Decision unchanged).
+
+6. **Claim + UI in-flight (so hop-labeled candidates are not stuck and Generate stays hidden)**
+   - Candidate batch claim today requires every `states=` entry ∈ `CANDIDATE_STATES` (`get_new_candidate_batch`). Add a claim carve-out parallel to `is_valid_job_batch_claim_state`: accept `REQUESTED_ARTIFACTS.<task_key>` when `parse_dispatch_hop_label` succeeds and trigger is the artifacts stage trigger (do **not** require graduation-map membership).
+   - For dispatcher claim of `craft_get_rubric` @ `REQUESTED_ARTIFACTS`, expand claim states to bare trigger + retry + parent hop labels for the entry task (same idea as `dispatch_chain_claim_states_for_row`, but candidate-scoped — either a small helper next to the job one or an inline expansion used only for this stage). Redispatch re-enters at `craft_get_rubric` (full chain restart; persist overwrites — self-healing). Mid-hop resume (starting `do_task` at a mid key) is **out of scope**.
+   - AST-1253 `inflight_hide_states` / any UI that keys on exact `REQUESTED_ARTIFACTS` / `_RETRY`: treat hop labels under trigger `REQUESTED_ARTIFACTS` as in-flight (hide Generate/Regenerate) — config or API resolution, not a hardcoded frontend set.
+
+7. **Compile**
+   - `python3 -m py_compile` on touched modules (`agent.py`, `candidate.py`, and any config/dispatcher helpers touched for claim/hide).
+
+### Blast radius
+- Shared `_should_write_dispatch_hop_label` / `_apply_dispatch_chain_hop_failure` (must stay job-only).
+- `transition_candidate_state` / `_candidate_state_allowed` callers (any transition from a hop-labeled candidate).
+- Candidate pool claim (`get_new_candidate_batch`, dispatcher candidate branch) and AST-1253 Generate hide.
+- Job `BUILD_ARTIFACTS` path, `DISPATCH_CHAIN_TERMINAL_GRADUATION`, and AST-1264 CALLER succession must not change behavior.
+- Tests that assert `_should_write_dispatch_hop_label` is job/graduation-map only remain valid; Betty may add candidate hop-label coverage via qa-fix — engineer does not patch `tests/`.
+
+### What must still hold
+- AST-1252: native `do_task` `run_next` + `persist_candidate_craft_hops`; per-hop artifact persist; terminal success → `ARTIFACTS_READY`; UI generate keeps `suppress_run_next=True`; no `REQUESTED_ARTIFACTS` entry in `DISPATCH_CHAIN_TERMINAL_GRADUATION`; no hop-order list in config.
+- AST-1253: Generate/Regenerate hidden while artifacts chain is in flight (including compound hop labels).
+- Job `BUILD_ARTIFACTS` hop labels + terminal graduation unchanged.
+- Runtime hop labels are not `CANDIDATE_STATES` registry keys (write bypasses registry membership; registered transitions accept them via prior-state hop parse).
