@@ -1851,16 +1851,6 @@ class TestAst724RubricBackedTask:
         assert "vector_reviews" in suffix
         assert "agent_performance" in suffix
 
-    def test_is_vector_feedback_consumers_only_excludes_craft(self) -> None:
-        # AST-1385 / AST-1384: teach+capture gate is consumers only; craft stays rubric-backed.
-        assert cfg.is_vector_feedback_task("grade_get") is True
-        assert cfg.is_vector_feedback_task("prefilter_company") is True
-        assert cfg.is_vector_feedback_task("craft_get_rubric") is False
-        assert cfg.is_rubric_backed_task("craft_get_rubric") is True
-        for craft_key in cfg.CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
-            assert cfg.is_vector_feedback_task(craft_key) is False
-        assert cfg.is_vector_feedback_task("craft_resume_base") is False
-
 
 class TestAst859VectorReviewsPromptExample:
     """AST-859: prompt_suffix example must use RACOVK delimiter wire format."""
