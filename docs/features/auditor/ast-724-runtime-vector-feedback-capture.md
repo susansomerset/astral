@@ -366,3 +366,85 @@ No unresolved rule conflicts.
 2. **Debug contract (§1.5.1):** Clean parse emits per-vector `debug_index` headers (`index` 1..N); unparseable path adds an index header before the `debug_detail` line.
 
 **Publish:** `resolve(AST-724)` on `origin/sub/AST-378/AST-724-runtime-vector-feedback-capture`.
+
+## Bug: AST-1384 — craft_* must not emit vector_reviews feedback
+
+### As-is
+
+On a `craft_*` rubric run (e.g. `craft_get_rubric` for candidate `abrams`), the model returns authored `agent_payload.criteria` **and** feedback-style `agent_performance.vector_reviews` (compact codes like `TRRACAVK`). Craft is taught to emit those reviews because AST-724 gated the feedback `prompt_suffix` (and SUCCESS capture) on `is_rubric_backed_task`, which is true for all twelve keys — six consumer graders **plus** six craft authors via `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` / `rubric_owner_task_key`.
+
+### To-be
+
+`craft_*` rubric responses deliver complete `agent_payload.criteria` without emitting rubric-feedback `vector_reviews`. Grade/evaluate consumers still request and capture per-vector feedback as today. Craft SUCCESS does not persist `vector_feedback` rows for the craft run.
+
+### Repro
+
+1. Run UI/API generate for `craft_get_rubric` on candidate `abrams` (or any live candidate with Get craft).
+2. Inspect the SUCCESS envelope / pending craft generation payload.
+3. Observe: `agent_payload.criteria` present **and** `agent_performance.vector_reviews` populated with compact `CODE`+`R`+rel+`C`+cla+`V`+ver strings.
+4. After fix: same run yields complete criteria; `vector_reviews` absent (or not taught/captured); no new `vector_feedback` rows keyed to that craft `task_key` / batch.
+
+Explicitly **not** a `max_tokens` / truncation failure (Susan).
+
+### Root cause
+
+AST-724's single gate **`is_rubric_backed_task(task_key) := rubric_owner_task_key(task_key) is not None`** intentionally treated craft and consumer as the same envelope+capture surface (plan Decision under "Rubric-backed task set"). That was wrong for craft's job: craft **authors** criteria; feedback compact codes belong only on **grade/evaluate** consumers that score against an existing rubric.
+
+Two coupled effects in `do_task` (`src/core/agent.py`):
+
+1. **Teach:** when `is_rubric_backed_task`, append `RUBRIC_FEEDBACK_CONFIG["prompt_suffix"]` → model emits `vector_reviews`.
+2. **Capture:** same gate takes `envelope_snapshot` and, on SUCCESS, calls `_capture_rubric_vector_feedback` → may insert `vector_feedback` / FEEDBACK blocks for craft runs.
+
+`rubric_owner_task_key` itself must stay dual-purpose (craft still resolves which owner rubric it authors). Only the **vector-feedback request + capture** path must exclude craft.
+
+### Proposed change
+
+Concrete enough for `make-fix` — no judgment calls:
+
+1. **`src/utils/config.py`** — add helper next to `is_rubric_backed_task`:
+
+   ```python
+   def is_vector_feedback_task(task_key: str) -> bool:
+       """True when task should request/capture vector_reviews (consumers only; not craft)."""
+       if task_key in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY:
+           return False
+       return rubric_owner_task_key(task_key) is not None
+   ```
+
+   - Leave **`is_rubric_backed_task`** unchanged (still True for craft — owner/rubric identity).
+   - Leave **`rubric_owner_task_key`** / **`task_keys_for_rubric_owner`** unchanged (Admin historical filter may still see old craft `task_key` rows; craft simply stops writing new ones).
+   - Do **not** change `RUBRIC_FEEDBACK_CONFIG` value codes or `prompt_suffix` text; only who receives the suffix.
+
+2. **`src/core/agent.py`** — switch the three feedback-path gates from `is_rubric_backed_task` to `is_vector_feedback_task`:
+
+   | Site | Current | Change |
+   |------|---------|--------|
+   | Prompt suffix injection (~after `resolve_tokens`) | `if is_rubric_backed_task(task_key):` append suffix | `if is_vector_feedback_task(task_key):` |
+   | `_normalize_rubric_envelope_for_capture` before snapshot | `if is_rubric_backed_task(...)` | `if is_vector_feedback_task(...)` |
+   | `envelope_snapshot = copy.deepcopy(parsed)` | `if is_rubric_backed_task(...) and "agent_performance" in parsed` | `if is_vector_feedback_task(...)` same condition |
+
+   With snapshot absent for craft, the existing SUCCESS `_capture_rubric_vector_feedback` block no-ops automatically — no separate early-return required inside the capture helper (optional defense-in-depth `if not is_vector_feedback_task: return` is fine but not required if the three gates above are complete).
+
+3. **Import:** add `is_vector_feedback_task` to the existing config import list in `agent.py`; keep `is_rubric_backed_task` only if still referenced elsewhere in that file after the swap (else drop unused import).
+
+4. **Out of scope (do not touch):** `CRAFT_RUBRIC_MAX_TOKENS` / truncation budget; Admin Vector Feedback UI; letter-grade / confidence validation; `rubric_feedback.py` parse rules; consumer grader prompt/capture behavior.
+
+### Blast radius
+
+| Area | Impact |
+|------|--------|
+| `grade_*` / `evaluate_*` / `prefilter_company` / `qualify_job_listings` | Unchanged — still `is_vector_feedback_task` True → suffix + capture. |
+| All keys in `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (incl. `craft_evaluate_meteorite_rubric`) | Stop suffix + snapshot + capture. |
+| `is_rubric_backed_task` callers / bible | Semantics unchanged; Betty may add coverage for the new helper and craft exclusion. |
+| `task_keys_for_rubric_owner` / Admin AST-725 | Unchanged expansion; historical craft-run feedback rows remain queryable; no new craft rows after fix. |
+| Tests that assumed craft receives `prompt_suffix` or capture | Likely need Betty revise (`fix-board` TESTS) — engineer does not patch `tests/`. |
+
+### What must still hold
+
+From AST-724 / parent AST-1378 AC (do not regress):
+
+1. Consumer rubric-backed SUCCESS still requests `vector_reviews` via `prompt_suffix` and captures clean parses into `vector_feedback` (lenient: unparseable → FEEDBACK block only; never fails the task).
+2. Non-`success` `agent_performance` still skips capture.
+3. Craft SUCCESS still returns complete `agent_payload.criteria` under existing craft schema; craft `max_tokens` floor unchanged.
+4. `rubric_owner_task_key(craft_*)` still resolves the consumer owner for artifact authorship / pending craft paths.
+5. No Admin UI redesign; no letter-grade scoring math changes.
