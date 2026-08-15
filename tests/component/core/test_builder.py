@@ -1348,7 +1348,9 @@ class TestAst1007NestedTypographyMarkers:
         )
         job0 = marked["experience"][0]
         assert job0["company"] == "Somerset\u00a0Consulting"
-        assert job0["accomplishments"] == "Achieved sprint\u2011level clarity across delivery."
+        assert job0["accomplishments"] == [
+            "Achieved sprint\u2011level clarity across delivery."
+        ]
         assert marked["nested_list"][0] == "AI\u2011Assisted\u00a0Delivery"
         assert marked["nested_list"][1]["inner"] == "sprint\u2011level"
         assert marked["keep_int"] == 7
