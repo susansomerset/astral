@@ -25,6 +25,7 @@ from src.utils.config import (
     COVER_FROM_BLOCK_CONFIG,
     build_state_ui_manifest,
     get_auth_session_policy,
+    nav_admin_only_group_labels,
 )
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
@@ -116,7 +117,8 @@ def _nav_config_for_user(candidate_state: str, candidate_id: Optional[str]) -> l
     nav = _resolve_nav(candidate_state, candidate_id)
     if g.user.get("is_admin"):
         return nav
-    return [group for group in nav if group.get("label") != "Admin"]
+    admin_labels = nav_admin_only_group_labels()
+    return [group for group in nav if group.get("label") not in admin_labels]
 
 
 # --- Open endpoints (no auth) ---

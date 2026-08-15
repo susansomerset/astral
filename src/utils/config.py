@@ -4515,6 +4515,11 @@ def admin_brain_setting_catalog() -> list[dict[str, Any]]:
 # Optional group-level "visible": a CANDIDATE_STATES key. Group is hidden
 # unless the candidate is at or past that state. Omit = always visible.
 #
+# Optional group-level "admin_only": True. When True, /api/nav_config omits
+# the group for non-admin users (resolved via nav_admin_only_group_labels).
+# Omit the key (or False) = visible to every authenticated user subject to
+# other gates.
+#
 # Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
 # or past that state) or False (permanently disabled stub). Omit = always enabled.
 #
@@ -4674,26 +4679,46 @@ NAV_CONFIG = [
         ],
     },
     {
-        "label": "Admin",
+        "label": "Operations",
+        "admin_only": True,
         "items": [
             {"label": "Scheduled Actions", "path": "/admin/scheduled_actions"},
             {"label": "Execution History", "path": "/admin/performance_monitor"},
-            {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
             {"label": "Vector Feedback", "path": "/admin/vector_feedback"},
-            {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
-            {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
-            {"label": "Manage Agents", "path": "/admin/agent_prompts"},
-            {"label": "Manage Tasks", "path": "/admin/task_prompts"},
-            {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
-            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
-            {"label": "Data Management", "path": "/admin/data_management"},
-            {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
-            {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
             {"label": "Manage Email", "path": "/admin/manage_email"},
             {"label": "Manage Slack", "path": "/admin/manage_slack"},
+            {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
+        ],
+    },
+    {
+        "label": "Admin",
+        "admin_only": True,
+        "items": [
+            {"label": "Manage Agents", "path": "/admin/agent_prompts"},
+            {"label": "Manage Tasks", "path": "/admin/task_prompts"},
+            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
+            {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+        ],
+    },
+    {
+        "label": "Tools",
+        "admin_only": True,
+        "items": [
+            {"label": "Data Management", "path": "/admin/data_management"},
+            {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
+            {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
+            {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
         ],
     },
 ]
+
+
+def nav_admin_only_group_labels() -> frozenset[str]:
+    """Sidebar group labels omitted from /api/nav_config for non-admins (AST-1386)."""
+    return frozenset(
+        group["label"] for group in NAV_CONFIG if group.get("admin_only")
+    )
 
 
 # ---------------------------------------------------------------------------
