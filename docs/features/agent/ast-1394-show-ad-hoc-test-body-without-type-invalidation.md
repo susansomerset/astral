@@ -169,3 +169,153 @@ context_tokens≈17500
 |-------|--------|---------|
 | 1 | `e5d49eb9` | Admin Test HTTP `response_text` via `_caller_response_blob` (compact JSON text of payload) |
 | 2 | `f685256e` | Workbench coerces success body to text before `setResponse`; existing `formatResponse` pretty-prints JSON |
+
+## Radia review — AST-1394
+
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1394  
+**Publish ref:** `origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation` @ `c4c22d2d`  
+**Overall:** CLEAN  
+**Diff baseline:** `origin/dev...origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation` (11 files; includes stacked AST-1393 predecessor on this sub tip)
+
+**AST-1394 product delta** (commits `e5d49eb9`, `f685256e`): `src/ui/api/api_admin.py`, `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` only — no `src/core/agent.py` edits in 1394 code commits (agent.py changes in the three-dot diff are AST-1393, already PROCEED @ `a45fff61`).
+
+## Statutes checked
+
+63 active statutes per `canon/statutes/README.md` § Harvested corpus.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no grade/confidence paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `do_task` changes in 1394 delta |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no schema validation added |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no batch claim changes |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch-id format changes |
+| `astral.batch.claim-process-release` | scoped | not-applicable | not dispatcher claim/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no agent_data write path in 1394 delta |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no config edits |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no env/secrets |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no `run_next` |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single AST-1394 feature doc |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty merge-tests on test paths only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | engineer `code()` commits touch `src/ui/` only; tests via `merge-tests(AST-1394)` |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | UI overlay only; no external imports |
+| `astral.layers.import-direction` | scoped | conforms | `ui → core` import of `_caller_response_blob` matches existing `_decode_payload` / `_chain_context` habit; plan-approved |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | no new hardcoded job/candidate state lists |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | display overlay, not coat-check |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult/render |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | `adhoc_test` retains `@require_admin` |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed/boot |
+| `astral.seed.define-approved` | scoped | not-applicable | no seed |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no seed |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | route does not call `save_agent_data`; stringify before JSON response |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/schema |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | no new debug-contract emission in 1394 delta |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | reuses `_caller_response_blob`; no second `json.dumps` in API |
+| `astral.standards.in-scope-only` | scoped | conforms | Admin Test HTTP + React chrome only; Preview/dispatch/other pages untouched |
+| `astral.standards.logging-via-utils` | scoped | not-applicable | no new logging |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | applies to `src/**`; no new ticket-id symbols in product code |
+| `astral.standards.no-cross-contamination` | scoped | conforms | scoped to Ad Hoc Test overlay |
+| `astral.standards.no-hardcoded-sets` | scoped | not-applicable | no hardcoded sets |
+| `astral.standards.public-then-helpers` | scoped | not-applicable | no file layout churn |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils changes |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run chain |
+| `astral.ui.frontend-file-placement` | scoped | conforms | change in existing `AdminAnthropicAdHoc.tsx` |
+| `astral.ui.naming-conventions` | scoped | conforms | `responseBodyToText` follows page conventions |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1394): origin/tests 322c490` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `docs` / `test` / `merge-tests` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub off AST-1392 ftr |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1392/AST-1394-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | no violations observed |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref on `sub/…` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1392 worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | dev/tests/sub flow |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no product-policy forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–2 match Joan-approved plan |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | n/a to diff |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed gate satisfied |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty tests + bible; engineer did not author test-tree in `code()` |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Katherine |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Katherine still assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no ban evasion |
+
+**C4 straggler:** Joan plan-rubric APPROVED attached; no `Excluded` statute list — nothing to straggle.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan references `pattern.layers.import-discipline` / `pattern.ui.admin-endpoint` in decisions; no `canon/patterns/**` catalog ids in Architectural definition |
+
+## Plan adherence
+
+**Stage 1** (`api_admin.py` `adhoc_test` ~1474–1479): `agent_payload` extract → `_caller_response_blob(body)` → always-`str` `response_text`; failure branches, `_decode_payload` / `hydrated`, Preview, and `run_adhoc_workbench_test` args unchanged. Empty `{}`/`[]` → `"{}"`/`"[]"` (not falsy collapse). Regression cases `"payload"` / `"123"` preserved in existing `TestAdhocRoutes`.
+
+**Stage 2** (`AdminAnthropicAdHoc.tsx`): `responseBodyToText` added above `formatResponse`; success path `setResponse(responseBodyToText(data.response_text))`; `formatResponse` + `ERROR:` overlay logic unchanged. Nested-object defense tested.
+
+**Boundaries:** No `src/core/agent.py` persist/debug edits in 1394 code commits. No Preview, `do_task` coerce, or schema overlay on success. Estimate **2** matches footprint.
+
+**Cross-ticket (AST-1393):** Duplicate extract+stringify in API is plan-documented and acceptable — HTTP `response_text` aligns with stored RESPONSE text when both use `_caller_response_blob` + same extract. Predecessor #1 on sub tip is expected for stacked epic work.
+
+**Betty manifest** aligns with bible: `TestAst1394AdhocTestResponseText` + `TestAdhocRoutes` (API); `test_AdminAnthropicAdHoc.test.tsx` AST-1394 cases (object/plain/nested/ERROR).
+
+### C6 judgment aids (§5a–§5g)
+
+| Lens | Result |
+|------|--------|
+| Imports (B1) | OK — one symbol added to existing `src.core.agent` import block |
+| Layer compliance (B2) | OK — `ui → core`; no `ui → data` for stringify |
+| Silent failure (D2) | OK — pre-existing `except` on encoded `_decode_payload` unchanged; no new swallows |
+| Fallbacks (D3) | OK — intentional `{}`/`[]` JSON text; `responseBodyToText` null guard |
+| Logging (E1) / §5f | n/a — no new debug emission |
+| Config/state in UI (G1) | OK |
+| Cross-ticket (§5d) | OK — #1 persist scope not re-smuggled; #2 display-only |
+| §5g external | n/a |
+
+## Findings
+
+### advisory — duplicate stringify vs AST-1393 core path
+- **Location:** `src/ui/api/api_admin.py` `adhoc_test` (~1474–1479); mirrors `run_adhoc_workbench_test` in AST-1393
+- **Finding:** Extract + `_caller_response_blob` duplicated because #1 leaves `parsed_response` as the original envelope. Joan flagged acceptable; drift risk if one call site changes without the other.
+- **Recommendation:** No fix-now. Optional future refactor (out of epic scope): core returns `response_text` on `result` for overlay consumption.
+
+### advisory — misleading Stage 2 commit message
+- **Location:** git `f685256e` message says “workbench” / implies `agent.py`; diff is `AdminAnthropicAdHoc.tsx` only
+- **Finding:** Commit archaeology only; code is correct.
+- **Recommendation:** None for resolve-child.
+
+### advisory — `body` variable reuse in `adhoc_test`
+- **Location:** `api_admin.py` ~1436 vs ~1476–1478
+- **Finding:** Request `body` dict shadowed by payload `body` after success extract. Harmless — request fields already consumed.
+- **Recommendation:** Optional rename to `payload_body` in a hygiene pass; not blocking.
+
+## What's solid
+
+- Fixes the type-invalidation failure mode at both layers: API always emits `response_text` as `str`; React coerces nested objects before `setResponse`, so `response.startsWith("ERROR:")` stays safe.
+- Pretty-print stays in React (`formatResponse`); API returns compact JSON matching stored RESPONSE text from #1.
+- Betty tests cover object/list/empty/plain/numeric HTTP cases and frontend success/failure/nested-object defense without golden log strings.
+- Engineer respected test-tree ownership and plan boundaries (UI-only product commits).
+
+## Frame diff
+
+(none) — AST-1394 implementation matches Joan-approved Stages 1–2; no scope/frame drift.
+
+## Notes
+
+- Three-dot diff vs `origin/dev` includes AST-1393 files (agent.py, AST-1393 tests/docs) because sub branch stacks on #1; Radia AST-1393 verdict was PROCEED — no regression observed in combined tip.
+- Joan plan-rubric: APPROVED @ `eed6751e`; no excluded-statute table.
+- Epic UAT: verify object-payload Test shows pretty-printed JSON in Response `<pre>`, no `ERROR:` on `success: true`, and provider failure still red `ERROR:` overlay.
+
+context_tokens≈22000
