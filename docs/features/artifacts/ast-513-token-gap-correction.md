@@ -565,3 +565,25 @@ fix-now: none. discuss: none.
 ```
 
 context_tokens≈28000
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/0082dc5850dcd670f3e8fe5f4c13123e/69611c43-09a3-4865-9d27-7df8aacff013/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/e7f42e1a-31c3-4ef8-8173-b7e3b7d6763f/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/0082dc5850dcd670f3e8fe5f4c13123e/9ded3145-233d-4d1a-84d8-1f663296ec49/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1395 (parent) | ftr/AST-1395-loading-ad-hoc-agent-screen-spills-log-warnings-to-the-console |
+| AST-1396 | sub/AST-1395/AST-1396-gate-empty-token-warnings-on-agent-ad-hoc-load |
+| AST-1397 | sub/AST-1395/AST-1397-cover-empty-candidate-first-name-silence |
+
+**Epic worktree:** `astral-AST-1395/` — one active sub checked out at a time.
