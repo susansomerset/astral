@@ -1953,3 +1953,10 @@ Do **not** rewrite `TestAst787AgentRepoJsonSeed.test_repo_rows_match_fixture_rep
 - AST-756 AC: startup upsert / Revert to file still apply checked-in JSON; `sync_agent_tasks` does not overwrite repo-loaded prompts.
 - Engineer commits still cannot include test-tree paths; this child's landing is Betty's bible + tests only.
 - Joan CANON: OK on AST-1399 — no statute/pattern edit here.
+
+## Radia review-fix (AST-1400)
+
+**Overall:** DISCUSS (no fix-now). Gap bible + Estelle/craft seed pins lock AST-1399; [bug-repro] OK; no product delta.
+
+**discuss (process):** Betty `docs(AST-1400): plan-fix` touched `docs/features/` — future gap tickets: Chuckles/engineer land plan-fix docs; Betty stays tests/bible + merge-tests. No engineer product action.
+
