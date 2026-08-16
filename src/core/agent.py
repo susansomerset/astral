@@ -3548,10 +3548,34 @@ async def run_adhoc_workbench_test(
         else:
             parsed = result.get("parsed_response")
             if isinstance(parsed, dict) and "agent_payload" in parsed:
-                response_text = parsed["agent_payload"] or ""
+                body = parsed["agent_payload"]
             else:
-                response_text = str(parsed) if parsed is not None else ""
+                body = parsed
             try:
+                response_text = _caller_response_blob(body)
+                if debug:
+                    dbg = get_logger(__name__, debug_flag=True)
+                    if isinstance(body, dict):
+                        shape = f"keys={sorted(body.keys())}"
+                    elif isinstance(body, list):
+                        shape = f"len={len(body)}"
+                    elif isinstance(body, str):
+                        shape = f"len={len(body)}"
+                    elif body is None:
+                        shape = "none"
+                    else:
+                        shape = type(body).__name__
+                    dbg.debug_index(
+                        func="run_adhoc_workbench_test",
+                        index=1,
+                        total=1,
+                        identifier=workbench_task_key,
+                        outcome="serialized store",
+                    )
+                    dbg.debug_detail(
+                        f"found type={type(body).__name__} shape={shape}"
+                    )
+                    dbg.debug_detail_block(response_text)
                 _store_response_block(
                     entity_type,
                     workbench_task_key,
