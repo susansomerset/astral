@@ -449,3 +449,79 @@ def _job_row_from_ctx(ctx: Dict[str, Any], index: str) -> Dict[str, Any]:
 |------------|--------|
 | **fix-now** — `_job_context_for_call` lazy import comment | Added cycle-break comment matching `run_resume_artifact_chain_for_job` (consult imports `do_task` at module load). |
 | **advisory** — Manage Tasks job entity dropdown | No change; AC 4 met with text input per Radia sign-off. |
+
+## Bug: AST-1396 — Gate empty-token warnings on Agent Ad Hoc load
+
+AST-513 Stage 1 / AC 5 defined the **standard empty-token WARNING** (`Token {$…} resolved to empty`) for registered tokens whose value is missing or empty. That warning is correct for a real job missing a consult phase, or a real candidate missing `first` / `full`. This bug is that same WARNING firing when Agent Ad Hoc loads with **no candidate in context**.
+
+### As-is
+
+Opening Agent Ad Hoc (no candidate selected, no Preview/Test click) calls `GET /api/admin/tasks` with no `candidate_id`. `_enrich_tasks("")` walks every agent-task (`topic_menu_preamble_confirm`, `vet_inflow_discovery`, and the rest of the list), passes `cd = {}` into `resolve_tokens` / `resolved_task_system`, and the server console fills with:
+
+`Token {$FIRST_NAME} resolved to empty (path=first, task=…)`  
+`Token {$FULL_NAME} resolved to empty (path=full, task=…)`
+
+Substitution still returns `""`. The noise is the WARNING, not a failed resolve.
+
+### To-be
+
+Loading Agent Ad Hoc does not emit empty-token WARNINGs for those list-resolve calls. Ad Hoc Preview with no candidate is likewise silent for candidate-source tokens. A `do_task` / Ad Hoc Test / Manage Tasks preview that has a candidate still warns when `{$FIRST_NAME}` / `{$FULL_NAME}` is unexpectedly empty.
+
+### Repro
+
+1. No candidate selected in admin CandidateContext (`selectedId` empty).
+2. Open **Agent Ad Hoc**. Mount fetches `GET /api/admin/agents/ids`, `GET /api/admin/tasks/meta/tokens`, and **`GET /api/admin/tasks`** (no query string) — see `AdminAnthropicAdHoc.tsx` initial `useEffect`. Do not click Preview or Test.
+3. Server log shows WARNING `Token {$FIRST_NAME} resolved to empty (path=first, task=topic_menu_preamble_confirm)` and the same for `{$FULL_NAME}` / `vet_inflow_discovery` (and every other listed task whose prompts mention those tokens).
+
+Unit shape (same defect, no UI): `resolve_tokens("{$FIRST_NAME}", {}, "topic_menu_preamble_confirm")` logs the candidate-source empty WARNING. A token view from `build_candidate_token_view` with `first=""` / `full=""` and a candidate id must still log it.
+
+### Root cause
+
+`resolve_tokens` (`src/utils/config.py`) `source == "candidate"` warns whenever the walked value is `None` / `""` / `[]` (and the resume-serialize branch warns when the formatter returns empty). It does **not** distinguish:
+
+- **no candidate in context** — callers pass `{}` (`_enrich_tasks` when `candidate_id` is blank; `_resolve_adhoc` when `candidate_id` is blank or the row is missing)
+- **candidate in context, name field empty** — `build_candidate_token_view` always returns a **non-empty** dict (`first` / `last` / `full` keys, possibly `""`)
+
+Agent Ad Hoc never sends `candidate_id` on the list fetch (unlike Manage Tasks, which appends `?candidate_id=` when `selectedId` is set). List enrich is cache-threshold / `task_ready` math, not a production prompt run, so empty candidate tokens are expected.
+
+This is not a missing ANALYSIS phase on a real job (AST-513 AC 5). Job/chain empty-warning branches are a different missing-context; they are not what spills on this load for the reported `path=first` / `path=full` lines.
+
+### Proposed change
+
+In `src/utils/config.py` `resolve_tokens` `_replace`, **only** the `source == "candidate"` branch. Keep substituting `""`. Gate the two existing `_log.warning(...)` calls so they fire only when `candidate_data` is truthy:
+
+```python
+if spec["source"] == "candidate":
+    if spec.get("serialize") == "resume_sections_json":
+        from src.core.candidate import format_base_resume_for_token
+        out = format_base_resume_for_token(candidate_data)
+        if not out and candidate_data:
+            _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
+        return out
+    raw = _walk_dot_path(candidate_data, spec["path"])
+    if (raw is None or raw == "" or raw == []) and candidate_data:
+        _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
+    return _value_to_str(raw)
+```
+
+Do **not** skip substitution (leaving `{$FIRST_NAME}` would flip `_enrich_tasks` `task_ready` via the leftover-`{$…}` regex). Do **not** add a `warn_empty` kwarg. Do **not** change `_enrich_tasks`, `_resolve_adhoc`, `AdminAnthropicAdHoc.tsx`, the token registry, or job/chain/rubric warning branches.
+
+⚠️ **Decision:** Gate on `bool(candidate_data)`. Empty `{}` = no candidate (Ad Hoc list + Preview/Test without `candidate_id`). A real token view is never empty, so a candidate with blank names still warns. Rejected: skip `resolve_tokens` in `_enrich_tasks` (would change token-count / `task_ready` math). Rejected: new list endpoint for Ad Hoc. Rejected: silence job/chain warnings (AST-513 AC 5 still requires job-empty warning when `job_context` is present but a phase is empty).
+
+**Spot-check (no code):** Manage Tasks with a candidate selected still calls `_enrich_tasks(candidate_id)` / preview with a loaded row — missing `first`/`full` still hits the gated branch with a truthy view. Ad Hoc Test with `candidate_id` uses `build_candidate_token_view` and must still warn.
+
+### Blast radius
+
+- **Touches:** `src/utils/config.py` `resolve_tokens` candidate-source warnings only.
+- **Call sites that go quiet:** `_enrich_tasks("")` (Ad Hoc `GET /api/admin/tasks`; Manage Tasks list with no `selectedId`); `_resolve_adhoc` Preview/Test with no usable `candidate_id`; any other `resolve_tokens(..., {})`.
+- **Call sites that still warn:** `do_task` via `_token_view_for_do_task` → `build_candidate_token_view`; Ad Hoc Preview/Test with a candidate; Manage Tasks preview / list with `candidate_id`.
+- **Unchanged:** job_context / chain_context / rubric empty warnings; token substitution values; registry; prompts.
+- **Tests:** `tests/component/utils/test_config.py` `test_logs_and_returns_empty_for_missing_candidate_and_chain_values` passes `{}` with `{$FIRST_NAME} {$CALLER_RESPONSE}` — chain empty still warns, so `any("resolved to empty")` likely still passes. A FIRST_NAME-only empty-`cd` assertion would need Betty. Do not edit `tests/` here.
+
+### What must still hold
+
+- AST-513 AC 5: a job **in scope** missing a phase still yields `""` **and** the job_context empty-token WARNING.
+- AST-513 AC 1–4, 6: five job tokens, formatter, single-job gating, admin job preview, no duplicate registry rows — untouched.
+- Candidate / chain / config / output-type token **values** (including empty string) unchanged; only the candidate-source WARNING is gated.
+- Production `do_task` / Ad Hoc Test **with** a `candidate_id` still warns when `{$FIRST_NAME}` / `{$FULL_NAME}` is empty.
+- Unrecognized `{$FOO}` still left literal.
