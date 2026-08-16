@@ -140,3 +140,12 @@ AC1 persist/no-traceback → S1 (workbench display → sibling #2) | AC2 RESPONS
 - **Recommendation:** Optional clarity only — Betty may assert RESPONSE row content in component tests when she adds object-payload coverage.
 
 context_tokens≈11500
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`
+**Tip (pre-review):** `7fed10d1`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `7fed10d1` | Workbench success body via `_caller_response_blob` before RESPONSE write; Style D found→recorded when `debug=True` |
