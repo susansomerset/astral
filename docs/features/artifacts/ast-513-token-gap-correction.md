@@ -525,3 +525,19 @@ Do **not** skip substitution (leaving `{$FIRST_NAME}` would flip `_enrich_tasks`
 - Candidate / chain / config / output-type token **values** (including empty string) unchanged; only the candidate-source WARNING is gated.
 - Production `do_task` / Ad Hoc Test **with** a `candidate_id` still warns when `{$FIRST_NAME}` / `{$FULL_NAME}` is empty.
 - Unrecognized `{$FOO}` still left literal.
+
+## Joan fix-board (AST-1396)
+
+```
+[board-joan]  CANON: OK
+```
+
+**Triage (read-only):** The `## Proposed change` gates only the two existing `_log.warning(...)` calls in `resolve_tokens`’s `source == "candidate"` branch on `bool(candidate_data)`; substitution stays `""`; job/chain/rubric warning branches are untouched.
+
+**Statute registry skim** (`canon/statutes/README.md` § Harvested corpus): No active statute prescribes empty-token WARNING semantics. Overlapping rows (`astral.config.config-source-of-truth`, `astral.standards.logging-via-utils`, `astral.standards.debug-contract-gated`, `astral.standards.data-raises-caller-logs`) are unaffected — the fix stays in `config.py`, keeps the existing logger, and narrows WARNING emission (not debug-contract lines).
+
+**Patterns:** Parent AST-1395 cites no “Patterns to reuse.” `pattern.config.config-block` still fits (behavior change inside `src/utils/config.py`); no catalog entry documents candidate empty-token warning policy.
+
+AST-513 AC 5 lives in the feature doc (`docs/features/artifacts/ast-513-token-gap-correction.md`), not in `canon/statutes/**` or `canon/patterns/**`. The plan explicitly preserves job-context empty warnings per AC 5; this is a bug-fix carve-out for `{}` (no candidate), not a canon contradiction or new architectural precedent.
+
+context_tokens≈22000
