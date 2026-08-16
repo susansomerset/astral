@@ -114,3 +114,29 @@ Confirm Chuckles estimate: 2 — agree
 
 AC1 persist/no-traceback → S1 | AC2 RESPONSE body → S1 | AC3 plain text → S1 | AC4 debug found→recorded → S1
 (AC1 workbench **display** / pretty-print → sibling #2, not this plan)
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+revision: 1
+**Ticket:** AST-1393
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text` @ `2a87dcd5`
+
+## Traceability
+AC1 persist/no-traceback → S1 (workbench display → sibling #2) | AC2 RESPONSE body → S1 | AC3 plain text → S1 | AC4 debug found→recorded → S1
+
+## Findings
+
+### acceptable — epic split / AC1 display clause
+- **Location:** Plan Boundaries + `## Traceability` note; child Description AC1
+- **Finding:** Child AC1 quotes “workbench shows … as JSON text,” but this plan correctly limits scope to core stringify + store; Admin HTTP/React display is sibling #2. Boundaries and traceability call this out explicitly.
+- **Recommendation:** No plan change required. UAT for #1 should verify RESPONSE persistence and absence of `_store_response_block failed` / `block_data must be a str`; workbench display parity lands with #2.
+
+### acceptable — Stage 1 done-when vs AC2 wording
+- **Location:** Stage 1 “Done when”
+- **Finding:** Done-when specifies `str` into `_store_response_block` and ledger `COMPLETED`; AC2’s “equal to text shown in the workbench” is only fully testable after #2. Store path implies AC2 for Execution History.
+- **Recommendation:** Optional clarity only — Betty may assert RESPONSE row content in component tests when she adds object-payload coverage.
+
+context_tokens≈11500
