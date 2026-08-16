@@ -1866,3 +1866,7 @@ From AST-756 acceptance criteria (unchanged product contract):
 
 Betty **TESTS: REVISE** (sibling gap): `docs/test-bible/core/repo_admin_json.md` — no test pins Estelle repo columns (temp 0, max_tokens 384000, §1 content) or craft_do/like attachment uuids and prompt lengths.
 
+## Radia review-fix (AST-1399)
+
+**Overall:** CLEAN. Surgical Estelle + craft Do/Like seed sync matches plan. `[bug-repro]` N/A (Betty REVISE → sibling gap AST-1400). `## What must still hold` OK. Recommend Review Posted → User Testing (clean-review shortcut).
+
