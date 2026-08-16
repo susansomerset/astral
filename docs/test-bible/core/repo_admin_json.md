@@ -492,3 +492,31 @@ UAT restore: `meteorite_grade_do` / `meteorite_grade_get` grouping-only rows bac
 
 Estelle `topic_menu_preamble_confirm` / `topic_menu_generate` `cache_prompt` vocabulary includes `ideal_day`. Primary: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1075TopicMenuCatalogRows`**.
 
+### AST-1400 · AST-1398
+
+**Parent:** [AST-1398 — Update agent.json and agent_task.json](https://linear.app/astralcareermatch/issue/AST-1398/update-agentjson-and-agent-taskjson). **Publish:** `origin/sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts`.
+
+Gap sibling of **AST-1399** (`[board-betty] TESTS: REVISE`). Pins Estelle repo columns and craft Do/Like attachment identities against `data/admin/agent.json` / `agent_task.json`. AST-786/787 membership and repo-column tests stay as-is (no rewrite of the six-persona fixture mapping). Product/seed already on sibling AST-1399.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Estelle temp / max_tokens / §1 content; craft Do/Like uuids + prompt lengths | `data/admin/agent.json`, `data/admin/agent_task.json` | **`TestAst1400EstelleCraftSeedPins`** (`test_estelle_and_craft_match_ast1399_export` is the `[bug-repro]`) |
+
+**Broken / obsolete this pass:** none — additive pins. Do **not** fold Atlas/pre-existing `expected-agent.json` drift into this class.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Estelle + craft Do/Like seed pins: `tests/component/core/test_repo_admin_json.py::TestAst1400EstelleCraftSeedPins`
+
+**AST-1400** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1400EstelleCraftSeedPins \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate. `[bug-repro]` node is red against pre-AST-1399 (`origin/dev`) seed and green on this tip.
+
