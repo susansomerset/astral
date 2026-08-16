@@ -1870,3 +1870,6 @@ Betty **TESTS: REVISE** (sibling gap): `docs/test-bible/core/repo_admin_json.md`
 
 **Overall:** CLEAN. Surgical Estelle + craft Do/Like seed sync matches plan. `[bug-repro]` N/A (Betty REVISE → sibling gap AST-1400). `## What must still hold` OK. Recommend Review Posted → User Testing (clean-review shortcut).
 
+## Docs-acceptance (AST-1399)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1400**.
