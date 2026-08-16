@@ -133,3 +133,29 @@ Confirm Chuckles estimate: 2 — agree
 
 AC1 workbench shows JSON text / no type overlay → S1 + S2 | AC2 plain-text display → S1 + S2 | AC3 provider failure still failed Test → S1 (500) + S2 (`ERROR:`)
 (AC persist / debug / production ingest → sibling #1, not this plan)
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+revision: 1
+**Ticket:** AST-1394
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation` @ `eed6751e`
+
+## Traceability
+AC1 workbench shows JSON text / no type overlay → S1 + S2 (persist/traceback → sibling #1) | AC2 plain-text display → S1 + S2 (store → sibling #1) | AC3 provider failure still failed Test → S1 (500) + S2 (`ERROR:`)
+
+## Findings
+
+### acceptable — AC1 traceback / AC2 store clauses
+- **Location:** Child Description AC1–AC2; plan `## Traceability` footer
+- **Finding:** Ticket AC text still quotes persist/traceback language from the parent epic; this plan correctly limits scope to Admin HTTP + React display. Boundaries and traceability defer store/debug to AST-1393.
+- **Recommendation:** No plan change. Full epic UAT needs #1 landed first for store/traceback; #2 UAT verifies `response_text` is always `str` and the Response `<pre>` never type-invalidates on `success: true`.
+
+### acceptable — duplicate extract+stringify in API
+- **Location:** Stage 1; sibling #1 leaves `result["parsed_response"]` as the original envelope
+- **Finding:** `agent_payload` extract mirrors core workbench logic because #1 does not expose serialized text on `result`. Importing `_caller_response_blob` keeps the stringify habit aligned with stored RESPONSE text.
+- **Recommendation:** Acceptable given the sibling split. Optional future refactor (out of scope): core returns a dedicated `response_text` field — not required for this ticket.
+
+context_tokens≈17500
