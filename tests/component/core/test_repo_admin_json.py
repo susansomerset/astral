@@ -1189,3 +1189,56 @@ class TestAst1368IdealDayCraftDoCachePrompt:
         ):
             blob = " ".join(str(by[key].get(field) or "") for field in self._PROMPT_FIELDS)
             assert "{$IDEAL_DAY}" not in blob, key
+
+
+class TestAst1400EstelleCraftSeedPins:
+    """AST-1400: pin Estelle repo columns + craft Do/Like attachment identities (AST-1399 seed)."""
+
+    # Attachment export literals from AST-1399 Proposed change — not paraphrased.
+    _ESTELLE_CONTENT_PREFIX = "§1 ESTELLE: Principal Recruiter for the Astral Career Match Team"
+    _CRAFT_PINS = {
+        "craft_do_rubric": {
+            "task_key_uuid": "0e38db78-d740-45dc-af89-891334bfa94b",
+            "user_prompt_len": 31725,
+            "cache_prompt_len": 438,
+        },
+        "craft_like_rubric": {
+            "task_key_uuid": "d1329798-7ada-4efc-b7aa-a31d30c7ab38",
+            "user_prompt_len": 33023,
+            "cache_prompt_len": 18,  # stored `{$CALLER_CACHE_A}\n`
+        },
+    }
+
+    def _estelle(self) -> dict:
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        return next(r for r in rows if r["agent_id"] == "principal_recruiter_estelle")
+
+    def _current_task(self, path: str, task_key: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return next(
+            r for r in rows if r.get("task_key") == task_key and r.get("current") == 1
+        )
+
+    def test_estelle_and_craft_match_ast1399_export(self) -> None:
+        """[bug-repro] Red on origin/dev seed; green after AST-1399 catalog."""
+        estelle = self._estelle()
+        assert "model_code" not in estelle
+        assert estelle["temperature"] == 0
+        assert estelle["max_tokens"] == 384000
+        content = estelle["content"]
+        assert content.startswith(self._ESTELLE_CONTENT_PREFIX)
+        assert len(content) == 3838
+        for task_key, pins in self._CRAFT_PINS.items():
+            row = self._current_task("data/admin/agent_task.json", task_key)
+            assert row["task_key_uuid"] == pins["task_key_uuid"], task_key
+            assert len(row["user_prompt"] or "") == pins["user_prompt_len"], task_key
+            assert len(row["cache_prompt"] or "") == pins["cache_prompt_len"], task_key
+
+    def test_craft_do_like_fixture_lockstep(self) -> None:
+        # Surgical object equality only — not whole-file agent.json ↔ expected-agent.json.
+        for task_key in self._CRAFT_PINS:
+            cat = self._current_task("data/admin/agent_task.json", task_key)
+            fix = self._current_task(
+                "docs/uat-fixtures/AST-756/expected-agent_task.json", task_key,
+            )
+            assert cat == fix, task_key
