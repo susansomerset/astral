@@ -1960,3 +1960,7 @@ Do **not** rewrite `TestAst787AgentRepoJsonSeed.test_repo_rows_match_fixture_rep
 
 **discuss (process):** Betty `docs(AST-1400): plan-fix` touched `docs/features/` — future gap tickets: Chuckles/engineer land plan-fix docs; Betty stays tests/bible + merge-tests. No engineer product action.
 
+## Resolution (AST-1400)
+
+2026-08-16 — no product/seed edit (AST-1399 already on ftr). Vocabulary `code(AST-1400): no product delta — gap is test/bible only` (empty) so `validate-sub-log` sees `code(AST-1400):`. Radia DISCUSS (process): this child's plan-fix docs were Ada `docs(AST-1400): plan-fix`; Betty landed tests/bible + `merge-tests` only — no further product action. `[bug-repro]` green on tip with AST-1399 seed.
+
