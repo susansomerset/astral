@@ -4351,6 +4351,7 @@ LLM_PROVIDER_CONFIG = {
                 "vendor_model": "deepseek-v4-pro",
                 "thinking": True,
                 "reasoning_effort": "max",
+                "max_tokens": 384000,  # AST-1391: hop output floor; not the shared v4-pro SKU default
             },
         },
     },
@@ -4462,6 +4463,20 @@ def resolve_brain_setting_to_deepseek_tier_meta(brain_setting: str) -> Dict[str,
     if not tier.get("vendor_model"):
         raise ValueError(f"No DeepSeek tier mapping for brain_setting {brain_setting!r}")
     return tier
+
+
+def deepseek_brain_max_tokens_floor(brain_setting: str) -> Optional[int]:
+    """AST-1391: DeepSeek tier output-token floor, or None when the tier has none."""
+    validate_allowed_brain_setting(brain_setting)
+    raw = (
+        LLM_PROVIDER_CONFIG["tier_map"]
+        .get("deepseek", {})
+        .get(brain_setting, {})
+        .get("max_tokens")
+    )
+    if raw is None:
+        return None
+    return int(raw)
 
 
 def validate_llm_provider_environment() -> None:
