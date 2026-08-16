@@ -473,6 +473,41 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
   -q
 ```
 
+### AST-1393 · AST-1392 (serialize Ad Hoc success body)
+
+**Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`.
+
+Workbench Test success path stringifies the extracted body via **`_caller_response_blob`** before **`_store_response_block`**: dict/list → compact JSON text; already-`str` unchanged; empty `{}` / `[]` store as `"{}"` / `"[]"` (not `""`). Envelope still extracts **`agent_payload`** when present. Style D found type/shape → recorded text when `debug=True`; quiet when `debug=False`. Does **not** own Admin HTTP/React (sibling #2) or `do_task` schema coerce. Data layer still raises on non-text.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Object payload JSON text + ledger COMPLETED | `src/core/agent.py` (`run_adhoc_workbench_test`) | **`TestAst1393SerializeAdhocSuccessBody::test_success_stores_serialized_text`** (`object-payload`) |
+| Empty dict/list, list payload, plain text, dict without payload key | same | **`test_success_stores_serialized_text`** (remaining ids) |
+| String payload regression | same | **`TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks`**; **`test_success_stores_serialized_text`** (`str-payload`) |
+| Style D found→recorded (dict/list/str/none/other) | same | **`test_debug_true_style_d_found_to_recorded`** |
+| `debug=False` adds no serialize lines | same | **`test_debug_false_adds_no_serialize_lines`** |
+| Failure path unchanged | same | **`TestAst515AdhocWorkbenchLedger::test_failure_marks_ledger_failed_and_stores_failure_response`** |
+
+**Broken / obsolete this pass:** none — existing string-payload AST-515 assertion (`_store_response_block` arg `[3] == "ok"`) still holds.
+
+**Integration:** no existing scenario asserts Ad Hoc workbench RESPONSE stringify — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing string-payload ledger + store: `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+2. Object/list/plain-text stringify + debug Style D: `tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody`
+
+**AST-1393** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-977 · AST-974
 
 `agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
