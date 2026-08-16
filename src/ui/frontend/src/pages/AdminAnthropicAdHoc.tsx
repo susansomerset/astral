@@ -200,7 +200,7 @@ export default function AnthropicAdHoc() {
       })
       .then(data => {
         if (data.success) {
-          setResponse(data.response_text)
+          setResponse(responseBodyToText(data.response_text))
           setTimesheet(data.timesheet || null)
         } else {
           setResponse(`ERROR: ${data.error || "Unknown error"}`)
@@ -247,6 +247,12 @@ export default function AnthropicAdHoc() {
         api("/api/admin/tasks").then(r => r.json()).then(d => setTasks(Array.isArray(d) ? d : []))
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
+  }
+
+  function responseBodyToText(body: unknown): string {
+    if (typeof body === "string") return body
+    if (body == null) return ""
+    try { return JSON.stringify(body) } catch { return String(body) }
   }
 
   function formatResponse(text: string): string {
