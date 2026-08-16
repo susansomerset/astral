@@ -159,3 +159,13 @@ AC1 workbench shows JSON text / no type overlay → S1 + S2 (persist/traceback �
 - **Recommendation:** Acceptable given the sibling split. Optional future refactor (out of scope): core returns a dedicated `response_text` field — not required for this ticket.
 
 context_tokens≈17500
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`
+**Tip (pre-review):** `f685256e`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `e5d49eb9` | Admin Test HTTP `response_text` via `_caller_response_blob` (compact JSON text of payload) |
+| 2 | `f685256e` | Workbench coerces success body to text before `setResponse`; existing `formatResponse` pretty-prints JSON |
