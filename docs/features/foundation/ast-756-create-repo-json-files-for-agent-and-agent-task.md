@@ -1964,3 +1964,24 @@ Do **not** rewrite `TestAst787AgentRepoJsonSeed.test_repo_rows_match_fixture_rep
 
 2026-08-16 — no product/seed edit (AST-1399 already on ftr). Vocabulary `code(AST-1400): no product delta — gap is test/bible only` (empty) so `validate-sub-log` sees `code(AST-1400):`. Radia DISCUSS (process): this child's plan-fix docs were Ada `docs(AST-1400): plan-fix`; Betty landed tests/bible + `merge-tests` only — no further product action. `[bug-repro]` green on tip with AST-1399 seed.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/6ea917a23f58bcf5f60269686740088f/3d1b93ea-b72f-4685-8c84-bf85ac0ea6d4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ce1430ba-4221-4c68-813c-c59094ca59a7/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/6ea917a23f58bcf5f60269686740088f/4d34cc19-6f9a-4b4b-bc49-fe739368be48/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1398 (parent) | ftr/AST-1398-update-agent-and-agent-task-json |
+| AST-1399 | sub/AST-1398/AST-1399-sync-agent-agent-task-seed |
+| AST-1400 | sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts |
+
+**Epic worktree:** `astral-AST-1398/` — one active sub checked out at a time.
