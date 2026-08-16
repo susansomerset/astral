@@ -203,6 +203,24 @@ class TestResolveTokens:
         assert out.strip() == ""
         assert any("resolved to empty" in rec.message for rec in caplog.records)
 
+    def test_empty_candidate_data_does_not_warn_on_first_name(self, caplog) -> None:
+        """[bug-repro] AST-1397 — empty cd must not log candidate-source empty WARNING."""
+        caplog.set_level("WARNING")
+        out = cfg.resolve_tokens("{$FIRST_NAME}", {}, "topic_menu_preamble_confirm")
+        assert out == ""
+        assert not any(
+            "Token {$FIRST_NAME} resolved to empty" in rec.message for rec in caplog.records
+        )
+
+    def test_blank_first_name_on_truthy_view_still_warns(self, caplog) -> None:
+        """AST-1397 — truthy token view with blank first still logs the WARNING."""
+        caplog.set_level("WARNING")
+        out = cfg.resolve_tokens("{$FIRST_NAME}", {"first": "", "full": ""}, "topic_menu_preamble_confirm")
+        assert out == ""
+        assert any(
+            "Token {$FIRST_NAME} resolved to empty" in rec.message for rec in caplog.records
+        )
+
     def test_output_type_token_uses_task_instructions(self) -> None:
         text = cfg.resolve_tokens("{$OUTPUT_INSTRUCTIONS}", {}, "evaluate_jd")
         assert "grade segments" in text.lower() or "Each grade segment" in text
