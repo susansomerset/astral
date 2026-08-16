@@ -2003,6 +2003,24 @@ class TestAst903CraftRubricMaxTokens:
         assert cfg.CRAFT_RUBRIC_MAX_TOKENS == 32000
 
 
+class TestAst1391DeepseekBigMaxTokensFloor:
+    """AST-1391: 384000 lives on DeepSeek Big tier only — not the shared v4-pro SKU default."""
+
+    def test_big_tier_floor_and_helper(self) -> None:
+        big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
+        little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
+        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
+        assert big["max_tokens"] == 384000
+        assert "max_tokens" not in little
+        assert "max_tokens" not in medium
+        assert cfg.DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"] == 16000
+        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG) == 384000
+        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_MEDIUM) is None
+        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_LITTLE) is None
+        with pytest.raises(ValueError, match="Invalid brain_setting"):
+            cfg.deepseek_brain_max_tokens_floor("Small")
+
+
 class TestAst898NewRetryQualifyHolding:
     """AST-898: NEW_RETRY qualify holding; retire VALID_TITLE_RETRY for new traffic."""
 

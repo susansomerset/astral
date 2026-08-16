@@ -828,6 +828,14 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
 
+### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+**`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tier literal + helper | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** |
+
 ---
 
 ### AST-960 · AST-957

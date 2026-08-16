@@ -428,6 +428,33 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
   tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
 ```
 
+### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+**AST-1391:** DeepSeek **Big** `do_task` hops send `max_tokens` of at least **384000** (named `tier_map["deepseek"][BRAIN_BIG]["max_tokens"]`, applied via `deepseek_brain_max_tokens_floor` after the craft 32000 floor). Agent-row values above 384000 still win (floor, not cap). Little / Medium DeepSeek hops and Anthropic Big are unchanged. Craft DeepSeek Big still disables thinking (AST-1380 Decision A). Admin `run_adhoc` / `_resolve_adhoc` out of scope. Config helper + SKU-default guard: **`docs/test-bible/utils/config.md`** § AST-1391.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DeepSeek Big floor over low agent-row | `src/core/agent.py` | **`TestAst1391DeepseekBigOutputFloor::test_deepseek_big_floors_low_agent_row`** |
+| Agent-row above floor wins | same | **`TestAst1391DeepseekBigOutputFloor::test_deepseek_big_agent_row_above_floor_wins`** |
+| Medium / Little unchanged | same | **`test_deepseek_medium_keeps_agent_row`**, **`test_deepseek_little_keeps_agent_row`** |
+| Anthropic Big not 384000 | same | **`test_anthropic_big_does_not_use_deepseek_floor`** |
+| `debug=True` max_tokens line | same | **`test_debug_true_max_tokens_line_shows_floor`** |
+| Craft thinking-off still holds; tokens now Big floor | same | **`TestAst1391DeepseekBigOutputFloor::test_craft_deepseek_big_thinking_off_uses_big_floor`**; **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`** (revised assertion) |
+| Named 384000 + helper None on Little/Medium | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** (`test_config.py`) |
+
+**Broken / obsolete this pass:** `test_craft_get_rubric_deepseek_big_forces_thinking_false` asserted `max_tokens == CRAFT_RUBRIC_MAX_TOKENS` (32000); DeepSeek Big craft now sends the Big floor (AC6).
+
+**Integration:** no existing scenario asserts `do_task` `max_tokens` / DeepSeek Big hops — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  -q
+```
+
 ### AST-977 · AST-974
 
 `agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
