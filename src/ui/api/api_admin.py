@@ -97,6 +97,7 @@ from src.core.agent import (
     resolved_agent_content,
     resolved_task_system,
     _chain_context,
+    _caller_response_blob,
 )
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
@@ -1470,13 +1471,12 @@ def adhoc_test():
     if not result.get("success"):
         return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 500
 
-    response_text = result.get("parsed_response") or ""
-    # For tasks with JSON envelope, do_task auto-extracts agent_payload into parsed_response.
-    # If it's still a dict here (e.g. run_adhoc doesn't do the extraction), pull it out.
-    if isinstance(response_text, dict) and "agent_payload" in response_text:
-        response_text = response_text["agent_payload"] or ""
-    if not isinstance(response_text, str):
-        response_text = str(response_text)
+    parsed = result.get("parsed_response")
+    if isinstance(parsed, dict) and "agent_payload" in parsed:
+        body = parsed["agent_payload"]
+    else:
+        body = parsed
+    response_text = _caller_response_blob(body)
     timesheet = result.get("timesheet", {})
 
     # Decode encoded payload if the task uses a compact encoded output_type
