@@ -49,6 +49,7 @@ from src.utils.config import (
     get_active_llm_provider,
     resolve_brain_setting_to_anthropic_agent_key,
     resolve_brain_setting_to_deepseek_tier_meta,
+    deepseek_brain_max_tokens_floor,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
@@ -2211,6 +2212,10 @@ async def do_task(
         # disable thinking so craft criteria are not starved mid-string.
         if provider == "deepseek" and tier_meta is not None:
             tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
+    if provider == "deepseek":
+        _ds_floor = deepseek_brain_max_tokens_floor(brain_setting)
+        if _ds_floor is not None:
+            agent_max_tokens = max(int(agent_max_tokens), _ds_floor)
 
     _hop_kw = dict(
         chain_entry=chain_entry,
