@@ -149,3 +149,138 @@ context_tokens≈11500
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1 | `7fed10d1` | Workbench success body via `_caller_response_blob` before RESPONSE write; Style D found→recorded when `debug=True` |
+
+## Radia review
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1393
+**Publish ref:** `origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text` @ `a45fff61`
+**Overall:** CLEAN
+**Diff baseline:** `origin/dev...origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text` (4 files: `src/core/agent.py`, `tests/component/core/test_agent.py`, `docs/test-bible/core/agent.md`, `docs/features/agent/ast-1393-serialize-ad-hoc-success-body-to-text.md`)
+
+## Statutes checked
+
+63 active statutes per `canon/statutes/README.md` § Harvested corpus (registry row count; README footer “65” appears stale vs table).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no confidence/grade paths touched |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | workbench path only; `do_task` unchanged |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no schema/vector validation changes |
+| `astral.batch.batch-id-first` | scoped | conforms | existing workbench `batch_id` flow preserved |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no batch-id format changes |
+| `astral.batch.claim-process-release` | scoped | not-applicable | not dispatcher claim/release |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | uses existing `_store_response_block` / agent_data path |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | no config edits |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | no env/secrets |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no debug artifacts |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no spikes |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | no dispatch seed |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no `run_next` changes |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single feature doc for AST-1393 |
+| `astral.git.betty-no-src-or-features` | scoped | not-applicable | Betty merge-tests only on test paths |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | product commit `7fed10d1` touches `src/` only; tests via `merge-tests(AST-1393)` |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | core-only product change |
+| `astral.layers.import-direction` | scoped | conforms | no new imports; existing `get_logger` |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no scripts |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | no UI |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | RESPONSE store, not coat-check lazy fetch |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no consult/render |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | no API surface |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | no seed |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | no seed |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no seed/boot |
+| `astral.seed.define-approved` | scoped | not-applicable | no seed |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no seed |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no seed |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | stringify in core before data; `save_agent_data` still text-only |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no DB/schema |
+| `astral.standards.debug-contract-gated` | scoped | conforms | Style D gated on `debug=True`; `debug_index` / `debug_detail` / `debug_detail_block` |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | reuses `_caller_response_blob`, no second helper |
+| `astral.standards.in-scope-only` | scoped | conforms | single call site; Admin HTTP/React / `do_task` untouched |
+| `astral.standards.logging-via-utils` | scoped | conforms | `get_logger(__name__, debug_flag=True)` |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | applies to `src/**` only; product symbols unchanged |
+| `astral.standards.no-cross-contamination` | scoped | conforms | no unrelated subsystem edits |
+| `astral.standards.no-hardcoded-sets` | scoped | not-applicable | no hardcoded sets |
+| `astral.standards.public-then-helpers` | scoped | not-applicable | no new public API surface |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no utils changes |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no state transitions |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job states |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no run chain |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no frontend |
+| `astral.ui.naming-conventions` | scoped | not-applicable | no UI |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | no server config |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1393): origin/tests 4667aad` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `docs` / `test` / `merge-tests` vocabulary |
+| `orch.git.flow-direction-inviolable` | universal | conforms | sub branch off ftr epic topology |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1392/AST-1393-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | no checkout violations observed |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commits |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref on `sub/…` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1392 worktree |
+| `orch.git.three-permanent-branches` | universal | conforms | dev/tests/sub flow |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | no product-policy forks |
+| `orch.pipeline.plan-is-bible` | universal | conforms | implementation matches Joan-approved Stage 1 |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | n/a to diff |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed → review gate satisfied |
+| `orch.roles.archie-approves-statutes` | universal | conforms | n/a |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Betty landed tests + bible; engineer did not author test-tree in `code()` commit |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Ada |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Ada still assignee at Tests Passed |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | no ban evasion observed |
+
+**C4 straggler:** Joan plan-rubric APPROVED attached; no `Excluded` statute list in artifact — nothing to straggle.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan cites statutes (`dry-and-focused-functions`, `data-raises-caller-logs`), not `canon/patterns/**` catalog entries |
+
+## Plan adherence
+
+Stage 1 implemented verbatim in `run_adhoc_workbench_test` success path (`src/core/agent.py` ~3548–3587): extract `agent_payload` when present → `_caller_response_blob(body)` → `_store_response_block` with `str`; Style D (`debug_index` 1/1, identifier=`workbench_task_key`, found type/shape, `debug_detail_block(response_text)`) only when `debug=True`; failure branch, `do_task`, Admin API/React, and data-layer contract unchanged. Empty `{}`/`[]` now persist as `"{}"`/`"[]"` per documented plan decision (not the old `or ""` collapse). Estimate **2** matches footprint. Sibling #2 boundary respected — no `api_admin` or frontend diffs.
+
+Betty manifest (`TestAst515AdhocWorkbenchLedger`, `TestAst1393SerializeAdhocSuccessBody`) aligns with `docs/test-bible/core/agent.md` AST-1393 rows: object/list/str/plain-text/empty cases, debug Style D, `debug=False` quiet.
+
+### C6 judgment aids (§5a–§5g)
+
+| Lens | Result |
+|------|--------|
+| Imports (B1) | OK — no new imports |
+| Layer compliance (B2) | OK — core-only |
+| Silent failure (D2) | Pre-existing `except Exception: logger.debug("_store_response_block failed")` retained per plan; see advisory |
+| Fallbacks (D3) | OK — intentional `{}`/`[]` JSON text per plan decision |
+| Logging (E1) / §5f debug | OK — gated Style D; no `[DEBUG]` hand-roll |
+| Cross-ticket (§5d) | OK — sibling #2 scope not smuggled |
+| §5g external | n/a — no `src/external/` diff |
+
+## Findings
+
+### advisory — broad `except` log label
+- **Location:** `src/core/agent.py` `run_adhoc_workbench_test` success-path `try`/`except` (~3554–3587)
+- **Finding:** The `try` now wraps `_caller_response_blob`, debug emission, and `_store_response_block`, but the `except` message remains `"_store_response_block failed"`. Serialize/debug failures would log under that label. Plan-mandated structure; `_caller_response_blob` is unlikely to raise on normal payloads.
+- **Recommendation:** No fix-now. Optional follow-up (out of AST-1393 scope): widen message to `"adhoc success serialize/store failed"` if this path ever needs sharper ops signal.
+
+### advisory — store failure still yields COMPLETED ledger
+- **Location:** same function, post-`except` ledger update (~3591–3601)
+- **Finding:** Pre-existing: swallowed store exception does not flip ledger to FAILED. Not introduced by this ticket.
+- **Recommendation:** Defer; not AST-1393 scope.
+
+## What's solid
+
+- Root cause fix is minimal and at the right layer: stringify before the data contract, not weakening `save_agent_data`.
+- Reuses `_caller_response_blob` — same JSON habit as elsewhere in `agent.py`.
+- Betty tests cover the crash repro (object payload → compact JSON `str`), regression (string payload unchanged), and debug contract without log-string golden brittleness.
+- Debug instrumentation matches AST-538 Style D: index 1/1, found→recorded, gated on `debug=True`.
+
+## Frame diff
+
+(none) — diff matches Joan-approved plan Stage 1; no scope/frame drift.
+
+## Notes
+
+- Joan plan-rubric: APPROVED @ `2a87dcd5`; no excluded-statute table in attachment.
+- UAT note for Chuckles/Susan: AC1 “workbench shows JSON text” display parity is sibling #2; this ticket delivers store-side stringify + debug only.
+
+context_tokens≈28000
