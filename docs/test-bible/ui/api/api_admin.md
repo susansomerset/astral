@@ -536,3 +536,33 @@ Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` 
   tests/component/utils/test_config.py::TestAst1214DispatchAdminDefaultsWidened \
   -q
 ```
+
+### AST-1394 · AST-1392 (show Ad Hoc Test body without type invalidation)
+
+**Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`.
+
+`POST /api/admin/adhoc/test` stringifies the extracted workbench body via **`_caller_response_blob`** so `response_text` is always a `str` (compact JSON for dict/list; already-`str` unchanged). Envelope still extracts **`agent_payload`** when present. Failure stays HTTP 500 / `success: false` — no fake success body. Persist/debug: **AST-1393**. Workbench chrome: **`docs/test-bible/frontend/pages.md`** § AST-1394.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Object/list/plain/numeric `response_text` | `src/ui/api/api_admin.py` (`adhoc_test`) | **`TestAst1394AdhocTestResponseText::test_success_response_text_is_serialized_str`** |
+| Provider failure 500, no `response_text` | same | **`test_failure_stays_500_without_success_body`**; existing **`TestAdhocRoutes::test_adhoc_preview_and_test`** |
+| String payload + numeric regression | same | **`TestAdhocRoutes::test_adhoc_preview_and_test`** (`"payload"` / `"123"`) |
+
+**Broken / obsolete this pass:** none — existing string/numeric assertions still hold.
+
+**Integration:** no existing scenario asserts Ad Hoc Test `response_text` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing string/numeric + 500: `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test`
+2. Object/list/plain stringify + failure envelope: `tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText`
+
+**AST-1394** narrowed run (API; page chrome in **`frontend/pages.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  -q
+```
