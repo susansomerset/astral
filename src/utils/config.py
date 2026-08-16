@@ -5857,11 +5857,12 @@ def resolve_tokens(
             if spec.get("serialize") == "resume_sections_json":
                 from src.core.candidate import format_base_resume_for_token
                 out = format_base_resume_for_token(candidate_data)
-                if not out:
+                # AST-1396: {} means no candidate in context — empty is expected, not a missing-name bug.
+                if not out and candidate_data:
                     _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
                 return out
             raw = _walk_dot_path(candidate_data, spec["path"])
-            if raw is None or raw == "" or raw == []:
+            if (raw is None or raw == "" or raw == []) and candidate_data:
                 _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
             return _value_to_str(raw)
         if spec["source"] == "config":
