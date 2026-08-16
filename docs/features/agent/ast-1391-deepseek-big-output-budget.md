@@ -125,3 +125,13 @@ No `fix-now` or `discuss` findings. In-session R3: universal orchestration set +
 **R6 checklist (summary):** Definition fidelity ✓ — two-file footprint (`config.py` literal + `agent.py` floor), layer imports respected, 384000 not on shared v4-pro SKU default, craft/AST-1380 ordering preserved, `run_adhoc`/`_resolve_adhoc` explicitly out of boundary, no scope creep into siblings. Plan matches current `do_task` insertion site (post craft floor, pre debug/provider call).
 
 context_tokens≈42000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1390/AST-1391-deepseek-big-output-budget`
+**Tip (pre-review):** `aa2bd119`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `06e62678` | DeepSeek Big tier `max_tokens: 384000`; `deepseek_brain_max_tokens_floor` |
+| 2 | `aa2bd119` | `do_task` applies that floor after the craft 32000 / AST-1380 block |
