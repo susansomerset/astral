@@ -1859,3 +1859,10 @@ From AST-756 acceptance criteria (unchanged product contract):
 - Export still writes current rows only, repo columns only (`agent`: no `model_code`; `brain_setting` authoritative — AST-787 / `REPO_ADMIN_JSON_CONFIG`).
 - Six persona ids (AST-787): `ats_expert_atlas`, `college_intern_ruth`, `content_writer_judith`, `job_analyst_grace`, `principal_recruiter_estelle`, `web_scraper_laslo`.
 - Agent/agent_task seed stays non-empty repo JSON (`astral.seed.agent-tables-in-repo-json`).
+
+## Joan fix-board (AST-1399)
+
+**CANON: OK** — data-only seed sync inside the existing AST-756 repo-JSON contract. No statute or pattern update. F3 not triggered.
+
+Betty **TESTS: REVISE** (sibling gap): `docs/test-bible/core/repo_admin_json.md` — no test pins Estelle repo columns (temp 0, max_tokens 384000, §1 content) or craft_do/like attachment uuids and prompt lengths.
+
