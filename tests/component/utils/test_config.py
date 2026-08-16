@@ -1085,7 +1085,7 @@ class TestAst492LlmBrainTierConfig:
         assert medium["thinking"] is False
         big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
         assert big["vendor_model"] == "deepseek-v4-pro"
-        assert big["thinking"] is True
+        assert big["thinking"] is False
 
     def test_infer_brain_setting_from_legacy_model_code(self) -> None:
         assert cfg.infer_brain_setting_from_legacy_model_code("claude-haiku-4-5") == cfg.BRAIN_LITTLE

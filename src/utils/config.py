@@ -4349,7 +4349,7 @@ LLM_PROVIDER_CONFIG = {
             },
             BRAIN_BIG: {
                 "vendor_model": "deepseek-v4-pro",
-                "thinking": True,
+                "thinking": False,
                 "reasoning_effort": "max",
                 "max_tokens": 384000,  # AST-1391: hop output floor; not the shared v4-pro SKU default
             },

@@ -33,7 +33,7 @@ describe("AdminAnthropicAdHoc", () => {
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
-      if (url === "/api/admin/tasks") return { json: async () => tasks } as Response
+      if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => tasks } as Response
       if (url.startsWith("/api/admin/adhoc/entities")) {
         return { ok: true, json: async () => ({ entity_type: "job", trigger_state: "NEW", batch_mode: false, entities: [{ id: "job-1", label: "Job 1" }] }) } as Response
       }
@@ -75,6 +75,14 @@ describe("AdminAnthropicAdHoc", () => {
     await userEvent.click(within(saveGroup).getByText("task_b"))
   }, 20000)
 
+  it("lists tasks against the selected candidate id", async () => {
+    mockApi()
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() =>
+      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/admin/tasks?candidate_id=c1")).toBe(true),
+    )
+  }, 15000)
+
   it("requires an agent before preview and test", async () => {
     mockApi()
     renderWithProviders(<AnthropicAdHoc />)
@@ -92,7 +100,7 @@ describe("AdminAnthropicAdHoc", () => {
     installBaseApiMocks(mockedApi, async (url: string) => {
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
-      if (url === "/api/admin/tasks") return { json: async () => unsortedTasks } as Response
+      if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => unsortedTasks } as Response
       if (url.startsWith("/api/admin/adhoc/entities")) {
         return {
           ok: true,
