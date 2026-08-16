@@ -1873,3 +1873,83 @@ Betty **TESTS: REVISE** (sibling gap): `docs/test-bible/core/repo_admin_json.md`
 ## Docs-acceptance (AST-1399)
 
 No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1400**.
+
+## Bug: AST-1400 — Gap: Estelle/craft seed asserts
+
+Sibling **gap** child of AST-1399. Product/seed already on `origin/ftr/AST-1398-update-agent-and-agent-task-json` (`code(AST-1399)`). This block is bible + tests only — do not re-plan AST-1399's seed delta (see `## Bug: AST-1399` Proposed change).
+
+Source verdict: AST-1399 `[board-betty] TESTS: REVISE` — `docs/test-bible/core/repo_admin_json.md` has no pin for Estelle repo columns or craft Do/Like attachment uuids / prompt lengths.
+
+### As-is
+
+`TestAst787AgentRepoJsonSeed` / `TestAst786AgentTaskRepoJsonSeed` (and the bible page `docs/test-bible/core/repo_admin_json.md`) do not assert Estelle `temperature` `0`, `max_tokens` `384000`, `§1` content, or `craft_do_rubric` / `craft_like_rubric` attachment uuids and prompt lengths. AST-1399's seed can regress without a red test.
+
+### To-be
+
+Bible + matching component tests pin those literals against `data/admin/agent.json` and `data/admin/agent_task.json`. At least one repro-shaped case is red against the pre-AST-1399 seed (`origin/dev`) and green on this tip (ftr with AST-1399).
+
+### Repro
+
+On `origin/dev` (pre-AST-1399 catalog):
+
+| object | field | pre-fix |
+| --- | --- | --- |
+| `principal_recruiter_estelle` | `temperature` | `0.3` |
+| same | `max_tokens` | `16000` |
+| same | `content` | starts `# ESTELLE:` (length 3804) |
+| `craft_do_rubric` | `task_key_uuid` | `e0ceba1e-afd5-41ef-a568-b98ba9f1e29a` |
+| same | `user_prompt` length | 16441 |
+| `craft_like_rubric` | `task_key_uuid` | `2482fa44-8545-4f6a-a1b4-4ae3d1b80718` |
+| same | `user_prompt` length | 20548 |
+
+A test that asserts the to-be literals below fails on that tree and passes after AST-1399's seed.
+
+### Root cause
+
+AST-1399 was a data-only seed sync. Existing seed tests lock the six-id set, repo columns (no `model_code`), and 52-key catalog membership — not this export's Estelle settings or craft Do/Like bodies. Betty flagged that hole at the board; this gap child is the coverage, not a second product fix.
+
+### Proposed change
+
+Betty-owned paths only (`astral.git.engineer-test-tree-ban`). Engineer does **not** commit `tests/` or `docs/test-bible/**`. No `data/admin/**`, no `src/`. Publish to `origin/sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts`.
+
+**1. Tests** — add class `TestAst1400EstelleCraftSeedPins` in `tests/component/core/test_repo_admin_json.py`. Read catalog JSON from disk (same style as `TestAst787AgentRepoJsonSeed`). Pin **exactly** these literals from AST-1399 Proposed change / the AST-1398 export (do not paraphrase content; `startswith` + length for long strings):
+
+`data/admin/agent.json` current `principal_recruiter_estelle`:
+
+| field | assert |
+| --- | --- |
+| `temperature` | `0` (JSON number) |
+| `max_tokens` | `384000` |
+| `content` | `startswith("§1 ESTELLE: Principal Recruiter for the Astral Career Match Team")` and `len == 3838` |
+| `model_code` | absent |
+
+`data/admin/agent_task.json` `current == 1` rows:
+
+| `task_key` | `task_key_uuid` | `user_prompt` len | `cache_prompt` len |
+| --- | --- | --- | --- |
+| `craft_do_rubric` | `0e38db78-d740-45dc-af89-891334bfa94b` | 31725 | 438 |
+| `craft_like_rubric` | `d1329798-7ada-4efc-b7aa-a31d30c7ab38` | 33023 | unchanged vs AST-1399 (`{$CALLER_CACHE_A}\n` — pin length of that field as stored) |
+
+Tag the Estelle (or combined) method so qa-fix can mark `[bug-repro]` on its own first line: it must fail against the Repro table's pre-fix seed and pass on this tip.
+
+Optional lockstep (same class): those two `agent_task` objects are equal in `docs/uat-fixtures/AST-756/expected-agent_task.json` (byte-twin after AST-1399). Do **not** require whole-file `agent.json` ↔ `expected-agent.json` identity (fixture still carries `model_code`; five other personas still drift — out of scope).
+
+Do **not** rewrite `TestAst787AgentRepoJsonSeed.test_repo_rows_match_fixture_repo_column_mapping` to force all six fixture personas onto catalog — that failure is Atlas/pre-existing drift, not this gap.
+
+**2. Bible** — append `### AST-1400 · AST-1398` to `docs/test-bible/core/repo_admin_json.md`: coverage table naming `TestAst1400EstelleCraftSeedPins`, narrowed `run_component_tests.sh` command for that class, note that AST-786/787 membership/column tests stay as-is.
+
+**Done when:** the new class is green on this sub (AST-1399 seed present); the repro method is red if catalog Estelle/craft rows are reverted to the Repro table; bible section exists; no product/seed files in the diff.
+
+### Blast radius
+
+- Sibling AST-1399 seed is the fixture under test — do not edit it.
+- `TestAst786AgentTaskRepoJsonSeed` (52 keys) and `TestAst787AgentRepoJsonSeed` (six ids, repo columns, startup apply) stay green without assertion edits.
+- `TestAst1368IdealDayCraftDoCachePrompt` still sees Ideal Day in `craft_do_rubric.cache_prompt` (AST-1399's §2 live-content rewrite must still include `{$IDEAL_DAY}` — length 438 pin implies that; if the length assert fails, product is wrong, not this test).
+- AST-1211 evaluate/craft meteorite fixture lockstep untouched.
+
+### What must still hold
+
+- AST-1399 seed contract: six personas, 52 task rows, no `model_code` on catalog `agent.json`, no new task keys.
+- AST-756 AC: startup upsert / Revert to file still apply checked-in JSON; `sync_agent_tasks` does not overwrite repo-loaded prompts.
+- Engineer commits still cannot include test-tree paths; this child's landing is Betty's bible + tests only.
+- Joan CANON: OK on AST-1399 — no statute/pattern edit here.
