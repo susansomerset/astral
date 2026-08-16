@@ -135,3 +135,168 @@ context_tokens≈42000
 |-------|--------|---------|
 | 1 | `06e62678` | DeepSeek Big tier `max_tokens: 384000`; `deepseek_brain_max_tokens_floor` |
 | 2 | `aa2bd119` | `do_task` applies that floor after the craft 32000 / AST-1380 block |
+
+## Radia review
+
+# Radia review — AST-1391
+
+**Publish ref:** `sub/AST-1390/AST-1391-deepseek-big-output-budget` @ `d649ec23`  
+**Diff baseline:** `origin/dev...origin/sub/AST-1390/AST-1391-deepseek-big-output-budget`  
+**Internal grade:** **CLEAN**
+
+---
+
+## Summary
+
+Focused two-file product change: `384000` on DeepSeek `BRAIN_BIG` in `tier_map`, `deepseek_brain_max_tokens_floor()` helper, and a `do_task` floor applied **after** the AST-903 craft floor and AST-1380 thinking-off copy. Betty landed component tests + bible updates on a separate commit; engineer code commits touch only `src/utils/config.py` and `src/core/agent.py`.
+
+Implementation matches Joan’s APPROVED plan (Stages 1–2), parent boundary (no SKU default bump, no `run_adhoc` / Admin), and AC1–AC6 coverage in the test manifest.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `384000` lives on `LLM_PROVIDER_CONFIG["tier_map"]["deepseek"][BRAIN_BIG]`; helper reads live dict — no second drifting constant in `agent.py`. |
+| `pattern.layers.import-discipline` | conforms | `core` imports one `utils` helper; no `external`/`data`/`ui` layer touches. |
+
+---
+
+## Plan adherence
+
+- **Stage 1:** `max_tokens: 384000` on Big only; Little/Medium lack key; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` unchanged at `16000`; helper matches plan shape.
+- **Stage 2:** Floor inserted immediately after craft/AST-1380 block, before debug emission and provider calls; uses `deepseek_brain_max_tokens_floor(brain_setting)` (not stubbed `tier_meta`); `send_to_deepseek` still receives explicit `max_tokens=agent_max_tokens`.
+- **Boundaries:** No edits to `deepseek.py`, `anthropic.py`, Admin adhoc paths, thinking/temperature/`PROVIDER_CALL_BUDGET`. Estimate **3** still fits footprint (config + hop + Betty tests).
+- **Joan straggler (C4):** Plan verdict attached; no `Excluded` statute list in artifact — no straggler callouts.
+
+---
+
+## C6 judgment aids (§5a–§5g)
+
+| Lens | Result |
+|------|--------|
+| Imports (B1) | Top-level `utils` import only. **Advisory:** `deepseek_brain_max_tokens_floor` sits after `resolve_*` imports rather than strict alpha — cosmetic only. |
+| Layer compliance (B2) | Clean — core→utils only. |
+| Silent failure (D2) | None introduced. |
+| Fallbacks (D3) | `.get("max_tokens")` → `None` is correct floor-absent semantics, not a false-present sentinel. |
+| Logging (E1) | No new `print()` / raw `logging`; existing `if debug:` `[DEBUG] do_task` + `debug_detail` `llm_params` lines run after floor (AC5). |
+| Debug contract (§5f) | Not triggered for new emission — reuses gated existing paths. |
+| External cleanliness (§5g) | No `src/external/` diff — n/a. |
+| Cross-ticket (§5d) | No sibling scope smuggled; `run_adhoc` untouched. |
+
+---
+
+## Findings
+
+### fix-now
+
+*(none)*
+
+### discuss
+
+*(none)*
+
+### advisory
+
+- **Import ordering** — `src/core/agent.py` import block: `deepseek_brain_max_tokens_floor` could sit before `resolve_brain_setting_to_deepseek_tier_meta` for strict alphabetical order; plan allowed “alphabetically-adjacent” — no functional impact.
+
+---
+
+## What's solid
+
+- Floor keyed on resolved `brain_setting` avoids tests that stub `tier_meta` without `max_tokens` silently skipping the product floor (plan Decision).
+- Floor-not-cap semantics exercised (`400000` agent row wins).
+- Craft DeepSeek Big: AST-1380 thinking-off preserved; `max_tokens` now Big floor, not `CRAFT_RUBRIC_MAX_TOKENS` (AC6).
+- `tier_meta` may now carry `max_tokens` from `resolve_brain_setting_to_deepseek_tier_meta`, but `send_to_deepseek` still reads only `thinking` / `reasoning_effort` — core owns the resolved int per `astral.agent.do-task-delegation`.
+
+---
+
+## Frame diff
+
+`(none)` — product footprint matches Joan frame (`config.py` + `agent.py`). Betty-added `tests/` + `docs/test-bible/**` are pipeline-expected, not engineer scope creep.
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No confidence/scoring paths in diff. |
+| `astral.agent.do-task-delegation` | scoped | conforms | Core resolves `agent_max_tokens` before `send_to_deepseek` / `send_to_anthropic`. |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector logic touched. |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch claim/ledger changes. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch id formatting. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/process/release paths. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No entity response storage changes. |
+| `astral.config.config-source-of-truth` | scoped | conforms | `384000` on `tier_map` Big tier; helper reads live config. |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env handling. |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifacts. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | No dispatch seed paths. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No run-next chain edits. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single feature doc `ast-1391-deepseek-big-output-budget.md`. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty commit limited to tests + test-bible. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer commits (`06e62678`, `aa2bd119`) touch `src/` only. |
+| `astral.layers.core-vs-external-bright-line` | scoped | conforms | Token budget resolved in core; external unchanged. |
+| `astral.layers.import-direction` | scoped | conforms | `agent.py` → `utils.config` only. |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/` changes. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | not-applicable | No UI changes. |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No coat-check paths. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No consult/render paths. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | not-applicable | No API auth surfaces. |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed JSON edits. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog seed changes. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | Hot-path change is runtime config read — not boot seed. |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed workflow. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No operator row handling. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage join logic. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data-layer changes. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No DB/migration changes. |
+| `astral.standards.debug-contract-gated` | scoped | conforms | No new ungated debug emission; existing lines behind `debug=True`. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Single-purpose helper; minimal `do_task` insertion. |
+| `astral.standards.in-scope-only` | scoped | conforms | Product diff limited to planned config + hop sites. |
+| `astral.standards.logging-via-utils` | scoped | conforms | Uses existing `get_logger` / `debug_detail` patterns. |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `AST-1391` traceability in comments only. |
+| `astral.standards.no-cross-contamination` | scoped | conforms | No unrelated feature bleed. |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | Literal in config block, not scattered in core. |
+| `astral.standards.public-then-helpers` | scoped | conforms | Helper placed after `resolve_brain_setting_to_deepseek_tier_meta`. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No utils→data late imports. |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state transitions. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state machine edits. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No daisy-chain run logic. |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | No frontend files. |
+| `astral.ui.naming-conventions` | scoped | not-applicable | No UI naming. |
+| `astral.ui.single-gunicorn-worker` | scoped | not-applicable | No gunicorn/deploy config. |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1391)` commit present. |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `test` / `docs` / `merge-tests` prefixes used. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Work on `sub/AST-1390/...`; not landing on `dev` directly. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child `sub/` under parent AST-1390. |
+| `orch.git.merge-on-checkout` | universal | conforms | No merge violations observed in review scope. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history; no force/rebase signs. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | Publish ref is `sub/...`, not agent-named branch. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Review in `astral-AST-1390` worktree. |
+| `orch.git.three-permanent-branches` | universal | conforms | Diff vs `origin/dev` only. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Product choice (Big floor, skip adhoc) already in approved plan. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Implementation tracks staged plan. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Single-child review scope. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Spawned at Tests Passed. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | Joan APPROVED plan-rubric. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Tests/bible on Betty commit. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Ada through review. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Engineer remains assignee at Tests Passed. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path commits in product tree. |
+
+**Sweep count:** 64 active statutes scored in-session (per `canon/statutes/README.md` harvested table).
+
+---
+
+## Notes
+
+- Joan plan-rubric verdict attached; no `Excluded` statute list — C4 straggler check clear.
+- Recommend **Review Posted** → **resolve-child** not required (PROCEED); datt may advance to **User Testing** per PROCEED mapping.
+- Downstream only if Susan wants Admin adhoc parity later — explicitly out of AST-1391 boundary; do not expand scope here.
+
+context_tokens≈38000
+
+---
