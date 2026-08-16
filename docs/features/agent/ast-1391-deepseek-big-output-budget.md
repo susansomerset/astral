@@ -101,3 +101,27 @@ Do **not** edit: `src/external/deepseek.py`, `src/external/anthropic.py`, `DEEPS
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1391
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1390/AST-1391-deepseek-big-output-budget` @ `a1d04410`
+
+## Traceability
+AC1→S1,S2 | AC2→S2 | AC3→S1,S2 | AC4→S2 | AC5→S2 | AC6→S2
+
+## Findings
+
+### acceptable
+- **Location:** Stage 2 step 6 — `test_craft_get_rubric_deepseek_big_forces_thinking_false`
+- **Finding:** Craft DeepSeek Big test currently asserts `max_tokens == CRAFT_RUBRIC_MAX_TOKENS` (32000); post-build it should expect 384000 per AC6.
+- **Recommendation:** Engineer leaves test red; Betty updates assertion on qa-child — consistent with `astral.git.engineer-test-tree-ban` and plan boundary.
+
+No `fix-now` or `discuss` findings. In-session R3: universal orchestration set + scoped statutes (`astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.agent.do-task-delegation`, `astral.layers.core-vs-external-bright-line`, `astral.layers.import-direction`, `astral.standards.in-scope-only`, `astral.standards.debug-contract-gated`) all **conform**. Cited patterns (`pattern.config.config-block`, `pattern.layers.import-discipline`) match solution shape.
+
+**R6 checklist (summary):** Definition fidelity ✓ — two-file footprint (`config.py` literal + `agent.py` floor), layer imports respected, 384000 not on shared v4-pro SKU default, craft/AST-1380 ordering preserved, `run_adhoc`/`_resolve_adhoc` explicitly out of boundary, no scope creep into siblings. Plan matches current `do_task` insertion site (post craft floor, pre debug/provider call).
+
+context_tokens≈42000
