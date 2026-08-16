@@ -1974,3 +1974,32 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1394 · AST-1392 (show Ad Hoc Test body without type invalidation)
+
+**Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1394-show-ad-hoc-test-body-without-type-invalidation`.
+
+Agent Ad Hoc **Test** success path coerces `response_text` via **`responseBodyToText`** before `setResponse`, then existing **`formatResponse`** pretty-prints JSON strings. Nested object/list bodies still display as JSON text — never an `ERROR:` overlay and never a React child type crash. Plain text is unchanged. HTTP / `success: false` still set `ERROR:`. API stringify: **`docs/test-bible/ui/api/api_admin.md`** § AST-1394.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page first paint + compact JSON pretty-print (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — existing `previews, tests, fetches prompts, and saves as`; **`AST-1394: object payload JSON text pretty-prints`** |
+| Nested object defense (not ERROR) | same | **`AST-1394: nested object response_text still displays`** |
+| Plain text unchanged | same | **`AST-1394: plain text displays unchanged`** |
+| Failure overlay | same | **`AST-1394: provider failure still shows ERROR overlay`** |
+
+**Broken / obsolete this pass:** none — existing `"ok": true` pretty-print case still holds.
+
+**Integration:** no existing scenario asserts Agent Ad Hoc Test display — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page (**§6c**) + object/plain/failure chrome: `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+
+**AST-1394** narrowed run (page; API in **`ui/api/api_admin.md`**):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
+```
+
