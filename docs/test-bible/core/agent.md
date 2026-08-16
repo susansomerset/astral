@@ -430,7 +430,7 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
 
 ### AST-1380 / AST-1383 · AST-1379 (fix + gap)
 
-**AST-1380** Decision A: for `CRAFT_RUBRIC_UI_TASK_KEYS` on DeepSeek, `do_task` forces `tier_meta.thinking=False` / `reasoning_effort=None` (Big thinking otherwise shares the craft `max_tokens` floor and starves mid-`criteria[].content`) while keeping the AST-903 floor. Provider-failure RESPONSE rows use `_provider_failure_audit_body` (`Provider failed …` / optional `(failure_class)` + `--- model response ---`) so a truncated success-shaped envelope cannot look like a finished hop. Gap **AST-1383** lands this bible + component coverage (product stays on AST-1380).
+**AST-1380** Decision A: for `CRAFT_RUBRIC_UI_TASK_KEYS` on DeepSeek, `do_task` forces `tier_meta.thinking=False` / `reasoning_effort=None` (Big thinking otherwise shares the craft `max_tokens` floor and starves mid-`criteria[].content`) while keeping the AST-903 floor. Provider-failure RESPONSE rows use `_provider_failure_audit_body` (`Provider failed …` / optional `(failure_class)` + `--- model response ---`) so a truncated success-shaped envelope cannot look like a finished hop. Gap **AST-1383** lands this bible + component coverage (product stays on AST-1380). **AST-1391:** that craft DeepSeek Big hop still forces thinking off; `max_tokens` is now the DeepSeek Big floor (not `CRAFT_RUBRIC_MAX_TOKENS`).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -445,6 +445,68 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
   tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
   tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor
 ```
+
+### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+**AST-1391:** DeepSeek **Big** `do_task` hops send `max_tokens` of at least **384000** (named `tier_map["deepseek"][BRAIN_BIG]["max_tokens"]`, applied via `deepseek_brain_max_tokens_floor` after the craft 32000 floor). Agent-row values above 384000 still win (floor, not cap). Little / Medium DeepSeek hops and Anthropic Big are unchanged. Craft DeepSeek Big still disables thinking (AST-1380 Decision A). Admin `run_adhoc` / `_resolve_adhoc` out of scope. Config helper + SKU-default guard: **`docs/test-bible/utils/config.md`** § AST-1391.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| DeepSeek Big floor over low agent-row | `src/core/agent.py` | **`TestAst1391DeepseekBigOutputFloor::test_deepseek_big_floors_low_agent_row`** |
+| Agent-row above floor wins | same | **`TestAst1391DeepseekBigOutputFloor::test_deepseek_big_agent_row_above_floor_wins`** |
+| Medium / Little unchanged | same | **`test_deepseek_medium_keeps_agent_row`**, **`test_deepseek_little_keeps_agent_row`** |
+| Anthropic Big not 384000 | same | **`test_anthropic_big_does_not_use_deepseek_floor`** |
+| `debug=True` max_tokens line | same | **`test_debug_true_max_tokens_line_shows_floor`** |
+| Craft thinking-off still holds; tokens now Big floor | same | **`TestAst1391DeepseekBigOutputFloor::test_craft_deepseek_big_thinking_off_uses_big_floor`**; **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`** (revised assertion) |
+| Named 384000 + helper None on Little/Medium | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** (`test_config.py`) |
+
+**Broken / obsolete this pass:** `test_craft_get_rubric_deepseek_big_forces_thinking_false` asserted `max_tokens == CRAFT_RUBRIC_MAX_TOKENS` (32000); DeepSeek Big craft now sends the Big floor (AC6).
+
+**Integration:** no existing scenario asserts `do_task` `max_tokens` / DeepSeek Big hops — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1391DeepseekBigOutputFloor \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false \
+  tests/component/utils/test_config.py::TestAst1391DeepseekBigMaxTokensFloor \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor \
+  -q
+```
+
+### AST-1393 · AST-1392 (serialize Ad Hoc success body)
+
+**Parent:** [AST-1392](https://linear.app/astralcareermatch/issue/AST-1392). **Publish:** `origin/sub/AST-1392/AST-1393-serialize-ad-hoc-success-body-to-text`.
+
+Workbench Test success path stringifies the extracted body via **`_caller_response_blob`** before **`_store_response_block`**: dict/list → compact JSON text; already-`str` unchanged; empty `{}` / `[]` store as `"{}"` / `"[]"` (not `""`). Envelope still extracts **`agent_payload`** when present. Style D found type/shape → recorded text when `debug=True`; quiet when `debug=False`. Does **not** own Admin HTTP/React (sibling #2) or `do_task` schema coerce. Data layer still raises on non-text.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Object payload JSON text + ledger COMPLETED | `src/core/agent.py` (`run_adhoc_workbench_test`) | **`TestAst1393SerializeAdhocSuccessBody::test_success_stores_serialized_text`** (`object-payload`) |
+| Empty dict/list, list payload, plain text, dict without payload key | same | **`test_success_stores_serialized_text`** (remaining ids) |
+| String payload regression | same | **`TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks`**; **`test_success_stores_serialized_text`** (`str-payload`) |
+| Style D found→recorded (dict/list/str/none/other) | same | **`test_debug_true_style_d_found_to_recorded`** |
+| `debug=False` adds no serialize lines | same | **`test_debug_false_adds_no_serialize_lines`** |
+| Failure path unchanged | same | **`TestAst515AdhocWorkbenchLedger::test_failure_marks_ledger_failed_and_stores_failure_response`** |
+
+**Broken / obsolete this pass:** none — existing string-payload AST-515 assertion (`_store_response_block` arg `[3] == "ok"`) still holds.
+
+**Integration:** no existing scenario asserts Ad Hoc workbench RESPONSE stringify — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing string-payload ledger + store: `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+2. Object/list/plain-text stringify + debug Style D: `tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody`
+
+**AST-1393** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 ### AST-977 · AST-974
 

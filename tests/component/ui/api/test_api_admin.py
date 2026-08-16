@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import json
 import threading
 import zlib
 from typing import Any
@@ -2964,3 +2965,112 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert by[1]["available_count"] == 3
         assert by[2]["available_count"] == 9
         bound.assert_called_once_with()
+
+
+# Branches: adhoc/test success body via _caller_response_blob (dict/list JSON vs
+# plain str vs empty {}/[]; extract agent_payload vs whole parsed; 500 on fail).
+class TestAst1394AdhocTestResponseText:
+    """AST-1394: POST /api/admin/adhoc/test returns serialized body as str."""
+
+    def _patch_resolve(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "_resolve_adhoc",
+            lambda _body: (
+                {
+                    "system": "s",
+                    "user": "u",
+                    "cache": "c",
+                    "nocache": "n",
+                    "model_code": "claude-haiku-4-5",
+                    "temperature": 0.1,
+                    "max_tokens": 10,
+                    "candidate_id": "c1",
+                    "task_key_uuid": None,
+                    "api_key_override": None,
+                },
+                None,
+            ),
+        )
+
+    def _post_ok(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+        parsed: Any,
+        *,
+        task_key: str = "evaluate_jd",
+    ) -> Any:
+        async def run_ok(**_k: Any) -> dict[str, Any]:
+            return {"success": True, "parsed_response": parsed, "timesheet": {}}
+
+        self._patch_resolve(monkeypatch)
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_ok)
+        return admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": task_key},
+            headers=auth_headers,
+        )
+
+    @pytest.mark.parametrize(
+        "parsed, expected",
+        [
+            (
+                {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"search_terms": "alpha\nbeta"},
+                },
+                json.dumps({"search_terms": "alpha\nbeta"}, ensure_ascii=False, default=str),
+            ),
+            ({"agent_payload": {}}, "{}"),
+            ({"agent_payload": []}, "[]"),
+            ({"agent_payload": "payload"}, "payload"),
+            ("plain ok", "plain ok"),
+            (123, "123"),
+        ],
+        ids=[
+            "object-payload",
+            "empty-dict",
+            "empty-list",
+            "str-payload",
+            "plain-text",
+            "numeric",
+        ],
+    )
+    def test_success_response_text_is_serialized_str(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+        parsed: Any,
+        expected: str,
+    ) -> None:
+        resp = self._post_ok(admin_client, auth_headers, monkeypatch, parsed)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["success"] is True
+        assert isinstance(body["response_text"], str)
+        assert body["response_text"] == expected
+
+    def test_failure_stays_500_without_success_body(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def run_fail(**_k: Any) -> dict[str, Any]:
+            return {"success": False, "error": "nope"}
+
+        self._patch_resolve(monkeypatch)
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_fail)
+        resp = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "evaluate_jd"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 500
+        body = resp.get_json()
+        assert body["success"] is False
+        assert "response_text" not in body
+        assert body["error"] == "nope"

@@ -229,6 +229,7 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "advise_job_resume",
         "analysis_upshot",
         "anticipate_scan",
+        "bootstrap_candidate_context",
         "check_cover_letter",
         "check_job_resume",
         "contact_estelle_turn",
@@ -264,10 +265,12 @@ AST786_EXPECTED_TASK_KEYS = frozenset(
         "intake_initiate_candidate",
         "meteorite_like",
         "meteorite_upshot",
+        "meteorite_email",
         "meteorite_grade_do",
         "meteorite_grade_get",
         "parse_job_list",
         "parse_meteorite_email",
+        "propose_application_responses",
         "preamble_validate_response",
         "prefilter_company",
         "qualify_job_listings",
@@ -295,18 +298,18 @@ class TestAst1252RetiredWrapperTaskKeysAbsent:
 
 
 class TestAst786AgentTaskRepoJsonSeed:
-    """AST-786 UAT: populated agent_task repo JSON catalog lock (52 rows after AST-1269).
+    """AST-786 UAT: populated agent_task repo JSON catalog lock (55 rows after AST-1402).
 
     Catalog membership tracks the active tip's `data/admin/agent_task.json`.
     AST-1239 wipe left a 50-key Job Review–shaped catalog; AST-1269 restores the two
-    grouping-only alias rows (50 → 52). Fixture may still hold pre-wipe (55) shape —
-    this class locks catalog keys + startup apply only. Alias row shape:
+    grouping-only alias rows (50 → 52). AST-1402 adds three UI stubs (52 → 55).
+    This class locks catalog keys + startup apply only. Alias row shape:
     **`TestAst1222MeteoriteGradeAliasCatalogRows`** / **`TestAst1269AliasAgentTaskSeedRestore`**.
     """
 
-    def test_repo_json_has_52_current_catalog_keys(self) -> None:
+    def test_repo_json_has_55_current_catalog_keys(self) -> None:
         rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
-        assert len(rows) == 52
+        assert len(rows) == 55
         assert frozenset(row["task_key"] for row in rows) == AST786_EXPECTED_TASK_KEYS
         assert all(row["current"] == 1 for row in rows)
 
@@ -322,7 +325,7 @@ class TestAst786AgentTaskRepoJsonSeed:
         vet = by_key["vet_inflow_discovery"]
         assert "ENCODED A-F LINK-TYPE VET (AST-880)" in vet["user_prompt"]
 
-    def test_startup_apply_loads_all_52_current_rows(
+    def test_startup_apply_loads_all_55_current_rows(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
     ) -> None:
         from src.data import database as database_mod
@@ -340,7 +343,7 @@ class TestAst786AgentTaskRepoJsonSeed:
             count = conn.execute(
                 "SELECT COUNT(*) FROM agent_task WHERE current = 1",
             ).fetchone()[0]
-            assert count == 52
+            assert count == 55
             loaded = sqlite_in_memory.get_agent_task("prefilter_company")
             assert loaded is not None
             assert loaded["agent_id"] == "job_analyst_grace"
@@ -1093,7 +1096,7 @@ class TestAst1222MeteoriteGradeAliasCatalogRows:
         # Masters keep prompt bodies (grouping may still be Job Review after AST-1239 wipe).
         for key in ("grade_do", "grade_get"):
             assert (cat[key].get("user_prompt") or cat[key].get("cache_prompt") or "").strip()
-        assert len(cat) == 52
+        assert len(cat) == 55
 
 
 class TestAst1269AliasAgentTaskSeedRestore:
@@ -1119,7 +1122,7 @@ class TestAst1269AliasAgentTaskSeedRestore:
 
     def test_catalog_has_aliases_under_meteorite_review(self) -> None:
         cat = self._current_by_key("data/admin/agent_task.json")
-        assert len(cat) == 52
+        assert len(cat) == 55
         mr = {k for k, r in cat.items() if r.get("task_group_name") == "Meteorite Review"}
         assert mr == {"meteorite_grade_do", "meteorite_grade_get"}
         for key, seq in (("meteorite_grade_do", 5), ("meteorite_grade_get", 6)):
@@ -1189,3 +1192,56 @@ class TestAst1368IdealDayCraftDoCachePrompt:
         ):
             blob = " ".join(str(by[key].get(field) or "") for field in self._PROMPT_FIELDS)
             assert "{$IDEAL_DAY}" not in blob, key
+
+
+class TestAst1400EstelleCraftSeedPins:
+    """AST-1400: pin Estelle repo columns + craft Do/Like attachment identities (AST-1399 seed)."""
+
+    # Attachment export literals from AST-1399 Proposed change — not paraphrased.
+    _ESTELLE_CONTENT_PREFIX = "§1 ESTELLE: Principal Recruiter for the Astral Career Match Team"
+    _CRAFT_PINS = {
+        "craft_do_rubric": {
+            "task_key_uuid": "0e38db78-d740-45dc-af89-891334bfa94b",
+            "user_prompt_len": 31725,
+            "cache_prompt_len": 438,
+        },
+        "craft_like_rubric": {
+            "task_key_uuid": "d1329798-7ada-4efc-b7aa-a31d30c7ab38",
+            "user_prompt_len": 33023,
+            "cache_prompt_len": 18,  # stored `{$CALLER_CACHE_A}\n`
+        },
+    }
+
+    def _estelle(self) -> dict:
+        rows = json.loads(Path("data/admin/agent.json").read_text(encoding="utf-8"))
+        return next(r for r in rows if r["agent_id"] == "principal_recruiter_estelle")
+
+    def _current_task(self, path: str, task_key: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return next(
+            r for r in rows if r.get("task_key") == task_key and r.get("current") == 1
+        )
+
+    def test_estelle_and_craft_match_ast1399_export(self) -> None:
+        """[bug-repro] Red on origin/dev seed; green after AST-1399 catalog."""
+        estelle = self._estelle()
+        assert "model_code" not in estelle
+        assert estelle["temperature"] == 0
+        assert estelle["max_tokens"] == 384000
+        content = estelle["content"]
+        assert content.startswith(self._ESTELLE_CONTENT_PREFIX)
+        assert len(content) == 3838
+        for task_key, pins in self._CRAFT_PINS.items():
+            row = self._current_task("data/admin/agent_task.json", task_key)
+            assert row["task_key_uuid"] == pins["task_key_uuid"], task_key
+            assert len(row["user_prompt"] or "") == pins["user_prompt_len"], task_key
+            assert len(row["cache_prompt"] or "") == pins["cache_prompt_len"], task_key
+
+    def test_craft_do_like_fixture_lockstep(self) -> None:
+        # Surgical object equality only — not whole-file agent.json ↔ expected-agent.json.
+        for task_key in self._CRAFT_PINS:
+            cat = self._current_task("data/admin/agent_task.json", task_key)
+            fix = self._current_task(
+                "docs/uat-fixtures/AST-756/expected-agent_task.json", task_key,
+            )
+            assert cat == fix, task_key

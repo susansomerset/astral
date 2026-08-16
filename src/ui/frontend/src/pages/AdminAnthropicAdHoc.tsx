@@ -90,10 +90,11 @@ export default function AnthropicAdHoc() {
   const clearToast = useCallback(() => setToast(null), [])
 
   useEffect(() => {
+    const qs = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
     Promise.all([
       api("/api/admin/agents/ids").then(r => r.json()),
       api("/api/admin/tasks/meta/tokens").then(r => r.json()),
-      api("/api/admin/tasks").then(r => r.json()),
+      api(`/api/admin/tasks${qs}`).then(r => r.json()),
     ]).then(([agentData, tokData, taskData]) => {
       setAgentIds(Array.isArray(agentData) ? agentData : [])
       setTokenList(Array.isArray(tokData) ? tokData : [])
@@ -103,7 +104,7 @@ export default function AnthropicAdHoc() {
     // selection correctly triggers the entity + prompt-fetch logic
     if (!taskKey) isInitialMount.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [selectedId])
 
   // Dismiss save-as dropdown on outside click
   useEffect(() => {
@@ -200,7 +201,7 @@ export default function AnthropicAdHoc() {
       })
       .then(data => {
         if (data.success) {
-          setResponse(data.response_text)
+          setResponse(responseBodyToText(data.response_text))
           setTimesheet(data.timesheet || null)
         } else {
           setResponse(`ERROR: ${data.error || "Unknown error"}`)
@@ -244,9 +245,16 @@ export default function AnthropicAdHoc() {
       })
       .then(() => {
         setToast({ text: `Prompts saved to "${key}"`, variant: "success" })
-        api("/api/admin/tasks").then(r => r.json()).then(d => setTasks(Array.isArray(d) ? d : []))
+        const qs = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
+        api(`/api/admin/tasks${qs}`).then(r => r.json()).then(d => setTasks(Array.isArray(d) ? d : []))
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
+  }
+
+  function responseBodyToText(body: unknown): string {
+    if (typeof body === "string") return body
+    if (body == null) return ""
+    try { return JSON.stringify(body) } catch { return String(body) }
   }
 
   function formatResponse(text: string): string {

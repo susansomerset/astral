@@ -23,11 +23,17 @@ describe("AdminAnthropicAdHoc", () => {
     mockedApi.mockReset()
   })
 
-  function mockApi() {
+  function mockApi(testResult?: { ok?: boolean; json: Record<string, unknown> }) {
+    const testOk = testResult?.ok !== false
+    const testJson = testResult?.json ?? {
+      success: true,
+      response_text: "{\"ok\":true}",
+      timesheet: { duration: 1.2, inputtotal: 10, outputtotal: 5, inputcached: 2 },
+    }
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
-      if (url === "/api/admin/tasks") return { json: async () => tasks } as Response
+      if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => tasks } as Response
       if (url.startsWith("/api/admin/adhoc/entities")) {
         return { ok: true, json: async () => ({ entity_type: "job", trigger_state: "NEW", batch_mode: false, entities: [{ id: "job-1", label: "Job 1" }] }) } as Response
       }
@@ -35,7 +41,7 @@ describe("AdminAnthropicAdHoc", () => {
         return { ok: true, json: async () => ({ system: "sys", cache: "cache", nocache: "nocache", user: "user", live_content: "live" }) } as Response
       }
       if (url === "/api/admin/adhoc/test" && init?.method === "POST") {
-        return { ok: true, json: async () => ({ success: true, response_text: "{\"ok\":true}", timesheet: { duration: 1.2, inputtotal: 10, outputtotal: 5, inputcached: 2 } }) } as Response
+        return { ok: testOk, json: async () => testJson } as Response
       }
       if (url === "/api/admin/tasks/task_a") {
         return { json: async () => ({ user_prompt: "loaded user", cache_prompt: "loaded cache", nocache_prompt: "loaded nocache" }) } as Response
@@ -69,6 +75,14 @@ describe("AdminAnthropicAdHoc", () => {
     await userEvent.click(within(saveGroup).getByText("task_b"))
   }, 20000)
 
+  it("lists tasks against the selected candidate id", async () => {
+    mockApi()
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() =>
+      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/admin/tasks?candidate_id=c1")).toBe(true),
+    )
+  }, 15000)
+
   it("requires an agent before preview and test", async () => {
     mockApi()
     renderWithProviders(<AnthropicAdHoc />)
@@ -86,7 +100,7 @@ describe("AdminAnthropicAdHoc", () => {
     installBaseApiMocks(mockedApi, async (url: string) => {
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
-      if (url === "/api/admin/tasks") return { json: async () => unsortedTasks } as Response
+      if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => unsortedTasks } as Response
       if (url.startsWith("/api/admin/adhoc/entities")) {
         return {
           ok: true,
@@ -125,4 +139,61 @@ describe("AdminAnthropicAdHoc", () => {
       .filter(t => t === "alpha" || t === "mid" || t === "zebra")
     expect(menuKeys).toEqual(["alpha", "mid", "zebra"])
   }, 15000)
+
+  async function readyToTest() {
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[0], "task_a")
+    await waitFor(() => expect(screen.getByText(/Loaded prompts from "task_a"/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getAllByRole("combobox").length).toBeGreaterThanOrEqual(3))
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[1], "agent_a")
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[2], "job-1")
+  }
+
+  it("AST-1394: object payload JSON text pretty-prints; success is not ERROR", async () => {
+    mockApi({
+      json: {
+        success: true,
+        response_text: JSON.stringify({ search_terms: "alpha\nbeta" }),
+        timesheet: {},
+      },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await readyToTest()
+    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
+    await waitFor(() => expect(screen.getByText(/"search_terms"/)).toBeInTheDocument())
+    expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AST-1394: nested object response_text still displays; never type-invalidates", async () => {
+    // Defense: Stage 1 should emit a string; coerce-to-text must still render an object.
+    mockApi({
+      json: {
+        success: true,
+        response_text: { search_terms: "alpha" },
+        timesheet: {},
+      },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await readyToTest()
+    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
+    await waitFor(() => expect(screen.getByText(/"search_terms"/)).toBeInTheDocument())
+    expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AST-1394: plain text displays unchanged", async () => {
+    mockApi({ json: { success: true, response_text: "plain ok", timesheet: {} } })
+    renderWithProviders(<AnthropicAdHoc />)
+    await readyToTest()
+    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
+    await waitFor(() => expect(screen.getByText("plain ok")).toBeInTheDocument())
+    expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AST-1394: provider failure still shows ERROR overlay", async () => {
+    mockApi({ ok: false, json: { success: false, error: "nope" } })
+    renderWithProviders(<AnthropicAdHoc />)
+    await readyToTest()
+    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
+    await waitFor(() => expect(screen.getByText(/ERROR: nope/)).toBeInTheDocument())
+  }, 20000)
 })

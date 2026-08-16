@@ -203,6 +203,24 @@ class TestResolveTokens:
         assert out.strip() == ""
         assert any("resolved to empty" in rec.message for rec in caplog.records)
 
+    def test_empty_candidate_data_does_not_warn_on_first_name(self, caplog) -> None:
+        """[bug-repro] AST-1397 — empty cd must not log candidate-source empty WARNING."""
+        caplog.set_level("WARNING")
+        out = cfg.resolve_tokens("{$FIRST_NAME}", {}, "topic_menu_preamble_confirm")
+        assert out == ""
+        assert not any(
+            "Token {$FIRST_NAME} resolved to empty" in rec.message for rec in caplog.records
+        )
+
+    def test_blank_first_name_on_truthy_view_still_warns(self, caplog) -> None:
+        """AST-1397 — truthy token view with blank first still logs the WARNING."""
+        caplog.set_level("WARNING")
+        out = cfg.resolve_tokens("{$FIRST_NAME}", {"first": "", "full": ""}, "topic_menu_preamble_confirm")
+        assert out == ""
+        assert any(
+            "Token {$FIRST_NAME} resolved to empty" in rec.message for rec in caplog.records
+        )
+
     def test_output_type_token_uses_task_instructions(self) -> None:
         text = cfg.resolve_tokens("{$OUTPUT_INSTRUCTIONS}", {}, "evaluate_jd")
         assert "grade segments" in text.lower() or "Each grade segment" in text
@@ -1067,7 +1085,7 @@ class TestAst492LlmBrainTierConfig:
         assert medium["thinking"] is False
         big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
         assert big["vendor_model"] == "deepseek-v4-pro"
-        assert big["thinking"] is True
+        assert big["thinking"] is False
 
     def test_infer_brain_setting_from_legacy_model_code(self) -> None:
         assert cfg.infer_brain_setting_from_legacy_model_code("claude-haiku-4-5") == cfg.BRAIN_LITTLE
@@ -2001,6 +2019,24 @@ class TestAst903CraftRubricMaxTokens:
 
     def test_craft_rubric_max_tokens_floor(self) -> None:
         assert cfg.CRAFT_RUBRIC_MAX_TOKENS == 32000
+
+
+class TestAst1391DeepseekBigMaxTokensFloor:
+    """AST-1391: 384000 lives on DeepSeek Big tier only — not the shared v4-pro SKU default."""
+
+    def test_big_tier_floor_and_helper(self) -> None:
+        big = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_BIG)
+        little = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_LITTLE)
+        medium = cfg.resolve_brain_setting_to_deepseek_tier_meta(cfg.BRAIN_MEDIUM)
+        assert big["max_tokens"] == 384000
+        assert "max_tokens" not in little
+        assert "max_tokens" not in medium
+        assert cfg.DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"] == 16000
+        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG) == 384000
+        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_MEDIUM) is None
+        assert cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_LITTLE) is None
+        with pytest.raises(ValueError, match="Invalid brain_setting"):
+            cfg.deepseek_brain_max_tokens_floor("Small")
 
 
 class TestAst898NewRetryQualifyHolding:

@@ -97,6 +97,7 @@ from src.core.agent import (
     resolved_agent_content,
     resolved_task_system,
     _chain_context,
+    _caller_response_blob,
 )
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
@@ -367,7 +368,8 @@ def _enrich_tasks(candidate_id: str) -> list:
             brain_setting_eff = ""
             resolved_model_key = ""
             model_cfg: Dict = {}
-            _cc = _chain_context(agent, cd, task_key, None) if agent else None
+            # List probe, not a hop — empty {$CALLER_*} is expected (AST-530 chain_entry).
+            _cc = _chain_context(agent, cd, task_key, None, chain_entry=True) if agent else None
             if agent:
                 brain_setting_eff = (agent.get("brain_setting") or "").strip()
                 if not brain_setting_eff:
@@ -381,9 +383,13 @@ def _enrich_tasks(candidate_id: str) -> list:
                     resolved_model_key = vm
                     model_cfg = DEEPSEEK_MODEL_PRICING.get(vm, {})
             if full_task and agent:
-                system_content = resolved_task_system(agent, full_task, cd, task_key, _cc)
+                system_content = resolved_task_system(
+                    agent, full_task, cd, task_key, _cc, chain_entry=True
+                )
             elif agent:
-                system_content = resolve_tokens(agent.get("content") or "", cd, task_key, _cc)
+                system_content = resolve_tokens(
+                    agent.get("content") or "", cd, task_key, _cc, chain_entry=True
+                )
             else:
                 system_content = ""
             system_tokens = len(system_content) // CHARS_PER_TOKEN
@@ -402,7 +408,9 @@ def _enrich_tasks(candidate_id: str) -> list:
             cache_probe_parts = []
             if full_task and agent_id:
                 for ck in ("cache_prompt", "cache_prompt_b", "cache_prompt_c", "cache_prompt_d"):
-                    txt = resolve_tokens(full_task.get(ck) or "", cd, task_key, _cc)
+                    txt = resolve_tokens(
+                        full_task.get(ck) or "", cd, task_key, _cc, chain_entry=True
+                    )
                     cache_probe_parts.append(txt)
                 combined_cache_probe = "\n---\n".join(cache_probe_parts)
             else:
@@ -1470,13 +1478,12 @@ def adhoc_test():
     if not result.get("success"):
         return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 500
 
-    response_text = result.get("parsed_response") or ""
-    # For tasks with JSON envelope, do_task auto-extracts agent_payload into parsed_response.
-    # If it's still a dict here (e.g. run_adhoc doesn't do the extraction), pull it out.
-    if isinstance(response_text, dict) and "agent_payload" in response_text:
-        response_text = response_text["agent_payload"] or ""
-    if not isinstance(response_text, str):
-        response_text = str(response_text)
+    parsed = result.get("parsed_response")
+    if isinstance(parsed, dict) and "agent_payload" in parsed:
+        body = parsed["agent_payload"]
+    else:
+        body = parsed
+    response_text = _caller_response_blob(body)
     timesheet = result.get("timesheet", {})
 
     # Decode encoded payload if the task uses a compact encoded output_type

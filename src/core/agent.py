@@ -49,6 +49,7 @@ from src.utils.config import (
     get_active_llm_provider,
     resolve_brain_setting_to_anthropic_agent_key,
     resolve_brain_setting_to_deepseek_tier_meta,
+    deepseek_brain_max_tokens_floor,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
@@ -2211,6 +2212,10 @@ async def do_task(
         # disable thinking so craft criteria are not starved mid-string.
         if provider == "deepseek" and tier_meta is not None:
             tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
+    if provider == "deepseek":
+        _ds_floor = deepseek_brain_max_tokens_floor(brain_setting)
+        if _ds_floor is not None:
+            agent_max_tokens = max(int(agent_max_tokens), _ds_floor)
 
     _hop_kw = dict(
         chain_entry=chain_entry,
@@ -3543,10 +3548,34 @@ async def run_adhoc_workbench_test(
         else:
             parsed = result.get("parsed_response")
             if isinstance(parsed, dict) and "agent_payload" in parsed:
-                response_text = parsed["agent_payload"] or ""
+                body = parsed["agent_payload"]
             else:
-                response_text = str(parsed) if parsed is not None else ""
+                body = parsed
             try:
+                response_text = _caller_response_blob(body)
+                if debug:
+                    dbg = get_logger(__name__, debug_flag=True)
+                    if isinstance(body, dict):
+                        shape = f"keys={sorted(body.keys())}"
+                    elif isinstance(body, list):
+                        shape = f"len={len(body)}"
+                    elif isinstance(body, str):
+                        shape = f"len={len(body)}"
+                    elif body is None:
+                        shape = "none"
+                    else:
+                        shape = type(body).__name__
+                    dbg.debug_index(
+                        func="run_adhoc_workbench_test",
+                        index=1,
+                        total=1,
+                        identifier=workbench_task_key,
+                        outcome="serialized store",
+                    )
+                    dbg.debug_detail(
+                        f"found type={type(body).__name__} shape={shape}"
+                    )
+                    dbg.debug_detail_block(response_text)
                 _store_response_block(
                     entity_type,
                     workbench_task_key,

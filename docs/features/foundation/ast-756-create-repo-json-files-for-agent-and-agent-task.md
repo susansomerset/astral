@@ -1737,3 +1737,251 @@ Watcher rule `datt` on `AST-756`.
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+## Bug: AST-1399 — Sync repo seed agent.json and agent_task.json
+
+Orphaned mini-parent AST-1398 (fresh `ftr` off `origin/dev`). This block is the make-fix bible for the seed delta only — it does not restate AST-756 stages.
+
+Source of truth for new text: Linear attachments on **AST-1398** (not this doc, not live DB at make-fix time):
+
+- `agents.txt` — https://uploads.linear.app/6d08b154-c90f-497b-8dae-9a0bb7b7b5cd/40b4b5ce-12be-487c-8a05-7b6b52274c25/f5ab795b-b5a6-4aa6-9d78-50e8065cd8c5
+- `agent_task.txt` — https://uploads.linear.app/6d08b154-c90f-497b-8dae-9a0bb7b7b5cd/58be1b84-33e8-48a0-8602-e21f8f18654a/1be7252a-5ed3-4816-9c39-507e78914f64
+
+Re-fetch those URLs at make-fix (Linear bearer). Attachment JSON is a current-row export.
+
+**Parity pick:** surgical row replace in catalog; `agent_task` fixture stays a whole-file twin of catalog after that edit; `expected-agent.json` stays the AST-787 mapped twin (keeps `model_code`) with a surgical Estelle repo-column update only. Do **not** paste the full 55-row `agent_task.txt` over the 52-row catalog.
+
+### As-is
+
+Checked-in `data/admin/agent.json` (six personas) and `data/admin/agent_task.json` (including `craft_do_rubric` / `craft_like_rubric`) do not include the live agent-model and Do/Like prompt updates attached on AST-1398. A fresh clone or server restart upserts the stale JSON and clobbers the updated copy.
+
+### To-be
+
+Checked-in `agent.json` and `agent_task.json` match the attached export (repo column shape) so startup upsert loads the updated Estelle persona and Do/Like prompts. AST-756 fixture twins stay honest under the parity pick above. Unrelated catalog rows and the six-id persona set stay put.
+
+### Repro
+
+1. On this tip, `data/admin/agent.json` `principal_recruiter_estelle` is:
+
+   | field | value |
+   | --- | --- |
+   | `agent_id` | `principal_recruiter_estelle` |
+   | `brain_setting` | `Big` |
+   | `temperature` | `0.3` |
+   | `max_tokens` | `16000` |
+   | `updated_at` | `2026-08-05 00:00:00` |
+   | `content` | starts `# ESTELLE: Principal Recruiter…` (no `§1` headings); length 3804 |
+   | `model_code` | absent (correct — AST-782 / `REPO_ADMIN_JSON_CONFIG["tables"]["agent"]["columns"]`) |
+
+2. `craft_do_rubric` / `craft_like_rubric` in `data/admin/agent_task.json` still have the 2026-08-07 prompt bodies (`user_prompt` lengths 16441 / 20548) and uuids `e0ceba1e-afd5-41ef-a568-b98ba9f1e29a` / `2482fa44-8545-4f6a-a1b4-4ae3d1b80718`.
+
+3. Compare to the AST-1398 attachments: Estelle `temperature` `0`, `max_tokens` `384000`, sectioned `§1` content length 3838; craft Do/Like `user_prompt` lengths 31725 / 33023 with new uuids (tables in Proposed change).
+
+4. `python3 -c "from src.core.repo_admin_json import apply_repo_admin_json_at_startup; apply_repo_admin_json_at_startup()"` (or a server start) writes those stale rows as `current = 1`.
+
+### Root cause
+
+AST-756 made `data/admin/agent.json` and `data/admin/agent_task.json` the repo-wins seed (Purpose / Functional scope: startup upsert before `sync_agent_tasks`; export is how admin edits get back into git). The live agent-model and Do/Like prompt edits were saved in Manage Agents / Manage Tasks and exported as AST-1398 attachments, but never committed to those files. Restart therefore re-applies the last checked-in seed.
+
+This is not an upsert-contract bug (`src/core/repo_admin_json.py` / AST-782). No `src/` unless make-fix finds the attachment rows illegal under the existing column contract.
+
+### Proposed change
+
+**0. Fetch.** Download `agents.txt` and `agent_task.txt` from the URLs above. Both are JSON arrays of row objects.
+
+**1. `data/admin/agent.json` — Estelle only.** Attachment has the same six `agent_id`s as catalog, extra column `model_code` (strip it; `brain_setting` is authoritative). After stripping `model_code`, five personas are already byte-equal to catalog — leave them. Replace the `principal_recruiter_estelle` object with repo columns copied from the attachment:
+
+   | field | value |
+   | --- | --- |
+   | `agent_id` | `principal_recruiter_estelle` |
+   | `brain_setting` | `Big` (unchanged) |
+   | `temperature` | `0` (JSON number, not `0.3`) |
+   | `max_tokens` | `384000` |
+   | `updated_at` | `2026-08-16 06:43:40` |
+   | `content` | verbatim attachment `content` (starts `§1 ESTELLE: Principal Recruiter for the Astral Career Match Team`; length 3838) |
+
+   Do not write `model_code`. Keep the existing six-id set and `agent_id` sort (`ats_expert_atlas` first). Array length stays **6**.
+
+**2. `data/admin/agent_task.json` — two rows only.** Attachment is a 55-row current=`1` dump with the same columns as catalog. **50** shared keys are identical; **2** differ (`craft_do_rubric`, `craft_like_rubric`); **3** exist only in the attachment (`bootstrap_candidate_context`, `meteorite_email`, `propose_application_responses`) — those three are blank `(unassigned)` / `ZZZ` / `task_seq` 999 stubs. **Do not add them** (ticket: no new task keys; catalog stays **52**). `grade_do`, `grade_like`, `meteorite_like`, `meteorite_grade_do` (and every other shared key) are identical to catalog — leave them.
+
+   Locate `current == 1` objects `task_key == "craft_do_rubric"` and `task_key == "craft_like_rubric"`. Replace each object **verbatim** with the matching attachment object (prompts + `task_key_uuid` + `updated_at`). Identity fields that must stay as they already are (equal in attachment): `agent_id` `principal_recruiter_estelle`, `task_name` lockstep with `task_key`, `task_group_name` `Candidate Artifacts`, `task_group_order` `"2000"`, `task_seq` 11 / 12, `run_next` `craft_like_rubric` / `craft_evaluate_meteorite_rubric`, empty `system_prompt` / `cache_prompt_c` / `cache_prompt_d`, `nocache_prompt` `"\n\n"`, `current` `1`.
+
+   Fields that **must** change (copy from attachment, including long `user_prompt` / `cache_prompt` bodies — do not paraphrase):
+
+   `craft_do_rubric`:
+
+   | field | to-be |
+   | --- | --- |
+   | `task_key_uuid` | `0e38db78-d740-45dc-af89-891334bfa94b` |
+   | `updated_at` | `2026-08-16 06:44:22` |
+   | `cache_prompt` | attachment body (length 438; starts `§2 LIVE CONTENT — mirrors §3.4 item for item`) |
+   | `cache_prompt_b` | `§2.9 Drafted GET Rubric.\n\n{$CALLER_RESPONSE}` |
+   | `user_prompt` | attachment body (length 31725; starts `§3 INSTRUCTION BLOCK`) |
+
+   `craft_like_rubric`:
+
+   | field | to-be |
+   | --- | --- |
+   | `task_key_uuid` | `d1329798-7ada-4efc-b7aa-a31d30c7ab38` |
+   | `updated_at` | `2026-08-16 07:04:56` |
+   | `cache_prompt` | unchanged (`{$CALLER_CACHE_A}\n`) |
+   | `cache_prompt_b` | `{$CALLER_CACHE_B}\n\n§2.10 Drafted DO Rubric.\n\n{$CALLER_RESPONSE}` |
+   | `user_prompt` | attachment body (length 33023; starts `§3 INSTRUCTION BLOCK`) |
+
+**3. Fixtures.**
+
+   - `docs/uat-fixtures/AST-756/expected-agent_task.json` is byte-identical to `data/admin/agent_task.json` on this tip. After step 2, `cp data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.json`. Confirm `cmp -s` and row count **52**. Do not `cp` the 55-row attachment.
+   - `docs/uat-fixtures/AST-756/expected-agent.json` is **not** a catalog byte-twin (AST-787 export still carries `model_code`; later catalog persona copy drifted). Surgical: update only the Estelle object's repo columns (`content`, `temperature`, `max_tokens`, `updated_at`) to match catalog Estelle after step 1. Leave that row's `model_code` (`claude-opus-4-6`) and do **not** rewrite the other five fixture personas.
+
+**4. Serialization.** Replace objects in the existing arrays; do not re-sort keys or rows; keep a trailing newline. Do not run a whole-file `ensure_ascii` conversion that rewrites untouched prompt rows (`agent_task.json` already contains `\u2014` escapes; `agent.json` does not). Structural diff by `agent_id` / `task_key` must show only Estelle + the two craft keys (+ the two fixture files as specified). If a dump rewrites unrelated rows, stop and edit in place.
+
+**5. Out of scope.** No `src/`. No new task keys. No Manage Agents / Manage Tasks / export-script changes unless step 0's JSON is illegal under `REPO_ADMIN_JSON_CONFIG` (then stop, comment `@chuckles`).
+
+**Done when:** catalog Estelle matches the attachment on repo columns; catalog `craft_do_rubric` / `craft_like_rubric` match the attachment objects; catalog still has 6 personas and 52 task rows; `expected-agent_task.json` is byte-identical to catalog; fixture Estelle repo columns match catalog Estelle; `model_code` still absent from `data/admin/agent.json`.
+
+### Blast radius
+
+- Startup `apply_repo_admin_json_at_startup` and **Revert to file** will load the new Estelle copy and Do/Like prompts on next apply — that is the point.
+- `TestAst786AgentTaskRepoJsonSeed` locks **52** catalog keys (AST-1269). Adding the three attachment extras would break it.
+- `TestAst787AgentRepoJsonSeed.test_repo_rows_match_fixture_repo_column_mapping` maps fixture → repo columns and compares to catalog. Five fixture personas already disagree with catalog (pre-existing drift). This bug does not reconcile that. Betty owns `tests/` / bible; engineer does not patch them. Flag for fix-board if she wants a test REVISE.
+- AST-1211 evaluate/craft meteorite fixture lockstep and all non-Do/Like prompt rows stay untouched.
+- `sync_agent_tasks` still runs after upsert and must not overwrite these repo-loaded bodies.
+
+### What must still hold
+
+From AST-756 acceptance criteria (unchanged product contract):
+
+- After a fresh clone and server start, current (`current = 1`) rows in `agent` and `agent_task` match the checked-in `data/admin/` JSON files.
+- Rows absent from repo JSON do not appear in Manage Agents / Manage Tasks after startup upsert; retired versions remain stored with `current = 0`.
+- Admin save still writes the database immediately; repo files change only via export + git (this ticket is that git update).
+- Divergence warning and **Revert to file** still compare/apply the checked-in files.
+- `sync_agent_tasks` runs after repo JSON upsert and only adds missing blank catalog rows — it does not overwrite repo-loaded prompt bodies.
+- Export still writes current rows only, repo columns only (`agent`: no `model_code`; `brain_setting` authoritative — AST-787 / `REPO_ADMIN_JSON_CONFIG`).
+- Six persona ids (AST-787): `ats_expert_atlas`, `college_intern_ruth`, `content_writer_judith`, `job_analyst_grace`, `principal_recruiter_estelle`, `web_scraper_laslo`.
+- Agent/agent_task seed stays non-empty repo JSON (`astral.seed.agent-tables-in-repo-json`).
+
+## Joan fix-board (AST-1399)
+
+**CANON: OK** — data-only seed sync inside the existing AST-756 repo-JSON contract. No statute or pattern update. F3 not triggered.
+
+Betty **TESTS: REVISE** (sibling gap): `docs/test-bible/core/repo_admin_json.md` — no test pins Estelle repo columns (temp 0, max_tokens 384000, §1 content) or craft_do/like attachment uuids and prompt lengths.
+
+## Radia review-fix (AST-1399)
+
+**Overall:** CLEAN. Surgical Estelle + craft Do/Like seed sync matches plan. `[bug-repro]` N/A (Betty REVISE → sibling gap AST-1400). `## What must still hold` OK. Recommend Review Posted → User Testing (clean-review shortcut).
+
+## Docs-acceptance (AST-1399)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1400**.
+
+## Bug: AST-1400 — Gap: Estelle/craft seed asserts
+
+Sibling **gap** child of AST-1399. Product/seed already on `origin/ftr/AST-1398-update-agent-and-agent-task-json` (`code(AST-1399)`). This block is bible + tests only — do not re-plan AST-1399's seed delta (see `## Bug: AST-1399` Proposed change).
+
+Source verdict: AST-1399 `[board-betty] TESTS: REVISE` — `docs/test-bible/core/repo_admin_json.md` has no pin for Estelle repo columns or craft Do/Like attachment uuids / prompt lengths.
+
+### As-is
+
+`TestAst787AgentRepoJsonSeed` / `TestAst786AgentTaskRepoJsonSeed` (and the bible page `docs/test-bible/core/repo_admin_json.md`) do not assert Estelle `temperature` `0`, `max_tokens` `384000`, `§1` content, or `craft_do_rubric` / `craft_like_rubric` attachment uuids and prompt lengths. AST-1399's seed can regress without a red test.
+
+### To-be
+
+Bible + matching component tests pin those literals against `data/admin/agent.json` and `data/admin/agent_task.json`. At least one repro-shaped case is red against the pre-AST-1399 seed (`origin/dev`) and green on this tip (ftr with AST-1399).
+
+### Repro
+
+On `origin/dev` (pre-AST-1399 catalog):
+
+| object | field | pre-fix |
+| --- | --- | --- |
+| `principal_recruiter_estelle` | `temperature` | `0.3` |
+| same | `max_tokens` | `16000` |
+| same | `content` | starts `# ESTELLE:` (length 3804) |
+| `craft_do_rubric` | `task_key_uuid` | `e0ceba1e-afd5-41ef-a568-b98ba9f1e29a` |
+| same | `user_prompt` length | 16441 |
+| `craft_like_rubric` | `task_key_uuid` | `2482fa44-8545-4f6a-a1b4-4ae3d1b80718` |
+| same | `user_prompt` length | 20548 |
+
+A test that asserts the to-be literals below fails on that tree and passes after AST-1399's seed.
+
+### Root cause
+
+AST-1399 was a data-only seed sync. Existing seed tests lock the six-id set, repo columns (no `model_code`), and 52-key catalog membership — not this export's Estelle settings or craft Do/Like bodies. Betty flagged that hole at the board; this gap child is the coverage, not a second product fix.
+
+### Proposed change
+
+Betty-owned paths only (`astral.git.engineer-test-tree-ban`). Engineer does **not** commit `tests/` or `docs/test-bible/**`. No `data/admin/**`, no `src/`. Publish to `origin/sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts`.
+
+**1. Tests** — add class `TestAst1400EstelleCraftSeedPins` in `tests/component/core/test_repo_admin_json.py`. Read catalog JSON from disk (same style as `TestAst787AgentRepoJsonSeed`). Pin **exactly** these literals from AST-1399 Proposed change / the AST-1398 export (do not paraphrase content; `startswith` + length for long strings):
+
+`data/admin/agent.json` current `principal_recruiter_estelle`:
+
+| field | assert |
+| --- | --- |
+| `temperature` | `0` (JSON number) |
+| `max_tokens` | `384000` |
+| `content` | `startswith("§1 ESTELLE: Principal Recruiter for the Astral Career Match Team")` and `len == 3838` |
+| `model_code` | absent |
+
+`data/admin/agent_task.json` `current == 1` rows:
+
+| `task_key` | `task_key_uuid` | `user_prompt` len | `cache_prompt` len |
+| --- | --- | --- | --- |
+| `craft_do_rubric` | `0e38db78-d740-45dc-af89-891334bfa94b` | 31725 | 438 |
+| `craft_like_rubric` | `d1329798-7ada-4efc-b7aa-a31d30c7ab38` | 33023 | unchanged vs AST-1399 (`{$CALLER_CACHE_A}\n` — pin length of that field as stored) |
+
+Tag the Estelle (or combined) method so qa-fix can mark `[bug-repro]` on its own first line: it must fail against the Repro table's pre-fix seed and pass on this tip.
+
+Optional lockstep (same class): those two `agent_task` objects are equal in `docs/uat-fixtures/AST-756/expected-agent_task.json` (byte-twin after AST-1399). Do **not** require whole-file `agent.json` ↔ `expected-agent.json` identity (fixture still carries `model_code`; five other personas still drift — out of scope).
+
+Do **not** rewrite `TestAst787AgentRepoJsonSeed.test_repo_rows_match_fixture_repo_column_mapping` to force all six fixture personas onto catalog — that failure is Atlas/pre-existing drift, not this gap.
+
+**2. Bible** — append `### AST-1400 · AST-1398` to `docs/test-bible/core/repo_admin_json.md`: coverage table naming `TestAst1400EstelleCraftSeedPins`, narrowed `run_component_tests.sh` command for that class, note that AST-786/787 membership/column tests stay as-is.
+
+**Done when:** the new class is green on this sub (AST-1399 seed present); the repro method is red if catalog Estelle/craft rows are reverted to the Repro table; bible section exists; no product/seed files in the diff.
+
+### Blast radius
+
+- Sibling AST-1399 seed is the fixture under test — do not edit it.
+- `TestAst786AgentTaskRepoJsonSeed` (52 keys) and `TestAst787AgentRepoJsonSeed` (six ids, repo columns, startup apply) stay green without assertion edits.
+- `TestAst1368IdealDayCraftDoCachePrompt` still sees Ideal Day in `craft_do_rubric.cache_prompt` (AST-1399's §2 live-content rewrite must still include `{$IDEAL_DAY}` — length 438 pin implies that; if the length assert fails, product is wrong, not this test).
+- AST-1211 evaluate/craft meteorite fixture lockstep untouched.
+
+### What must still hold
+
+- AST-1399 seed contract: six personas, 52 task rows, no `model_code` on catalog `agent.json`, no new task keys.
+- AST-756 AC: startup upsert / Revert to file still apply checked-in JSON; `sync_agent_tasks` does not overwrite repo-loaded prompts.
+- Engineer commits still cannot include test-tree paths; this child's landing is Betty's bible + tests only.
+- Joan CANON: OK on AST-1399 — no statute/pattern edit here.
+
+## Radia review-fix (AST-1400)
+
+**Overall:** DISCUSS (no fix-now). Gap bible + Estelle/craft seed pins lock AST-1399; [bug-repro] OK; no product delta.
+
+**discuss (process):** Betty `docs(AST-1400): plan-fix` touched `docs/features/` — future gap tickets: Chuckles/engineer land plan-fix docs; Betty stays tests/bible + merge-tests. No engineer product action.
+
+## Resolution (AST-1400)
+
+2026-08-16 — no product/seed edit (AST-1399 already on ftr). Vocabulary `code(AST-1400): no product delta — gap is test/bible only` (empty) so `validate-sub-log` sees `code(AST-1400):`. Radia DISCUSS (process): this child's plan-fix docs were Ada `docs(AST-1400): plan-fix`; Betty landed tests/bible + `merge-tests` only — no further product action. `[bug-repro]` green on tip with AST-1399 seed.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/6ea917a23f58bcf5f60269686740088f/3d1b93ea-b72f-4685-8c84-bf85ac0ea6d4/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ce1430ba-4221-4c68-813c-c59094ca59a7/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/6ea917a23f58bcf5f60269686740088f/4d34cc19-6f9a-4b4b-bc49-fe739368be48/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1398 (parent) | ftr/AST-1398-update-agent-and-agent-task-json |
+| AST-1399 | sub/AST-1398/AST-1399-sync-agent-agent-task-seed |
+| AST-1400 | sub/AST-1398/AST-1400-gap-estelle-craft-seed-asserts |
+
+**Epic worktree:** `astral-AST-1398/` — one active sub checked out at a time.

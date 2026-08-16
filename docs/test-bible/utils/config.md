@@ -828,6 +828,37 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 
 **AST-955:** Save membership = registered **`TASK_CONFIG`** (optional trigger override on **`dispatch_task_admin_defaults`**). Primary manifest: **`docs/test-bible/ui/api/api_admin.md`** (**AST-955**).
 
+### AST-1391 · AST-1390 (DeepSeek Big output floor)
+
+**`deepseek_brain_max_tokens_floor`** + DeepSeek `BRAIN_BIG` `max_tokens: 384000`. Not on Little/Medium; `DEEPSEEK_MODEL_PRICING["deepseek-v4-pro"]["default_max_tokens"]` stays **16000**. Primary hop manifest: **`docs/test-bible/core/agent.md`** § AST-1391.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tier literal + helper | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** |
+
+### AST-1397 · AST-1396 · AST-1395 (gap — tests)
+
+**Parent:** [AST-1395 — Loading ad hoc agent screen spills log warnings to the console](https://linear.app/astralcareermatch/issue/AST-1395/loading-ad-hoc-agent-screen-spills-log-warnings-to-the-console). **Publish:** `origin/sub/AST-1395/AST-1397-cover-empty-candidate-first-name-silence`. Product gate: sibling **AST-1396**.
+
+`resolve_tokens` candidate-source empty WARNING is silent when `candidate_data` is `{}` (Agent Ad Hoc list load / no candidate). A truthy token view with blank `first` / `full` still warns. Mixed `{$FIRST_NAME} {$CALLER_RESPONSE}` `any("resolved to empty")` does not pin this. Does **not** change job/chain empty-warning branches.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Empty-cd FIRST_NAME silence | `src/utils/config.py` | **`TestResolveTokens::test_empty_candidate_data_does_not_warn_on_first_name`** (`[bug-repro]`) |
+| Truthy view blank first still warns | same | **`TestResolveTokens::test_blank_first_name_on_truthy_view_still_warns`** |
+
+**Broken / obsolete:** none — mixed empty-candidate-and-chain `any(...)` still holds via chain.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestResolveTokens::test_empty_candidate_data_does_not_warn_on_first_name \
+  tests/component/utils/test_config.py::TestResolveTokens::test_blank_first_name_on_truthy_view_still_warns \
+  tests/component/utils/test_config.py::TestResolveTokens::test_logs_and_returns_empty_for_missing_candidate_and_chain_values \
+  -q
+```
+
 ---
 
 ### AST-960 · AST-957
