@@ -8185,3 +8185,148 @@ class TestAst1391DeepseekBigOutputFloor:
         assert tier.get("thinking") is False
         assert not tier.get("reasoning_effort")
         assert send.await_args.kwargs.get("max_tokens") == floor
+
+
+# Branches: workbench success stringify via _caller_response_blob (dict/list JSON vs
+# plain str vs empty {}/[]; extract agent_payload vs whole parsed; debug Style D
+# dict/list/str/none/other; debug=False skips serialize get_logger).
+class TestAst1393SerializeAdhocSuccessBody:
+    """AST-1393: stringify Ad Hoc success body before RESPONSE store."""
+
+    _TASK = "craft_company_search_terms"
+
+    @pytest.fixture
+    def store(self, monkeypatch: pytest.MonkeyPatch) -> Dict[str, Any]:
+        updates: List[Any] = []
+        monkeypatch.setattr(agent_mod.database, "save_dispatch_ledger", lambda *_a, **_k: None)
+        monkeypatch.setattr(
+            agent_mod.database,
+            "update_dispatch_ledger",
+            lambda _batch_id, **kwargs: updates.append(kwargs),
+        )
+        monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0)
+        monkeypatch.setattr(agent_mod, "_store_prompt_blocks", MagicMock())
+        store_response = MagicMock()
+        monkeypatch.setattr(agent_mod, "_store_response_block", store_response)
+        return {"store_response": store_response, "updates": updates}
+
+    async def _run(
+        self, monkeypatch: pytest.MonkeyPatch, parsed: Any, *, debug: bool = False
+    ) -> Dict[str, Any]:
+        async def _ok(**_k: Any) -> Dict[str, Any]:
+            return {"success": True, "parsed_response": parsed, "timesheet": {}}
+
+        monkeypatch.setattr(agent_mod, "run_adhoc", _ok)
+        return await agent_mod.run_adhoc_workbench_test(
+            workbench_task_key=self._TASK,
+            candidate_id="c1",
+            entity_id="co1",
+            debug=debug,
+        )
+
+    def _stored_text(self, store: Dict[str, Any]) -> str:
+        arg = store["store_response"].call_args[0][3]
+        assert isinstance(arg, str)
+        return arg
+
+    @pytest.mark.parametrize(
+        "parsed, expected",
+        [
+            (
+                {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"search_terms": "alpha\nbeta"},
+                },
+                json.dumps({"search_terms": "alpha\nbeta"}, ensure_ascii=False, default=str),
+            ),
+            ({"agent_payload": {}}, "{}"),
+            ({"agent_payload": []}, "[]"),
+            ({"agent_payload": ["a", "b"]}, json.dumps(["a", "b"], ensure_ascii=False, default=str)),
+            ({"agent_payload": "ok"}, "ok"),
+            ("plain ok", "plain ok"),
+            (
+                {"search_terms": "x"},
+                json.dumps({"search_terms": "x"}, ensure_ascii=False, default=str),
+            ),
+        ],
+        ids=[
+            "object-payload",
+            "empty-dict",
+            "empty-list",
+            "list-payload",
+            "str-payload",
+            "plain-text",
+            "dict-without-payload-key",
+        ],
+    )
+    async def test_success_stores_serialized_text(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        store: Dict[str, Any],
+        parsed: Any,
+        expected: str,
+    ) -> None:
+        out = await self._run(monkeypatch, parsed)
+        stored = self._stored_text(store)
+        assert stored == expected
+        assert out["success"] is True
+        assert out["parsed_response"] is parsed
+        assert store["updates"][-1]["status"] == "COMPLETED"
+        # Non-empty object/list must be compact JSON, not Python repr (the store crash).
+        if isinstance(parsed, dict) and "agent_payload" in parsed:
+            body = parsed["agent_payload"]
+            if isinstance(body, dict) and body:
+                assert stored != str(body)
+            elif isinstance(body, list) and body:
+                assert stored != str(body)
+
+    async def test_debug_true_style_d_found_to_recorded(
+        self, monkeypatch: pytest.MonkeyPatch, store: Dict[str, Any]
+    ) -> None:
+        dbg = MagicMock()
+        real = agent_mod.get_logger
+        monkeypatch.setattr(
+            agent_mod,
+            "get_logger",
+            lambda *a, **k: dbg if k.get("debug_flag") else real(*a, **k),
+        )
+        cases = [
+            ({"k": 1}, "dict", "keys=['k']"),
+            ([1, 2], "list", "len=2"),
+            ("ab", "str", "len=2"),
+            (None, "NoneType", "none"),
+            (3, "int", "int"),
+        ]
+        for payload, type_name, shape_part in cases:
+            dbg.reset_mock()
+            store["store_response"].reset_mock()
+            parsed = {"agent_payload": payload}
+            await self._run(monkeypatch, parsed, debug=True)
+            stored = self._stored_text(store)
+            kw = dbg.debug_index.call_args.kwargs
+            assert kw["func"] == "run_adhoc_workbench_test"
+            assert kw["index"] == 1 and kw["total"] == 1
+            assert kw["identifier"] == self._TASK
+            assert kw["outcome"] == "serialized store"
+            detail = dbg.debug_detail.call_args[0][0]
+            assert f"found type={type_name}" in detail
+            assert f"shape={shape_part}" in detail
+            dbg.debug_detail_block.assert_called_once_with(stored)
+
+    async def test_debug_false_adds_no_serialize_lines(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        store: Dict[str, Any],
+        caplog: pytest.LogCaptureFixture,
+    ) -> None:
+        gl = MagicMock(wraps=agent_mod.get_logger)
+        monkeypatch.setattr(agent_mod, "get_logger", gl)
+        caplog.set_level("DEBUG")
+        await self._run(monkeypatch, {"agent_payload": {"search_terms": "x"}}, debug=False)
+        assert self._stored_text(store) == json.dumps(
+            {"search_terms": "x"}, ensure_ascii=False, default=str
+        )
+        assert not any(c.kwargs.get("debug_flag") for c in gl.call_args_list)
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "serialized store" not in combined
+        assert "found type=" not in combined
