@@ -541,3 +541,27 @@ Do **not** skip substitution (leaving `{$FIRST_NAME}` would flip `_enrich_tasks`
 AST-513 AC 5 lives in the feature doc (`docs/features/artifacts/ast-513-token-gap-correction.md`), not in `canon/statutes/**` or `canon/patterns/**`. The plan explicitly preserves job-context empty warnings per AC 5; this is a bug-fix carve-out for `{}` (no candidate), not a canon contradiction or new architectural precedent.
 
 context_tokens≈22000
+
+## Radia review (AST-1396)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1396
+**Publish ref:** `origin/sub/AST-1395/AST-1396-gate-empty-token-warnings-on-agent-ad-hoc-load` @ `1f8da029`
+**Overall:** CLEAN
+
+**Diff base:** `origin/ftr/AST-1395-loading-ad-hoc-agent-screen-spills-log-warnings-to-the-console...origin/sub/AST-1395/AST-1396-gate-empty-token-warnings-on-agent-ad-hoc-load`
+
+**Product delta (AST-1396):** `src/utils/config.py` only — `resolve_tokens` candidate-source branch gates both `_log.warning` calls on `bool(candidate_data)`; substitution unchanged.
+
+### Findings
+
+fix-now: none. discuss: none.
+
+**`[bug-repro]`:** sibling AST-1397, not this ref. **`## What must still hold`:** OK.
+
+```
+[code-rubric] PROCEED (Commit: 1f8da029) gate empty-token warnings
+```
+
+context_tokens≈28000
