@@ -300,3 +300,24 @@ Implementation matches Joan’s APPROVED plan (Stages 1–2), parent boundary (n
 context_tokens≈38000
 
 ---
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/bcddebac668a0a56583b5e3d28357a61/870bc61b-6ad9-497f-b1a0-f86dda5b1559/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/d2bb909a-86ed-4089-8931-c628f677aad0/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/bcddebac668a0a56583b5e3d28357a61/1f261af5-dc5c-4d33-9b7b-97a0b021248d/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1390 (parent) | ftr/AST-1390-update-max-tokens-for-big-brain-output |
+| AST-1391 | sub/AST-1390/AST-1391-deepseek-big-output-budget |
+
+**Epic worktree:** `astral-AST-1390/` — one active sub checked out at a time.
