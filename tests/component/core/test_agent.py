@@ -6252,7 +6252,8 @@ class TestAst1380CraftRubricThinkingOffAndFailureBanner:
         tier = send.await_args.kwargs.get("tier_meta") or {}
         assert tier.get("thinking") is False
         assert not tier.get("reasoning_effort")
-        assert send.await_args.kwargs.get("max_tokens") == cfg.CRAFT_RUBRIC_MAX_TOKENS
+        # AST-1391: DeepSeek Big floor sits above the craft 32000 floor (AC6).
+        assert send.await_args.kwargs.get("max_tokens") == cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
 
     @pytest.mark.asyncio
     async def test_non_craft_deepseek_big_keeps_thinking(
@@ -7983,3 +7984,204 @@ class TestAst1389RequestedArtifactsHopLabels:
             debug=False,
         )
         write.assert_called_once_with("cand-1389", trigger, "craft_get_rubric")
+
+
+class TestAst1391DeepseekBigOutputFloor:
+    """AST-1391: DeepSeek Big do_task max_tokens floor over agent-row / SKU default."""
+
+    def _ok_send(self) -> AsyncMock:
+        return AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"agent_payload": "0|CRA2"},
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+
+    def _patch_evaluate_jd(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        provider: str,
+        brain: str,
+        max_tokens: int = 100,
+    ) -> Tuple[AsyncMock, AsyncMock]:
+        agent_row, prompts = _agent_rows(brain_setting=brain)
+        agent_row = {**agent_row, "max_tokens": max_tokens}
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: provider)
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda _tk: (agent_row, prompts)
+        )
+        send_ds = self._ok_send()
+        send_anth = self._ok_send()
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send_ds)
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send_anth)
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock())
+        return send_ds, send_anth
+
+    async def _evaluate_jd(self, *, debug: bool = False) -> Any:
+        return await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+            debug=debug,
+        )
+
+    @pytest.mark.asyncio
+    async def test_deepseek_big_floors_low_agent_row(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC1: stored 16000 must not starve Big — hop sends the config floor.
+        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        send_ds, send_anth = self._patch_evaluate_jd(
+            monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=16000
+        )
+        out = await self._evaluate_jd()
+        assert out["success"] is True
+        send_anth.assert_not_called()
+        assert send_ds.await_args.kwargs.get("max_tokens") == floor
+
+    @pytest.mark.asyncio
+    async def test_deepseek_big_agent_row_above_floor_wins(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Floor, not cap: a stored value already above 384000 is kept.
+        send_ds, _ = self._patch_evaluate_jd(
+            monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=400000
+        )
+        out = await self._evaluate_jd()
+        assert out["success"] is True
+        assert send_ds.await_args.kwargs.get("max_tokens") == 400000
+
+    @pytest.mark.asyncio
+    async def test_deepseek_medium_keeps_agent_row(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC2: Medium shares v4-pro SKU; must not pick up the Big floor.
+        send_ds, _ = self._patch_evaluate_jd(
+            monkeypatch, provider="deepseek", brain=cfg.BRAIN_MEDIUM, max_tokens=100
+        )
+        out = await self._evaluate_jd()
+        assert out["success"] is True
+        assert send_ds.await_args.kwargs.get("max_tokens") == 100
+
+    @pytest.mark.asyncio
+    async def test_deepseek_little_keeps_agent_row(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC3: Little budget unchanged.
+        send_ds, _ = self._patch_evaluate_jd(
+            monkeypatch, provider="deepseek", brain=cfg.BRAIN_LITTLE, max_tokens=100
+        )
+        out = await self._evaluate_jd()
+        assert out["success"] is True
+        assert send_ds.await_args.kwargs.get("max_tokens") == 100
+
+    @pytest.mark.asyncio
+    async def test_anthropic_big_does_not_use_deepseek_floor(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC4: Anthropic Big stays on agent-row / Opus default — never 384000.
+        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        _, send_anth = self._patch_evaluate_jd(
+            monkeypatch, provider="anthropic", brain=cfg.BRAIN_BIG, max_tokens=100
+        )
+        out = await self._evaluate_jd()
+        assert out["success"] is True
+        sent = send_anth.await_args.kwargs.get("max_tokens")
+        assert sent == 100
+        assert sent != floor
+
+    @pytest.mark.asyncio
+    async def test_debug_true_max_tokens_line_shows_floor(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC5: existing do_task [DEBUG] max_tokens line reflects the floored value.
+        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        logged: List[str] = []
+        orig_info = agent_mod.logger.info
+
+        def _info(msg: str, *args: Any, **kwargs: Any) -> None:
+            logged.append(msg % args if args else str(msg))
+            orig_info(msg, *args, **kwargs)
+
+        monkeypatch.setattr(agent_mod.logger, "info", _info)
+        self._patch_evaluate_jd(
+            monkeypatch, provider="deepseek", brain=cfg.BRAIN_BIG, max_tokens=16000
+        )
+        out = await self._evaluate_jd(debug=True)
+        assert out["success"] is True
+        assert any(
+            "[DEBUG] do_task(" in m and f"max_tokens={floor}" in m for m in logged
+        )
+
+    @pytest.mark.asyncio
+    async def test_craft_deepseek_big_thinking_off_uses_big_floor(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # AC6: AST-1380 thinking-off stays; Big floor (not craft 32000) is what gets sent.
+        floor = cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda _tk: _agent_rows(brain_setting=cfg.BRAIN_BIG),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {
+                        "criteria": [
+                            {"code": "GT", "label": "Get", "content": "full", "importance": 5},
+                        ]
+                    },
+                },
+                "api_response": _api_response('{"criteria":[]}'),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="abrams",
+            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+        )
+        assert out["success"] is True
+        tier = send.await_args.kwargs.get("tier_meta") or {}
+        assert tier.get("thinking") is False
+        assert not tier.get("reasoning_effort")
+        assert send.await_args.kwargs.get("max_tokens") == floor
