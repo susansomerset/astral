@@ -48,6 +48,29 @@ describe("RequireAuth", () => {
     expect(screen.queryByText("Protected content")).not.toBeInTheDocument()
   })
 
+  it("AST-1408: shows Loading when Stytch is uninitialized and there is no session", () => {
+    stytchTestState.isInitialized = false
+    stytchTestState.session = null
+    renderWithProviders(
+      <RequireAuth>
+        <p>Protected content</p>
+      </RequireAuth>,
+    )
+    expect(screen.getByText("Loading…")).toBeInTheDocument()
+    expect(screen.queryByText("Protected content")).not.toBeInTheDocument()
+  })
+
+  it("AST-1408: keeps children mounted when a session exists even if Stytch is uninitialized", () => {
+    stytchTestState.isInitialized = false
+    renderWithProviders(
+      <RequireAuth>
+        <p>Protected content</p>
+      </RequireAuth>,
+    )
+    expect(screen.getByText("Protected content")).toBeInTheDocument()
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+  })
+
   it("shows LogOffScreen with server-rejection copy when reason is set", async () => {
     markHadSession()
     setLogOffReason("server-rejection")
