@@ -283,6 +283,148 @@ Do **not** add hop labels to `CANDIDATE_STATES`. Do **not** change `write_candid
 - Job `BUILD_ARTIFACTS` hop labels + terminal graduation unchanged.
 - Invalid non-hop states (`NEW`, typos) still rejected by `save_candidate` with the existing `Must be one of:` message.
 
+
+## Radia review (AST-1416)
+
+[code-rubric] revision=2
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1416  
+**Publish ref:** `origin/sub/AST-1415/AST-1416-restore-hop-label-membership` @ `1b16124c`  
+**Diff base:** `origin/ftr/AST-1415-candidate-state-validation-bug` @ `bb5738af`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | layers miss — no `core` diff paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers miss — no `core` diff paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers miss — no `core` diff paths |
+| astral.batch.batch-id-first | scoped | conforms | No batch-id claim/lock logic touched |
+| astral.batch.batch-id-format | scoped | conforms | No batch-id formatting changes |
+| astral.batch.claim-process-release | scoped | conforms | Persist predicate aligned with existing claim helper; no unlocked dispatch path introduced |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | No agent-response storage changes |
+| astral.config.config-source-of-truth | scoped | conforms | Reuses `is_valid_candidate_batch_claim_state` from config; no scattered literals |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env lookups added |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss — no debug/artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | No spike/debug-dir additions |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | No hop-order list or shadow `run_next` frozenset added |
+| astral.dispatch.seed-auto-false | scoped | conforms | No dispatch seed/provision changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | plan-fix patch appended to existing parent feature doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | No Betty-owned tree edits |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | paths miss — no `tests/` changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | layers miss — no `core`/`external` diff |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | layers miss — no `core` diff |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss — no API surface diff |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers miss — no `core`/`external` diff |
+| astral.layers.import-direction | scoped | conforms | `database.py` imports config helper; no reverse/circular layer breach |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers miss — no `scripts` diff |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | No UI business-logic drift |
+| astral.seed.agent-tables-in-repo-json | scoped | conforms | No agent_task JSON seed edits |
+| astral.seed.archie-catalog-wins | scoped | conforms | No seed catalog invention |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | No boot/hot-path seed wiring |
+| astral.seed.define-approved | scoped | conforms | No unapproved auto-provision |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | No operator-row resurrection |
+| astral.seed.other-via-coverage-join | scoped | conforms | No coverage-join seed changes |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `save_candidate` still raises `ValueError`; no data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | No new tables/queries; header inventory unchanged appropriately |
+| astral.standards.debug-contract-gated | scoped | conforms | No debug output changes |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single shared predicate instead of duplicating hop-parse logic |
+| astral.standards.in-scope-only | scoped | conforms | Touches only `database.py`, `config.py` docstring, and plan doc per patch |
+| astral.standards.logging-via-utils | scoped | conforms | No ad-hoc logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | No ticket-id symbol names in product code |
+| astral.standards.no-cross-contamination | scoped | conforms | Candidate persist fix does not bleed job dispatch paths |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Membership delegated to config helper, not inline hop frozenset |
+| astral.standards.public-then-helpers | scoped | conforms | No API surface reordering issues |
+| astral.standards.utils-data-late-import-only | scoped | conforms | Existing top-level config import pattern preserved |
+| astral.state.core-decides-transitions | scoped | conforms | `save_candidate` validates membership only; does not choose next state |
+| astral.state.job-prior-states-enforced | scoped | conforms | Job transition enforcement untouched |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers miss — no `core` diff |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss — no `ui` diff |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss — no `ui` diff |
+| astral.ui.single-gunicorn-worker | scoped | conforms | `config.py` touch is docstring-only; worker count unchanged |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | No test-tree merge on this sub |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1416): …` commit on publish tip |
+| orch.git.flow-direction-inviolable | universal | conforms | Fix sub stacked on live `ftr` |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1415/AST-1416-…` on `ftr/AST-1415-…` |
+| orch.git.merge-on-checkout | universal | conforms | No checkout/merge violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No history rewrite |
+| orch.git.no-dev-agent-branches | universal | conforms | Publish ref is `sub/*`, not `dev-*` |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review run from `astral-AST-1415/` |
+| orch.git.three-permanent-branches | universal | conforms | No new long-lived branch classes |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Scoped membership carve-out already plan-approved |
+| orch.pipeline.plan-is-bible | universal | conforms | Diff matches plan-fix `## Proposed change` exactly |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-ticket fix review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Spawned at Tests Passed per fix-lane F7 |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute amendments |
+| orch.roles.betty-owns-test-tree | universal | conforms | Engineer did not patch `tests/` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada; Radia read-only |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee through review gate |
+| orch.roles.pre-commit-path-bans | universal | conforms | No banned-path commits in reviewed product diff |
+
+**Active statute count:** 64 — **rows above:** 64
+
+## Pattern conformance
+
+none cited in AST-1416 plan-fix patch
+
+## Plan adherence
+
+Diff implements the approved AST-1416 patch precisely: both INSERT and UPDATE `save_candidate` membership gates now call `is_valid_candidate_batch_claim_state(state)`; error text for rejects unchanged; `write_candidate_dispatch_hop_label`, dispatch worker, and `CANDIDATE_STATES` registry untouched; `config.py` docstring widened to “persist + claim” with no logic change. Scope stays inside blast radius (shared predicate, no remap fix, no job path edits, no test-tree edits per board routing).
+
+**C6 judgment aids (touched areas):** import direction data→utils OK; no silent swallow; no new fallbacks/logging; no UI/debug/external surface changes.
+
+## Fix-specific checks
+
+**[bug-repro]:** not applicable — board `[board-betty] TESTS: REVISE` routed repro to sibling **AST-1417**; no `[bug-repro]` expected on this ticket.
+
+**## What must still hold:** OK
+- **AST-1388:** Hop labels remain outside `CANDIDATE_STATES`; persist carve-out via existing parse helper; transition/claim paths unchanged in diff.
+- **AST-1252:** No changes to `run_next` dispatch, `persist_candidate_craft_hops`, terminal graduation, or `DISPATCH_CHAIN_TERMINAL_GRADUATION`.
+- **Job `BUILD_ARTIFACTS`:** `save_job` / job hop writes untouched.
+- **Invalid non-hop states:** `NEW`, garbage, and non-`TASK_CONFIG` hops still fail `is_valid_candidate_batch_claim_state`.
+
+## Findings
+
+**fix-now:** none  
+**discuss:** none  
+**advisory:** none
+
+## What's solid
+
+Minimal, plan-faithful fix: one predicate reused for claim parity on persist, matching the root-cause analysis (AST-1388 write path vs `save_candidate` registry gate). Surgical three-file diff with honest docstring update.
+
+## Frame diff
+
+```
+origin/ftr/AST-1415-candidate-state-validation-bug...origin/sub/AST-1415/AST-1416-restore-hop-label-membership
+ docs/features/candidate/ast-1252-artifacts-dispatch-chain-persistence-and-retire-wrappers.md | +52
+ src/data/database.py                                                                       |  9 +-
+ src/utils/config.py                                                                        |  2 +-
+ 3 files changed, 58 insertions(+), 5 deletions(-)
+```
+
+## Notes
+
+- **C4:** no plan-rubric verdict attached for this bug patch — straggler sweep N/A.
+- **Board:** `[board-joan] CANON: OK`; `[board-betty] TESTS: REVISE` → AST-1417 (not scored against this ticket).
+- **Parent shape:** normal (AST-1415 in flight; `ftr` base present).
+
+## Chuckles branching
+
+| Gate | Parent | Next action |
+|------|--------|-------------|
+| **PROCEED** | Normal | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+context_tokens≈28000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 1b16124c) hop-label persist carve-out
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
