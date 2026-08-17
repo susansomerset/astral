@@ -2,6 +2,7 @@
 """Repo-owned admin JSON for ``agent`` and ``agent_task`` (AST-782).
 
 Applied once per process at startup via ``bootstrap_runtime()`` — not on admin save.
+Skipped when ``ASTRAL_DEPLOY_ENV`` is ``local`` (live DB prompts stay put).
 AST-381 admin snapshot export/import remains cancelled.
 """
 
@@ -18,6 +19,7 @@ from src.utils.config import (
     get_repo_admin_json_path,
     get_repo_admin_json_table_keys,
 )
+from src.utils.deploy_status import is_local_deploy_env
 from src.utils.logging import get_logger
 
 __all__ = [
@@ -153,6 +155,9 @@ def load_repo_admin_json_file(table_key: str) -> List[Dict[str, Any]]:
 
 def apply_repo_admin_json_at_startup() -> None:
     """Load repo JSON files and apply to DB in one transaction (repo wins)."""
+    if is_local_deploy_env():
+        logger.info("repo_admin_json skipped ASTRAL_DEPLOY_ENV=local")
+        return
     conn = database._get_connection()
     txn = False
     try:

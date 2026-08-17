@@ -16,6 +16,27 @@ class TestSaveCandidate:
         with pytest.raises(ValueError, match="Invalid candidate state"):
             sqlite_in_memory.save_candidate("cand-1", state="NOT_A_STATE")
 
+    def test_update_accepts_requested_artifacts_hop_label(self, sqlite_in_memory) -> None:
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH, dispatch_hop_label
+
+        db = sqlite_in_memory
+        db.save_candidate("cand-1", state="REQUESTED_ARTIFACTS")
+        hop = dispatch_hop_label(
+            CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"],
+            "craft_get_rubric",
+        )
+        db.save_candidate("cand-1", state=hop)
+        row = db.get_candidate("cand-1")
+        assert row is not None
+        assert row["state"] == hop
+
+    def test_rejects_unknown_hop_label(self, sqlite_in_memory) -> None:
+        sqlite_in_memory.save_candidate("cand-1", state="REQUESTED_ARTIFACTS")
+        with pytest.raises(ValueError, match="Invalid candidate state"):
+            sqlite_in_memory.save_candidate(
+                "cand-1", state="REQUESTED_ARTIFACTS.not_a_task",
+            )
+
     def test_insert_and_merge_update(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_candidate("cand-1", state="NEW_CANDIDATE", candidate_data={"bio": "a"})

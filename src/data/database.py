@@ -78,6 +78,7 @@ from src.utils.config import (
     CANDIDATE_LEGACY_TRIGGER_STATES,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STATES,
+    is_valid_candidate_batch_claim_state,
     remap_legacy_candidate_state,
     COMPANY_STATES,
     METEORITE_CONFIG,
