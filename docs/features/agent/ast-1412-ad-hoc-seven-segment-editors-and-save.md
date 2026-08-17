@@ -193,3 +193,25 @@ Do **not** edit: `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` (Manage Tasks)
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1412
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save` @ `1bab7d00f97c398089dddec934bcaa84f6ff404f`
+
+## Traceability
+
+AC1→Stage 1 (seven editors, fetch/save all seven columns, seven-len overwrite ●); AC2→Stage 1 steps 8–10 (`cache_prompt_b` isolated, no slide into A); AC3→Stage 1 step 10 + Stage 2 (`system_prompt: ""` on Save/Preview/Test; sibling #1 resolves agent fallback).
+
+## Findings
+
+**acceptable** — Duplicated Manage Tasks label strings instead of a shared module; plan documents why (`AdminTaskPrompts.tsx` out of scope).
+
+**acceptable** — `_enrich_tasks` additive `*_len` passthrough on shared `/api/admin/tasks`; backward-compatible, correct lens for Cache-B-only overwrite.
+
+**acceptable** — Stage 2 Preview/Test contract depends on AST-1411 `"system_prompt" in body` behavior; ticket ordering “after #1” matches dispatch.
+
+context_tokens≈48000
