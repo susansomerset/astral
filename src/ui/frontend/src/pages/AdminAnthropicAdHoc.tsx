@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TabBar } from "../components/TabbedTextArea"
 import TokenTextarea from "../components/TokenTextarea"
 import Modal from "../components/Modal"
+import { BatchAgentDataPanes } from "../components/BatchAgentDataModal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
@@ -109,8 +110,7 @@ export default function AnthropicAdHoc() {
   const [previewOpen, setPreviewOpen] = useState(false)
 
   const [testing, setTesting] = useState(false)
-  const [response, setResponse] = useState<string | null>(null)
-  const [timesheet, setTimesheet] = useState<Record<string, unknown> | null>(null)
+  const [testBatchId, setTestBatchId] = useState<string | null>(null)
 
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [confirmTask, setConfirmTask] = useState<string | null>(null)
@@ -226,8 +226,7 @@ export default function AnthropicAdHoc() {
   function handleTest() {
     if (!agentId) { setToast({ text: "Select an agent first", variant: "error" }); return }
     setTesting(true)
-    setResponse(null)
-    setTimesheet(null)
+    setTestBatchId(null)
     api("/api/admin/adhoc/test", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -246,13 +245,14 @@ export default function AnthropicAdHoc() {
       })
       .then(data => {
         if (data.success) {
-          setResponse(responseBodyToText(data.response_text))
-          setTimesheet(data.timesheet || null)
+          const id = typeof data.batch_id === "string" ? data.batch_id.trim() : ""
+          if (id) setTestBatchId(id)
+          else setToast({ text: "Test succeeded without batch_id", variant: "error" })
         } else {
-          setResponse(`ERROR: ${data.error || "Unknown error"}`)
+          setToast({ text: data.error || "Unknown error", variant: "error" })
         }
       })
-      .catch(e => setResponse(`ERROR: ${e.message}`))
+      .catch(e => setToast({ text: e.message, variant: "error" }))
       .finally(() => setTesting(false))
   }
 
@@ -298,16 +298,6 @@ export default function AnthropicAdHoc() {
         api(`/api/admin/tasks${qs}`).then(r => r.json()).then(d => setTasks(Array.isArray(d) ? d : []))
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
-  }
-
-  function responseBodyToText(body: unknown): string {
-    if (typeof body === "string") return body
-    if (body == null) return ""
-    try { return JSON.stringify(body) } catch { return String(body) }
-  }
-
-  function formatResponse(text: string): string {
-    try { return JSON.stringify(JSON.parse(text), null, 2) } catch { return text }
   }
 
   const editors: Record<TabKey, { value: string; onChange: (v: string) => void; placeholder: string; rows: number }> = {
@@ -474,36 +464,6 @@ export default function AnthropicAdHoc() {
         </div>
       </div>
 
-      {/* ── Response area ── */}
-      {response !== null && (
-        <div style={{ marginTop: 20 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <h3 style={{ margin: 0, fontSize: 14, color: "var(--text-secondary)" }}>Response</h3>
-            {timesheet && (
-              <span style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
-                {timesheet.duration ? `${Number(timesheet.duration).toFixed(1)}s` : ""}
-                {timesheet.inputtotal ? ` · ${timesheet.inputtotal} in` : ""}
-                {timesheet.outputtotal ? ` · ${timesheet.outputtotal} out` : ""}
-                {timesheet.inputcached ? ` · ${timesheet.inputcached} cached` : ""}
-              </span>
-            )}
-          </div>
-          <pre style={{
-            padding: 16, borderRadius: 4,
-            background: "var(--bg-deep)", border: "1px solid var(--border)",
-            color: response.startsWith("ERROR:") ? "#ff6b6b" : "var(--text-primary)",
-            fontFamily: "monospace", fontSize: 13,
-            whiteSpace: "pre-wrap", wordBreak: "break-word",
-            maxHeight: 600, overflow: "auto",
-          }}>
-            {formatResponse(response)}
-          </pre>
-        </div>
-      )}
-
-      {/* ── Hydrated output (for abbreviated output_type tasks) ── */}
-      {/* Hydrated response section disabled for now — showing raw response is sufficient for debugging */}
-
       <Modal
         open={previewOpen}
         onClose={() => setPreviewOpen(false)}
@@ -520,6 +480,14 @@ export default function AnthropicAdHoc() {
           {previewField(previewTab, previewData) || "(empty)"}
         </pre>
       </Modal>
+
+      {testBatchId && (
+        <BatchAgentDataPanes
+          batchId={testBatchId}
+          candidateId={selectedId || undefined}
+          className="batch-agent-data-wrapper--page"
+        />
+      )}
 
       <Toast message={toast} onDone={clearToast} />
     </div>
