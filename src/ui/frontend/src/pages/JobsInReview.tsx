@@ -5,6 +5,7 @@ import { legacyStateSectionLabel, unmappedJobStates } from "../lib/stateUiSectio
 import { ConfidenceBullets } from "../components/ConfidenceBullets"
 import JobDetailModal from "../components/JobDetailModal"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import Time from "../components/Time"
 import {
@@ -112,20 +113,20 @@ export default function InReview() {
   const { manifest, loadState } = useStateUi()
   const { selectedId } = useCandidate()
   const [rows, setRows]     = useState<Job[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [viewingId, setViewingId] = useState<string | null>(null)
   const [sorts, setSorts]   = useState<Record<string, SortState>>({})
 
-  const load = useCallback(() => {
+  const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
-    setLoading(true)
+    beginRefresh(showSpinner)
     api(`/api/jobs?view=in_review&candidate_id=${encodeURIComponent(selectedId)}`)
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
-      .finally(() => setLoading(false))
-  }, [selectedId])
+      .finally(() => endRefresh())
+  }, [selectedId, beginRefresh, endRefresh])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(true) }, [load])
 
   const sections = useMemo(() => {
     if (!manifest) return []
