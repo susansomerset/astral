@@ -143,3 +143,35 @@ Confirm Chuckles estimate: 3 — agree
 - AC1 (overlay still open with in-progress edits after activity-extension cadence; page is not replaced by a loading placeholder) → Stage 1 (no `loading` flip / no extend-loop restart on JWT tick) + Stage 2 (RequireAuth / AdminRoute do not unmount an already-authenticated tree)
 - AC2 (log-off still clears the session; Vite still reloads when frontend source files change) → RequireAuth log-off path untouched except the `isInitialized` conjunct; `LogOffScreen` / Vite config not edited
 - Boundaries: no list/toggle live update (AST-1409 / AST-1410); no `AUTH_CONFIG` / `sessionExtend.ts` cadence edits; no overlay-draft persistence across intentional close
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1408
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1406/AST-1408-keep-the-spa-mounted-across-session-revalidation` @ `f894f2d5`
+
+## Traceability
+
+- AC1 → Stage 1 (`identityResolvedRef` + first-resolution-only `loading`; extend loop keyed on `sessionPresent`) + Stage 2 (`RequireAuth` / `AdminRoute` keep authenticated children mounted)
+- AC2 → Stage 2 (`RequireAuth` log-off branch untouched; `LogOffScreen` / `vite.config.ts` explicitly out of scope)
+- Boundaries → Files Changed exclusions + stage decisions (no `AUTH_CONFIG` / `sessionExtend.ts` / list pages / catalog pattern)
+
+## Findings
+
+### acceptable
+
+- **Location:** Citations — `pattern.ui.in-place-live-refresh` (proposed)
+- **Finding:** No `canon/patterns/**` draft exists yet; parent assigns catalog authoring to AST-1409.
+- **Recommendation:** Accept for this child — plan explicitly defers catalog entry and limits scope to the session-shell half per parent sequencing.
+
+### acceptable
+
+- **Location:** Stage 1 — `loading` semantic shift
+- **Finding:** `CandidateContext`, `StateUiContext`, `NavigationShell`, and `AdminDeployFooter` gate fetches on `authLoading`; first-resolution-only `loading` means they will not re-run on JWT rotation (by design).
+- **Recommendation:** No plan change — matches stated decision to avoid teaching every consumer a new `revalidating` flag.
+
+No `fix-now` or `discuss` blockers. R1–R5 pass. Layer placement (`contexts/` + `components/`, flat, no new dirs), in-scope-only exclusions, and DRY/minimal-diff approach conform. Current `AuthContext.tsx` root cause confirmed: `loadMe` always `setLoading(true)` and extend-loop deps include `session` object identity — plan targets both correctly. Status `Plan Ready`, assignee Joan — gate satisfied. Zero completed `[plan-discuss]` rounds.
+
+context_tokens≈42000
