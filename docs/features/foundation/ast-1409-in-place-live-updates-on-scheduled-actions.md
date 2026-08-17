@@ -284,3 +284,11 @@ Confirm Chuckles estimate: 5 — agree
 No `fix-now` or `discuss` blockers. R1–R5 pass. Current `AdminScheduledActions.tsx` root cause confirmed: `loadData` always `setLoading(true)` (lines 332–360), causing list-gate flash on every post-PUT and running→idle refresh; modals are already structurally outside the gate (lines 788–863). Hook extraction mirrors Performance Monitor’s inline `loadData(showSpinner)` shape. Stage 3 pattern draft conforms to `canon/patterns/SCHEMA.md` (frontmatter, body order, `status: proposed`, README/HARVEST crosswalk steps match current corpus). In-scope-only exclusions, DRY, admin-endpoint presentation-only boundary, and shared-button-roles preservation all conform. Status `Plan Ready`, assignee Joan — gate satisfied. Zero completed `[plan-discuss]` rounds.
 
 context_tokens≈58000
+
+## Review (build)
+
+**Built @ `cd6b32fe`** — `origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`
+
+- Stage 1 (`b1d57f12`): `useInPlaceLiveRefresh` — first-paint spinner, later refetch silent
+- Stage 2 (`a2ce31b2`): Scheduled Actions `loadData(showSpinner)`; AUTO/Dbg/run-complete silent; overlays stay outside the list gate
+- Stage 3 (`cd6b32fe`): proposed `pattern.ui.in-place-live-refresh` + README/HARVEST index
