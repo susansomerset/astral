@@ -1829,13 +1829,11 @@ class TestAst722RubricFeedbackConfig:
 class TestAst723RubricVectorsToken:
     """AST-723: RUBRIC_VECTORS token registry and owner task_key mapping."""
 
+    # AST-1405 restored GET/DO/LIKE as pinned names; these three stay unregistered.
     _LEGACY_RUBRIC_TOKENS = (
         "COMPANY_PREFILTER",
         "JOBLIST_RUBRIC",
         "JOBDESC_RUBRIC",
-        "GET_RUBRIC",
-        "DO_RUBRIC",
-        "LIKE_RUBRIC",
     )
 
     def test_rubric_vectors_token_registered(self) -> None:
@@ -1854,6 +1852,75 @@ class TestAst723RubricVectorsToken:
         phases = cfg.JOB_TOKEN_CONFIG["analysis_phases"]
         assert phases["ANALYSIS_JD"]["rubric_owner_task_key"] == "evaluate_jd"
         assert phases["ANALYSIS_GET"]["rubric_owner_task_key"] == "grade_get"
+
+
+# Branches: five named pins + pickers; three legacy names absent; pin vs running-task
+# owner; empty-cd silence for pinned only; truthy missing-cid still warns.
+class TestAst1405NamedRubricPromptTokens:
+    """AST-1405: named rubric tokens pin owner_task_key; {$RUBRIC_VECTORS} stays task-derived."""
+
+    _NAMED_PINS = {
+        "GET_RUBRIC": "grade_get",
+        "DO_RUBRIC": "grade_do",
+        "LIKE_RUBRIC": "grade_like",
+        "JD_RUBRIC": "evaluate_jd",
+        "PREFILTER_RUBRIC": "prefilter_company",
+    }
+    _FORBIDDEN = ("JOBLIST_RUBRIC", "COMPANY_PREFILTER", "JOBDESC_RUBRIC")
+
+    def test_named_pins_registered_and_listed_in_pickers(self) -> None:
+        for name, owner in self._NAMED_PINS.items():
+            assert cfg.TOKEN_SOURCES[name] == {"source": "rubric", "owner_task_key": owner}
+            assert name in cfg.get_tokens()
+            assert name in cfg.get_manage_agents_tokens()
+        assert cfg.TOKEN_SOURCES["RUBRIC_VECTORS"] == {"source": "rubric"}
+        for name in self._FORBIDDEN:
+            assert name not in cfg.TOKEN_SOURCES
+            assert name not in cfg.get_tokens()
+            assert name not in cfg.get_manage_agents_tokens()
+
+    def test_named_token_uses_pin_not_running_task_owner(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        def fake_criteria(_cid: str, owner: str):
+            return [{"label": owner, "code": "X", "content": f"vectors-for-{owner}"}]
+
+        monkeypatch.setattr("src.core.candidate.rubric_criteria_for_token", fake_criteria)
+        cd = {"_astral_candidate_id": "c-1405"}
+        # Running LIKE: named GET still substitutes GET; generic stays LIKE.
+        got = cfg.resolve_tokens("{$GET_RUBRIC}", cd, "grade_like")
+        generic = cfg.resolve_tokens("{$RUBRIC_VECTORS}", cd, "grade_like")
+        assert "vectors-for-grade_get" in got
+        assert "vectors-for-grade_like" not in got
+        assert "vectors-for-grade_like" in generic
+        assert "vectors-for-grade_get" not in generic
+        for name, owner in self._NAMED_PINS.items():
+            text = cfg.resolve_tokens("{$" + name + "}", cd, "grade_like")
+            assert f"vectors-for-{owner}" in text
+            if owner != "grade_like":
+                assert "vectors-for-grade_like" not in text
+
+    def test_empty_cd_silences_pinned_names_not_rubric_vectors(self, caplog) -> None:
+        caplog.set_level("WARNING")
+        for name in self._NAMED_PINS:
+            assert cfg.resolve_tokens("{$" + name + "}", {}, "adhoc") == ""
+        assert not any("missing candidate id" in rec.message for rec in caplog.records)
+        caplog.clear()
+        # Unpinned RUBRIC_VECTORS on a rubric-backed task still warns (owner exists, cid missing).
+        assert cfg.resolve_tokens("{$RUBRIC_VECTORS}", {}, "grade_like") == ""
+        assert any(
+            "Token {$RUBRIC_VECTORS} unresolved — missing candidate id" in rec.message
+            for rec in caplog.records
+        )
+
+    def test_truthy_view_missing_cid_still_warns_for_pinned_name(self, caplog) -> None:
+        caplog.set_level("WARNING")
+        out = cfg.resolve_tokens("{$GET_RUBRIC}", {"profile": {"first": "Ada"}}, "adhoc")
+        assert out == ""
+        assert any(
+            "Token {$GET_RUBRIC} unresolved — missing candidate id" in rec.message
+            for rec in caplog.records
+        )
 
 
 class TestAst724RubricBackedTask:

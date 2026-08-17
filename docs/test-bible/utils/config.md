@@ -454,7 +454,7 @@ Roster story + consult saves: **`docs/test-bible/core/roster.md`**, **`docs/test
 
 ### AST-723 · AST-378
 
-**`RUBRIC_VECTORS`** token registry; legacy per-artifact rubric tokens removed from **`TOKEN_SOURCES`**; **`rubric_owner_task_key`** + **`JOB_TOKEN_CONFIG["analysis_phases"].rubric_owner_task_key`**.
+**`RUBRIC_VECTORS`** token registry; legacy per-artifact rubric tokens removed from **`TOKEN_SOURCES`**; **`rubric_owner_task_key`** + **`JOB_TOKEN_CONFIG["analysis_phases"].rubric_owner_task_key`**. **AST-1405** restores **`GET_RUBRIC` / `DO_RUBRIC` / `LIKE_RUBRIC`** (plus **`JD_RUBRIC` / `PREFILTER_RUBRIC`**) as pinned names — `TestAst723RubricVectorsToken.test_legacy_per_artifact_rubric_tokens_removed` now asserts only **`COMPANY_PREFILTER` / `JOBLIST_RUBRIC` / `JOBDESC_RUBRIC`** stay absent.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -3073,6 +3073,44 @@ Candidate `NAV_CONFIG` Ideal Day (`/candidate/ideal_day`) between Backstory and 
   tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_three_admin_segments_for_admin \
   tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_omits_admin_group_for_non_admin \
   tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_nav_config_admin_agent_ad_hoc_label \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1405 · AST-1404
+
+**Parent:** [AST-1404 — Reintroduce the specific rubric tokens](https://linear.app/astralcareermatch/issue/AST-1404/reintroduce-the-specific-rubric-tokens). **Publish:** `origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens`.
+
+Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_RUBRIC`, `PREFILTER_RUBRIC`) with `source: rubric` + `owner_task_key` pin. `resolve_tokens` uses the pin, not the running task; `{$RUBRIC_VECTORS}` stays task-derived. Empty `candidate_data` silences missing-id warnings for pinned names only (AST-1396 contract). Does **not** register `JOBLIST_RUBRIC` / `COMPANY_PREFILTER` / `JOBDESC_RUBRIC`. Pickers already list `TOKEN_SOURCES` — no UI tests.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Named pins + picker membership | `src/utils/config.py` | **`TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers`** |
+| Pin independence vs `{$RUBRIC_VECTORS}` | same | **`TestAst1405NamedRubricPromptTokens::test_named_token_uses_pin_not_running_task_owner`** |
+| Empty-cd silence (pinned only) | same | **`TestAst1405NamedRubricPromptTokens::test_empty_cd_silences_pinned_names_not_rubric_vectors`** |
+| Truthy view missing cid still warns | same | **`TestAst1405NamedRubricPromptTokens::test_truthy_view_missing_cid_still_warns_for_pinned_name`** |
+| Legacy names stay unregistered | same | revised **`TestAst723RubricVectorsToken::test_legacy_per_artifact_rubric_tokens_removed`** |
+
+**Broken / obsolete this pass:** `TestAst723RubricVectorsToken._LEGACY_RUBRIC_TOKENS` included `GET_RUBRIC` / `DO_RUBRIC` / `LIKE_RUBRIC` as absent — those names are restored as pinned tokens; the tuple now covers only `COMPANY_PREFILTER` / `JOBLIST_RUBRIC` / `JOBDESC_RUBRIC`.
+
+**Integration:** no existing scenario asserts `TOKEN_SOURCES` rubric names or `resolve_tokens` pin vs running-task owner — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Named pins + Manage Tasks / Manage Agents pickers: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_pins_registered_and_listed_in_pickers`
+2. Pin independence + `{$RUBRIC_VECTORS}` still task-derived: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_named_token_uses_pin_not_running_task_owner`
+3. Empty-cd silence for pinned names; `RUBRIC_VECTORS` still warns: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_empty_cd_silences_pinned_names_not_rubric_vectors`
+4. Truthy token view without candidate id still warns: `tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens::test_truthy_view_missing_cid_still_warns_for_pinned_name`
+5. Three forbidden legacy names stay absent: `tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_legacy_per_artifact_rubric_tokens_removed`
+6. Keep `RUBRIC_VECTORS` unpinned: `tests/component/utils/test_config.py::TestAst723RubricVectorsToken::test_rubric_vectors_token_registered`
+
+**AST-1405** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1405NamedRubricPromptTokens \
+  tests/component/utils/test_config.py::TestAst723RubricVectorsToken \
   -q
 ```
 
