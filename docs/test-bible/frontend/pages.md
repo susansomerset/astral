@@ -2003,3 +2003,36 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx
 ```
 
+### AST-1409 · AST-1406
+
+**Parent:** [AST-1406 — Page refreshes and modals are closed (lost!)](https://linear.app/astralcareermatch/issue/AST-1406). **Publish:** `origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`.
+
+Scheduled Actions consumes shared `useInPlaceLiveRefresh`: first paint may show `Loading…`; AUTO/Dbg post-PUT and running→idle `loadData()` are silent. Add/edit overlay stays outside the list gate and keeps its draft. Proposed `pattern.ui.in-place-live-refresh` is catalog docs (not pytest). Session-shell mount is **AST-1408**. Remaining list pages are **AST-1410**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hook contract | `useInPlaceLiveRefresh.ts` | **`test_useInPlaceLiveRefresh.test.tsx`** |
+| Routed Scheduled Actions (**§6c**) silent AUTO/Dbg | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions.test.tsx`** — **`AST-1409 in-place live refresh`** → AUTO/Dbg without `Loading…` |
+| Avail / last-run + overlay draft | same | **`running→idle merges Avail and last-run; open Add Task draft survives`** |
+| Existing run-complete Avail | same | **`reloads dispatch tasks when a manual run thread finishes`** (regression) |
+
+**Broken / obsolete:** none — first-paint `Loading…` and existing AUTO click / run-complete Avail cases stay. Filters stay client-side (no query-identity spinner on this page).
+
+**Integration:** no existing scenario asserts Scheduled Actions list remount / overlay draft — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Hook: `tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx`
+2. Routed page (**§6c**): `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — `--testNamePattern="AST-1409"`
+
+**AST-1409** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-1409|useInPlaceLiveRefresh"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
