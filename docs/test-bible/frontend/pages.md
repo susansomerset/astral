@@ -2069,3 +2069,36 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest + `TestAst1412EnrichTaskLens` green — not zero-arg harness / branch-lock gate.
 
+### AST-1413 · AST-1403
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes`.
+
+Preview Prompt opens the shared `Modal` with eight resolved tabs (System, Cache A–D, No Cache, User, Live Content). The page has no inline “Resolved Prompt Preview” block. Cache A reads `cache_a` falling back to `cache`; empty slots show `(empty)`. After HTTP 200 + `success` + non-empty `batch_id`, the workbench mounts `BatchAgentDataPanes` (same body as Execution History, including RESPONSE + Tokens & Cost). Preview does not GET `/api/agent_data/…` or clear those panes. Soft-fail / missing `batch_id` toasts only. Editors / Save As: **AST-1412**. Assemble/store: **AST-1411**. Execution History still uses default `BatchAgentDataModal` — **`test_BatchAgentDataModal.test.tsx`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page first paint + Preview modal (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1413: Preview Prompt opens eight-tab modal; page has no inline preview block`** |
+| Post-Test panes; Preview does not refresh | same | **`AST-1413: successful Test mounts panes; Preview does not clear them`** |
+| Success without `batch_id` | same | **`AST-1413: Test without batch_id toasts and leaves panes unmounted`** |
+| Kitchen-sink + seven-segment POST + AST-1394 chrome | same | **`previews, tests, fetches prompts, and saves as`** waits for modal `sys` + **Tokens & Cost**; **`AST-1412`** Preview/Test wait retargeted; **`AST-1394`** overlay/pretty-print retargeted to panes/toast |
+| Execution History wrapper unchanged | `BatchAgentDataModal.tsx` | **`test_BatchAgentDataModal.test.tsx`** (default export still wide `Modal`) |
+
+**Broken / obsolete this pass:** Inline “Resolved Prompt Preview” + Response `<pre>` dump (including AST-1394 pretty-print / `ERROR:` overlay on the page) are gone. Page cases now assert modal tabs + `BatchAgentDataPanes`. API stringify of `response_text` stays in **`docs/test-bible/ui/api/api_admin.md`** § AST-1394.
+
+**Integration:** no existing scenario asserts Ad Hoc Preview modal / post-Test panes — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+2. Execution History modal wrapper (extract regression): `tests/component/frontend/components/test_BatchAgentDataModal.test.tsx`
+
+**AST-1413** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  ../../../tests/component/frontend/components/test_BatchAgentDataModal.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
