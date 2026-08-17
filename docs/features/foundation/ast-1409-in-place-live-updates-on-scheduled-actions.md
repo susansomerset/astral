@@ -250,3 +250,37 @@ Confirm Chuckles estimate: 5 — agree
 - AC4 (background poll while overlay open does not close overlay or wipe draft) → Stage 2 step 6 (modals stay siblings of the list gate; `loadData` does not touch `form` / `showModal`; 5s poll still only `loadThreadStatus`)
 - Pattern authoring (`pattern.ui.in-place-live-refresh` proposed) → Stage 3
 - Boundaries → Files Changed exclusions; Stage 2 decisions (no extra task poll, no PM edit, no websocket, no dispatch semantics, no AST-1408 files)
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1409
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions` @ `d6bd96af`
+
+## Traceability
+
+- AC2 → Stage 2 steps 3–5 (silent `loadData()` after AUTO/Dbg PUT; mount-only `loadData(true)`)
+- AC3 → Stage 2 step 5 (running→idle `loadData()` argument-less; Avail/last-run merge via existing dispatch_tasks GET)
+- AC4 → Stage 2 step 6 (modals siblings outside loading gate; `loadData` does not touch `form`/`showModal`; 5s poll remains `loadThreadStatus` only)
+- Pattern authoring → Stage 3 (`pattern.ui.in-place-live-refresh` proposed + README/HARVEST index)
+- Boundaries → Files Changed exclusions; Stage 2 decisions (no PM edit, no extra task poll, no websocket, no AST-1408 session-shell files)
+
+## Findings
+
+### acceptable
+
+- **Location:** Stage 1 — `src/ui/frontend/src/hooks/useInPlaceLiveRefresh.ts`
+- **Finding:** `astral.ui.frontend-file-placement` statute text lists `lib/` for shared modules; corpus already places hooks under `hooks/` (`useDirtyLeaveSaveThenNavigate`, `useSectionExpandPolicy`).
+- **Recommendation:** No plan change — matches established hook placement and dirty-leave pattern precedent.
+
+### acceptable
+
+- **Location:** Stage 2 — filter/query identity
+- **Finding:** Scheduled Actions filters are client-side over fetched `data`; only mount calls `loadData(true)`, unlike Performance Monitor’s filter-driven `loadData(true)`.
+- **Recommendation:** Correct for this page — hook contract still documents query-identity spinner for AST-1410/PM consumers.
+
+No `fix-now` or `discuss` blockers. R1–R5 pass. Current `AdminScheduledActions.tsx` root cause confirmed: `loadData` always `setLoading(true)` (lines 332–360), causing list-gate flash on every post-PUT and running→idle refresh; modals are already structurally outside the gate (lines 788–863). Hook extraction mirrors Performance Monitor’s inline `loadData(showSpinner)` shape. Stage 3 pattern draft conforms to `canon/patterns/SCHEMA.md` (frontmatter, body order, `status: proposed`, README/HARVEST crosswalk steps match current corpus). In-scope-only exclusions, DRY, admin-endpoint presentation-only boundary, and shared-button-roles preservation all conform. Status `Plan Ready`, assignee Joan — gate satisfied. Zero completed `[plan-discuss]` rounds.
+
+context_tokens≈58000
