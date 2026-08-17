@@ -2223,6 +2223,10 @@ input.side-tab-heading-editable:focus {
   gap: 2px;
 }
 
+.entity-summary-actions {
+  margin-top: 20px;
+}
+
 .entity-summary-bottom {
   border-top: 1px solid var(--border-subtle);
   padding-top: 12px;
