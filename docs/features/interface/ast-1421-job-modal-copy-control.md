@@ -178,6 +178,164 @@ context_tokens≈38000
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control` @ `94207bdd36c80740d4438a9a6e6f58b6efeb1086`
+**Built:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control` @ `cbd2837fa7ef6a7435f2688043043ddcb6e1a67a`
 
 Stages 1–3: `copyJobSnapshotToClipboard` helper; Copy on Job Detail Info tab; Copy on Recommended Job Report header. Tests deferred to Betty.
+
+## Radia review
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1421  
+**Publish ref:** `cbd2837fa7ef6a7435f2688043043ddcb6e1a67a` (`origin/sub/AST-1419/AST-1421-job-modal-copy-control`)  
+**Overall:** CLEAN  
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1419/AST-1421-job-modal-copy-control`  
+**Diff paths (19):** `src/ui/frontend/**` (5 product files), stacked AST-1420 backend (`src/core/tracker.py`, `src/ui/api/api_jobs.py`), Betty test-bible/tests for AST-1420 + AST-1421, plan docs for AST-1420 + AST-1421  
+**Diff layers:** `core`, `ui`, `docs`  
+**AST-1421 engineer commits (`68a90e83`…`94207bdd`):** only the 5 planned frontend files — no `api_jobs.py`, `tracker.py`, or list-page mounts touched  
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/LLM confidence paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / dispatch delegation |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector validation |
+| astral.batch.batch-id-first | scoped | not-applicable | 1420 stack reads batch_id only; 1421 does not touch batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id minting |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release lifecycle |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no write semantics on stacked backend |
+| astral.config.config-source-of-truth | scoped | conforms | 1421 consumes existing copy route; no parallel config literals |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring in 1421 chrome |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next / chain changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | dedicated `ast-1421-*.md` plan doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty touched test-bible/tests only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests via Betty `test(AST-1421)` + merge-tests, not build commits |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | 1421 is frontend lib/components only |
+| astral.layers.import-direction | scoped | conforms | frontend imports lib `api` + new helper; no UI→data/external |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | no hardcoded job-state lists; uses existing modal/manifest patterns |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | read-only clipboard fetch |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render-verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | copy route (stacked 1420) is `@require_auth`; client uses authenticated `api()` |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | user-initiated click handler |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed operator rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | 1421 chrome has no data-layer calls |
+| astral.standards.database-header-inventory | scoped | not-applicable | `database.py` untouched by 1421 |
+| astral.standards.debug-contract-gated | scoped | conforms | 1421 does not pass `?debug=`; stacked 1420 debug remains server-gated |
+| astral.standards.dry-and-focused-functions | scoped | conforms | single `copyJobSnapshotToClipboard` helper; modal handlers are thin |
+| astral.standards.in-scope-only | scoped | conforms | 1421 build footprint = plan Stages 1–3; stacked 1420 backend is sibling prerequisite on branch, not 1421 scope creep |
+| astral.standards.logging-via-utils | scoped | conforms | no `print()` / ad-hoc logging in 1421 frontend |
+| astral.standards.names-not-ticket-ids | scoped | conforms | public names describe behavior |
+| astral.standards.no-cross-contamination | scoped | conforms | no assembler reimplementation; AST-1420 route consumed as prerequisite |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | no enum/set literals added |
+| astral.standards.public-then-helpers | scoped | conforms | exported helper at module top |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | Skip handler unchanged; no new transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no transition enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no daisy-chain config/run changes |
+| astral.ui.frontend-file-placement | scoped | conforms | helper under `src/lib/`; components under `components/` |
+| astral.ui.naming-conventions | scoped | conforms | camelCase TS, kebab route via `api()` |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker/config surface |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1421)` at tip |
+| orch.git.commit-vocabulary | universal | conforms | commit messages follow vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch under epic topology |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1419/AST-1421-...` |
+| orch.git.merge-on-checkout | universal | conforms | review uses fetched origin refs |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops |
+| orch.git.no-dev-agent-branches | universal | conforms | publish ref is sub/* |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1419 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Info-tab placement tradeoff Joan-preaccepted |
+| orch.pipeline.plan-is-bible | universal | conforms | helper + both modals match binding plan text |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns added tests/manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine build commits frontend-only |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path violations observed |
+
+**Sweep count:** 65 active statutes scored in-session (C1–C3 satisfied).  
+**Straggler (C4):** Joan `[plan-rubric]` APPROVED with no Excluded list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no “Patterns to reuse” section |
+
+**Uncited shape notes (advisory):** `btn secondary` on diagnostic Copy aligns with `pattern.ui.shared-button-roles`; thin lib helper + modal wiring aligns with existing UI composition — no catalog citation required.
+
+## Plan adherence
+
+**Stages 1–3 (1421 build commits):**
+
+| Stage | Plan | Actual |
+|-------|------|--------|
+| 1 | `copyJobSnapshotToClipboard` — GET `/copy`, pretty-print, clipboard, boolean, silent failures | Matches plan snippet byte-for-byte (+ file comment) |
+| 2 | Info-tab Copy above Skip; `entity-summary-actions` CSS; 2000ms Copied; Skip byte-for-byte | ✓ Skip wrapper/labels/handlers unchanged; Copy uses `btn secondary`, `disabled={copying}`, labels `Copy`/`Copied` |
+| 3 | Header Copy always available; guard widened; separate from `copyFeedback`; JobAnalysisReportModal handler | ✓ snapshot props wired; email/linkedin handlers and feedback span untouched |
+
+**Do-not-touch respected (1421 commits):** no backend, Modal.tsx, list pages, toasts, detail GET changes.
+
+**Estimate (2):** matches confirmed footprint.
+
+**Cross-ticket (AST-1420):** consumes existing copy route; does not reimplement assembler. Branch tip stacks full AST-1420 payload (already PROCEED) — expected pre–ftr rollup, not 1421 scope violation.
+
+## Frame diff
+
+| Frame | Notes |
+|-------|-------|
+| Planned 1421 product | 5 frontend files only — matches engineer commits |
+| vs `origin/dev` three-dot | Also includes stacked AST-1420 backend + tests + Radia-reviewed payload — epic branch composition, not 1421 smuggling |
+| Issue doc build SHA | Doc cites `94207bdd`; tip is `cbd2837f` (Betty tests + merge-tests) — Chuckles housekeeping when appending |
+
+## Findings
+
+No **fix-now** items.
+
+### advisory — issue doc build SHA stale
+
+**Location:** `docs/features/interface/ast-1421-job-modal-copy-control.md` → `## Review (build)`  
+**Finding:** Build line references `94207bdd`; publish tip is `cbd2837f`.  
+**Recommendation:** Chuckles doc refresh when appending — not a product fix.
+
+### advisory — duplicate modal handlers (plan-mandated)
+
+**Location:** `JobDetailModal.tsx`, `JobAnalysisReportModal.tsx` — identical `handleCopySnapshot` bodies  
+**Finding:** Plan explicitly requires the same handler shape in both modals rather than a shared hook.  
+**Recommendation:** Accept per plan-is-bible; optional future DRY is out of scope.
+
+### advisory — Info-tab-only visibility (pre-accepted)
+
+**Location:** Stage 2 placement  
+**Finding:** Copy visible on Info tab only, not JD/Agent Story tabs — Joan discuss item already accepted.  
+**Recommendation:** No resolve-child action unless UAT requests broader placement.
+
+## What’s solid
+
+- Helper contract is exact: encoded path, no query params, `JSON.stringify(body, null, 2)`, silent `false` on all failure modes.
+- Recommended header shows Copy when email/LinkedIn absent (guard widened correctly).
+- Snapshot Copied state is on the button label; gold `copyFeedback` span remains email/linkedin-only.
+- Betty coverage: lib unit tests (OK/non-OK/json/clipboard reject), header isolation, modal Copy→Copied→Copy timing, silent failure, adjacent controls preserved.
+
+## Notes
+
+- §5a: no layer/import/logging violations on 1421 product files; silent `catch` is plan-approved resilience, not D2 swallow in runtime logging paths.
+- §5f/§5g: not triggered by 1421 frontend diff (stacked 1420 backend already reviewed CLEAN).
+- Stacked AST-1420 backend in branch diff: do not re-review as 1421 findings; already `[code-rubric] PROCEED` on AST-1420 @ `65884db6`.
+
+## Frame diff
+
+(none beyond table — 1421 product matches plan frame; extra diff paths are stacked sibling + Betty pipeline)
+
+context_tokens≈95000
