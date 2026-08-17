@@ -5286,7 +5286,7 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
 
 
 def is_valid_candidate_batch_claim_state(state: str) -> bool:
-    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (persist + claim)."""
+    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (claim + persist)."""
     s = (state or "").strip()
     if not s:
         return False
