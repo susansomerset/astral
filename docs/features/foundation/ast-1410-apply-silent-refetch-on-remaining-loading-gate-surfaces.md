@@ -390,3 +390,12 @@ No `fix-now` or `discuss` blockers. R1–R5 pass. `useInPlaceLiveRefresh` exists
 
 context_tokens≈72000
 
+## Review (build)
+
+**Built @ `4b676d7d`** — `origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`
+
+- Stage 1 (`f924addf`): Manage Tasks `loadAll(showSpinner)`; post-save/revert silent; overlays stay outside the list gate
+- Stage 2 (`65bbd263`): Agents, Scheduled Queries, Email silent post-mutation refetch; Performance Monitor on the shared hook
+- Stage 3 (`990f0ce2`): Recommended / In Review / Skipped `load(showSpinner)`; job-action and modal-close silent
+- Stage 4 (`4b676d7d`): Artifact Cancel with no snapshot re-GETs last-saved content; no `window.location.reload`
+
