@@ -175,3 +175,9 @@ AC1 → Stage 2 (Job Detail Info tab, default first tab) + Stage 3 (Recommended 
 **Recommendation:** No change.
 
 context_tokens≈38000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control` @ `94207bdd36c80740d4438a9a6e6f58b6efeb1086`
+
+Stages 1–3: `copyJobSnapshotToClipboard` helper; Copy on Job Detail Info tab; Copy on Recommended Job Report header. Tests deferred to Betty.
