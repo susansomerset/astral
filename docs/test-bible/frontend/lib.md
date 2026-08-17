@@ -262,3 +262,24 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1421 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control`.
+
+`copyJobSnapshotToClipboard` GETs `/api/jobs/<id>/copy` (encoded, no `?debug=`), `JSON.stringify(body, null, 2)`, `navigator.clipboard.writeText`. Returns `true` only on write success; non-OK / parse / clipboard reject return `false` with no throw. Chrome: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clipboard helper | `src/ui/frontend/src/lib/copyJobSnapshot.ts` | **`test_copyJobSnapshot.test.ts`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts
+```

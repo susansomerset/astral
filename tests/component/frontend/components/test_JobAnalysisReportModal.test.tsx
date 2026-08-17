@@ -2,6 +2,7 @@ import { screen, waitFor, within } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
 import api from "../../../../src/ui/frontend/src/lib/api"
+import { copyJobSnapshotToClipboard } from "../../../../src/ui/frontend/src/lib/copyJobSnapshot"
 import JobAnalysisReportModal from "../../../../src/ui/frontend/src/components/JobAnalysisReportModal"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
 import { baseCandidate, installBaseApiMocks, jsonResponse } from "../pages/page-mocks"
@@ -12,7 +13,17 @@ vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   return { ...actual, default: vi.fn() }
 })
 
+vi.mock("../../../../src/ui/frontend/src/lib/copyJobSnapshot", () => ({
+  copyJobSnapshotToClipboard: vi.fn(),
+}))
+
 const mockedApi = vi.mocked(api)
+const mockedCopy = vi.mocked(copyJobSnapshotToClipboard)
+
+beforeEach(() => {
+  mockedCopy.mockReset()
+  mockedCopy.mockResolvedValue(true)
+})
 
 function fullUpshot() {
   return {
@@ -811,6 +822,28 @@ describe("JobAnalysisReportModal — AST-1348 Analysis score title chrome", () =
     expect(screen.queryByText(/^DO Analysis - score:/)).not.toBeInTheDocument()
     expect(screen.getByText("GET Analysis")).toBeInTheDocument()
     expect(screen.getByText("LIKE Analysis")).toBeInTheDocument()
+  })
+})
+
+describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  it("copies via the helper and does not drive email/linkedin copyFeedback", async () => {
+    mockedCopy.mockResolvedValue(true)
+    installBaseApiMocks(mockedApi, jobHandler("j1421"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1421" onClose={() => {}} />)
+    await waitForShell()
+    const copyBtn = screen.getByRole("button", { name: /^Copy$/ })
+    expect(screen.getByRole("button", { name: "Copy Application Email" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Copy LinkedIn Profile" })).toBeInTheDocument()
+    await userEvent.click(copyBtn)
+    await waitFor(() => expect(mockedCopy).toHaveBeenCalledWith("j1421"))
+    await waitFor(() => expect(screen.getByRole("button", { name: /^Copied$/ })).toBeInTheDocument())
+    expect(document.querySelector(".recommended-report-copy-feedback")).toBeNull()
+    await waitFor(
+      () => expect(screen.getByRole("button", { name: /^Copy$/ })).toBeInTheDocument(),
+      { timeout: 3000 },
+    )
   })
 })
 
