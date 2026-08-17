@@ -32,6 +32,17 @@ const EDITOR_TAB_LABELS = [
   "User Prompt",
 ]
 
+const PREVIEW_TAB_LABELS = [
+  "System",
+  "Cache A",
+  "Cache B",
+  "Cache C",
+  "Cache D",
+  "No Cache",
+  "User",
+  "Live Content",
+]
+
 const emptyLens = {
   user_prompt_len: 0,
   cache_prompt_len: 0,
@@ -58,6 +69,7 @@ describe("AdminAnthropicAdHoc", () => {
     const testOk = testResult?.ok !== false
     const testJson = testResult?.json ?? {
       success: true,
+      batch_id: "adhoc-batch-1",
       response_text: "{\"ok\":true}",
       timesheet: { duration: 1.2, inputtotal: 10, outputtotal: 5, inputcached: 2 },
     }
@@ -69,10 +81,50 @@ describe("AdminAnthropicAdHoc", () => {
         return { ok: true, json: async () => ({ entity_type: "job", trigger_state: "NEW", batch_mode: false, entities: [{ id: "job-1", label: "Job 1" }] }) } as Response
       }
       if (url === "/api/admin/adhoc/preview" && init?.method === "POST") {
-        return { ok: true, json: async () => ({ system: "sys", cache: "cache", nocache: "nocache", user: "user", live_content: "live" }) } as Response
+        return {
+          ok: true,
+          json: async () => ({
+            system: "sys",
+            cache: "alias-cache",
+            cache_a: "cache A body",
+            cache_b: "",
+            cache_c: "",
+            cache_d: "",
+            nocache: "nocache",
+            user: "user",
+            live_content: "live",
+          }),
+        } as Response
       }
       if (url === "/api/admin/adhoc/test" && init?.method === "POST") {
         return { ok: testOk, json: async () => testJson } as Response
+      }
+      if (url.startsWith("/api/agent_data/")) {
+        return {
+          json: async () => [
+            { agent_data_id: "1", block_type: "SYSTEM", block_data: "sys-block", token_size: 1, task_key: "t", created_at: "now" },
+            { agent_data_id: "2", block_type: "RESPONSE", block_data: "{\"ok\":true}", token_size: 1, task_key: "t", created_at: "now" },
+          ],
+        } as Response
+      }
+      if (url.startsWith("/api/admin/timesheets")) {
+        return {
+          json: async () => [
+            {
+              cache_write_tokens: 1,
+              cache_read_tokens: 2,
+              total_no_cache_input_tokens: 3,
+              total_output_tokens: 4,
+              calc_cost_cache_write: 0.1,
+              calc_cost_cache_read: 0.2,
+              calc_cost_no_cache_input: 0.3,
+              calc_cost_output: 0.4,
+            },
+          ],
+        } as Response
+      }
+      if (url.startsWith("/api/admin/dispatch_ledger/")) {
+        return { ok: true, json: async () => ({ candidate_id: "c1", task_key: "task_a" }) } as Response
       }
       if (url === "/api/admin/tasks/task_a") {
         return {
@@ -112,13 +164,22 @@ describe("AdminAnthropicAdHoc", () => {
     await userEvent.selectOptions(screen.getAllByRole("combobox")[2], "job-1")
     await userEvent.click(screen.getByRole("button", { name: "Preview Prompt" }))
     await waitFor(() => expect(screen.getByText("sys")).toBeInTheDocument())
+    expect(screen.queryByText("Resolved Prompt Preview")).not.toBeInTheDocument()
     await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
-    await waitFor(() => expect(screen.getByText(/"ok": true/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Tokens & Cost")).toBeInTheDocument())
     fireEvent.change(screen.getByPlaceholderText("User prompt content..."), { target: { value: "existing content" } })
     await userEvent.click(screen.getByRole("button", { name: "Save As" }))
     const saveGroup = screen.getByRole("button", { name: "Save As" }).parentElement as HTMLElement
     await userEvent.click(within(saveGroup).getByText("task_b"))
   }, 20000)
+
+  it("lists tasks against the selected candidate id", async () => {
+    mockApi()
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() =>
+      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/admin/tasks?candidate_id=c1")).toBe(true),
+    )
+  }, 15000)
 
   it("requires an agent before preview and test", async () => {
     mockApi()
@@ -186,10 +247,11 @@ describe("AdminAnthropicAdHoc", () => {
     await userEvent.selectOptions(screen.getAllByRole("combobox")[2], "job-1")
   }
 
-  it("AST-1394: object payload JSON text pretty-prints; success is not ERROR", async () => {
+  it("AST-1394: successful Test mounts agent_data panes; not an ERROR overlay", async () => {
     mockApi({
       json: {
         success: true,
+        batch_id: "adhoc-batch-1",
         response_text: JSON.stringify({ search_terms: "alpha\nbeta" }),
         timesheet: {},
       },
@@ -197,15 +259,16 @@ describe("AdminAnthropicAdHoc", () => {
     renderWithProviders(<AnthropicAdHoc />)
     await readyToTest()
     await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
-    await waitFor(() => expect(screen.getByText(/"search_terms"/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Tokens & Cost")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "RESPONSE" })).toBeInTheDocument()
     expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
   }, 20000)
 
-  it("AST-1394: nested object response_text still displays; never type-invalidates", async () => {
-    // Defense: Stage 1 should emit a string; coerce-to-text must still render an object.
+  it("AST-1394: nested object response_text does not type-invalidate the page", async () => {
     mockApi({
       json: {
         success: true,
+        batch_id: "adhoc-batch-1",
         response_text: { search_terms: "alpha" },
         timesheet: {},
       },
@@ -213,25 +276,18 @@ describe("AdminAnthropicAdHoc", () => {
     renderWithProviders(<AnthropicAdHoc />)
     await readyToTest()
     await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
-    await waitFor(() => expect(screen.getByText(/"search_terms"/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Tokens & Cost")).toBeInTheDocument())
     expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
   }, 20000)
 
-  it("AST-1394: plain text displays unchanged", async () => {
-    mockApi({ json: { success: true, response_text: "plain ok", timesheet: {} } })
-    renderWithProviders(<AnthropicAdHoc />)
-    await readyToTest()
-    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
-    await waitFor(() => expect(screen.getByText("plain ok")).toBeInTheDocument())
-    expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
-  }, 20000)
-
-  it("AST-1394: provider failure still shows ERROR overlay", async () => {
+  it("AST-1394: provider failure toasts; does not mount panes", async () => {
     mockApi({ ok: false, json: { success: false, error: "nope" } })
     renderWithProviders(<AnthropicAdHoc />)
     await readyToTest()
     await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
-    await waitFor(() => expect(screen.getByText(/ERROR: nope/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("nope")).toBeInTheDocument())
+    expect(screen.queryByText("Tokens & Cost")).not.toBeInTheDocument()
+    expect(screen.queryByText(/ERROR:/)).not.toBeInTheDocument()
   }, 20000)
 
   function lastJsonBody(url: string, method: string): Record<string, unknown> {
@@ -291,7 +347,7 @@ describe("AdminAnthropicAdHoc", () => {
     expect(preview.cache_prompt_b).toBe("only B")
 
     await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
-    await waitFor(() => expect(screen.getByText(/"ok": true/)).toBeInTheDocument())
+    await waitFor(() => expect(screen.getByText("Tokens & Cost")).toBeInTheDocument())
     const testBody = lastJsonBody("/api/admin/adhoc/test", "POST")
     expectSevenSegmentKeys(testBody)
     expect(testBody.system_prompt).toBe("")
@@ -320,4 +376,59 @@ describe("AdminAnthropicAdHoc", () => {
     expect(within(saveGroup).getByText("task_b")).toBeInTheDocument()
     expect(within(saveGroup).queryByText("task_b ●")).not.toBeInTheDocument()
   }, 15000)
+
+  function agentDataGets(): string[] {
+    return mockedApi.mock.calls.map(([u]) => String(u)).filter(u => u.startsWith("/api/agent_data/"))
+  }
+
+  it("AST-1413: Preview Prompt opens eight-tab modal; page has no inline preview block", async () => {
+    mockApi()
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    expect(screen.queryByText("Resolved Prompt Preview")).not.toBeInTheDocument()
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[1], "agent_a")
+    await userEvent.click(screen.getByRole("button", { name: "Preview Prompt" }))
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Preview" })).toBeInTheDocument())
+    expect(screen.queryByText("Resolved Prompt Preview")).not.toBeInTheDocument()
+    for (const label of PREVIEW_TAB_LABELS) {
+      expect(screen.getByRole("button", { name: label })).toBeInTheDocument()
+    }
+    expect(screen.getByText("sys")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Cache A" }))
+    expect(screen.getByText("cache A body")).toBeInTheDocument()
+    expect(screen.queryByText("alias-cache")).not.toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Cache B" }))
+    expect(screen.getByText("(empty)")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Live Content" }))
+    expect(screen.getByText("live")).toBeInTheDocument()
+    expect(agentDataGets()).toEqual([])
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    await waitFor(() => expect(screen.queryByRole("heading", { name: "Preview" })).not.toBeInTheDocument())
+  }, 20000)
+
+  it("AST-1413: successful Test mounts panes; Preview does not clear them", async () => {
+    mockApi()
+    renderWithProviders(<AnthropicAdHoc />)
+    await readyToTest()
+    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
+    await waitFor(() => expect(screen.getByText("Tokens & Cost")).toBeInTheDocument())
+    expect(screen.getByRole("button", { name: "SYSTEM" })).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "RESPONSE" })).toBeInTheDocument()
+    const afterTest = agentDataGets().length
+    expect(afterTest).toBeGreaterThan(0)
+    await userEvent.click(screen.getByRole("button", { name: "Preview Prompt" }))
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Preview: task_a" })).toBeInTheDocument())
+    expect(agentDataGets()).toHaveLength(afterTest)
+    expect(screen.getByText("Tokens & Cost")).toBeInTheDocument()
+  }, 20000)
+
+  it("AST-1413: Test without batch_id toasts and leaves panes unmounted", async () => {
+    mockApi({ json: { success: true, timesheet: {} } })
+    renderWithProviders(<AnthropicAdHoc />)
+    await readyToTest()
+    await userEvent.click(screen.getByRole("button", { name: "▶ Test" }))
+    await waitFor(() => expect(screen.getByText("Test succeeded without batch_id")).toBeInTheDocument())
+    expect(screen.queryByText("Tokens & Cost")).not.toBeInTheDocument()
+    expect(agentDataGets()).toEqual([])
+  }, 20000)
 })
