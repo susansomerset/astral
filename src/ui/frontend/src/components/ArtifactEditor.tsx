@@ -475,6 +475,43 @@ export default function ArtifactEditor({
     )
   }
 
+  function applyJobArtifactResponse(job: { job_data?: { artifacts?: Record<string, unknown> } }) {
+    const persistKey = jobPersistence!.artifactKey
+    const artifacts = (job.job_data?.artifacts ?? {}) as Record<string, unknown>
+    const raw = artifacts[persistKey]
+    if (fixedFields) mapFixedFieldsFromRaw(raw)
+    else mapJobDictArtifactFromRaw(raw)
+  }
+
+  function applyCandidateArtifactResponse(c: {
+    candidate_data?: { artifacts?: Record<string, unknown> }
+    company_search_terms?: unknown
+  }) {
+    const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
+    const raw = artifacts[artifactKey]
+
+    if (fixedFields) {
+      mapFixedFieldsFromRaw(raw)
+    } else {
+      const arr = Array.isArray(raw) ? raw : []
+      if (arr.length > 0) {
+        setTabs(arr.map((v: { code?: string; label?: string; content?: string; importance?: number }, i: number) => ({
+          id: `v_${i}`,
+          code: v.code,
+          label: v.label ?? `Criterion ${i + 1}`,
+          content: v.content ?? "",
+          importance: rubricItemImportance(v),
+        })))
+      } else {
+        setTabs([{ id: "v_0", code: undefined, label: "New Criterion", content: "", importance: RUBRIC_DEFAULT_IMPORTANCE }])
+      }
+    }
+    const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
+    const terms = c.company_search_terms
+    const termsHit = typeof terms === "string" && terms.trim() !== ""
+    setHasChainData(rubricHit || termsHit)
+  }
+
   // Load artifact data from job (AST-553/565 job persistence mode)
   useEffect(() => {
     if (!jobPersistence) return
@@ -482,12 +519,8 @@ export default function ArtifactEditor({
     setLoaded(false)
     setSnapshot(null)
     setJobLoadError(false)
-    const persistKey = jobPersistence.artifactKey
     api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
-      const artifacts = (job.job_data?.artifacts ?? {}) as Record<string, unknown>
-      const raw = artifacts[persistKey]
-      if (fixedFields) mapFixedFieldsFromRaw(raw)
-      else mapJobDictArtifactFromRaw(raw)
+      applyJobArtifactResponse(job)
       setLoaded(true)
       setDirty(false)
     }).catch(() => setJobLoadError(true))
@@ -502,30 +535,7 @@ export default function ArtifactEditor({
     didSeedCriteriaExpandRef.current = ""
     setSnapshot(null)
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
-      const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
-      const raw = artifacts[artifactKey]
-
-      if (fixedFields) {
-        mapFixedFieldsFromRaw(raw)
-      } else {
-        const arr = Array.isArray(raw) ? raw : []
-        if (arr.length > 0) {
-          setTabs(arr.map((v: { code?: string; label?: string; content?: string; importance?: number }, i: number) => ({
-            id: `v_${i}`,
-            code: v.code,
-            label: v.label ?? `Criterion ${i + 1}`,
-            content: v.content ?? "",
-            importance: rubricItemImportance(v),
-          })))
-        } else {
-          setTabs([{ id: "v_0", code: undefined, label: "New Criterion", content: "", importance: RUBRIC_DEFAULT_IMPORTANCE }])
-        }
-      }
-      // Chain Generate vs Regenerate: rubric blobs and/or top-level company_search_terms
-      const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
-      const terms = c.company_search_terms
-      const termsHit = typeof terms === "string" && terms.trim() !== ""
-      setHasChainData(rubricHit || termsHit)
+      applyCandidateArtifactResponse(c)
       setLoaded(true)
       setDirty(false)
     })
@@ -878,9 +888,21 @@ export default function ArtifactEditor({
       setTabs(snapshot)
       setSnapshot(null)
       setDirty(false)
-    } else {
-      window.location.reload()
+      return
     }
+    if (jobPersistence) {
+      if ((shapesKey || structureMode) && !fixedFields) return
+      api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
+        applyJobArtifactResponse(job)
+        setDirty(false)
+      }).catch(() => setJobLoadError(true))
+      return
+    }
+    if (!selectedId || ((shapesKey || structureMode) && !fixedFields)) return
+    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
+      applyCandidateArtifactResponse(c)
+      setDirty(false)
+    })
   }
 
   if (!jobPersistence && !selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>
