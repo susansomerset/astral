@@ -231,6 +231,58 @@ Concrete enough for `make-fix` — do **not** add `REQUESTED_ARTIFACTS` to `DISP
 - Job `BUILD_ARTIFACTS` hop labels + terminal graduation unchanged.
 - Runtime hop labels are not `CANDIDATE_STATES` registry keys (write bypasses registry membership; registered transitions accept them via prior-state hop parse).
 
+## Bug: AST-1416 — Restore REQUESTED_ARTIFACTS hop-label membership carve-out
+
+AST-1388 shipped hop-label **writes**. This bug is membership **rejection** of the label that write produces. Do not reopen AST-1388 write-path scope (`write_candidate_dispatch_hop_label`, `_should_write_candidate_craft_hop_label`, `dispatch_trigger_state` on `run_requested_artifacts_dispatch`).
+
+### As-is
+`run_requested_artifacts_dispatch` for candidate `somerset` fails after the first successful craft hop with `Invalid candidate state 'REQUESTED_ARTIFACTS.craft_get_rubric'. Must be one of: [bare CANDIDATE_STATES keys]`. The compound hop label is treated as an illegal persistable state; the worker logs the error and the daisy chain stops.
+
+### To-be
+Compound hop labels `REQUESTED_ARTIFACTS.<completed_task_key>` are accepted as runtime candidate states on the artifacts dispatch persist path (same shape as job `BUILD_ARTIFACTS` hop labels, not `CANDIDATE_STATES` keys). `save_candidate` writes succeed; later hops and terminal `ARTIFACTS_READY` / retry / error can follow.
+
+### Repro
+1. Candidate (e.g. `somerset`) in bare `REQUESTED_ARTIFACTS`; live `agent_task` chain starting at `craft_get_rubric` with non-empty `run_next`.
+2. Run `run_requested_artifacts_dispatch(candidate_id)` so hop 1 (`craft_get_rubric`) succeeds.
+3. **Broken:** `write_candidate_dispatch_hop_label` calls `database.save_candidate(..., state="REQUESTED_ARTIFACTS.craft_get_rubric")` and `save_candidate` raises `ValueError: Invalid candidate state 'REQUESTED_ARTIFACTS.craft_get_rubric'. Must be one of: ['NEW_CANDIDATE', …, 'REQUESTED_ARTIFACTS', …]`. Chain stops; `candidate.state` is not the hop label.
+4. **Fixed:** that save returns; `candidate.state` is `REQUESTED_ARTIFACTS.craft_get_rubric`; a following hop write or `transition_candidate_state(..., "ARTIFACTS_READY")` can proceed.
+
+### Root cause
+AST-1388 item 2 wrote labels via `write_candidate_dispatch_hop_label` → `database.save_candidate(..., state=label)` specifically to bypass `transition_candidate_state` / `CANDIDATE_STATES` membership. `save_candidate` itself still requires `state in CANDIDATE_STATES.keys()` on both INSERT and UPDATE (`src/data/database.py`, the two `Invalid candidate state '{state}'. Must be one of: {allowed}` raises). That check is the exact exception. `_candidate_state_allowed` hop-parse (AST-1388 item 4) is not on this path — it only governs registered *to_state* transitions. Job `save_job` has no registry membership check, which is why `BUILD_ARTIFACTS` hop labels already persist. Claim already accepts the labels via `is_valid_candidate_batch_claim_state`; persist does not call that helper.
+
+### Proposed change
+Do **not** add hop labels to `CANDIDATE_STATES`. Do **not** change `write_candidate_dispatch_hop_label`, the candidate-craft success gate, or `run_requested_artifacts_dispatch`.
+
+1. **`src/data/database.py` — `save_candidate`**
+   - Import `is_valid_candidate_batch_claim_state` from `src.utils.config` (same module already imported for `CANDIDATE_STATES`).
+   - Replace **both** INSERT and UPDATE membership checks (`if state not in list(CANDIDATE_STATES.keys())`) with `if not is_valid_candidate_batch_claim_state(state)`. That helper is already true for registry keys **and** for `parse_dispatch_hop_label` whose trigger is `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]` (`REQUESTED_ARTIFACTS`) and whose hop is a `TASK_CONFIG` key (so `REQUESTED_ARTIFACTS.craft_get_rubric` and later craft hops pass; `NEW` / garbage still fail).
+   - Keep the existing error string for rejects: `Invalid candidate state '{state}'. Must be one of: {allowed}` with `allowed = list(CANDIDATE_STATES.keys())`. Hop labels are the carve-out, not listed in `allowed`.
+   - Do **not** remove the check entirely (AST-988 still needs `'NEW'` rejected). Do **not** add a second hop-membership list.
+
+2. **`src/utils/config.py` — `is_valid_candidate_batch_claim_state` docstring only**
+   - Widen “batch claim only” to persist + claim so the shared predicate is honest. No logic change.
+
+3. **Leave alone (already holding)**
+   - `_candidate_state_allowed`: `ARTIFACTS_READY` / `REQUESTED_ARTIFACTS_RETRY` / `REQUESTED_ARTIFACTS_ERROR` already accept a hop-labeled prior when `parsed[0]` is in that target’s `prior_states` (`ARTIFACTS_READY.prior_states` includes `REQUESTED_ARTIFACTS`). Terminal `transition_candidate_state(candidate_id, pass_state)` after a successful chain does not need a new carve-out.
+   - `transition_candidate_state` still requires `to_state in CANDIDATE_STATES` (hop labels are never transition *targets*).
+   - Job `save_job` / `write_job_dispatch_hop_label` / `DISPATCH_CHAIN_TERMINAL_GRADUATION` unchanged.
+
+4. **Compile**
+   - `python3 -m py_compile src/data/database.py src/utils/config.py`
+
+### Blast radius
+- Every `database.save_candidate(..., state=...)` caller: registry keys still persist; `'NEW'` and other non-hop unknowns still raise; only `REQUESTED_ARTIFACTS.<TASK_CONFIG key>` is newly persistable.
+- Candidate claim (`get_new_candidate_batch` / `is_valid_candidate_batch_claim_state`) already used this predicate — no behavior change there.
+- `remap_legacy_candidate_state` still does not know hop labels (would map them to initial state). Not on this dispatch path; do not “fix” remap as part of this ticket.
+- Job `BUILD_ARTIFACTS` hop-label writes stay on `save_job` with no new membership check.
+- Tests that assert `save_candidate` rejects unknown registry strings remain valid for non-hop values; Betty may add a persist-accepts-hop-label repro via qa-fix — engineer does not patch `tests/`.
+
+### What must still hold
+- AST-1388: runtime hop labels are **not** `CANDIDATE_STATES` registry keys (write bypasses registry membership; registered transitions accept them via prior-state hop parse). Claim + inflight hide still treat hop labels as in-flight.
+- AST-1252: native `do_task` `run_next` + `persist_candidate_craft_hops`; terminal success → `ARTIFACTS_READY`; no `REQUESTED_ARTIFACTS` entry in `DISPATCH_CHAIN_TERMINAL_GRADUATION`.
+- Job `BUILD_ARTIFACTS` hop labels + terminal graduation unchanged.
+- Invalid non-hop states (`NEW`, typos) still rejected by `save_candidate` with the existing `Must be one of:` message.
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
