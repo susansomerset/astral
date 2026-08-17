@@ -263,3 +263,149 @@ context_tokens≈32000
 
 React editors, preview modal, panes, Save As PUT, `do_task` assembly, and AST-1393 stringify left untouched.
 
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1411
+**Publish ref:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` @ `11477b6c6664e3f60c9fe23519e86e40d6b0f5c7`
+**Overall:** CLEAN
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` (14 files; product: `src/core/agent.py`, `src/ui/api/api_admin.py`; plus Betty `merge-tests` / test-bible / `tests/**`)
+
+**Status gate:** Spawn prompt `Tests Passed` — trusted.
+
+**Joan:** plan-rubric APPROVED attached; no Excluded statute list — no straggler callouts.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No confidence/scoring paths touched |
+| astral.agent.do-task-delegation | scoped | conforms | Ad Hoc still delegates I/O to externals; no new inline provider calls |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade/vector validation touched |
+| astral.batch.batch-id-first | scoped | conforms | Workbench still sets `log_batch_id` before store; `batch_id` returned on soft-fail |
+| astral.batch.batch-id-format | scoped | conforms | Existing `adhoc-{task_key}-{uuid}` ledger id unchanged |
+| astral.batch.claim-process-release | scoped | not-applicable | No batch claim/clear helpers changed |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No latest-response selection logic changed |
+| astral.config.config-source-of-truth | scoped | not-applicable | No config surface changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug/artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike/debug-dir paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | `dispatcher.py` / seed paths untouched |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No `run_next` / chain authority changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `ast-1411-*.md` plan doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Product `src/**` commits are engineer (`code(AST-1411)`); test/bible via Betty |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer commits limited to `src/`; test tree is Betty lane |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No new core→external assembly or I/O |
+| astral.layers.import-direction | scoped | conforms | No new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | API resolves tokens/server-side; no hardcoded UI state |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Empty CACHE_B/D omitted via `strip()`; intentional per plan |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No render/consult orchestration |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `@require_admin` unchanged on preview/test |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | Seed/admin-json paths untouched |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | Dispatcher/catalog paths untouched |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No seed hot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed approval flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row seed logic |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join seed logic |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No data-layer logging added |
+| astral.standards.database-header-inventory | scoped | not-applicable | No `src/data/**` changes |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D index/found/recorded gated on `debug=True`; no `[DEBUG]` info spam |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Reuses production helpers; segment-collect refactor is bounded |
+| astral.standards.in-scope-only | scoped | conforms | Product diff limited to planned `agent.py` / `api_admin.py` wiring |
+| astral.standards.logging-via-utils | scoped | conforms | Debug via `get_logger(..., debug_flag=True)` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | No ticket-id symbol names in product code |
+| astral.standards.no-cross-contamination | scoped | conforms | Ad Hoc wiring only; `do_task` assembly untouched |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new hardcoded business sets |
+| astral.standards.public-then-helpers | scoped | conforms | Changes stay in existing public entrypoints/helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No `src/utils/**` changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | No job/roster transition logic |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job prior-state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No daisy-chain run logic |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No `src/ui/frontend/**` product changes |
+| astral.ui.naming-conventions | scoped | conforms | Preview keys follow existing `cache_prompt_*` naming |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No worker/config deployment changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Tip `merge-tests(AST-1411): origin/tests 0cf26ca1` present |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests` vocabulary on branch |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub publish ref; diff vs `origin/dev` |
+| orch.git.ftr-sub-topology | universal | conforms | Child `sub/AST-1403/AST-1411-...` topology |
+| orch.git.merge-on-checkout | universal | conforms | No merge/rebase violations in reviewed commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No forbidden git ops in artifact |
+| orch.git.no-dev-agent-branches | universal | conforms | Publish on `sub/*`, not agent-named dev branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in `astral-AST-1403` worktree |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch classes introduced |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Plan decisions documented; no new product forks |
+| orch.pipeline.plan-is-bible | universal | conforms | Implementation matches staged plan Done-when |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code diff |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed per pipeline |
+| orch.roles.archie-approves-statutes | universal | conforms | No canon statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible changes on Betty commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee; review recommend-only |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-ban evidence in diff |
+
+**Active set scored:** 65 / 65
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan/parent cite no catalog patterns |
+
+## Plan adherence
+
+Stage 1 and Stage 2 match the issue doc Done-when criteria:
+
+- **`_resolve_adhoc`:** token-resolves A–D; `system_prompt in body` vs omitted behavior matches the documented decision; Preview returns `cache` alias plus `cache_a`–`cache_d`.
+- **`run_adhoc` / `run_adhoc_workbench_test`:** `_assemble_blocks_seven_segment` with four slots; workbench store uses `caches_resolved_four=` only (no legacy `cache_content=`).
+- **`adhoc_test`:** forwards four caches via `.get`; returns `batch_id` on HTTP 200 and soft-fail 500; exception path that re-raises still omits `batch_id` (plan step 3).
+- **`_store_prompt_blocks`:** segment collect → per-block Style D (`debug_index` N/M, found, `debug_detail_block`, recorded) when `debug=True`; quiet when `debug=False`.
+- **Out of scope respected:** no React, no Save As PUT, no `do_task` / AST-1393 stringify edits, no new routes.
+
+**Estimate (3):** footprint fits — two product files, wiring onto existing helpers.
+
+Betty coverage (`TestAst1411*`, revised `TestAst515*`, `test_api_admin.py`) aligns with manifest intent in `docs/test-bible/core/agent.md` and `docs/test-bible/ui/api/api_admin.md`.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Publish-ref cargo:** branch tip includes Betty `test(AST-1408)` frontend cases via `merge-tests` — not AST-1411 product scope; expected for Tests Passed. Downstream `merge-child` should treat as tests-line alignment, not #1411 feature scope.
+- **Shared helper blast radius:** `_store_prompt_blocks` Style D applies to production `do_task` store path too — Joan/plan marked acceptable; operators will see new per-block debug on production store when `debug=True`.
+
+## What's solid
+
+- Clean wiring onto existing `_assemble_blocks_seven_segment` / `_store_prompt_blocks(caches_resolved_four=)` / `resolved_task_system` — no parallel Ad Hoc store fork.
+- Empty cache omission and SYSTEM-always-store semantics preserved.
+- `batch_id` identity for sibling #3 (`GET /api/agent_data/<batch_id>`) is correct on success and provider soft-fail.
+- Style D test (`test_store_prompt_blocks_style_d_debug_gated`) asserts both `debug=True` emission and `debug=False` quiet.
+
+## Frame diff
+
+| Planned | Landed |
+|---------|--------|
+| `api_admin.py` — seven-segment resolve + Preview keys + Test forward/`batch_id` | Matches (`a576dea8`) |
+| `agent.py` — assemble/store/batch_id/Style D | Matches (`e2795bec`) |
+| No frontend / Save As / `do_task` / AST-1393 block | Confirmed absent from product diff |
+| Tests (Betty) | Present via `0cf26ca1` + `merge-tests` (includes AST-1408 frontend tests on tests line) |
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append this artifact to issue doc, `docs()` commit on sub-branch, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → User Testing (no `resolve-child` needed).
+
+context_tokens≈38000
+
+---
+
+[code-rubric] PROCEED (Commit: 11477b6c) seven-segment adhoc wired
