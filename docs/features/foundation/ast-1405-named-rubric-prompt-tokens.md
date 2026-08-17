@@ -133,3 +133,29 @@ The plan is binding. The agent:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1405
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1404/AST-1405-named-rubric-prompt-tokens` @ `ba66a4c7d1cf73960035e77553483bfde6fc8834`
+
+## Traceability
+AC1–6 → Stage 1 (`TOKEN_SOURCES` five pinned `source: rubric` rows + `resolve_tokens` rubric-branch pin/`owner_task_key` + AST-1396 silence for falsy `candidate_data` only).
+
+## Findings
+
+### acceptable
+- **Location:** Stage 1 hand-verify snippet  
+  **Finding:** Inline assert block checks registry membership and no-candidate silence but not live `resolve_tokens(..., cd, "grade_like")` pin-independence with a populated candidate.  
+  **Recommendation:** Engineer may run the Stage “Done when” REPL check before publish; not a plan gap — implementation steps are exact.
+
+- **Location:** Plan doc (no formal self-assessment block)  
+  **Finding:** No conf/risk axes section; scope is single-file `utils` registry extension with explicit decisions and out-of-scope table.  
+  **Recommendation:** Acceptable for estimate 3; no `!!-NONE` escalation trigger.
+
+**Considered (in-session):** Universal orch.* pipeline/git/roles statutes — all `conforms` (plan-only pass; engineer assignee restored after approval). Scoped: `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only`, `astral.standards.utils-data-late-import-only` — `conforms` (names/pins in `TOKEN_SOURCES`; explicit boundaries; preserves late `rubric_criteria_for_token` import). `astral.layers.ui-config-driven-business-logic` — `conforms` (pickers already derive from registry via `get_tokens` / `get_manage_agents_tokens`; no parallel UI list). Parent-cited `astral.agent.do-task-delegation` — `conforms` by boundary (no `core/` edits; substitution stays on existing `resolve_tokens` / `do_task` path). Remaining scoped astral.* corpus — excluded (layer/path/change_type mismatch on `utils`-only footprint) or `conforms` where considered. Pattern `pattern.config.config-block` — matches solution shape.
+
+context_tokens≈18500
