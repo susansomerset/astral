@@ -254,3 +254,12 @@ context_tokens≈32000
 
 [plan-rubric] PROCEED (Commit: acf80f98) seven-segment backend wiring
 
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist`  
+**Product commits:** `a576dea8` (Stage 1 — seven-segment `_resolve_adhoc` + Preview keys), `e2795bec` (Stage 2 — `_assemble_blocks_seven_segment` / `caches_resolved_four` store, Test `batch_id`, Style D on `_store_prompt_blocks`)
+
+React editors, preview modal, panes, Save As PUT, `do_task` assembly, and AST-1393 stringify left untouched.
+
