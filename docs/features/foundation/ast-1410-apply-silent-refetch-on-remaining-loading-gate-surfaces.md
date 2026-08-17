@@ -552,3 +552,12 @@ Betty `test(AST-1410)` (`9641ae74`) covers silent refetch on named pages and art
 - §5f / §5g not triggered for AST-1410 product commits (UI-only).
 
 context_tokens≈48000
+
+## Resolution
+
+**Date:** 2026-08-17  
+**Review ref:** Radia @ `5240c550` — **fix-now:** none; **discuss:** sibling scope on publish ref (not a product fix)
+
+No product changes. Discuss closed as intentional epic-stack: `sync-child` merge of `origin/dev` (`merge-resume` `34020e29`) is required so `origin/dev` stays an ancestor of this sub; rebase/split of sibling AST-1411–1417 work is out of resolve-child (and forbidden as cherry-pick/rebase). Chuckles `merge-child` owns ftr rollup. Advisory (candidate Cancel `.catch`, job-list `!selectedId` early return) left as-is — plan-matched, not blocking.
+
+**Verdict:** Ready for **User Testing**.
