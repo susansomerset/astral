@@ -8,6 +8,9 @@ interface Props {
   copyFeedback?: string | null
   onCopyApplicationEmail?: () => void
   onCopyLinkedIn?: () => void
+  onCopySnapshot?: () => void
+  snapshotCopied?: boolean
+  snapshotCopying?: boolean
   showPrintResume: boolean
   showPrintCover: boolean
   onPrintResume?: () => void
@@ -25,6 +28,9 @@ export default function RecommendedJobReportHeader({
   copyFeedback,
   onCopyApplicationEmail,
   onCopyLinkedIn,
+  onCopySnapshot,
+  snapshotCopied,
+  snapshotCopying,
   showPrintResume,
   showPrintCover,
   onPrintResume,
@@ -60,8 +66,18 @@ export default function RecommendedJobReportHeader({
           <span className="recommended-report-company">{companyName}</span>
         )}
       </div>
-      {(applicationEmail || linkedInUrl) && (
+      {(onCopySnapshot || applicationEmail || linkedInUrl) && (
         <div className="recommended-report-links">
+          {onCopySnapshot && (
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={() => onCopySnapshot()}
+              disabled={snapshotCopying}
+            >
+              {snapshotCopied ? "Copied" : "Copy"}
+            </button>
+          )}
           {applicationEmail && (
             <button
               type="button"
