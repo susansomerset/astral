@@ -1477,8 +1477,11 @@ def adhoc_test():
             entity_id=entity_id or None,
             system_content=resolved["system"],
             user_content=resolved["user"],
-            cache_content=resolved["cache"] or None,
-            nocache_content=resolved["nocache"] or None,
+            cache_content=resolved.get("cache") or None,
+            cache_content_b=resolved.get("cache_b") or None,
+            cache_content_c=resolved.get("cache_c") or None,
+            cache_content_d=resolved.get("cache_d") or None,
+            nocache_content=resolved.get("nocache") or None,
             live_content=live_content,
             response_format=task_response_format,
             model_code=resolved["model_code"],
@@ -1493,7 +1496,10 @@ def adhoc_test():
         return jsonify({"success": False, "error": str(e)}), 500
 
     if not result.get("success"):
-        return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 500
+        err_body = {"success": False, "error": result.get("error", "Unknown error")}
+        if result.get("batch_id"):
+            err_body["batch_id"] = result["batch_id"]
+        return jsonify(err_body), 500
 
     parsed = result.get("parsed_response")
     if isinstance(parsed, dict) and "agent_payload" in parsed:
@@ -1514,7 +1520,13 @@ def adhoc_test():
         except Exception as e:
             hydrated = {"error": str(e)}
 
-    return jsonify({"success": True, "response_text": response_text, "hydrated": hydrated, "timesheet": timesheet})
+    return jsonify({
+        "success": True,
+        "response_text": response_text,
+        "hydrated": hydrated,
+        "timesheet": timesheet,
+        "batch_id": result.get("batch_id"),
+    })
 
 
 # ---------------------------------------------------------------------------

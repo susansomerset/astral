@@ -1340,9 +1340,8 @@ def _store_prompt_blocks(
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
     Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only)."""
-    prompt_blocks: List[Dict[str, str]] = []
 
-    def _save(block_type: str, content: str) -> str:
+    def _save(block_type: str, content: str, *, index: int, total: int) -> str:
         content_hash = hashlib.sha256(f"{batch_id}:{block_type}:{content}".encode()).hexdigest()[:16]
         agent_data_id = f"{batch_id}-{block_type.lower()}-{content_hash}"
         result = save_agent_data(
@@ -1357,40 +1356,55 @@ def _store_prompt_blocks(
         )
         if debug:
             dbg = get_logger(__name__, debug_flag=True)
+            outcome = result.get("outcome")
+            dbg.debug_index(
+                func="_store_prompt_blocks",
+                index=index,
+                total=total,
+                identifier=f"{block_type}:{result.get('agent_data_id') or agent_data_id}",
+                outcome=str(outcome) if outcome is not None else "saved",
+            )
+            dbg.debug_detail(f"found block_type={block_type} chars={len(content)}")
+            dbg.debug_detail_block(content)
             dbg.debug_detail(
-                f"agent_data_write block_type={block_type} outcome={result.get('outcome')} "
-                f"agent_data_id={result.get('agent_data_id')} "
+                f"recorded outcome={outcome} agent_data_id={result.get('agent_data_id')} "
                 f"ref_agent_data_id={result.get('ref_agent_data_id')!r}"
             )
         return agent_data_id
 
-    prompt_blocks.append({"type": "SYSTEM",   "id": _save("SYSTEM",   system_content)})
+    # Collect membership first so Style D can emit index N/M per stored prompt block.
+    segments: List[Tuple[str, str]] = [("SYSTEM", system_content)]
     if cache_content is not _PB_SLOT_OMIT:
         if caches_resolved_four is not _PB_SLOT_OMIT:
             raise TypeError("_store_prompt_blocks: pass caches_resolved_four or cache_content, not both")
         if cache_content:
-            prompt_blocks.append({"type": "CACHE_A", "id": _save("CACHE_A", cache_content)})
+            segments.append(("CACHE_A", cache_content))
         if nocache_content:
-            prompt_blocks.append({"type": "NO_CACHE","id": _save("NO_CACHE", nocache_content)})
+            segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            prompt_blocks.append({"type": "NO_CACHE", "id": _save("NO_CACHE", live_content)})
+            segments.append(("NO_CACHE", live_content))
         if user_content:
-            prompt_blocks.append({"type": "TASK",     "id": _save("TASK",     user_content)})
-        return prompt_blocks
+            segments.append(("TASK", user_content))
+    else:
+        if caches_resolved_four is _PB_SLOT_OMIT:
+            raise TypeError("_store_prompt_blocks: missing caches_resolved_four or cache_content")
+        type_names = ("CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D")
+        for bt, blob in zip(type_names, caches_resolved_four):
+            if blob and blob.strip():
+                segments.append((bt, blob))
+        if nocache_content:
+            segments.append(("NO_CACHE", nocache_content))
+        if live_content:
+            segments.append(("NO_CACHE", live_content))
+        if user_content:
+            segments.append(("TASK", user_content))
 
-    if caches_resolved_four is _PB_SLOT_OMIT:
-        raise TypeError("_store_prompt_blocks: missing caches_resolved_four or cache_content")
-    type_names = ("CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D")
-    for bt, blob in zip(type_names, caches_resolved_four):
-        if blob and blob.strip():
-            prompt_blocks.append({"type": bt, "id": _save(bt, blob)})
-    if nocache_content:
-        prompt_blocks.append({"type": "NO_CACHE","id": _save("NO_CACHE", nocache_content)})
-    if live_content:
-        prompt_blocks.append({"type": "NO_CACHE", "id": _save("NO_CACHE", live_content)})
-    if user_content:
-        prompt_blocks.append({"type": "TASK",     "id": _save("TASK",     user_content)})
-
+    prompt_blocks: List[Dict[str, str]] = []
+    total = len(segments)
+    for i, (block_type, content) in enumerate(segments, start=1):
+        prompt_blocks.append(
+            {"type": block_type, "id": _save(block_type, content, index=i, total=total)}
+        )
     return prompt_blocks
 
 
@@ -3431,6 +3445,9 @@ async def run_adhoc_workbench_test(
     system_content: str = "",
     user_content: str = "",
     cache_content: Optional[str] = None,
+    cache_content_b: Optional[str] = None,
+    cache_content_c: Optional[str] = None,
+    cache_content_d: Optional[str] = None,
     nocache_content: Optional[str] = None,
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
@@ -3473,6 +3490,9 @@ async def run_adhoc_workbench_test(
                 system_content=system_content,
                 user_content=user_content,
                 cache_content=cache_content,
+                cache_content_b=cache_content_b,
+                cache_content_c=cache_content_c,
+                cache_content_d=cache_content_d,
                 nocache_content=nocache_content,
                 live_content=live_content,
                 model_code=model_code,
@@ -3503,7 +3523,12 @@ async def run_adhoc_workbench_test(
                 task_key=workbench_task_key,
                 batch_id=batch_id,
                 system_content=system_content,
-                cache_content=cache_content or None,
+                caches_resolved_four=(
+                    cache_content or "",
+                    cache_content_b or "",
+                    cache_content_c or "",
+                    cache_content_d or "",
+                ),
                 nocache_content=nocache_content,
                 user_content=user_content,
                 live_content=live_content,
@@ -3617,6 +3642,7 @@ async def run_adhoc_workbench_test(
             bool(result.get("success")),
             total_cost,
         )
+        result["batch_id"] = batch_id
         return result
     finally:
         flush_log_buffer()
@@ -3627,6 +3653,9 @@ async def run_adhoc(
     system_content: str,
     user_content: str,
     cache_content: Optional[str] = None,
+    cache_content_b: Optional[str] = None,
+    cache_content_c: Optional[str] = None,
+    cache_content_d: Optional[str] = None,
     nocache_content: Optional[str] = None,
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
@@ -3646,10 +3675,10 @@ async def run_adhoc(
     if not model_code:
         raise ValueError("run_adhoc requires model_code (Anthropic AGENT_CONFIG key or DeepSeek vendor_model)")
 
-    system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks(
+    system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
         user_content=user_content,
-        cache_content=cache_content,
+        caches_resolved_four=(cache_content, cache_content_b, cache_content_c, cache_content_d),
         nocache_content=nocache_content,
         live_content=live_content,
         model_code=model_code,
