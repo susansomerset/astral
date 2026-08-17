@@ -227,3 +227,27 @@ Do **not** edit: `src/ui/frontend/src/pages/AdminTaskPrompts.tsx`, `src/ui/front
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1413
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes` @ `a65cf3e34b3f5c26085176267399924a9945d2b1`
+
+## Traceability
+
+AC3→Stage 1 (Preview `Modal`, eight resolved tabs incl. Live Content, no inline preview block, `cache_a`||`cache` alias); AC4→Stage 2 (`BatchAgentDataPanes` inline after HTTP 200 + `success` + `batch_id`; Response `<pre>` removed; Preview does not touch `testBatchId`).
+
+## Findings
+
+**acceptable** — Short preview tab labels (“Cache A”) vs Manage Tasks editor strings; matches parent AC3 wording and is documented.
+
+**acceptable** — `BatchAgentDataPanes` named export refactor in existing `BatchAgentDataModal.tsx`; default wide `Modal` wrapper preserved for Execution History / Vector Feedback consumers.
+
+**acceptable** — HTTP 500 / soft-fail with `batch_id` does not mount workbench panes; operator uses Execution History — consistent with AC4 “after a successful Test.”
+
+context_tokens≈62000
+
+[plan-rubric] PROCEED (Commit: a65cf3e3) preview modal plus panes
