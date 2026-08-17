@@ -425,6 +425,160 @@ context_tokens≈28000
 [code-rubric] PROCEED (Commit: 1b16124c) hop-label persist carve-out
 ```
 
+
+## Radia review (AST-1417)
+
+[code-rubric] revision=2
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1417  
+**Publish ref:** `origin/sub/AST-1415/AST-1417-save-candidate-hop-label-coverage` @ `655fc40f`  
+**Diff base:** `origin/ftr/AST-1415-candidate-state-validation-bug` @ `a4353e78` (includes AST-1416 product fix)  
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | layers miss — no `core`/`utils` product paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers miss — no `core` diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers miss — no `core` diff |
+| astral.batch.batch-id-first | scoped | not-applicable | layers miss — no `core`/`data` product paths |
+| astral.batch.batch-id-format | scoped | not-applicable | layers miss — no `core`/`data` product paths |
+| astral.batch.claim-process-release | scoped | not-applicable | layers miss — no `core`/`data` product paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers miss — no `core`/`data` product paths |
+| astral.config.config-source-of-truth | scoped | not-applicable | layers miss — no `src/**` product diff |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers miss — no `src/**` product diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss — no debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | paths miss — no `debug/` paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | layers miss — no `core`/`utils` product diff |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | layers miss — no `core`/`utils` product diff |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | paths miss — no `docs/features/**` diff |
+| astral.git.betty-no-src-or-features | scoped | conforms | Test/bible-only diff; no `src/` or feature-doc edits |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Test-gap child — test-tree edits are ticket scope (Betty gap / test-fix lane) |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | layers miss — no `core`/`external` product diff |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | layers miss — no `core` product diff |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss — no API product diff |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers miss — no `core`/`external` product diff |
+| astral.layers.import-direction | scoped | not-applicable | layers miss — no `src/**` product diff |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers miss — no `scripts` diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers miss — no `ui` product diff |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | layers miss — no seed JSON diff |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | layers miss — no seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | layers miss — no boot/seed product diff |
+| astral.seed.define-approved | scoped | not-applicable | paths miss — no `data/admin/**` diff |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | layers miss — no seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | layers miss — no seed paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | layers miss — no `data`/`core` product diff |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers miss — no `data` product diff |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers miss — no product debug paths |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | layers miss — no product diff |
+| astral.standards.in-scope-only | scoped | not-applicable | layers miss — scoped predicate targets `src/**` product paths |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers miss — no product diff |
+| astral.standards.names-not-ticket-ids | scoped | not-applicable | layers miss — no product diff |
+| astral.standards.no-cross-contamination | scoped | not-applicable | layers miss — no product diff |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | layers miss — no product diff |
+| astral.standards.public-then-helpers | scoped | not-applicable | layers miss — no product diff |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers miss — no product diff |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers miss — no `core`/`data` product diff |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | layers miss — no `core`/`data` product diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers miss — no `core` diff |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss — no `src/ui` product diff |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss — no `src/ui` product diff |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers miss — no `utils`/`ui` product diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Exactly one `merge-tests(AST-1417): origin/tests c705c0c5` on publish ref |
+| orch.git.commit-vocabulary | universal | conforms | `test(AST-1417): bug-repro — …` on owned commit |
+| orch.git.flow-direction-inviolable | universal | conforms | Gap sub stacked on live `ftr` (AST-1416 already merged) |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1415/AST-1417-…` on `ftr/AST-1415-…` |
+| orch.git.merge-on-checkout | universal | conforms | No checkout/merge violations |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No history rewrite |
+| orch.git.no-dev-agent-branches | universal | conforms | Publish ref is `sub/*` |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review from `astral-AST-1415/` |
+| orch.git.three-permanent-branches | universal | conforms | No new long-lived branch classes |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-decision drift |
+| orch.pipeline.plan-is-bible | universal | conforms | AST-1417 bible § + `[bug-repro]` match board REVISE intent (see discuss on stacked siblings) |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-ticket fix-lane review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Spawned at Tests Passed (F7) |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Test/bible ownership respected |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada; Radia read-only |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee through review gate |
+| orch.roles.pre-commit-path-bans | universal | conforms | No banned-path product commits |
+
+**Active statute count:** 64 — **rows above:** 64
+
+## Pattern conformance
+
+none cited in AST-1417 test-bible §
+
+## Plan adherence
+
+**AST-1417-owned work** (`c705c0c5`, 2 files / 43 LOC) matches `docs/test-bible/data/database/candidates.md` § AST-1417: adds `TestAst1417SaveCandidateHopLabelPersist::test_update_persists_requested_artifacts_hop_label` with bible manifest + narrowed run command; no product `src/` delta. Sibling AST-1416 fix is already on `ftr`, so repro-first contract is satisfiable on this tip.
+
+**Scope note (discuss):** the three-dot publish-ref diff also carries stacked test+bible deltas for **AST-1408, AST-1409, AST-1411, AST-1412** (~920 LOC / 16 extra files) committed on this sub before `test(AST-1417)`. One `merge-tests` SHA is present and correct; stacked sibling ticket commits on the same publish ref are outside the AST-1417 bible § — acknowledge on UT, not a product rework.
+
+## Fix-specific checks
+
+**[bug-repro]:** OK  
+- Test: `tests/component/data/database/test_candidates.py::TestAst1417SaveCandidateHopLabelPersist::test_update_persists_requested_artifacts_hop_label`  
+- Pins concrete post-fix behavior: `row["state"] == dispatch_hop_label(REQUESTED_ARTIFACTS, "craft_get_rubric")` after `save_candidate` UPDATE.  
+- Uses config helpers (not tautology / not mocking the write path).  
+- Would fail pre-AST-1416: second `save_candidate(..., state=hop)` raises `ValueError: Invalid candidate state 'REQUESTED_ARTIFACTS.craft_get_rubric'`.  
+- Tagged in class docstring + bible row (consistent with AST-1274 / AST-1389 precedent).
+
+**## What must still hold:** OK  
+- `TestSaveCandidate::test_rejects_invalid_state` preserved (bible: “none obsolete”).  
+- No hop labels added to `CANDIDATE_STATES`; test builds label via `dispatch_hop_label`.  
+- No product-code changes on this ref.  
+- Does not weaken AST-1416 carve-out semantics (persist-only data-layer check).
+
+## Findings
+
+**fix-now:** none
+
+**discuss:**
+- **Stacked sibling test tickets on publish ref** — `git log ftr..sub` shows `test(AST-1408)`, `test(AST-1409)`, `test(AST-1411)`, `test(AST-1412)` ahead of `test(AST-1417)`; three-dot diff is 18 files though AST-1417 bible § owns only `test_candidates.py` + `candidates.md`. Likely Betty mechanical stacking + single `merge-tests`; Chuckles should acknowledge in issue doc / UT handoff so reviewers do not attribute unrelated frontend/admin coverage to AST-1417.
+
+**advisory:**
+- `[bug-repro]` exercises UPDATE persist only (seed bare `REQUESTED_ARTIFACTS`, then hop UPDATE) — matches AST-1416 repro shape; INSERT-with-hop-label path untested (acceptable gap).
+
+## What's solid
+
+Focused, config-driven `[bug-repro]` at the right layer (`save_candidate` data contract) with honest bible manifest and repro-first pass criterion documented. Product sibling AST-1416 already on `ftr`; test pins the exact membership gate Betty flagged at board REVISE.
+
+## Frame diff
+
+```
+origin/ftr/AST-1415-candidate-state-validation-bug...origin/sub/AST-1415/AST-1417-save-candidate-hop-label-coverage
+ docs/test-bible/** (8 files)                                    | +~250
+ tests/component/** (10 files)                                   | +~710
+ 18 files changed, 963 insertions(+), 21 deletions(-)
+
+AST-1417-owned commit c705c0c5 only:
+ docs/test-bible/data/database/candidates.md                    | +27
+ tests/component/data/database/test_candidates.py                | +16
+```
+
+## Notes
+
+- **C4:** no plan-rubric verdict attached for this gap ticket.
+- **Parent shape:** normal (AST-1415 in flight; `ftr` includes AST-1416 @ `1b16124c`).
+- **Relations:** sibling AST-1416 product fix merged to `ftr`; this ticket owns `[bug-repro]`.
+
+## Chuckles branching
+
+| Gate | Parent | Next action |
+|------|--------|-------------|
+| **REVIEW** (discuss only, C7 complete) | Normal | → **Review Posted** → `resolve-child` (if Chuckles wants discuss acknowledged in doc) → **User Testing**; or proceed directly if discuss is informational only |
+
+context_tokens≈32000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 655fc40f) hop-label bug-repro OK
+```
+
 ## Threads (generated — epic_registry mirror)
 
 _(generated from epic registry — do not hand-edit; edits are overwritten)_
