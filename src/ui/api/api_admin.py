@@ -455,6 +455,13 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "avg_output_tokens":    avg_output,
                 "task_ready":           task_ready,
                 "updated_at":           t.get("updated_at"),
+                "user_prompt_len":       int(t.get("user_prompt_len") or 0),
+                "cache_prompt_len":      int(t.get("cache_prompt_len") or 0),
+                "cache_prompt_b_len":    int(t.get("cache_prompt_b_len") or 0),
+                "cache_prompt_c_len":    int(t.get("cache_prompt_c_len") or 0),
+                "cache_prompt_d_len":    int(t.get("cache_prompt_d_len") or 0),
+                "nocache_prompt_len":    int(t.get("nocache_prompt_len") or 0),
+                "system_prompt_len":     int(t.get("system_prompt_len") or 0),
                 **_grouping_from_agent_task_row(t, task_key),
             })
         return rows

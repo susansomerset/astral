@@ -9,13 +9,17 @@ import { useLocalStorage } from "../lib/useLocalStorage"
 
 const LS = "adhoc:"  // localStorage key prefix
 
-type TabKey = "user" | "cache" | "nocache"
+type TabKey = "system" | "cache" | "cache_b" | "cache_c" | "cache_d" | "nocache" | "user"
 type PreviewKey = "system" | "cache" | "nocache" | "user" | "live_content"
 
 const TABS: { key: TabKey; label: string }[] = [
-  { key: "user", label: "User Prompt" },
-  { key: "cache", label: "Cache Prompt" },
-  { key: "nocache", label: "NoCache Prompt" },
+  { key: "system",  label: "System Prompt" },
+  { key: "cache",   label: "Cache Block A" },
+  { key: "cache_b", label: "Cache Block B" },
+  { key: "cache_c", label: "Cache Block C" },
+  { key: "cache_d", label: "Cache Block D" },
+  { key: "nocache", label: "No Cache Block" },
+  { key: "user",    label: "User Prompt" },
 ]
 
 const PREVIEW_TABS: { key: PreviewKey; label: string }[] = [
@@ -30,18 +34,34 @@ interface TaskSummary {
   task_key: string
   user_prompt_len?: number
   cache_prompt_len?: number
+  cache_prompt_b_len?: number
+  cache_prompt_c_len?: number
+  cache_prompt_d_len?: number
   nocache_prompt_len?: number
+  system_prompt_len?: number
 }
 
 interface EntityOption { id: string; label: string }
 interface EntityMeta { entity_type: string; trigger_state: string; batch_mode: boolean; entities: EntityOption[] }
-interface PreviewData extends Record<PreviewKey, string> {}
+type PreviewData = Record<PreviewKey, string>
 
 function byteSize(s: string): string {
   const b = new Blob([s]).size
   if (b >= 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`
   if (b >= 1024) return `${(b / 1024).toFixed(1)} KB`
   return `${b} B`
+}
+
+function taskHasExistingPrompts(t: TaskSummary): boolean {
+  return (
+    (t.system_prompt_len || 0) > 0 ||
+    (t.user_prompt_len || 0) > 0 ||
+    (t.cache_prompt_len || 0) > 0 ||
+    (t.cache_prompt_b_len || 0) > 0 ||
+    (t.cache_prompt_c_len || 0) > 0 ||
+    (t.cache_prompt_d_len || 0) > 0 ||
+    (t.nocache_prompt_len || 0) > 0
+  )
 }
 
 export default function AnthropicAdHoc() {
@@ -69,7 +89,11 @@ export default function AnthropicAdHoc() {
     : null
   const [userPrompt, setUserPrompt] = useLocalStorage<string>(`${LS}userPrompt`, "")
   const [cachePrompt, setCachePrompt] = useLocalStorage<string>(`${LS}cachePrompt`, "")
+  const [cachePromptB, setCachePromptB] = useLocalStorage<string>(`${LS}cachePromptB`, "")
+  const [cachePromptC, setCachePromptC] = useLocalStorage<string>(`${LS}cachePromptC`, "")
+  const [cachePromptD, setCachePromptD] = useLocalStorage<string>(`${LS}cachePromptD`, "")
   const [nocachePrompt, setNocachePrompt] = useLocalStorage<string>(`${LS}nocachePrompt`, "")
+  const [systemPrompt, setSystemPrompt] = useLocalStorage<string>(`${LS}systemPrompt`, "")
   const [activeTab, setActiveTab] = useLocalStorage<TabKey>(`${LS}activeTab`, "user")
 
   const [previewing, setPreviewing] = useState(false)
@@ -134,7 +158,7 @@ export default function AnthropicAdHoc() {
     // User actively changed the task key — offer to load its prompts
     const existing = tasks.find(t => t.task_key === taskKey)
     if (!existing) return
-    if (userPrompt || cachePrompt || nocachePrompt) {
+    if (userPrompt || cachePrompt || cachePromptB || cachePromptC || cachePromptD || nocachePrompt || systemPrompt) {
       setConfirmFetch(taskKey)
     } else {
       doFetchFrom(taskKey)
@@ -142,13 +166,26 @@ export default function AnthropicAdHoc() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [taskKey, selectedId])
 
-  const hasContent = userPrompt.trim() || cachePrompt.trim() || nocachePrompt.trim()
+  const hasContent = [systemPrompt, userPrompt, cachePrompt, cachePromptB, cachePromptC, cachePromptD, nocachePrompt]
+    .some(s => s.trim())
 
   // Explicit lexicographic task_key order (do not rely on API array order alone).
   const taskKeysSorted = useMemo(
     () => [...tasks].sort((a, b) => compareTaskKeys(a.task_key, b.task_key)),
     [tasks],
   )
+
+  function editorSegmentBody() {
+    return {
+      system_prompt: systemPrompt,
+      user_prompt: userPrompt,
+      cache_prompt: cachePrompt,
+      cache_prompt_b: cachePromptB,
+      cache_prompt_c: cachePromptC,
+      cache_prompt_d: cachePromptD,
+      nocache_prompt: nocachePrompt,
+    }
+  }
 
   function handlePreview() {
     if (!agentId) { setToast({ text: "Select an agent first", variant: "error" }); return }
@@ -216,8 +253,12 @@ export default function AnthropicAdHoc() {
     api(`/api/admin/tasks/${fetchKey}`)
       .then(r => r.json())
       .then(data => {
+        setSystemPrompt(data.system_prompt || "")
         setUserPrompt(data.user_prompt || "")
         setCachePrompt(data.cache_prompt || "")
+        setCachePromptB(data.cache_prompt_b || "")
+        setCachePromptC(data.cache_prompt_c || "")
+        setCachePromptD(data.cache_prompt_d || "")
         setNocachePrompt(data.nocache_prompt || "")
         setToast({ text: `Loaded prompts from "${fetchKey}"`, variant: "success" })
       })
@@ -227,7 +268,7 @@ export default function AnthropicAdHoc() {
   function handleSaveAs(key: string) {
     setSaveAsOpen(false)
     const task = tasks.find(t => t.task_key === key)
-    const existing = task && ((task.user_prompt_len || 0) > 0 || (task.cache_prompt_len || 0) > 0 || (task.nocache_prompt_len || 0) > 0)
+    const existing = task && taskHasExistingPrompts(task)
     if (existing) { setConfirmTask(key); return }
     doSaveAs(key)
   }
@@ -237,7 +278,7 @@ export default function AnthropicAdHoc() {
     api(`/api/admin/tasks/${key}`, {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agent_id: agentId || undefined, user_prompt: userPrompt, cache_prompt: cachePrompt, nocache_prompt: nocachePrompt }),
+      body: JSON.stringify({ agent_id: agentId || undefined, ...editorSegmentBody() }),
     })
       .then(r => {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
@@ -268,6 +309,17 @@ export default function AnthropicAdHoc() {
       ? `${t.label} (${byteSize(previewData[t.key] || "")})`
       : t.label,
   }))
+
+  const editors: Record<TabKey, { value: string; onChange: (v: string) => void; placeholder: string; rows: number }> = {
+    system:  { value: systemPrompt,  onChange: setSystemPrompt,  placeholder: "Empty = use assigned agent content. {$SELECTED_AGENT} injects the agent system prompt at runtime.", rows: 16 },
+    cache:   { value: cachePrompt,   onChange: setCachePrompt,   placeholder: "Cache block A (ephemeral cached at API when non-empty).", rows: 22 },
+    cache_b: { value: cachePromptB,  onChange: setCachePromptB,  placeholder: "Cache block B (optional).", rows: 22 },
+    cache_c: { value: cachePromptC,  onChange: setCachePromptC,  placeholder: "Cache block C (optional).", rows: 22 },
+    cache_d: { value: cachePromptD,  onChange: setCachePromptD,  placeholder: "Cache block D (optional).", rows: 22 },
+    nocache: { value: nocachePrompt, onChange: setNocachePrompt, placeholder: "No-cache segment (dynamic context; not cached at API).", rows: 22 },
+    user:    { value: userPrompt,    onChange: setUserPrompt,    placeholder: "User prompt content...", rows: 16 },
+  }
+  const ed = editors[activeTab]
 
   return (
     <div style={{ padding: 24, maxWidth: 1100 }}>
@@ -371,7 +423,7 @@ export default function AnthropicAdHoc() {
               maxHeight: 300, overflowY: "auto", minWidth: 280,
             }}>
               {taskKeysSorted.map(t => {
-                const hasExisting = (t.user_prompt_len || 0) > 0 || (t.cache_prompt_len || 0) > 0 || (t.nocache_prompt_len || 0) > 0
+                const hasExisting = taskHasExistingPrompts(t)
                 return (
                   <div key={t.task_key} onClick={() => handleSaveAs(t.task_key)} style={{
                     padding: "6px 12px", cursor: "pointer", fontSize: 13, fontFamily: "monospace",
@@ -417,18 +469,8 @@ export default function AnthropicAdHoc() {
       <div style={{ marginTop: 8 }}>
         <TabBar tabs={TABS} active={activeTab} onChange={setActiveTab} />
         <div style={{ marginTop: 12 }}>
-          {activeTab === "user" && (
-            <TokenTextarea className="dep-input" value={userPrompt} onChange={setUserPrompt}
-              tokens={tokenList} rows={16} placeholder="User prompt content..." />
-          )}
-          {activeTab === "cache" && (
-            <TokenTextarea className="dep-input" value={cachePrompt} onChange={setCachePrompt}
-              tokens={tokenList} rows={22} placeholder="Cache prompt content (large context blocks)..." />
-          )}
-          {activeTab === "nocache" && (
-            <TokenTextarea className="dep-input" value={nocachePrompt} onChange={setNocachePrompt}
-              tokens={tokenList} rows={22} placeholder="NoCache prompt content (dynamic context)..." />
-          )}
+          <TokenTextarea className="dep-input" value={ed.value} onChange={ed.onChange}
+            tokens={tokenList} rows={ed.rows} placeholder={ed.placeholder} />
         </div>
       </div>
 
