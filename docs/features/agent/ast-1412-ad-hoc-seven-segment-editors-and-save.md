@@ -215,3 +215,8 @@ AC1→Stage 1 (seven editors, fetch/save all seven columns, seven-len overwrite 
 **acceptable** — Stage 2 Preview/Test contract depends on AST-1411 `"system_prompt" in body` behavior; ticket ordering “after #1” matches dispatch.
 
 context_tokens≈48000
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`  
+**Product commits:** `7f697deb` (Stage 1 — seven-segment editors and save), `cfac0426` (Stage 2 — Preview/Test send seven fields)
