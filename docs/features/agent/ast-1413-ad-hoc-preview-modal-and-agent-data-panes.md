@@ -251,3 +251,8 @@ AC3→Stage 1 (Preview `Modal`, eight resolved tabs incl. Live Content, no inlin
 context_tokens≈62000
 
 [plan-rubric] PROCEED (Commit: a65cf3e3) preview modal plus panes
+
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes`  
+**Product commits:** `31889c26` (Stage 1 — Preview Prompt `Modal` with eight resolved tabs), `56bac797` (Stage 2 — `BatchAgentDataPanes` inline after Test; Response dump removed)
