@@ -11,7 +11,7 @@ import LogOffScreen from "../pages/LogOffScreen"
 export default function RequireAuth({ children }: { children: ReactNode }) {
   const { session, isInitialized } = useStytchSession()
 
-  if (!isInitialized) {
+  if (!isInitialized && !session) {
     return <p>Loading…</p>
   }
 
