@@ -566,3 +566,63 @@ Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` 
   tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
   -q
 ```
+
+### AST-1411 · AST-1403 (Ad Hoc seven-segment resolve, assemble, persist)
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist`.
+
+`_resolve_adhoc` token-resolves seven body segments; Preview JSON always includes `cache_a`–`cache_d` (`cache` remains Cache A alias). Empty `system_prompt` in the body falls back to agent `content`; omitted key keeps the DB task system. Test forwards four caches into `run_adhoc_workbench_test` and returns `batch_id` on HTTP 200 and soft-fail 500. Persist/debug: **`docs/test-bible/core/agent.md`** § AST-1411. React editors / panes: sibling #2 / #3.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven-segment resolve + Preview keys; empty vs omitted System | `src/ui/api/api_admin.py` (`_resolve_adhoc`, `adhoc_preview`) | **`TestAst1411AdhocSevenSegment::test_resolve_preview_seven_segment_and_system_fallback`** |
+| Test forwards A/C; `batch_id` on 200 and 500 | same (`adhoc_test`) | **`test_adhoc_test_forwards_caches_and_returns_batch_id`** |
+| Preview mock shape (cache_a–d required by jsonify) | same | revised **`TestAdhocRoutes`** preview mocks |
+
+**Broken / obsolete this pass:** `TestAdhocRoutes` `_resolve_adhoc` mocks used by Preview lacked `cache_a`–`cache_d` (KeyError after Stage 1 jsonify). Test-only mocks that never hit Preview stay on `.get`.
+
+**Integration:** no existing scenario asserts Ad Hoc Preview cache_b–d / Test `batch_id` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing preview/test envelopes (revised mocks): `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test`
+2. Preview still ledger-free: `tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_does_not_create_dispatch_ledger`
+3. Stringify regression: `tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText`
+4. Seven-segment resolve/preview + Test identity: `tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment`
+
+**AST-1411** narrowed run (API; persist/debug in **`core/agent.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_and_test \
+  tests/component/ui/api/test_api_admin.py::TestAdhocRoutes::test_adhoc_preview_does_not_create_dispatch_ledger \
+  tests/component/ui/api/test_api_admin.py::TestAst1394AdhocTestResponseText \
+  tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment \
+  -q
+```
+
+### AST-1412 · AST-1403 (Ad Hoc seven-segment `*_len` passthrough)
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`.
+
+`_enrich_tasks` copies seven prompt-length ints onto list rows (`user_prompt_len`, `cache_prompt_len`, `cache_prompt_b/c/d_len`, `nocache_prompt_len`, `system_prompt_len`) so Agent Ad Hoc overwrite ● / `taskHasExistingPrompts` can see Cache-B-only content. Editors / Save As / Preview-Test bodies: **`docs/test-bible/frontend/pages.md`** § AST-1412.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven `*_len` including Cache-B-only | `src/ui/api/api_admin.py` (`_enrich_tasks`) | **`TestAst1412EnrichTaskLens::test_enrich_tasks_passes_seven_segment_lens_including_cache_b_only`** |
+
+**Broken / obsolete this pass:** none — existing `TestEnrichTasks` rows still assert token/cache branches; they did not pin B–D lens.
+
+**Integration:** no existing scenario asserts Ad Hoc overwrite ● from `*_len` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Seven `*_len` passthrough: `tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens`
+
+**AST-1412** narrowed run (API; page in **`frontend/pages.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens \
+  -q
+```

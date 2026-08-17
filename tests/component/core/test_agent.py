@@ -4905,8 +4905,12 @@ class TestAst515AdhocWorkbenchLedger:
         save_args = ledger_trackers["saves"][0][0]
         assert save_args[1] == "adhoc-evaluate_jd"
         assert save_args[2] == "c1"
+        assert out["batch_id"] == save_args[0]
         assert ledger_trackers["saves"][0][1]["status"] == "RUNNING"
         assert ledger_trackers["store_prompt"].call_count == 1
+        store_kw = ledger_trackers["store_prompt"].call_args.kwargs
+        assert store_kw["caches_resolved_four"] == ("", "", "", "")
+        assert "cache_content" not in store_kw
         assert ledger_trackers["store_response"].call_args[0][3] == "ok"
         final = ledger_trackers["updates"][-1][1]
         assert final["status"] == "COMPLETED"
@@ -4926,6 +4930,7 @@ class TestAst515AdhocWorkbenchLedger:
             entity_id="j1",
         )
         assert out["success"] is False
+        assert out["batch_id"] == ledger_trackers["saves"][0][0][0]
         assert ledger_trackers["updates"][-1][1]["status"] == "FAILED"
         assert ledger_trackers["updates"][-1][1]["total_failed"] == 1
         assert ledger_trackers["store_response"].call_count == 1
@@ -8330,3 +8335,135 @@ class TestAst1393SerializeAdhocSuccessBody:
         combined = "\n".join(r.message for r in caplog.records)
         assert "serialized store" not in combined
         assert "found type=" not in combined
+
+
+# Branches: workbench caches_resolved_four persist (omit empty B/D); run_adhoc
+# seven-segment assemble; _store_prompt_blocks Style D index + found→recorded gated on debug.
+class TestAst1411AdhocSevenSegment:
+    """AST-1411: Ad Hoc workbench four-slot assemble/store + prompt-block Style D."""
+
+    def _save_capture(self, monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
+        saved: List[Dict[str, Any]] = []
+
+        def _save(**kwargs: Any) -> Dict[str, Any]:
+            saved.append(kwargs)
+            return {
+                "inserted": True,
+                "outcome": "new_content",
+                "agent_data_id": kwargs["agent_data_id"],
+                "ref_agent_data_id": None,
+            }
+
+        monkeypatch.setattr(agent_mod, "save_agent_data", _save)
+        return saved
+
+    async def test_workbench_persists_a_and_c_omits_empty_b_d(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved = self._save_capture(monkeypatch)
+        monkeypatch.setattr(agent_mod.database, "save_dispatch_ledger", lambda *a, **k: None)
+        monkeypatch.setattr(agent_mod.database, "update_dispatch_ledger", lambda *_a, **_k: None)
+        monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0)
+        monkeypatch.setattr(agent_mod, "flush_log_buffer", lambda: None)
+
+        async def _ok(**_k: Any) -> Dict[str, Any]:
+            return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
+
+        monkeypatch.setattr(agent_mod, "run_adhoc", _ok)
+        out = await agent_mod.run_adhoc_workbench_test(
+            workbench_task_key="evaluate_jd",
+            candidate_id="c1",
+            entity_id="j1",
+            system_content="sys",
+            user_content="usr",
+            cache_content="A",
+            cache_content_b="",
+            cache_content_c="C",
+            cache_content_d="",
+        )
+        types = [row["block_type"] for row in saved]
+        assert "SYSTEM" in types
+        assert "CACHE_A" in types
+        assert "CACHE_C" in types
+        assert "TASK" in types
+        assert "RESPONSE" in types
+        assert "CACHE_B" not in types
+        assert "CACHE_D" not in types
+        assert out["batch_id"].startswith("adhoc-evaluate_jd-")
+        # Workbench must use caches_resolved_four (passing cache_content= too would TypeError).
+        assert saved[0]["block_type"] == "SYSTEM"
+
+    async def test_run_adhoc_assembles_nonempty_cache_slots(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        send = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
+        out = await agent_mod.run_adhoc(
+            "sys",
+            "usr",
+            cache_content="A",
+            cache_content_b="",
+            cache_content_c="C",
+            cache_content_d=None,
+            model_code="claude-haiku-4-5",
+        )
+        assert out["success"] is True
+        system_blocks = send.await_args.kwargs["system_blocks"]
+        texts = [blk["text"] for blk in system_blocks]
+        assert texts == ["sys", "A", "C"]
+        labels = [list(item.keys())[0] for item in out["runtime_prompt"] if "cache_" in list(item.keys())[0]]
+        assert labels == ["cache_a", "cache_c"]
+
+    def test_store_prompt_blocks_style_d_debug_gated(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        self._save_capture(monkeypatch)
+        dbg = MagicMock()
+        real = agent_mod.get_logger
+        monkeypatch.setattr(
+            agent_mod,
+            "get_logger",
+            lambda *a, **k: dbg if k.get("debug_flag") else real(*a, **k),
+        )
+        agent_mod._store_prompt_blocks(
+            entity_type="job",
+            task_key="evaluate_jd",
+            batch_id="batch-1411",
+            system_content="sys",
+            caches_resolved_four=("A", "", "C", ""),
+            user_content="usr",
+            debug=True,
+        )
+        # SYSTEM + CACHE_A + CACHE_C + TASK
+        assert dbg.debug_index.call_count == 4
+        first = dbg.debug_index.call_args_list[0].kwargs
+        assert first["func"] == "_store_prompt_blocks"
+        assert first["index"] == 1 and first["total"] == 4
+        assert first["identifier"].startswith("SYSTEM:")
+        found_lines = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args and str(c.args[0]).startswith("found ")]
+        assert found_lines[0] == "found block_type=SYSTEM chars=3"
+        assert any("found block_type=CACHE_A" in line for line in found_lines)
+        assert any("found block_type=CACHE_C" in line for line in found_lines)
+        assert any("found block_type=TASK" in line for line in found_lines)
+        assert not any("CACHE_B" in line or "CACHE_D" in line for line in found_lines)
+        assert dbg.debug_detail_block.call_count == 4
+        recorded = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args and str(c.args[0]).startswith("recorded ")]
+        assert all("outcome=new_content" in line for line in recorded)
+
+        dbg.reset_mock()
+        gl = MagicMock(wraps=agent_mod.get_logger)
+        monkeypatch.setattr(agent_mod, "get_logger", gl)
+        caplog.set_level("DEBUG")
+        agent_mod._store_prompt_blocks(
+            entity_type="job",
+            task_key="evaluate_jd",
+            batch_id="batch-1411-quiet",
+            system_content="sys",
+            caches_resolved_four=("A", "", "C", ""),
+            user_content="usr",
+            debug=False,
+        )
+        assert not any(c.kwargs.get("debug_flag") for c in gl.call_args_list)
+        combined = "\n".join(r.message for r in caplog.records)
+        assert "found block_type=" not in combined
+        assert "recorded outcome=" not in combined

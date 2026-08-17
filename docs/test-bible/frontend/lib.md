@@ -236,7 +236,7 @@ SPA consumes AST-1373 `GET /api/auth_session_policy`: authenticate handoff uses 
 | Extend interval helper | `sessionExtend.ts` | **`test_sessionExtend.test.ts`** |
 | Handoff uses policy duration | `stytchAuthenticateHandoff.ts` | revised **`test_stytchAuthenticateHandoff.test.ts`** |
 | `/authenticate` page | `Authenticate.tsx` | revised **`test_Authenticate.test.tsx`** (§6c) |
-| AuthProvider extend wiring | `AuthContext.tsx` | revised **`test_AuthContext.test.tsx`** (+ `stytchMock` `getSync` / `authenticate`) |
+| AuthProvider extend wiring | `AuthContext.tsx` | revised **`test_AuthContext.test.tsx`** (+ `stytchMock` `getSync` / `authenticate`). **AST-1408** keys the loop on `sessionPresent` — see [`contexts.md`](contexts.md). |
 
 **Broken / obsolete this pass:** handoff + Authenticate expected `session_duration_minutes: 60` / unmocked policy fetch — revised to stub `GET /api/auth_session_policy` and assert configured `20`.
 
