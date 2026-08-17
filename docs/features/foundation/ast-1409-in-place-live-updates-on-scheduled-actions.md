@@ -292,3 +292,151 @@ context_tokens≈58000
 - Stage 1 (`b1d57f12`): `useInPlaceLiveRefresh` — first-paint spinner, later refetch silent
 - Stage 2 (`a2ce31b2`): Scheduled Actions `loadData(showSpinner)`; AUTO/Dbg/run-complete silent; overlays stay outside the list gate
 - Stage 3 (`cd6b32fe`): proposed `pattern.ui.in-place-live-refresh` + README/HARVEST index
+
+## Radia review
+
+# Radia review — AST-1409
+
+**Ticket:** AST-1409  
+**Parent:** AST-1406  
+**Publish ref:** `sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions` @ `ff41b5e8`  
+**Baseline:** `origin/dev`  
+**Status gate:** Tests Passed (spawn prompt — trusted)  
+**Overall:** DISCUSS
+
+---
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1409  
+**Publish ref:** `ff41b5e8` (`origin/sub/AST-1406/AST-1409-in-place-live-updates-on-scheduled-actions`)
+
+## Statutes checked
+
+Diff change set (three-dot `origin/dev...origin/sub/AST-1406/AST-1409-…`): paths include `canon/patterns/**`, `docs/features/**`, `docs/test-bible/**`, `src/ui/frontend/src/hooks/useInPlaceLiveRefresh.ts`, `src/ui/frontend/src/pages/AdminScheduledActions.tsx`, plus stacked AST-1408 session-shell files, AST-1409 tests, and **AST-1411** backend test paths (`tests/component/core/test_agent.py`, `tests/component/ui/api/test_api_admin.py`). Layers **ui**, **docs**; change_types **add**, **modify**.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Tip `merge-tests(AST-1409)` pins test SHA `7e238fb8`. |
+| `orch.git.commit-vocabulary` | universal | conforms | `docs` / `code` / `test` / `merge-tests` prefixes with ticket ids. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Sub-branch epic flow; no reverse merges in reviewed commits. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child `sub/AST-1406/AST-1409-…` topology correct. |
+| `orch.git.merge-on-checkout` | universal | conforms | No dirty-merge artifacts visible in reviewed diff. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history; no rebase/force signals. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | No dev-agent branch refs on publish path. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1406 epic worktree; child scoped correctly. |
+| `orch.git.three-permanent-branches` | universal | conforms | Work on sub publish ref, not main/dev conflation. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Plan decisions documented; no unresolved product forks in AST-1409 code. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–3 match binding plan for AST-1409 product commits. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Pipeline placement correct. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Review at Tests Passed per gate. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No statute corpus edits. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | AST-1409 tests in `test(AST-1409)` + merge-tests; engineer `code()` commits exclude test tree. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Hedy; Radia read-only. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Engineer `code()` commits: hook, Scheduled Actions, pattern catalog only. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path violations in engineer `code()` commits. |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent grading paths in diff. |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No `do_task` / dispatch delegation changes. |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector logic. |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch id paths. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch id emission. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/release helpers. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No agent-responses writes. |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | No config module edits. |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env wiring. |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifact paths. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | `applies_when` paths not in diff. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No dispatcher/scheduler semantics changes. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | AST-1409 feature doc present; no duplicate ticket files. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty `test(AST-1409)` touches tests/bible only. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer `code()` commits exclude `tests/` and `docs/test-bible/`. |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | No core/external layer paths. |
+| `astral.layers.import-direction` | scoped | conforms | Hook/page imports stay in UI layer (React + local `lib/`). |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/**` changes. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No new hardcoded business-state strings; poll cadence unchanged. |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No core coat-check paths. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No consult/render-verdict core paths. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | Presentation-only; admin API routes untouched. |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed JSON edits. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog/seed conflicts. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No seed hot-path changes. |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed work. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No seed row mutations. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage-join seed logic. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data-layer changes. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `src/data/**` changes. |
+| `astral.standards.debug-contract-gated` | scoped | conforms | No new debug emission. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Thin hook extraction; no duplicate fetch logic. |
+| `astral.standards.in-scope-only` | scoped | conforms | AST-1409 engineer commits honor plan Files Changed; see discuss for publish-ref straggler. |
+| `astral.standards.logging-via-utils` | scoped | conforms | No `print()` / new loggers. |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Runtime symbols clean; ticket id in test descriptions only. |
+| `astral.standards.no-cross-contamination` | scoped | conforms | AST-1409 product diff focused; publish-ref AST-1411 leak is branch hygiene (discuss). |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | No new hardcoded domain sets. |
+| `astral.standards.public-then-helpers` | scoped | conforms | Hook exports public contract + type. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No `src/utils/**` changes. |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state-machine transitions. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state logic. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run-chain paths. |
+| `astral.ui.frontend-file-placement` | scoped | conforms | Hook under `hooks/`; page edit in `pages/` per precedent. |
+| `astral.ui.naming-conventions` | scoped | conforms | `useInPlaceLiveRefresh`, `beginRefresh`/`endRefresh` follow local style. |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No worker/process config touched. |
+
+**Sweep count:** 65 active statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.ui.in-place-live-refresh` | conforms | Authored as `status: proposed` per Stage 3 (not cited as approved law); hook + `ScheduledActions` `loadData(showSpinner)` match Solution shape; modals remain outside loading gate. |
+
+## Plan adherence
+
+AST-1409 engineer commits (`b1d57f12`, `a2ce31b2`, `cd6b32fe`) match Joan-approved Stages 1–3:
+
+- **Stage 1:** `useInPlaceLiveRefresh.ts` matches plan verbatim — initial `loading: true`, `beginRefresh(showSpinner)` gates spinner, `endRefresh` clears.
+- **Stage 2:** `AdminScheduledActions` swaps local `loading` for hook; `loadData(showSpinner)` uses `beginRefresh`/`endRefresh`; mount `loadData(true)`; silent `loadData()` on AUTO/Dbg/save/running→idle; modals remain siblings after loading ternary (lines 789–864); no new task poll; `5_000` thread poll unchanged.
+- **Stage 3:** Pattern file `status: proposed`, README “three proposed”, HARVEST crosswalk row — all match plan.
+- **Boundaries:** No `AdminPerformanceMonitor`, list-page sweep, dispatch/scheduler, or AST-1408 session-shell retouch in AST-1409 `code()` commits.
+- **Estimate (5):** Footprint fits — hook + one page + pattern catalog + Betty tests.
+- **Stacked AST-1408:** Present in three-dot diff vs `origin/dev` (sibling already on branch line) — expected epic stacking, not AST-1409 scope smuggling.
+
+Betty manifest (`docs/test-bible/frontend/pages.md`, `hooks.md`) aligns with `AST-1409:*` component tests covering silent AUTO/Dbg toggle, running→idle Avail/last-run merge, and overlay draft survival.
+
+## Findings
+
+### fix-now
+
+(none) — AST-1409 product implementation conforms to plan and pattern shape.
+
+### discuss
+
+- **Location:** Publish ref history — commit `0cf26ca1` (`test(AST-1411): seven-segment Ad Hoc preview/test coverage`)
+- **Finding:** AST-1411 test-tree work is on the AST-1409 publish ref (`docs/test-bible/core/agent.md`, `docs/test-bible/ui/api/api_admin.md`, `tests/component/core/test_agent.py`, `tests/component/ui/api/test_api_admin.py`). AST-1409 plan explicitly excludes `tests/**` and backend routes; AST-1409 engineer commits did not author these files. Three-dot diff vs `origin/dev` therefore includes sibling-ticket coverage unrelated to Scheduled Actions live refresh.
+- **Recommendation:** Chuckles / merge-child hygiene before ftr rollup — revert or rebase `0cf26ca1` off `sub/AST-1406/AST-1409-…`, or land AST-1411 on its own publish ref so AST-1409 rollup to `ftr/AST-1406` does not ship AST-1411 tests under AST-1409’s banner. Not an Ada `resolve-child` product fix.
+
+### advisory
+
+- **Location:** `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — `AST-1409` describe block
+- **Finding:** Dbg toggle path asserts no `Loading…` during in-flight GET but does not separately gate AUTO the same way the first toggle does (both exercised in one test — adequate for manifest).
+- **Recommendation:** None required; coverage matches Betty manifest pass criterion.
+
+## What's solid
+
+- Root cause fixed: `loadData` no longer always `setLoading(true)` — post-PUT and running→idle refreshes merge in place.
+- Hook contract is intentionally thin (spinner flag only) — correct for pages with heterogeneous poll cadences (AST-1410 / Performance Monitor).
+- Pattern catalog entry lands as **proposed** with AUTHORING-compliant frontmatter; implementation does not treat it as approved law.
+- Component tests directly exercise AC2–AC4 behaviors (silent toggle, Avail/last-run merge, overlay draft survival).
+- Engineer/test-tree separation clean for AST-1409-owned work.
+
+## Frame diff
+
+(none) — first Radia code-rubric pass on AST-1409. Prior issue-doc sections: plan @ `d6bd96af`, Joan APPROVED, build stub @ `cd6b32fe`; tip now `ff41b5e8` after `merge-tests(AST-1409)`. Publish ref also carries stacked AST-1408 + stray `0cf26ca1` (AST-1411) — see discuss.
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute table — no C4 stragglers.
+- §5f / §5g not triggered (UI-only; no backend debug or LLM external diffs in AST-1409 product commits).
+- `blockedBy AST-1408` satisfied on branch line (1408 merged into stack).
+
+context_tokens≈42000
