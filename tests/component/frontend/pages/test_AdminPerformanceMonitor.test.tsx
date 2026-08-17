@@ -579,4 +579,31 @@ describe("AdminPerformanceMonitor", () => {
       expect(candidateSelect.value).toBe("c2")
     }, 20000)
   })
+
+  describe("AST-1410 silent refetch", () => {
+    it("15s poll while batch overlay is open keeps the overlay and skips Loading...", async () => {
+      mockApi()
+      renderPerformanceMonitor("/admin/performance?task_key=task_a&status=COMPLETED")
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      const table = screen.getByRole("table")
+      await userEvent.click(within(table).getByText("task_a"))
+      await userEvent.click(screen.getByTitle("View agent data for this batch"))
+      await waitFor(() => expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument())
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url.startsWith("/api/admin/dispatch_ledger?") && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await vi.advanceTimersByTimeAsync(15_000)
+      expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument()
+      expect(screen.getByText("Execution History")).toBeInTheDocument()
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => [ledgerRow] } as Response)
+      await waitFor(() => expect(screen.getByText("Execution History")).toBeInTheDocument())
+      expect(screen.getByText("No agent data blocks recorded for this batch.")).toBeInTheDocument()
+    }, 20000)
+  })
 })

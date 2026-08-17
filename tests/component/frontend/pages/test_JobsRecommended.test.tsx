@@ -200,6 +200,32 @@ describe("JobsRecommended", () => {
       expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j-rec-only/skip", { method: "POST" }),
     )
   })
+
+  describe("AST-1410 silent refetch", () => {
+    it("Skip refreshes the list without Loading...", async () => {
+      const recommendedJob = {
+        ...sectionedJobs[0],
+        astral_job_id: "j-rec-silent",
+        job_title: "Silent Rec",
+      }
+      installBaseApiMocks(mockedApi, jobsViewHandler("recommended", [recommendedJob]))
+      renderWithProviders(<JobsRecommended />)
+      await waitFor(() => expect(screen.getByText("Silent Rec")).toBeInTheDocument())
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && url.includes("view=recommended") && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await userEvent.click(screen.getByRole("button", { name: "Skip" }))
+      expect(screen.getByText("Silent Rec")).toBeInTheDocument()
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => [] } as Response)
+      await waitFor(() => expect(screen.getByText("No recommended jobs yet")).toBeInTheDocument())
+    })
+  })
 })
 
   it("AST-1057: prepends Meteorites for meteorite- company jobs; leaves vetted sections intact", async () => {

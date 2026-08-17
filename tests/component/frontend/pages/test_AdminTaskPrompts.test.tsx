@@ -471,4 +471,77 @@ describe("AdminTaskPrompts", () => {
       expect(values).toEqual(["mid", "zebra"])
     }, 20000)
   })
+
+  describe("AST-1410 silent refetch", () => {
+    function hangTasksGet() {
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if ((url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      return (body: unknown) => {
+        release({ ok: true, json: async () => body } as Response)
+      }
+    }
+
+    it("revert while edit overlay is open keeps the draft and skips Loading...", async () => {
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/repo_json/status") {
+          return {
+            ok: true,
+            json: async () => ({
+              agent: { diverged: false, repo_relative_path: "data/admin/agent.json" },
+              agent_task: { diverged: true, repo_relative_path: "data/admin/agent_task.json" },
+            }),
+          } as Response
+        }
+        if (url === "/api/admin/repo_json/revert/agent_task" && init?.method === "POST") {
+          return { ok: true, json: async () => ({ ok: true }) } as Response
+        }
+        if (url.startsWith("/api/admin/tasks?") || url === "/api/admin/tasks") {
+          return { json: async () => tasks } as Response
+        }
+        if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a", "agent_b"] } as Response
+        if (url === "/api/admin/tasks/meta/tokens") return jsonResponse(["candidate_name"])
+        if (url === "/api/admin/tasks/meta/chain_tokens") return jsonResponse([])
+        if (url === "/api/admin/tasks/task_a" && !init?.method) {
+          return {
+            json: async () => ({
+              ...tasks[0],
+              system_prompt: "{$SELECTED_AGENT}",
+              user_prompt: "user",
+              cache_prompt: "cache",
+              cache_prompt_b: "b0",
+              cache_prompt_c: "c0",
+              cache_prompt_d: "d0",
+              nocache_prompt: "nocache",
+              run_next: "task_b",
+            }),
+          } as Response
+        }
+      })
+      renderWithProviders(<TaskPrompts />)
+      await waitFor(() => expect(screen.getByText("task_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+      await userEvent.click(screen.getByText("task_a"))
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      const groupName = screen.getByDisplayValue("Phase One")
+      await userEvent.type(groupName, " draft")
+      const release = hangTasksGet()
+      await userEvent.click(screen.getByRole("button", { name: "Revert to file" }))
+      await waitFor(() => expect(screen.getByRole("alertdialog")).toBeInTheDocument())
+      const confirms = screen.getAllByRole("button", { name: "Revert to file" })
+      await userEvent.click(confirms[confirms.length - 1])
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      expect(screen.getByDisplayValue("Phase One draft")).toBeInTheDocument()
+      expect(screen.getByText("task_a")).toBeInTheDocument()
+      release(tasks)
+      await waitFor(() => expect(screen.getByRole("heading", { name: /Edit: task_a/ })).toBeInTheDocument())
+      expect(screen.getByDisplayValue("Phase One draft")).toBeInTheDocument()
+    }, 20000)
+  })
 })

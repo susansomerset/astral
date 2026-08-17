@@ -280,3 +280,53 @@ describe("AdminManageEmail — AST-1142 (§6c multi-select + Land Meteorite)", (
     expect(screen.queryByText("Land Meteorite results")).not.toBeInTheDocument()
   })
 })
+
+describe("AdminManageEmail — AST-1410 silent refetch", () => {
+  beforeEach(() => {
+    mockedApi.mockReset()
+  })
+
+  it("Land Meteorite list refetch keeps rows and skips Loading…", async () => {
+    installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/inbox/messages") {
+        return jsonResponse({ messages: ROWS })
+      }
+      if (url === "/api/admin/inbox/land-meteorite" && init?.method === "POST") {
+        return jsonResponse({
+          results: [{ message_id: "m1", outcome: "archived", astral_candidate_id: "cand-ada" }],
+          total_processed: 1,
+          total_passed: 1,
+          total_failed: 0,
+          total_errors: 0,
+          total_skipped: 0,
+        })
+      }
+    })
+    renderWithProviders(<AdminManageEmail />)
+    await waitFor(() => expect(screen.getByText("Hello Astral")).toBeInTheDocument())
+    const matchedRow = screen.getByText("Hello Astral").closest("tr")!
+    await userEvent.click(within(matchedRow).getByRole("checkbox"))
+    const inner = mockedApi.getMockImplementation()!
+    let release: (value: Response) => void = () => {}
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/inbox/messages" && !init?.method) {
+        return new Promise<Response>((resolve) => { release = resolve })
+      }
+      return inner(url, init)
+    })
+    const pending = userEvent.click(screen.getByRole("button", { name: "Land Meteorite" }))
+    await waitFor(() => {
+      const gets = mockedApi.mock.calls.filter(([u, init]) => u === "/api/admin/inbox/messages" && !init?.method)
+      expect(gets.length).toBeGreaterThan(1)
+    })
+    expect(screen.getByText("Hello Astral")).toBeInTheDocument()
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+    release({ ok: true, json: async () => ({ messages: [ROWS[1]] }) } as Response)
+    await pending
+    await waitFor(() => {
+      const table = screen.getByRole("table")
+      expect(within(table).queryByText("Hello Astral")).not.toBeInTheDocument()
+      expect(within(table).getByText("other@example.com")).toBeInTheDocument()
+    })
+  })
+})

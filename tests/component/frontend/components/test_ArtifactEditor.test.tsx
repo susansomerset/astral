@@ -1162,4 +1162,45 @@ describe("ArtifactEditor", () => {
     expect(arts?.resume_structure?.sections?.prior_experience?.format).toBe("free_prose")
     expect(arts?.base_resume).toEqual({ prior_experience: "Earlier ops and delivery." })
   })
+
+  it("AST-1410: no-snapshot Cancel re-GETs last-saved tabs without location.reload", async () => {
+    const reload = vi.fn()
+    vi.stubGlobal("location", { ...window.location, reload })
+    let jobGets = 0
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        jobGets += 1
+        const summary = jobGets === 1 ? "hello" : "from-server"
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: { artifacts: { resume_content: { professional_summary: summary } } },
+          }),
+        } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Resume draft"
+        artifactKey="resume_content"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Summary" }]}
+        jobPersistence={{ jobId: "j1", artifactKey: "resume_content" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Resume draft")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    const field = await screen.findByDisplayValue("hello")
+    await userEvent.clear(field)
+    await userEvent.type(field, "dirty local")
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    await waitFor(() => expect(screen.getByDisplayValue("from-server")).toBeInTheDocument())
+    expect(screen.getByText("Resume draft")).toBeInTheDocument()
+    expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+    expect(reload).not.toHaveBeenCalled()
+    expect(jobGets).toBe(2)
+    vi.unstubAllGlobals()
+  })
 })
