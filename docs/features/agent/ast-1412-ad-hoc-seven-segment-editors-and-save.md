@@ -378,3 +378,12 @@ Betty coverage (`TestAst1412*` Vitest, `TestAst1412EnrichTaskLens` HTTP) aligns 
 - `merge-child`: roll up after AST-1411 per `blockedBy`.
 
 context_tokens≈42000
+
+## Resolution (Hedy)
+
+**Date:** 2026-08-17  
+**Review ref:** Radia @ `88d28a9e` — **fix-now:** none; **discuss:** none
+
+No product changes. Advisory (blockedBy AST-1411, merge-tests cargo, duplicated Manage Tasks labels) is merge-child / already accepted in plan — not a code fix. §9a dry-run into `origin/dev` recorded at publish; `origin/ftr/AST-1403` not on origin yet.
+
+**Verdict:** Ready for **User Testing**.
