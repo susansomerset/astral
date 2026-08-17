@@ -146,3 +146,38 @@ def copy_snapshot(astral_job_id):
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1420
+**Overall:** APPROVED
+**Publish-ref:** `f35edb19b8a9bb26f79920b3656a700590655787`
+
+## Traceability
+
+AC2 → N/A boundary (clipboard/pretty-print is AST-1421); payload JSON body → Stage 1 + Stage 2 · AC3 → Stage 1 (id union + `BLOCK_TYPES` hop blocks) · AC4 → Stage 1 (`block_data` from existing pointer-resolving readers) · AC5 → Stage 2 (`@require_auth` on `GET /api/jobs/<astral_job_id>/copy`)
+
+## Findings
+
+### discuss — Stage 1 step 3b (`list_entity_latest_agent_refs` try/except)
+
+**Location:** Stage 1, step 3b  
+**Finding:** On `list_entity_latest_agent_refs` failure, the plan logs a warning and returns stored-job ids only — consult/build hops may be absent from the snapshot.  
+**Recommendation:** Acceptable as documented resilience; implement as written. If Susan later wants fail-hard on hop lookup, that is a product call for AST-1421+UAT, not a plan gap.
+
+### discuss — No `## Self-assessment` section
+
+**Location:** Plan doc tail  
+**Finding:** Plan lacks the usual confidence/self-assessment block; only `## Estimate` confirm is present.  
+**Recommendation:** Optional polish for plan-child template consistency; scope and estimate (3) match the staged work — not blocking.
+
+### acceptable — `database.*` vs `agent.get_agent_data` naming
+
+**Location:** Stage 1 steps 3a/5  
+**Finding:** Plan calls `database.get_agent_data` / `database.get_agent_data_by_batch` directly from `tracker.py`, matching existing artifact-resolve usage (`database.get_agent_data(pin_id)` at line 297) and avoiding `agent.get_agent_data(batch_id, …)`’s different signature.  
+**Recommendation:** No change.
+
+context_tokens≈52000
+
