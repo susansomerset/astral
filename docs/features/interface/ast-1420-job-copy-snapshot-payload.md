@@ -181,3 +181,9 @@ AC2 → N/A boundary (clipboard/pretty-print is AST-1421); payload JSON body →
 
 context_tokens≈52000
 
+## Review (build)
+
+**Built:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload` @ `ffd638d71739050840b9278b8dadaa290100ff90`
+
+Stages 1–2: `assemble_job_copy_snapshot` in tracker (stored job + hop blocks from walk ∪ latest refs, `BLOCK_TYPES`, existing pointer-resolving readers); `GET /api/jobs/<id>/copy` with `@require_auth`. Tests deferred to Betty.
+
