@@ -159,3 +159,16 @@ AC1–6 → Stage 1 (`TOKEN_SOURCES` five pinned `source: rubric` rows + `resolv
 **Considered (in-session):** Universal orch.* pipeline/git/roles statutes — all `conforms` (plan-only pass; engineer assignee restored after approval). Scoped: `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`, `astral.standards.in-scope-only`, `astral.standards.utils-data-late-import-only` — `conforms` (names/pins in `TOKEN_SOURCES`; explicit boundaries; preserves late `rubric_criteria_for_token` import). `astral.layers.ui-config-driven-business-logic` — `conforms` (pickers already derive from registry via `get_tokens` / `get_manage_agents_tokens`; no parallel UI list). Parent-cited `astral.agent.do-task-delegation` — `conforms` by boundary (no `core/` edits; substitution stays on existing `resolve_tokens` / `do_task` path). Remaining scoped astral.* corpus — excluded (layer/path/change_type mismatch on `utils`-only footprint) or `conforms` where considered. Pattern `pattern.config.config-block` — matches solution shape.
 
 context_tokens≈18500
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| plan | `ba66a4c7` | Plan doc |
+| Joan | `f58ea6b7` | validate APPROVED |
+| 1 | `310f5e72` | Five named `TOKEN_SOURCES` pins; `resolve_tokens` honors pin and AST-1396 silence |
+
+**Built:** `src/utils/config.py` only.
+**Tip:** `310f5e72` (product); this stub follows on the same publish ref.
