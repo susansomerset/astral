@@ -172,3 +172,139 @@ context_tokens≈18500
 
 **Built:** `src/utils/config.py` only.
 **Tip:** `310f5e72` (product); this stub follows on the same publish ref.
+
+## Radia review
+
+`[code-rubric] revision=2`
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1405
+**Publish ref:** `origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens` @ `82ac3ca836d08126616ebc8a6910141ac2fb11b6`
+**Overall:** CLEAN
+
+**Diff baseline:** `git diff origin/dev...origin/sub/AST-1404/AST-1405-named-rubric-prompt-tokens`
+**Change set:** layers `utils`, `docs`; paths `src/utils/config.py`, `docs/features/foundation/ast-1405-named-rubric-prompt-tokens.md`, `docs/test-bible/utils/config.md`, `tests/component/utils/test_config.py`; change_types `add` + `modify`
+**Product commit:** `310f5e72` (`src/utils/config.py` only) — engineer test-tree ban respected
+**Test commit:** `c4433157` + merge `82ac3ca8` (Betty lane)
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/**` diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no `src/core/**` diff; substitution stays on existing `resolve_tokens` path |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grading/vector validation logic changed |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch/dispatch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch id emission |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch response paths |
+| astral.config.config-source-of-truth | scoped | conforms | five pins added to `TOKEN_SOURCES`; no scattered literals |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env reads |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no artifact/debug dir changes |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run-next/chain authority changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | plan/review at `docs/features/foundation/ast-1405-named-rubric-prompt-tokens.md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commit touches tests + bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | product commit `310f5e72` is `src/utils/config.py` only |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no core/external boundary edits |
+| astral.layers.import-direction | scoped | conforms | no new cross-layer imports; preserves existing late `rubric_criteria_for_token` import in rubric branch |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | pickers already derive from `TOKEN_SOURCES` via `get_tokens` / `get_manage_agents_tokens`; no parallel UI list |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth handlers |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog/seed conflicts |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | hot-path token resolve unchanged structurally |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed workflow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed row lifecycle |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no `src/data/**` changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no DB/migration changes |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no `debug=` contract surfaces |
+| astral.standards.dry-and-focused-functions | scoped | conforms | minimal branch extension; no new helpers |
+| astral.standards.in-scope-only | scoped | conforms | single-file product change; out-of-scope areas untouched |
+| astral.standards.logging-via-utils | scoped | conforms | uses existing `_log`; warning semantics match plan |
+| astral.standards.names-not-ticket-ids | scoped | conforms | token names are domain names, not ticket ids |
+| astral.standards.no-cross-contamination | scoped | conforms | rubric branch only; other token sources untouched |
+| astral.standards.no-hardcoded-sets | scoped | conforms | pins live in `TOKEN_SOURCES`, not inline elsewhere |
+| astral.standards.public-then-helpers | scoped | conforms | registry + existing `resolve_tokens` path |
+| astral.standards.utils-data-late-import-only | scoped | conforms | no new utils→data imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state machine edits |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state transitions |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/daisy-chain paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI naming surfaces |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server/worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1405)` lands Betty SHA on publish ref |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub publish ref; no reverse merges in diff |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1404/AST-1405-…` topology |
+| orch.git.merge-on-checkout | universal | conforms | no checkout/merge violations in review scope |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear commit stack |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches in diff |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1404` worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | seed prompt rewrite explicitly deferred to Susan |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches Stage 1 steps |
+| orch.pipeline.project-scoped-queues | universal | conforms | single-child review scope |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child gate satisfied |
+| orch.roles.archie-approves-statutes | universal | conforms | active corpus used |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/bible via Betty commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code diff |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada remains assignee through review |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Sweep count:** 64 active rows from `canon/statutes/README.md` § Harvested corpus (registry cites 65; table matches README listing).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | five named rows extend `TOKEN_SOURCES`; pins use existing `rubric_criteria_for_token` path; no second registry |
+
+Joan plan-rubric cited this pattern in-session; no additional pattern ids in plan/parent Architectural definition.
+
+## Plan adherence
+
+Stage 1 executed as written:
+
+- Five `TOKEN_SOURCES` rows immediately after `RUBRIC_VECTORS` with correct `owner_task_key` pins (`grade_get`, `grade_do`, `grade_like`, `evaluate_jd`, `prefilter_company`).
+- Forbidden names (`JOBLIST_RUBRIC`, `COMPANY_PREFILTER`, `JOBDESC_RUBRIC`) absent.
+- `RUBRIC_VECTORS` remains `{"source": "rubric"}` unpinned.
+- `resolve_tokens` rubric branch honors pin vs running-task owner; AST-1396 silence only for `pinned and not candidate_data`.
+- Out-of-scope respected: no seed prompts, no UI, no `candidate.py` / `agent.py` edits.
+
+**Estimate (3):** footprint matches — one utils file product + Betty tests/bible.
+
+**QA manifest:** Betty’s `TestAst1405NamedRubricPromptTokens` (4 cases) + revised `TestAst723RubricVectorsToken` align with `docs/test-bible/utils/config.md` § AST-1405 manifest.
+
+**Joan straggler (C4):** plan-rubric APPROVED @ `f58ea6b7`; no formal Excluded table — in-session exclusions were utils-footprint predicates; no straggler on code diff.
+
+## Findings
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+- **Pre-existing layer bend:** `resolve_tokens` rubric branch retains late `from src.core.candidate import rubric_criteria_for_token` (AST-723 cycle break). Not introduced here; plan documents it. No action unless a future ticket centralizes utils→core rubric reads.
+- **UAT follow-up (parent scope):** Susan still inserts tokens into seed prompt bodies per plan out-of-scope — expected downstream of this child.
+
+## What’s solid
+- Pin independence is clear: `{$GET_RUBRIC}` on `grade_like` resolves `grade_get`; `{$RUBRIC_VECTORS}` stays task-derived.
+- Warning contract is precise: empty `{}` silences pinned names only; truthy view without `_astral_candidate_id` still warns; unpinned `RUBRIC_VECTORS` on `grade_like` still warns.
+- Engineer/test lane separation is clean (`310f5e72` vs `c4433157`).
+
+## Frame diff
+
+| Planned (product) | Actual |
+|-------------------|--------|
+| `src/utils/config.py` only | `310f5e72` — `src/utils/config.py` only ✓ |
+| No tests (Betty) | `c4433157` — tests + bible ✓ |
+| No seed/UI/core | none in diff ✓ |
+
+context_tokens≈42000
+
