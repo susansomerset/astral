@@ -231,3 +231,26 @@ Do **not** edit: `src/ui/frontend/src/pages/AdminAnthropicAdHoc.tsx` (sibling #2
 ## Estimate
 
 Confirm Chuckles estimate: 5 — revise to 3 because this is wiring Ad Hoc onto existing `_assemble_blocks_seven_segment` / `_store_prompt_blocks(caches_resolved_four=)` / `resolved_task_system`; no schema, no React, no new tables.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1411
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist` @ `acf80f98461d696f7a421a177df9198945357780`
+
+## Traceability
+
+AC5→Stage 2 (four-slot `caches_resolved_four` assemble/store; omit empty CACHE_B/D); AC6→Stage 1 (`system_prompt` in body → agent fallback; omit key → DB task system) + Stage 2 (Preview/Test send resolved system); AC7→Stage 2 step 6 (Style D `debug_index`/`debug_detail` per stored prompt block, gated on `debug`).
+
+## Findings
+
+**acceptable** — Stage 2 step 6 refactors shared `_store_prompt_blocks` debug emission (not workbench-only). Intentional: parent functional scope requires found→recorded per block on the store path; reuses the production helper rather than forking.
+
+**acceptable** — No explicit Self-Assessment conf block; stages + Done-when criteria are specific enough for this wiring-only scope.
+
+context_tokens≈32000
+
+[plan-rubric] PROCEED (Commit: acf80f98) seven-segment backend wiring
+
