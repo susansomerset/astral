@@ -426,6 +426,11 @@ context_tokens≈28000
 ```
 
 
+
+## Bug: AST-1417 — save_candidate hop-label persist coverage
+
+Test-gap sibling of AST-1416. Betty board REVISE: `save_candidate` persist of `REQUESTED_ARTIFACTS.<hop>` was uncovered (`TestSaveCandidate` only rejected `NOT_A_STATE`). qa-fix landed `[bug-repro]`; product carve-out is AST-1416.
+
 ## Radia review (AST-1417)
 
 [code-rubric] revision=2
