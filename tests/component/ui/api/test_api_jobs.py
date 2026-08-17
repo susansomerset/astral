@@ -579,3 +579,70 @@ class TestAst1100JobArtifactPinResolveApi:
             headers=auth_headers,
         )
         assert resp.status_code == 400
+
+
+class TestAst1420CopySnapshotRoute:
+    """AST-1420: GET /api/jobs/<id>/copy — auth, 404, assembler wrap, no hydrate."""
+
+    def test_unauthenticated_rejected(
+        self, jobs_client: FlaskClient
+    ) -> None:
+        resp = jobs_client.get("/api/jobs/job-1420/copy")
+        assert resp.status_code == 401
+        assert resp.get_json()["error"] == "Missing or invalid session credentials"
+
+    def test_missing_job_404(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(jobs_mod, "assemble_job_copy_snapshot", lambda *a, **k: None)
+        resp = jobs_client.get("/api/jobs/missing/copy", headers=auth_headers)
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "Not found"}
+
+    def test_success_returns_assembler_json_without_hydrate(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        hydrate = MagicMock()
+        flatten = MagicMock()
+        story = MagicMock()
+        monkeypatch.setattr(jobs_mod, "hydrate_job_artifacts_for_display", hydrate)
+        monkeypatch.setattr(jobs_mod, "_flatten_grades", flatten)
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", story)
+        snapshot = {
+            "job": {"astral_job_id": "job-1420", "job_data": {"artifacts": {"job_resume": "pin-1"}}},
+            "agent_data": {"pin-1": {"id": "pin-1", "blocks": {"RESPONSE": {"id": "pin-1", "content": "body"}}}},
+        }
+        monkeypatch.setattr(jobs_mod, "assemble_job_copy_snapshot", lambda *a, **k: snapshot)
+        resp = jobs_client.get("/api/jobs/job-1420/copy", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == snapshot
+        hydrate.assert_not_called()
+        flatten.assert_not_called()
+        story.assert_not_called()
+
+    def test_assembler_exception_500(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            jobs_mod,
+            "assemble_job_copy_snapshot",
+            MagicMock(side_effect=RuntimeError("boom")),
+        )
+        resp = jobs_client.get("/api/jobs/job-1420/copy", headers=auth_headers)
+        assert resp.status_code == 500
+        assert resp.get_json() == {"error": "boom"}
+
+    def test_debug_query_flags_passed_to_ui_llm_debug(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: list[bool] = []
+
+        def _dbg(*, explicit_debug: bool = False) -> bool:
+            captured.append(explicit_debug)
+            return False
+
+        monkeypatch.setattr(jobs_mod, "ui_llm_debug", _dbg)
+        monkeypatch.setattr(jobs_mod, "assemble_job_copy_snapshot", lambda *a, **k: {"job": {}, "agent_data": {}})
+        for qs in ("", "?debug=1", "?debug=true", "?debug=yes", "?debug=no"):
+            jobs_client.get(f"/api/jobs/job-1420/copy{qs}", headers=auth_headers)
+        assert captured == [False, True, True, True, False]

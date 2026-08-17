@@ -1245,3 +1245,250 @@ class TestAst1305JobResumeExtras:
         assert prepared["professional_summary"] == "Job S"
         assert prepared["highlights"] == "Job highlights"
         assert "invented_section" not in prepared
+
+
+class TestAst1420AssembleJobCopySnapshot:
+    """AST-1420: stored job + populated hop blocks; artifact pins stay ids."""
+
+    _PIN = "pin-resp"
+    _HOP = "hop-task"
+    _JOB = {
+        "astral_job_id": "job-1420",
+        "job_data": {"artifacts": {"job_resume": "pin-resp"}},
+        "state": "IN_REVIEW",
+        "n": 7,  # non-string walk ignore
+    }
+
+    def _wire(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        job: Any,
+        hits: List[str] | None = None,
+        refs: List[dict] | None = None,
+        seeds: Dict[str, Any] | None = None,
+        batches: Dict[str, List[dict]] | None = None,
+        refs_exc: Exception | None = None,
+        seed_exc: Dict[str, Exception] | None = None,
+    ) -> MagicMock:
+        hits = hits or []
+        seeds = seeds or {}
+        batches = batches or {}
+        seed_exc = seed_exc or {}
+        batch_calls: list[str] = []
+
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: job)
+
+        def _for_ids(ids: List[str]) -> dict:
+            return {i: {"agent_data_id": i} for i in ids if i in hits}
+
+        monkeypatch.setattr(tracker_mod.database, "get_agent_data_for_ids", _for_ids)
+
+        if refs_exc is not None:
+            monkeypatch.setattr(
+                tracker_mod.database,
+                "list_entity_latest_agent_refs",
+                MagicMock(side_effect=refs_exc),
+            )
+        else:
+            monkeypatch.setattr(
+                tracker_mod.database,
+                "list_entity_latest_agent_refs",
+                lambda et, eid: list(refs or []),
+            )
+
+        def _seed(aid: str) -> Any:
+            if aid in seed_exc:
+                raise seed_exc[aid]
+            return seeds.get(aid)
+
+        def _batch(bid: str) -> List[dict]:
+            batch_calls.append(bid)
+            return list(batches.get(bid) or [])
+
+        monkeypatch.setattr(tracker_mod.database, "get_agent_data", _seed)
+        monkeypatch.setattr(tracker_mod.database, "get_agent_data_by_batch", _batch)
+        spy = MagicMock()
+        spy.batch_calls = batch_calls
+        return spy
+
+    def test_missing_job_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        self._wire(monkeypatch, job=None)
+        assert tracker_mod.assemble_job_copy_snapshot("missing") is None
+
+    def test_empty_walk_and_no_refs_returns_empty_agent_data(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # No string values → skip get_agent_data_for_ids (else {}).
+        called: list[object] = []
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: {"n": 1, "xs": [2, None], "pad": "   "})
+        monkeypatch.setattr(
+            tracker_mod.database,
+            "get_agent_data_for_ids",
+            lambda ids: called.append(ids) or {},
+        )
+        monkeypatch.setattr(
+            tracker_mod.database, "list_entity_latest_agent_refs", lambda et, eid: []
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-empty")
+        assert snap == {"job": {"n": 1, "xs": [2, None], "pad": "   "}, "agent_data": {}}
+        assert called == []
+
+    def test_pins_stay_ids_and_blocks_follow_config_types(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Pin string on the stored job is an agent_data id; hop from latest refs unions in.
+        monkeypatch.setattr(tracker_mod, "BLOCK_TYPES", ["SYSTEM", "RESPONSE", "FEEDBACK"])
+        batches = {
+            "b-pin": [
+                {"block_type": "SYSTEM", "agent_data_id": "sys-1", "block_data": "sys text"},
+                {"block_type": "RESPONSE", "agent_data_id": self._PIN, "block_data": "resolved pin"},
+                # last RESPONSE wins
+                {"block_type": "RESPONSE", "agent_data_id": "resp-newer", "block_data": None},
+            ],
+            "b-hop": [
+                {"block_type": "TASK", "agent_data_id": self._HOP, "block_data": "task body"},
+                {"block_type": "RESPONSE", "agent_data_id": "hop-resp", "block_data": "hop resp"},
+            ],
+        }
+        self._wire(
+            monkeypatch,
+            job=self._JOB,
+            hits=[self._PIN],
+            refs=[
+                {
+                    "prompt_blocks": [
+                        "skip-non-dict",
+                        {"id": None},
+                        {"id": "  "},
+                        {"id": self._HOP},
+                        {"id": self._PIN},  # duplicate of walk hit — first-seen wins
+                    ]
+                }
+            ],
+            seeds={
+                self._PIN: {"block_type": "RESPONSE", "batch_id": "b-pin", "task_key": "draft"},
+                self._HOP: {"block_type": "TASK", "batch_id": "b-hop", "task_key": None},
+            },
+            batches=batches,
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420")
+        assert snap["job"]["job_data"]["artifacts"]["job_resume"] == self._PIN
+        pin_blocks = snap["agent_data"][self._PIN]["blocks"]
+        assert set(pin_blocks) == {"SYSTEM", "RESPONSE"}  # FEEDBACK omitted — no row
+        assert pin_blocks["RESPONSE"] == {"id": "resp-newer", "content": ""}  # None → ""
+        assert pin_blocks["SYSTEM"]["content"] == "sys text"
+        hop = snap["agent_data"][self._HOP]
+        assert hop["task_key"] == ""
+        assert "TASK" not in hop["blocks"]  # not in patched BLOCK_TYPES
+        assert hop["blocks"]["RESPONSE"]["content"] == "hop resp"
+
+    def test_latest_refs_failure_keeps_stored_ids(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("WARNING")
+        self._wire(
+            monkeypatch,
+            job=self._JOB,
+            hits=[self._PIN],
+            refs_exc=RuntimeError("refs down"),
+            seeds={self._PIN: {"block_type": "RESPONSE", "batch_id": "b-pin", "task_key": "t"}},
+            batches={"b-pin": [{"block_type": "RESPONSE", "agent_data_id": self._PIN, "block_data": "ok"}]},
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420")
+        assert self._PIN in snap["agent_data"]
+        assert "list_entity_latest_agent_refs failed" in caplog.text
+
+    def test_skips_missing_row_no_batch_and_hop_error(
+        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        caplog.set_level("WARNING")
+        job = {
+            "astral_job_id": "job-1420",
+            "a": "gone",
+            "b": "nobatch",
+            "c": "boom",
+            "d": "ok-id",
+        }
+        self._wire(
+            monkeypatch,
+            job=job,
+            hits=["gone", "nobatch", "boom", "ok-id"],
+            seeds={
+                "nobatch": {"block_type": "RESPONSE", "batch_id": "  ", "task_key": "t"},
+                "ok-id": {"block_type": "RESPONSE", "batch_id": "b-ok", "task_key": "t"},
+            },
+            seed_exc={"boom": ValueError("cyclic pointer")},
+            batches={
+                "b-ok": [
+                    {
+                        "block_type": "RESPONSE",
+                        "agent_data_id": "",
+                        "block_data": {"not": "str"},
+                    }
+                ]
+            },
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420", debug=True)
+        assert set(snap["agent_data"]) == {"ok-id"}
+        assert snap["agent_data"]["ok-id"]["blocks"]["RESPONSE"]["id"] == ""
+        assert "hop failed" in caplog.text
+
+    def test_shared_batch_queried_once(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        spy = self._wire(
+            monkeypatch,
+            job={"x": "id-a", "y": "id-b"},
+            hits=["id-a", "id-b"],
+            seeds={
+                "id-a": {"block_type": "SYSTEM", "batch_id": "shared", "task_key": "t"},
+                "id-b": {"block_type": "RESPONSE", "batch_id": "shared", "task_key": "t"},
+            },
+            batches={
+                "shared": [
+                    {"block_type": "SYSTEM", "agent_data_id": "id-a", "block_data": "s"},
+                    {"block_type": "RESPONSE", "agent_data_id": "id-b", "block_data": "r"},
+                ]
+            },
+        )
+        snap = tracker_mod.assemble_job_copy_snapshot("job-1420")
+        assert spy.batch_calls == ["shared"]
+        assert snap["agent_data"]["id-a"]["blocks"] == snap["agent_data"]["id-b"]["blocks"]
+
+    def test_debug_true_emits_index_false_is_silent(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_logger", lambda *a, **k: dbg)
+        self._wire(monkeypatch, job={"n": 1}, refs=[])
+        tracker_mod.assemble_job_copy_snapshot("job-empty", debug=False)
+        dbg.debug_index.assert_not_called()
+        tracker_mod.assemble_job_copy_snapshot("job-empty", debug=True)
+        job_hdr = dbg.debug_index.call_args_list[0].kwargs
+        assert job_hdr["func"] == "assemble_job_copy_snapshot"
+        assert job_hdr["outcome"] == "assembled_no_ids"
+
+    def test_debug_recorded_and_skip_outcomes(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        dbg = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_logger", lambda *a, **k: dbg)
+        self._wire(
+            monkeypatch,
+            job={"a": "gone", "b": self._PIN},
+            hits=[self._PIN, "gone"],
+            seeds={
+                self._PIN: {"block_type": "RESPONSE", "batch_id": "b-pin", "task_key": "draft"},
+            },
+            batches={
+                "b-pin": [
+                    {"block_type": "RESPONSE", "agent_data_id": self._PIN, "block_data": "body"}
+                ]
+            },
+        )
+        tracker_mod.assemble_job_copy_snapshot("job-1420", debug=True)
+        outcomes = [c.kwargs["outcome"] for c in dbg.debug_index.call_args_list]
+        assert outcomes[0] == "assembled"
+        assert "missing_row" in outcomes
+        assert "recorded" in outcomes
+        dbg.debug_detail_block.assert_called()
+        assert "body" in dbg.debug_detail_block.call_args.args[0]
