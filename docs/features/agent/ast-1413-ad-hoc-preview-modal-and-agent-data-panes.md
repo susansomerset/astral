@@ -256,3 +256,162 @@ context_tokens≈62000
 
 **Publish ref:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes`  
 **Product commits:** `31889c26` (Stage 1 — Preview Prompt `Modal` with eight resolved tabs), `56bac797` (Stage 2 — `BatchAgentDataPanes` inline after Test; Response dump removed)
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1413
+**Publish ref:** `origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes` @ `7290f7c486442935912b5d5a5f8c116ce3811f46`
+**Overall:** CLEAN
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1403/AST-1413-ad-hoc-preview-modal-and-agent-data-panes` (10 files). **AST-1413 product commits** (`31889c26`, `56bac797`) touch only `AdminAnthropicAdHoc.tsx`, `BatchAgentDataModal.tsx`, `App.css`. Cumulative diff vs `origin/dev` also carries sibling **#1/#2** `agent.py` / `api_admin.py` / editor wiring from epic `ftr` merge — not introduced by #1413 commits.
+
+**Status gate:** Spawn prompt `Tests Passed` — trusted.
+
+**Joan:** plan-rubric APPROVED attached; no Excluded statute list — no straggler callouts.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No confidence/scoring in #1413 commits |
+| astral.agent.do-task-delegation | scoped | not-applicable | No `src/core/**` in #1413 commits |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade/vector validation |
+| astral.batch.batch-id-first | scoped | not-applicable | UI consumes `batch_id`; does not construct it |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch_id construction |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim/clear helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | Pane reuse; no selection logic change |
+| astral.config.config-source-of-truth | scoped | not-applicable | No config changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug/artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike/debug-dir paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | Dispatcher untouched in #1413 |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No `run_next` changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Single `ast-1413-*.md` plan doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Product `src/**` is engineer `code(AST-1413)` only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer commits UI-only; test tree is Betty |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No core/external in #1413 commits |
+| astral.layers.import-direction | scoped | conforms | UI imports only; named export from existing modal file |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Preview/panes driven by API payloads; no hardcoded job state |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check handlers |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No render/consult orchestration |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | Existing `api()` auth paths unchanged |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | Seed paths untouched |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | Catalog paths untouched |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No seed hot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed approval flow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row seed logic |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join seed logic |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No data-layer changes in #1413 |
+| astral.standards.database-header-inventory | scoped | not-applicable | No `src/data/**` changes |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No backend debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `BatchAgentDataPanes` extract reuses pane logic; `previewField` local helper |
+| astral.standards.in-scope-only | scoped | conforms | #1413 commits limited to three planned UI files |
+| astral.standards.logging-via-utils | scoped | not-applicable | No runtime logging changes |
+| astral.standards.names-not-ticket-ids | scoped | conforms | No ticket-id symbol names |
+| astral.standards.no-cross-contamination | scoped | conforms | `AdminTaskPrompts`, `AdminPerformanceMonitor`, `Modal.tsx` untouched |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new hardcoded business sets |
+| astral.standards.public-then-helpers | scoped | conforms | Named export + file-local `previewField` |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No `src/utils/**` changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | No job/roster transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job prior-state enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No daisy-chain run logic |
+| astral.ui.frontend-file-placement | scoped | conforms | Changes in `pages/` + existing `components/BatchAgentDataModal.tsx` |
+| astral.ui.naming-conventions | scoped | conforms | `BatchAgentDataPanes`, `batch-agent-data-wrapper--page` follow conventions |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No worker/deployment changes |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Tip `merge-tests(AST-1413): origin/tests e09f7f48` |
+| orch.git.commit-vocabulary | universal | conforms | `code`/`test`/`docs`/`merge-tests` on branch |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub publish ref; diff vs `origin/dev` |
+| orch.git.ftr-sub-topology | universal | conforms | Child `sub/AST-1403/AST-1413-...` on epic stack |
+| orch.git.merge-on-checkout | universal | conforms | `sync(dev)` + `merge(AST-1412)` present; no rebase violations |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No forbidden git ops |
+| orch.git.no-dev-agent-branches | universal | conforms | Publish on `sub/*` |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review in `astral-AST-1403` worktree |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch classes |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Modal vs inline / 500 panes decisions documented |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages match Done-when |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code diff |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No canon statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | `test(AST-1413)` + merge-tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee; review recommend-only |
+| orch.roles.pre-commit-path-bans | universal | conforms | No hook-ban evidence |
+
+**Active set scored:** 65 / 65
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan cites no catalog patterns |
+
+## Plan adherence
+
+**Stage 1** — matches Done-when:
+
+- Preview opens `Modal` (default width, Cancel footer, no `size="wide"`).
+- Eight `PREVIEW_TABS` in plan order; `(empty)` for blank slots; `previewField` uses `cache_a` || `cache` alias.
+- Inline “Resolved Prompt Preview” removed; `previewOpen` gated; Preview does not `GET /api/agent_data/...`.
+- `byteSize` / `previewTabsWithSize` removed.
+
+**Stage 2** — matches Done-when:
+
+- `BatchAgentDataPanes` named export; default `BatchAgentDataModal` wide wrapper preserved for `AdminPerformanceMonitor` / `AdminVectorFeedback`.
+- `.batch-agent-data-wrapper--page` added (560px) without altering base wrapper.
+- `response` / `timesheet` / Response `<pre>` removed; `testBatchId` set on HTTP 200 + `success` + non-empty `batch_id`.
+- `setTestBatchId(null)` at Test start; HTTP 500 stays on `!r.ok` throw → toast only (no panes).
+- `handlePreview` does not read/write `testBatchId`.
+- Inline `BatchAgentDataPanes` after editor + preview modal.
+
+**Out of scope respected (#1413 commits):** no `agent.py`, no `api_admin.py`, no new component file, no `Modal.tsx` edits, no Manage Tasks changes.
+
+**Estimate (2):** footprint fits — UI refactor + CSS hook.
+
+Betty `AST-1413:*` Vitest cases cover modal tabs, pane mount, preview isolation, missing `batch_id` toast.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Cumulative diff vs `origin/dev`:** branch tip includes sibling **#1/#2** backend and editor changes not yet on `dev` — expected epic stacking via `merge(AST-1412)`; #1413 engineer commits remain scoped to three UI files.
+- **HTTP 500 + `batch_id`:** plan-accepted — soft-fail does not mount workbench panes; operator uses Execution History. No Vitest case for 500 path (optional Betty follow-up, not blocking).
+- **`previewField` duplication:** mirrors `AdminTaskPrompts` per plan; label drift risk if Manage Tasks preview helper changes later (Joan marked acceptable).
+
+## What's solid
+
+- Clean split: preview = modal, post-Test = inline `BatchAgentDataPanes` (not a second popup).
+- Execution History consumers unchanged (default export + `size="wide"`).
+- Preview modal verified not to fetch `agent_data`; successful Test panes fetch once.
+- Cache A alias + empty-slot `(empty)` behavior tested.
+
+## Frame diff
+
+| Planned (#1413 commits) | Landed |
+|-------------------------|--------|
+| Preview → `Modal` + eight tabs | `31889c26` |
+| `BatchAgentDataPanes` export + inline after Test | `56bac797` |
+| `.batch-agent-data-wrapper--page` | `56bac797` |
+| No `agent.py` / `api_admin.py` / new files | Confirmed on #1413 commits |
+| Sibling #2 editors (pre-flight) | Present via `merge(AST-1412)` before #1413 work |
+
+## Recommended actions (downstream — not executed here)
+
+- Chuckles: append artifact to issue doc, `docs()` commit on sub-branch, post slim upshot `--as radia`, move to **Review Posted**.
+- datt: **PROCEED** → User Testing (no `resolve-child` needed).
+- `merge-child`: roll up #1413 after siblings per epic `blockedBy` / ftr order.
+
+context_tokens≈45000
+
+[code-rubric] PROCEED (Commit: 7290f7c4) preview modal and panes
+
