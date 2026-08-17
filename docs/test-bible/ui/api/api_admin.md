@@ -600,3 +600,29 @@ Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` 
   tests/component/ui/api/test_api_admin.py::TestAst1411AdhocSevenSegment \
   -q
 ```
+
+### AST-1412 · AST-1403 (Ad Hoc seven-segment `*_len` passthrough)
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`.
+
+`_enrich_tasks` copies seven prompt-length ints onto list rows (`user_prompt_len`, `cache_prompt_len`, `cache_prompt_b/c/d_len`, `nocache_prompt_len`, `system_prompt_len`) so Agent Ad Hoc overwrite ● / `taskHasExistingPrompts` can see Cache-B-only content. Editors / Save As / Preview-Test bodies: **`docs/test-bible/frontend/pages.md`** § AST-1412.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Seven `*_len` including Cache-B-only | `src/ui/api/api_admin.py` (`_enrich_tasks`) | **`TestAst1412EnrichTaskLens::test_enrich_tasks_passes_seven_segment_lens_including_cache_b_only`** |
+
+**Broken / obsolete this pass:** none — existing `TestEnrichTasks` rows still assert token/cache branches; they did not pin B–D lens.
+
+**Integration:** no existing scenario asserts Ad Hoc overwrite ● from `*_len` — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Seven `*_len` passthrough: `tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens`
+
+**AST-1412** narrowed run (API; page in **`frontend/pages.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens \
+  -q
+```

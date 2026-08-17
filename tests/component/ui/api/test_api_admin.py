@@ -3217,3 +3217,53 @@ class TestAst1411AdhocSevenSegment:
         assert fail_body["success"] is False
         assert fail_body["batch_id"] == "adhoc-evaluate_jd-1411"
         assert "response_text" not in fail_body
+
+
+# AST-1412: Ad Hoc overwrite ● / has-content reads seven *_len fields from _enrich_tasks.
+_LEN_KEYS = (
+    "user_prompt_len",
+    "cache_prompt_len",
+    "cache_prompt_b_len",
+    "cache_prompt_c_len",
+    "cache_prompt_d_len",
+    "nocache_prompt_len",
+    "system_prompt_len",
+)
+
+
+class TestAst1412EnrichTaskLens:
+    def test_enrich_tasks_passes_seven_segment_lens_including_cache_b_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = None
+        monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [
+                {
+                    "task_key": "task_b_only",
+                    "task_key_uuid": None,
+                    "agent_id": "",
+                    "cache_prompt_len": 0,
+                    "cache_prompt_b_len": 9,
+                    "cache_prompt_c_len": 0,
+                    "cache_prompt_d_len": 0,
+                    "nocache_prompt_len": 0,
+                    "user_prompt_len": 0,
+                    "system_prompt_len": 0,
+                    "updated_at": "now",
+                }
+            ],
+        )
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
+        rows = admin_mod._enrich_tasks("")
+        for key in _LEN_KEYS:
+            assert key in rows[0]
+            assert isinstance(rows[0][key], int)
+        assert rows[0]["cache_prompt_b_len"] == 9
+        assert rows[0]["cache_prompt_len"] == 0
+        assert rows[0]["system_prompt_len"] == 0

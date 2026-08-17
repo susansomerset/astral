@@ -2036,3 +2036,36 @@ npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1412 · AST-1403
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`.
+
+Agent Ad Hoc editors match Manage Tasks’ seven segments (System, Cache A–D, No Cache, User). Fetch-from-task and Save As read/write all seven columns; overwrite ● / `hasContent` treat any populated segment as content. Preview and Test POST always include all seven keys, including `system_prompt: ""`. Preview modal / agent_data panes: sibling **AST-1413**. Backend assemble/store: **AST-1411**. `_enrich_tasks` `*_len` passthrough: **`docs/test-bible/ui/api/api_admin.md`** § AST-1412.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page first paint + seven tab labels (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1412: seven editor tabs match Manage Tasks labels`** |
+| Cache-B-only fetch isolation; Save As enabled from B | same | **`AST-1412: Cache B loads into B not A; Save As lights from B-only content`** |
+| Preview / Test / Save As seven keys; empty System is `""` | same | **`AST-1412: Preview, Test, and Save As send all seven keys; empty System is empty string`** |
+| Overwrite ● from Cache-B-only `*_len` | same | **`AST-1412: overwrite marker treats Cache-B-only list lens as existing content`** |
+| Existing kitchen-sink + AST-1215 + AST-1394 | same | keep **`previews, tests, fetches prompts, and saves as`**; **`AST-1215`**; **`AST-1394`** |
+
+**Broken / obsolete this pass:** `GET /tasks/task_a` mock and `/tasks` fixture were three-slot (`user` / `cache` / `nocache`). Revised to seven columns + Cache-B-only list row so fetch/overwrite match product. Kitchen-sink still uses default User tab + `"User prompt content..."`.
+
+**Integration:** no existing scenario asserts Ad Hoc editor tabs / Save As body — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx`
+2. `_enrich_tasks` seven `*_len`: `tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens`
+
+**AST-1412** narrowed run (page; API lens in **`ui/api/api_admin.md`**):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1412|previews, tests, fetches|AST-1215|AST-1394"
+```
+
+**Pass criterion:** Vitest + `TestAst1412EnrichTaskLens` green — not zero-arg harness / branch-lock gate.
+
