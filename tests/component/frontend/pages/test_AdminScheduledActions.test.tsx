@@ -1354,4 +1354,83 @@ describe("AdminScheduledActions", () => {
     const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
     expect(within(tbody).getByRole("button", { name: "Draining…" })).toHaveClass("btn", "danger", "in-row")
   }, 20000)
+
+  describe("AST-1409 in-place live refresh", () => {
+    it("AUTO and Dbg toggles update the same row without Loading…", async () => {
+      mockApi(false, { threads: {} })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("scan_jobs")).toBeInTheDocument())
+
+      const inner = mockedApi.getMockImplementation()!
+      let releaseTasks: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) {
+          return new Promise<Response>((resolve) => { releaseTasks = resolve })
+        }
+        return inner(url, init)
+      })
+
+      const tbody = within(screen.getByRole("table")).getAllByRole("rowgroup")[1]
+      await userEvent.click(within(tbody).getAllByRole("button", { name: "OFF" })[0])
+      await waitFor(() => expect(screen.getByRole("table")).toBeInTheDocument())
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+      releaseTasks({ ok: true, json: async () => [{ ...dispatchTask, auto_mode: 1, debug: 0 }] } as Response)
+      await waitFor(() => expect(within(screen.getByRole("table")).getByText("ON")).toBeInTheDocument())
+
+      await userEvent.click(within(screen.getByRole("table")).getByRole("button", { name: "OFF" }))
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+      releaseTasks({ ok: true, json: async () => [{ ...dispatchTask, auto_mode: 1, debug: 1 }] } as Response)
+      await waitFor(() => expect(within(screen.getByRole("table")).getAllByRole("button", { name: "ON" })).toHaveLength(2))
+    }, 20000)
+
+    it("running→idle merges Avail and last-run; open Add Task draft survives", async () => {
+      let poll = 0
+      installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/scheduler/thread_status") {
+          poll += 1
+          const running = poll === 1
+          return {
+            ok: true,
+            json: async () => ({
+              1: { running, draining: false, task_key: "scan_jobs", candidate_id: "c1", is_auto: false },
+            }),
+          } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks" && !init?.method) {
+          const later = poll > 1
+          return {
+            ok: true,
+            json: async () => [{
+              ...dispatchTask,
+              available_count: later ? 99 : 12,
+              last_run_at: later ? "2026-06-15T12:00:00Z" : "2026-05-01T00:00:00Z",
+            }],
+          } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/task_keys") {
+          return { ok: true, json: async () => taskKeysConfig } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/state_options") {
+          return { ok: true, json: async () => ({ job: ["NEW"], company: ["WATCH"] }) } as Response
+        }
+        if (url === "/api/admin/dispatch_tasks/score_floor_options") {
+          return { ok: true, json: async () => ({ values: defaultScoreFloorOptions }) } as Response
+        }
+      })
+      renderWithProviders(<ScheduledActions />)
+      await waitFor(() => expect(screen.getByText("12")).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "+ Add Task" }))
+      const modal = screen.getByText("Add Task").closest(".modal-card") as HTMLElement
+      const freqRow = within(modal).getByText("Freq (hrs)").closest(".modal-detail-row") as HTMLElement
+      const freq = within(freqRow).getByRole("spinbutton")
+      await userEvent.clear(freq)
+      await userEvent.type(freq, "7.5")
+      await vi.advanceTimersByTimeAsync(5000)
+      expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+      await waitFor(() => expect(screen.getByText("99")).toBeInTheDocument())
+      expect(screen.getByText("6/15/26, 12:00:00 PM")).toBeInTheDocument()
+      expect(screen.getByText("Add Task")).toBeInTheDocument()
+      expect(within(freqRow).getByRole("spinbutton")).toHaveValue(7.5)
+    }, 20000)
+  })
 })

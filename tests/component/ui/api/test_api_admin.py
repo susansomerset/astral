@@ -1541,6 +1541,10 @@ class TestAdhocRoutes:
                     "system": "s",
                     "user": "u",
                     "cache": "c",
+                    "cache_a": "c",
+                    "cache_b": "",
+                    "cache_c": "",
+                    "cache_d": "",
                     "nocache": "n",
                     "model_code": "claude-haiku-4-5",
                     "temperature": 0.1,
@@ -1610,6 +1614,10 @@ class TestAdhocRoutes:
                     "system": "s",
                     "user": "u",
                     "cache": "",
+                    "cache_a": "",
+                    "cache_b": "",
+                    "cache_c": "",
+                    "cache_d": "",
                     "nocache": "",
                     "model_code": "claude-haiku-4-5",
                     "temperature": 0.1,
@@ -3074,3 +3082,188 @@ class TestAst1394AdhocTestResponseText:
         assert body["success"] is False
         assert "response_text" not in body
         assert body["error"] == "nope"
+
+
+# Branches: seven-segment _resolve_adhoc / Preview keys; empty System → agent content
+# when the editor sends the key; omitted key keeps the DB task system; Test forwards
+# cache_b–d and returns batch_id on 200 and soft-fail 500.
+class TestAst1411AdhocSevenSegment:
+    """AST-1411: Ad Hoc preview/test seven-segment resolve + Test identity."""
+
+    def _stub_agent(self, monkeypatch: pytest.MonkeyPatch, *, content: str = "agent-sys", task_system: str = "task-sys") -> None:
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent",
+            lambda agent_id: {
+                "agent_id": agent_id,
+                "content": content,
+                "brain_setting": cfg.BRAIN_LITTLE,
+                "temperature": 0.1,
+                "max_tokens": 10,
+            },
+        )
+        monkeypatch.setattr(
+            admin_mod.database,
+            "get_agent_task",
+            lambda _task_key: {"task_key_uuid": "uuid-1411", "system_prompt": task_system},
+        )
+        # Cache/user slots resolve in api_admin; system uses agent.resolved_task_system (no tokens here).
+        monkeypatch.setattr(admin_mod, "resolve_tokens", lambda text, *args, **kwargs: text)
+
+    def test_resolve_preview_seven_segment_and_system_fallback(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._stub_agent(monkeypatch)
+        save_ad = MagicMock()
+        monkeypatch.setattr(admin_mod.database, "save_agent_data", save_ad)
+
+        seven = {
+            "agent_id": "a1",
+            "task_key": "evaluate_jd",
+            "system_prompt": "sys-ed",
+            "cache_prompt": "A",
+            "cache_prompt_c": "C",
+            "user_prompt": "U",
+        }
+        payload, err = admin_mod._resolve_adhoc(seven)
+        assert err is None
+        assert payload["system"] == "sys-ed"
+        assert payload["cache"] == payload["cache_a"] == "A"
+        assert payload["cache_c"] == "C"
+        assert payload["cache_b"] == payload["cache_d"] == ""
+        assert payload["user"] == "U"
+
+        preview = admin_client.post("/api/admin/adhoc/preview", json=seven, headers=auth_headers)
+        body = preview.get_json()
+        assert preview.status_code == 200
+        assert body["cache"] == body["cache_a"] == "A"
+        assert body["cache_c"] == "C"
+        assert body["cache_b"] == body["cache_d"] == ""
+        assert body["system"] == "sys-ed"
+        save_ad.assert_not_called()
+
+        # Empty editor System still sends agent content (production fallback). Omitted key keeps the task row.
+        empty_sys, err = admin_mod._resolve_adhoc(
+            {"agent_id": "a1", "task_key": "evaluate_jd", "system_prompt": ""}
+        )
+        assert err is None
+        assert empty_sys["system"] == "agent-sys"
+        omitted, err = admin_mod._resolve_adhoc({"agent_id": "a1", "task_key": "evaluate_jd"})
+        assert err is None
+        assert omitted["system"] == "task-sys"
+
+    def test_adhoc_test_forwards_caches_and_returns_batch_id(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        captured: dict[str, Any] = {}
+
+        monkeypatch.setattr(
+            admin_mod,
+            "_resolve_adhoc",
+            lambda _body: (
+                {
+                    "system": "s",
+                    "user": "u",
+                    "cache": "A",
+                    "cache_a": "A",
+                    "cache_b": "",
+                    "cache_c": "C",
+                    "cache_d": "",
+                    "nocache": "",
+                    "model_code": "claude-haiku-4-5",
+                    "temperature": 0.1,
+                    "max_tokens": 10,
+                    "candidate_id": "c1",
+                    "task_key_uuid": None,
+                    "api_key_override": None,
+                },
+                None,
+            ),
+        )
+
+        async def run_ok(**kwargs: Any) -> dict[str, Any]:
+            captured.update(kwargs)
+            return {
+                "success": True,
+                "parsed_response": {"agent_payload": "ok"},
+                "timesheet": {},
+                "batch_id": "adhoc-evaluate_jd-1411",
+            }
+
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_ok)
+        ok = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "evaluate_jd"},
+            headers=auth_headers,
+        )
+        assert ok.status_code == 200
+        assert ok.get_json()["batch_id"] == "adhoc-evaluate_jd-1411"
+        assert captured["cache_content"] == "A"
+        assert captured["cache_content_c"] == "C"
+        assert captured["cache_content_b"] is None
+        assert captured["cache_content_d"] is None
+
+        async def run_fail(**_k: Any) -> dict[str, Any]:
+            return {"success": False, "error": "nope", "batch_id": "adhoc-evaluate_jd-1411"}
+
+        monkeypatch.setattr(admin_mod, "run_adhoc_workbench_test", run_fail)
+        failed = admin_client.post(
+            "/api/admin/adhoc/test",
+            json={"agent_id": "a1", "task_key": "evaluate_jd"},
+            headers=auth_headers,
+        )
+        assert failed.status_code == 500
+        fail_body = failed.get_json()
+        assert fail_body["success"] is False
+        assert fail_body["batch_id"] == "adhoc-evaluate_jd-1411"
+        assert "response_text" not in fail_body
+
+
+# AST-1412: Ad Hoc overwrite ● / has-content reads seven *_len fields from _enrich_tasks.
+_LEN_KEYS = (
+    "user_prompt_len",
+    "cache_prompt_len",
+    "cache_prompt_b_len",
+    "cache_prompt_c_len",
+    "cache_prompt_d_len",
+    "nocache_prompt_len",
+    "system_prompt_len",
+)
+
+
+class TestAst1412EnrichTaskLens:
+    def test_enrich_tasks_passes_seven_segment_lens_including_cache_b_only(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        conn = MagicMock()
+        conn.execute.return_value.fetchone.return_value = None
+        monkeypatch.setattr(admin_mod, "_get_connection", lambda: conn)
+        monkeypatch.setattr(
+            admin_mod.database,
+            "list_candidate_tasks",
+            lambda: [
+                {
+                    "task_key": "task_b_only",
+                    "task_key_uuid": None,
+                    "agent_id": "",
+                    "cache_prompt_len": 0,
+                    "cache_prompt_b_len": 9,
+                    "cache_prompt_c_len": 0,
+                    "cache_prompt_d_len": 0,
+                    "nocache_prompt_len": 0,
+                    "user_prompt_len": 0,
+                    "system_prompt_len": 0,
+                    "updated_at": "now",
+                }
+            ],
+        )
+        monkeypatch.setattr(admin_mod.database, "get_candidate", lambda candidate_id: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent_task", lambda task_key: None)
+        monkeypatch.setattr(admin_mod.database, "get_agent", lambda agent_id: None)
+        rows = admin_mod._enrich_tasks("")
+        for key in _LEN_KEYS:
+            assert key in rows[0]
+            assert isinstance(rows[0][key], int)
+        assert rows[0]["cache_prompt_b_len"] == 9
+        assert rows[0]["cache_prompt_len"] == 0
+        assert rows[0]["system_prompt_len"] == 0
