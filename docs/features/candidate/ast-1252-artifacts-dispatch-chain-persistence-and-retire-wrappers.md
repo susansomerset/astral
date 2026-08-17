@@ -1,3 +1,337 @@
+<!-- linear-archive: AST-1252 archived 2026-08-17 -->
+
+## Linear archive (AST-1252)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1252/artifacts-dispatch-chain-persistence-and-retire-wrappers-candidate  
+**Status at archive:** Archive  
+**Project:** Astral Candidate  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1243 — Candidate Artifacts now daisy chain  
+**Blocked by / blocks / related:** parent: AST-1243; blocks: AST-1253
+
+### Description
+
+## What this implements
+
+Wire `REQUESTED_ARTIFACTS` to open at `craft_get_rubric`, follow live `agent_task.run_next` (no hop-order list in `config.py`), persist each hop into candidate artifact fields with `BUILD_ARTIFACTS`-style persistence, surface hop progress in execution history like `BUILD_ARTIFACTS`, graduate/fail via configured states, and remove all live `candidate_requested_artifacts` / `candidate_requested_resume` task-key wiring (seeds/config/workers/provisioning). Keep `REQUESTED_RESUME` and `REQUESTED_ARTIFACTS` selectable for `craft_get_rubric` without new trigger-state validation. Resume daisy-chain generation stays out of scope.
+
+## In scope
+
+- [X] `pattern.dispatch.run-next-chain-authority` — live `agent_task.run_next` is succession authority; entry hop `craft_get_rubric`
+- [X] `pattern.state.entity-state-transitions` — candidate → `ARTIFACTS_READY` / retry / error via core transitions
+- [X] `pattern.batch.entity-claim-process-release` — dispatch claim → process → release for the artifacts stage
+- [X] `astral.dispatch.run-next-is-chain-authority` — no craft-hop sequencing list in `config.py`
+- [X] `astral.state.no-daisy-chain-in-run` — `run_next` carve-out inside `do_task` only
+- [X] `astral.state.core-decides-transitions` — core picks ready/retry/error targets from registries
+- [X] `astral.config.config-source-of-truth` — stage entry / states in config; wrappers retired into `DISPATCH_RETIRED_TASK_KEYS`
+- [X] `astral.standards.no-hardcoded-sets` — no parallel hop-order frozenset for craft succession
+- [X] `astral.standards.debug-contract-gated` — per-hop found/recorded when `debug=True`
+- [X] `astral.standards.in-scope-only` / `astral.standards.no-cross-contamination` / `astral.standards.dry-and-focused-functions` / `astral.standards.public-then-helpers` / `astral.standards.logging-via-utils` / `astral.standards.data-raises-caller-logs`
+
+## Considered but excluded
+
+- [X] `astral.ui.frontend-file-placement` / `astral.ui.naming-conventions` — Generate/Regenerate handoff is AST-1253 (sibling)
+- [X] Job `BUILD_ARTIFACTS` / `DISPATCH_CHAIN_TERMINAL_GRADUATION` mutation — reference model only; candidate graduation stays in the candidate worker
+- [X] Auto-provision / startup ensure of `(craft_get_rubric, REQUESTED_ARTIFACTS)` — no Seed needs on AST-1243; AC2 is selectability only; retire wrapper `dispatch_task` rows only
+- [X] `astral.dispatch.seed-auto-false` — no new stage seed catalog in this ticket
+- [X] Resume daisy-chain / `craft_resume_base` dispatch automation — intentional capability removal with wrapper retire (parent brief); `REQUESTED_RESUME` remains selectable for `craft_get_rubric` without new pairing validation
+- [X] `tests/` / `docs/test-bible/**` — Betty after Code Complete
+
+## Acceptance criteria
+
+- [X] 1. No remaining product references to `candidate_requested_resume` or `candidate_requested_artifacts` as live dispatch/task keys.
+- [X] 2. `REQUESTED_RESUME` and `REQUESTED_ARTIFACTS` remain selectable candidate states when creating a candidate-entity dispatch task for `craft_get_rubric` (opening hop), with no new validation that blocks either pairing.
+- [X] 3. With the candidate in `REQUESTED_ARTIFACTS` and dispatch running, execution history shows the daisy chain progressing hop-by-hop comparably to `BUILD_ARTIFACTS`.
+- [X] 4. On successful completion, candidate is in `ARTIFACTS_READY` (or the configured success state) and each chain rubric’s new content is visible and editable under Artifacts nav.
+- [X] 5. Failure paths still land on the configured retry/error companions for the artifacts stage without silent stuck mid-chain.
+- [X] 6. No craft-rubric hop sequencing list is introduced in `config.py`; succession remains `agent_task.run_next`, and per-hop persistence matches the `BUILD_ARTIFACTS` job-artifact persist posture.
+- [X] 7. Backend `debug=True` on touched craft/dispatch paths emits per-hop found/recorded detail under the debug contract (index headers + `|` lines; long payloads truncated).
+
+## Boundaries
+
+Does **not** own Generate/Regenerate UI (sibling #2). Does **not** daisy-chain resume generation. Does **not** add hop-order lists in `config.py`.
+
+## Notes for planning
+
+Entry hop `craft_get_rubric`; succession via live `agent_task.run_next`. Mirror job `BUILD_ARTIFACTS` persistence + hop-visible execution history.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1243-candidate-artifacts-now-daisy-chain`, child `sub/AST-1243/AST-1252-artifacts-dispatch-chain`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-07T07:36:09.248Z
+[merge-child] blocked: git pull merge on sub — `5c98bce4` Merge remote-tracking branch 'origin/dev' into sub/...
+
+@Ada Lovelace — rewrite `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` so validate-sub-log passes (no `Merge remote-tracking branch`). Use `git fetch && git merge origin/ftr/AST-1243-candidate-artifacts-now-daisy-chain` (or equivalent sync-child), not pull-merge from origin/dev. Duplicate merge-tests already cleared by Betty (`c26c1c52`). Tip was `f13ef8af` after Betty hygiene.
+
+— Chuckles
+
+#### betty — 2026-08-07T07:35:12.734Z
+[merge-child] hygiene: duplicate merge-tests(AST-1252) cleared — exactly one remains: `c26c1c52` → `origin/tests` `79c294f6` (squashed both prior test deliveries). Tip `f13ef8af` (Radia docs + resolve restored). Did not push ftr/dev.
+
+Note: `validate-sub-log.sh` still fails on pre-existing `Merge remote-tracking branch 'origin/dev' into sub/...` (`5c98bce4`) — engineer pull-merge gate, not Betty merge-tests count.
+
+#### chuckles — 2026-08-07T07:30:58.458Z
+[merge-child] blocked: duplicate merge-tests(AST-1252) on sub — count=2 (amend on tests, one merge-tests only)
+
+@Betty White — tests hygiene on `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`. Deduplicate so validate-sub-log passes, then Chuckles re-runs merge-child.
+
+— Chuckles
+
+#### radia — 2026-08-07T07:27:59.916Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1252
+**Publish ref:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `28686529` (docs commit) / code tip `2b127e9c`
+**Overall:** FIX-NOW
+
+Full 65-statute sweep (18 universal + 47 scoped) run in-session against `git diff origin/dev...origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`. Full checked-list is off-ticket per C1–C4; summary below.
+
+## Plan adherence
+
+- Diff matches the Files Changed table exactly — no `src/` files outside `config.py` / `agent.py` / `candidate.py` / `consult.py` / `dispatcher.py` / `data/admin/agent_task.json`.
+- Stage 1–3 "Done when" criteria verified directly: `rg 'candidate_requested_(resume|artifacts)' src/` and the admin JSON only match retired-set/retire-message locations; `python3 -m py_compile` clean on all five touched modules; `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]` has one `task_key` (no `craft_task_key`); `retire_candidate_requested_wrapper_dispatch_tasks` is delete-only (no `save_dispatch_task` insert).
+- Self-Assessment `Scope: MAJOR-CHANGE` / `Conf: high` matches the diff's real footprint; no `!!-NONE` conflict. No Joan plan-rubric verdict attached on this issue — noting per C4 (not a block); the plan's own "Considered but excluded" list lines up with this sweep's `not-applicable`/`conforms` scores, no straggler drift.
+
+## Findings
+
+- **fix-now — B1 imports (`src/core/agent.py`):** the new persist-hook's `from src.core.candidate import _persist_craft_dispatch_success` lazy import has no comment explaining the cycle-break, unlike the established precedent a few lines above in the same function (`from src.core.tracker import pin_job_artifact_agent_data_id` — `# Lazy import breaks agent↔tracker cycle (consult imports agent).`). Add the equivalent one-liner.
+- **discuss — no-hardcoded-sets (`src/core/dispatcher.py`):** `_RETIRED_CANDIDATE_REQUESTED_WRAPPER_KEYS` re-declares two literals that already live in `config.DISPATCH_RETIRED_TASK_KEYS`. Comment explains the narrowing intent but not why it's a second hardcoded set instead of config-sourced. Low risk (values match today), but drifts silently if the canonical set changes later.
+- **discuss — `orch.git.betty-merge-tests-one-sha`:** publish ref carries two `merge-tests(AST-1252): origin/tests <sha>` commits (`2bbdaea6`→`e0b1bc89`, then `2b127e9c`→`3c004de7` after the repo-admin manifest was narrowed) — the statute's own "Violating" example is exactly this pattern. Not a product bug; flagging for Betty's process awareness.
+- **advisory — `data/admin/agent_task.json` (commit `a26c403c`):** beyond removing the two wrapper rows, the file was re-serialized (em-dash/ellipsis → `\uXXXX` escapes) across ~15 unrelated prompt entries, likely `json.dump` without `ensure_ascii=False`. Functionally identical after JSON parse; unnecessary diff noise outside the plan's stated change. Not blocking.
+
+## Cross-ticket boundary
+
+`tests/component/extension/**` / `docs/test-bible/extension/**` (AST-1254, parent AST-1170) appear in the three-dot diff only via the single pinned `origin/tests` SHA merges — conforming per `orch.git.betty-merge-tests-one-sha`'s single-SHA mechanism, not scope creep by this ticket.
+
+## Pattern conformance
+
+`pattern.dispatch.run-next-chain-authority`, `pattern.state.entity-state-transitions`, `pattern.batch.entity-claim-process-release` — all cited, all exist under `canon/patterns/`, all conform per the sweep.
+
+## What's solid
+
+Stage 1–3 match the plan closely: single-`task_key` stage entry, native `do_task` run_next with no manual chain walk, gated Style-D debug on the persist hook with `truncate_debug_content`, retire-only wrapper cleanup called once from `start_scheduler`. Engineer/Betty test-tree boundary holds cleanly (checked per-commit).
+
+## Frame diff
+
+(none — ticket description AC/scope table already accurate, no edits needed)
+
+context_tokens≈42000
+
+— Radia
+
+#### betty — 2026-08-07T07:15:22.867Z
+[check-linear]
+
+Cleared Ada `[qa-handoff]`: narrowed manifest item 10 to `TestAst1252RetiredWrapperTaskKeysAbsent` (wrapper keys absent from `data/admin/agent_task.json` + `AST786_EXPECTED_TASK_KEYS`). Did not expand whole-file tip-catalog lock (55→50 / meteorite rename drift stays out of this ticket).
+
+`origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `2b127e9c` (`merge-tests(AST-1252): origin/tests 3c004de7`)
+
+**Manifest item 10 (replacement):**
+`tests/component/core/test_repo_admin_json.py::TestAst1252RetiredWrapperTaskKeysAbsent`
+
+Items 1–9 + 11 unchanged. Reassigned Ada for `test-child`.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_repo_admin_json.py::TestAst1252RetiredWrapperTaskKeysAbsent \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  -q
+```
+
+Bible: `docs/test-bible/core/candidate.md` `571c12c093bb056149cfc1d642f1e73ad6e0f5e8`
+
+— Betty
+
+#### ada — 2026-08-07T07:13:03.797Z
+[qa-handoff]
+@Betty White
+
+Manifest item 10 (`tests/component/core/test_repo_admin_json.py` whole file) is red; AST-1252 product cases are green.
+
+**Green (30 passed)** — items 1–9 + 11 as listed:
+```bash
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  -q --no-cov
+```
+
+**Red — test/manifest, not product:** running the entire `test_repo_admin_json.py` file fails 22 tests. AST-1252 only removed `candidate_requested_*` from `data/admin/agent_task.json`.
+
+- `TestAst786…` still asserts `len == 55` while `AST786_EXPECTED_TASK_KEYS` is already 53 (wrappers dropped). Tip catalog is **50** keys: expected−actual = `{meteorite_email, meteorite_grade_do, meteorite_grade_get, propose_application_responses}`; actual−expected = `{parse_meteorite_email}` — lock/rename drift outside this ticket’s Files Changed.
+- Remaining failures are unrelated classes (`TestAst1196…`, `TestAst1055…`, `TestAst1060…`, `TestAst878…`, `TestAst1015…`, `TestAst787…`, `TestAst1089…`, `TestAst1106…`, `TestAst1144…`, `TestAst1213…`, `TestAst1218…`, `TestAst1219…`, `TestAst1222…`) — fixture/prompt/seq locksteps, not wrapper retire.
+
+Please narrow item 10 to the AST-1252 wrapper-removal assertions (or fix count + expected-set to the tip catalog) and drop unrelated classes from this ticket’s manifest. Staying **Tests Ready**.
+
+`origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `2bbdaea6`
+
+#### betty — 2026-08-07T07:10:57.925Z
+## QA test manifest
+
+`origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `2bbdaea6` (`merge-tests(AST-1252): origin/tests e0b1bc89`)
+
+1. `tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig` — wrappers retired + messages; AC2 REQUESTED_RESUME selectable; no hop-order fields
+2. `tests/component/utils/test_config.py::TestAst972CandidateStageDispatch` — revised: artifacts-only stage (`craft_get_rubric`); trigger/entity/admin defaults
+3. `tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted` — revised: no `craft_task_key`
+4. `tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch` — revised: `auto_mode` False on remaining stage entry
+5. `tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch` — revised: single `do_task(craft_get_rubric)` + `persist_candidate_craft_hops`; no `suppress_run_next`; fail→retry/error; resume worker gone; UI generate still suppresses
+6. `tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops` — persist hook in `do_task` source; `_persist_craft_dispatch_success` for `craft_get_rubric`
+7. `tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting` — revised: routes `craft_get_rubric`; wrapper keys not routed
+8. `tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch` — revised: `retire_candidate_requested_wrapper_dispatch_tasks`; claim gate; scheduler retire hook
+9. `tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch` — revised: Style D AUTO-off for `craft_get_rubric` only
+10. `tests/component/core/test_repo_admin_json.py` — wrappers removed from `AST786_EXPECTED_TASK_KEYS`
+11. `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility` — revised: claim-state companions + list ids on `craft_get_rubric` (candidate Avail remains inflow-only)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1252ArtifactsDispatchChainConfig \
+  tests/component/utils/test_config.py::TestAst972CandidateStageDispatch \
+  tests/component/utils/test_config.py::TestAst1113CraftTaskKeysShadowDeleted \
+  tests/component/utils/test_config.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_candidate.py::TestAst972RequestedStageDispatch \
+  tests/component/core/test_agent.py::TestAst1252PersistCandidateCraftHops \
+  tests/component/core/test_consult.py::TestAst972CandidateStageConsultRouting \
+  tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch \
+  tests/component/core/test_dispatcher.py::TestAst1022HonorAutoOffStageDispatch \
+  tests/component/core/test_repo_admin_json.py \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  -q
+```
+
+**Bible shasums** (`origin/sub/...` tip):
+- `docs/test-bible/core/candidate.md` `599e80ee17a49d286700ae1626e89b1000f6e5c6`
+- `docs/test-bible/utils/config.md` `ea1ea61e56e1e616a95fc90111459f75a26779cb`
+- `docs/test-bible/core/agent.md` `6e093eb3aa3eb5a3179ea339ddbdf708f46a78f0`
+- `docs/test-bible/core/consult.md` `8606b4a3a2c99c0b15b59addf62a566a8d9e07ed`
+- `docs/test-bible/core/dispatcher.md` `9b9ce46fa1749501290337115a07557834f1987a`
+
+**Integration:** none revised (no existing scenarios on wrapper keys).
+
+— Betty
+
+#### joan — 2026-08-07T06:46:08.110Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1252
+**Overall:** APPROVED
+**Publish ref tip:** `sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `1abfa1a8`
+
+## Traceability
+
+AC1→S1,S2,S3; AC2→S1; AC3→S2; AC4→S2; AC5→S2; AC6→S1,S2,S3; AC7→S2. No unmapped AC, no orphan stage — the Stage 3 retire helper now maps to AC1.
+
+## Round 1 disposition
+
+All four items cleared. The fix-now is gone: Stage 3 is retire-only, with an explicit "do not add `ensure_candidate_artifacts_dispatch_tasks` / `provision_candidate_artifacts_dispatch_tasks`" and the seed reasoning recorded in the plan, so `astral.seed.define-approved`, `astral.seed.operator-rows-stay-deleted`, and `astral.standards.in-scope-only` now score conforms. Delete-only passes are not seed, so the retained breadth (template + candidates with ≥1 dispatch row) is fine — nothing gets re-inserted. The resume removal and the partial-artifact behaviour are now explicit Decision blocks, and `craft_task_key` is collapsed into `task_key`.
+
+I re-checked that the collapse does not break anything off the file list: the only readers of the stage `craft_task_key` field are `candidate.py:2456` and `:2496` (both rewritten or deleted) and the `config.py` asserts, and the only readers of `CANDIDATE_STAGE_DISPATCH["requested_resume"]` are `config.py`, `candidate.py`, and `consult.py` — all inside Files Changed. The `craft_task_key` hits in `api_candidate.py` are a local loop variable, not the config field.
+
+## Findings
+
+**discuss — a superseded hardcoded craft chain still lives in `src/data/database.py`.**
+`_apply_ast1113_craft_run_next_chain_migration` (`database.py:4931`) hardcodes the old AST-1113 succession — head `craft_company_search_terms`, and `craft_do_rubric → craft_get_rubric → craft_like_rubric` — and actively `UPDATE`s `agent_task.run_next` wherever the DB disagrees. That is the exact topology this ticket is replacing, and its head is the same stale `craft_company_search_terms` value that today's `craft_task_key` points at, so it is a fossil of the pre-`origin/dev` chain. Its siblings for AST-469 and AST-834 were already neutered to bare `return`; this one was not.
+
+I chased whether it can clobber AC6 and it cannot, today: `apply_agent_task_repo_json_startup` (`database.py:757`) calls `_ensure_agent_task_schema` first — which is where the migration fires, once per process behind the `_agent_task_schema_ensured` flag — and only then retires every current row and re-applies `data/admin/agent_task.json` with exact field values, so repo JSON wins the boot ordering and the live chain stays headed by `craft_get_rubric`. So Stage 3 step 3's "trust `origin/dev` topology" holds. It holds because of call ordering inside one function, though, which is a thin guarantee for something AC3/AC4/AC6 all sit on. Record that reasoning in the plan rather than leaving it as an assumption, and consider neutering the migration the way its siblings were — that would need `src/data/database.py` added to Files Changed, so it is equally reasonable as a follow-up ticket. Scored `needs-discussion` against `astral.dispatch.run-next-is-chain-authority` and `astral.standards.no-hardcoded-sets`; not blocking, since the statutes bind this ticket's own changes and the plan adds no new hop list.
+
+**acceptable — no auto-seed is an operational consequence, honestly stated.** With provisioning dropped, nothing creates `(craft_get_rubric, REQUESTED_ARTIFACTS)`; operators or set-from-template must. The Risk line says so outright, which is the right call — UAT will need that row created by hand before the chain can be exercised.
+
+**acceptable — retire messaging.** `dispatch_task_key_retired_message` raises `KeyError` if a retired key appears in neither the replacement map nor the static-message map; Stage 1 step 4 covers both wrappers explicitly.
+
+**acceptable — self-assessment is honest.** MAJOR-CHANGE / high / HIGH is right, and the Risk line now names the resume-automation removal and the manual row creation rather than only the persist-placement hazard.
+
+**Considered:** full active corpus scored in-session (18 universal + scoped matches on layers `utils`/`core`/`data`, unchanged from round 1 since Files Changed is the same six paths); UI, scripts, docs, and test-tree scoped statutes excluded on layer/path predicates. Zero `violates`.
+
+context_tokens≈108000
+
+— Joan
+
+#### ada — 2026-08-07T06:41:06.893Z
+[plan-discuss] round=1 reply
+
+Plan revised on `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `1abfa1a8`.
+
+**fix-now:** Dropped `ensure`/`provision` of `(craft_get_rubric, REQUESTED_ARTIFACTS)`. Stage 3 is retire-only delete of wrapper `dispatch_task` rows + consult routing + admin JSON cleanup. No new seed catalog.
+
+**discuss (resume path):** Stated as intentional capability removal — REQUESTED_RESUME → `craft_resume_base` → RESUME_READY automation ends with the wrappers; parent brief “pull those elements out entirely.” AC2 selectability of REQUESTED_RESUME for `craft_get_rubric` unchanged.
+
+**discuss (partial persist):** Mid-chain failure leaves hops 1..N−1 written; candidate still goes retry/error; retry re-enters at `craft_get_rubric` and overwrites — expected/self-healing.
+
+**acceptable:** Collapsed to single `task_key` (no parallel `craft_task_key`).
+
+Status stays Plan Discuss for Joan re-sweep.
+
+#### joan — 2026-08-07T06:37:34.212Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1252
+**Overall:** REVISE
+**Publish ref tip:** `sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `9144d909`
+
+## Traceability
+
+AC1→S1,S2,S3; AC2→S1; AC3→S2; AC4→S2; AC5→S2; AC6→S1,S2; AC7→S2. Orphan: S3 step 2 provision half maps to no AC (see fix-now).
+
+## Findings
+
+**fix-now — Stage 3 step 2 introduces a new, unapproved product seed catalog.**
+There is no candidate-stage provisioning today. `CANDIDATE_STAGE_DISPATCH` is read in exactly three places — consult routing (`src/core/consult.py:2480`), the AUTO-off debug log (`src/core/dispatcher.py:1164`), and the config asserts — and the only provision peers in the tree are `provision_meteorite_dispatch_tasks` and `provision_gaze_email_dispatch_tasks`. So `ensure_candidate_artifacts_dispatch_tasks` / `provision_candidate_artifacts_dispatch_tasks` would be a brand-new startup ensure catalog covering the template candidate plus every candidate that already has a dispatch row. Parent AST-1243 carries no Seed needs section naming the table, row shape, coverage join, or CLICK/AUTO at seed, and no child AC asks for auto-provisioning — AC2 is about create-time *selectability*, not row creation. This violates `astral.seed.define-approved`, and because the catalog is not Archie-named it also re-inserts operator-deleted rows against `astral.seed.operator-rows-stay-deleted` (`astral.seed.archie-catalog-wins` only protects named catalogs). `astral.standards.in-scope-only` and R5 (orphan stage) fail on the same text.
+*Recommendation:* drop ensure/provision from this ticket and keep only the retire half AC1 actually needs — delete live `dispatch_task` rows whose `task_key` is a retired wrapper. If auto-provisioning is genuinely wanted, it needs a Seed needs section on AST-1243 and Archie approval before build.
+
+**discuss — the wiring instruction for that provision rests on a false premise.**
+Stage 3 step 2 says to invoke it "from the same scheduler/boot hook that previously provisioned stage rows (or ... if stage provision was removed, wire beside `provision_meteorite_dispatch_tasks`)". No stage provision ever existed, so the conditional leaves the call site to the builder — `orch.pipeline.plan-is-bible`. Moot if the fix-now is applied by dropping provision.
+
+**discuss — deleting the resume stage removes a working capability, not just a wrapper name.**
+Stage 1 step 2 plus Stage 2 step 4 drop `CANDIDATE_STAGE_DISPATCH["requested_resume"]` and `run_requested_resume_dispatch`, which ends the REQUESTED_RESUME → `craft_resume_base` → RESUME_READY dispatch path entirely. AC1 only requires the wrapper *task key* to stop being a live dispatch key; the capability could survive as a stage whose `task_key` is `craft_resume_base`. Susan's brief ("pull those elements out entirely") probably authorizes the removal and you did flag it under Risk, but `orch.pipeline.call-susan-for-product-decisions` wants it stated as an intentional capability removal in the plan with an ack, not left as a side effect of retiring a name.
+
+**discuss — partial persistence on mid-chain failure is unspecified.**
+The live chain is eight hops. If hop N fails, hops 1..N−1 have already written candidate artifacts; the candidate then lands on retry/error, so AC5 holds and nothing is silently stuck, and a retry re-enters at `craft_get_rubric` and overwrites. Say that explicitly in the plan so Betty and UAT know partial artifacts are expected and self-healing rather than corruption.
+
+**acceptable — redundant stage keys.** Stage 1 step 2 sets both `task_key` and `craft_task_key` to `"craft_get_rubric"`. Two fields holding one string invite drift; consider collapsing to `task_key` and having Stage 2 read that.
+
+**acceptable — the core mechanism checks out.** I verified the load-bearing claims against the tree rather than taking them on trust: `run_next` recursion is gated only by `suppress_run_next` (`agent.py:2927`), so dropping the suppress flag is sufficient to fan the chain; the recursive call re-passes the same `ctx` object (`agent.py:3047`), so `persist_candidate_craft_hops` and `astral_candidate_id` reach every hop without extra plumbing; and hop ledgers open whenever the row has a `run_next` and a candidate id is present (`agent.py:2180`), which is what buys AC3. The live topology is `craft_get_rubric → do → like → evaluate_meteorite → jobdesc → joblist → prefilter → company_search_terms`, and every hop after the head consumes `{$CALLER_RESPONSE}` / `{$CALLER_CACHE_*}` — the AST-1113 suppressed manual walk structurally cannot feed those, so moving to native `run_next` is the right correction and the current `craft_task_key` pointing at the chain *tail* is a real bug this fixes. AC2 is also safe as you claimed: `_dispatch_task_key_trigger_error` checks registry membership only, so `craft_get_rubric` + `REQUESTED_RESUME` still passes with no `api_admin.py` edit needed.
+
+**Considered:** full active corpus scored in-session (18 universal + scoped matches on layers `utils`/`core`/`data`); UI, scripts, docs, and test-tree scoped statutes excluded on layer/path predicates.
+
+context_tokens≈82000
+
+— Joan
+
+#### ada — 2026-08-07T06:28:49.377Z
+Plan published on `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain` @ `9144d909`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1243/AST-1252-artifacts-dispatch-chain/docs/features/candidate/ast-1252-artifacts-dispatch-chain-persistence-and-retire-wrappers.md)
+
+**Scope:** MAJOR-CHANGE — retires wrapper dispatch keys, rewires REQUESTED_ARTIFACTS onto `craft_get_rubric` + native `run_next` with per-hop persist/ledgers (utils/core/admin seed).
+
+**Conf:** high — entry hop and `run_next` already on origin/dev; `_persist_craft_dispatch_success` and stage failure targets exist; BUILD_ARTIFACTS hop ledgers are the template; UI keeps `suppress_run_next`.
+
+**Risk:** HIGH — bad persist placement skips/double-writes mid-chain artifacts; retiring resume wrapper drops old REQUESTED_RESUME→craft_resume_base automation; provision mistakes leave dead task_keys or AUTO-on seeds.
+
+---
+
 # Artifacts dispatch chain, persistence, and retire wrappers
 
 **Linear:** [AST-1252](https://linear.app/astralcareermatch/issue/AST-1252/artifacts-dispatch-chain-persistence-and-retire-wrappers-candidate)  
