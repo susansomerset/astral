@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { TabBar } from "../components/TabbedTextArea"
 import TokenTextarea from "../components/TokenTextarea"
+import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
@@ -10,7 +11,7 @@ import { useLocalStorage } from "../lib/useLocalStorage"
 const LS = "adhoc:"  // localStorage key prefix
 
 type TabKey = "system" | "cache" | "cache_b" | "cache_c" | "cache_d" | "nocache" | "user"
-type PreviewKey = "system" | "cache" | "nocache" | "user" | "live_content"
+type PreviewKey = "system" | "cache_a" | "cache_b" | "cache_c" | "cache_d" | "nocache" | "user" | "live_content"
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: "system",  label: "System Prompt" },
@@ -24,8 +25,11 @@ const TABS: { key: TabKey; label: string }[] = [
 
 const PREVIEW_TABS: { key: PreviewKey; label: string }[] = [
   { key: "system",       label: "System" },
-  { key: "cache",        label: "Cache" },
-  { key: "nocache",      label: "NoCache" },
+  { key: "cache_a",      label: "Cache A" },
+  { key: "cache_b",      label: "Cache B" },
+  { key: "cache_c",      label: "Cache C" },
+  { key: "cache_d",      label: "Cache D" },
+  { key: "nocache",      label: "No Cache" },
   { key: "user",         label: "User" },
   { key: "live_content", label: "Live Content" },
 ]
@@ -43,14 +47,6 @@ interface TaskSummary {
 
 interface EntityOption { id: string; label: string }
 interface EntityMeta { entity_type: string; trigger_state: string; batch_mode: boolean; entities: EntityOption[] }
-type PreviewData = Record<PreviewKey, string>
-
-function byteSize(s: string): string {
-  const b = new Blob([s]).size
-  if (b >= 1024 * 1024) return `${(b / 1024 / 1024).toFixed(1)} MB`
-  if (b >= 1024) return `${(b / 1024).toFixed(1)} KB`
-  return `${b} B`
-}
 
 function taskHasExistingPrompts(t: TaskSummary): boolean {
   return (
@@ -62,6 +58,17 @@ function taskHasExistingPrompts(t: TaskSummary): boolean {
     (t.cache_prompt_d_len || 0) > 0 ||
     (t.nocache_prompt_len || 0) > 0
   )
+}
+
+function previewField(tab: PreviewKey, data: Record<string, unknown> | null): string {
+  if (!data) return ""
+  const txt = (k: string): string => (typeof data[k] === "string" ? (data[k] as string) : "")
+  switch (tab) {
+    case "cache_a":
+      return txt("cache_a") || txt("cache")
+    default:
+      return txt(tab)
+  }
 }
 
 export default function AnthropicAdHoc() {
@@ -97,8 +104,9 @@ export default function AnthropicAdHoc() {
   const [activeTab, setActiveTab] = useLocalStorage<TabKey>(`${LS}activeTab`, "user")
 
   const [previewing, setPreviewing] = useState(false)
-  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
+  const [previewData, setPreviewData] = useState<Record<string, unknown> | null>(null)
   const [previewTab, setPreviewTab] = useState<PreviewKey>("system")
+  const [previewOpen, setPreviewOpen] = useState(false)
 
   const [testing, setTesting] = useState(false)
   const [response, setResponse] = useState<string | null>(null)
@@ -206,7 +214,11 @@ export default function AnthropicAdHoc() {
         if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Preview failed") })
         return r.json()
       })
-      .then(data => { setPreviewData(data as PreviewData); setPreviewTab("system") })
+      .then(data => {
+        setPreviewData(data)
+        setPreviewTab("system")
+        setPreviewOpen(true)
+      })
       .catch(e => setToast({ text: e.message, variant: "error" }))
       .finally(() => setPreviewing(false))
   }
@@ -297,14 +309,6 @@ export default function AnthropicAdHoc() {
   function formatResponse(text: string): string {
     try { return JSON.stringify(JSON.parse(text), null, 2) } catch { return text }
   }
-
-  // Build preview tab label with byte size badge
-  const previewTabsWithSize = PREVIEW_TABS.map(t => ({
-    ...t,
-    label: previewData
-      ? `${t.label} (${byteSize(previewData[t.key] || "")})`
-      : t.label,
-  }))
 
   const editors: Record<TabKey, { value: string; onChange: (v: string) => void; placeholder: string; rows: number }> = {
     system:  { value: systemPrompt,  onChange: setSystemPrompt,  placeholder: "Empty = use assigned agent content. {$SELECTED_AGENT} injects the agent system prompt at runtime.", rows: 16 },
@@ -470,23 +474,6 @@ export default function AnthropicAdHoc() {
         </div>
       </div>
 
-      {/* ── Preview area ── */}
-      {previewData && (
-        <div style={{ marginTop: 20 }}>
-          <h3 style={{ margin: "0 0 8px", fontSize: 14, color: "var(--text-secondary)" }}>Resolved Prompt Preview</h3>
-          <TabBar tabs={previewTabsWithSize} active={previewTab} onChange={setPreviewTab} />
-          <pre style={{
-            marginTop: 12, padding: 16, borderRadius: 4,
-            background: "var(--bg-deep)", border: "1px solid var(--border)",
-            color: "var(--text-primary)", fontFamily: "monospace", fontSize: 12,
-            whiteSpace: "pre-wrap", wordBreak: "break-word",
-            maxHeight: 520, overflow: "auto",
-          }}>
-            {previewData[previewTab] || "(empty)"}
-          </pre>
-        </div>
-      )}
-
       {/* ── Response area ── */}
       {response !== null && (
         <div style={{ marginTop: 20 }}>
@@ -516,6 +503,23 @@ export default function AnthropicAdHoc() {
 
       {/* ── Hydrated output (for abbreviated output_type tasks) ── */}
       {/* Hydrated response section disabled for now — showing raw response is sufficient for debugging */}
+
+      <Modal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        title={taskKey ? `Preview: ${taskKey}` : "Preview"}
+      >
+        <TabBar tabs={PREVIEW_TABS} active={previewTab} onChange={key => setPreviewTab(key)} />
+        <pre style={{
+          marginTop: 12, padding: 12, borderRadius: 4,
+          background: "var(--bg-deep)", border: "1px solid var(--border)",
+          color: "var(--text-primary)", fontFamily: "monospace", fontSize: 12,
+          whiteSpace: "pre-wrap", wordBreak: "break-word",
+          maxHeight: 500, overflow: "auto",
+        }}>
+          {previewField(previewTab, previewData) || "(empty)"}
+        </pre>
+      </Modal>
 
       <Toast message={toast} onDone={clearToast} />
     </div>
