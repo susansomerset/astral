@@ -111,9 +111,9 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
 
 _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
     "label": {"type": "str", "required": True},
-    "code": {"type": "str", "required": True},
-    "content": {"type": "str", "required": True},
+    "code": {"type": "str", "required": True, "example": "<code (unique to rubric)>"},
     "importance": {"type": "int", "required": True, "min": 0, "max": 10},
+    "content": {"type": "str", "required": True},
 }
 _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "criteria": {
@@ -5775,6 +5775,9 @@ def _schema_to_example(schema: dict) -> object:
     """Recursively convert a response_schema definition into a JSON example shape."""
     result = {}
     for key, spec in schema.items():
+        if "example" in spec:
+            result[key] = spec["example"]
+            continue
         t = spec.get("type", "str")
         if t == "str":
             enum = spec.get("enum")
