@@ -355,3 +355,38 @@ Confirm Chuckles estimate: 5 — agree
 - AC6 (log-off still clears; Vite still reloads on frontend source change) → `LogOffScreen.tsx` / `vite.config.ts` explicitly out of scope; Stage 4 deletes only the artifact Cancel reloads
 - Cancel/reset in-place (child description) → Stage 4
 - Boundaries → Files Changed exclusions; no websocket; no Scheduled Actions retouch; no extra polls; no `AUTH_CONFIG` / session-shell edits
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1410
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces` @ `49c4a4e2`
+
+## Traceability
+
+- AC4 → Stage 2d (PM 15s `loadData()` silent; `BatchAgentDataModal` sibling after table gate) + Stages 1–3 (modals outside loading ternaries; silent `load*` does not reset overlay draft fields)
+- AC5 → Stage 1 (Manage Tasks) + Stage 2 (Agents, Scheduled Queries, Email, PM hook) + Stage 3 (Recommended / In Review / Skipped)
+- AC6 → `LogOffScreen.tsx` / `vite.config.ts` out of scope; Stage 4 removes only artifact Cancel `window.location.reload()` paths
+- Cancel/reset in-place (child description) → Stage 4 (`ArtifactEditor.tsx`, `ArtifactsCompanySearchTerms.tsx`)
+- Boundaries → Files Changed exclusions; no websocket; no Scheduled Actions / hook-contract / canon edits; excluded surfaces documented with rationale
+
+## Findings
+
+### acceptable
+
+- **Location:** Out of scope — `AdminVectorFeedback.tsx`, `AdminAgentTimesheets.tsx`
+- **Finding:** Both still `setLoading(true)` on every `filters` / `searchParams` change (query-identity refetch, not post-mutation poll).
+- **Recommendation:** Correct exclusion — `pattern.ui.in-place-live-refresh` allows spinners on new query identity; converting these would be wrong for filter changes.
+
+### acceptable
+
+- **Location:** Stage 3 — `load` early return when `!selectedId`
+- **Finding:** `if (!selectedId) return` before `beginRefresh` can leave `loading === true` until a candidate is selected (same pre-existing behavior as today’s early return before `setLoading(false)`).
+- **Recommendation:** No plan change — not introduced by this ticket; candidate arrival retriggers `load(true)`.
+
+No `fix-now` or `discuss` blockers. R1–R5 pass. `useInPlaceLiveRefresh` exists on the worktree line (AST-1409); plan correctly consumes it without contract edits. Root causes confirmed on named surfaces (`AdminTaskPrompts` `loadAll` always `setLoading(true)`; job pages same; `ArtifactEditor` / `ArtifactsCompanySearchTerms` Cancel calls `window.location.reload()`). Manage Tasks modal placement verified as siblings after the loading ternary (lines 393–447 vs 449+). Company list exclusions accurate (`CompaniesWatchList` `load()` never re-asserts loading on refetch). Stage 4 extractions match current `ArtifactEditor` job/candidate effect bodies and preserve snapshot-vs-re-GET Cancel semantics. In-scope-only table, DRY hook sweep, and presentation-only boundary conform. Status `Plan Ready`, assignee Joan — gate satisfied. Zero completed `[plan-discuss]` rounds.
+
+context_tokens≈72000
+
