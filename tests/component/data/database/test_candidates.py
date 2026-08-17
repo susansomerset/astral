@@ -43,6 +43,22 @@ class TestSaveCandidate:
         assert row["candidate_api_key"] == "secret-key"
 
 
+class TestAst1417SaveCandidateHopLabelPersist:
+    """AST-1417 bug-repro: save_candidate persists REQUESTED_ARTIFACTS.<hop> (AST-1416)."""
+
+    def test_update_persists_requested_artifacts_hop_label(self, sqlite_in_memory) -> None:
+        from src.utils.config import CANDIDATE_STAGE_DISPATCH, dispatch_hop_label
+
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        hop = dispatch_hop_label(trigger, "craft_get_rubric")
+        db = sqlite_in_memory
+        db.save_candidate("cand-1417", state=trigger, candidate_data={})
+        db.save_candidate("cand-1417", state=hop)
+        row = db.get_candidate("cand-1417")
+        assert row is not None
+        assert row["state"] == hop
+
+
 # Branches: blank id; missing row; list all.
 class TestGetCandidate:
     def test_returns_none_for_blank_id(self, sqlite_in_memory) -> None:
