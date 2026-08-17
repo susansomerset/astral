@@ -926,3 +926,42 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1421 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control`.
+
+Labeled **Copy** (`btn secondary`) on Job Detail Info (above Skip) and Recommended Job Report header. Click fetches AST-1420 snapshot via `copyJobSnapshotToClipboard`, writes pretty-printed JSON, shows **Copied** 2000ms. Silent on helper `false`. Email / LinkedIn / Skip unchanged. Helper: **`docs/test-bible/frontend/lib.md`**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job Detail Copy | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`JobDetailModal — AST-1421 snapshot Copy`** (+ existing Skip) |
+| Recommended header Copy | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`RecommendedJobReportHeader — AST-1421 snapshot Copy`** |
+| JAR wiring | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1421 snapshot Copy`** |
+
+**Broken / obsolete:** none — additive control; existing Skip / Copy Application Email / Copy LinkedIn asserts still hold.
+
+**Integration:** no existing jobs-modal scenario — no revision.
+
+## QA test manifest
+
+1. Clipboard helper: `tests/component/frontend/lib/test_copyJobSnapshot.test.ts`
+2. Job Detail Copy ↔ Copied + Skip unchanged: `test_JobDetailModal.test.tsx` — `AST-1421|loads job details`
+3. Header Copy without email/linkedin + coexistence: `test_RecommendedJobReportHeader.test.tsx`
+4. JAR click wiring, no `copyFeedback` span: `test_JobAnalysisReportModal.test.tsx` — `AST-1421`
+
+**AST-1421** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npx tsc -b --noEmit
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1421|loads job details|sticky header"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
