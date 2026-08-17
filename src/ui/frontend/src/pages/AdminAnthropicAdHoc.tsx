@@ -198,9 +198,7 @@ export default function AnthropicAdHoc() {
         task_key: taskKey || "",
         entity_id: entityMeta_batchIds ? "" : (entityId || ""),
         entity_ids: entityMeta_batchIds || undefined,
-        user_prompt: userPrompt,
-        cache_prompt: cachePrompt,
-        nocache_prompt: nocachePrompt,
+        ...editorSegmentBody(),
         candidate_id: selectedId || "",
       }),
     })
@@ -226,9 +224,7 @@ export default function AnthropicAdHoc() {
         task_key: taskKey || "",
         entity_id: entityMeta_batchIds ? "" : (entityId || ""),
         entity_ids: entityMeta_batchIds || undefined,
-        user_prompt: userPrompt,
-        cache_prompt: cachePrompt,
-        nocache_prompt: nocachePrompt,
+        ...editorSegmentBody(),
         candidate_id: selectedId || "",
       }),
     })
