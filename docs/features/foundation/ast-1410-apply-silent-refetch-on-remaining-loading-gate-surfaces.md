@@ -399,3 +399,156 @@ context_tokens≈72000
 - Stage 3 (`990f0ce2`): Recommended / In Review / Skipped `load(showSpinner)`; job-action and modal-close silent
 - Stage 4 (`4b676d7d`): Artifact Cancel with no snapshot re-GETs last-saved content; no `window.location.reload`
 
+## Radia review
+
+# Radia review — AST-1410
+
+**Ticket:** AST-1410  
+**Parent:** AST-1406  
+**Publish ref:** `sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces` @ `1e6970bc`  
+**Baseline:** `origin/dev`  
+**Status gate:** Tests Passed (spawn prompt — trusted)  
+**Overall:** DISCUSS
+
+---
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1410  
+**Publish ref:** `1e6970bc` (`origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`)
+
+## Statutes checked
+
+Diff change set (three-dot `origin/dev...origin/sub/AST-1406/AST-1410-…`): stacked epic children (AST-1408 session shell, AST-1409 hook/pattern/Scheduled Actions, **AST-1410** silent-refetch sweep, plus sibling AST-1411–1417 backend/Ad Hoc work on publish-ref tip). Layers **ui**, **core**, **data**, **docs**; change_types **add**, **modify**, **delete** (AST-1411 test revert).
+
+AST-1410 engineer `code()` commits (`f924addf`, `65bbd263`, `990f0ce2`, `4b676d7d`) touch only the ten planned UI files. Statute scoring below uses the full publish-ref diff; product findings scoped to AST-1410 commits unless noted.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | `merge-tests(AST-1410)` pins test SHA `9641ae74`. |
+| `orch.git.commit-vocabulary` | universal | conforms | `code`/`test`/`docs`/`merge-*` prefixes with ticket ids. |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Sub-branch epic flow. |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child `sub/AST-1406/AST-1410-…` topology correct. |
+| `orch.git.merge-on-checkout` | universal | conforms | No dirty-merge artifacts in AST-1410 product files. |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | Linear history. |
+| `orch.git.no-dev-agent-branches` | universal | conforms | No dev-agent branch refs. |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | AST-1406 epic worktree. |
+| `orch.git.three-permanent-branches` | universal | conforms | Work on sub publish ref. |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Plan decisions documented for AST-1410 scope. |
+| `orch.pipeline.plan-is-bible` | universal | conforms | AST-1410 `code()` commits match Stages 1–4 plan. |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Pipeline placement correct. |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Review at Tests Passed. |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No statute corpus edits in AST-1410 commits. |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | `test(AST-1410)` + merge-tests; engineer `code()` excludes test tree. |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Katherine; Radia read-only. |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Engineer commits limited to plan Files Changed. |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path violations in AST-1410 `code()` commits. |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | No agent grading changes in AST-1410 product commits. |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | No dispatch delegation edits in AST-1410 scope. |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | No grade-vector logic in AST-1410 scope. |
+| `astral.batch.batch-id-first` | scoped | not-applicable | No batch paths in AST-1410 product commits. |
+| `astral.batch.batch-id-format` | scoped | not-applicable | No batch id emission in AST-1410 scope. |
+| `astral.batch.claim-process-release` | scoped | not-applicable | No claim/release helpers in AST-1410 scope. |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | No agent-responses writes in AST-1410 scope. |
+| `astral.config.config-source-of-truth` | scoped | not-applicable | No config edits in AST-1410 `code()` commits. |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | not-applicable | No secrets/env wiring in AST-1410 scope. |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | No debug artifact paths. |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | No spike files. |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | `applies_when` paths not in AST-1410 product commits. |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | No dispatcher chain edits in AST-1410 scope. |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | AST-1410 feature doc present. |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty `test(AST-1410)` touches tests/bible only. |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | All four AST-1410 `code()` commits are `src/ui/**` only. |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | No core/external edits in AST-1410 product commits. |
+| `astral.layers.import-direction` | scoped | conforms | Page/hook imports stay in UI layer. |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | No `scripts/**` in AST-1410 commits. |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | No new hardcoded state strings; poll cadences unchanged (`15_000` literal preserved). |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | No core coat-check paths in AST-1410 scope. |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | No consult/render-verdict paths in AST-1410 scope. |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | Presentation-only; no backend route changes in AST-1410 commits. |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | No seed JSON edits in AST-1410 scope. |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | No catalog/seed conflicts in AST-1410 scope. |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | No seed hot-path changes in AST-1410 scope. |
+| `astral.seed.define-approved` | scoped | not-applicable | No define/seed work in AST-1410 scope. |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | No seed row mutations in AST-1410 scope. |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | No coverage-join seed logic in AST-1410 scope. |
+| `astral.standards.data-raises-caller-logs` | scoped | not-applicable | No data-layer changes in AST-1410 product commits. |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | No `src/data/**` in AST-1410 product commits. |
+| `astral.standards.debug-contract-gated` | scoped | not-applicable | No debug emission changes in AST-1410 product commits. |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Shared hook consumed; mechanical `beginRefresh`/`endRefresh` sweep; Stage 4 extractions reduce duplication. |
+| `astral.standards.in-scope-only` | scoped | conforms | AST-1410 engineer commits honor plan table; publish-ref sibling leak is branch hygiene (discuss). |
+| `astral.standards.logging-via-utils` | scoped | conforms | No `print()` / new loggers in AST-1410 commits. |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | Runtime symbols clean; ticket id in test descriptions only. |
+| `astral.standards.no-cross-contamination` | scoped | conforms | AST-1410 product diff focused; publish-ref carries sibling tickets (discuss). |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | No new hardcoded domain sets. |
+| `astral.standards.public-then-helpers` | scoped | conforms | Stage 4 helpers placed after mapping functions per plan. |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | No `src/utils/**` in AST-1410 commits. |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | No state-machine transitions in AST-1410 scope. |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | No job state logic in AST-1410 scope. |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | No run-chain paths in AST-1410 scope. |
+| `astral.ui.frontend-file-placement` | scoped | conforms | Edits in existing `pages/` and `components/` paths. |
+| `astral.ui.naming-conventions` | scoped | conforms | `applyJobArtifactResponse`, `loadAll(showSpinner)` follow local style. |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No worker/process config touched. |
+
+**Sweep count:** 65 active statutes scored (18 universal + 47 scoped).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.ui.in-place-live-refresh` | conforms | Consumes AST-1409 hook on all named surfaces; `status: proposed` — plan correctly does not treat as approved catalog law; Performance Monitor converted to shared hook per Stage 2d decision. |
+
+## Plan adherence
+
+AST-1410 engineer commits match Joan-approved Stages 1–4:
+
+- **Stage 1 (`AdminTaskPrompts.tsx`):** `useInPlaceLiveRefresh`; `loadAll(showSpinner)` with `beginRefresh`/`endRefresh`; mount `loadAll(true)` via `queueMicrotask`; silent `loadAll()` on save/revert; modals remain siblings after loading gate.
+- **Stage 2:** Agents, Scheduled Queries, Manage Email, Performance Monitor — same mechanical hook swap; PM keeps `setInterval(() => loadData(), 15_000)` with silent interval ticks.
+- **Stage 3:** `JobsRecommended`, `JobsInReview`, `JobsSkipped` — `load(showSpinner)` hook pattern; mount `load(true)`; argument-less `load()` on job actions and modal close.
+- **Stage 4:** `ArtifactEditor` / `ArtifactsCompanySearchTerms` — `apply*Response` extractions; no-snapshot Cancel re-GETs server content; `window.location.reload()` removed from both files; snapshot Cancel path unchanged.
+- **Boundaries:** No `useInPlaceLiveRefresh.ts`, `AdminScheduledActions.tsx`, `canon/patterns/**`, session-shell, or poll-cadence edits in AST-1410 `code()` commits.
+- **Estimate (5):** Footprint matches — ten UI files + Betty component/page tests.
+
+Betty `test(AST-1410)` (`9641ae74`) covers silent refetch on named pages and artifact Cancel without reload; manifest entries in `docs/test-bible/frontend/pages.md` align.
+
+## Findings
+
+### fix-now
+
+(none) — AST-1410 product implementation conforms to plan and `pattern.ui.in-place-live-refresh` Solution shape.
+
+### discuss
+
+- **Location:** Publish ref tip — commits after `4b676d7d` (`34020e29`, `b4ffa3a6`, `1e6970bc`) and intervening sibling history on the same branch
+- **Finding:** `merge-resume(AST-1410)` (`34020e29`) lands extensive **non–AST-1410** product and test work: `src/core/agent.py`, `src/data/database.py`, `src/ui/api/api_admin.py`, `AdminAnthropicAdHoc.tsx`, `BatchAgentDataModal.tsx`, `src/utils/config.py`, plus AST-1411/1412/1413/1416/1417 feature docs and `test_AdminAnthropicAdHoc` / `test_api_admin` / `test_candidates` expansions. AST-1410 plan explicitly excludes Flask routes, dispatcher, and `tests/**`. `merge-tests(AST-1410)` further absorbs sibling test-tree commits beyond Betty's clean `test(AST-1410)` (`9641ae74`).
+- **Recommendation:** Chuckles / merge-child hygiene before ftr rollup — AST-1410 publish ref should not ship sibling AST-1411–1417 product under AST-1410's banner. Options: rebase/split publish ref so `sub/AST-1406/AST-1410-…` tip contains only stacked 1408+1409+1410 (and their tests), or document intentional epic-stack rollup and accept combined UAT scope. Not a Katherine `resolve-child` product fix.
+
+### advisory
+
+- **Location:** `src/ui/frontend/src/components/ArtifactEditor.tsx` — `handleCancel` candidate re-GET path (lines 902–905)
+- **Finding:** No `.catch()` on the candidate Cancel re-GET (job path has `.catch(() => setJobLoadError(true))`). Plan shape matches — pre-existing asymmetry.
+- **Recommendation:** Optional hardening in a follow-up if UAT surfaces silent failure on Cancel; not blocking.
+
+- **Location:** Job list pages — `load` early return when `!selectedId`
+- **Finding:** Joan already accepted — `loading` may stay true until candidate selected; not introduced by this ticket.
+- **Recommendation:** None required.
+
+## What's solid
+
+- Mechanical hook sweep is consistent across all nine list surfaces named in the plan; Performance Monitor DRY'd onto the shared hook without cadence change.
+- Stage 4 Cancel semantics correct: snapshot restore unchanged; no-snapshot path re-GETs last-saved server content and stays mounted (no `setLoaded(false)` on Cancel).
+- Engineer/test-tree separation clean: four `code(AST-1410)` commits touch only planned UI files; Betty owns `test(AST-1410)` manifest.
+- `LogOffScreen.tsx` still owns intentional `window.location.reload()` — AC6 boundary preserved.
+- Excluded surfaces (`AdminVectorFeedback`, company lists, detail modals) correctly left untouched.
+
+## Frame diff
+
+(none) — first Radia code-rubric pass on AST-1410. Prior issue-doc sections: plan @ `49c4a4e2`, Joan APPROVED, build stub @ `4b676d7d`; tip now `1e6970bc` after `merge-tests` + `merge-resume` + sync. Publish ref carries stacked siblings beyond AST-1410 — see discuss.
+
+## Notes
+
+- Joan plan-rubric APPROVED attached; no Excluded-statute table — no C4 stragglers.
+- AST-1411 test leak from AST-1409 was reverted (`cb045a88`) before AST-1410 plan landed; sibling product commits re-entered later on this branch line.
+- §5f / §5g not triggered for AST-1410 product commits (UI-only).
+
+context_tokens≈48000
