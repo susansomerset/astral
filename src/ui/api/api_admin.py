@@ -1406,13 +1406,26 @@ def _resolve_adhoc(body):
 
                 jc = build_job_token_context(job, cd)
     _cc = _chain_context(agent, cd, task_key, jc)
-    agent_task_for_system = (
-        {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
-    )
+    if "system_prompt" in body:
+        # Editor sent the field (sibling #2): empty → agent content via resolved_task_system.
+        agent_task_for_system = {"system_prompt": body.get("system_prompt") or ""}
+    else:
+        # Key omitted (today’s three-slot UI): keep DB task system, then agent content.
+        agent_task_for_system = (
+            {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
+        )
+    cache_a = resolve_tokens(body.get("cache_prompt", "") or "", cd, task_key, _cc, jc)
+    cache_b = resolve_tokens(body.get("cache_prompt_b", "") or "", cd, task_key, _cc, jc)
+    cache_c = resolve_tokens(body.get("cache_prompt_c", "") or "", cd, task_key, _cc, jc)
+    cache_d = resolve_tokens(body.get("cache_prompt_d", "") or "", cd, task_key, _cc, jc)
     return {
         "system": resolved_task_system(agent, agent_task_for_system, cd, task_key, _cc, jc),
         "user": resolve_tokens(body.get("user_prompt", ""), cd, task_key, _cc, jc),
-        "cache": resolve_tokens(body.get("cache_prompt", ""), cd, task_key, _cc, jc),
+        "cache": cache_a,
+        "cache_a": cache_a,
+        "cache_b": cache_b,
+        "cache_c": cache_c,
+        "cache_d": cache_d,
         "nocache": resolve_tokens(body.get("nocache_prompt", ""), cd, task_key, _cc, jc),
         "model_code": model_code,
         "tier_meta": tier_meta,
@@ -1439,6 +1452,10 @@ def adhoc_preview():
         "system": resolved["system"],
         "user": resolved["user"],
         "cache": resolved["cache"],
+        "cache_a": resolved["cache_a"],
+        "cache_b": resolved["cache_b"],
+        "cache_c": resolved["cache_c"],
+        "cache_d": resolved["cache_d"],
         "nocache": resolved["nocache"],
         "live_content": live_content,
     })
@@ -1467,8 +1484,11 @@ def adhoc_test():
             entity_id=entity_id or None,
             system_content=resolved["system"],
             user_content=resolved["user"],
-            cache_content=resolved["cache"] or None,
-            nocache_content=resolved["nocache"] or None,
+            cache_content=resolved.get("cache") or None,
+            cache_content_b=resolved.get("cache_b") or None,
+            cache_content_c=resolved.get("cache_c") or None,
+            cache_content_d=resolved.get("cache_d") or None,
+            nocache_content=resolved.get("nocache") or None,
             live_content=live_content,
             response_format=task_response_format,
             model_code=resolved["model_code"],
@@ -1483,7 +1503,10 @@ def adhoc_test():
         return jsonify({"success": False, "error": str(e)}), 500
 
     if not result.get("success"):
-        return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 500
+        err_body = {"success": False, "error": result.get("error", "Unknown error")}
+        if result.get("batch_id"):
+            err_body["batch_id"] = result["batch_id"]
+        return jsonify(err_body), 500
 
     parsed = result.get("parsed_response")
     if isinstance(parsed, dict) and "agent_payload" in parsed:
@@ -1504,7 +1527,13 @@ def adhoc_test():
         except Exception as e:
             hydrated = {"error": str(e)}
 
-    return jsonify({"success": True, "response_text": response_text, "hydrated": hydrated, "timesheet": timesheet})
+    return jsonify({
+        "success": True,
+        "response_text": response_text,
+        "hydrated": hydrated,
+        "timesheet": timesheet,
+        "batch_id": result.get("batch_id"),
+    })
 
 
 # ---------------------------------------------------------------------------
