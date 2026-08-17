@@ -12,6 +12,8 @@
 | Manage Tasks | `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` |
 | Criteria regression | `src/ui/frontend/src/components/ArtifactEditor.tsx` | `tests/component/frontend/components/test_ArtifactEditor.test.tsx` (unchanged gate) |
 
+No-snapshot Cancel without `window.location.reload` is **AST-1410** — primary block in [`pages.md`](pages.md).
+
 ---
 
 ### AST-893 · AST-886
