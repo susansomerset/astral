@@ -183,7 +183,152 @@ context_tokens≈52000
 
 ## Review (build)
 
-**Built:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload` @ `ffd638d71739050840b9278b8dadaa290100ff90`
+**Built:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload` @ `65884db6eee1e6eb2b837ac9ef0807206c7dd283`
 
 Stages 1–2: `assemble_job_copy_snapshot` in tracker (stored job + hop blocks from walk ∪ latest refs, `BLOCK_TYPES`, existing pointer-resolving readers); `GET /api/jobs/<id>/copy` with `@require_auth`. Tests deferred to Betty.
+
+## Radia review
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1420  
+**Publish ref:** `65884db6eee1e6eb2b837ac9ef0807206c7dd283` (`origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`)  
+**Overall:** CLEAN  
+
+**Diff baseline:** `origin/dev...origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`  
+**Diff paths:** `src/core/tracker.py`, `src/ui/api/api_jobs.py`, `docs/features/interface/ast-1420-job-copy-snapshot-payload.md`, `docs/test-bible/core/tracker.md`, `docs/test-bible/ui/api/api_jobs.md`, `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py`  
+**Diff layers:** `core`, `ui`, `docs`  
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/LLM confidence paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / dispatch delegation changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector validation changes |
+| astral.batch.batch-id-first | scoped | not-applicable | reads existing batch_id; no new batch claim paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id minting |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release lifecycle |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | uses latest-refs reader as planned; no write semantics |
+| astral.config.config-source-of-truth | scoped | conforms | `BLOCK_TYPES` imported from `src.utils.config`; no parallel type list |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next / chain changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single plan doc for AST-1420 |
+| astral.git.betty-no-src-or-features | scoped | conforms | product edits in engineer commits; Betty touched test-bible/tests only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | tests landed via Betty `test(AST-1420)` + merge-tests, not build commits |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core assembler + thin UI wrap; no external layer |
+| astral.layers.import-direction | scoped | conforms | `core→data,utils.config`; `ui→core,utils`; no UI→data/external |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/** changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no frontend/state literal changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | read-only snapshot; no coat-check writes |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render-verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `GET /api/jobs/<id>/copy` uses `@require_auth` |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | on-demand route, not boot |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed operator rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data readers may raise; tracker logs warnings and skips bad hops |
+| astral.standards.database-header-inventory | scoped | not-applicable | `database.py` untouched |
+| astral.standards.debug-contract-gated | scoped | conforms | debug index/detail/block only when `debug=True` |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_collect_job_string_values`, `_hop_blocks_for_batch` extracted cleanly |
+| astral.standards.in-scope-only | scoped | conforms | product footprint = plan Stages 1–2; test-bible/tests are Betty lane |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` / module `logger.warning`; no `print()` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | public names describe behavior, not ticket ids |
+| astral.standards.no-cross-contamination | scoped | conforms | no AST-1421 clipboard/UI scope; detail route unchanged |
+| astral.standards.no-hardcoded-sets | scoped | conforms | hop block types iterate `BLOCK_TYPES` |
+| astral.standards.public-then-helpers | scoped | conforms | `assemble_job_copy_snapshot` before private helpers |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data late-import changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no transition enforcement |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no daisy-chain config/run changes |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | conforms | route/handler naming matches jobs API conventions |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker/config surface |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1420)` present at tip |
+| orch.git.commit-vocabulary | universal | conforms | commit messages follow vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch off epic topology |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/AST-1419/...` |
+| orch.git.merge-on-checkout | universal | conforms | review uses fetched origin refs |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | publish ref is sub/* not agent branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1419 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | resilience tradeoffs already Joan-approved in plan |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation tracks binding snapshot contract |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a to code shape |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns added tests/manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee; product commits only in build lane |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path violations observed |
+
+**Sweep count:** 65 active statutes scored in-session (C1–C3 satisfied).  
+**Straggler (C4):** Joan `[plan-rubric]` APPROVED with no Excluded list — no stragglers.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | Plan has no “Patterns to reuse” section |
+
+**Uncited shape note (advisory):** `copy_snapshot` matches the thin authenticated UI→core delegation shape of `pattern.ui.admin-endpoint`, but jobs routes are not admin-blueprint endpoints and the plan did not cite the pattern — no fix required.
+
+## Plan adherence
+
+Stages 1–2 land as specified:
+
+- **`assemble_job_copy_snapshot`** after `get_job`; shallow job copy; id union from stored-record walk + `list_entity_latest_agent_refs`; resilient warning-and-continue on refs/hop failures; `BLOCK_TYPES`-driven hop blocks with last-row-wins; batch cache; debug contract with job-level + per-id headers.
+- **`GET /api/jobs/<astral_job_id>/copy`** with `@require_auth`, 401/404/500/200 semantics per contract, `ui_llm_debug`, no hydrate/flatten/agent_story.
+- **Out of scope respected:** no `database.py`, detail route, frontend, timesheets, company record.
+
+**Estimate (3):** product diff footprint matches confirmed estimate; Betty test-bible/tests additions are pipeline-normal, not scope creep.
+
+**Cross-ticket (AST-1421):** clipboard chrome and pretty-print correctly deferred.
+
+## Frame diff
+
+| Planned | Actual |
+|---------|--------|
+| `src/core/tracker.py` assembler | ✓ +149 lines |
+| `src/ui/api/api_jobs.py` route | ✓ +22 lines |
+| No `tests/**` / test-bible in build | Betty added manifest + component tests via `test(AST-1420)` / `merge-tests` (expected post–Code Complete) |
+| Issue doc build SHA | Doc cites `ffd638d7`; tip under review is `65884db6` — Chuckles should refresh when appending this review |
+
+## Findings
+
+No **fix-now** items.
+
+### advisory — issue doc build SHA stale
+
+**Location:** `docs/features/interface/ast-1420-job-copy-snapshot-payload.md` → `## Review (build)`  
+**Finding:** Build line references `ffd638d7`; publish tip is `65884db6` (includes Betty tests + merge-tests).  
+**Recommendation:** Chuckles housekeeping when appending this review — not a product fix.
+
+### advisory — plan resilience tradeoff (pre-accepted)
+
+**Location:** `assemble_job_copy_snapshot` → `list_entity_latest_agent_refs` try/except  
+**Finding:** On refs failure, snapshot may omit consult/build hops while still returning stored-job ids — exactly as Joan-approved plan discuss item.  
+**Recommendation:** No resolve-child action unless Susan wants fail-hard behavior in UAT.
+
+## What’s solid
+
+- Stored job stays unhydrated (artifact pins remain ids); additive `{job, agent_data}` wrapper matches parent contract.
+- Hop assembly reuses existing pointer-resolving readers; no duplicate ref-follow logic in core.
+- Debug contract is properly gated and uses `debug_index` / `debug_detail` / `debug_detail_block` without `[DEBUG]` hand-rolling.
+- Component tests cover auth, 404, success-without-hydrate, assembler exception 500, debug query passthrough, id union, skip paths, shared-batch cache, and debug silence/emission.
+
+## Notes
+
+- `no plan-rubric Excluded list` — C4 straggler check N/A beyond APPROVED attachment.
+- §5f / §5g applied explicitly (debug surfaces in core + UI API; no external/LLM diffs).
+- §5a layer/import/logging checks: clean on touched product files.
+
+context_tokens≈85000
+
 
