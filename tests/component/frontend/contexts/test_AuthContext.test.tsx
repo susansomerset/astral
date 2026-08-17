@@ -123,4 +123,70 @@ describe("AuthContext", () => {
       },
     )
   })
+
+  it("AST-1408: JWT rotation re-reads /api/me without flipping loading", async () => {
+    const meUser = { user_id: "admin-1", name: "Admin", is_admin: true }
+    let releaseRevalidate!: (value: Response) => void
+    const revalidateGate = new Promise<Response>((resolve) => {
+      releaseRevalidate = resolve
+    })
+    let meCalls = 0
+    mockedApi.mockImplementation(() => {
+      meCalls += 1
+      if (meCalls === 1) {
+        return Promise.resolve({
+          ok: true,
+          json: async () => meUser,
+        } as Response)
+      }
+      return revalidateGate
+    })
+
+    const { result, rerender } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user?.user_id).toBe("admin-1")
+    expect(meCalls).toBe(1)
+
+    stytchTestState.sessionJwt = "rotated-jwt"
+    rerender()
+    await waitFor(() => expect(meCalls).toBe(2))
+    expect(result.current.loading).toBe(false)
+    expect(result.current.user?.user_id).toBe("admin-1")
+
+    releaseRevalidate({
+      ok: true,
+      json: async () => meUser,
+    } as Response)
+    await waitFor(() => expect(result.current.loading).toBe(false))
+  })
+
+  it("AST-1408: session object identity change does not restart extend loop", async () => {
+    mockedApi.mockResolvedValue({
+      ok: true,
+      json: async () => ({ user_id: "admin-1", name: "Admin", is_admin: true }),
+    } as Response)
+
+    const { rerender } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(mockedStartExtend).toHaveBeenCalledTimes(1))
+
+    stytchTestState.session = { rotated: true }
+    rerender()
+    await waitFor(() => expect(mockedStartExtend).toHaveBeenCalledTimes(1))
+  })
+
+  it("AST-1408: session loss clears user without leaving loading true", async () => {
+    mockedApi.mockResolvedValue({
+      ok: true,
+      json: async () => ({ user_id: "admin-1", name: "Admin", is_admin: true }),
+    } as Response)
+
+    const { result, rerender } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.user?.user_id).toBe("admin-1"))
+
+    stytchTestState.session = null
+    rerender()
+    await waitFor(() => expect(result.current.user).toBeNull())
+    expect(result.current.loading).toBe(false)
+    expect(result.current.isAdmin).toBe(false)
+  })
 })

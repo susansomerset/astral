@@ -508,9 +508,44 @@ Workbench Test success path stringifies the extracted body via **`_caller_respon
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1411 · AST-1403 (Ad Hoc seven-segment resolve, assemble, persist)
+
+**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist`.
+
+Workbench Test assembles and stores Cache A–D via **`_assemble_blocks_seven_segment`** / **`_store_prompt_blocks(..., caches_resolved_four=)`** (empty B/D omitted). Result dict includes **`batch_id`**. **`_store_prompt_blocks`** prompt-block debug is Style D index + found→recorded when **`debug=True`** (replaces `agent_data_write` on prompt blocks only). RESPONSE stringify/debug remains **AST-1393** / **AST-977**. Admin HTTP: **`docs/test-bible/ui/api/api_admin.md`** § AST-1411.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Persist SYSTEM+CACHE_A+CACHE_C+TASK+RESPONSE; omit empty B/D; `batch_id` | `src/core/agent.py` (`run_adhoc_workbench_test`) | **`TestAst1411AdhocSevenSegment::test_workbench_persists_a_and_c_omits_empty_b_d`** |
+| Assemble omits empty cache slots | same (`run_adhoc`) | **`test_run_adhoc_assembles_nonempty_cache_slots`** |
+| Style D prompt-block debug gated | same (`_store_prompt_blocks`) | **`test_store_prompt_blocks_style_d_debug_gated`** |
+| `batch_id` + `caches_resolved_four=` store (no `cache_content=`) | same | revised **`TestAst515AdhocWorkbenchLedger`** (success + failure `batch_id`) |
+
+**Broken / obsolete this pass:** AST-515 success now asserts four-slot store kwargs (legacy `cache_content=` would TypeError). Prompt-block `agent_data_write` mapping on **AST-977** is stale — see keeper note there.
+
+**Integration:** no existing scenario asserts Ad Hoc seven-segment store / Preview cache_b–d — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Existing workbench ledger + new `batch_id` / four-slot store kwargs: `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+2. RESPONSE stringify regression: `tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody`
+3. Seven-segment persist / assemble / Style D: `tests/component/core/test_agent.py::TestAst1411AdhocSevenSegment`
+
+**AST-1411** narrowed run (core; HTTP in **`ui/api/api_admin.md`**):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody \
+  tests/component/core/test_agent.py::TestAst1411AdhocSevenSegment \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-977 · AST-974
 
-`agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
+`agent_data` dedupe write/read debug in **`agent.py`**: **`_store_response_block`** still emits `agent_data_write` found/recorded when `debug=True`; **`_store_prompt_blocks`** prompt-block write trail is Style D as of **AST-1411** (not `agent_data_write`); `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
