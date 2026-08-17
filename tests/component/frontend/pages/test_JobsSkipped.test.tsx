@@ -361,4 +361,27 @@ describe("JobsSkipped", () => {
     })
   })
 
+  describe("AST-1410 silent refetch", () => {
+    it("Retry refreshes the list without Loading...", async () => {
+      installBaseApiMocks(mockedApi, jobsViewHandler("skipped", [failedJob]))
+      renderWithProviders(<JobsSkipped />)
+      await waitFor(() => expect(screen.getByRole("button", { name: /Failed LIKE/ })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: /Failed LIKE/ }))
+      await userEvent.click(screen.getByRole("checkbox"))
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (typeof url === "string" && url.includes("view=skipped") && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await userEvent.click(screen.getByRole("button", { name: "Retry (1)" }))
+      expect(screen.getByText("Failed Role")).toBeInTheDocument()
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => [] } as Response)
+      await waitFor(() => expect(screen.getByText("No skipped jobs")).toBeInTheDocument())
+    })
+  })
+
 })

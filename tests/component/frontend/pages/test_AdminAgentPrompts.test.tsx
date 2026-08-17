@@ -256,4 +256,28 @@ describe("AdminAgentPrompts", () => {
     expect(deletes[1]).toBeDisabled()
     expect(deletes[0]).not.toHaveClass("dep-btn")
   }, 15000)
+
+  describe("AST-1410 silent refetch", () => {
+    it("post-save list refetch keeps the table and skips Loading...", async () => {
+      mockApi()
+      renderWithProviders(<AgentPrompts />)
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("agent_a"))
+      await waitFor(() => expect(screen.getByDisplayValue("system prompt")).toBeInTheDocument())
+      const inner = mockedApi.getMockImplementation()!
+      let release: (value: Response) => void = () => {}
+      mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+        if (url === "/api/admin/agents" && !init?.method) {
+          return new Promise<Response>((resolve) => { release = resolve })
+        }
+        return inner(url, init)
+      })
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() => expect(screen.getByText("agent_a")).toBeInTheDocument())
+      expect(screen.queryByText("Loading...")).not.toBeInTheDocument()
+      release({ ok: true, json: async () => agents } as Response)
+      await waitFor(() => expect(screen.queryByText("Edit: agent_a")).not.toBeInTheDocument())
+      expect(screen.getByText("agent_a")).toBeInTheDocument()
+    }, 20000)
+  })
 })

@@ -2036,6 +2036,64 @@ npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1410 · AST-1406
+
+**Parent:** [AST-1406 — Page refreshes and modals are closed (lost!)](https://linear.app/astralcareermatch/issue/AST-1406). **Publish:** `origin/sub/AST-1406/AST-1410-apply-silent-refetch-on-remaining-loading-gate-surfaces`.
+
+Remaining authenticated list surfaces consume `useInPlaceLiveRefresh` from **AST-1409**: first paint (and query-identity) may show `Loading…`; post-mutation / poll / modal-close `load*` is silent. Manage Tasks edit overlay stays outside the list gate. Artifact Cancel with no snapshot re-GETs last-saved tabs (no `window.location.reload`). Company Search Terms Cancel chrome stays snapshot-gated (`inReview = snapshot !== null`); the no-snapshot re-GET branch is covered on **`ArtifactEditor`**. Session-shell is **AST-1408**. Scheduled Actions is **AST-1409**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Hook contract | `useInPlaceLiveRefresh.ts` | **`test_useInPlaceLiveRefresh.test.tsx`** (AST-1409) |
+| Manage Tasks overlay + silent revert (**§6c**) | `AdminTaskPrompts.tsx` | **`test_AdminTaskPrompts.test.tsx`** — **`AST-1410 silent refetch`** |
+| Manage Agents post-save (**§6c**) | `AdminAgentPrompts.tsx` | **`test_AdminAgentPrompts.test.tsx`** — **`AST-1410 silent refetch`** |
+| Scheduled Queries first paint + Deactivate (**§6c**) | `AdminScheduledQueries.tsx` | **`test_AdminScheduledQueries.test.tsx`** |
+| Manage Email Land Meteorite (**§6c**) | `AdminManageEmail.tsx` | **`test_AdminManageEmail.test.tsx`** — **`AST-1410 silent refetch`** |
+| Performance Monitor 15s poll + overlay (**§6c**) | `AdminPerformanceMonitor.tsx` | **`test_AdminPerformanceMonitor.test.tsx`** — **`AST-1410 silent refetch`** |
+| Recommended Skip (**§6c**) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1410 silent refetch`** |
+| In Review modal-close (**§6c**) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1410 silent refetch`** |
+| Skipped Retry (**§6c**) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1410 silent refetch`** |
+| Artifact no-snapshot Cancel | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1410: no-snapshot Cancel re-GETs last-saved tabs without location.reload`** |
+| Company Search Terms first paint (**§6c**) | `ArtifactsCompanySearchTerms.tsx` | existing **`test_ArtifactsCompanySearchTerms.test.tsx`** |
+
+**Broken / obsolete this pass:** none — first-paint `Loading…` and existing save/skip/retry cases stay. `test_AdminScheduledQueries.test.tsx` is new (bible listed it earlier; file was missing). Company Search Terms Cancel remains review/snapshot-only; no RTL path for the no-snapshot branch on that page.
+
+**Integration:** no existing scenario asserts list remount / overlay draft / artifact Cancel reload — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Hook (existing): `tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx`
+2. Manage Tasks: `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — `--testNamePattern="AST-1410"`
+3. Manage Agents: `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — `--testNamePattern="AST-1410"`
+4. Scheduled Queries: `tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx`
+5. Manage Email: `tests/component/frontend/pages/test_AdminManageEmail.test.tsx` — `--testNamePattern="AST-1410"`
+6. Performance Monitor: `tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx` — `--testNamePattern="AST-1410"`
+7. Recommended: `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1410"`
+8. In Review: `tests/component/frontend/pages/test_JobsInReview.test.tsx` — `--testNamePattern="AST-1410"`
+9. Skipped: `tests/component/frontend/pages/test_JobsSkipped.test.tsx` — `--testNamePattern="AST-1410"`
+10. ArtifactEditor Cancel: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1410"`
+11. Search Terms first paint: `tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx`
+
+**AST-1410** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/hooks/test_useInPlaceLiveRefresh.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  --testNamePattern="AST-1410|useInPlaceLiveRefresh|renders company search terms page"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-1412 · AST-1403
 
 **Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1412-ad-hoc-seven-segment-editors-and-save`.
