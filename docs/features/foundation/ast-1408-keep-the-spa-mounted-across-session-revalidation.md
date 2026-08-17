@@ -175,3 +175,10 @@ Confirm Chuckles estimate: 3 — agree
 No `fix-now` or `discuss` blockers. R1–R5 pass. Layer placement (`contexts/` + `components/`, flat, no new dirs), in-scope-only exclusions, and DRY/minimal-diff approach conform. Current `AuthContext.tsx` root cause confirmed: `loadMe` always `setLoading(true)` and extend-loop deps include `session` object identity — plan targets both correctly. Status `Plan Ready`, assignee Joan — gate satisfied. Zero completed `[plan-discuss]` rounds.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built @ `e1562b40`** — `origin/sub/AST-1406/AST-1408-keep-the-spa-mounted-across-session-revalidation`
+
+- Stage 1 (`b1e82876`): `AuthContext` first-resolution-only `loading`; silent `/api/me` on JWT rotation; extend loop keyed on `sessionPresent`
+- Stage 2 (`e1562b40`): `RequireAuth` loads only when uninitialized and no session; `AdminRoute` loads only while `user === null`
