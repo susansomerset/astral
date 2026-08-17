@@ -2073,6 +2073,12 @@ input.side-tab-heading-editable:focus {
   overflow: hidden;
 }
 
+.batch-agent-data-wrapper--page {
+  height: 560px;
+  padding: 0;
+  margin-top: 20px;
+}
+
 .batch-agent-data-body {
   display: flex;
   flex-direction: column;

@@ -104,7 +104,13 @@ interface Props {
   onClose: () => void
 }
 
-export default function BatchAgentDataModal({ batchId, candidateId, onClose }: Props) {
+interface PanesProps {
+  batchId: string
+  candidateId?: string
+  className?: string
+}
+
+export function BatchAgentDataPanes({ batchId, candidateId, className }: PanesProps) {
   const [blocks, setBlocks] = useState<AgentDataBlock[]>([])
   const [totals, setTotals] = useState<Totals | null>(null)
   const [timesheetRows, setTimesheetRows] = useState<TimesheetRow[]>([])
@@ -116,7 +122,6 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
   const [resolvedCandidateId, setResolvedCandidateId] = useState("")
 
   useEffect(() => {
-    if (!batchId) return
     setLoading(true)
     setBlocks([])
     setTotals(null)
@@ -212,8 +217,7 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
   const showHydratedFeedback = activeType === "FEEDBACK" && hydratedRows && hydratedRows.length > 0
 
   return (
-    <Modal open={!!batchId} onClose={onClose} title={batchId ?? ""} size="wide">
-      <div className="batch-agent-data-wrapper">
+      <div className={className ? `batch-agent-data-wrapper ${className}` : "batch-agent-data-wrapper"}>
         {loading && <p className="entity-loading">Loading…</p>}
 
         {!loading && totals && (
@@ -275,6 +279,13 @@ export default function BatchAgentDataModal({ batchId, candidateId, onClose }: P
           <p className="entity-empty">No agent data blocks recorded for this batch.</p>
         )}
       </div>
+  )
+}
+
+export default function BatchAgentDataModal({ batchId, candidateId, onClose }: Props) {
+  return (
+    <Modal open={!!batchId} onClose={onClose} title={batchId ?? ""} size="wide">
+      {batchId ? <BatchAgentDataPanes batchId={batchId} candidateId={candidateId} /> : null}
     </Modal>
   )
 }

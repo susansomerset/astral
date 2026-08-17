@@ -96,6 +96,7 @@ from src.utils.config import (
     fetch_website_prefilter_second_strike_filter,
     dispatch_chain_claim_states_for_row,
     is_dispatch_chain_trigger,
+    is_valid_candidate_batch_claim_state,
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
@@ -3167,8 +3168,8 @@ def save_candidate(
             if existing is None:
                 if not state:
                     raise ValueError("state required for new candidate")
-                allowed = list(CANDIDATE_STATES.keys())
-                if state not in allowed:
+                if not is_valid_candidate_batch_claim_state(state):
+                    allowed = list(CANDIDATE_STATES.keys())
                     raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                 cdata_str = json.dumps(candidate_data) if candidate_data else "{}"
                 hist_str = json.dumps(state_history if state_history is not None else [])
@@ -3191,8 +3192,8 @@ def save_candidate(
                 sets: List[str] = []
                 params: List[Any] = []
                 if state is not None:
-                    allowed = list(CANDIDATE_STATES.keys())
-                    if state not in allowed:
+                    if not is_valid_candidate_batch_claim_state(state):
+                        allowed = list(CANDIDATE_STATES.keys())
                         raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                     sets.append("state = ?")
                     params.append(state)
