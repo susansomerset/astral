@@ -262,3 +262,36 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
   tests/component/core/test_tracker.py::TestAst1100ResolveHydrateJobArtifactPins \
   -q
 ```
+
+---
+
+### AST-1420 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`.
+
+`assemble_job_copy_snapshot` returns `{job, agent_data}`: stored job (artifact pins stay ids; no hydrate / flatten / agent_story); `agent_data` keyed by every id from the stored-record walk ∪ `list_entity_latest_agent_refs`, each hop’s `blocks` iterated from `BLOCK_TYPES` with pointer-resolved `block_data`. Missing job → `None`. Route: **`docs/test-bible/ui/api/api_jobs.md`**. Copy chrome: AST-1421.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Assembler + pointer content + BLOCK_TYPES + debug | `src/core/tracker.py` | **`TestAst1420AssembleJobCopySnapshot`** |
+| Authenticated copy route | `src/ui/api/api_jobs.py` | **`TestAst1420CopySnapshotRoute`** |
+
+**Broken / obsolete:** none — additive; existing `GET /api/jobs/<id>` detail hydrate suites still hold.
+
+**Integration:** no existing jobs-pipeline scenario in `tests/integration/` — no revision (do not invent).
+
+## QA test manifest
+
+1. Assembler (pins stay ids, hop union, pointer `block_data`, skip/error paths, debug): `tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot`
+2. `GET /api/jobs/<id>/copy` (401 / 404 / 200 no-hydrate / 500 / debug query): `tests/component/ui/api/test_api_jobs.py::TestAst1420CopySnapshotRoute`
+
+**AST-1420** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot \
+  tests/component/ui/api/test_api_jobs.py::TestAst1420CopySnapshotRoute \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
