@@ -141,3 +141,37 @@ Leave the Copy Application Email button, Copy LinkedIn Profile button, and `{cop
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1421
+**Overall:** APPROVED
+**Publish-ref:** `d77b117e0a1ead9a9cfe22e09260499a6204e44c`
+
+## Traceability
+
+AC1 → Stage 2 (Job Detail Info tab, default first tab) + Stage 3 (Recommended header, guard widened for snapshot-only jobs) · AC2 → Stage 1 (`JSON.stringify(body, null, 2)`) + Stage 2/3 (2000ms `Copied` label on the diagnostic button) · AC3 → Stage 2/3 boundaries (Skip/email/linkedin/tabs/detail GET untouched; `copyFeedback` span stays email/linkedin-only) · Parent AC2 (pretty-print clipboard JSON) → Stage 1 · Parent AC5 (Copied feedback) → Stage 2/3 · Parent AC6 (adjacent controls unchanged) → Stage 2/3 `Do not touch` list
+
+## Findings
+
+### discuss — Copy control lives on Info tab only (Job Detail)
+
+**Location:** Stage 2, Info-tab placement decision  
+**Finding:** Copy is not visible from JD or Agent Story side tabs; user must be on (or switch to) Info.  
+**Recommendation:** Acceptable — Info is `SideTabPanel` default (`tabs[0]`), satisfies child AC1 (“on the Job Detail modal”), and the placement rationale (wide-modal layout, Skip adjacency) is sound.
+
+### discuss — No `## Self-assessment` section
+
+**Location:** Plan doc tail  
+**Finding:** Only `## Estimate` confirm present; no confidence axes block.  
+**Recommendation:** Optional template polish; estimate (2) matches staged scope — not blocking.
+
+### acceptable — AST-1420 prerequisite documented
+
+**Location:** Files Changed prerequisite note  
+**Finding:** `GET /api/jobs/<astral_job_id>/copy` is already present on this worktree (`copy_snapshot` in `api_jobs.py`); plan correctly gates build on route existence without reimplementing the assembler.  
+**Recommendation:** No change.
+
+context_tokens≈38000
