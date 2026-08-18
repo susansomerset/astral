@@ -3,6 +3,7 @@ import { useCandidate } from "../contexts/CandidateContext"
 import AdminCandidateFilterControl from "../components/AdminCandidateFilterControl"
 import { useAdminCandidateFilter } from "../hooks/useAdminCandidateFilter"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 import Time from "../components/Time"
@@ -264,7 +265,6 @@ export default function ScheduledActions() {
   const { selectedId } = useCandidate()
   const { candidateFilter, setCandidateFilter, candidates } = useAdminCandidateFilter()
   const [data, setData] = useState<DispatchTask[]>([])
-  const [loading, setLoading] = useState(true)
   const [sortCol, setSortCol] = useState<string>("_default")
   const [sortDir, setSortDir] = useState<SortDir>("asc")
 
@@ -274,6 +274,7 @@ export default function ScheduledActions() {
   const didAutoOpenSectionRef = useRef(false)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
 
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
@@ -329,8 +330,8 @@ export default function ScheduledActions() {
     [form.entity_type, stateOptions],
   )
 
-  const loadData = useCallback(async () => {
-    setLoading(true)
+  const loadData = useCallback(async (showSpinner = false) => {
+    beginRefresh(showSpinner)
     try {
       const [tasksRes, keysRes, statesRes, floorsRes] = await Promise.all([
         api("/api/admin/dispatch_tasks"),
@@ -357,11 +358,11 @@ export default function ScheduledActions() {
         setScoreFloorOptions(Array.isArray(floors?.values) ? floors.values : [])
       }
     } finally {
-      setLoading(false)
+      endRefresh()
     }
-  }, [])
+  }, [beginRefresh, endRefresh])
 
-  useEffect(() => { loadData() }, [loadData])
+  useEffect(() => { loadData(true) }, [loadData])
 
   useEffect(() => {
     for (const row of data) {

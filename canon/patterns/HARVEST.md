@@ -36,5 +36,6 @@ Supporting harvest packages (also citable):
 | create (AST-1300) | `pattern.ui.shared-button-roles` | ui | `ui/pattern.ui.shared-button-roles.md` | AST-1166 catalog | approved — labeled `btn` roles + `in-row` size (AST-1317); CSS in `App.css` |
 | create (AST-1300) | `pattern.ui.icon-control` | ui | `ui/pattern.ui.icon-control.md` | AST-1166 catalog | approved — icon-only compact actions; CSS in `App.css` |
 | create (AST-1335) | `pattern.ui.dirty-leave-save-then-navigate` | ui | `ui/pattern.ui.dirty-leave-save-then-navigate.md` | AST-1315 | proposed — dirty-leave save-then-navigate; Archie approval pending |
+| create (AST-1409) | `pattern.ui.in-place-live-refresh` | ui | `ui/pattern.ui.in-place-live-refresh.md` | AST-1406 | proposed — in-place list refresh; Archie approval pending |
 
 Propose→approve lifecycle prose lives in [AUTHORING.md](AUTHORING.md). This ticket exercised it once on `pattern.state.entity-state-transitions` (Stage 2 proposed → Stage 3 approved).

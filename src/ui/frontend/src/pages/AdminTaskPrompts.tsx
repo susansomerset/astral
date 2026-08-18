@@ -8,6 +8,7 @@ import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
 import Time from "../components/Time"
 import { useSectionExpandPolicy } from "../hooks/useSectionExpandPolicy"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import { compareTaskKeys, sortedTaskKeys } from "../lib/taskKeySort"
 
@@ -150,9 +151,9 @@ function CacheMinCell({ tokens, satisfied }: { tokens: number; satisfied: boolea
 export default function TaskPrompts() {
   const { selectedId } = useCandidate()
   const [tasks, setTasks]   = useState<AgentTask[]>([])
-  const [loading, setLoading] = useState(true)
   const [toast, setToast]   = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
   const [agentIds, setAgentIds]     = useState<string[]>([])
@@ -185,14 +186,13 @@ export default function TaskPrompts() {
   const [previewLoading, setPreviewLoading] = useState(false)
   const [previewJobId, setPreviewJobId] = useState("")
 
-  const loadAll = useCallback(() => {
-    setLoading(true)
+  const loadAll = useCallback((showSpinner = false) => {
+    beginRefresh(showSpinner)
     const qs = selectedId ? `?candidate_id=${encodeURIComponent(selectedId)}` : ""
     Promise.all([
       api(`/api/admin/tasks${qs}`).then(r => r.json()),
       api("/api/admin/agents/ids").then(r => r.json()),
       api("/api/admin/tasks/meta/tokens").then(r => r.json()),
-      // Optional meta: older Vitest handlers may omit this URL; do not fail the whole Manage Tasks load.
       api("/api/admin/tasks/meta/chain_tokens")
         .then(async r => (r.ok ? r.json() : []))
         .catch(() => []),
@@ -205,12 +205,12 @@ export default function TaskPrompts() {
       setTasks([])
       setAgentIds([])
       setTokenList([])
-    }).finally(() => setLoading(false))
-  }, [selectedId])
+    }).finally(() => endRefresh())
+  }, [selectedId, beginRefresh, endRefresh])
 
   useEffect(() => {
     queueMicrotask(() => {
-      void loadAll()
+      void loadAll(true)
     })
   }, [loadAll])
 

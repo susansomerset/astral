@@ -12,6 +12,8 @@
 | Manage Tasks | `src/ui/frontend/src/pages/AdminTaskPrompts.tsx` | `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` |
 | Criteria regression | `src/ui/frontend/src/components/ArtifactEditor.tsx` | `tests/component/frontend/components/test_ArtifactEditor.test.tsx` (unchanged gate) |
 
+No-snapshot Cancel without `window.location.reload` is **AST-1410** — primary block in [`pages.md`](pages.md).
+
 ---
 
 ### AST-893 · AST-886
@@ -117,7 +119,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- | --- |
 | **AST-610** | Stytch JWT validate + user dict mapping; **`normalize_user`** / **`is_admin`** / **`validate_bearer_token`** | `src/external/stytch.py`, `src/utils/auth.py`, `src/utils/config.py` (`AUTH_CONFIG`) | `tests/component/external/test_stytch.py::TestAuthenticateSessionJwt`; `tests/component/utils/test_auth.py::{TestIsAdmin,TestNormalizeUser,TestValidateBearerToken}` |
 | **AST-611** | Flask **`@require_auth`** / **`@require_admin`**; admin API enforcement; **`/api/me`** + nav filter | `src/core/auth_bootstrap.py`, `src/ui/auth.py`, `src/ui/server.py`, `src/ui/api/api_admin.py`, `src/ui/api/api_candidate.py`, `src/ui/api/api_system.py` | `tests/component/ui/test_auth.py::{TestRequireAuth,TestRequireAdmin}`; `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::{test_me_requires_bearer,test_me_non_admin_includes_is_admin_false,test_nav_config_omits_admin_group_for_non_admin}`; `tests/component/ui/api/test_api_candidate.py::TestCandidateRoutes::test_non_admin_cannot_create_delete_or_override_state`; `tests/component/ui/test_server.py::TestServeReact::test_serves_index_when_ip_allowlist_restricted` |
-| **AST-612** | React Stytch login gate; Bearer **`session_jwt`** on **`api()`**; **`AdminRoute`** on `/admin/*`; non-admin candidate selector lock | `src/ui/frontend/src/lib/api.ts`, `src/ui/frontend/src/contexts/AuthContext.tsx`, `src/ui/frontend/src/components/{RequireAuth,AdminRoute,NavigationShell}.tsx`, `src/ui/frontend/src/contexts/CandidateContext.tsx`, `src/ui/frontend/src/routes.tsx` | `tests/component/frontend/lib/test_api.test.ts`; `tests/component/frontend/contexts/test_AuthContext.test.tsx`; `tests/component/frontend/components/test_RequireAuth.test.tsx`; `tests/component/frontend/components/test_AdminRoute.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx`; `tests/component/frontend/contexts/test_CandidateContext.test.tsx` |
+| **AST-612** | React Stytch login gate; Bearer **`session_jwt`** on **`api()`**; **`AdminRoute`** on `/admin/*`; non-admin candidate selector lock | `src/ui/frontend/src/lib/api.ts`, `src/ui/frontend/src/contexts/AuthContext.tsx`, `src/ui/frontend/src/components/{RequireAuth,AdminRoute,NavigationShell}.tsx`, `src/ui/frontend/src/contexts/CandidateContext.tsx`, `src/ui/frontend/src/routes.tsx` | `tests/component/frontend/lib/test_api.test.ts`; `tests/component/frontend/contexts/test_AuthContext.test.tsx`; `tests/component/frontend/components/test_RequireAuth.test.tsx`; `tests/component/frontend/components/test_AdminRoute.test.tsx`; `tests/component/frontend/components/test_NavigationShell.test.tsx`; `tests/component/frontend/contexts/test_CandidateContext.test.tsx`. Silent revalidation / keep-mounted: **AST-1408** in [`contexts.md`](contexts.md). |
 | **AST-613** | Canonical Stytch magic-link + OAuth redirect URL (`VITE_STYTCH_REDIRECT_URL` with **`/authenticate`** fallback) | `src/ui/frontend/src/lib/stytchRedirect.ts`, `src/ui/frontend/src/pages/Login.tsx` | `tests/component/frontend/lib/test_stytchRedirect.test.ts`; `tests/component/frontend/pages/test_Login.test.tsx` |
 | **AST-614** | `launch.sh --vite` auto-runs `npm install --include=dev` when `node_modules/@stytch/react` missing | `launch.sh` (`_ensure_frontend_deps`, `run_vite`) | `tests/component/dev/test_launch_frontend_deps.py::TestLaunchFrontendDeps` |
 | **AST-831** | Backend live-project JWT validation — **`max_token_age_seconds=0`**, startup project env log, **`session_not_found`** ops hint | `src/external/stytch.py`, `src/core/auth_bootstrap.py`, `src/utils/auth.py` | **`docs/test-bible/external/stytch.md`** (**AST-831**) |
@@ -924,3 +926,42 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1421 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control`.
+
+Labeled **Copy** (`btn secondary`) on Job Detail Info (above Skip) and Recommended Job Report header. Click fetches AST-1420 snapshot via `copyJobSnapshotToClipboard`, writes pretty-printed JSON, shows **Copied** 2000ms. Silent on helper `false`. Email / LinkedIn / Skip unchanged. Helper: **`docs/test-bible/frontend/lib.md`**. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job Detail Copy | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`JobDetailModal — AST-1421 snapshot Copy`** (+ existing Skip) |
+| Recommended header Copy | `RecommendedJobReportHeader.tsx` | **`test_RecommendedJobReportHeader.test.tsx`** — **`RecommendedJobReportHeader — AST-1421 snapshot Copy`** |
+| JAR wiring | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1421 snapshot Copy`** |
+
+**Broken / obsolete:** none — additive control; existing Skip / Copy Application Email / Copy LinkedIn asserts still hold.
+
+**Integration:** no existing jobs-modal scenario — no revision.
+
+## QA test manifest
+
+1. Clipboard helper: `tests/component/frontend/lib/test_copyJobSnapshot.test.ts`
+2. Job Detail Copy ↔ Copied + Skip unchanged: `test_JobDetailModal.test.tsx` — `AST-1421|loads job details`
+3. Header Copy without email/linkedin + coexistence: `test_RecommendedJobReportHeader.test.tsx`
+4. JAR click wiring, no `copyFeedback` span: `test_JobAnalysisReportModal.test.tsx` — `AST-1421`
+
+**AST-1421** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npx tsc -b --noEmit
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_RecommendedJobReportHeader.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1421|loads job details|sticky header"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

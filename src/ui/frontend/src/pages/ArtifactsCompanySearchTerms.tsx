@@ -52,21 +52,26 @@ export default function CompanySearchTerms() {
   const isChainHandoff = chainTaskKeys.has(TASK_KEY)
   const canGenerate = generateStates.has(candidateState)
 
+  function applySearchTermsResponse(c: {
+    company_search_terms?: unknown
+    candidate_data?: { artifacts?: Record<string, unknown> }
+  }) {
+    const raw = c.company_search_terms
+    setText(typeof raw === "string" ? raw : "")
+    const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
+    const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
+    const termsHit = typeof raw === "string" && raw.trim() !== ""
+    setHasChainData(rubricHit || termsHit)
+    setLoaded(true)
+    setDirty(false)
+    setEverSaved(typeof raw === "string" && raw.trim() !== "")
+  }
+
   useEffect(() => {
     if (!selectedId) return
     setLoaded(false)
     setSnapshot(null)
-    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
-      const raw = c.company_search_terms
-      setText(typeof raw === "string" ? raw : "")
-      const artifacts = (c.candidate_data?.artifacts ?? {}) as Record<string, unknown>
-      const rubricHit = chainArtifactKeys.some(k => artifactBlobHasContent(artifacts[k]))
-      const termsHit = typeof raw === "string" && raw.trim() !== ""
-      setHasChainData(rubricHit || termsHit)
-      setLoaded(true)
-      setDirty(false)
-      setEverSaved(typeof raw === "string" && raw.trim() !== "")
-    })
+    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(applySearchTermsResponse)
   }, [selectedId, chainArtifactKeys])
 
   const doSave = useCallback(async (value: string) => {
@@ -160,9 +165,12 @@ export default function CompanySearchTerms() {
       setText(snapshot)
       setSnapshot(null)
       setDirty(false)
-    } else {
-      window.location.reload()
+      return
     }
+    if (!selectedId) return
+    api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
+      applySearchTermsResponse(c)
+    })
   }
 
   if (!selectedId) return <p style={{ padding: 20, color: "#fff" }}>No candidate selected.</p>

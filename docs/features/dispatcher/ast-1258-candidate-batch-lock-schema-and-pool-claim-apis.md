@@ -1,3 +1,256 @@
+<!-- linear-archive: AST-1258 archived 2026-08-17 -->
+
+## Linear archive (AST-1258)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1258/candidate-batch-lock-schema-and-pool-claim-apis-candidate-table-does  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1257 — candidate table does not have batch_id  
+**Blocked by / blocks / related:** parent: AST-1257; blocks: AST-1259
+
+### Description
+
+## What this implements
+
+Add candidate `batch_id` / `batch_created_at`, inventory/header honesty, and data-layer claim / get / clear with **job/company pool parity** (claim up to limit unclaimed candidates in claim states; batch_id-first) plus eligibility/count over the unclaimed pool. Does not wire dispatcher.
+
+## Acceptance criteria
+
+- [X] 1. Candidate schema (ensure + inventory) exposes `batch_id` and `batch_created_at`; unclaimed rows have null/empty `batch_id`.
+- [X] 2. Candidate claim → get → clear can lock multiple unclaimed candidates in claimable states in one `batch_id` (pool), release them all on clear, and refuse a second concurrent claim on already-locked rows.
+- [X] 3. Eligibility/count for candidate stage claim tasks reports the unclaimed pool size (0 when none available or all locked / not claimable).
+
+## Boundaries
+
+Does not wire dispatcher or core get_new wrappers. Does not own statute/pattern/docs text (sibling). Does not change job/company claim SQL beyond shared helpers if reused.
+
+## In scope
+
+- [X] `pattern.batch.entity-claim-process-release` — data-layer claim → get → clear peers of job/company (pool, not single-ctx)
+- [X] `astral.batch.claim-process-release` — candidate rows get batch locking + pool claim APIs
+- [X] `astral.batch.batch-id-first` — `claim_candidate_batch(batch_id, …)` parameter order
+- [X] `astral.batch.batch-id-format` — caller-owned golden ticket; no new mint rules in data layer
+- [X] `astral.standards.database-header-inventory` — candidate inventory names `batch_id` / `batch_created_at`
+- [X] `astral.standards.data-raises-caller-logs` — new data APIs raise; no logging
+- [X] `astral.standards.dry-and-focused-functions` — reuse `_state_in_sql` / `_run_with_retry` / `_utc_now` / `_parse_candidate_row`
+- [X] `astral.standards.public-then-helpers` — public claim trio grouped in candidate section
+- [X] `astral.standards.in-scope-only` — only `src/data/database.py` product surface
+- [X] `astral.layers.import-direction` — data keeps existing utils config imports only
+- [X] `astral.state.core-decides-transitions` — claim/clear touch lock columns only; never write `candidate.state` (Radia C4: mechanical layer/path match → conforms; plan had excluded)
+
+## Considered but excluded
+
+- [X] `astral.standards.debug-contract-gated` — dispatch/core debug path is AST-1259 (`src/core/dispatcher.py`)
+- [X] `astral.layers.core-vs-external-bright-line` — no core/external work this ticket
+- [X] `orch.roles.archie-approves-statutes` — statute/pattern/`CANDIDATE_DATA_MODEL` amend is AST-1260
+- [X] Dispatcher `finally` clear / `get_new_candidate_batch` — AST-1259
+
+## Notes for planning
+
+Pool parity with job/company — not a single-ctx / one-row-only gate. Overturns AST-972 no-batch carve-out for locking. Stage Avail (non-`inflow_discovery`) counts the cross-candidate unclaimed pool; inflow Avail unchanged. Must not land on `dev` ahead of AST-1259.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+**Publish ref:** `sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis`
+
+### Comments
+
+#### radia — 2026-08-07T18:39:57.818Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1258
+**Publish ref:** `sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `6f684aff`
+**Overall:** DISCUSS
+
+Full active-set sweep run in-session (65 active statutes: 19 universal + 46 scoped — 24 scoped matched the diff and scored, 22 scoped `not-applicable` with layer/path reasons). Full checklist stays off-ticket per rubric.
+
+## Plan adherence
+
+- Stages 1–3 implemented exactly as the revised plan specifies: candidate `batch_id`/`batch_created_at` columns + header inventory bullet (Stage 1); `claim_candidate_batch` / `get_candidate_batch` / `clear_candidate_batch` pool trio mirroring `claim_job_batch`'s `_utc_now()`, unclaimed `(NULL OR '')` predicate, subquery `UPDATE … ORDER BY … LIMIT ?`, batch_id-first param order (Stage 2); `count_eligible_for_dispatch_task` candidate branch splits `inflow_discovery` (unchanged helper) vs pool count via new `count_candidates_unclaimed_in_states` (Stage 3), with the dead `not claim_states` arm correctly omitted since the pre-branch guard already covers it.
+- Joan's plan-rubric verdict (Plan Approved, revision 1) round-1 fix-now/discuss items are all closed on this tip: Betty contract section present and accurate, Stage 3 deploy-order Decision documents the AUTO volume-gate flip and the "must not land on `dev` ahead of AST-1259" constraint, dead branch dropped.
+- Scope held: only `src/data/database.py` touched in the product commit (`e569ada6`); no `src/core/`, dispatcher, `config.py`, or `CANDIDATE_DATA_MODEL.md` edits. Test/bible deltas landed via a separate `merge-tests` commit (`6f684aff`, Betty's tree), keeping engineer and test-tree commits cleanly separated per `orch.roles.betty-owns-test-tree` / `astral.git.engineer-test-tree-ban`.
+
+## Pattern conformance
+
+`pattern.batch.entity-claim-process-release` — conforms (claim → get → clear pool trio is a faithful data-layer peer of the job/company shape; batch_id-first, cross-candidate pool, no owner-scope gate, matching the plan's explicit decision to overturn the AST-972 single-ctx carve-out).
+
+## Findings
+
+**discuss — straggler: `astral.state.core-decides-transitions` excluded at plan time but in-scope on this sweep.** The plan's "Considered but excluded" list drops this statute (reasoning: "no state transitions here"), and content-wise that's correct — `claim_candidate_batch` / `clear_candidate_batch` only touch the lock columns, never `candidate.state`. But the statute's `applies_when` (`layers: [core, data]`, `paths: [src/core/**, src/data/**]`) mechanically matches this diff's `data` layer + `src/data/database.py` path, so this sweep scores it `conforms`, not `not-applicable` — per C4 that's a callout, not a block. No code change needed; flagging so the plan-exclusion reasoning and the mechanical sweep predicate stay reconciled for anyone auditing this ticket later.
+
+**advisory — schema-push script awareness (already surfaced by Joan as acceptable).** `candidate` is in `ALLOWED_CONFIG_TABLES` and `apply_config_table_upsert` compares exact column lists, so `scripts/push_tables_to_prod.py` needs both source and target DBs on the new `batch_id`/`batch_created_at` columns before a push — same shape as the AST-1134 `last_email_check` precedent. Not a blocker for this ticket; noting for whoever runs the next prod push.
+
+## Frame diff
+
+(none)
+
+## What's solid
+
+- `_CANDIDATE_BATCH_SORT_COLUMNS` allowlist mirrors the existing `_JOB_BATCH_SORT_COLUMNS` pattern exactly — no new hardcoded-set exposure, just the established SQL-injection-safe ORDER BY guard.
+- No new imports added to `database.py`; all new functions reuse `_state_in_sql`, `_run_with_retry`, `_utc_now`, `_parse_candidate_row`, `_row_to_dict` — clean DRY reuse, public claim trio grouped together per §1.3.
+- `count_eligible_for_dispatch_task`'s pre-branch `if not claim_states: return 0` guard was correctly left alone; verified `dispatch_claim_states` is non-empty for all `CANDIDATE_STATES` so the new candidate branch can't fall through unguarded.
+- Test/bible delta (Betty, separate commit) precisely revises the one test Stage 3 invalidates (`test_candidate_entity_avail_is_inflow_not_stage` → `test_candidate_stage_avail_is_unclaimed_pool`, expecting `1` not `0`) and adds direct coverage for multi-row claim/get/clear, concurrent-claim refusal, release-all, and locked-pool zero-count — matches the plan's Betty-contract coverage list item-for-item.
+
+context_tokens≈134000
+
+— Radia
+
+#### betty — 2026-08-07T18:33:17.623Z
+## QA test manifest
+
+`origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `6f684aff` (`merge-tests(AST-1258): origin/tests 91eae3cf`)
+
+1. `tests/component/data/database/test_candidates.py::TestAst1258CandidateBatchClaim` — schema `batch_id`/`batch_created_at`; save leaves unclaimed; claim → get → clear multi-row pool; concurrent second claim → 0; clear releases all; claim unions primary+retry.
+2. `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility` — revised `test_candidate_stage_avail_is_unclaimed_pool` (expect pool `1`; was inflow-only `0`); claim-states + list-ids unchanged.
+3. `tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility` — pool count `0` when all matching rows locked; `inflow_discovery` still uses inflow helper.
+
+**Broken / obsolete (this pass):** `test_candidate_entity_avail_is_inflow_not_stage` → renamed/revised for AST-1258 pool Avail.
+
+**Integration:** none revised (no existing scenario asserted unlocked/inflow-only candidate stage Avail).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_candidates.py::TestAst1258CandidateBatchClaim \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility \
+  -q
+```
+
+**Bible (on publish-ref):**
+- `docs/test-bible/data/database/candidates.md` `6f15870d21e8a4aa281484e6fe889ca4a828250c8e3e3117e949a7b37d293f7a`
+- `docs/test-bible/data/database/dispatch_tasks.md` `f11f0bf8803323c5a7e5774d6a814c84d3727d46096806a83194868c44fdb8fa`
+- `docs/test-bible/core/candidate.md` `9b57b5533c66ff198ed6bb8d5582630754b21f2604f3df0101bf764d619c168a`
+
+— Betty
+
+#### joan — 2026-08-07T18:28:27.841Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1258
+**Overall:** APPROVED
+**Publish ref tip:** `sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `952277d8` (doc-only delta from `351e9484`; Files Changed table unchanged, so the statute frame is unchanged)
+
+## Traceability
+
+AC1→S1; AC2→S2 (+S4 verify); AC3→S3 (+S4 verify). No orphan stages; no unmapped AC. R5 pass.
+
+**Considered:** 41 active statutes re-scored in-session (18 universal + 23 scoped considered, 24 scoped excluded). All conform — the three round-1 non-conformances are closed.
+
+## Round 1 items — all cleared
+
+- **fix-now (test invalidation):** closed. The **Tests invalidated (Betty contract)** section names the exact node id, and I confirmed it resolves and passes on this tip: `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_candidate_entity_avail_is_inflow_not_stage` (class at line 1343). The before/after values are right — that fixture saves only `c972`, so the pool count after Stage 3 is exactly `1`. The five Betty coverage items match the AC2/AC3 surface, and the Files Changed note now scopes the engineer off `tests/` explicitly rather than implying no test impact. `orch.roles.betty-owns-test-tree` / `orch.pipeline.plan-is-bible` → conforms.
+- **discuss (volume gate):** closed. The Risk line no longer claims behavior cannot flip, and the new Stage 3 deploy-order Decision names the gate site and the hard constraint that this child must not reach `dev` ahead of AST-1259. `astral.batch.claim-process-release` → conforms for this child; the residual unlocked path stays AST-1259's to close.
+- **discuss (dead branch):** closed. The arm and the "or claim_states empty" Done-when clause are gone, and step 2 now tells the builder *not* to add it back with the reason — better than a silent deletion. Step 1 was tightened to require a non-empty list through `_state_in_sql`. `astral.standards.dry-and-focused-functions` → conforms.
+- **nit:** closed — `get_candidate_batch` keeps the `_row_to_dict` hop.
+
+Nothing new introduced by the revision. Everything I verified against the tip in round 1 still holds; the `claim_job_batch` mirror, schema create/migrate split, `save_candidate` lock safety, and sort-column allowlist are unchanged.
+
+Status → Plan Approved. R7 satisfied by this comment (slim artifact, no attachment).
+
+— Joan
+
+context_tokens≈108000
+
+#### katherine — 2026-08-07T18:27:06.703Z
+[plan-discuss] round=1 reply
+
+Addressed on `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `952277d8`.
+
+**Delta**
+1. **fix-now:** Added **Tests invalidated (Betty contract)** — names `TestAst972CandidateStageEligibility::test_candidate_entity_avail_is_inflow_not_stage` (expect pool `1` after Stage 3, not inflow `0`) and Betty coverage for multi-row claim/get/clear, second claim → 0, clear releases all, pool 0 when locked, inflow helper unchanged. Engineer still does not edit `tests/` / bible.
+2. **discuss (risk / gate):** Corrected Self-Assessment Risk; added Stage 3 Decision that AUTO volume gate flips here while claim stays unlocked until AST-1259 — **this child must not land on `dev` ahead of AST-1259**.
+3. **discuss (dead branch):** Dropped `if not claim_states: return 0` from the candidate arm and the "or claim_states empty" Done-when clause (pre-branch empty `claim_states` already returns 0).
+4. **nit:** `get_candidate_batch` uses `_parse_candidate_row(_row_to_dict(row))`.
+
+Status stays **Plan Discuss** for Joan re-validate.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis/docs/features/dispatcher/ast-1258-candidate-batch-lock-schema-and-pool-claim-apis.md
+
+#### joan — 2026-08-07T18:25:26.111Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1258
+**Overall:** REVISE
+**Publish ref tip:** `sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `351e9484`
+
+## Traceability
+
+AC1→S1; AC2→S2 (+S4 verify); AC3→S3 (+S4 verify). No orphan stages; no unmapped AC. R5 pass.
+
+**Considered:** 41 active statutes scored in-session (18 universal + 23 scoped considered, 24 scoped excluded).
+
+## Findings
+
+### fix-now — Stage 3 breaks a passing component test the plan does not disclose
+
+`tests/component/data/database/test_dispatch_tasks.py::test_candidate_entity_avail_is_inflow_not_stage` (line 1368) passes on this tip and asserts exactly the behavior Stage 3 overturns:
+
+```
+task = {entity_type: candidate, trigger_state: REQUESTED_ARTIFACTS,
+        candidate_id: c972, task_key: craft_get_rubric}
+assert db.count_eligible_for_dispatch_task(task) == 0
+```
+
+Candidate `c972` is saved in `REQUESTED_ARTIFACTS` and unclaimed, so after Stage 3 that call returns the unclaimed pool count (1), not 0 — the same non-inflow key Stage 4 uses as its worked example. The plan says only "No `src/core/`, `src/utils/config.py`, dispatcher, tests/, bible, or `CANDIDATE_DATA_MODEL.md` in this ticket", which reads as no test impact. The builder cannot fix it either (`orch.roles.betty-owns-test-tree`, `astral.git.engineer-test-tree-ban`), so build-child lands on a red suite with no sanctioned instruction.
+
+**Recommendation:** add a **Tests invalidated (Betty contract)** section naming that test id and the new expected value, plus the coverage Betty owns for this ticket: claim → get → clear over a multi-row pool, second concurrent claim on locked rows returns 0, clear releases all, pool count is 0 when every row is locked, and `inflow_discovery` still routes to the inflow helper. Statutes: `orch.roles.betty-owns-test-tree` and `orch.pipeline.plan-is-bible` → violates.
+
+### discuss — Self-Assessment risk line is not accurate; Stage 3 alone un-gates the unlocked candidate path
+
+`src/core/dispatcher.py:993` gates the AUTO loop on `available < effective_min` using this same count. Today a candidate stage task gets 0 from the inflow helper (candidate is not in `ACTIVE_SEARCH`), so those loops short-circuit. After Stage 3 the count is the unclaimed pool size, the gate passes, and the work runs on the **still-unlocked** single-ctx candidate branch until AST-1259 lands. So "Dispatcher still on the unlocked path until AST-1259, so production claim behavior does not flip in this ticket alone" is not right — the volume gate flips here.
+
+**Recommendation:** correct that Risk sentence and state the ordering constraint explicitly (this child must not reach `dev` ahead of AST-1259). `astral.batch.claim-process-release` → needs-discussion for this child; the residual violation itself is AST-1259's to close.
+
+### discuss — Stage 3 step 2's `not claim_states` branch is unreachable
+
+`count_eligible_for_dispatch_task` already returns 0 on empty `claim_states` before the candidate branch, and `dispatch_claim_states(state, "candidate")` is non-empty for all 21 `CANDIDATE_STATES` (probed on this tip). The instruction would have the builder add dead code, and the Stage 3 Done-when promises a 0 that no input can produce.
+
+**Recommendation:** drop the branch and the "or claim_states empty" clause from the Done-when. `astral.standards.dry-and-focused-functions` → needs-discussion.
+
+### acceptable — deploy-order note, no plan change
+
+`candidate` is in `ALLOWED_CONFIG_TABLES` and `apply_config_table_upsert` compares exact column lists, so `scripts/push_tables_to_prod.py` needs both ends on the new schema. Same shape as the AST-1134 `last_email_check` precedent — flagging for Radia, not asking for an edit.
+
+### acceptable — nit
+
+Stage 2 step 3: `get_candidate` parses via `_parse_candidate_row(_row_to_dict(row))`; keep the `_row_to_dict` hop in `get_candidate_batch`.
+
+## Verified against the tip (no change needed)
+
+- `save_candidate` is an explicit-column INSERT plus a targeted `SET` UPDATE, so it cannot clobber a lock — Stage 1 step 3 is correct.
+- `_ensure_candidate_schema` creates the table in the `if` and migrates in the `else`; Stage 1 naming both sites is required, not belt-and-braces.
+- Stage 2 mirrors `claim_job_batch` faithfully: `_utc_now()`, `(batch_id IS NULL OR batch_id = '')`, subquery UPDATE with `ORDER BY … LIMIT ?`, `_run_with_retry`, rowcount return.
+- All four `_CANDIDATE_BATCH_SORT_COLUMNS` entries exist on the candidate table (`rowid`, `created_at`, `updated_at`, `state_changed_at`).
+- `INFLOW_CONFIG["discovery"]["task_key"] == "inflow_discovery"`; no name collisions for the three new public APIs; candidate inventory bullet is at header line 12.
+- Every candidate path in the new branch returns, so it never falls through to `count_entities_in_state`, which raises for `candidate`.
+- Pool-wide (no `candidate_id` scope) is right: the count docstring promises what the task would actually claim, and the claim is cross-candidate per parent Functional scope 2.
+
+Status → Plan Discuss. One fix-now; the two discuss items are cheap edits if you want them in the same revision.
+
+— Joan
+
+context_tokens≈94000
+
+#### katherine — 2026-08-07T18:17:21.678Z
+Plan on publish ref `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis` @ `351e9484`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis/docs/features/dispatcher/ast-1258-candidate-batch-lock-schema-and-pool-claim-apis.md
+
+**Self-assessment**
+- **Scope:** Single-Component — only `src/data/database.py` (schema + claim/get/clear + eligibility branch); dispatcher/core and canon docs stay with AST-1259 / AST-1260.
+- **Conf:** high — mirrors `claim_job_batch` / get / clear and the `(batch_id IS NULL OR batch_id = '')` unclaimed predicate; eligibility splits `inflow_discovery` vs stage pool count on `task_key`.
+- **Risk:** Medium — wrong eligibility branch skews Avail for stage vs inflow; wrong unclaimed predicate allows double-claim or stuck locks. Production claim path still unlocked until Ada wires AST-1259.
+
+**Decisions locked in plan:** cross-candidate pool (no `candidate_id` owner filter on claim); stage Avail is pool-wide; `CANDIDATE_DATA_MODEL` / statutes untouched here.
+
+---
+
 # AST-1258 — Candidate batch lock schema and pool claim APIs
 
 **Linear:** [AST-1258](https://linear.app/astralcareermatch/issue/AST-1258/candidate-batch-lock-schema-and-pool-claim-apis-candidate-table-does)

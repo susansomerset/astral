@@ -3,9 +3,9 @@ import { Navigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 
 export default function AdminRoute({ children }: { children: ReactNode }) {
-  const { isAdmin, loading } = useAuth()
+  const { isAdmin, loading, user } = useAuth()
 
-  if (loading) {
+  if (loading && user === null) {
     return <p>Loading…</p>
   }
   if (!isAdmin) {

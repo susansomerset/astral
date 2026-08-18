@@ -9,6 +9,7 @@ import {
   type AdminCandidateFilterValue,
   useAdminCandidateFilter,
 } from "../hooks/useAdminCandidateFilter"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 
 interface LedgerRow {
   batch_id: string
@@ -93,7 +94,7 @@ export default function PerformanceMonitor() {
   const { selectedId } = useCandidate()
   const [searchParams, setSearchParams] = useSearchParams()
   const [rows, setRows] = useState<LedgerRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDir>("asc")
   const [expandedBatch, setExpandedBatch] = useState<string | null>(null)
@@ -199,18 +200,18 @@ export default function PerformanceMonitor() {
   }
 
   const loadData = useCallback((showSpinner = false) => {
-    if (showSpinner) setLoading(true)
+    beginRefresh(showSpinner)
     const qs = new URLSearchParams(filters).toString()
     api(`/api/admin/dispatch_ledger${qs ? `?${qs}` : ""}`)
       .then(r => r.json())
       .then(data => setRows(Array.isArray(data) ? data : []))
       .catch(() => setRows([]))
-      .finally(() => setLoading(false))
-  }, [filters])
+      .finally(() => endRefresh())
+  }, [filters, beginRefresh, endRefresh])
 
   useEffect(() => {
-    loadData(true)                                    // spinner on first/filter load
-    const id = setInterval(() => loadData(), 15_000)  // silent background refresh
+    loadData(true)
+    const id = setInterval(() => loadData(), 15_000)
     return () => clearInterval(id)
   }, [loadData])
 

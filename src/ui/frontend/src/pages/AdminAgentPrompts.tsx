@@ -5,6 +5,7 @@ import RepoJsonDivergenceBanner from "../components/RepoJsonDivergenceBanner"
 import Toast, { type ToastMessage } from "../components/Toast"
 import TokenTextarea from "../components/TokenTextarea"
 import { useCandidate } from "../contexts/CandidateContext"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 import { ApiError, errorToastFromApiError, readApiError } from "../lib/toastDiagnostics"
 import type { Column } from "../components/ListPage"
@@ -66,7 +67,7 @@ export default function AgentPrompts() {
   const tokenList = useAgentTokenList()
   const [agents, setAgents]   = useState<Agent[]>([])
   const [brainSettings, setBrainSettings] = useState<BrainSettingCatalogRow[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [toast, setToast]     = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -97,16 +98,16 @@ export default function AgentPrompts() {
   const [previewSource, setPreviewSource] = useState<"edit" | "add">("edit")
   const [repoJsonRefresh, setRepoJsonRefresh] = useState(0)
 
-  const loadAll = useCallback(() => {
-    setLoading(true)
+  const loadAll = useCallback((showSpinner = false) => {
+    beginRefresh(showSpinner)
     api("/api/admin/agents").then(r => r.json()).then(data => {
       setAgents(Array.isArray(data) ? data : [])
     }).catch(() => setAgents([]))
-      .finally(() => setLoading(false))
-  }, [])
+      .finally(() => endRefresh())
+  }, [beginRefresh, endRefresh])
 
   useEffect(() => {
-    loadAll()
+    loadAll(true)
     api("/api/admin/agents/brain_settings")
       .then(r => r.json())
       .then(data => {

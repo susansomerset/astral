@@ -111,9 +111,9 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
 
 _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
     "label": {"type": "str", "required": True},
-    "code": {"type": "str", "required": True},
-    "content": {"type": "str", "required": True},
+    "code": {"type": "str", "required": True, "example": "<code (unique to rubric)>"},
     "importance": {"type": "int", "required": True, "min": 0, "max": 10},
+    "content": {"type": "str", "required": True},
 }
 _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "criteria": {
@@ -5286,7 +5286,7 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
 
 
 def is_valid_candidate_batch_claim_state(state: str) -> bool:
-    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (batch claim only)."""
+    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (claim + persist)."""
     s = (state or "").strip()
     if not s:
         return False
@@ -5663,6 +5663,12 @@ TOKEN_SOURCES = {
     "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms"},
     # Resolved from rubric_vector rows for active task owner (AST-723).
     "RUBRIC_VECTORS":       {"source": "rubric"},
+    # AST-1405: named pins — same serialize path as RUBRIC_VECTORS; owner is the pin, not the running task.
+    "GET_RUBRIC":           {"source": "rubric", "owner_task_key": "grade_get"},
+    "DO_RUBRIC":            {"source": "rubric", "owner_task_key": "grade_do"},
+    "LIKE_RUBRIC":          {"source": "rubric", "owner_task_key": "grade_like"},
+    "JD_RUBRIC":            {"source": "rubric", "owner_task_key": "evaluate_jd"},
+    "PREFILTER_RUBRIC":     {"source": "rubric", "owner_task_key": "prefilter_company"},
 
     # config-driven (resolved via named function, not dot-path)
     "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema"},
@@ -5769,6 +5775,9 @@ def _schema_to_example(schema: dict) -> object:
     """Recursively convert a response_schema definition into a JSON example shape."""
     result = {}
     for key, spec in schema.items():
+        if "example" in spec:
+            result[key] = spec["example"]
+            continue
         t = spec.get("type", "str")
         if t == "str":
             enum = spec.get("enum")
@@ -5901,12 +5910,18 @@ def resolve_tokens(
         if spec["source"] == "rubric":
             from src.core.candidate import rubric_criteria_for_token
 
-            owner = rubric_owner_task_key(task_key)
+            pinned = spec.get("owner_task_key")
+            owner = pinned or rubric_owner_task_key(task_key)
             if not owner:
                 _log.warning("Token {$%s} unresolved — task %r has no rubric owner", name, task_key)
                 return ""
             cid = (candidate_data or {}).get("_astral_candidate_id") or ""
             if not cid:
+                # AST-1405 / AST-1396: pinned names with no candidate in context (cd == {})
+                # are expected empty — do not spam missing-id warnings. Unpinned
+                # RUBRIC_VECTORS keeps the existing missing-id warning.
+                if pinned and not candidate_data:
+                    return ""
                 _log.warning("Token {$%s} unresolved — missing candidate id (task=%s)", name, task_key)
                 return ""
             return _value_to_str(rubric_criteria_for_token(cid, owner))

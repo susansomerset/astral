@@ -43,21 +43,25 @@ export function StytchProvider({ children }: { children: ReactNode }) {
   return children
 }
 
+/** Stable client identity — production `useStytch()` does not allocate a new object per render. */
+const stytchClient = {
+  session: {
+    getTokens: () =>
+      stytchTestState.session
+        ? { session_jwt: stytchTestState.sessionJwt }
+        : null,
+    // AST-1374 activity extend loop
+    getSync: () => stytchTestState.session,
+    authenticate: (opts: { session_duration_minutes: number }) =>
+      stytchTestState.sessionAuthenticateImpl(opts),
+  },
+  parseAuthenticateUrl: () => stytchTestState.parseAuthenticateUrlResult,
+  authenticateByUrl: (opts: { session_duration_minutes: number }) =>
+    stytchTestState.authenticateByUrlImpl(opts),
+}
+
 export function useStytch() {
-  return {
-    session: {
-      getTokens: () =>
-        stytchTestState.session
-          ? { session_jwt: stytchTestState.sessionJwt }
-          : null,
-      // AST-1374 activity extend loop
-      getSync: () => stytchTestState.session,
-      authenticate: (opts: { session_duration_minutes: number }) =>
-        stytchTestState.sessionAuthenticateImpl(opts),
-    },
-    parseAuthenticateUrl: () => stytchTestState.parseAuthenticateUrlResult,
-    authenticateByUrl: stytchTestState.authenticateByUrlImpl,
-  }
+  return stytchClient
 }
 
 export function useStytchSession() {

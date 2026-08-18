@@ -236,7 +236,7 @@ SPA consumes AST-1373 `GET /api/auth_session_policy`: authenticate handoff uses 
 | Extend interval helper | `sessionExtend.ts` | **`test_sessionExtend.test.ts`** |
 | Handoff uses policy duration | `stytchAuthenticateHandoff.ts` | revised **`test_stytchAuthenticateHandoff.test.ts`** |
 | `/authenticate` page | `Authenticate.tsx` | revised **`test_Authenticate.test.tsx`** (§6c) |
-| AuthProvider extend wiring | `AuthContext.tsx` | revised **`test_AuthContext.test.tsx`** (+ `stytchMock` `getSync` / `authenticate`) |
+| AuthProvider extend wiring | `AuthContext.tsx` | revised **`test_AuthContext.test.tsx`** (+ `stytchMock` `getSync` / `authenticate`). **AST-1408** keys the loop on `sessionPresent` — see [`contexts.md`](contexts.md). |
 
 **Broken / obsolete this pass:** handoff + Authenticate expected `session_duration_minutes: 60` / unmocked policy fetch — revised to stub `GET /api/auth_session_policy` and assert configured `20`.
 
@@ -262,3 +262,24 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1421 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control`.
+
+`copyJobSnapshotToClipboard` GETs `/api/jobs/<id>/copy` (encoded, no `?debug=`), `JSON.stringify(body, null, 2)`, `navigator.clipboard.writeText`. Returns `true` only on write success; non-OK / parse / clipboard reject return `false` with no throw. Chrome: **`docs/test-bible/frontend/components.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Clipboard helper | `src/ui/frontend/src/lib/copyJobSnapshot.ts` | **`test_copyJobSnapshot.test.ts`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts
+```

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import Modal from "../components/Modal"
 import Toast, { type ToastMessage } from "../components/Toast"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 
 type CandidateMatch = {
@@ -43,7 +44,7 @@ function outcomeKind(outcome: string): "skip" | "fail" | "ok" {
 
 export default function AdminManageEmail() {
   const [messages, setMessages] = useState<InboxMessage[]>([])
-  const [loading, setLoading] = useState(true)
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [error, setError] = useState<string | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [htmlBody, setHtmlBody] = useState("")
@@ -79,8 +80,8 @@ export default function AdminManageEmail() {
     setSelectedIds(new Set())
   }
 
-  const loadMessages = useCallback(async () => {
-    setLoading(true)
+  const loadMessages = useCallback(async (showSpinner = false) => {
+    beginRefresh(showSpinner)
     setError(null)
     try {
       const r = await api("/api/admin/inbox/messages")
@@ -99,12 +100,12 @@ export default function AdminManageEmail() {
       setError(msg)
       setToast({ text: msg, variant: "error" })
     } finally {
-      setLoading(false)
+      endRefresh()
     }
-  }, [])
+  }, [beginRefresh, endRefresh])
 
   useEffect(() => {
-    void loadMessages()
+    void loadMessages(true)
   }, [loadMessages])
 
   async function openMessage(row: InboxMessage) {

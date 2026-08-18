@@ -85,3 +85,26 @@ After stored-trio lift, `_flatten_grades` derives missing `{jd,do,get,like}_scor
   tests/component/ui/api/test_api_jobs.py::TestAst1347FlattenScoreBreakdown \
   -q
 ```
+
+---
+
+### AST-1420 · AST-1419
+
+**Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`.
+
+`GET /api/jobs/<astral_job_id>/copy` (`@require_auth`) returns `assemble_job_copy_snapshot` JSON: 401 unauthenticated, 404 missing job, 500 assembler exception. Does not hydrate artifacts, flatten grades, or attach `agent_story`. Assembler contract: **`docs/test-bible/core/tracker.md`**. Copy button: AST-1421.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Copy route wrap | `src/ui/api/api_jobs.py` | **`TestAst1420CopySnapshotRoute`** |
+
+**Broken / obsolete:** none — detail hydrate (**AST-1100**) unchanged.
+
+**Integration:** none — no existing jobs copy/detail scenario to revise.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1420CopySnapshotRoute \
+  tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot \
+  -q
+```

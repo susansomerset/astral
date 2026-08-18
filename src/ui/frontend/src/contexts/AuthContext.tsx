@@ -4,6 +4,7 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
@@ -39,6 +40,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [, setAuthEpoch] = useState(0)
+  const identityResolvedRef = useRef(false)
+  const sessionPresent = Boolean(session)
 
   // Stable string dep — Stytch hook objects may change identity every render.
   const sessionJwt =
@@ -55,7 +58,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loadMe = useCallback(async () => {
-    setLoading(true)
+    if (!identityResolvedRef.current) {
+      setLoading(true)
+    }
     try {
       const r = await api("/api/me")
       if (!r.ok) {
@@ -71,24 +76,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setUser(null)
     } finally {
+      identityResolvedRef.current = true
       setLoading(false)
     }
   }, [])
 
   useEffect(() => {
-    if (!session) {
+    if (!sessionPresent) {
+      identityResolvedRef.current = false
       setUser(null)
       setLoading(false)
       return
     }
     markHadSession()
-    // sessionJwt may be null when Stytch uses opaque cookies — /api/me uses cookie auth.
     loadMe()
-  }, [session, sessionJwt, loadMe])
+  }, [sessionPresent, sessionJwt, loadMe])
 
   // Config-backed Stytch session extend while a client session exists (AST-1374).
   useEffect(() => {
-    if (!session) return
+    if (!sessionPresent) return
     let cancelled = false
     let clear: (() => void) | undefined
     void (async () => {
@@ -109,7 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true
       clear?.()
     }
-  }, [session, stytch])
+  }, [sessionPresent, stytch])
 
   const refreshMe = useCallback(() => {
     if (session) loadMe()

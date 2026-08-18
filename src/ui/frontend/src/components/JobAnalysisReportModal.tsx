@@ -9,6 +9,7 @@ import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
 import { useStateUi } from "../contexts/StateUiContext"
 import api from "../lib/api"
+import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { parseAnalysisUpshot, type AnalysisUpshot } from "../lib/analysisUpshot"
 import {
   anyReportArtifactContent,
@@ -62,6 +63,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [error, setError] = useState<string | null>(null)
   const [primaryBusy, setPrimaryBusy] = useState(false)
   const [copyFeedback, setCopyFeedback] = useState<string | null>(null)
+  const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [snapshotCopying, setSnapshotCopying] = useState(false)
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [structureError, setStructureError] = useState(false)
@@ -179,6 +182,7 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   useEffect(() => {
     setActiveTopTab("summary")
   }, [jobId])
+  useEffect(() => { setSnapshotCopied(false) }, [jobId])
 
   const topTabs = useMemo(() => {
     const rows = manifest?.jobs.recommended.report_top_tabs ?? []
@@ -499,6 +503,16 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     }
   }
 
+  async function handleCopySnapshot() {
+    if (!jobId || snapshotCopying) return
+    setSnapshotCopying(true)
+    const ok = await copyJobSnapshotToClipboard(jobId)
+    setSnapshotCopying(false)
+    if (!ok) return
+    setSnapshotCopied(true)
+    window.setTimeout(() => setSnapshotCopied(false), 2000)
+  }
+
   function handleCopyApplicationEmail() {
     if (!applicationEmail) return
     const text = emailWithJobPlusTag(applicationEmail, emailPlusTag)
@@ -541,6 +555,9 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
               copyFeedback={copyFeedback}
               onCopyApplicationEmail={handleCopyApplicationEmail}
               onCopyLinkedIn={handleCopyLinkedIn}
+              onCopySnapshot={handleCopySnapshot}
+              snapshotCopied={snapshotCopied}
+              snapshotCopying={snapshotCopying}
               showPrintResume={showPrintResume}
               showPrintCover={showPrintCover}
               onPrintResume={() => { void handlePrintResume() }}

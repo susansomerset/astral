@@ -1,3 +1,230 @@
+<!-- linear-archive: AST-1210 archived 2026-08-17 -->
+
+## Linear archive (AST-1210)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1210/bible-component-tests-lock-twin-contract-evaluate-meteorite-fold  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check  
+**Blocked by / blocks / related:** parent: AST-1186
+
+### Description
+
+## What this implements
+
+After #1 (or in parallel once audit says no product blockers): retire obsolete bible claims that meteorite GDL entry is `evaluate_jd` overlay / `evaluate_jd`@**METEORITE_QUALIFIED**; extend component tests for dispatch key+trigger, rubric ownership, Analysis-JD override, incomplete→retry, and Style D on touched debug paths. Does **not** invent aliases or rewrite qualify paths.
+
+## In scope
+
+- [X] `astral.standards.debug-contract-gated` — Style D only if a `debug=` evaluate path were edited; this child does not touch `src/` (N/A product; no new ungated debug). AST-1193 Style D locks restored by Betty return pass.
+- [X] `astral.standards.no-hardcoded-sets` — component locks assert config maps (`METEORITE_DISPATCH_TASKS`, rubric/craft owners, Analysis override); no parallel twin dicts in tests
+- [X] `astral.batch.claim-process-release` — dispatcher tests lock existing twin claim/retire from AST-1209; no new claim shape
+- [X] `astral.standards.in-scope-only` — bible + component fold-in only; no product twin fixes, fixtures, aliases, qualify/gaze (Radia fix-now restore kept AST-1193 in scope of return pass)
+
+## Considered but excluded
+
+- [X] `pattern.config.config-block` / `astral.config.config-source-of-truth` / `astral.config.pass-threshold-vs-score-floor` / `astral.patterns.render-verdict-orchestrates-consult` / `astral.layers.ui-config-driven-business-logic` — product twin audit + conformance is AST-1209 (already `pass`)
+- [X] `astral.seed.agent-tables-in-repo-json` — AST-756 fixture lockstep is AST-1211
+- [X] `pattern.batch.entity-claim-process-release` / `pattern.state.entity-state-transitions` — no product claim/state redesign; tests only
+- [X] qualify_meteorite, gaze_email, aliases (AST-1184), Gaze/Meteorite Review (AST-1183), general UI hardcode audit (AST-1185), `meteorite_email` rename (AST-1182) — parent Boundaries / adjacent Discussion
+- [X] New `tests/integration/` scenarios — revise/lock component + bible only
+
+## Acceptance criteria
+
+- [X] Test bible sections that still document meteorite entry as `evaluate_jd` overlay / `evaluate_jd`@**METEORITE_QUALIFIED** are corrected or marked obsolete with the twin truth.
+- [X] Component tests fail if the twin contract regresses (orchestration states, dispatch key+trigger, rubric ownership, Analysis override, incomplete→retry).
+- [X] If backend `debug=` evaluate paths are touched: Style D index headers show found/recorded detail; no new ungated debug noise. (No product debug touch this child; AST-1193 Style D coverage restored.)
+
+## Boundaries
+
+Does **not** own twin audit/product fixes (sibling #1) or fixture re-baseline (sibling #3). Does **not** invent aliases or rewrite qualify paths.
+
+## Notes for planning
+
+Parent: AST-1186. After AST-1209.
+
+## Git branch (authoritative)
+
+`origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`
+
+### Comments
+
+#### betty — 2026-08-06T06:54:10.182Z
+merge-tests hygiene: collapsed duplicate `merge-tests(AST-1210)` on the publish ref into one lineage (`origin/tests` tip `70aaf6f5` → single `merge-tests(AST-1210)`). Also empty `code(AST-1210)` (no product delta — Stages 2–4 Betty). `validate-sub-log` ok. Tip `eecbfe95`. Assignee back to Hedy; status stays User Testing.
+
+#### chuckles — 2026-08-06T06:48:55.598Z
+[merge-child] blocked: duplicate merge-tests(AST-1210) on sub — count=2 (amend on tests, one merge-tests only)
+
+@Betty White — `validate-sub-log` failed on `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`:
+- `1d355d99` merge-tests(AST-1210): origin/tests be3c9d14…
+- `e8744b4c` merge-tests(AST-1210): origin/tests 653bf749…
+
+Please amend/republish so this child has **one** `merge-tests(AST-1210)` only, then reassign Hedy (or leave UT). Chuckles will re-run merge-child.
+
+— Chuckles
+
+#### betty — 2026-08-06T06:45:15.106Z
+[check-linear] Restored `TestAst1193AnalysisMatchParity` (5 methods incl. Style D on `build_job_token_context`). `test(AST-1210)` `653bf749` + `merge-tests` → publish tip `e8744b4c`. AST-1193 bible row unchanged (already named the class). Assignee → Hedy; stay Review Posted for resolve re-run.
+
+— Betty
+
+#### hedy — 2026-08-06T06:43:00.845Z
+[qa-handoff]
+
+@Betty White — Radia **fix-now** on AST-1210 is test-tree only; engineer cannot restore.
+
+**What failed review:** `test(AST-1210)` (`be3c9d14`) deleted entire `TestAst1193AnalysisMatchParity` from `tests/component/core/test_consult.py` (5 methods including Style D locks on `build_job_token_context`). Product `_find_rubric_criterion` / `rubric_criteria_for_task` still live and unmodified — coverage regression, not dead-code cleanup. Out of plan Files Changed / Stage 3 scope (`astral.standards.in-scope-only`). `docs/test-bible/core/consult.md` §AST-1193 still names the missing class.
+
+**Please:** restore `TestAst1193AnalysisMatchParity` (or fold asserts into surviving `TestAst513JobTokenContext`) and keep/update the AST-1193 bible row; publish `test(AST-1210)` + `merge-tests` to this publish ref; reassign Hedy; stay **Review Posted** / Tests Ready as your return pass requires so resolve can re-run.
+
+**Publish tip at handoff:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract` @ `efb28a3f`
+
+#### radia — 2026-08-06T06:40:32.414Z
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1210
+**Publish ref:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract` @ `95f6dec7` (build tip `f37a0618`)
+**Overall:** FIX-NOW
+
+## Plan adherence
+
+- Zero `code(AST-1210)` commit — matches plan's "engineer ships zero product"; all delta is one `test(AST-1210)` commit (Betty), correct commit-role separation.
+- `orch.git.merge-on-checkout` **conforms**: `origin/ftr/AST-1186-...` is a verified ancestor of this sub's tip (Prerequisite sync ran as the plan required) — `src/core/dispatcher.py` and the AST-756 fixture on this tip are byte-identical to `ftr`, inherited from AST-1209/AST-1211 (already reviewed under their own tickets), not re-touched here.
+- Bible edits (`config.md`, `consult.md`, `dispatcher.md`) precisely retire the `evaluate_jd`@`METEORITE_QUALIFIED` claims per Stage 2, cross-referencing AST-1209/1210/1211 consistently.
+- New config/consult asserts (`TestAst1210EvaluateMeteoriteTwinConfig`, `test_format_analysis_jd_uses_twin_owner_when_state_meteorite`) independently verified against live, unmodified `src/utils/config.py` / `src/core/consult.py` — all accurate, including the state-prefix `_entity_state_is_meteorite` branch Joan's plan-rubric flagged (not `is_meteorite_company`).
+
+## Findings
+
+**1. fix-now — unscoped test-coverage deletion, bible left stale.** `test(AST-1210)` deletes the entire `TestAst1193AnalysisMatchParity` class from `tests/component/core/test_consult.py` (5 methods: `_find_rubric_criterion` label/code lookup, live-vs-snapshot fallback ×2, and the **only** Style D debug-contract lock on `build_job_token_context`). Verified `_find_rubric_criterion` / `rubric_criteria_for_task` are still live, unmodified in `src/core/consult.py` — this ticket has zero `src/` diff, so it's a real coverage regression on unchanged product code, not dead-code cleanup. Neither the plan's Files Changed table nor Stage 3 authorizes touching this class (scope is Analysis-override + incomplete→retry only) — `astral.standards.in-scope-only`. Betty's own QA manifest doesn't mention the deletion. `docs/test-bible/core/consult.md` §**AST-1193 · AST-1163** (untouched, lines 939-953) still names `TestAst1193AnalysisMatchParity` as current — bible now documents a class that doesn't exist. Remedy: restore the class (or fold its asserts into surviving `TestAst513JobTokenContext`) and keep/update the AST-1193 bible row; if there's a real reason it no longer applies, that's a `[qa-handoff]` + bible "Broken / obsolete" note, not a silent drop.
+
+## Pattern conformance
+
+None cited on this ticket (statute ids only, no `pattern.*`).
+
+## Frame diff
+
+(none) — description Acceptance Criteria / In-scope boxes are unchecked (`[ ]`) unlike siblings AST-1209/1211; noted as advisory Linear-hygiene, not a C7 blocker.
+
+## What's solid
+
+Twin config/consult locks, dispatch KeyError repair (Joan finding #1), incomplete→retry twin second-strike assert (`METEORITE_ERROR_EVALUATE_JD`, not classic), and all three bible files — all precise and independently verified against live code.
+
+context_tokens≈82000
+
+— Radia
+
+#### betty — 2026-08-06T06:31:25.960Z
+## QA test manifest (AST-1210)
+
+**Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract` @ `1d355d99`
+**merge-tests:** `origin/tests` `be3c9d14c4972daeb4f4d2704867d4980d7d9cd8`
+
+### Classification
+
+1. **Existing (kept):** `TestEvaluateMeteoriteStandaloneTwin`, `TestAst1054MeteoriteGdlOutcomeOverlay`, `TestAst1054MeteoriteDispatchProvision` (AST-1209 twin insert/retire already on tip).
+2. **Broken / obsolete (revised):** `TestAst1054MeteoriteGdlDispatch` KeyError on `evaluate_jd`@`METEORITE_QUALIFIED`; AST-1054/1060 bible prose naming meteorite entry as `evaluate_jd` overlay / claim; incomplete→retry using classic `evaluate_jd` error on meteorite hop.
+3. **Gaps (this pass):** `TestAst1210EvaluateMeteoriteTwinConfig`; Analysis-JD override via `_entity_state_is_meteorite(state)` on `_format_analysis_phase_text`; twin incomplete→retry second-strike; bible `### AST-1210` in config.md + consult.md; dispatcher pre-AST-1209 sections aligned.
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1054MeteoriteGdlDispatch \
+  tests/component/utils/test_config.py::TestAst1210EvaluateMeteoriteTwinConfig \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  tests/component/core/test_consult.py::TestEvaluateMeteoriteStandaloneTwin \
+  tests/component/core/test_consult.py::TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision \
+  -q
+```
+
+### Bible verify
+
+- `docs/test-bible/utils/config.md` sha256 `2322e5df044cde150c61b8c0bed646d7c9ef8b5c`
+- `docs/test-bible/core/consult.md` sha256 `cb67118a6e2e086e0e1d8318f95b7605e3d2b8cf`
+- `docs/test-bible/core/dispatcher.md` sha256 `4cde759734c83971ea44807f096c3b9c6c293889`
+
+— Betty
+
+#### chuckles — 2026-08-06T06:27:55.691Z
+🛑 Stage 1 blocked: linear-hedy MCP unavailable — cannot move AST-1210 to Code Complete
+
+Step: build-child Stage 1 / §11 Linear update
+Issue: This session has no `linear-hedy` server (available: ada/betty/chuckles/joan/kath/radia only). AGENTS.md requires linear-hedy for Hedy; cannot `save_issue` Code Complete or tick AC as the wrong persona.
+
+Git already published (no product src delta):
+- `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract` @ `1da81591`
+- Prerequisite met via sync merge of authoritative `origin/ftr/AST-1186-evaluate-meteorite-fold-recent-work-into-tests` (twin_present retirement on tip)
+
+Proposed resolutions:
+1. Restore/load `linear-hedy` MCP for this agent session, then re-run build-child Stage 1 §11 only
+2. Chuckles/Archie flips AST-1210 → Code Complete from outside this session once tip `1da81591` is confirmed
+
+#### joan — 2026-08-06T06:24:29.443Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1210
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract` @ `2cad8fbb`
+
+## Traceability
+
+AC1→S2; AC2→S3 (+S4 manifest); AC3→vacuous by design — no `src/` touch, and the plan explicitly refuses to add Style D string tests for completeness. S1 is the engineer prerequisite/Code Complete gate for AC2. No unmapped AC, no orphan stage.
+
+**Considered:** all universal active statutes + the four scoped citations; scored in-session, all conform. `astral.git.engineer-test-tree-ban` and `orch.roles.betty-owns-test-tree` are the load-bearing pair here and the plan satisfies both cleanly — see below.
+
+## Test-tree ownership — the thing I checked first
+
+This child's entire deliverable lives under `tests/**` and `docs/test-bible/**`, which engineers are banned from committing. The plan handles it correctly rather than by accident: the Files Changed table carries an explicit **Owner** column naming Betty on every test/bible row, Stage 1 step 2 forbids engineer edits to `src/`, `tests/`, and the bible, and Stages 2–4 are labelled Betty (`qa-child`). Both statutes govern *who commits*, not who may describe desired coverage, so an engineer plan prescribing Betty's asserts conforms — and the plan keeps Betty's judgment intact by hedging class names and routing discoveries back through `[qa-handoff]`.
+
+## Claims re-verified on tip
+
+- **The prerequisite gate is accurate to what AST-1209 actually shipped.** I went in expecting a false blocker here, because the gate demands retirement "guarded by `twin_present`" and AST-1209's *approved plan* had no such guard — that was only a non-blocking `discuss` from me. But Ada took it: the shipped commit is literally `code(AST-1209): retire evaluate_jd@METEORITE_* when twin present`, and `ensure_meteorite_dispatch_tasks` now computes `twin_key = ("evaluate_meteorite", "METEORITE_QUALIFIED")` / `twin_present` and wraps the retirement in `if twin_present:`. So Stage 3.4's "skip retire when twin absent" assert locks real behavior, not a wish.
+- **All four cited bible drift sites exist on this publish tip at the cited lines** — `config.md:1174` and `:1280` still say AST-1060 retargets `evaluate_jd` to **METEORITE_QUALIFIED**; `consult.md:709` still lists `evaluate_jd` among the overlay keys; `dispatcher.md:213` / `:235` still describe NEW-only retire. The line estimates in the plan are exact.
+- **The duplication hedge is aimed at precisely the right stage.** Betty's AST-1209 commit `0d926c08` touched **only** `docs/test-bible/core/dispatcher.md` and `tests/component/core/test_dispatcher.py`. That is why Stage 3.4 needs its "do not duplicate" caveat and Stages 3.1 / 3.3 do not — `test_config.py` and `test_consult.py` have zero sibling overlap.
+- **Every named anchor exists:** `TestAst1054MeteoriteGdlDispatch` with both cited methods (`test_config.py:2639/2642/2658`), `TestAst1054MeteoriteGdlOutcomeOverlay` + `test_evaluate_jd_has_no_meteorite_overlay` (`test_consult.py:67/74`), `TestEvaluateMeteoriteStandaloneTwin` (`:107`), `TestAst1155IncompleteGradeRetry::test_consult_batch_fail_dest_graded_triggers` (`:5221/5240`), `TestAst1054MeteoriteDispatchProvision` (`test_dispatcher.py:1628`). `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY["craft_evaluate_meteorite_rubric"] == "meteorite_jobdesc_rubric"` holds with the map oriented task→artifact as the plan's assert assumes.
+- The incomplete→retry asserts are consistent with the registry: `METEORITE_QUALIFIED` carries `retry_state` `METEORITE_QUALIFIED_RETRY`, and `METEORITE_QUALIFIED_RETRY` has no `retry_state`, so a second strike does fall through to the twin's `error_state` as Stage 3.3 claims.
+
+## Findings
+
+**1. discuss — a component assert is already red on this tip, and the plan doesn't say so.**
+`tests/component/utils/test_config.py:2643` builds `rows` from `cfg.METEORITE_DISPATCH_TASKS`, then `:2646` does `rows[("evaluate_jd", "METEORITE_QUALIFIED")]`. That key does not exist — the config tuple holds `qualify_meteorite`, `evaluate_meteorite`, `grade_do`, `grade_get`, `meteorite_like`, `meteorite_upshot` and nothing else — so `test_dispatch_row_specs_and_job_states` raises `KeyError` on tip. (Read-verified from the source, not from a run.) Stage 3.1's instruction is exactly the right repair, and `:2645` is correctly kept. The gap is only in framing: Self-Assessment calls the risk "wrong rewrite could re-lock the obsolete story" and Stage 1 hands off at Code Complete without a word about a failing suite. One line in Stage 1 or Stage 3.1 saying this red is pre-existing AST-1060 drift that Stage 3.1 repairs will save Betty from wondering whether she broke it.
+
+**2. discuss — Stage 3.3 names the wrong meteorite-detection helper.**
+The plan suggests marking the job meteorite-sourced "the same way production does (`is_meteorite_company` / existing consult helper)". The live branch in `_format_analysis_phase_text` is `_entity_state_is_meteorite((job_data or {}).get("state"))` at `consult.py:811–812` — it keys off the **job state** starting with `METEORITE_`, not the company. `is_meteorite_company` is a different surface (`consult.py:1600`, job intake). The plan's own instruction to "match the live branch in `consult.py`, do not invent a new detection API" saves it, but naming the wrong helper first invites a test built on company detection. Name the state-prefix branch explicitly.
+
+**3. discuss — the prerequisite will fire on the first run; Chuckles has an action.**
+Neither AST-1209's product commit (`261fa01a`) nor Betty's `0d926c08` is an ancestor of this publish tip, `origin/ftr/AST-1186` does not exist yet, and this tip's `dispatcher.py` is still the AST-1060 `ts == "METEORITE_NEW"` loop with zero `AST-1209` mentions in `docs/test-bible/core/dispatcher.md`. So Stage 1's gate fails as written and Prerequisite step 3 correctly routes to a parent comment asking for `merge-child` AST-1209 onto ftr — the plan is right to forbid a sibling cherry-pick. Worth knowing up front that this is the expected first outcome, not a surprise. It also means Stage 2.3's "existing **AST-1209** section (~354+)" only materializes after the sync, which the plan's "once that tip is merged" wording already anticipates.
+
+**4. acceptable.**
+Engineer ships zero product and moves to Code Complete on an empty `src/` diff — correct given the parent split, and the Owner column makes the handoff unambiguous. Refusing to add Style D string tests "for completeness" when no `debug=` path is touched, and routing any discovered ungated debug noise back via `[qa-handoff]` instead of widening scope. No new integration scenarios. Stage 3 insisting twin and classic asserts sit side by side is the right guard against the Medium risk it names — `evaluate_jd`→`JD_READY` at `test_config.py:2671` and the non-meteorite Analysis-JD lock both stay.
+
+No `fix-now`. Cleared for build, subject to the AST-1209 merge in finding 3.
+
+— Joan
+
+context_tokens≈148000
+
+#### hedy — 2026-08-06T06:18:54.094Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract/docs/features/meteorite/ast-1210-bible-component-tests-lock-twin-contract.md
+
+`origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract` @ `2cad8fbb`
+
+**Scope:** Single-Component — bible + component fold-in only; zero `src/` product on this child (AST-1209 already `pass` on twin product; point 11 bible-drift is this ticket).
+
+**Conf:** high — audit named exact bible drift paths (`config.md` ~1174/~1280, `consult.md` overlay note); consult already has twin smoke; remaining work is stale AST-1060-era asserts + Analysis/incomplete→retry locks.
+
+**Risk:** Medium — wrong rewrite could re-lock obsolete `evaluate_jd`@**METEORITE_QUALIFIED** or drop classic `evaluate_jd`@**JD_READY** coverage; plan requires twin + classic asserts side by side.
+
+Prerequisite: tip must include AST-1209 retirement via `origin/ftr/AST-1186` before Betty’s dispatch locks (no self-cherry-pick).
+
+---
+
 # AST-1210 — Bible + component tests lock twin contract
 
 **Linear:** [AST-1210](https://linear.app/astralcareermatch/issue/AST-1210/bible-component-tests-lock-twin-contract-evaluate-meteorite-fold)

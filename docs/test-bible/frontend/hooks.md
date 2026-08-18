@@ -43,3 +43,6 @@ Shared section expand policy: **Expand One** (default / `expandAll` omitted or f
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/hooks/test_useSectionExpandPolicy.test.tsx
 ```
+
+`useInPlaceLiveRefresh` (first-paint spinner / silent later refetch) is **AST-1409** — primary block in [`pages.md`](pages.md). Remaining list / Cancel consumers: **AST-1410** in [`pages.md`](pages.md).
+

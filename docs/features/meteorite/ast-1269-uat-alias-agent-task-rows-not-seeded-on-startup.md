@@ -1,3 +1,149 @@
+<!-- linear-archive: AST-1269 archived 2026-08-17 -->
+
+## Linear archive (AST-1269)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1269/uat-alias-agent-task-rows-not-seeded-on-startup  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1184 — Task config aliases via master_task_key  
+**Blocked by / blocks / related:** parent: AST-1184
+
+### Description
+
+## What failed
+
+After server startup, `meteorite_grade_do` and `meteorite_grade_get` do not appear as seeded rows in the `agent_task` table. Config already declares those alias keys (`master_task_key` → `grade_do` / `grade_get`), but startup seed from repo JSON does not materialize the alias catalog identities operators need for grouping / Admin surfaces.
+
+## Expected
+
+On boot (and Revert-to-file), current `agent_task` rows exist for `meteorite_grade_do` and `meteorite_grade_get` with Meteorite Review (or live meteorite section) grouping metadata, prompts resolved from the master (no divergent prompt bodies on the alias rows).
+
+## Repro
+
+1. Deploy / start the app from current `origin/dev` (Railway staging or local boot that applies `data/admin/agent_task.json`).
+2. Inspect current `agent_task` rows (Admin Task Prompts / Manage Tasks or DB) for `meteorite_grade_do` and `meteorite_grade_get`.
+3. Observe: those alias keys are absent from the seeded table even though they exist in TASK_CONFIG.
+
+## Parent AC (quoted inline)
+
+> Alias identities have `agent_task` grouping metadata that can place them under Meteorite Review (or the live meteorite section name) independently of the master's Gaze Review grouping.
+
+> Editing the master's prompts changes what the alias runs; the alias has no divergent prompt row.
+
+> Admin task-key listings that are config/DB-driven include the new alias keys (alphabetical / catalog behavior refinements remain **AST-1185**).
+
+## Diagnosis
+
+* **Hypothesis:** Alias `agent_task` identities from AST-1222 are missing from authoritative repo seed (`data/admin/agent_task.json`) on the land tip — startup applies repo-wins JSON, so absent rows never reach the DB. Config alias contract alone does not create `agent_task` rows. (Land tip: `resolve(AST-1239)` replaced the catalog and dropped the alias rows; config/dispatch aliases remain.)
+* **Correct outcome:** After startup, both alias keys are present as current `agent_task` rows with correct grouping; prompts stay on the master rows only.
+* **Wrong fix to avoid:** One-off DB INSERT outside seed; inventing a parallel seed path; copying full prompt bodies onto alias rows; hardcoding alias labels in React.
+* **Related siblings / contracts:** AST-1222 (seed + METEORITE_DISPATCH_TASKS retarget); AST-1220 (config alias contract); AST-1183 (Meteorite Review section naming — use live section name at land time).
+
+## In scope
+
+- [X] `astral.seed.agent-tables-in-repo-json` — restore grouping-only alias rows in `data/admin/agent_task.json`
+- [X] `astral.standards.no-hardcoded-sets` — reuse existing alias keys; no new meteorite-only maps
+- [X] `astral.standards.in-scope-only` — seed restore only; no resolve/UI/section reshuffle
+- [X] `astral.standards.names-not-ticket-ids` — domain keys `meteorite_grade_do` / `meteorite_grade_get`
+- [X] `astral.git.engineer-test-tree-ban` — no `tests/` / bible edits on this ticket
+
+## Considered but excluded
+
+- [X] `pattern.config.config-block` / `pattern.config.task-alias` / resolve helpers — **AST-1220** / **AST-1221** (already on tip)
+- [X] Runtime prompt resolve / consult overlay — **AST-1221**
+- [X] UI hardcode audit / alphabetical dropdowns — **AST-1185**
+- [X] Full Gaze/Meteorite Review membership reshuffle / `meteorite_email` rename — **AST-1183** / **AST-1212** (broader seed wipe repair; not this UAT child)
+- [X] Parallel ensure/provision path for alias `agent_task` rows — wrong fix
+
+## Acceptance criteria
+
+- [X] After startup / Revert-to-file, current `agent_task` rows exist for `meteorite_grade_do` and `meteorite_grade_get` under Meteorite Review / `"4500"` with empty prompts and empty `run_next`.
+- [X] Alias rows use AST-1222 pinned UUIDs; no divergent prompt bodies; masters remain the prompt source via existing resolve helpers.
+- [X] Config/DB-driven task-key listings can include the alias keys (no React hardcode).
+
+## Boundaries
+
+* This bug does **not** change: alias resolve helpers, consult overlay retirement, or UI hardcode audit (AST-1185).
+* This bug does **not** re-run full Meteorite Review / Gaze Review regrouping or `parse_meteorite_email` → `meteorite_email` rename.
+* "No more missing key" alone is **not** done — Parent AC + Correct outcome must hold (seeded grouping-only alias rows on boot).
+
+## Git branch (authoritative)
+
+`sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup` (parent `ftr/AST-1184-task-config-aliases-via-master-task-key`).
+
+### Comments
+
+#### chuckles — 2026-08-08T00:25:48.662Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+
+@Katherine Johnson — `origin/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup` fails validate-sub-log (Merge remote-tracking / merge-resume attached origin/dev). Restack onto `origin/ftr/AST-1184-task-config-aliases-via-master-task-key` without pull merges, republish tip, keep AST-1269 sequence commits.
+
+— Chuckles
+
+#### radia — 2026-08-08T00:24:18.022Z
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1269
+**Publish ref:** `1eb01cf2` (`origin/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup`)
+**Overall:** CLEAN
+
+## Plan adherence
+
+- Structural diff (decoded JSON, both sides) confirms exactly two rows added — `meteorite_grade_do` seq 5, `meteorite_grade_get` seq 6, both `Meteorite Review` / `"4500"` — zero rows removed, zero non-prompt field diffs, zero real prompt content diffs anywhere else. The ~300-line raw diff is the plan's own "necessary re-serialize": `ensure_ascii=False` unescaped pre-existing `\u2014` sequences file-wide (AST-1252 advisory direction), not a content change.
+- New rows byte-match the plan's field tables and AST-1222's pinned UUIDs; fixture already lockstep for those two keys (verify-only, not edited). Ran the plan's own precondition + verify scripts live at tip — alias contract, catalog count (52), catalog↔fixture lockstep, master prompt retention, `get_task_keys()`/grouping-key resolution all pass.
+- Scope discipline exact: `code(AST-1269)` touches only `data/admin/agent_task.json` (no `config.py`/`dispatcher.py`/`agent.py`/`consult.py`/UI); `test(AST-1269)` touches only `tests/`/`docs/test-bible/**`. `astral.git.engineer-test-tree-ban` / `astral.git.betty-no-src-or-features` hold.
+- Betty's test diff is honest about the AST-1239 wipe drift — revises pinned counts, skips (with a shared descriptive reason) the eight classes still encoding pre-wipe Gaze/Meteorite membership, adds/revises the two alias-specific classes. Ran `TestAst1269AliasAgentTaskSeedRestore`, `TestAst1222MeteoriteGradeAliasCatalogRows`, `TestAst786AgentTaskRepoJsonSeed`, `TestAst1055MeteoriteCatalogRows` live — 9 passed.
+- Git hygiene: this ticket's 5 commits on `origin/sub/...` carry no `Merge remote-tracking branch` subjects. (Discarded stray local-only self-merge commits found in my own epic-worktree checkout before reviewing — confirmed empty diff vs origin, reset to the clean origin tip; not part of this ticket's published history.)
+- **No plan-rubric verdict attached** (C4 straggler check) — bug ticket went straight Plan Ready → Plan Approved with no Joan comment. Noting per rubric, not a block.
+
+Full active-set sweep (66 active statutes: 18 universal + 48 scoped total; diff touches only `data/admin/agent_task.json`, `docs/features/**`, `docs/test-bible/**`, `tests/**` — no `src/**`, so `src/**`-scoped statutes are not-applicable by path regardless of layer tag). Scoped-applicable: `astral.seed.agent-tables-in-repo-json` (conforms), `astral.seed.archie-catalog-wins` (conforms), `astral.seed.define-approved` (conforms — restores AST-1222's already-approved shape), `astral.docs.features-single-file-per-ticket` (conforms), `astral.debug.spikes-under-debug-dir` (not-applicable), `astral.git.betty-no-src-or-features` (conforms). Zero `violates`, zero `needs-discussion`.
+
+**Pattern conformance:** none cited.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈62000
+
+— Radia
+
+#### betty — 2026-08-08T00:17:10.926Z
+Tests Ready — run on `origin/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup` @ `2639368d` (`merge-tests(AST-1269): origin/tests 90b5558fa9a215666d3b482323ffcd54acd69085`).
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_repo_admin_json.py::TestAst1269AliasAgentTaskSeedRestore -q`
+2. `./scripts/testing/run_component_tests.sh tests/component/core/test_repo_admin_json.py::TestAst1222MeteoriteGradeAliasCatalogRows -q`
+3. `./scripts/testing/run_component_tests.sh tests/component/core/test_repo_admin_json.py::TestAst786AgentTaskRepoJsonSeed -q`
+4. `./scripts/testing/run_component_tests.sh tests/component/core/test_repo_admin_json.py::TestAst1055MeteoriteCatalogRows -q`
+
+**Existing / revised:** catalog **52** keys after alias restore; aliases under **Meteorite Review** / `4500` / seq `5`/`6` + AST-1222 UUIDs; fixture lockstep for those two keys only; like/upshot stay Job Review seq `10`/`11` on wipe tip.
+
+**Skipped (wipe drift — not this UAT):** full Gaze/Meteorite membership + `meteorite_email` rename / pre-wipe qualify-evaluate lockstep classes (`TestAst1218…`, `TestAst1219…`, `TestAst1089…`, `TestAst1106…`, `TestAst1144…`, `TestAst1213…`, `TestAst1196…`, `TestAst1060…`, `TestAst1211…`, `TestAst878…`, `TestAst1015…`). Broader seed repair = separate UAT.
+
+**Out of ticket (pre-existing):** `TestAst787AgentRepoJsonSeed::test_repo_rows_match_fixture_repo_column_mapping` — `agent.json` content drift; not touched by this seed restore.
+
+**Bible shasum** on publish-ref:
+- `docs/test-bible/core/repo_admin_json.md` `75679075587cc8cb26380bce3c24c66e350045c4`
+
+— Betty
+
+#### katherine — 2026-08-08T00:12:23.944Z
+Plan: [`docs/features/meteorite/ast-1269-uat-alias-agent-task-rows-not-seeded-on-startup.md`](https://github.com/susansomerset/astral/blob/sub/AST-1184/AST-1269-uat-alias-agent-task-rows-not-seeded-on-startup/docs/features/meteorite/ast-1269-uat-alias-agent-task-rows-not-seeded-on-startup.md) @ `a20a3e40`
+
+**Scope:** Single-Component — restore two grouping-only alias rows in `data/admin/agent_task.json` only (AST-1222 field tables / UUIDs).
+
+**Conf:** high — fixture already has the target rows; config + METEORITE_DISPATCH alias contract is live; land tip lost the catalog rows via `resolve(AST-1239)` wipe, not a missing config contract.
+
+**Risk:** Medium — wrong section (Job Review) would fail Parent AC independence; copying prompts or minting UUIDs would break master sharing / fixture lockstep.
+
+Broader Gaze/Meteorite Review / `meteorite_email` seed repair is explicitly out of scope for this UAT child.
+
+---
+
 # UAT: alias agent_task rows not seeded on startup
 
 **Linear:** [AST-1269](https://linear.app/astralcareermatch/issue/AST-1269/uat-alias-agent-task-rows-not-seeded-on-startup)  

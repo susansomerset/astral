@@ -2,7 +2,7 @@
 Core tracker: job lifecycle management (AST-75).
 
 In-scope: ingest_jobs, save_job_data, get_job_data, initialize_job, transition_job_state,
-get_new_job_batch, get_job_batch, clear_job_batch.
+get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot.
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
 get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
 """
@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from src.core import candidate as candidate_mod
 from src.data import database
 from src.utils.config import (
+    BLOCK_TYPES,
     BUILD_CONFIG,
     BUILD_ARTIFACTS_BASE_STATE,
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
@@ -611,6 +612,152 @@ def get_job(astral_job_id: str) -> Optional[Dict[str, Any]]:
     """Job-by-ID for render and id-only callers; not ``get_job_batch`` (dispatch-scoped).
     Thin delegate to the data layer. Consult should migrate off ``database.get_job`` per AST-372."""
     return database.get_job(astral_job_id)
+
+
+def assemble_job_copy_snapshot(
+    astral_job_id: str,
+    *,
+    debug: bool = False,
+) -> Optional[Dict[str, Any]]:
+    """Stored job plus populated hop blocks for every agent_data id on the record."""
+    job = get_job(astral_job_id)
+    if not job:
+        return None
+    job_copy = dict(job)
+
+    collected: List[str] = []
+    seen: set[str] = set()
+
+    def _add(raw: Any) -> None:
+        aid = str(raw).strip() if raw is not None else ""
+        if not aid or aid in seen:
+            return
+        seen.add(aid)
+        collected.append(aid)
+
+    walk_strings = _collect_job_string_values(job_copy)
+    hit_map = database.get_agent_data_for_ids(walk_strings) if walk_strings else {}
+    for candidate in walk_strings:
+        if candidate in hit_map:
+            _add(candidate)
+
+    try:
+        refs = database.list_entity_latest_agent_refs("job", astral_job_id)
+    except Exception as exc:
+        logger.warning(
+            "assemble_job_copy_snapshot: list_entity_latest_agent_refs failed "
+            "astral_job_id=%s: %s",
+            astral_job_id,
+            exc,
+        )
+        refs = []
+    for ref in refs:
+        for block in (ref.get("prompt_blocks") or []):
+            if isinstance(block, dict):
+                _add(block.get("id"))
+
+    agent_data: Dict[str, Any] = {}
+    outcomes: Dict[str, str] = {}
+    if collected:
+        batch_cache: Dict[str, List[Dict[str, Any]]] = {}
+        for aid in collected:
+            try:
+                seed = database.get_agent_data(aid)
+                if not seed:
+                    outcomes[aid] = "missing_row"
+                    continue
+                batch_id = str(seed.get("batch_id") or "").strip()
+                if not batch_id:
+                    outcomes[aid] = "skipped_no_batch"
+                    continue
+                if batch_id not in batch_cache:
+                    batch_cache[batch_id] = database.get_agent_data_by_batch(batch_id)
+                blocks = _hop_blocks_for_batch(batch_cache[batch_id])
+                agent_data[aid] = {
+                    "id": aid,
+                    "block_type": seed.get("block_type") or "",
+                    "batch_id": batch_id,
+                    "task_key": seed.get("task_key") or "",
+                    "blocks": blocks,
+                }
+                outcomes[aid] = "recorded"
+            except Exception as exc:
+                logger.warning(
+                    "assemble_job_copy_snapshot: hop failed astral_job_id=%s id=%s: %s",
+                    astral_job_id,
+                    aid,
+                    exc,
+                )
+                outcomes[aid] = "skipped_error"
+
+    snapshot = {"job": job_copy, "agent_data": agent_data}
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        job_outcome = "assembled" if agent_data else "assembled_no_ids"
+        dbg.debug_index(
+            func="assemble_job_copy_snapshot",
+            index=1,
+            total=1,
+            identifier=astral_job_id,
+            outcome=job_outcome,
+        )
+        dbg.debug_detail(
+            f"found_ids={len(collected)} recorded={len(agent_data)}"
+        )
+        total = len(collected)
+        for i, aid in enumerate(collected, start=1):
+            entry = agent_data.get(aid)
+            outcome = outcomes.get(aid, "skipped_error")
+            dbg.debug_index(
+                func="assemble_job_copy_snapshot",
+                index=i,
+                total=total,
+                identifier=aid,
+                outcome=outcome,
+            )
+            if entry is None:
+                continue
+            hop_types = ",".join(entry["blocks"].keys())
+            dbg.debug_detail(
+                f"block_type={entry['block_type']} batch_id={entry['batch_id']} "
+                f"task_key={entry['task_key']} hop_block_types={hop_types}"
+            )
+            for block in entry["blocks"].values():
+                content = block.get("content")
+                if isinstance(content, str):
+                    dbg.debug_detail_block(content)
+    return snapshot
+
+
+def _collect_job_string_values(obj: Any) -> List[str]:
+    found: List[str] = []
+    if isinstance(obj, dict):
+        for value in obj.values():
+            found.extend(_collect_job_string_values(value))
+    elif isinstance(obj, list):
+        for item in obj:
+            found.extend(_collect_job_string_values(item))
+    elif isinstance(obj, str):
+        stripped = obj.strip()
+        if stripped:
+            found.append(stripped)
+    return found
+
+
+def _hop_blocks_for_batch(batch_rows: List[Dict[str, Any]]) -> Dict[str, Dict[str, str]]:
+    blocks: Dict[str, Dict[str, str]] = {}
+    for block_type in BLOCK_TYPES:
+        last = None
+        for row in batch_rows:
+            if row.get("block_type") == block_type:
+                last = row
+        if last is None:
+            continue
+        blocks[block_type] = {
+            "id": str(last.get("agent_data_id") or ""),
+            "content": last.get("block_data") or "",
+        }
+    return blocks
 
 
 def initialize_job(

@@ -73,4 +73,46 @@ describe("AdminRoute", () => {
 
     expect(screen.getByText("Loading…")).toBeInTheDocument()
   })
+
+  it("AST-1408: keeps admin children mounted while loading after user is known", () => {
+    mockedUseAuth.mockReturnValue({
+      user: { user_id: "admin-1", name: "Admin", is_admin: true },
+      isAdmin: true,
+      loading: true,
+      refreshMe: () => {},
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/admin/secret"]}>
+        <Routes>
+          <Route path="/admin/secret" element={<AdminRoute><p>Admin panel</p></AdminRoute>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("Admin panel")).toBeInTheDocument()
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+  })
+
+  it("AST-1408: still redirects a known non-admin while loading", () => {
+    mockedUseAuth.mockReturnValue({
+      user: { user_id: "u1", name: "User", is_admin: false },
+      isAdmin: false,
+      loading: true,
+      refreshMe: () => {},
+    })
+
+    render(
+      <MemoryRouter initialEntries={["/admin/secret"]}>
+        <Routes>
+          <Route path="/admin/secret" element={<AdminRoute><p>Admin panel</p></AdminRoute>} />
+          <Route path="/jobs/recommended" element={<p>Jobs recommended</p>} />
+        </Routes>
+      </MemoryRouter>,
+    )
+
+    expect(screen.getByText("Jobs recommended")).toBeInTheDocument()
+    expect(screen.queryByText("Admin panel")).not.toBeInTheDocument()
+    expect(screen.queryByText("Loading…")).not.toBeInTheDocument()
+  })
 })

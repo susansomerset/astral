@@ -1,3 +1,186 @@
+<!-- linear-archive: AST-1206 archived 2026-08-17 -->
+
+## Linear archive (AST-1206)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1206/contact-debug-flag-foundation-config-durable-persist-core-admin-api  
+**Status at archive:** Archive  
+**Project:** Astral Contact  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1203 — Need to be able to set the "Debug" flag for Slack messages  
+**Blocked by / blocks / related:** parent: AST-1203; blocks: AST-1208; blocks: AST-1207
+
+### Description
+
+## What this implements
+
+Owns `CONTACT_CONFIG` debug default + durable filename, data-layer read/write under the env `db_dir`, core get/set (mirror listen), and admin GET/PUT so the flag is readable/writable without React. Does **not** own Events ingress wiring (sibling) or Manage Slack React (sibling).
+
+## Acceptance criteria
+
+- [X] On Manage Slack, an admin can turn **Debug** on and off; after refresh or process restart on that environment, the page still shows the last saved Debug state. (API + durable persist portion — UI is sibling.)
+- [X] With Debug **off**, the same inbound path does **not** emit those debug-contract lines; INFO/WARNING/ERROR behavior for normal Contact operations remains available. (Flag SoT / default-off + admin API.)
+
+## Boundaries
+
+- [X] Does not own Slack Events ingress wiring or Manage Slack React Debug toggle.
+- [X] Does not change listen on/off or the listen durable file’s schema meaning.
+
+## In scope
+
+- [X] `pattern.config.config-block` — `CONTACT_CONFIG["debug_enabled"]` + `debug_state_filename`
+- [X] `pattern.ui.admin-endpoint` — thin GET/PUT `/api/admin/contact/debug` on `contact_bp`
+- [X] `astral.config.config-source-of-truth` / `astral.standards.no-hardcoded-sets` — filename, default, JSON key in config
+- [X] `astral.standards.debug-contract-gated` — Style D on `set_slack_debug_enabled` only when set-call `debug=True`
+- [X] `astral.patterns.require-auth-on-protected-endpoints` — `@require_admin` on debug mutators/readers
+- [X] `astral.layers.import-direction` — ui → core → data; UI never imports data/external
+- [X] `astral.standards.data-raises-caller-logs` — `contact_debug.py` values-only (no logging)
+- [X] `astral.standards.database-header-inventory` — JSON under `db_dir`; no new SQLite table
+- [X] `astral.standards.in-scope-only` / `astral.standards.dry-and-focused-functions` / `astral.standards.public-then-helpers` — twin of listen helpers; no drive-by Events/React
+- [X] `astral.ui.single-gunicorn-worker` — same durable-file posture as listen (no multi-worker sync story)
+
+## Considered but excluded
+
+- [X] Slack Events / `handle_slack_event` durable-debug wiring — AST-1207
+- [X] Manage Slack React Debug toggle — AST-1208
+- [X] Overloading `contact_slack_listen.json` / listen key meaning — parent forbids; separate `contact_slack_debug.json`
+- [X] Changing listen on/off behavior or listen admin API — out of scope
+- [X] React/UI debug-contract logging — backend only; parent boundary
+- [X] Betty Style D golden string tests — Radia enforces instrumentation on review
+- [X] Non-Contact modules (gazer/consult/agent Ad Hoc debug) — parent boundary
+- [X] Universal `orch.*` — stay off per-child lists
+
+## Notes for planning
+
+Mirror AST-1067 listen durable JSON pattern (separate file/key). Re-read every call like current `slack_listen_enabled` (AST-1101), not sticky once-hydrate. Manage Slack Debug is sole SoT for Contact Slack Events debug (Archie: Events not exercised from local).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1203-need-to-be-able-to-set-the-debug-flag-for-slack-messages`, child `sub/AST-1203/AST-1206-contact-debug-flag-foundation`. Created at dispatch-parent.
+
+## Plan
+
+`docs/features/contact/ast-1206-contact-debug-flag-foundation.md` @ `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`.
+
+### Comments
+
+#### radia — 2026-08-06T05:48:18.614Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1206
+**Publish ref:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation` @ `b52eb7c756122e4fcb4d7e4290bb0b3045dedb7d`
+**Overall:** CLEAN
+
+## Plan adherence
+- Diff matches the plan's Files Changed table exactly (`src/utils/config.py`, `src/data/contact_debug.py`, `src/core/contact.py`, `src/ui/api/api_contact.py`) — no Events/React/listen-file/SQLite touches, per the plan's explicit non-touch list.
+- `contact_debug.py` / `slack_debug_enabled` / `set_slack_debug_enabled` / `/debug` GET+PUT are line-for-line twins of the shipped AST-1067 listen path (verified against `contact_listen.py` and `set_slack_listen_enabled`) — same re-read-every-call posture, same Style D gating.
+- Self-Assessment (Scope: Single-Component, Conf: high, Risk: low) matches the diff's real footprint.
+
+Full active statute corpus (65 leaves — 18 universal + 47 scoped) scored in-session: zero fix-now, zero discuss. No Joan plan-rubric verdict attached — noted, not a block.
+
+**Pattern conformance:** `pattern.config.config-block`, `pattern.ui.admin-endpoint` cited in the ticket — not registered under `canon/patterns/`; functionally covered by `astral.config.config-source-of-truth` and `astral.patterns.require-auth-on-protected-endpoints` (both conforms).
+
+## Frame diff
+(none) — description AC/Boundaries/In-scope/Excluded checkboxes already reflect the shipped diff.
+
+**What's solid:** Clean commit-role separation (`code(AST-1206)` → `src/` only; `test(AST-1206)` + `merge-tests(AST-1206)` → `tests/` + `docs/test-bible/` only, one merge-tests SHA). Debug-contract gating, config-block placement, and data-raises/caller-logs posture all match the AST-1067 precedent exactly.
+
+context_tokens≈9000
+
+— Radia
+
+#### betty — 2026-08-06T05:39:00.068Z
+Tests Ready — contact debug flag foundation (config / durable JSON / core get-set / admin GET-PUT).
+
+**Publish:** `origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation` @ `b52eb7c7`
+**merge-tests:** `merge-tests(AST-1206): origin/tests 8c0cd1611e102797342afca924c1c6328b8c6cdf`
+
+## QA test manifest
+
+1. `tests/component/data/test_contact_debug.py::TestAst1206ContactDebugData` — missing/corrupt → `None`; save/load round-trip; TypeError; listen file untouched
+2. `tests/component/utils/test_config.py::TestAst1206ContactDebugConfig` — `debug_enabled` default off; `debug_state_filename` = `contact_slack_debug.json` ≠ listen filename
+3. `tests/component/core/test_contact.py::TestAst1206ContactDebugFlag` — default off; durable re-read every call; `set_slack_debug_enabled` persists; listen JSON untouched; TypeError
+4. `tests/component/ui/api/test_api_contact.py::TestAst1206ContactDebugApi` — GET/PUT `/api/admin/contact/debug` payload + 400/502 + auth 401/403
+
+**Broken / obsolete:** none — additive twin of listen; Events/React out of scope (AST-1207 / AST-1208).
+
+**Integration:** no existing scenario asserts Contact debug API/file — no revision.
+
+**Excluded (per ticket):** Style D golden-string tests — Radia enforces instrumentation on review.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/test_contact_debug.py::TestAst1206ContactDebugData \
+  tests/component/utils/test_config.py::TestAst1206ContactDebugConfig \
+  tests/component/core/test_contact.py::TestAst1206ContactDebugFlag \
+  tests/component/ui/api/test_api_contact.py::TestAst1206ContactDebugApi \
+  -q
+```
+
+**Bible shasums** (`origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation`):
+- `docs/test-bible/data/contact_debug.md` `f508d72cbb6105268970eb6c2e61010848f53ad4`
+- `docs/test-bible/core/contact.md` `903e5a8a7b15afa695709c08dc2db09576212eb9`
+- `docs/test-bible/ui/api/api_contact.md` `070d70bc7b4f038fd5fc570cc56dd5eb6b49952e`
+- `docs/test-bible/utils/config.md` `6b8eab2abf6125cea0c1566010825fd26e2de2e7`
+
+— Betty
+
+#### joan — 2026-08-06T05:31:45.427Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1206
+**Overall:** APPROVED
+**Publish ref tip:** `sub/AST-1203/AST-1206-contact-debug-flag-foundation` @ `3c789a10`
+
+**Considered:** 59 of 65 active leaf statutes (18 universal + 41 scoped); 6 scoped excluded on layer/path predicates. Zero `violates`. Per-statute verdicts scored in-session (R7 slim comment; no attachment required).
+
+## Traceability
+
+AC1→S1–4 (config default + durable persist + core set/get + admin GET/PUT); AC2→S1 default-off + S3 `if debug:` gating. Stages→definition: S1→`pattern.config.config-block`; S2→AST-1067 durable-JSON reuse; S3→Functional scope 1 + `astral.standards.debug-contract-gated`; S4→`pattern.ui.admin-endpoint` + parent AC1. No unmapped AC, no orphan stage.
+
+## Mirror claims verified
+
+The plan rests on being a literal twin of shipped AST-1067 listen, so I checked every anchor rather than trusting the claim, and they are all exact:
+
+- **Core** — the proposed `slack_debug_enabled` / `set_slack_debug_enabled` are line-for-line parallels of `src/core/contact.py:239-245` and `:280-308`, including the re-read-every-call posture (AST-1101) and the `index=1/2 → 2/2` found/recorded Style D shape. Because the two-header form is the shipped convention for exactly this operation, I am **not** scoring it against §1.5.1's per-batch-item reading. `logger` is module-level at that call site and `get_deploy_label()` is already in scope there (`:306`).
+- **Insert anchors are real** — `set_slack_listen_enabled` ends at `:308` and `list_estelle_activity` begins at `:311`; `contact_put_listen` ends at `:58` and the `/estelle_activity` route is at `:62`; `listen_state_filename` is at `config.py:1578` with its assert at `:1641`. A builder can follow the stages literally, which is what `orch.pipeline.plan-is-bible` wants.
+- **Admin surface** — `contact_bp` carries `url_prefix="/api/admin/contact"` (`api_contact.py:22`), so Stage 4's `/debug` resolves to the documented path; `require_admin`, `get_deploy_label`, `ui_llm_debug` and `logger` are already imported in that module, and the plan's core-import block matches the existing one plus the two new symbols.
+- **Config and env** — `ASTRAL_CONFIG["db_dir"]` is `_DB_DIR`, overridden by `ASTRAL_DB_DIR` on Railway (`config.py:3511-3513`), so the per-environment volume claim holds and `astral.config.secrets-and-env-specific-from-environ` conforms with no new `os.environ` reads.
+- **Data layer** — `astral.standards.database-header-inventory` conforms: its statement scopes to tables declared in `src/data/database.py`, and `contact_debug.py` adds none (JSON under `db_dir`). Note that `src/data/contact_listen.py` is unreadable to me under `.cursorignore`, so I validated the twin's contract indirectly from its core call sites — `load_...` returning `Optional[bool]` is confirmed by the `loaded is not None` check at `:242-244`, and `save_...(bool)` by `:286`.
+
+## Findings
+
+**discuss — `logger.set_debug_flag(True)` is never reset, and this child adds a second setter of that process-wide flag.** `set_slack_debug_enabled` flips the module-level logger's debug flag on and leaves it on for the life of the process, exactly as `set_slack_listen_enabled` does today. As a mirror it is not a new violation, which is why this is not blocking. The reason to raise it now: once inbound debug emission exists on this same module logger, a single admin PUT with `debug=True` would leave later processing wordy even with the durable Debug flag off, which is the shape of a parent AC3 regression. Cheapest containment inside this ticket is to restore the prior flag value after the emission block in `set_slack_debug_enabled` rather than leaving it latched. Worth flagging to Radia at review either way.
+
+**discuss — the ticket promises the JSON key in config; the plan hardcodes it.** The In-scope line cites `astral.config.config-source-of-truth` / `no-hardcoded-sets` for "filename, default, **JSON key** in config", but Stage 2 writes the literal `"debug_enabled"` key inside `contact_debug.py`. I checked `CONTACT_CONFIG` and there is no listen JSON-key entry either, so the plan matches shipped precedent and a single serialization key is not a set or enum — the statute is satisfied on my read. Either add the key to config or trim that phrase from the ticket so the citation and the code agree.
+
+**acceptable — read-per-call I/O posture.** `slack_debug_enabled()` stats and reads the durable file on every call by design (AST-1101 fixed sticky hydrate leaving listen latched). Within this child that is get/set only, so the cost is trivial; the plan correctly leaves inbound wiring to AST-1207 and says so.
+
+**acceptable — helper placement.** `_debug_path` ahead of the public loaders, and `_debug_payload` ahead of the routes, both match the existing files' layout (`_listen_payload` sits at `api_contact.py:25` before its routes), so `astral.standards.public-then-helpers` is not newly violated.
+
+**acceptable — Notes.** The Files Changed table omits the plan doc itself, so the matching algorithm dropped `astral.docs.features-single-file-per-ticket` and `astral.debug.spikes-under-debug-dir` on path predicates. Conformance verified out of band: one file at `docs/features/contact/ast-1206-contact-debug-flag-foundation.md`, correct project directory. Add a docs row next time so the corpus matches mechanically.
+
+**acceptable — self-assessment is honest.** `Conf: high` is supportable here precisely because every mirror anchor resolved, and `Risk: low` is fair — default-off, separate file, no Events wiring, and a wrong persist would only affect the Debug SoT rather than listen or Estelle. `Single-Component` matches four files with one new module.
+
+Boundaries hold: no `src/external/slack.py`, no Events handlers, no listen data/core/API, no React, no SQLite table, no `tests/`.
+
+— Joan
+
+context_tokens≈128000
+
+#### ada — 2026-08-06T05:27:02.924Z
+Plan published: https://github.com/susansomerset/astral/blob/sub/AST-1203/AST-1206-contact-debug-flag-foundation/docs/features/contact/ast-1206-contact-debug-flag-foundation.md (`origin/sub/AST-1203/AST-1206-contact-debug-flag-foundation` @ `3c789a10`).
+
+**Scope:** Single-Component — Contact config + new `contact_debug` data module + core get/set + admin GET/PUT; Events/React/listen left to siblings.
+
+**Conf:** high — literal mirror of shipped AST-1067 listen durable JSON + admin surface, with AST-1101 re-read-every-call posture.
+
+**Risk:** low — default-off separate file; no Events wiring in this ticket; listen/Estelle paths untouched.
+
+---
+
 # AST-1206 — Contact debug flag foundation (config, durable persist, core + admin API)
 
 **Linear:** [AST-1206](https://linear.app/astralcareermatch/issue/AST-1206/contact-debug-flag-foundation-config-durable-persist-core-admin-api)  
