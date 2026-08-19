@@ -160,3 +160,140 @@ context_tokens≈48000
 
 Frontend picker, editor mapping, and `GET /api/agent_data/<batch_id>` left untouched.
 
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1451
+**Publish ref:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload` @ `b7d06892e954c4ac4fa525d36d89c0a2d50ffb6c`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent confidence / grade-vector paths in AST-1451 product diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | No `do_task` delegation changes in AST-1451 commits |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade-vector validation touched |
+| astral.batch.batch-id-first | scoped | conforms | Prefix strip preserves single `adhoc-<task_key>` batch id shape |
+| astral.batch.batch-id-format | scoped | conforms | Workbench batch ids still `adhoc-<catalog_key>-<uuid>` |
+| astral.batch.claim-process-release | scoped | not-applicable | No batch claim/release paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | List is metadata-only; no RESPONSE latest lookup |
+| astral.config.config-source-of-truth | scoped | conforms | `TASK_CONFIG.get(catalog_task_key)` for entity_type after strip |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No env/secret surface in AST-1451 product diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike scripts |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatch seed changes in AST-1451 commits |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run_next / chain routing |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Issue doc at planned path |
+| astral.git.betty-no-src-or-features | scoped | conforms | Product commits touch `src/` only; tests via Betty merge |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Engineer product commits exclude `tests/`; Betty landed tests |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No external layer involvement |
+| astral.layers.import-direction | scoped | conforms | ui→core→data on list path; core→data import at module top |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/` changes in AST-1451 product commits |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | Route is thin `jsonify(core)`; no UI business rules |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check storage |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult/render-verdict |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `GET /api/admin/adhoc/runs` uses `@require_admin` (wraps `@require_auth`) |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON edits in AST-1451 commits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No catalog override |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | List is admin hot-path read, not boot seed |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage join |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `list_agent_data_batches` raises via `_run_with_retry`; no data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | `list_agent_data_batches` added to `agent_data` header inventory line |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D only when `debug=True`; found→recorded per batch row |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Small focused helpers; no duplicate list logic |
+| astral.standards.in-scope-only | scoped | conforms | AST-1451 product footprint matches read-path + prefix strip only |
+| astral.standards.logging-via-utils | scoped | conforms | `get_logger` from utils; no `print()` / raw `logging` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Function/route names are domain-shaped |
+| astral.standards.no-cross-contamination | scoped | conforms | No unrelated subsystem edits in AST-1451 product commits |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new hardcoded state/task sets |
+| astral.standards.public-then-helpers | scoped | conforms | Public list APIs before private helpers in file order |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils→data late-import in AST-1451 product diff |
+| astral.state.core-decides-transitions | scoped | not-applicable | No entity state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job state changes |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No daisy-chain run paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | AST-1451 product commits touch no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | conforms | `adhoc_runs` / `list_agent_data_runs` naming consistent |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Betty `merge-tests` lands test manifest on publish ref |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` commits use ticket vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Work on `sub/AST-1439/AST-1451-…`; no reverse flow |
+| orch.git.ftr-sub-topology | universal | conforms | Child `sub/<parent>/<child>` topology |
+| orch.git.merge-on-checkout | universal | conforms | `sync(dev)` present on branch history |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No forbidden git ops observed |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named dev branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree `astral-AST-1439` |
+| orch.git.three-permanent-branches | universal | conforms | Diff baseline `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No unresolved product forks in AST-1451 scope |
+| orch.pipeline.plan-is-bible | universal | conforms | Implementation matches staged plan for this ticket |
+| orch.pipeline.project-scoped-queues | universal | conforms | Ticket scoped to AST-1439 epic |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Review at Tests Passed per pipeline |
+| orch.roles.archie-approves-statutes | universal | conforms | Joan APPROVED plan; patterns approved |
+| orch.roles.betty-owns-test-tree | universal | conforms | Tests landed via Betty merge, not engineer product commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada through Tests Passed |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Engineer remains assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No banned-path commits in AST-1451 product set |
+
+(62 rows scored from active registry tables; corpus reports 65 active — remainder are exemplar duplicates of rows above.)
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | Thin admin route; `@require_admin`; core list; no data/external from ui |
+| pattern.layers.import-discipline | conforms | Module-top imports; ui→core→data chain on list path |
+| pattern.config.config-block | not-applicable | No config-block / `BLOCK_TYPES` changes (plan N/A) |
+
+## Plan adherence
+
+AST-1451 product commits (`0990d1af`, `b378cd81`, `5a1c95a5`) match all three plan stages:
+
+- **Stage 1:** `list_agent_data_batches()` — `GROUP BY batch_id`, `ORDER BY created_at DESC`, metadata keys only, header inventory updated.
+- **Stage 2:** `list_agent_data_runs` with gated Style D; one leading `adhoc-` strip + `catalog_task_key` for `TASK_CONFIG` in `run_adhoc_workbench_test`.
+- **Stage 3:** `GET /api/admin/adhoc/runs` with `@require_admin`, `ui_llm_debug()`, no query filters.
+
+Boundaries held on product commits: no frontend, no new load route, no `agent_data` writes on list path, no `config.py` edits. Load contract remains existing `GET /api/agent_data/<batch_id>` (bible points Betty manifest to existing `TestSystemAuthRoutes::test_agent_data_returns_rows` — appropriate regression, not a new test).
+
+Estimate 3 still honest for AST-1451 footprint.
+
+Joan plan-rubric verdict attached (APPROVED). No straggler: excluded statutes remain `not-applicable` on AST-1451 product diff; `astral.standards.database-header-inventory` was considered (not excluded) at plan time.
+
+**Branch context:** Three-dot diff `origin/dev…publish-ref` includes substantial sibling epic work (frontend, config, other `agent.py` / `api_admin.py` hunks). That rollup is expected on the shared sub tip; it is **not** attributable to AST-1451 product commits. Findings below are scoped to AST-1451 unless noted as branch-level advisory.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Branch hygiene (sibling):** `src/data/database.py` imports `is_valid_candidate_batch_claim_state` twice (lines ~81 and ~100) — duplicate from sibling merge, not AST-1451 commits; harmless at runtime but worth cleaning on a sibling touch.
+- **List semantics (plan-approved):** Global unfiltered `agent_data` batch list with `MAX(entity_id)` / `MAX(task_key)` aggregation — intentional per plan Decision; operators should expect production + adhoc rows and lexicographic `MAX(entity_id)` when a batch has multiple stamped ids.
+
+## What's solid
+
+- Read path is thin and layered: admin route → core list → data aggregation, no `block_data` on list.
+- Debug contract is correctly gated and mechanical (index per batch, found→recorded, no `debug_detail_block` on short metadata).
+- Prefix strip is exactly one `adhoc-`, with test locking ledger `task_key` and batch id shape.
+- Betty manifest covers data list, core debug gate, admin auth, prefix strip, and existing load GET regression.
+
+## Frame diff
+
+(none) — implementation matches the approved plan stages; no material plan frame drift for AST-1451.
+
+## Notes
+
+- Joan plan-rubric verdict attached (APPROVED @ `f0f51171`).
+- Load GET coverage is via existing `test_api_system` test per bible — no new load test required for this ticket.
+- §5f / §5g not triggered on AST-1451 product diff (debug on list path conforms §5f; no external/LLM module changes).
+
+context_tokens≈52000
+
