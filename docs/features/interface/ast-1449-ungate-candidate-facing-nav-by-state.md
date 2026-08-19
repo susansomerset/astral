@@ -88,3 +88,22 @@ Do not edit `NavigationShell.tsx`, `routes.tsx`, destination pages, job/company 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+revision: 1
+**Rubric:** plan-rubric
+**Ticket:** AST-1449
+**Overall:** APPROVED
+**Publish-ref tip:** `1e9e21b5b93bfb9d62cf144f4d6ef076cafc6470`
+
+## Traceability
+AC1–5 → Stage 1 (drop Jobs/Companies/Artifacts `"visible"`; delete `_resolve_nav` group skip; keep Applied/Responded `"enabled": False` and `_nav_config_for_user` admin omit; Code Rules §2.1 NAV_CONFIG bullet rewritten). Parent chrome ACs → N/A — “Does not own the read-only candidate-state line under the picker (sibling #2).”
+
+## Findings
+- **acceptable** — Stage 1 Decision: with no `candidate_id`, candidate-facing groups will still appear (old `visible` skip used `candidate_state=""`). Parent AC is selected-candidate membership; the plan does not invent a new empty-selection hide.
+
+R1–R5 pass. Definition fidelity holds: group-level state hide gone, stubs and admin omit stay, enablement stays in `/api/nav_config`, no React hide, no chrome line. `pattern.config.config-block` + `astral.config.config-source-of-truth` / `astral.layers.ui-config-driven-business-logic` / `astral.standards.no-hardcoded-sets` match (edit NAV_CONFIG + resolver; no React allowlist). Estimate 3 — agree is honest.
+
+context_tokens≈42000
