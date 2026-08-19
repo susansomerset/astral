@@ -107,3 +107,9 @@ AC1–5 → Stage 1 (drop Jobs/Companies/Artifacts `"visible"`; delete `_resolve
 R1–R5 pass. Definition fidelity holds: group-level state hide gone, stubs and admin omit stay, enablement stays in `/api/nav_config`, no React hide, no chrome line. `pattern.config.config-block` + `astral.config.config-source-of-truth` / `astral.layers.ui-config-driven-business-logic` / `astral.standards.no-hardcoded-sets` match (edit NAV_CONFIG + resolver; no React allowlist). Estimate 3 — agree is honest.
 
 context_tokens≈42000
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state` @ `5c7fd0f8f142c596a5e07889d4aa0159bc0d86f3`
+
+Stage 1: dropped Jobs/Companies/Artifacts group `"visible"`; `_resolve_nav` no longer skips groups on that key; Code Rules §2.1 NAV_CONFIG bullet matches. Tests deferred to Betty.
