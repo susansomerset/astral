@@ -440,3 +440,92 @@ context_tokens≈134000
 
 **fix-now:** none.
 
+## Bug: AST-1432 — Scope candidate-entity Avail to the bound candidate
+
+Overturns AST-1258 Stage 3 **Decision** that stage Avail is pool-wide for Scheduled Actions. Claim/get/clear stay the cross-candidate pool (AST-1258 Stage 2 / AST-1259). Do not rewrite Stages 1–4.
+
+### As-is
+
+On Scheduled Actions, a `entity_type=candidate` dispatch_task row (non-`inflow_discovery`) shows Availability **2+**: `count_eligible_for_dispatch_task` returns `count_candidates_unclaimed_in_states(claim_states)` — every unclaimed candidate in those states, not only this row's `candidate_id`.
+
+### To-be
+
+That row's Availability is always **0 or 1**: whether *this* row's candidate is unclaimed and in `dispatch_claim_states(trigger_state, "candidate")`. Other candidates do not add to the count.
+
+### Repro
+
+In-memory DB (same shape as AST-1258 Stage 3 / Betty's `TestAst972CandidateStageEligibility` fixture):
+
+1. Save two candidates `c-a` and `c-b`, both `state="REQUESTED_ARTIFACTS"`, `batch_id` null.
+2. Task row (no DB seed required — pass the dict straight into the count):
+
+```python
+task = {
+    "entity_type": "candidate",
+    "trigger_state": "REQUESTED_ARTIFACTS",
+    "candidate_id": "c-a",
+    "task_key": "craft_get_rubric",  # CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]
+}
+```
+
+3. **Broken:** `count_eligible_for_dispatch_task(task) == 2`. **Expected:** `1`.
+4. Lock `c-a` (`claim_candidate_batch` with `limit=1` that takes `c-a`, or set `c-a.batch_id` non-empty); leave `c-b` unclaimed. **Broken:** count is `1` (the other candidate). **Expected:** `0`.
+5. `GET /api/admin/dispatch_tasks` stamps `available_count` from this function (`list_dtasks`); the Scheduled Actions Avail column is that number.
+
+### Root cause
+
+AST-1258 Stage 3 split `count_eligible_for_dispatch_task`'s candidate branch: `inflow_discovery` stayed on `count_candidate_inflow_discovery_eligible` (already 0/1 per `candidate_id`); every other candidate claim-queue key returns the **global** unclaimed pool. That matched parent AST-1257 AC4 ("unclaimed pool size") and the Stage 3 Decision ("not 0/1 for the dispatch row’s `candidate_id`"). Scheduled Actions rows are per-candidate, so the pool count shows as 2+ on each bound row.
+
+The defect is the **count** used for Avail, not batch locking and not `list_dtasks` (it already calls `count_eligible_for_dispatch_task(row)` when `entity_type`, `trigger_state`, and `candidate_id` are set).
+
+### Proposed change
+
+In `src/data/database.py` only.
+
+1. Extend `count_candidates_unclaimed_in_states(states: List[str], candidate_id: Optional[str] = None) -> int`:
+   - Keep today's SQL when `candidate_id` is omitted / blank after strip: `COUNT(*)` where `{state_sql}` AND `(batch_id IS NULL OR batch_id = '')`.
+   - When `(candidate_id or "").strip()` is non-empty, add `AND astral_candidate_id = ?` (bind the stripped id). Result is **0 or 1** (candidate PK).
+   - Same `_state_in_sql` / `_ensure_candidate_schema` / `_run_with_retry` as today. Do not log.
+
+2. In `count_eligible_for_dispatch_task`, candidate non-inflow arm — replace:
+
+   ```python
+   return count_candidates_unclaimed_in_states(claim_states)
+   ```
+
+   with:
+
+   ```python
+   return count_candidates_unclaimed_in_states(claim_states, candidate_id=candidate_id)
+   ```
+
+   `candidate_id` is already read from `task` and the function already returns `0` when it is missing. Do **not** add a new empty-`claim_states` arm (pre-branch guard still covers it).
+
+3. Update this function's docstring so candidate non-inflow Avail is described as **this row's candidate** (0/1, unclaimed + in `claim_states`), not "entities this task would actually claim" for the cross-candidate pool. `inflow_discovery` sentence stays (still the inflow helper).
+
+4. Do **not** change `claim_candidate_batch` / `get_candidate_batch` / `clear_candidate_batch` / `get_new_candidate_batch`. Do **not** pass `candidate_id` into claim. Do **not** edit `src/ui/api/api_admin.py` `list_dtasks` (gaze_email / meteorite mailbox bind-count carve-out stays). Do **not** edit job/company branches.
+
+⚠️ **Decision — Avail only; pool claim stays:** Parent step 3 asked whether dispatcher Run must bind to this row's candidate. **No.** AST-1259 cross-candidate `get_new_candidate_batch` is unchanged. Avail-only is sufficient for this ticket's AC (Scheduled Actions shows 0 or 1). Manual Run on a row with Avail=1 can still claim other unclaimed candidates up to `batch_size` — existing pool behavior, out of this bug.
+
+⚠️ **Decision — shared counter, accepted AUTO side effect:** Dispatcher AUTO (`_run_dispatch_loop` `available < effective_min`) and `run_task` `available_count` share `count_eligible_for_dispatch_task`. They will also become 0/1 for candidate stage rows. That is not a claim-scope change. Do not add a second counter for UI vs claim. Candidate stage rows with `min_count > 1` will never AUTO; do not retune `min_count` here.
+
+### Blast radius
+
+- **Touches:** `count_candidates_unclaimed_in_states` signature (optional `candidate_id`); candidate non-inflow arm + docstring of `count_eligible_for_dispatch_task`.
+- **Callers of the count (behavior flip for candidate stage keys):** `api_admin.list_dtasks` Avail; `dispatcher._run_dispatch_loop` AUTO volume gate; `dispatcher.run_task` enrichment; `dispatcher._debug_log_auto_off_stage_skips`. Job/company and `gaze_email` mailbox bind-counts do not use this arm.
+- **Unchanged claim path:** `dispatcher._run_unified` → `get_new_candidate_batch` → `claim_candidate_batch` (still pool-wide). Job `claim_cap` uses this count only for consult chunk exhaustion (`entity_type=job`).
+- **Tests that assume pool Avail on a bound candidate row** (Betty; engineer does not edit `tests/`):
+  - `tests/component/data/database/test_dispatch_tasks.py::TestAst972CandidateStageEligibility::test_candidate_stage_avail_is_unclaimed_pool` — fixture one unclaimed `REQUESTED_ARTIFACTS` row expected pool `1` (still `1` if that row **is** the bound `candidate_id`; breaks if a later fixture adds a second candidate and still expects `2`).
+  - `tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility` — "pool count 0 when all matching rows locked" still holds for the bound candidate; any assertion that two unclaimed candidates make a single bound row's count `2` is now wrong (expect `1`).
+- **inflow_discovery** tests unchanged (different arm).
+
+### What must still hold
+
+- AST-1258 AC1 / AC2: candidate `batch_id` / `batch_created_at`; claim → get → clear still locks a **cross-candidate** unclaimed pool; second concurrent claim on locked rows returns 0; clear releases all.
+- `task_key=inflow_discovery` still uses `count_candidate_inflow_discovery_eligible` (ACTIVE_SEARCH + stale terms) — already 0/1 per candidate.
+- Job/company pool Avail unchanged (still scoped to the row's owner `candidate_id` as today).
+- Mailbox `gaze_email` / meteorite inbox Avail stays `count_inbox_bound_by_candidate` in `list_dtasks`, not this function.
+- Unclaimed predicate stays `(batch_id IS NULL OR batch_id = '')`.
+- Empty `claim_states` still returns 0 **before** entity-type branches.
+- No dispatcher / core wrapper / `CANDIDATE_DATA_MODEL.md` edits in this bug.
+
