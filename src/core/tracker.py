@@ -248,6 +248,14 @@ def persist_draft_job_resume_deviations(astral_job_id: str, parsed: Any) -> bool
     return True
 
 
+def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
+    """AST-1428: copy unwrapped finalize resume onto resume_content; pin slot untouched."""
+    if not parsed_matches_job_resume_content(astral_job_id, parsed):
+        return False
+    save_job_artifact_resume_content(astral_job_id, _resume_payload_body(parsed))
+    return True
+
+
 def pin_job_artifact_agent_data_id(
     astral_job_id: str,
     artifact_key: str,
@@ -321,13 +329,26 @@ def hydrate_job_artifacts_for_display(
     if not isinstance(artifacts, dict):
         return {}
     out = dict(artifacts)
+    rc = out.get("resume_content")
+    job_resume_blob = rc if isinstance(rc, dict) and rc else None
     for key in _JOB_ARTIFACT_PIN_KEYS:
+        if key == "job_resume" and job_resume_blob is not None:
+            # AST-1428: JAR reads job_resume; overlay sibling blob (disk pin unchanged).
+            out[key] = dict(job_resume_blob)
+            continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
             continue
         body = resolve_job_artifact_agent_data_body(raw, debug=debug)
-        if body is not None:
-            out[key] = body
+        if body is None:
+            continue
+        if key == "job_resume":
+            # Pin resolve is agent_payload; unwrap .resume so section ids are top-level.
+            unwrapped = _resume_payload_body(body)
+            if unwrapped:
+                out[key] = unwrapped
+            continue
+        out[key] = body
     # AST-1116: Subject/Letter spine for ArtifactEditor (pin body or legacy dict; overlay only).
     cover = out.get("cover_letter")
     if isinstance(cover, dict):

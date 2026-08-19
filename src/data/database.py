@@ -5867,7 +5867,7 @@ def save_agent_data(
 ) -> bool:
     """Insert a single content block into agent_data. Returns True on success, False on duplicate.
     block_data is compressed before storage. block_type must be in BLOCK_TYPES.
-    entity_id tags RESPONSE rows for latest-per-task lookup (AST-984); omit for shared prompt blocks."""
+    entity_id is set whenever the caller passes it (prompt or RESPONSE); omit to store NULL."""
     if block_type not in BLOCK_TYPES:
         raise ValueError(f"Invalid block_type '{block_type}'. Must be one of: {BLOCK_TYPES}")
     if not isinstance(block_data, str):

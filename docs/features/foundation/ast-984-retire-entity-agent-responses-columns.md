@@ -831,3 +831,419 @@ Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-singl
 
 `entity_cost` remains on batch `agent_ref` for consult/roster tagging but is omitted from `list_entity_latest_agent_refs` output per plan (UI does not require it). No change.
 
+## Bug: AST-1429 — Stamp entity_id on all agent_data rows in a batch
+
+AST-984 `Replacement lookup` item 2 and Stage 1 step 4 stay as the original shipped contract. This section is the write-rule delta for AST-1429. Do not rewrite those stages.
+
+### As-is
+
+A single-entity batch write stores one row per prompt/response block; only RESPONSE has `entity_id` set. Dump that triggered this ticket: `craft_company_search_terms` batch with five `agent_data` rows — SYSTEM / CACHE_A / CACHE_B / TASK have `entity_id` null; RESPONSE has `entity_id=somerset`. Same split on Ad Hoc Test (`run_adhoc_workbench_test`): `_store_response_block(..., index=entity_id)` already tags RESPONSE; `_store_prompt_blocks` does not. This is the AST-984 write rule, not a missed assignment.
+
+### To-be
+
+When the entity index is known, every `agent_data` row written for that `do_task` / Ad Hoc Test — SYSTEM, CACHE_A–D (only slots that are stored), TASK, NO_CACHE, and RESPONSE — carries the same `entity_id` as the RESPONSE. `list_entity_latest_agent_refs` remains a RESPONSE-only index (attach prompt blocks via `get_agent_data_by_batch` as today). Historical prompt rows already in the DB stay null. Shared multi-entity consult/roster prompt rows are not copied per entity.
+
+### Repro
+
+1. Production: `do_task("craft_company_search_terms", index="somerset", ...)` with `store_agent_data=True` (or any single-entity hop that stores prompts). After return, `get_agent_data_by_batch(batch_id)` yields rows shaped like:
+
+```
+block_type  entity_id
+SYSTEM      null
+CACHE_A     null
+CACHE_B     null
+TASK        null
+RESPONSE    somerset
+```
+
+(CACHE_C / CACHE_D / NO_CACHE appear only when those slots are non-empty; they are also null today.)
+
+2. Ad Hoc: `POST /api/admin/adhoc/test` with `entity_id` set; `run_adhoc_workbench_test` stores the same five-ish rows under `batch_id=adhoc-<task_key>-<uuid>`. RESPONSE has `entity_id`; prompt rows do not.
+
+To-be fixture for the same batch: every stored row’s `entity_id` equals the RESPONSE’s (`somerset` / the Test `entity_id`).
+
+### Root cause
+
+AST-984 designed prompt blocks as batch-scoped shared rows **without** `entity_id` (`Replacement lookup` item 2; Stage 1 step 4: “Do not set `entity_id` on `_store_prompt_blocks` saves”). Live code matches that:
+
+- `_store_response_block` passes `entity_id=index if index else None` into `save_agent_data`.
+- `_store_prompt_blocks` inner `_save` calls `save_agent_data` with no `entity_id` (the helper’s `index` kwarg is the AST-1411 Style D 1-based loop counter, not the entity id).
+- `run_adhoc_workbench_test` has `entity_id` and already forwards it to `_store_response_block` only.
+- `docs/ASTRAL_CODE_RULES.md` §2.4.1: “Shared prompt blocks (SYSTEM / CACHE_* / TASK / NO_CACHE) stay without `entity_id` (batch-scoped).”
+- `save_agent_data` docstring: “omit for shared prompt blocks.”
+
+Prompt-block primary keys are `{batch_id}-{block_type}-{content_hash}` (content hash does not include entity id), so identical prompts in one `batch_id` collapse to one row (`INSERT OR IGNORE`). That is why AST-984 left them untagged. AST-1429 changes the **per-entity** write (index known) so those rows are tagged; it does not split shared rows per entity.
+
+### Proposed change
+
+Contract change, confirmed: stamp. Do not keep the AST-984 “prompt rows stay null” write rule.
+
+1. **`src/core/agent.py` `_store_prompt_blocks`**
+   - Add kwarg `entity_id: Optional[str] = None` on the public helper (do **not** overload the inner `_save(..., index: int)` Style D counter).
+   - Pass `entity_id=entity_id if entity_id else None` into every `save_agent_data` inside `_save`.
+   - When `entity_id` is omitted/empty, behavior is unchanged (null column).
+
+2. **`do_task` call site** (the `_store_prompt_blocks` call after the provider returns, currently around the `_should_store` block): pass `entity_id=index if index else None` — same truthiness as `_store_response_block`. Prompt rows are stored on both success and failure-audit paths (they are written before the success/fail RESPONSE branch); this one argument covers both.
+
+3. **`run_adhoc_workbench_test` call site:** pass `entity_id=entity_id if entity_id else None` into `_store_prompt_blocks`, matching the existing `_store_response_block(..., index=entity_id)` calls. Empty Ad Hoc `entity_id` → prompt and RESPONSE both stay null.
+
+4. **`src/data/database.py` `save_agent_data`:** update the docstring so `entity_id` is no longer “RESPONSE only / omit for shared prompt blocks.” The column is set whenever the caller passes it (prompt or RESPONSE). Do **not** change INSERT / content-dedup / `INSERT OR IGNORE` behavior. Do **not** change `list_entity_latest_agent_refs` — it already filters `block_type = 'RESPONSE'`, so tagging prompt rows cannot enter the latest-ref index. Do **not** change `ensure_batch_response_entity_ids` (still copies RESPONSE per processed entity; does not copy prompt blocks). Do **not** change prompt-block id generation to include entity id.
+
+5. **`docs/ASTRAL_CODE_RULES.md` §2.4.1** — replace the write-rule sentence that currently says prompt blocks stay without `entity_id` with: when an entity index is known, `_store_prompt_blocks` and `_store_response_block` both set `agent_data.entity_id` on the rows they write; `list_entity_latest_agent_refs` still selects RESPONSE rows only and still attaches non-RESPONSE blocks via `get_agent_data_by_batch`. Keep the statute citation. Do **not** edit `canon/statutes/astral/batch/astral.batch.entity-agent-responses-latest-only.md` or `canon/patterns/batch/pattern.batch.entity-agent-responses.md` in this ticket: the statute Statement still requires RESPONSE tagging + RESPONSE-only list API (both still hold); prompt tagging is additive. If the board requires a statute/pattern amend, that is a later Archie-gated step — not this patch.
+
+6. **Out of scope (explicit):** no historical `UPDATE` of old prompt rows; no per-entity copies of shared consult/roster SYSTEM/CACHE/TASK rows; no schema change (`entity_id` already exists); no `GET /api/agent_data/<batch_id>` query-param rewrite (that path extracts TASK/RESPONSE *content* segments; it does not SQL-filter the `entity_id` column).
+
+### Blast radius
+
+- `_store_prompt_blocks` is shared by production `do_task` and Ad Hoc Test (AST-1411). Style D debug (`debug_index` N/M on the inner loop `index`) must keep using the integer counter, not the new `entity_id`.
+- Multi-entity consult/roster: one `do_task` may share a `batch_id` and identical prompt text; `INSERT OR IGNORE` still first-writer-wins on the prompt PK. `ensure_batch_response_entity_ids` continues to mint per-entity RESPONSE copies. Do not extend that copier to prompt blocks.
+- Hop hydration / `get_entity_agent_story` / tracker snapshot: still `list_entity_latest_agent_refs` + batch attach — SQL already `block_type = 'RESPONSE'`.
+- Betty tests likely to assume the old split: `tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_do_task_success_tags_response_entity_id` (RESPONSE-only assertion today — still valid, but prompt-save kwargs will now include `entity_id`); `_store_prompt_blocks` / Ad Hoc store tests under `test_agent.py` / admin Ad Hoc tests. Engineer does not edit `tests/` or the bible.
+
+### What must still hold
+
+- AST-984 replacement lookup algorithm: `list_entity_latest_agent_refs` is RESPONSE-only; `prompt_blocks` on each ref still come from `get_agent_data_by_batch` non-RESPONSE rows plus this RESPONSE `{type, id}` only (exclude sibling entities’ RESPONSE rows in the same batch).
+- `_store_response_block` still sets `entity_id=index` when index is truthy, including failure-audit RESPONSE writes.
+- Empty/whitespace cache slots still omitted (`if blob and blob.strip()`); no empty CACHE_B/D rows.
+- `save_agent_data` still accepts omitted `entity_id` (NULL).
+- No `append_agent_response` / entity JSON `agent_responses` columns.
+- AST-1411 seven-segment Ad Hoc persist (SYSTEM + stored CACHE_* + TASK + RESPONSE, `batch_id` on Test result) unchanged except the new `entity_id` kwarg on prompt saves.
+- Engineer does not commit `tests/` or `docs/test-bible/**`. Coverage is sibling AST-1431 (docs-acceptance on this ticket).
+
+### Joan board (fix-board F2)
+
+**[board-joan] CANON: OK**
+
+Prompt-row `entity_id` stamping is additive: `astral.batch.entity-agent-responses-latest-only` still requires RESPONSE tagging and a RESPONSE-only `list_entity_latest_agent_refs` index (both unchanged); it never mandates null prompt rows. `pattern.batch.entity-agent-responses` describes that lookup shape only — tagging SYSTEM/CACHE/TASK when `index` is known does not contradict it. The AST-984 “prompts stay null” rule lives in `docs/ASTRAL_CODE_RULES.md` §2.4.1 (and `save_agent_data` docstring), which the plan updates; no `canon/statutes/**` or `canon/patterns/**` amend needed before `make-fix`.
+
+## Radia review (AST-1429)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1429
+**Publish ref:** `4e1cfd4b2fdfda16e5fd3d892f7466c09489d7d8` (`origin/sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows`)
+**Overall:** CLEAN
+
+Diff baseline: `origin/ftr/AST-1423-entity-id-not-populated-for-all-agent-data-rows...origin/sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows` (3 commits: plan, Joan validate doc, code). Product delta: `src/core/agent.py`, `src/data/database.py` docstring, `docs/ASTRAL_CODE_RULES.md` §2.4.1.
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out; Betty `[board-betty] TESTS: REVISE` routed to sibling AST-1431; no qa-fix on this ticket.
+
+**## What must still hold** — OK. `list_entity_latest_agent_refs` still filters `block_type = 'RESPONSE'` only; batch `prompt_blocks` still assembled from all non-RESPONSE rows in the batch plus the RESPONSE id (`database.py` unchanged logic). `_store_response_block` still passes `entity_id=index if index else None`. Empty cache blobs still skipped in `_store_prompt_blocks`. `save_agent_data` still accepts omitted `entity_id` (NULL). No `append_agent_response` / entity JSON column paths touched. Ad Hoc seven-segment persist unchanged except the new kwarg on prompt saves. No `tests/` or `docs/test-bible/**` in diff.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | No confidence/grade validation edits |
+| astral.agent.do-task-delegation | scoped | conforms | `do_task` still owns agent_data writes; extends tagging only |
+| astral.agent.grade-vector-validation | scoped | conforms | Grade-vector validation untouched |
+| astral.batch.batch-id-first | scoped | conforms | No claim/get/clear signature changes |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | scoped | conforms | No claim→process→release edits |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | RESPONSE tagging preserved; RESPONSE-only list API unchanged; prompt tagging additive |
+| astral.config.config-source-of-truth | scoped | conforms | No config value changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env handling changes |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | layers miss (core,data,docs) |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | layers miss |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Hop hydration paths untouched |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | paths miss |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Patches existing AST-984 feature doc; no new features file |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | layers miss |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | layers miss |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Coat-check keys untouched |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | `ensure_batch_response_entity_ids` / consult paths untouched |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No external persistence |
+| astral.layers.import-direction | scoped | conforms | No new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers miss |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers miss |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | paths miss |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | paths miss |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | No seed hot-path edits |
+| astral.seed.define-approved | scoped | conforms | No seed define changes |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | No seed operator-row edits |
+| astral.seed.other-via-coverage-join | scoped | conforms | No seed coverage-join edits |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Data API docstring only; no new data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | No structural DB API/header inventory change |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D `debug_index` on inner loop index unchanged |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single kwarg extension; no parallel APIs |
+| astral.standards.in-scope-only | scoped | conforms | Scoped to agent_data tagging + Code Rules sentence |
+| astral.standards.logging-via-utils | scoped | conforms | Pre-existing `logger.debug` on store failure; not worsened |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `AST-1429` only in comment carve-out |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered paths respected |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new inline state sets |
+| astral.standards.public-then-helpers | scoped | conforms | Private `_store_prompt_blocks` helper extended |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers miss |
+| astral.state.core-decides-transitions | scoped | conforms | No state-transition logic changes |
+| astral.state.job-prior-states-enforced | scoped | conforms | No JOB_STATES edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Hop hydration via list API unchanged |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers miss |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | No merge-tests on this sub tip |
+| orch.git.commit-vocabulary | universal | conforms | `plan` / `docs` / `code` vocab on publish-ref |
+| orch.git.flow-direction-inviolable | universal | conforms | Tip on child `sub/` publish-ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows` |
+| orch.git.merge-on-checkout | universal | conforms | Stacked on parent ftr per spawn prompt |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in AST-1429 commits |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1423` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Contract change already confirmed in plan-fix |
+| orch.pipeline.plan-is-bible | universal | conforms | Delivery matches `## Proposed change` |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-bug review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` or `canon/patterns/**` edits; Code Rules only per plan |
+| orch.roles.betty-owns-test-tree | universal | conforms | Engineer avoided `tests/`; coverage routed to AST-1431 |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Review does not flip assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Docs-only Radia commit expected on sub |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| pattern.batch.entity-agent-responses | conforms | RESPONSE-only `list_entity_latest_agent_refs` unchanged; prompt `entity_id` tagging does not contradict lookup shape ([board-joan] CANON OK) |
+
+## Plan adherence
+
+Matches `## Proposed change` exactly: `_store_prompt_blocks` gains `entity_id` kwarg (distinct from Style D inner `index`); `do_task` and `run_adhoc_workbench_test` pass `entity_id` with same truthiness as `_store_response_block`; `save_agent_data` docstring updated; Code Rules §2.4.1 write-rule sentence replaced; no INSERT/dedup/id-generation changes; no `list_entity_latest_agent_refs` / `ensure_batch_response_entity_ids` edits; no canon amend (explicit out-of-scope). Blast-radius guardrails honored: multi-entity shared prompt rows not copied per entity; prompt PK still content-hash based.
+
+## Findings
+
+**advisory:** Component tests asserting prompt rows lack `entity_id` remain stale until sibling AST-1431 lands Betty’s REVISE manifest — expected per board routing; not a defect on this diff.
+
+**advisory:** Statute/pattern **Examples** still illustrate RESPONSE-only tagging; **Statement** does not forbid prompt tagging and Joan waived canon amend for this patch. Optional future Archie-gated example refresh if catalog drift bothers readers — not merge-blocking.
+
+**Notes:** No Joan `plan-rubric` verdict attached for the AST-1429 bug patch (fix-board `[board-joan]` only). C4 straggler sweep against AST-984 Joan Excluded list not invoked.
+
+## Frame diff
+
+(none)
+
+## What’s solid
+
+- Minimal, surgical diff: one kwarg + two call sites + docstring + Code Rules sentence.
+- `entity_id if entity_id else None` mirrors existing `_store_response_block` truthiness.
+- Lookup/index contract isolated: RESPONSE-only SQL filter prevents prompt rows entering latest-ref index.
+- Style D debug counter preserved on inner `_save(..., index=int)` loop.
+
+## Recommended actions
+
+1. Chuckles: append this verdict to issue doc, push `docs(AST-1429): Radia review — clean`, post slim upshot.
+2. Normal parent AST-1423: **Review Posted** → clean-review shortcut (§3h) → **User Testing** directly; `resolve-child` skipped.
+3. Ensure AST-1431 test-hole sibling completes before UAT sign-off on entity_id stamping behavior.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (AST-1423 live ftr) | → Review Posted → §3h shortcut → User Testing; resolve-child skipped |
+
+context_tokens≈38000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 4e1cfd4b) entity_id on prompt rows
+```
+
+## Bug: AST-1431 — Tests for prompt-row entity_id stamp
+
+Sibling of AST-1429 (`## Bug: AST-1429` above). Product stamp already landed and merged to ftr. This ticket is tests/bible only. Do not rewrite AST-1429 stages or re-implement `_store_prompt_blocks`.
+
+### As-is
+
+`tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_do_task_success_tags_response_entity_id` asserts only RESPONSE `save_agent_data` kwargs carry `entity_id=="job-1"`. Direct `_store_prompt_blocks` tests (`test_store_seven_segment_optional_sections` and siblings) stub `save_agent_data` as `lambda **kw: kw["agent_data_id"]` and never inspect `entity_id`. `TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks` mocks `_store_prompt_blocks` and checks `call_count == 1` only — not `entity_id="j1"`. Bible `docs/test-bible/core/agent.md` AST-984 row: “RESPONSE save carries `entity_id`” / `TestAst984EntityColumnRetired`. Betty: missing coverage — `do_task` / `_store_prompt_blocks` never assert prompt-row stamp (SYSTEM / CACHE_* / TASK / NO_CACHE).
+
+### To-be
+
+A test exists that would have been red against pre-AST-1429 product (prompt `save_agent_data` kwargs omit/`None` `entity_id` when `index` is set) and is green on current ftr (same kwargs equal the RESPONSE’s `entity_id`). Bible names that coverage. Ad Hoc Test call site is covered the same way.
+
+### Repro
+
+Same fixture as `test_do_task_success_tags_response_entity_id`: `do_task("evaluate_jd", index="job-1", ...)` with `stub_agent_storage["save"]`. Collect `c.kwargs` where `block_type != "RESPONSE"`.
+
+Pre-AST-1429:
+
+```
+block_type  entity_id
+SYSTEM      None
+CACHE_*     None   # only slots actually stored
+TASK        None
+RESPONSE    job-1
+```
+
+Post-AST-1429 (current ftr): every stored prompt row’s `entity_id` is `"job-1"`. Empty/whitespace cache slots still absent (no row to assert).
+
+### Root cause
+
+AST-984 tests locked the RESPONSE-only write rule. AST-1429 changed the write rule; `[board-betty] TESTS: REVISE` on AST-1429 filed this gap instead of qa-fix inline. Coverage hole, not a product defect.
+
+### Proposed change
+
+Engineer does **not** commit `tests/` or `docs/test-bible/**`. Betty lands the following (qa-fix on this ticket when the board says TESTS: REVISE; engineer make-fix is a no-op on product).
+
+1. **`tests/component/core/test_agent.py` — `TestAst984EntityColumnRetired`**
+   - Add `test_do_task_success_tags_prompt_entity_id` next to `test_do_task_success_tags_response_entity_id`. Reuse the same stubs (`_resolve_task_prompts` / `send_to_anthropic` / `index="job-1"` / `stub_agent_storage`).
+   - After success: `prompt_saves = [c.kwargs for c in stub_agent_storage["save"].call_args_list if c.kwargs.get("block_type") != "RESPONSE"]`.
+   - Assert `prompt_saves` is non-empty; every entry has `entity_id == "job-1"`; every `block_type` is one of SYSTEM / CACHE_A / CACHE_B / CACHE_C / CACHE_D / TASK / NO_CACHE.
+   - Keep the existing RESPONSE-only test unchanged (still holds).
+
+2. **Direct helper:** one new test on `_store_prompt_blocks` (same class or adjacent store-prompt class). Monkeypatch `save_agent_data` to record kwargs (not `lambda **kw: kw["agent_data_id"]`). Call with `caches_resolved_four=("a", "", "", "")`, `user_content="u"`, `entity_id="somerset"`. Assert every recorded save has `entity_id=="somerset"`. Second call with `entity_id` omitted: every save has `entity_id` None/absent. Do not overload the Style D inner `index` int.
+
+3. **Ad Hoc:** in `TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks` (already passes `entity_id="j1"`), assert `ledger_trackers["store_prompt"].call_args.kwargs.get("entity_id") == "j1"` (and the failure path the same, or one extra assertion on the existing failure test). The fixture mocks `_store_prompt_blocks`; this is the call-site stamp, not a second save-kwargs test.
+
+4. **`docs/test-bible/core/agent.md` AST-984 table:** add a row: prompt-row `entity_id` stamp (SYSTEM / CACHE_* / TASK / NO_CACHE) when index is known — `TestAst984EntityColumnRetired` (new method) + Ad Hoc call-site assertion. Narrow the existing RESPONSE row so it does not claim prompt coverage.
+
+5. **Out of scope:** no product edits (`agent.py` / `database.py` / Code Rules / canon). No historical DB backfill. No `list_entity_latest_agent_refs` test rewrite (still RESPONSE-only). Do not revert AST-1429 to manufacture a red run on this branch — product is already on ftr; the assertion *defines* the red-vs-pre-fix contract.
+
+### Blast radius
+
+- `TestAst984EntityColumnRetired` / `_store_prompt_blocks` tests / `TestAst515AdhocWorkbenchLedger` in `test_agent.py`. Existing RESPONSE assertion and Style D / seven-segment store tests stay.
+- Bible `docs/test-bible/core/agent.md` only; not `agent_responses.md` unless Betty finds a list-API row that wrongly says prompt rows stay null (none expected).
+- AST-1429 product remains the write-rule source (`## Bug: AST-1429` Proposed change).
+
+### What must still hold
+
+- AST-1429 write rule: when index is known, prompt and RESPONSE saves share `entity_id`; omitted index → null.
+- `list_entity_latest_agent_refs` RESPONSE-only; hop/story unchanged.
+- Empty cache slots omitted; no empty CACHE_B/D rows.
+- Engineer still does not commit `tests/` or `docs/test-bible/**` on this ticket’s `code()` if any — Betty owns those trees.
+- Joan CANON: OK on AST-1429 — this gap does not amend `canon/statutes/**` or `canon/patterns/**`.
+
+## Radia review (AST-1431)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1431
+**Publish ref:** `917d91457bc5b1c98a6d2a92f2188eb974288e1a` (`origin/sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp`)
+**Overall:** DISCUSS
+
+Diff baseline: `origin/ftr/AST-1423-entity-id-not-populated-for-all-agent-data-rows...origin/sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp` (4 commits on publish ref: `ee5f867c` AST-1430 tests, `5dda9288` plan, `5e70ea21` qa-fix, `917d9145` merge-tests). No `src/**` delta — tests + bible + plan-fix doc only.
+
+## Fix-specific checks
+
+**[bug-repro]** OK (substantive; tag hygiene advisory below). Primary repro: `TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id` — collects `save_agent_data` kwargs where `block_type != "RESPONSE"`, asserts non-empty, every `entity_id == "job-1"`, every `block_type` in SYSTEM/CACHE_A–D/TASK/NO_CACHE. Pins concrete values from plan `## To-be` / `## Repro`; would fail on pre-AST-1429 product (prompt rows null). Not tautological. Helper test `test_store_prompt_blocks_stamps_entity_id_when_known` covers direct kwarg on/off; Ad Hoc ledger tests assert `store_prompt` call-site `entity_id=="j1"` on success and failure.
+
+**## What must still hold** — OK. Tests assert AST-1429 write rule (shared `entity_id` when index known; omitted → null). No `list_entity_latest_agent_refs` rewrite. Helper uses `caches_resolved_four=("a", "", "", "")` — empty slots not stored. No product/canon edits. Betty `merge-tests(AST-1431)` owns test-tree; engineer plan commit touches `docs/features/` only.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | not-applicable | layers miss |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers miss |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers miss |
+| astral.batch.batch-id-first | scoped | not-applicable | layers miss |
+| astral.batch.batch-id-format | scoped | not-applicable | layers miss |
+| astral.batch.claim-process-release | scoped | not-applicable | layers miss |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers miss |
+| astral.config.config-source-of-truth | scoped | not-applicable | layers miss |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers miss |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | paths miss |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | layers miss |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | paths miss |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Plan-fix patches existing AST-984 feature doc |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | paths miss (Betty merge-tests: tests/bible only) |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Betty merge-tests; engineer plan commit has no test-tree paths |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | layers miss |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | layers miss |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers miss |
+| astral.layers.import-direction | scoped | not-applicable | layers miss |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | paths miss |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers miss |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | paths miss |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | paths miss |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | layers miss |
+| astral.seed.define-approved | scoped | conforms | No seed define edits |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | layers miss |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | layers miss |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | layers miss |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers miss |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers miss |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | layers miss |
+| astral.standards.in-scope-only | scoped | not-applicable | layers miss |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers miss |
+| astral.standards.names-not-ticket-ids | scoped | not-applicable | layers miss |
+| astral.standards.no-cross-contamination | scoped | not-applicable | layers miss |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | layers miss |
+| astral.standards.public-then-helpers | scoped | not-applicable | layers miss |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers miss |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers miss |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | layers miss |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers miss |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers miss |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1431)` @ `917d9145` |
+| orch.git.commit-vocabulary | universal | conforms | `plan` / `test` / `merge-tests` on publish-ref |
+| orch.git.flow-direction-inviolable | universal | conforms | Tip on child `sub/` publish-ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp` |
+| orch.git.merge-on-checkout | universal | conforms | Stacked on parent ftr |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in AST-1431 commits |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1423` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Test-gap only; no product decision reopened |
+| orch.pipeline.plan-is-bible | universal | needs-discussion | AST-1431 plan items 1–4 delivered; `ee5f867c` AST-1430 stack outside plan § Proposed change |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-bug review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No canon amend |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty qa-fix + merge-tests; engineer plan on features only |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada (engineer/test-fix path) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Review does not flip assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Docs-only Radia commit expected on sub |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+AST-1431 `## Proposed change` items 1–4 delivered: `test_do_task_success_tags_prompt_entity_id`; `test_store_prompt_blocks_stamps_entity_id_when_known` (on/off kwarg); Ad Hoc `TestAst515AdhocWorkbenchLedger` success + failure `entity_id` assertions; bible `docs/test-bible/core/agent.md` AST-984 row narrowed + § AST-1431 manifest. Item 5 honored (no product/canon). **Discuss:** commit `ee5f867c` (`test(AST-1430): bug-repro`) is an ancestor of this publish ref and appears in the ftr three-dot diff — `TestAst1430DoTaskResumeContentCopy`, `TestAst1099DoTaskArtifactPin` monkeypatch, `test_api_jobs.py` PUT keep-pin, bible § AST-1430 in `agent.md` and `api_jobs.md` — parent AST-1422, not listed in AST-1431 blast radius. `merge-tests(AST-1431)` correctly merges only `5e70ea21`; the AST-1430 commit is separate earlier history on this branch.
+
+## Findings
+
+**discuss:** Cross-ticket stack on publish ref — `ee5f867c` lands AST-1422 gap sibling AST-1430 on `sub/AST-1423/AST-1431-*` before AST-1431 plan/qa-fix. ~132 lines of AST-1430 test/bible work pollutes this ticket’s three-dot diff and merge attribution. Tests look coherent for AST-1430; Chuckles should confirm intentional co-stack on AST-1423 ftr vs move/re-attribute to `sub/AST-1422/AST-1430-*` before Done credit.
+
+**advisory:** `[bug-repro]` first-line docstring tag missing on `test_do_task_success_tags_prompt_entity_id` (docstring is `AST-1431: …` only; commit message carries bug-repro). Assertion body is sound; optional Betty tag hygiene for qa-fix discoverability.
+
+**advisory:** Success-path Ad Hoc assertion also checks `caches_resolved_four` / no `cache_content` — beyond plan item 3 minimum; strengthens AST-1411 seven-segment contract; no conflict.
+
+**Notes:** No Joan `plan-rubric` verdict for AST-1431 bug patch (fix-board `[board-joan] CANON: OK` on AST-1429). `blockedBy AST-1429` at User Testing — product on ftr supports green repro.
+
+## Frame diff
+
+(none)
+
+## What’s solid
+
+- Repro-first bar pins exact `entity_id` values tied to AST-1429 to-be, not RESPONSE-only tautology.
+- Direct helper test covers kwarg present vs omitted without conflating Style D inner `index`.
+- Bible § AST-1431 narrowed run matches new methods.
+- Single Betty merge-tests SHA on tip.
+
+## Recommended actions
+
+1. Chuckles: acknowledge cross-ticket `ee5f867c` stack (discuss) — document in issue doc whether AST-1430 credit stays on this ref or splits.
+2. Optional: Betty adds `[bug-repro]` to repro method docstring for convention parity.
+3. Normal parent AST-1423: **Review Posted** → if discuss acknowledged without code action, §3h clean shortcut → **User Testing**; if Chuckles wants branch hygiene, route through `resolve-child` only for git attribution (not product).
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (discuss, C7 complete) | Normal (AST-1423 live ftr) | → Review Posted → acknowledge discuss OR resolve-child if re-attributing `ee5f867c` → User Testing |
+
+context_tokens≈42000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 917d9145) prompt entity_id tests OK
+```

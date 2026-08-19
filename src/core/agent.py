@@ -1337,9 +1337,11 @@ def _store_prompt_blocks(
     caches_resolved_four: Any = _PB_SLOT_OMIT,
     cache_content: Any = _PB_SLOT_OMIT,
     debug: bool = False,
+    entity_id: Optional[str] = None,  # AST-1431 prompt-row stamp tests (do_task / helper / Ad Hoc)
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
-    Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only)."""
+    Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only).
+    entity_id is the entity index (AST-1429), distinct from inner _save's Style D loop index."""
 
     def _save(block_type: str, content: str, *, index: int, total: int) -> str:
         content_hash = hashlib.sha256(f"{batch_id}:{block_type}:{content}".encode()).hexdigest()[:16]
@@ -1353,6 +1355,7 @@ def _store_prompt_blocks(
             block_data=content,
             token_size=len(content) // CHARS_PER_TOKEN,
             created_at=created_at,
+            entity_id=entity_id if entity_id else None,
         )
         if debug:
             dbg = get_logger(__name__, debug_flag=True)
@@ -2529,6 +2532,7 @@ async def do_task(
                 user_content=user_content,
                 live_content=live_content,
                 debug=debug,
+                entity_id=index if index else None,
             )
         except Exception:
             logger.debug("_store_prompt_blocks failed", exc_info=True)
@@ -3033,6 +3037,18 @@ async def do_task(
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             from src.core.tracker import pin_job_artifact_agent_data_id
             pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
+            # AST-1428: sibling resume blob after pin; do not re-enable persist_job_artifact_from_parsed.
+            if task_key == "finalize_job_resume":
+                try:
+                    from src.core.tracker import persist_finalize_job_resume_content
+                    persist_finalize_job_resume_content(index, parsed)
+                except Exception as persist_err:
+                    logger.error(
+                        "persist_finalize_job_resume_content failed task=%s index=%s err=%s",
+                        task_key,
+                        index,
+                        persist_err,
+                    )
         elif debug:
             reason = (
                 "store_failed" if store_failed
@@ -3533,6 +3549,7 @@ async def run_adhoc_workbench_test(
                 user_content=user_content,
                 live_content=live_content,
                 debug=debug,
+                entity_id=entity_id if entity_id else None,
             )
         except Exception:
             logger.debug("_store_prompt_blocks failed", exc_info=True)
