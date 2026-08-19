@@ -194,3 +194,51 @@ AC1 production persist-before-call → S2; AC2 workbench Test same → S3; AC3�
 R1–R4 executed in-session (universal set scored; scoped exclusions are layer/path misses: `data`/`ui`/`utils`/`scripts`/`tests`/`docs/features/**`/seed-admin paths). Slim R7: statute table not appended.
 
 context_tokens≈48000
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1448
+**Publish ref:** `3688da45fdc5a2abf4bc097e37e1e022ac51c597` (`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`)
+**Overall:** CLEAN
+
+**Diff change set** (`origin/dev...3688da45`): layers `core` + `docs`; change_types `add` + `modify`. AST-1448 product: `src/core/agent.py`, proposed catalog + patterns README/HARVEST, issue doc. Betty: `tests/component/core/test_agent_ast1448.py`, `docs/test-bible/core/agent.md`. Also on three-dot via `test(AST-1450)` + `merge-tests`: `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_NavigationShell.test.tsx` — not this child's Files Changed.
+
+**Statutes checked:** Full harvested active set (64 ids). Universal never `not-applicable`. All scoped statutes conform or not-applicable per layer/path miss.
+
+**Pattern conformance:** `pattern.batch.entity-agent-responses` conforms; `pattern.agent.prompt-persist-before-provider` conforms (introduced as `status: proposed`).
+
+**Plan adherence:** Stages 1–3 match issue doc; estimate 3 matches relocate + proposed catalog.
+
+**Findings:** *(none — no fix-now / discuss)*
+
+**advisory:** Three-dot also contains AST-1450 NavigationShell / frontend bible via `test(AST-1450)` + `merge-tests`. Out of AST-1448 Files Changed.
+
+**advisory:** Pre-await persist dropped the old "non-blocking; best-effort" comment — matches plan "verbatim" snippet.
+
+**What's solid:** Call-order only, same kwargs, RESPONSE/timesheets/external untouched, catalog proposed with no runtime id lookup.
+
+## Radia review
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1448
+**Publish ref:** `3688da45fdc5a2abf4bc097e37e1e022ac51c597` (`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`)
+**Overall:** CLEAN
+
+**Diff change set** (`origin/dev...3688da45`): layers `core` + `docs`; change_types `add` + `modify`. AST-1448 product: `src/core/agent.py`, proposed catalog + patterns README/HARVEST, issue doc. Betty: `tests/component/core/test_agent_ast1448.py`, `docs/test-bible/core/agent.md`. Also on three-dot via `test(AST-1450)` + `merge-tests`: `docs/test-bible/frontend/components.md`, `tests/component/frontend/components/test_NavigationShell.test.tsx` — not this child's Files Changed.
+
+**Statutes checked:** Full harvested active set (64 ids). Universal never `not-applicable`. All scoped statutes conform or not-applicable per layer/path miss.
+
+**Pattern conformance:** `pattern.batch.entity-agent-responses` conforms; `pattern.agent.prompt-persist-before-provider` conforms (introduced as `status: proposed`).
+
+**Plan adherence:** Stages 1–3 match issue doc; estimate 3 matches relocate + proposed catalog.
+
+**Findings:** *(none — no fix-now / discuss)*
+
+**advisory:** Three-dot also contains AST-1450 NavigationShell / frontend bible via `test(AST-1450)` + `merge-tests`. Out of AST-1448 Files Changed.
+
+**advisory:** Pre-await persist dropped the old "non-blocking; best-effort" comment — matches plan "verbatim" snippet.
+
+**What's solid:** Call-order only, same kwargs, RESPONSE/timesheets/external untouched, catalog proposed with no runtime id lookup.
