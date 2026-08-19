@@ -70,16 +70,16 @@ Local dev: Flask `:5001` serves gitignored **`frontend/dist/`**; **`git pull`** 
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1117-print-html-blobs`.
 
-Print Resume / Cover open `/candidate/resume|<job_id>` and `/candidate/cover/<job_id>`. Vite must proxy `/candidate` → Flask; Flask SPA catch-all must **404 JSON** for unmatched `candidate/*` instead of serving `index.html` (SPA `*` → recommended). HTML blueprints + pin resolve remain AST-605 / AST-1100.
+Print Resume / Cover open `/candidate/resume|<job_id>` and `/candidate/cover/<job_id>`. Vite must proxy **print HTML prefixes** (`/candidate/resume`, `/candidate/cover`) → Flask — not the whole `/candidate` SPA section. Flask SPA catch-all **404 JSON** only for unmatched **print-shaped** paths; candidate SPA routes (`/candidate/backstory`, …) get `index.html`. Narrowed by **AST-1435**. HTML blueprints + pin resolve remain AST-605 / AST-1100.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| SPA catch-all guard | `src/ui/server.py` `serve_react` | **`TestAst1117CandidateSpaGuard`** |
-| Vite `/candidate` proxy | `src/ui/frontend/vite.config.ts` | **`TestAst1117ViteCandidateProxy`** |
+| SPA catch-all guard | `src/ui/server.py` `serve_react` | **`TestAst1117CandidateSpaGuard`** (rewritten AST-1435) |
+| Vite print-HTML proxy | `src/ui/frontend/vite.config.ts` | **`TestAst1117ViteCandidateProxy`** (rewritten AST-1435) |
 
 **Existing (bible-backed, not re-authored):** `TestResumeHtmlRoutes` / `TestAst581CoverRoute` (`docs/test-bible/ui/api/api_resume_html.md`); JAR Print `window.open('/candidate/…')` + pin visibility (`docs/test-bible/frontend/lib.md` AST-605 / AST-1100).
 
-**Broken / obsolete:** none.
+**Broken / obsolete:** blanket `/candidate` 404 + Vite `'/candidate'` proxy assertions — see **AST-1435**.
 
 **Integration:** none.
 
@@ -89,6 +89,30 @@ Print Resume / Cover open `/candidate/resume|<job_id>` and `/candidate/cover/<jo
   tests/component/ui/test_server.py::TestAst1117ViteCandidateProxy \
   tests/component/ui/api/test_api_resume_html.py::TestResumeHtmlRoutes \
   tests/component/ui/api/test_api_resume_html.py::TestAst581CoverRoute \
+  -q
+```
+
+### AST-1435 · AST-1424
+
+**Parent:** [AST-1424](https://linear.app/astralcareermatch/issue/AST-1424/refresh-from-a-deeplink-on-staging-i-get-an-error). **Publish:** `origin/sub/AST-1424/AST-1435-test-gap-candidate-spa-guard`. Product fix: **AST-1433**.
+
+Rewrite AST-1117 blanket `/candidate` 404 + Vite proxy. Repro: document GET `/candidate/backstory` → 200 `index.html` (red on pre-fix `serve_react`; green after AST-1433 narrows the guard to print prefixes). Unmatched `/candidate/resume` and `/candidate/cover` (no blueprint match) still JSON 404.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| [bug-repro] SPA deeplink GET | `src/ui/server.py` `serve_react` | **`TestAst1117CandidateSpaGuard::test_candidate_backstory_serves_index`** |
+| SPA `/candidate` fallback | same | **`test_candidate_prefix_spa_routes_serve_index`**, **`test_candidate_exact_path_serves_index`** |
+| Print-prefix unmatched 404 | same | **`test_unmatched_print_resume_prefix_returns_404_json`**, **`test_unmatched_print_cover_prefix_returns_404_json`** |
+| Vite print-only proxy | `src/ui/frontend/vite.config.ts` | **`TestAst1117ViteCandidateProxy::test_vite_config_proxies_print_html_not_candidate_spa`** |
+
+**Broken / obsolete:** `test_candidate_prefix_returns_404_json_not_spa`, `test_candidate_exact_path_returns_404_json`, `test_vite_config_proxies_candidate_to_flask`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/test_server.py::TestAst1117CandidateSpaGuard \
+  tests/component/ui/test_server.py::TestAst1117ViteCandidateProxy \
   -q
 ```
 
