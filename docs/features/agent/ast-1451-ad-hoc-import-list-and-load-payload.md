@@ -297,3 +297,14 @@ Joan plan-rubric verdict attached (APPROVED). No straggler: excluded statutes re
 
 context_tokens≈52000
 
+## Resolution (2026-08-19 — resolve-child)
+
+**Review ref:** Radia `[code-rubric] PROCEED` + plan `## Radia review` @ `caa6e96b` (CLEAN).
+
+| Item | Action |
+|------|--------|
+| fix-now | None |
+| discuss | None |
+| advisory — duplicate `is_valid_candidate_batch_claim_state` import | Left as sibling merge residue; not an AST-1451 product change |
+| advisory — `MAX(entity_id)` list semantics | Plan-approved; no code change |
+
