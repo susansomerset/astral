@@ -2,7 +2,9 @@ import { render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter } from "react-router-dom"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 import Authenticate from "../../../../src/ui/frontend/src/pages/Authenticate"
+import { AuthProvider } from "../../../../src/ui/frontend/src/contexts/AuthContext"
 import { resetStytchTestState, stytchTestState } from "../stytchMock"
+import { stubAuthPublicFetches } from "../test-utils"
 
 const navigate = vi.fn()
 
@@ -14,31 +16,17 @@ vi.mock("react-router-dom", async () => {
   }
 })
 
-function stubPolicyFetch(): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes("/api/auth_session_policy")) {
-        return Response.json({
-          session_duration_minutes: 20,
-          activity_extension_interval_minutes: 10,
-        })
-      }
-      return new Response("not found", { status: 404 })
-    }),
-  )
-}
-
 function renderAuthenticate() {
   return render(
     <MemoryRouter initialEntries={["/authenticate?stytch_token_type=oauth&token=abc"]}>
-      <Authenticate />
+      <AuthProvider>
+        <Authenticate />
+      </AuthProvider>
     </MemoryRouter>,
   )
 }
 
-describe("Authenticate page (AST-830 / AST-1374)", () => {
+describe("Authenticate page (AST-830 / AST-1374 / AST-1441)", () => {
   let replaceState: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
@@ -46,7 +34,7 @@ describe("Authenticate page (AST-830 / AST-1374)", () => {
     navigate.mockReset()
     replaceState = vi.fn()
     vi.spyOn(window.history, "replaceState").mockImplementation(replaceState)
-    stubPolicyFetch()
+    stubAuthPublicFetches(false)
   })
 
   afterEach(() => {
@@ -130,5 +118,22 @@ describe("Authenticate page (AST-830 / AST-1374)", () => {
     await waitFor(() => expect(navigate).toHaveBeenCalled())
     expect(authenticateByUrl).toHaveBeenCalledTimes(1)
     expect(authenticateByUrl).toHaveBeenCalledWith({ session_duration_minutes: 20 })
+  })
+
+  it("AST-1441: navigates home without authenticateByUrl when passthrough is on", async () => {
+    stubAuthPublicFetches(true)
+    stytchTestState.session = null
+    const authenticateByUrl = vi.fn(async () => ({ handled: true, tokenType: "oauth" }))
+    stytchTestState.authenticateByUrlImpl = authenticateByUrl
+    stytchTestState.parseAuthenticateUrlResult = {
+      token: "abc",
+      tokenType: "oauth",
+      handled: true,
+    }
+    renderAuthenticate()
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith("/", { replace: true }),
+    )
+    expect(authenticateByUrl).not.toHaveBeenCalled()
   })
 })

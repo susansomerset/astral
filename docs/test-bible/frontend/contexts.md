@@ -43,3 +43,5 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+Local-deploy SPA skip Login / extend: **`docs/test-bible/frontend/lib.md`** § AST-1441.

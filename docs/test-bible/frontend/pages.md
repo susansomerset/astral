@@ -2,6 +2,8 @@
 
 **Test tree:** `tests/component/pages/`
 
+Local-deploy `/authenticate` skip handoff: **`docs/test-bible/frontend/lib.md`** § AST-1441.
+
 ### AST-1357 · AST-1356
 
 Unlock Candidate Profile **Original Resume Text** when `artifacts.base_resume` exists — remove `hasBaseResume` / `disabled` / lock placeholder on the resume tab. Field stays on existing Profile `values` / PUT / Cancel / dirty-leave (AST-1336); no Artifacts UI change.

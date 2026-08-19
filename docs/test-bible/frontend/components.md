@@ -2,6 +2,8 @@
 
 **Test tree:** `tests/component/components/`
 
+Local-deploy RequireAuth skip Login / Log-off: **`docs/test-bible/frontend/lib.md`** § AST-1441.
+
 ### AST-427 · AST-426
 
 **`CollapsiblePanel`** shared by **`AdminTaskPrompts`** (Manage Tasks list + edit modal) and **`ArtifactEditor`** (criteria). Zero expanded sections: list phases and edit modal (`editOpenPanel === null` on collapse, same pattern as criteria `expandedTabId === ""`).
