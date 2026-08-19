@@ -2461,6 +2461,25 @@ async def do_task(
             f"runtime_prompt_segments={len(runtime_prompt)}"
         )
 
+    prompt_blocks: List[Dict[str, str]] = []
+    _should_store = store_agent_data and batch_id and entity_type
+    if _should_store:
+        try:
+            prompt_blocks = _store_prompt_blocks(
+                entity_type=entity_type,
+                task_key=task_key,
+                batch_id=batch_id,
+                system_content=system_content,
+                caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or ""),
+                nocache_content=nocache_content,
+                user_content=user_content,
+                live_content=live_content,
+                debug=debug,
+                entity_id=index if index else None,
+            )
+        except Exception:
+            logger.debug("_store_prompt_blocks failed", exc_info=True)
+
     if provider == "anthropic":
         result = await send_to_anthropic(
             user_blocks,
@@ -2512,26 +2531,6 @@ async def do_task(
             batch_id,
             err,
         )
-
-    # Store prompt blocks in agent_data (non-blocking; best-effort)
-    prompt_blocks: List[Dict[str, str]] = []
-    _should_store = store_agent_data and batch_id and entity_type
-    if _should_store:
-        try:
-            prompt_blocks = _store_prompt_blocks(
-                entity_type=entity_type,
-                task_key=task_key,
-                batch_id=batch_id,
-                system_content=system_content,
-                caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or ""),
-                nocache_content=nocache_content,
-                user_content=user_content,
-                live_content=live_content,
-                debug=debug,
-                entity_id=index if index else None,
-            )
-        except Exception:
-            logger.debug("_store_prompt_blocks failed", exc_info=True)
 
     if not result.get("success"):
         raw_for_audit = None
