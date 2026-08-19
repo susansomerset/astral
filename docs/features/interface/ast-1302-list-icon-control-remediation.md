@@ -1,3 +1,155 @@
+<!-- linear-archive: AST-1302 archived 2026-08-19 -->
+
+## Linear archive (AST-1302)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1302/list-icon-control-remediation-button-consistency  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1166 — Button consistency  
+**Blocked by / blocks / related:** parent: AST-1166
+
+### Description
+
+## What this implements
+
+After #1 (parallel with #2 once patterns exist): bring list row actions (and peer icon-only controls in scope) onto `pattern.ui.icon-control`; fix poor labeled mini-text row actions (e.g. Skip).
+
+## Acceptance criteria
+
+- [X] List row action columns use icon-controls only; Skip/Edit/View-style actions are not cramped labeled text buttons.
+- [X] No regression in enablement or actions on touched flows (handlers / `disabled` unchanged on touched controls). Land Meteorite is not in this ticket's Files Changed.
+
+## Boundaries
+
+* Does not land the pattern docs (sibling #1 / AST-1300).
+* Does not own the labeled-button sweep (sibling #2 / AST-1301): `btn primary` / `secondary` / `danger` / `in-flight`, `dep-btn`, `modal-btn`, `list-page-bulk-btn`, modal labeled Skip (`entity-skip-btn` / "Skip This Job"), Manage Email / Land Meteorite, Scheduled Actions row Run/Stop/Draining.
+* Does not add `IconControl.tsx`, a second stylesheet, or `.icon-control.danger`.
+* Does not change API calls or enablement rules — presentation and visible glyph only.
+
+## In scope
+
+- [X] `pattern.ui.icon-control` — consume landed `.icon-control`; list row actions + modal × + CollapsiblePanel chevron
+- [X] `astral.standards.in-scope-only` — only the inventory in the plan; no labeled-button sweep
+- [X] `astral.standards.dry-and-focused-functions` — retire leftover `.job-list-icon-btn` / `.list-page-edit-btn` / `.modal-close` / `.collapsible-panel-chevron-btn` after last consumer
+- [X] `astral.ui.frontend-file-placement` — styles only in `src/ui/frontend/src/App.css`; no new component file
+- [X] `astral.ui.naming-conventions` — class `icon-control`; no ticket ids in selectors
+- [X] `astral.standards.names-not-ticket-ids` — domain class/glyph names, not `AST-1302`
+- [X] `astral.standards.no-cross-contamination` — UI frontend only
+- [X] `astral.layers.ui-config-driven-business-logic` — no new enablement rules in React
+- [X] `astral.docs.features-single-file-per-ticket` — one plan file under `docs/features/interface/`
+
+## Considered but excluded
+
+- [X] `pattern.ui.shared-button-roles` — sibling AST-1301
+- [X] `pattern.ui.admin-endpoint` — no new admin HTTP surface
+- [X] `astral.ui.single-gunicorn-worker` — no server/worker change
+- [X] `astral.patterns.require-auth-on-protected-endpoints` / `astral.idioms.require-auth-on-protected-endpoints` — no endpoints
+- [X] `astral.standards.logging-via-utils` — no logging
+- [X] `astral.standards.debug-contract-gated` — no debug-contract lines
+- [X] `astral.config.config-source-of-truth` — no `config.py`
+- [X] `astral.config.secrets-and-env-specific-from-environ` — no secrets
+- [X] `astral.layers.import-direction` — no new imports
+- [X] `astral.standards.no-hardcoded-sets` — no new color/enum sets
+- [X] Side-tab / nav / JobsInReview section chrome — parent catalog: not icon-control
+- [X] `sql-hist-btn` / `dispatch-log-copy-btn` — not list row / modal × / collapsible chevron
+- [X] Canon pattern files — AST-1300 already User Testing
+
+## Notes for planning
+
+AST-1300 landed unused `.icon-control` + approved `pattern.ui.icon-control`. This child only remediates call sites named in the plan inventory.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-11T05:24:35.897Z
+[code-rubric] revision=2
+**Overall:** DISCUSS
+Icon-control remediation matches plan + pattern.ui.icon-control; legacy CSS retired; handlers preserved.
+Discuss: test-tree on tip (expected test-child/merge-tests) vs Betty-only statute — no product fix.
+context_tokens≈58000
+— Radia
+
+#### betty — 2026-08-11T05:20:25.439Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1166/AST-1302-list-icon-control-remediation` @ `039cfcef`
+**merge-tests:** `merge-tests(AST-1302): origin/tests 9c0cbd3d5a9f62f8ec61ceea67b5c582abc2f62d`
+
+### 1. Existing coverage (bible-backed)
+
+1. `tests/component/frontend/components/test_CandidateJobRowActions.test.tsx` — Skip / View Job Analysis / Resurrect handlers (aria-labels unchanged)
+2. `tests/component/frontend/pages/test_JobsRecommended.test.tsx` `-t Skip` — Skip-by-aria-label on Recommended (page file not edited)
+3. `tests/component/frontend/components/test_Modal.test.tsx` — Close / dirty discard (aria-label Close kept)
+4. `tests/component/frontend/components/test_CollapsiblePanel.test.tsx` — Expand/Collapse section
+5. `tests/component/frontend/pages/test_AdminManageCandidates.test.tsx` — View / Edit / Delete / Set dispatch tasks (aria-labels kept)
+6. `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — row Delete by accessible name
+7. `test_JobDetailModal.test.tsx` **Skip This Job** — excluded surface; still `entity-skip-btn` (AST-1301)
+
+### 2. Broken / obsolete
+
+None. Existing tests use role / aria-label names this ticket kept.
+
+### 3. Gaps (this pass)
+
+1. `test_CandidateJobRowActions.test.tsx` — **`CandidateJobRowActions — AST-1302 icon-control`**: single initials `S/J/R/I/X/G`, `icon-control` class, leftover CSS families retired, post-applied handlers
+2. `test_AdminManageCandidates.test.tsx` — **`AST-1302: row actions are icon-control`** (§6c)
+3. `test_AdminAgentPrompts.test.tsx` — **`AST-1302: row Delete is icon-control with D`** (§6c)
+4. `test_AdminScheduledActions.test.tsx` — **`AST-1302: Add Task and Kill Running × are icon-control`** (§6c)
+5. `test_Modal.test.tsx` — **`AST-1302: header close is icon-control`**
+6. `test_CollapsiblePanel.test.tsx` — **`AST-1302: chevron is icon-control`**
+
+### Manifest (test-child)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_CollapsiblePanel.test.tsx
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1302"
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  -t "Skip"
+```
+
+Pass = Vitest green on the three commands. No pytest / zero-arg harness / branch-lock.
+
+**Bible (on publish ref):**
+`docs/test-bible/frontend/components.md` `4cf46d25ed8e3877240d7fdb11834603af1934b7`
+
+#### joan — 2026-08-11T05:10:45.851Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+AST-1302 plan approved.
+context_tokens≈82000
+— Joan
+
+#### katherine — 2026-08-11T05:07:57.747Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1166/AST-1302-list-icon-control-remediation/docs/features/interface/ast-1302-list-icon-control-remediation.md
+
+`origin/sub/AST-1166/AST-1302-list-icon-control-remediation` @ `32321160`
+
+**Scope:** Single-Component — UI frontend only (`App.css` + six TSX call sites). No API, config, or pattern-doc edits.
+
+**Conf:** high — `pattern.ui.icon-control` and unused `.icon-control` CSS already landed on AST-1300; every in-scope control is named in the plan with the exact class and child to write.
+
+**Risk:** Medium — Skip / resurrect / pipeline-move row actions are operator-critical; a dropped `onClick` or `disabled` would block those rows. Land Meteorite is not in Files Changed.
+
+Closed inventory: job-list initials (`S`/`J`/`R`/`I`/`X`/`G`), Manage Candidates SVGs + `T` for Set dispatch tasks, Agents row `D`, modal ×, CollapsiblePanel chevron. Labeled sweep (including Scheduled Actions Run/Stop and modal Skip This Job) stays on AST-1301.
+
+---
+
 # AST-1302 — List icon-control remediation (Button consistency)
 
 - **Linear:** [AST-1302](https://linear.app/astralcareermatch/issue/AST-1302/list-icon-control-remediation-button-consistency)

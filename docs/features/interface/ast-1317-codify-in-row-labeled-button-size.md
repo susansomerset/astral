@@ -1,3 +1,69 @@
+<!-- linear-archive: AST-1317 archived 2026-08-19 -->
+
+## Linear archive (AST-1317)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1317/codify-in-row-labeled-button-size-add-a-button-style-for-in-row  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1309 — Add a button style for in-row buttons  
+**Blocked by / blocks / related:** parent: AST-1309; blocks: AST-1318
+
+### Description
+
+## What this implements
+
+Amend `pattern.ui.shared-button-roles` with the Todo-locked `in-row` size and land the shared style. Does not switch call sites.
+
+## Citations
+
+`pattern.ui.shared-button-roles`; `pattern.ui.icon-control` (boundary); `astral.standards.dry-and-focused-functions`; `astral.ui.frontend-file-placement`; `astral.ui.naming-conventions`; `astral.standards.names-not-ticket-ids`.
+
+## Acceptance criteria
+
+- [X] 1. The shared labeled-button catalog documents the `in-row` size modifier (roles unchanged; always paired with a role).
+
+## Boundaries
+
+- [X] Does not switch call sites (sibling #2).
+- [X] Does not restyle icon-controls.
+- [X] Does not reopen AST-1166 roles.
+
+## Notes for planning
+
+Catalog amendment: optional `in-row` size modifier on the labeled family — `btn primary in-row` / `btn secondary in-row` / `btn danger in-row` / `btn primary in-flight in-row`. Height about 60% of the current shared labeled button; keep the label readable.
+
+## Git branch (authoritative)
+
+`sub/AST-1309/AST-1317-codify-in-row-labeled-button-size` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### chuckles — 2026-08-11T22:09:02.693Z
+[check-linear] User Testing — resource titled AST-1317
+
+#### susan — 2026-08-11T22:07:39.072Z
+@chuckles URGENT: please rename the "issue doc" to its proper identity string "AST-###…" like the others, and push it to the ftr branch to avoid clobbering.
+
+#### chuckles — 2026-08-11T22:01:06.680Z
+[merge-child] blocked: missing test(AST-1317): resolve(AST-1317): on origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size. @Ada Lovelace — docs-acceptance still needs test() (subject must include docs-acceptance) and resolve(): — clean; then republish the sub tip.
+
+#### radia — 2026-08-11T22:00:24.081Z
+[code-rubric] PROCEED (Commit: ae69743e) clean in-row codify
+
+#### betty — 2026-08-11T21:57:34.985Z
+`origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size` @ `ae69743e` · docs-acceptance ready
+
+#### joan — 2026-08-11T21:53:08.945Z
+[plan-rubric] PROCEED (Commit: 949171e0) catalog in-row size
+
+#### ada — 2026-08-11T21:50:37.014Z
+`origin/sub/AST-1309/AST-1317-codify-in-row-labeled-button-size` @ `949171e0` · catalog size amendment
+
+---
+
 # AST-1317 — Codify in-row labeled-button size (Add a button style for in-row buttons)
 
 - **Linear:** [AST-1317](https://linear.app/astralcareermatch/issue/AST-1317/codify-in-row-labeled-button-size-add-a-button-style-for-in-row-buttons)

@@ -1,3 +1,62 @@
+<!-- linear-archive: AST-1331 archived 2026-08-19 -->
+
+## Linear archive (AST-1331)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1331/recommended-list-state-column-add-job-state-to-recommended-job-list  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1330 — add Job State to Recommended Job list tables  
+**Blocked by / blocks / related:** parent: AST-1330
+
+### Description
+
+## What this implements
+
+Add a sortable State column to every Recommended list table that displays each row's existing job state string. Does not own section regrouping, modal work, or other job list pages.
+
+## Citations
+
+`astral.standards.in-scope-only`; `astral.standards.no-hardcoded-sets`; `astral.config.config-source-of-truth`; `astral.ui.naming-conventions`.
+
+## Acceptance criteria
+
+- [X] On the Recommended page, every visible list section's table includes a State column whose cell for each row is that job's current state string (e.g. `BUILD_ARTIFACTS`).
+- [X] Within the Meteorites section, rows with different states show different State cell values so in-progress vs ready vs untouched are distinguishable without opening a job.
+- [X] Clicking the State column header sorts that section's rows by state (toggle asc/desc like other sortable headers on the page).
+- [X] Non-Meteorite Recommended sections still group as today; they also show State on each row (same string as the job's state).
+- [X] Opening a job report, skipping, and other existing row actions behave as before.
+
+## Boundaries
+
+- [X] Does not regroup Meteorites by state, change Skipped/In Review, change the Recommended Job Modal, invent human-readable state labels, or change list API contracts beyond fields already returned.
+
+## Notes for planning
+
+Parent AST-1330 definition is authoritative. Frontend Recommended list tables — Katherine domain. Display stored JOB_STATES key already on each list row.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1330-add-job-state-to-recommended-job-list-tables`, child `sub/AST-1330/AST-1331-recommended-list-state-column`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-12T13:38:43.521Z
+[code-rubric] REVIEW (Commit: 550aecb4) sibling test smuggle
+
+#### betty — 2026-08-12T13:35:07.638Z
+`origin/sub/AST-1330/AST-1331-recommended-list-state-column` @ `550aecb4` · State column tests
+
+#### joan — 2026-08-12T13:27:49.563Z
+[plan-rubric] PROCEED (Commit: 68ff11567decff69ee7a7efc8793637f135e8428) Single-file State column
+
+#### katherine — 2026-08-12T13:25:41.896Z
+`origin/sub/AST-1330/AST-1331-recommended-list-state-column` @ `68ff11567decff69ee7a7efc8793637f135e8428` · plan ready
+
+---
+
 # AST-1331 — Recommended list State column
 
 - **Linear:** [AST-1331](https://linear.app/astralcareermatch/issue/AST-1331/recommended-list-state-column-add-job-state-to-recommended-job-list)
