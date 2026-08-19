@@ -916,3 +916,136 @@ Contract change, confirmed: stamp. Do not keep the AST-984 “prompt rows stay n
 
 Prompt-row `entity_id` stamping is additive: `astral.batch.entity-agent-responses-latest-only` still requires RESPONSE tagging and a RESPONSE-only `list_entity_latest_agent_refs` index (both unchanged); it never mandates null prompt rows. `pattern.batch.entity-agent-responses` describes that lookup shape only — tagging SYSTEM/CACHE/TASK when `index` is known does not contradict it. The AST-984 “prompts stay null” rule lives in `docs/ASTRAL_CODE_RULES.md` §2.4.1 (and `save_agent_data` docstring), which the plan updates; no `canon/statutes/**` or `canon/patterns/**` amend needed before `make-fix`.
 
+## Radia review (AST-1429)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1429
+**Publish ref:** `4e1cfd4b2fdfda16e5fd3d892f7466c09489d7d8` (`origin/sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows`)
+**Overall:** CLEAN
+
+Diff baseline: `origin/ftr/AST-1423-entity-id-not-populated-for-all-agent-data-rows...origin/sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows` (3 commits: plan, Joan validate doc, code). Product delta: `src/core/agent.py`, `src/data/database.py` docstring, `docs/ASTRAL_CODE_RULES.md` §2.4.1.
+
+## Fix-specific checks
+
+**[bug-repro]** not applicable — clean board opt-out; Betty `[board-betty] TESTS: REVISE` routed to sibling AST-1431; no qa-fix on this ticket.
+
+**## What must still hold** — OK. `list_entity_latest_agent_refs` still filters `block_type = 'RESPONSE'` only; batch `prompt_blocks` still assembled from all non-RESPONSE rows in the batch plus the RESPONSE id (`database.py` unchanged logic). `_store_response_block` still passes `entity_id=index if index else None`. Empty cache blobs still skipped in `_store_prompt_blocks`. `save_agent_data` still accepts omitted `entity_id` (NULL). No `append_agent_response` / entity JSON column paths touched. Ad Hoc seven-segment persist unchanged except the new kwarg on prompt saves. No `tests/` or `docs/test-bible/**` in diff.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | conforms | No confidence/grade validation edits |
+| astral.agent.do-task-delegation | scoped | conforms | `do_task` still owns agent_data writes; extends tagging only |
+| astral.agent.grade-vector-validation | scoped | conforms | Grade-vector validation untouched |
+| astral.batch.batch-id-first | scoped | conforms | No claim/get/clear signature changes |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id format changes |
+| astral.batch.claim-process-release | scoped | conforms | No claim→process→release edits |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | RESPONSE tagging preserved; RESPONSE-only list API unchanged; prompt tagging additive |
+| astral.config.config-source-of-truth | scoped | conforms | No config value changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets/env handling changes |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | layers miss (core,data,docs) |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | layers miss |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Hop hydration paths untouched |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | paths miss |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Patches existing AST-984 feature doc; no new features file |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | layers miss |
+| astral.git.engineer-test-tree-ban | scoped | not-applicable | layers miss |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | Coat-check keys untouched |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | `ensure_batch_response_entity_ids` / consult paths untouched |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | No external persistence |
+| astral.layers.import-direction | scoped | conforms | No new cross-layer imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layers miss |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers miss |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | paths miss |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | paths miss |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | No seed hot-path edits |
+| astral.seed.define-approved | scoped | conforms | No seed define changes |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | No seed operator-row edits |
+| astral.seed.other-via-coverage-join | scoped | conforms | No seed coverage-join edits |
+| astral.standards.data-raises-caller-logs | scoped | conforms | Data API docstring only; no new data-layer logging |
+| astral.standards.database-header-inventory | scoped | conforms | No structural DB API/header inventory change |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D `debug_index` on inner loop index unchanged |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Single kwarg extension; no parallel APIs |
+| astral.standards.in-scope-only | scoped | conforms | Scoped to agent_data tagging + Code Rules sentence |
+| astral.standards.logging-via-utils | scoped | conforms | Pre-existing `logger.debug` on store failure; not worsened |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `AST-1429` only in comment carve-out |
+| astral.standards.no-cross-contamination | scoped | conforms | Layered paths respected |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new inline state sets |
+| astral.standards.public-then-helpers | scoped | conforms | Private `_store_prompt_blocks` helper extended |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers miss |
+| astral.state.core-decides-transitions | scoped | conforms | No state-transition logic changes |
+| astral.state.job-prior-states-enforced | scoped | conforms | No JOB_STATES edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Hop hydration via list API unchanged |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers miss |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | No merge-tests on this sub tip |
+| orch.git.commit-vocabulary | universal | conforms | `plan` / `docs` / `code` vocab on publish-ref |
+| orch.git.flow-direction-inviolable | universal | conforms | Tip on child `sub/` publish-ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1423/AST-1429-stamp-entity-id-on-all-agent-data-rows` |
+| orch.git.merge-on-checkout | universal | conforms | Stacked on parent ftr per spawn prompt |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in AST-1429 commits |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1423` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Contract change already confirmed in plan-fix |
+| orch.pipeline.plan-is-bible | universal | conforms | Delivery matches `## Proposed change` |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-bug review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` or `canon/patterns/**` edits; Code Rules only per plan |
+| orch.roles.betty-owns-test-tree | universal | conforms | Engineer avoided `tests/`; coverage routed to AST-1431 |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Implementer Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Review does not flip assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Docs-only Radia commit expected on sub |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+| -- | -- | -- |
+| pattern.batch.entity-agent-responses | conforms | RESPONSE-only `list_entity_latest_agent_refs` unchanged; prompt `entity_id` tagging does not contradict lookup shape ([board-joan] CANON OK) |
+
+## Plan adherence
+
+Matches `## Proposed change` exactly: `_store_prompt_blocks` gains `entity_id` kwarg (distinct from Style D inner `index`); `do_task` and `run_adhoc_workbench_test` pass `entity_id` with same truthiness as `_store_response_block`; `save_agent_data` docstring updated; Code Rules §2.4.1 write-rule sentence replaced; no INSERT/dedup/id-generation changes; no `list_entity_latest_agent_refs` / `ensure_batch_response_entity_ids` edits; no canon amend (explicit out-of-scope). Blast-radius guardrails honored: multi-entity shared prompt rows not copied per entity; prompt PK still content-hash based.
+
+## Findings
+
+**advisory:** Component tests asserting prompt rows lack `entity_id` remain stale until sibling AST-1431 lands Betty’s REVISE manifest — expected per board routing; not a defect on this diff.
+
+**advisory:** Statute/pattern **Examples** still illustrate RESPONSE-only tagging; **Statement** does not forbid prompt tagging and Joan waived canon amend for this patch. Optional future Archie-gated example refresh if catalog drift bothers readers — not merge-blocking.
+
+**Notes:** No Joan `plan-rubric` verdict attached for the AST-1429 bug patch (fix-board `[board-joan]` only). C4 straggler sweep against AST-984 Joan Excluded list not invoked.
+
+## Frame diff
+
+(none)
+
+## What’s solid
+
+- Minimal, surgical diff: one kwarg + two call sites + docstring + Code Rules sentence.
+- `entity_id if entity_id else None` mirrors existing `_store_response_block` truthiness.
+- Lookup/index contract isolated: RESPONSE-only SQL filter prevents prompt rows entering latest-ref index.
+- Style D debug counter preserved on inner `_save(..., index=int)` loop.
+
+## Recommended actions
+
+1. Chuckles: append this verdict to issue doc, push `docs(AST-1429): Radia review — clean`, post slim upshot.
+2. Normal parent AST-1423: **Review Posted** → clean-review shortcut (§3h) → **User Testing** directly; `resolve-child` skipped.
+3. Ensure AST-1431 test-hole sibling completes before UAT sign-off on entity_id stamping behavior.
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (AST-1423 live ftr) | → Review Posted → §3h shortcut → User Testing; resolve-child skipped |
+
+context_tokens≈38000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 4e1cfd4b) entity_id on prompt rows
+```
