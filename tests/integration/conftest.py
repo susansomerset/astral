@@ -24,8 +24,9 @@ os.environ.setdefault("ANTHROPIC_API_KEY", "test-anthropic-key")
 
 @pytest.fixture(autouse=True)
 def _integration_fail_closed_deploy_env(monkeypatch: pytest.MonkeyPatch) -> None:
-    # AST-1440: local passthrough would 200 unauthenticated nav; keep existing 401.
-    monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+    # AST-1440: set a non-local value so later config.py load_dotenv() cannot
+    # refill ASTRAL_DEPLOY_ENV=local from the epic worktree .env (delenv is not enough).
+    monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
 
 _SCHEMA_FLAGS = (
     "_company_schema_ensured",
