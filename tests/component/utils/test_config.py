@@ -2342,9 +2342,10 @@ class TestAst970CandidateStateRegistry:
         jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
         companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
         artifacts = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Artifacts")
-        assert jobs["visible"] == "ACTIVE_SEARCH"
-        assert companies["visible"] == "ACTIVE_SEARCH"
-        assert artifacts["visible"] == "RESUME_READY"
+        # AST-1449: group-level candidate-state "visible" is not a NAV_CONFIG key.
+        assert "visible" not in jobs
+        assert "visible" not in companies
+        assert "visible" not in artifacts
         gen = cfg.build_state_ui_manifest()["candidate"]["artifact_generate_states"]
         # AST-1253: Generate/Regenerate available through search states (not while chain claimed).
         assert gen == [

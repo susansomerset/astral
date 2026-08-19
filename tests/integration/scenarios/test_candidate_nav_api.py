@@ -39,12 +39,15 @@ def test_nav_config_reflects_seeded_candidate_state(
     in_review = next(item for item in jobs["items"] if item["path"] == "/jobs/in_review")
     assert in_review["enabled"] is True
 
-    # ACTIVE_SEARCH satisfies Jobs group visible gate; NEW_CANDIDATE hides the whole group.
+    # AST-1449: group-level visible is gone; NEW_CANDIDATE still gets candidate-facing groups.
     seeded_candidate.save_candidate(
         "cand-1", state="NEW_CANDIDATE", candidate_data={"name": "Integration Test"}
     )
     resp_new = client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
-    assert _jobs_group(resp_new.get_json()) is None
+    payload_new = resp_new.get_json()
+    assert _jobs_group(payload_new) is not None
+    labels = {group["label"] for group in payload_new}
+    assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
 
 
 def test_unauthenticated_nav_config_returns_401(integration_app: Flask, seeded_candidate) -> None:
