@@ -168,6 +168,13 @@ Body sections in SCHEMA order:
 
 Confirm Chuckles estimate: 3 — agree
 
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`  
+**Product commits:** `f94263a3` (Stage 1 — proposed `pattern.agent.prompt-persist-before-provider`), `cb2196fe` (Stage 2 — `do_task` persist before provider), `6b2fafc9` (Stage 3 — workbench persist before `run_adhoc`)
+
+`_store_response_block`, timesheets, `run_adhoc` storage-off, `database.py`, UI, and `BLOCK_TYPES` left untouched.
+
 ## Joan validate
 
 [plan-rubric]
