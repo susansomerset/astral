@@ -532,3 +532,17 @@ Vite prefix-matches those keys, so `/candidate/resume/base`, `/candidate/resume/
 **Joan CANON: OK** — Narrowing AST-1117 `serve_react` / Vite proxy from all `/candidate/*` to print-HTML prefixes restores §3.5 (Flask catch-all serves `index.html` for non-API, non-file paths). `astral.idioms.require-auth-on-protected-endpoints` is API-scoped; document serving stays session-blind. `astral.standards.no-hardcoded-sets` does not bind print URL prefixes. No `canon/patterns/**` match. No statute/pattern amend; no Archie fork.
 
 **Betty TESTS: REVISE** — `docs/test-bible/ui/server.md` — broken test — `TestAst1117CandidateSpaGuard` / `TestAst1117ViteCandidateProxy` assert blanket `/candidate` 404+proxy; repro GET `/candidate/backstory` → 200 `index.html` uncovered. Test hole filed as a sibling gap child (orphaned-branch rule: not qa-fix inline on this ticket).
+
+## Radia review (AST-1433)
+
+`[code-rubric] PROCEED (Commit: 9103d105) narrow print guard SPA`
+
+**Overall: CLEAN.** Diff `origin/ftr/AST-1424-refresh-from-deeplink-error...origin/sub/AST-1424/AST-1433-expired-session-deeplink-refresh-404` @ `9103d105`. Full-set C1–C7: no fix-now, no discuss.
+
+**Plan adherence:** `serve_react` + Vite proxy narrowed to print prefixes only; no auth-gate edits; AST-1117 unmatched print paths still JSON 404; candidate SPA document GET → `index.html`.
+
+**[bug-repro]:** `TestAst1117CandidateSpaGuard::test_candidate_backstory_serves_index` — 200, `index.html` marker, `not resp.is_json`. Would fail pre-fix. OK.
+
+**What must still hold:** AST-625 AC, AST-1117 print HTML, §3.5 catch-all, Vite proxy split, LogOff Refresh — all OK (no auth/session-mark edits).
+
+**Advisory:** stacked `test(AST-1430)` / `test(AST-1431)` commits on this publish ref (foreign `origin/tests` pile-up); `/candidate` exact path now SPA `index.html` (plan + AST-1435 tests expect this).
