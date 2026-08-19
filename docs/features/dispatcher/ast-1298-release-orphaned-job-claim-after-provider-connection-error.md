@@ -1,3 +1,189 @@
+<!-- linear-archive: AST-1298 archived 2026-08-19 -->
+
+## Linear archive (AST-1298)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1298/release-orphaned-job-claim-after-provider-connection-error-connection  
+**Status at archive:** Archive  
+**Project:** Astral Dispatcher  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1280 — Connection error on dispatch task did not clear the batch_id  
+**Blocked by / blocks / related:** parent: AST-1280
+
+### Description
+
+## What this implements
+
+One vertical slice on the **job-artifacts dispatch** path: close the live `draft_job_resume` Connection-error orphaned `batch_id` on the hop-label-true BUILD_ARTIFACTS path by making AST-1191 helper release exception-safe and ensuring `_run_dispatch_chain_job_batch` releases when `do_task` raises — keep configured error/hold + debug `batch_released` honest. Does not own provider retry policy or hop-topology redesign.
+
+## Acceptance criteria
+
+- [X] 1. Reproduce the logged shape on a **job-artifacts dispatch** run: `draft_job_resume` with provider `Connection error.` and `do_task(draft_job_resume) provider call failed batch_id=draft_job_resume-<uuid> error=Connection error.` After the run finishes, that job row’s `batch_id` is null/empty — without operator intervention.
+- [X] 2. That job is on `ERROR_BUILD_ARTIFACTS` (or the task’s configured error_state), not left mid-chain under a live claim — unless the failure is a documented balance-refusal hold, in which case state is held and `batch_id` is still cleared.
+- [X] 3. A later dispatch claim for the same eligible work can claim that job again (no permanent lock under the failed batch_id).
+- [X] 4. With `debug=True` on the failure path, found/recorded lines show a non-empty error and `batch_released=true`. With `debug=False`, no new debug-contract lines are added.
+- [X] 5. Healthy `draft_job_resume` success path still claims, processes, and clears normally (no double-clear breakage; no stuck locks on success).
+
+## Boundaries
+
+- [X] Does not own provider retry / backoff for Connection errors.
+- [X] Does not redesign `run_next` / BUILD_ARTIFACTS hop topology.
+- [X] Does not own AST-1189 timeout budget or AST-1190 empty-response classification beyond consuming structured failure fields.
+- [X] Single child for this parent — no sibling slices.
+- [X] Does not edit `src/external/**`, `src/data/**`, or `dispatcher.py`. Exception-safe per-job release in `consult._run_dispatch_chain_job_batch` is in scope (Joan plan-discuss amend). Does not edit Betty’s `tests/` / bible tree.
+
+## In scope
+
+- [X] `pattern.batch.entity-claim-process-release` — provider failure / raised `do_task` still claim/process/release; no orphaned `batch_id` (`src/core/agent.py` `_apply_dispatch_chain_hop_failure`, `src/core/consult.py` `_run_dispatch_chain_job_batch`)
+- [X] `astral.batch.claim-process-release` — clear job claim on hop-label-true provider-failure early exits and consult exception exits; transition then release when hard-fail applies
+- [X] `astral.agent.do-task-delegation` — core consumes structured provider `success=False` / `error` / `failure_class`; no adapter redesign
+- [X] `astral.standards.debug-contract-gated` — found/recorded release trail only when `debug=True`
+- [X] `astral.standards.logging-via-utils` — keep existing `do_task(...) provider call failed …` ERROR line
+- [X] `astral.standards.in-scope-only` / `astral.standards.dry-and-focused-functions` — extend AST-1191 helper + consult dual-clear only; no parallel release design
+- [X] `astral.state.core-decides-transitions` — error/hold state changes stay in core via existing hard/balance rules
+
+## Considered but excluded
+
+- [X] `astral.batch.batch-id-first` / `astral.batch.batch-id-format` — consume existing dispatch / hop `task_key-uuid` locks; no new lock shape (`src/data/**` untouched)
+- [X] `astral.dispatch.run-next-is-chain-authority` — no `run_next` / BUILD_ARTIFACTS topology change (Boundaries)
+- [X] `pattern.config.config-block` / provider timeout budget — AST-1189
+- [X] Empty/unusable response classification — AST-1190
+- [X] `astral.layers.core-vs-external-bright-line` edits in `src/external/**`
+- [X] `astral.standards.data-raises-caller-logs` — no `src/data/**` changes
+- [X] Candidate/company claim APIs — AST-1257 family; parent Boundaries
+- [X] `src/ui/**` — no stuck-claim chrome
+- [X] `src/core/dispatcher.py` — `_run_unified` `finally` `clear_job_batch` left as third belt (unchanged)
+
+## Notes for planning
+
+Adjacent shipped contract: AST-1191 hop-failure release. AC path is hop-label-true BUILD_ARTIFACTS dispatch — harden exception-safe release there; do not treat hop-label-false ungating as the epic fix.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+Publish ref: `sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error`
+
+### Comments
+
+#### radia — 2026-08-10T05:07:31.361Z
+[code-rubric] revision=2
+**Overall:** DISCUSS
+discuss: uncited pattern match — diff shape matches approved `pattern.batch.entity-claim-process-release`, not cited in ticket doc
+— Radia
+
+#### betty — 2026-08-10T04:55:48.333Z
+1. `tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease` — transition non-`ValueError` still releases; `draft_job_resume` + BUILD_ARTIFACTS + `Connection error.` → `ERROR_BUILD_ARTIFACTS` + `batch_released=true`
+2. `tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease` — regression; hop-label-false job release replaces obsolete noop assert
+3. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_do_task_raise_releases_claim` — `do_task` raise clears claim before re-raise
+4. `tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_failure_releases_claim` — structured `success=False` still releases
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1298OrphanedJobClaimRelease \
+  tests/component/core/test_agent.py::TestAst1191ArtifactHopFailureRelease \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_do_task_raise_releases_claim \
+  tests/component/core/test_consult.py::TestAst371ResumeArtifactDispatch::test_dispatch_chain_batch_failure_releases_claim \
+  -q
+```
+
+`origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error` @ `38d8bbdf` (`merge-tests(AST-1298): origin/tests bc4b100a2fb20432d9c814475cb900c33a369b53`)
+
+`docs/test-bible/core/agent.md` shasum `848e83a090b993c7cdf0941d5309bc5322e8a36d`
+
+#### katherine — 2026-08-10T04:52:21.977Z
+origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error @ 35de382e474cb673b7da44ddba55c39286a2d69c
+
+Betty: extend TestAst1191 / consult dispatch-chain — (a) draft_job_resume + Connection error + BUILD_ARTIFACTS → ERROR_BUILD_ARTIFACTS + release; (b) do_task raise in _run_dispatch_chain_job_batch → release still called; (c) transition_job_state non-ValueError → helper finally still releases.
+
+#### joan — 2026-08-10T04:50:46.849Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1298
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error` @ `204dcac67e1b9e1c220e6defeac797783a2f959d`
+
+## Traceability
+AC1→S1–2; AC2→S1; AC3→S1–2; AC4→S3; AC5→S2
+
+Round=1 concern closed: AC path is hop-label-true; Stage 1 `try`/`finally` + Stage 2 consult exception release close the tip miss windows (non-`ValueError` after transition; `do_task` raise skips return-path release). Conf `Medium` is honest. Pattern `pattern.batch.entity-claim-process-release` + considered statutes scored in-session with no violations.
+
+### discuss — Child Description Boundaries still ban consult edits
+**Location:** AST-1298 Description Boundaries vs plan Files Changed
+**Finding:** Child Boundaries still say “Does not edit … consult/dispatcher runners,” but Stage 2 edits `src/core/consult.py`. Parent Boundaries do not forbid that, and the edit is in scope for AC1.
+**Recommendation:** Before or at build handoff, amend the child Description Boundaries to allow exception-safe release in `_run_dispatch_chain_job_batch` while keeping `dispatcher.py` out of scope. Non-blocking for Plan Approved.
+
+— Joan
+context_tokens≈68000
+
+#### katherine — 2026-08-10T04:49:36.622Z
+[plan-discuss] round=1 reply
+
+Revised plan @ `204dcac67e1b9e1c220e6defeac797783a2f959d`: https://github.com/susansomerset/astral/blob/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error/docs/features/dispatcher/ast-1298-release-orphaned-job-claim-after-provider-connection-error.md
+
+Delta vs round=1 concern:
+1. **Retracted** hop-label-false as the AC1 root cause — BUILD_ARTIFACTS dispatch ctx is hop-label-true (agree).
+2. **Re-staged hop-label-true belts:** Stage 1 helper `try`/`finally` so `provider_failed` release runs even when `transition_job_state` raises non-`ValueError`; Stage 2 consult per-job release when `do_task` raises (not only `success=False` return).
+3. Files Changed adds `src/core/consult.py`; dispatcher `finally` stays third belt, unchanged.
+4. Conf `high` → `Medium` (clean `success=False` already released on tip; remaining uncertainty is the exception / non-ValueError miss windows).
+5. Hop-label-false release kept only as labeled defense-in-depth — not the epic AC fix.
+
+**Scope:** Single-Component — `agent.py` + `consult.py`.
+**Conf:** Medium — see above.
+**Risk:** Medium — claim clear on provider-failure / raised `do_task`; success-path lifetime still dispatcher `finally`.
+
+#### joan — 2026-08-10T04:45:32.206Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1298
+**Overall:** REVISE
+**Publish-ref:** `origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error` @ `4e3cd29774764d141b91b2a8554892e7fdb156ec`
+
+## Traceability
+AC1→S1 (gap); AC2→S1 Branch B only (gap vs stated root cause); AC3→S1; AC4→S1–2; AC5→S1 (unchanged success path)
+
+### fix-now — Root cause does not match the in-scope job-artifacts dispatch path (R5/R6)
+**Location:** Survey findings / Decision — root cause; Stage 1 Branch A vs Branch B
+**Finding:** Plan asserts orphaned `batch_id` because `_apply_dispatch_chain_hop_failure` early-returns `_HOP_FAILURE_NOOP` when `_should_write_dispatch_hop_label` is false. For the parent AC repro (`draft_job_resume` on **job-artifacts dispatch**), `consult._run_dispatch_chain_job_batch` sets `dispatch_trigger_state` to registry `BUILD_ARTIFACTS`, and `dispatch_chain_graduation_target("BUILD_ARTIFACTS")` is set → hop-label write is **true**. On that path AST-1191 already transitions then `release_job_dispatch_claim`, and consult + `dispatcher._run_unified` `finally` `clear_job_batch(bid)` are additional belts. Stage 1 Branch B is “keep AST-1191”; Branch A only changes the hop-label-**false** path, which is not the cited live dispatch ctx. So the planned edit does not explain or close Archie’s orphan on the AC1 path.
+**Recommendation:** Before build, either (1) cite evidence the live Connection-error run actually hit hop-label-false (missing/empty `dispatch_trigger_state`, non-graduation trigger, etc.), or (2) re-diagnose which belt failed on the hop-label-true path (consult release skipped, `finally` not run, claim `batch_id` ≠ cleared `bid`, cancel/timeout after ERROR log, etc.) and stage the fix that restores AC1–AC2 on that path. Do not ship Branch-A-only as the epic fix without closing that gap.
+
+### discuss — Self-assessment Conf `high` vs Medium risk / unproven root cause
+**Location:** Self-Assessment
+**Finding:** Conf `high` rests on the hop-label early-return story; if that branch is not the live repro, confidence is overstated relative to Medium risk on the provider-failure hot path.
+**Recommendation:** After root-cause rewrite, re-score Conf to match remaining uncertainty.
+
+— Joan
+context_tokens≈62000
+
+#### katherine — 2026-08-10T04:42:53.394Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error/docs/features/dispatcher/ast-1298-release-orphaned-job-claim-after-provider-connection-error.md
+
+`origin/sub/AST-1280/AST-1298-release-orphaned-job-claim-after-provider-connection-error` @ `4e3cd297`
+
+**Scope:** Single-Component — `_apply_dispatch_chain_hop_failure` in `src/core/agent.py` only.
+**Conf:** high — AST-1191 helper early-returns `_HOP_FAILURE_NOOP` before provider-failure release when hop-label write is false; ungate release on that branch, keep transition-then-release on the dispatch-chain branch.
+**Risk:** Medium — claim clear on every job provider-failure path; breadth limited to `provider_failed + job index`, balance-hold / error_state rules unchanged.
+
+#### katherine — 2026-08-10T04:38:20.527Z
+🛑 plan-child blocked (FIX-UAT §0a Diagnosis gate)
+
+Spawn said **FIX-UAT MODE**, but AST-1298 Description is dispatch-parent shaped (`## What this implements` / Citations / AC / Boundaries) — it does **not** include the mandatory UAT bug blocks:
+
+- `## Parent AC (quoted inline)` with parent sentences pasted (not pointer-only)
+- `## Diagnosis` with Hypothesis / Correct outcome / Wrong fix to avoid / Related siblings
+
+Parent AST-1280 is **In Progress** (first-ship epic), not User Testing — so this may also be a wrong spawn mode rather than a missing re-file.
+
+Need Chuckles to either:
+1. **Re-file** AST-1298 with the fix-uat Description template (What failed / Expected / Repro / Parent AC quotes / Diagnosis / Boundaries), or
+2. **Re-spawn plan-child without FIX-UAT MODE** if this is a normal dispatch-parent child for a new epic.
+
+Stopped before plan file / Plan Ready — will not invent Diagnosis or AC quotes.
+
+---
+
 # AST-1298 — Release orphaned job claim after provider Connection error
 
 **Linear:** [AST-1298](https://linear.app/astralcareermatch/issue/AST-1298/release-orphaned-job-claim-after-provider-connection-error-connection)
