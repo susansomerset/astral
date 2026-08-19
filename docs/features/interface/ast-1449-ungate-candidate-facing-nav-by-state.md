@@ -108,6 +108,120 @@ R1–R5 pass. Definition fidelity holds: group-level state hide gone, stubs and 
 
 context_tokens≈42000
 
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1449
+**Publish ref:** `96253abf5430ebef404f3998a3c6ba38d7573791` (`origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state`)
+**Overall:** CLEAN
+
+### Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | Betty `merge-tests` on publish ref; component + integration deltas on sub tip |
+| `orch.git.commit-vocabulary` | universal | conforms | `code` / `docs` / `test` / `merge-tests` vocabulary on sub history |
+| `orch.git.flow-direction-inviolable` | universal | conforms | Product on `sub/*`; tests via Betty merge onto same publish ref |
+| `orch.git.ftr-sub-topology` | universal | conforms | Child work on `sub/AST-1444/AST-1449-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | `origin/dev` merged before product land; no rebase onto dev |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | No cherry-pick / force-push pattern on this child |
+| `orch.git.no-dev-agent-branches` | universal | conforms | No `ada/` / agent dev branches |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | Epic worktree `astral-AST-1444` |
+| `orch.git.three-permanent-branches` | universal | conforms | Sub publish ref only |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | Ungate scope matches parent AST-1444 definition |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stage 1 matches plan Files Changed + boundaries |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Single-child review; no queue bleed |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Spawn at Tests Passed; review-child only |
+| `orch.roles.archie-approves-statutes` | universal | conforms | No canon statute edits on diff |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | Test/bible revisions on Betty merge-tests SHA |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | Assignee Ada through pipeline |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | Engineer product commit; Betty owns test tree |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | No banned-path violations on product commit |
+| `astral.agent.confidence-bounds` | scoped | not-applicable | no `src/core/**` diff paths |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `src/core/**` diff paths |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no `src/core/**` diff paths |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no `src/data/**` / batch claim paths |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no `src/core/**` / `src/data/**` diff |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no batch claim/release paths |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no `src/core/**` / `src/data/**` diff |
+| `astral.config.config-source-of-truth` | scoped | conforms | NAV membership change in `NAV_CONFIG`; resolver in API |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | No new secret/env reads in nav change |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no `debug/**` / artifacts-dir paths in diff |
+| `astral.debug.spikes-under-debug-dir` | scoped | not-applicable | no `debug/**` paths in diff |
+| `astral.dispatch.seed-auto-false` | scoped | not-applicable | `dispatcher.py` / seed paths not in diff |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | not-applicable | no `src/core/**` diff paths |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | Single `ast-1449-…md` issue doc |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | Betty delta is tests + bible only |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | Engineer product commit excludes `tests/`; Betty owns test merge |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no `src/core/**` / `src/external/**` diff |
+| `astral.layers.import-direction` | scoped | conforms | `api_system.py` imports core + utils only (existing pattern) |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/**` diff paths |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | Group hide removed from config/API; no React nav gates added |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no `src/core/**` diff |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no `src/core/**` diff |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | `/api/nav_config` still `@require_auth` |
+| `astral.seed.agent-tables-in-repo-json` | scoped | not-applicable | seed/admin-json paths not in diff |
+| `astral.seed.archie-catalog-wins` | scoped | not-applicable | dispatcher/config seed paths not in diff |
+| `astral.seed.boot-only-not-hot-path` | scoped | not-applicable | no boot/migration hot-path edits |
+| `astral.seed.define-approved` | scoped | not-applicable | no seed invention in diff |
+| `astral.seed.operator-rows-stay-deleted` | scoped | not-applicable | no dispatcher/data seed paths |
+| `astral.seed.other-via-coverage-join` | scoped | not-applicable | no dispatcher/data seed paths |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | No new data-layer logging |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no `src/data/**` diff |
+| `astral.standards.debug-contract-gated` | scoped | conforms | No new debug-contract emission |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | Deletes dead `visible_gate` branch; no sprawl |
+| `astral.standards.in-scope-only` | scoped | conforms | NAV_CONFIG + resolver + CODE_RULES only; no React/chrome |
+| `astral.standards.logging-via-utils` | scoped | conforms | Existing `get_logger` usage unchanged |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | No ticket-id symbols in product code |
+| `astral.standards.no-cross-contamination` | scoped | conforms | Layered imports only |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | State lists stay in `CANDIDATE_STATES`; group `visible` keys removed |
+| `astral.standards.public-then-helpers` | scoped | conforms | `_resolve_nav` edit is localized |
+| `astral.standards.utils-data-late-import-only` | scoped | not-applicable | no `src/utils/**` late-import pattern change |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no core/data transition edits |
+| `astral.state.job-prior-states-enforced` | scoped | not-applicable | no job prior-state paths |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no `src/core/**` diff |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no `src/ui/frontend/**` product diff |
+| `astral.ui.naming-conventions` | scoped | conforms | No new React routes or misnamed UI files |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | No worker / gunicorn change |
+
+### Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | NAV membership edited in `NAV_CONFIG`; item `enabled` resolved in `api_system.py`; CODE_RULES §2.1 bullet aligned |
+
+### Plan adherence
+
+Stage 1 landed as specified: Jobs / Companies / Artifacts group `"visible"` keys removed from `NAV_CONFIG`; `_resolve_nav` no longer skips groups on `visible`; docstring updated; Applied / Responded `"enabled": False` preserved; `_nav_config_for_user` admin omit unchanged; `docs/ASTRAL_CODE_RULES.md` §2.1 NAV_CONFIG bullet rewritten. No `NavigationShell.tsx`, routes, or AST-1450 chrome. Betty manifest covers early-state HTTP response, resolver stubs, config `visible` absence, and integration `NEW_CANDIDATE` groups. Estimate **3** still honest.
+
+**Cross-ticket:** No AST-1450 picker-state line or frontend chrome in this publish ref’s product delta.
+
+**Joan straggler:** Plan-rubric attached (APPROVED); no Excluded statute list — no straggler rows.
+
+### Findings
+
+#### advisory
+
+- **Empty `candidate_id` behavior (plan Decision, Joan acceptable):** With no `candidate_id`, `nav_config()` uses `candidate_state=""` and still returns Jobs / Companies / Artifacts / Candidate (counts empty). Parent AC targets *selected* early-state candidates; this is intentional per plan — confirm in UAT if operators ever hit nav without a selection.
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none)
+
+### What’s solid
+
+- Group-level state hide fully removed from config and resolver — no dead `visible_gate` path left in `api_system.py`.
+- Item-level `enabled` and `admin_only` omit paths unchanged; Applied / Responded remain disabled stubs.
+- Config comments + CODE_RULES teach the new contract (“group-level `visible` is not used”).
+- Component + integration tests flip from “Jobs absent at NEW_CANDIDATE” to “candidate-facing groups present.”
+
+context_tokens≈52000
+
 ## Review (build)
 
 **Built:** `origin/sub/AST-1444/AST-1449-ungate-candidate-facing-nav-by-state` @ `5c7fd0f8f142c596a5e07889d4aa0159bc0d86f3`
