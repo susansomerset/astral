@@ -1,3 +1,160 @@
+<!-- linear-archive: AST-1306 archived 2026-08-19 -->
+
+## Linear archive (AST-1306)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1306/author-extra-sections-title-and-format-support-alternative-resume  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1299 — Support alternative resume sections  
+**Blocked by / blocks / related:** parent: AST-1299
+
+### Description
+
+## What this implements
+
+After #1: operators can add, title, format, enable, and reorder optional sections; required seven cannot be removed. Format choices come from the config catalog via the API (not a hardcoded React list). Does not own print CSS or hop prompts.
+
+## Acceptance criteria
+
+- [X] Changing a required section’s title (e.g. Professional Summary → Summary) persists the new title and does not change the section id. Printed heading is AST-1304 reading that stored title.
+- [X] Changing an optional section’s format persists the new format on the same section id. HTML treatment is AST-1304.
+- [X] Required sections cannot be removed from structure (must be present and `enabled=True`).
+
+## Boundaries
+
+- [X] Does not own print CSS / HTML emit (sibling AST-1304).
+- [X] Does not own hop prompts or legacy label ingest (sibling AST-1305).
+- [X] After #1 (AST-1303 catalog + normalize must already be on the tree).
+
+## In scope
+
+- [X] `pattern.ui.admin-endpoint` — catalog and structure save resolved in the existing `@require_auth` candidate GET/PUT from config; React renders the payload (no new `/api/admin` route)
+- [X] `astral.layers.ui-config-driven-business-logic` — format list, required ids, extra-id pattern, and new-extra default format come from config via GET `catalog`; React does not own those sets
+- [X] `astral.config.config-source-of-truth` — `RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT` lives in `src/utils/config.py` next to the AST-1303 family
+- [X] `astral.standards.no-hardcoded-sets` — no format-name tuple in TSX; `<select>` options are `catalog.body_formats`
+- [X] `astral.patterns.require-auth-on-protected-endpoints` — keep `@require_auth` on GET `/resume_structure` and PUT `/data`
+- [X] `astral.ui.frontend-file-placement` — `ResumeStructureEditor.tsx` under `src/ui/frontend/src/components/`
+- [X] `astral.ui.naming-conventions` — domain names (`ResumeStructureEditor`, `slug_resume_section_id`), not ticket ids
+- [X] `astral.layers.import-direction` — ui → core/utils; slug/rekey in core; no data/external from ui
+- [X] `astral.standards.in-scope-only` — GET catalog + PUT replace + Base Resume Content editor only
+- [X] `astral.standards.dry-and-focused-functions` — one slug helper; PUT replace only when `sections` is present
+- [X] `astral.standards.public-then-helpers` — `slug_resume_section_id` and `prepare_resume_structure_sections_for_save` public next to normalize
+- [X] `astral.standards.names-not-ticket-ids` — `RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT`, not `AST_1306_*`
+- [X] `astral.standards.no-cross-contamination` — no builder, hop, NAV, or `ui_config` catalog duplicate
+
+## Considered but excluded
+
+- [X] `astral.standards.debug-contract-gated` — Style D per-section emit trail is AST-1304
+- [X] HTML emit / printed heading / leftover prose Experience / emphasis rendering — AST-1304 (`src/core/builder.py`)
+- [X] `astral.agent.do-task-delegation` — craft/draft hop accept of extra keys is AST-1305
+- [X] Legacy label/content → extra slug ingest — AST-1305 (may import `slug_resume_section_id`; this ticket does not implement ingest)
+- [X] `enabled_resume_structure_sections` `{id, label}` contract / `ArtifactEditor.tsx` internals / `JobAnalysisReportModal.tsx` — keep reading GET `sections`
+- [X] `NAV_CONFIG` / `routes.tsx` — no new page
+- [X] Format catalog on `/api/system/ui_config` — served on GET `/resume_structure` only
+- [X] `astral.batch.claim-process-release` — no dispatch lifecycle
+- [X] `astral.dispatch.run-next-is-chain-authority` — hop order unchanged
+- [X] `astral.ui.single-gunicorn-worker` — `RAILWAY_CONFIG` untouched
+- [X] `astral.state.*` / seed / consult idioms — no entity transitions
+- [X] `tests/`, `docs/test-bible/**` — Betty
+
+## Notes for planning
+
+Citations: `pattern.ui.admin-endpoint`; `astral.layers.ui-config-driven-business-logic`. PUT `/data` replaces `sections` when that key is sent (accent-only PUT unchanged). New extras slug from title in core (`_pending_*` keys). Required seven cannot be omitted or disabled.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1299-support-alternative-resume-sections`,
+child `sub/AST-1299/<this-id>-author-extra-sections-title-and-format`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-11T06:42:23.242Z
+[code-rubric] revision=1
+**Overall:** FIX-NOW
+fix-now: revert out-of-plan `filter_content_to_resume_structure` hunk in `candidate.py` (AST-1305/content scope); else catalog GET, PUT replace, slug/prepare, and editor match plan.
+context_tokens≈110000
+— Radia
+
+#### ada — 2026-08-11T06:38:25.094Z
+`origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format` @ `1e405f2c`
+
+Product: GET sort key `sid` → `kv[0]` (NameError).
+
+```
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1306ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1306ResumeStructureAuthorApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi \
+  -q
+```
+16 passed.
+
+```
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ResumeStructureEditor.test.tsx
+```
+5 passed.
+
+#### betty — 2026-08-11T06:36:23.312Z
+1. **Run**
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1306ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1306ResumeStructureAuthorApi \
+  tests/component/ui/api/test_api_candidate.py::TestAst519ResumeStructureApi \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_ResumeStructureEditor.test.tsx
+```
+
+2. **Coverage (this child)**
+- Config: `RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT == "bullet_list"`
+- Core: `slug_resume_section_id` + `prepare_resume_structure_sections_for_save` (pending rekey, reserved/empty reject, duplicate slug)
+- API: GET `catalog` + `all_sections`; PUT **replaces** `sections` when that key is sent (drops omitted optional, keeps required id/title); accent-only PUT leaves sections; omit `experience` → 400 `missing required`; `_pending_*` slugs from title
+- Editor: format `<option>`s from `catalog.body_formats`; no Remove on required; add pending extra
+- Page (§6c): Base Resume Content renders editor from GET catalog; Save PUT has `sections` and no `accent_color`
+
+3. **Broken / revised**
+- `TestAst519ResumeStructureApi` fixture is now a normalize-valid default structure (`technical_skills` disabled). Three-id blobs fall back to DEFAULT after AST-1303.
+- PUT invalid-sections 400 asserts `"missing required"` (normalize text), not `"invalid resume_structure"`.
+
+4. **Product — GET NameError (Ada, one line)**
+`src/ui/api/api_candidate.py` `get_candidate_resume_structure`: sort `key=lambda kv: (…, sid)` — `sid` is not bound. Change `sid` → `kv[0]`. Until that lands, every GET `/resume_structure` test 500s (`TestAst1306` catalog GET + AST-519 GET cases). PUT / slug / config / Vitest do not depend on it.
+
+5. **Integration:** none revised — existing nav scenario is nav only.
+
+6. **Publish**
+- `origin/tests` `c4b7adbb6338de40da53e5cf11abf9a47242b010`
+- `origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format` @ `b67ac6c6ea8e6f2807bd7e9042752e2bb2ee7547` (`merge-tests(AST-1306): origin/tests c4b7adbb6338de40da53e5cf11abf9a47242b010`)
+- `docs/test-bible/frontend/pages.md` shasum `85542b3598daef27fc6b49125b7b850f1780e6d0`
+
+#### joan — 2026-08-11T06:18:09.190Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+AST-1306 plan approved.
+context_tokens≈95000
+— Joan
+
+#### ada — 2026-08-11T06:13:06.235Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1299/AST-1306-author-extra-sections-title-and-format/docs/features/artifacts/ast-1306-author-extra-sections-title-and-format.md
+
+**Scope:** Single-Component — one config key, two core helpers, the existing candidate GET/PUT, one new React component, the Base Resume Content page, and nearby CSS.
+
+**Conf:** high — AST-1303 already owns normalize + the closed format list; this ticket only exposes that catalog on GET, switches PUT from overlay to replace when `sections` is sent, and adds a thin editor that renders the API payload.
+
+**Risk:** Medium — a buggy replace PUT that runs on a partial `sections` map would drop optional rows; accent-only PUT must keep omitting `sections`, and ArtifactEditor must keep reading the unchanged `sections` key.
+
+`origin/sub/AST-1299/AST-1306-author-extra-sections-title-and-format` @ `2ea93a93`.
+
+---
+
 # AST-1306 — Author extra sections (title and format)
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1306/author-extra-sections-title-and-format  

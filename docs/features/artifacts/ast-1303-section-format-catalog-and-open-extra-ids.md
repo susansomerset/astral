@@ -1,3 +1,130 @@
+<!-- linear-archive: AST-1303 archived 2026-08-19 -->
+
+## Linear archive (AST-1303)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1303/section-format-catalog-and-open-extra-ids-support-alternative-resume  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1299 — Support alternative resume sections  
+**Blocked by / blocks / related:** parent: AST-1299; blocks: AST-1306; blocks: AST-1305; blocks: AST-1304
+
+### Description
+
+## What this implements
+
+Owns the config contract: required seven ids, closed format list (including `bullet_list` and `experience_detail`), default formats for required/historical optional slugs, allowed italic/bold emphasis tags, and structure normalize that accepts extra titled sections instead of rejecting unknown ids. Observable: a structure with Highlights + Publications as `bullet_list` persists; required sections still cannot be omitted. Does not own HTML emit, hops, or the editor UI.
+
+## Acceptance criteria
+
+- [X] A candidate whose structure is only the seven required sections is a valid persisted structure; absent optional sections do not fail normalize (builder render of that structure is AST-1304).
+- [X] Changing a required section’s title (e.g. Professional Summary → Summary) changes the stored heading and does not change the section id.
+- [X] Required sections cannot be removed from structure (must be present and `enabled=True`).
+
+## Boundaries
+
+- [X] Does not own HTML emit (sibling AST-1304).
+- [X] Does not own hops/content blobs or legacy label ingest (sibling AST-1305).
+- [X] Does not own the editor UI or format picker API (sibling AST-1306).
+
+## In scope
+
+- [X] `astral.config.config-source-of-truth` — required ids, closed formats, default-format map, extra-id pattern, reserved extra ids, and emphasis tag names live in the `RESUME_STRUCTURE_*` family in `src/utils/config.py`
+- [X] `astral.standards.no-hardcoded-sets` — normalize reads those config tuples/maps; no inline format or required-id sets in `candidate.py`
+- [X] `pattern.config.config-block` — extend the existing `RESUME_STRUCTURE_*` family; do not invent a second catalog
+- [X] `astral.standards.in-scope-only` — config + `normalize_resume_structure` only; no builder, hops, or editor
+- [X] `astral.standards.dry-and-focused-functions` — `KNOWN` composed from required + historical optional; DEFAULT `format` values read from one map
+- [X] `astral.layers.import-direction` — core → utils for the new names; no ui/data/external imports
+- [X] `astral.layers.ui-config-driven-business-logic` — format catalog declared in config so AST-1306 can serve it; React does not own the list
+- [X] `astral.standards.public-then-helpers` — keep normalize public; extra-id regex compiled next to `_HEX_COLOR_RE`
+- [X] `astral.standards.names-not-ticket-ids` — `RESUME_STRUCTURE_*` names, not `AST_1303_*`
+- [X] `astral.standards.no-cross-contamination` — no builder/UI/hop files in this child
+- [X] `astral.config.secrets-and-env-specific-from-environ` — catalog values are literals, not env
+
+## Considered but excluded
+
+- [X] `astral.standards.debug-contract-gated` — Style D per-section emit trail is AST-1304
+- [X] HTML emit / leftover prose Experience / emphasis rendering — AST-1304 (`src/core/builder.py`)
+- [X] `astral.agent.do-task-delegation` — craft/draft hop accept of extra keys is AST-1305
+- [X] Legacy label/content → extra slug ingest — AST-1305
+- [X] Structure editor + format picker API — AST-1306 (`src/ui/**`)
+- [X] `astral.batch.claim-process-release` — no dispatch lifecycle
+- [X] `astral.dispatch.run-next-is-chain-authority` — hop order unchanged
+- [X] `astral.ui.single-gunicorn-worker` — `RAILWAY_CONFIG` untouched
+- [X] `astral.state.*` / seed / consult idioms — normalize does not transition entities or touch agent_task seeds
+- [X] `BUILD_CONFIG["supported_sections"]` / `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` — emit/hop schemas, not this child
+- [X] `tests/`, `docs/test-bible/**` — Betty
+
+## Notes for planning
+
+`RESUME_STRUCTURE_KNOWN_SECTION_IDS` stays the same ten historical ids (composed, not extended). Extra ids are per-candidate. Format list is closed. Experience id is locked to `experience_detail`. Contact ids have no body format.
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1299-support-alternative-resume-sections`,
+child `sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids`. Created at dispatch-parent.
+
+### Comments
+
+#### ada — 2026-08-11T06:04:11.966Z
+origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids @ f037cfe3 · §9a clean · ftr dry-run clean
+
+#### radia — 2026-08-11T06:01:46.884Z
+[code-rubric] revision=1
+**Overall:** CLEAN
+Catalog + normalize match approved plan; KNOWN ten-id order preserved; no statute or layer violations on ticket delta.
+context_tokens≈95000
+— Radia
+
+#### betty — 2026-08-11T05:54:20.029Z
+1. **Existing (bible-backed):** `TestAst517ResumeStructureConfig`, `TestAst1010CandidateTaglineConfig`, revised `TestAst517ResumeStructure` (required-seven reject cases + persist fixtures), `TestParseCandidateResume` / `TestParseCandidateResumeExtended`, `TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success`, AST-996 split/persist/session methods listed in the bible block.
+2. **Broken / obsolete (revised this pass):** AST-517 `unknown resume section id` and three-id blobs through `normalize` / `split` / parse — required-seven now fires first; valid extras are no longer unknown. Slim `_three_section_structure` kept only for projection helpers that do not normalize.
+3. **Gaps (new):** `TestAst1303ResumeStructureCatalog` in `tests/component/utils/test_config.py` (required/historical compose KNOWN; closed formats; DEFAULT `format` from the map) and `tests/component/core/test_candidate.py` (seven-only + Highlights/Publications `bullet_list`; title keeps id; omit/disable required; reserved/invalid extra ids; format lock / extras).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog \
+  tests/component/utils/test_config.py::TestAst517ResumeStructureConfig \
+  tests/component/utils/test_config.py::TestAst1010CandidateTaglineConfig \
+  tests/component/core/test_candidate.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure \
+  tests/component/core/test_candidate.py::TestParseCandidateResume \
+  tests/component/core/test_candidate.py::TestParseCandidateResumeExtended \
+  tests/component/core/test_candidate.py::TestRunCandidateArtifactGeneration::test_persists_artifacts_on_craft_resume_base_success \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_preserves_experience_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_split_still_keeps_legacy_string_experience \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_session_parse_returns_job_array_in_base_resume \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_persist_craft_resume_base_keeps_job_array \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_parse_candidate_resume_debug_lists_jobs \
+  -q
+```
+
+`origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids` @ `2fd32538` (`merge-tests(AST-1303): origin/tests 69d0ae6af0aa01b845a0580838ca2fe26421e6ae`)
+
+`docs/test-bible/core/candidate.md` shasum `fbc7d2cdecdca0b59fa9c9648f6d0973320912a8`
+
+#### joan — 2026-08-11T05:42:13.024Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+AST-1303 plan approved. One discuss note (UI-config statute cited; API is AST-1306).
+context_tokens≈90000
+— Joan
+
+#### ada — 2026-08-11T05:39:22.189Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids/docs/features/artifacts/ast-1303-section-format-catalog-and-open-extra-ids.md
+
+`origin/sub/AST-1299/AST-1303-section-format-catalog-and-open-extra-ids` @ `4531e0b0`
+
+**Scope:** Single-Component — `RESUME_STRUCTURE_*` catalog in `config.py` plus the existing `normalize_resume_structure` gate; builder/hops/UI stay with siblings.
+
+**Conf:** high — reject site is the current `sid not in RESUME_STRUCTURE_KNOWN_SECTION_IDS` line; parent already named the seven ids, six formats, historical defaults, and italic/bold-only tags.
+
+**Risk:** Medium — a wrong required/format lock would ValueError existing ten-id blobs (resolve falls back to DEFAULT). Plan keeps KNOWN as the same ten ids and fills missing formats from the map so current structures still normalize.
+
+---
+
 # AST-1303 — Section format catalog and open extra ids
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1303/section-format-catalog-and-open-extra-ids  

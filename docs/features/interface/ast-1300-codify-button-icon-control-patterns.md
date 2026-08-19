@@ -1,3 +1,174 @@
+<!-- linear-archive: AST-1300 archived 2026-08-19 -->
+
+## Linear archive (AST-1300)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1300/codify-button-icon-control-patterns-button-consistency  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1166 — Button consistency  
+**Blocked by / blocks / related:** parent: AST-1166; blocks: AST-1302; blocks: AST-1301
+
+### Description
+
+## What this implements
+
+Land `pattern.ui.shared-button-roles` and `pattern.ui.icon-control` from the Discussion catalog (shared styles/contract implementers will consume). Does not finish the full call-site sweep.
+
+## Acceptance criteria
+
+- [X] Canon (or epic-landed pattern docs per team process) contains `pattern.ui.shared-button-roles` and `pattern.ui.icon-control` matching the Discussion catalog before broad call-site remediation merges.
+
+## Boundaries
+
+* Does not finish labeled-button remediations (sibling #2 / AST-1301).
+* Does not own list icon-control remediations (sibling #3 / AST-1302).
+* Does not delete leftover families (`modal-btn`, `dep-btn`, `list-page-bulk-btn`, and peers) — siblings retire those after they migrate call sites.
+* Does not add a React `Button` / `IconControl` component — parent locked CSS class names.
+* Does not amend `docs/ASTRAL_CODE_RULES.md` (patterns are the canon home).
+
+## In scope
+
+- [X] `pattern.ui.shared-button-roles` — approved catalog file + `.btn` / `primary` / `secondary` / `danger` / `in-flight` in `App.css`
+- [X] `pattern.ui.icon-control` — approved catalog file + `.icon-control` in `App.css`
+- [X] `astral.standards.dry-and-focused-functions` — one shared labeled family and one icon family; no third parallel system
+- [X] `astral.ui.frontend-file-placement` — styles only in `src/ui/frontend/src/App.css`; pattern files under `canon/patterns/ui/`
+- [X] `astral.ui.naming-conventions` — domain class names (`btn`, `icon-control`); no new PascalCase component file
+- [X] `astral.standards.names-not-ticket-ids` — selectors and pattern slugs are domain language, not `AST-1300`
+- [X] `astral.standards.in-scope-only` — no JSX call-site remediations; no sibling inventory
+- [X] `astral.standards.no-cross-contamination` — stay in `App.css` + `canon/patterns/**`
+- [X] `astral.standards.no-hardcoded-sets` — reuse existing `:root` tokens; no new color enum in config or TS
+- [X] `astral.layers.ui-config-driven-business-logic` — presentation classes only; no enablement/API rules in React
+- [X] `astral.docs.features-single-file-per-ticket` — one plan file under `docs/features/interface/`
+
+## Considered but excluded
+
+- [X] `pattern.ui.admin-endpoint` — no new admin HTTP surface
+- [X] `astral.ui.single-gunicorn-worker` — path matches `src/ui/**`; no server/worker change
+- [X] `astral.patterns.require-auth-on-protected-endpoints` / `astral.idioms.require-auth-on-protected-endpoints` — no endpoints
+- [X] `astral.standards.logging-via-utils` — no logging
+- [X] `astral.standards.debug-contract-gated` — no debug-contract lines
+- [X] `astral.standards.public-then-helpers` — CSS only; no functions
+- [X] `astral.standards.data-raises-caller-logs` — no raise/log paths
+- [X] `astral.layers.import-direction` — no new imports
+- [X] `astral.config.config-source-of-truth` — no `config.py`; visual tokens already live on `App.css` `:root`
+- [X] `astral.config.secrets-and-env-specific-from-environ` — no secrets or env-specific values
+- [X] `astral.seed.define-approved` — predicate can hit `docs/features/**`; this is not a seed-catalog ticket
+- [X] Labeled-button call-site remediations — sibling AST-1301
+- [X] List / icon-control call-site remediations — sibling AST-1302
+- [X] `canon/patterns/HARVEST.md` define-parent AC cite-map rows — not a define-parent change-shape; Crosswalk + supporting-package rows only
+
+## Notes for planning
+
+Parent Todo locked the Discussion catalog. Land both pattern ids as `status: approved` (`proposed_in: AST-1166`) so AST-1301 / AST-1302 may cite them. Shared CSS in `App.css` is the `canonical_refs` implementation; JSX stays on today’s families until the sibling sweeps.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-11T04:59:53.485Z
+[merge-child] blocked: missing test(AST-1300): on origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns
+
+validate-sub-log requires a `test(AST-1300):` subject. Manifest was docs-acceptance (green greps, no product fix), so test-child never committed. @Ada Lovelace land one `test(AST-1300): docs-acceptance — …` on the publish ref (no test-tree edits; stay User Testing). Chuckles retries merge-child after push.
+
+— Chuckles
+
+#### radia — 2026-08-11T04:57:23.164Z
+[code-rubric] revision=2
+**Overall:** DISCUSS
+Straggler: Joan excluded test-tree; Betty bible on tip is expected merge-tests — no engineer fix.
+Product: unused `.btn` / `.icon-control` + two approved patterns match plan; no JSX scope creep.
+context_tokens≈52000
+— Radia
+
+#### betty — 2026-08-11T04:52:45.445Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns` @ `51d38a4c`
+**merge-tests:** `merge-tests(AST-1300): origin/tests d84a27f94fde506507838b90f27d43650ac42772`
+
+### 1. Existing coverage (bible-backed)
+
+None required. Leftover families are untouched; **AST-645** `.in-flight` wiring tests stay valid for today’s `dep-btn` / `modal-btn` call sites — not in this run. §6c N/A (no page / filter UX). No integration scenario asserts button-class catalogs.
+
+### 2. Broken / obsolete
+
+None. New `.btn` / `.icon-control` selectors are unused; old families remain.
+
+### 3. Gaps
+
+None. AC is canon + unused CSS presence. Call-site remediations are **AST-1301** / **AST-1302**.
+
+### Manifest (docs-acceptance — no pytest / zero-arg harness / branch-lock)
+
+Run on the publish tip:
+
+1. **Patterns approved**
+
+```bash
+rg -n '^(id|status|proposed_in|approved_by):' \
+  canon/patterns/ui/pattern.ui.shared-button-roles.md \
+  canon/patterns/ui/pattern.ui.icon-control.md
+rg -n 'symbol: "\.(btn\.(primary|secondary|danger)|btn\.primary\.in-flight|icon-control)"' \
+  canon/patterns/ui/
+```
+
+Expect both files `status: approved`, `approved_by: Archie`, `proposed_in: AST-1166`; `canonical_refs` symbols `.btn.primary` / `.btn.secondary` / `.btn.danger` / `.btn.primary.in-flight` and `.icon-control`.
+
+2. **Catalog indexes**
+
+```bash
+rg -n 'pattern\.ui\.(shared-button-roles|icon-control)' canon/patterns/README.md canon/patterns/HARVEST.md
+```
+
+Expect README harvested-corpus rows `approved`; HARVEST supporting-package + Crosswalk `create (AST-1300)` rows. No define-parent AC cite-map rows for these ids.
+
+3. **App.css contract**
+
+```bash
+rg -n '14\. Shared button roles|15\. Icon control|^\.btn\.|^\.icon-control|var\(--cta-green\)|var\(--accent-gold\)' src/ui/frontend/src/App.css
+rg -n '^\.modal-btn |^\.dep-btn |^\.job-list-icon-btn |^\.list-page-bulk-btn ' src/ui/frontend/src/App.css
+```
+
+Expect TOC 14–15; `.btn.primary` → `--cta-green`; `.btn.primary.in-flight` → `--accent-gold`; `.btn.danger` → `--danger` + `#fff`; leftover families still present.
+
+4. **Scope gate**
+
+```bash
+rg -n 'className="[^"]*\bbtn (primary|secondary|danger)|className=\{`[^`]*\bbtn (primary|secondary|danger)|icon-control' \
+  src/ui/frontend/src --glob '*.tsx'
+ls src/ui/frontend/src/components/Button.tsx src/ui/frontend/src/components/IconControl.tsx 2>&1
+```
+
+Expect no TSX catalog consumers; those component files absent.
+
+**Bible (on publish ref):**
+`docs/test-bible/frontend/root.md` `8b540ec364dd0ddea9e555a37514d2474155144d`
+
+#### joan — 2026-08-11T04:46:15.464Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+discuss (non-blocking): Direct `approved` landing — parent Todo is the catalog-law signal.
+context_tokens≈78000
+— Joan
+
+#### ada — 2026-08-11T04:43:08.125Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1166/AST-1300-codify-button-icon-control-patterns/docs/features/interface/ast-1300-codify-button-icon-control-patterns.md
+
+`origin/sub/AST-1166/AST-1300-codify-button-icon-control-patterns` @ `03ad36c5`
+
+**Scope:** Single-Component — `App.css` plus two `canon/patterns/ui/` files and README/HARVEST index rows; no TSX, API, or config.
+
+**Conf:** high — parent catalog tables lock class names and visual baselines; SCHEMA/AUTHORING lock file shape; CSS copies existing `.modal-btn.*` / `.job-list-icon-btn` declarations.
+
+**Risk:** low — new selectors stay unused until siblings switch `className`; leftover families remain until AST-1301 / AST-1302 retire them.
+
+---
+
 # AST-1300 — Codify button + icon-control patterns (Button consistency)
 
 - **Linear:** [AST-1300](https://linear.app/astralcareermatch/issue/AST-1300/codify-button-icon-control-patterns-button-consistency)

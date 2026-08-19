@@ -1,3 +1,242 @@
+<!-- linear-archive: AST-1304 archived 2026-08-19 -->
+
+## Linear archive (AST-1304)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1304/builder-emit-by-section-format-support-alternative-resume-sections  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1299 — Support alternative resume sections  
+**Blocked by / blocks / related:** parent: AST-1299
+
+### Description
+
+## What this implements
+
+After #1: render enabled sections in structure order by format, reusing the existing Somerset treatments; Highlights and Publications print as `bullet_list`; `experience_detail` uses today’s job-array fields; html-style italic/bold in body text render; leftover prose Experience is not treated as the required Experience section. When `debug=True`, log id / title / format / emit outcome per section (Style D). Does not own hop schemas or the structure editor.
+
+## Acceptance criteria
+
+- [X] Adding Highlights as `bullet_list` and Publications as `bullet_list` (titles + bodies) prints those headings and bulleted lines in structure order.
+- [X] Changing an optional section’s format changes the HTML treatment without creating a new section id.
+- [X] Html-style italic and bold tags in a `bullet_list` body (and other body formats) render as italic and bold; other tags are not a raw HTML hole.
+- [X] A leftover prose Experience string is not rendered as the required Experience section; Experience counts only as an `experience_detail` array (regenerate).
+- [X] With `debug=True` on the builder, each enabled section logs id, title, format, and whether it emitted, under Style D headers and `|` detail.
+
+## Boundaries
+
+- [X] Does not own hop schemas (sibling AST-1305) or the structure editor (sibling AST-1306). After #1.
+- [X] Does not change cover-letter shape or emit.
+- [X] Does not edit `BUILD_CONFIG["supported_sections"]` or invent new visual styles beyond reusing Somerset list chrome for `bullet_list`.
+- [X] Does not drop leftover Experience prose in `filter_content_to_resume_structure` (tracker persist / regenerate is AST-1305); builder emit skips it.
+- [X] Does not slug titles or accept extra keys on craft/draft hops (AST-1305).
+
+## In scope
+
+- [X] `pattern.config.config-block` — consume `RESUME_STRUCTURE_BODY_FORMATS` / `RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID` / `RESUME_STRUCTURE_EMPHASIS_TAG_NAMES`; do not invent a second format table in the builder
+- [X] `astral.config.config-source-of-truth` — format dispatch and emphasis allowlist read from the AST-1303 catalog in `src/utils/config.py`
+- [X] `astral.standards.no-hardcoded-sets` — no inline `("i", "em", "b", "strong")` or six-format tuple in `builder.py`
+- [X] `astral.standards.dry-and-focused-functions` — reuse existing Somerset emit helpers; add `_emit_bullet_list_html` / `_emit_inline_emphasis_html` only
+- [X] `astral.standards.debug-contract-gated` — per-section Style D trail only when `debug=True`
+- [X] `astral.standards.in-scope-only` — `src/core/builder.py` emit + `filter_content_to_resume_structure` keep-loop; no hops, editor, or cover letter
+- [X] `astral.standards.public-then-helpers` — public builder signatures unchanged; new work is helpers
+- [X] `astral.layers.import-direction` — builder adds config names only; filter change stays in core
+- [X] `astral.layers.core-vs-external-bright-line` — HTML emit stays in core builder
+- [X] `astral.standards.names-not-ticket-ids` — `_emit_inline_emphasis_html`, not `AST_1304_*`
+- [X] `astral.standards.no-cross-contamination` — no hop/UI/cover files
+- [X] `astral.standards.logging-via-utils` — existing `get_logger` / Style D helpers
+
+## Considered but excluded
+
+- [X] `astral.agent.do-task-delegation` — craft/draft hop accept of extra keys is AST-1305
+- [X] `pattern.ui.admin-endpoint` / `astral.layers.ui-config-driven-business-logic` — format picker API + editor are AST-1306
+- [X] `filter_base_resume_to_structure` / token serialize / legacy label ingest — AST-1305
+- [X] `normalize_resume_structure` / `RESUME_STRUCTURE_*` catalog writes — AST-1303 (already shipped)
+- [X] `astral.batch.claim-process-release` — no dispatch lifecycle
+- [X] `astral.dispatch.run-next-is-chain-authority` — hop order unchanged
+- [X] `astral.ui.single-gunicorn-worker` — `RAILWAY_CONFIG` untouched
+- [X] `astral.state.*` / seed / consult idioms — builder does not transition entities or touch agent_task seeds
+- [X] `BUILD_CONFIG["supported_sections"]` / `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` — not this child
+- [X] `tests/`, `docs/test-bible/**` — Betty
+
+## Notes for planning
+
+Citations: `pattern.config.config-block`; `astral.standards.dry-and-focused-functions`; `astral.standards.debug-contract-gated`.
+
+Plan: `docs/features/artifacts/ast-1304-builder-emit-by-section-format.md`
+
+## Git branch (authoritative)
+
+Per **orientation § Branch law**: parent `ftr/AST-1299-support-alternative-resume-sections`,
+child `sub/AST-1299/AST-1304-builder-emit-by-section-format`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-11T07:08:32.668Z
+[merge-child] blocked: duplicate merge-tests(AST-1304) count=3; also git pull / sibling Merge remote-tracking commits on the sub.
+
+@Hedy Lamarr — rebuild `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` so `validate-sub-log` passes: exactly one `merge-tests(AST-1304)`, no `Merge remote-tracking branch` subjects, 1304-only plan/code/test/docs/resolve (do not merge sibling subs). Force-with-lease on this sub only — never origin/dev.
+
+@Betty White — after Hedy’s tip is linear, one merge-tests delivery if the rebuilt stack still needs it.
+
+— Chuckles
+
+#### chuckles — 2026-08-11T07:02:19.036Z
+[merge-child] blocked:
+
+`validate-sub-log`: duplicate `merge-tests(AST-1304)` on sub — count=3 (amend on tests, one merge-tests only).
+
+@Betty White — return-pass deliveries landed three `merge-tests(AST-1304)` (`143ba359`, `8398463c`, `1fb4ff0f`). Gate allows one. Child is User Testing; assignee stays Hedy. After hygiene, Chuckles re-runs merge-child.
+
+Also missing `resolve(AST-1304):` — clean-review shortcut skipped resolve-child. Next validate will require that vocabulary commit (`docs(AST-1304): Radia review — clean` is present).
+
+— Chuckles
+
+#### radia — 2026-08-11T07:00:48.367Z
+[code-rubric] revision=1
+**Overall:** CLEAN
+Format dispatch, bullet_list, emphasis allowlist, leftover Experience skip, filter widen, and Style D per-section trail match approved plan.
+context_tokens≈115000
+— Radia
+
+#### betty — 2026-08-11T06:53:29.832Z
+[check-linear]
+
+- `test_candidate.py` no longer imports `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` at module level (AST-1305 catalog name). That import is inside `TestAst1305HopsContentBlobsAndLegacyLabels` only, so AST-1304 collection of this file works without the 1305 constant.
+- Quote-entity assert kept: `html.escape` `&quot;`.
+- Manifest unchanged.
+- `origin/tests` `8f90dfdd` — `test(AST-1304): keep AST-1305 extra-format import off test_candidate module`
+- `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `1fb4ff0f` (`merge-tests(AST-1304): origin/tests 8f90dfddf475163fb0c5baf775b9263623a5083e`)
+- bible `docs/test-bible/core/builder.md` shasum `59faa635c09d437be64fd5fc592867f92db9b171`
+
+```bash
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure \
+  tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
+  -q
+```
+
+#### hedy — 2026-08-11T06:51:19.138Z
+[qa-handoff]
+
+@Betty White
+
+Manifest (exact, from your `[check-linear]`):
+```
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume tests/component/core/test_builder.py::TestAst998ExperienceJobRender tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only -q
+```
+
+On `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `8398463c` (your `merge-tests` of `origin/tests` `2670b28d`): **collection error**, listed candidate nodes never run.
+
+```
+ImportError: cannot import name 'RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT' from 'src.utils.config'
+tests/component/core/test_candidate.py:21
+```
+
+That name is **AST-1305** product (`docs/features/artifacts/ast-1305-hops-content-blobs-and-legacy-extra-labels.md` Stage 1). It is not on this child’s product tree and is out of AST-1304 scope (plan: builder emit + filter keep-loop only; no catalog writes).
+
+`merge-tests(AST-1304)` of `origin/tests` `2670b28d` also brought `test(AST-1305)` (`f27148fd`, `06ace6fe`), which added the module-level import. That breaks **every** `test_candidate.py` node on AST-1304, including `TestAst1304FilterContentToResumeStructure`.
+
+Please keep the `&quot;` helper assert, and either:
+- merge-tests only the AST-1304 quote-entity commit onto this sub (do not land AST-1305 test imports here), or
+- move `RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT` off the `test_candidate.py` module import (into AST-1305 classes only) so this file still collects on AST-1304 product.
+
+Then re-post Tests Ready / reassign Hedy. I will not add the AST-1305 constant on this ticket.
+
+#### betty — 2026-08-11T06:49:13.002Z
+[check-linear]
+
+- Fixed `TestAst1304BuilderEmitByFormat::test_emphasis_helper_restores_closed_tags_and_escapes_the_rest` — attributed `<i>` now expects CPython `html.escape` `&quot;`, not `&#34;`.
+- Manifest unchanged (same class/node list). Bible `docs/test-bible/core/builder.md` notes the quote entity.
+- `origin/tests` `2670b28d` — `test(AST-1304): expect html.escape quote entity on attributed emphasis tags`
+- `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `8398463c` (`merge-tests(AST-1304): origin/tests 2670b28d38d17590bad1f8c3bf734dfebf95bd22`)
+- bible `docs/test-bible/core/builder.md` shasum `a8b93207855c0248f9d4e9a7c63cd7965cef11f1`
+
+```bash
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat \
+  tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks \
+  tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume \
+  tests/component/core/test_builder.py::TestAst998ExperienceJobRender \
+  tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure \
+  tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array \
+  tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only \
+  -q
+```
+
+#### hedy — 2026-08-11T06:47:22.479Z
+[qa-handoff]
+
+@Betty White
+
+Manifest (exact):
+```
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume tests/component/core/test_builder.py::TestAst998ExperienceJobRender tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only -q
+```
+
+Result on `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `785be890`: **1 failed, 32 passed**.
+
+Failed node: `TestAst1304BuilderEmitByFormat.test_emphasis_helper_restores_closed_tags_and_escapes_the_rest`
+
+```
+assert fn('x <i onclick="x">nope</i> y') == "x &lt;i onclick=&#34;x&#34;&gt;nope&lt;/i&gt; y"
+- x &lt;i onclick=&#34;x&#34;&gt;nope&lt;/i&gt; y
++ x &lt;i onclick=&quot;x&quot;&gt;nope&lt;/i&gt; y
+```
+
+This is a **test assertion** problem, not a product hole:
+
+- Plan Stage 1: `html.escape` the slices. CPython `html.escape(..., quote=True)` emits `&quot;`, not `&#34;`.
+- Attributed open + orphan `</i>` are both escaped (no raw tag). Session test `test_emphasis_tags_render_other_tags_escaped` is already green on that contract.
+- Style D `skipped — missing format` walk is green after `test(AST-1304)` (`785be890`) — session emit keeps a structure when `normalize_resume_structure` rejects an extra that lacks `format`.
+
+Please change the helper assert to expect `&quot;` (or compare decoded text). Do not require `&#34;`. Then re-post Tests Ready / reassign Hedy.
+
+#### betty — 2026-08-11T06:40:42.016Z
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_builder.py::TestAst1304BuilderEmitByFormat tests/component/core/test_builder.py::TestBuilderHelpers::test_emits_body_sections_and_cover_blocks tests/component/core/test_builder.py::TestAst987BuildSessionBaseResume tests/component/core/test_builder.py::TestAst998ExperienceJobRender tests/component/core/test_candidate.py::TestAst1304FilterContentToResumeStructure tests/component/core/test_candidate.py::TestAst518ResumeStructureProjection::test_filter_content_drops_orphan_and_empty_strings tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_filter_content_preserves_nonempty_job_array tests/component/core/test_builder.py::TestAst581ResumeCoverSplit::test_build_cover_letter_from_job_emits_cover_only -q`
+
+2. New: `TestAst1304BuilderEmitByFormat` — bullet_list Highlights/Publications in order; format swap keeps `id="education"`; emphasis tags render / other tags escaped; leftover Experience prose skipped; job array still emits; extra `experience_detail` + `_render_content_keys`; Style D per enabled section; `debug=False` quiet; cover debug has no resume-section trail.
+
+3. New: `TestAst1304FilterContentToResumeStructure` — leftover Experience prose kept; extra job array kept; scalar list coerced; mixed dict-list dropped.
+
+4. Revised (broken by emit-by-format): `TestBuilderHelpers::test_emits_body_sections_and_cover_blocks` (job array for Experience); `TestAst987BuildSessionBaseResume::test_renders_from_in_memory_payload_no_candidate_bind`; `TestAst998ExperienceJobRender::test_session_legacy_string_experience_still_prose`.
+
+5. Bible: `docs/test-bible/core/builder.md` `### AST-1304 · AST-1299` — shasum `98541459644d19a28d467344fbb99ea42874c924` on `origin/sub/AST-1299/AST-1304-builder-emit-by-section-format`.
+
+`origin/tests` `6e51cf514c62ec45a09d4af1f96b5ae2a6051cd2`
+`origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` `143ba359` (`merge-tests(AST-1304): origin/tests 6e51cf514c62ec45a09d4af1f96b5ae2a6051cd2`)
+
+— Betty
+
+#### joan — 2026-08-11T06:18:30.312Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+2 discuss (non-blocking): AC numbering vs child checkboxes; filter persist vs AST-1305 hop ingest
+context_tokens≈95000
+— Joan
+
+#### hedy — 2026-08-11T06:14:17.968Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1299/AST-1304-builder-emit-by-section-format/docs/features/artifacts/ast-1304-builder-emit-by-section-format.md
+
+`origin/sub/AST-1299/AST-1304-builder-emit-by-section-format` @ `f51e905d`
+
+**Scope:** Single-Component — resume HTML emit in `builder.py` plus the `filter_content_to_resume_structure` keep-loop so extra bodies reach that emit; no hops, editor, or cover letter.
+
+**Conf:** high — AST-1303 already persisted `format` and the emphasis tag names; five of six treatments already exist as id-keyed branches; this ticket rekeys them and adds `bullet_list`.
+
+**Risk:** Medium — a wrong format map regresses every printed resume; a loose emphasis restore would be an HTML hole; leftover Experience prose is skipped at emit only so tracker persist stays AST-1305.
+
+---
+
 # AST-1304 — Builder emit by section format
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1304/builder-emit-by-section-format  

@@ -5,6 +5,7 @@ from typing import Optional
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
+from src.utils.auth import local_auth_passthrough_payload
 from src.core.candidate import (
     get_candidate,
     requested_artifacts_chain_artifact_keys,
@@ -88,15 +89,12 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
 
 
 def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> list:
-    """Walk NAV_CONFIG and resolve visible/enabled gates against candidate_state."""
+    """Walk NAV_CONFIG and resolve item-level enabled gates against candidate_state."""
     company_counts = _get_company_counts(candidate_id)
     job_counts = _get_job_counts(candidate_id)
     nav_counts = {**company_counts, **job_counts}
     resolved = []
     for group in NAV_CONFIG:
-        visible_gate = group.get("visible")
-        if isinstance(visible_gate, str) and not _is_at_or_past(candidate_state, visible_gate):
-            continue
         resolved_items = []
         for item in group["items"]:
             enabled_gate = item.get("enabled")
@@ -134,6 +132,12 @@ def health():
 def auth_session_policy():
     """Non-secret session duration + extend cadence for SPA (AST-1373). Public on purpose."""
     return jsonify(get_auth_session_policy())
+
+
+@system_bp.route("/auth_passthrough")
+def auth_passthrough():
+    """Public non-secret local-auth signal for SPA. Public on purpose."""
+    return jsonify(local_auth_passthrough_payload())
 
 
 # --- Authenticated endpoints ---

@@ -1582,6 +1582,11 @@ def get_candidate_id_for_query(
             v = _lookup_path_value(candidate, path)
             if v:
                 values.append(v.casefold() if casefold else v)
+        # List emails (extra_emails); do not walk uniqueness list_paths (websites).
+        for path in CANDIDATE_LOOKUP_CONFIG["email_list_paths"]:
+            for v in _iter_uniqueness_path_values(candidate, path):
+                if v:
+                    values.append(v.casefold() if casefold else v)
         if needle_cmp not in values:
             continue
         cid = (candidate.get("astral_candidate_id") or "").strip()

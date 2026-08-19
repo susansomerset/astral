@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "../../../../src/ui/frontend/src/contexts/
 import { getHadSession, getLogOffReason } from "../../../../src/ui/frontend/src/lib/sessionAuthMark"
 import { startSessionExtendLoop } from "../../../../src/ui/frontend/src/lib/sessionExtend"
 import { resetStytchTestState, stytchTestState } from "../stytchMock"
+import { stubAuthPublicFetches } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -23,28 +24,12 @@ function wrapper({ children }: { children: ReactNode }) {
   return <AuthProvider>{children}</AuthProvider>
 }
 
-function stubPolicyFetch(): void {
-  vi.stubGlobal(
-    "fetch",
-    vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input)
-      if (url.includes("/api/auth_session_policy")) {
-        return Response.json({
-          session_duration_minutes: 20,
-          activity_extension_interval_minutes: 10,
-        })
-      }
-      return new Response("not found", { status: 404 })
-    }),
-  )
-}
-
 describe("AuthContext", () => {
   beforeEach(() => {
     resetStytchTestState()
     mockedApi.mockReset()
     mockedStartExtend.mockClear()
-    stubPolicyFetch()
+    stubAuthPublicFetches(false)
   })
 
   afterEach(() => {
@@ -188,5 +173,54 @@ describe("AuthContext", () => {
     await waitFor(() => expect(result.current.user).toBeNull())
     expect(result.current.loading).toBe(false)
     expect(result.current.isAdmin).toBe(false)
+  })
+
+  it("AST-1441: passthrough loads /api/me with no Stytch session and skips extend", async () => {
+    stubAuthPublicFetches(true)
+    stytchTestState.session = null
+    mockedApi.mockResolvedValue({
+      ok: true,
+      json: async () => ({ user_id: "local-operator", name: "Local Operator", is_admin: true }),
+    } as Response)
+
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.localAuthPassthrough).toBe(true)
+    expect(result.current.user).toEqual({
+      user_id: "local-operator",
+      name: "Local Operator",
+      is_admin: true,
+    })
+    expect(result.current.isAdmin).toBe(true)
+    expect(mockedApi).toHaveBeenCalledWith("/api/me")
+    expect(getHadSession()).toBe(false)
+    expect(mockedStartExtend).not.toHaveBeenCalled()
+  })
+
+  it("AST-1441: leftover Stytch session does not start extend when passthrough is on", async () => {
+    stubAuthPublicFetches(true)
+    mockedApi.mockResolvedValue({
+      ok: true,
+      json: async () => ({ user_id: "local-operator", name: "Local Operator", is_admin: true }),
+    } as Response)
+
+    renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(mockedApi).toHaveBeenCalledWith("/api/me"))
+    expect(mockedStartExtend).not.toHaveBeenCalled()
+  })
+
+  it("AST-1441: passthrough /api/me 401 does not set server-rejection", async () => {
+    stubAuthPublicFetches(true)
+    stytchTestState.session = null
+    mockedApi.mockResolvedValue({
+      ok: false,
+      status: 401,
+      json: async () => ({}),
+    } as Response)
+
+    const { result } = renderHook(() => useAuth(), { wrapper })
+    await waitFor(() => expect(result.current.loading).toBe(false))
+    expect(result.current.user).toBeNull()
+    expect(getLogOffReason()).toBeNull()
   })
 })

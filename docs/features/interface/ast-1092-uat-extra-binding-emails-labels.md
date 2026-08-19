@@ -371,3 +371,124 @@ None.
 - **fix-now:** none.
 - **discuss / advisory:** none.
 - Radia Overall **CLEAN**; Findings none. Intake of `docs(AST-1092): Radia review — clean` @ `efdea153` already on publish tip.
+
+## Bug: AST-1447 — Wire extra emails into candidate bind/lookup
+
+Delta only. Original Stages 1–3 (labels, `contact.extra_emails` persist, uniqueness `email_list_paths`, Profile normalize) stay as written above. This ticket restores Stage 2 bind expansion that config already advertises.
+
+### As-is
+
+An extra email saved on a candidate (e.g. `soosomerset@gmail.com` on Jolane) is not a bind identity. Mail from that address on the candidate’s behalf does not bind until the extra is removed and the same address is set as Email for Messages (`contact.reply_email`).
+
+### To-be
+
+Extra emails participate in platform email binding/lookup the same way Email for Resume and Email for Messages do. Mail from an extra-email address on that candidate’s behalf binds without moving the address into the messaging-email field.
+
+### Repro
+
+Fixture (file/JSON candidate row — no SQL seed):
+
+```json
+{
+  "astral_candidate_id": "jolane",
+  "first": "Jolane",
+  "last": "",
+  "full": "",
+  "candidate_data": {
+    "contact": {
+      "contact_email": "jolane@resume.example",
+      "reply_email": "jolane@messages.example",
+      "extra_emails": ["soosomerset@gmail.com"],
+      "websites": ["https://jolane.example"]
+    }
+  }
+}
+```
+
+1. Persist that contact blob (Profile extra-emails list, or equivalent `save_candidate_data`).
+2. Call `get_candidate_id_for_query("soosomerset@gmail.com")` (same helper inbox From/To bind uses in `src/core/inbox.py`).
+3. **Broken:** returns `None`. **Fixed:** returns `"jolane"`.
+4. Still `None` for the website string (websites are not bind emails).
+5. Same extra needle casefolded (`Soosomerset@Gmail.com`) still unique-matches.
+
+UAT shape: extra-only address (not Resume, not Messages) on the candidate’s behalf binds.
+
+### Root cause
+
+`CANDIDATE_LOOKUP_CONFIG["email_list_paths"]` already is `("contact.extra_emails",)` and uniqueness already walks that pool (`_iter_uniqueness_path_values` / AST-1095). Profile already round-trips `contact.extra_emails`.
+
+`get_candidate_id_for_query` in `src/core/candidate.py` does **not** expand `email_list_paths`. It only concatenates scalar `email_paths` + `name_paths` + `slack_user_id_paths` and reads each with `_lookup_path_value`, which returns `""` for non-strings. A needle present only in `contact.extra_emails` never enters `values`, so inbox bind (`match_inbox_candidate` From then To) misses. Putting extras on scalar `email_paths` would not work for the same reason.
+
+AST-1092 Stage 2 already required this expansion; uniqueness/config landed, the lookup loop did not.
+
+### Proposed change
+
+In `src/core/candidate.py` `get_candidate_id_for_query`, after the existing scalar path loop that fills `values` from `email_paths` / `name_paths` / `slack_user_id_paths`, expand each path in `CANDIDATE_LOOKUP_CONFIG["email_list_paths"]`:
+
+- Reuse `_iter_uniqueness_path_values(candidate, path)` (path is already on uniqueness `email_list_paths`; helper already list-walks those).
+- Append each non-empty stripped entry to `values` with the same `match_casefold` rule as scalar emails (`v.casefold()` when `CANDIDATE_LOOKUP_CONFIG["match_casefold"]` is true).
+- Unique-hit / ambiguous / none semantics stay as they are today (`hit_ids` length 1 vs 0 vs ≥2).
+- Do **not** put `contact.extra_emails` into scalar `email_paths`.
+- Do **not** walk uniqueness `list_paths` (that would bind `contact.websites`).
+- Do **not** change Profile, `DATA_SHAPES`, save coerce, uniqueness gate, or inbox header order — those already call this helper or already persist extras.
+
+`src/core/inbox.py` and other callers of `get_candidate_id_for_query` need no signature change.
+
+### Blast radius
+
+- **Bind callers of this helper:** `src/core/inbox.py` From/To (`INBOX_BIND_CONFIG` header order); `src/core/contact.py` Slack lookup by id still uses name/slack paths, unchanged unless the query string is an extra email.
+- **Uniqueness / save:** already treat extras as email-pool identity (AST-1095). Do not retune the gate.
+- **Websites:** must remain non-emails for bind.
+- **Existing test that already asserts the to-be:** `tests/component/core/test_candidate.py::TestAst1092ExtraBindingEmails::test_lookup_binds_extra_email_not_websites` (engineer does not edit tests). Scalar lookup tests (AST-1047) stay on `email_paths`.
+- **Docs/model:** `docs/features/candidate/CANDIDATE_DATA_MODEL.md` already describes extras as binding emails; no new plan file.
+
+### What must still hold
+
+- Extra emails persist under `contact.extra_emails` (not `contact.websites`, not Profile-only).
+- Labels: Email for Resume / Email for Messages (if different); Extra emails (binding) `string_list`.
+- Scalar `email_paths` remain strings only; `_lookup_path_value` stays str-only.
+- Bind expands **list emails only** — never websites / never wholesale uniqueness `list_paths`.
+- Uniqueness email pool stays `email_paths` ∪ `email_list_paths` under casefold email compare (AST-1095); this fix does not weaken or bypass that gate.
+- Unique match only: extra shared by two candidates still returns no id (same as scalar collision).
+- No Admin Manage Candidates expand, no preamble/intake, no new routes.
+
+## Radia review (AST-1447)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1447
+**Publish ref:** `6a1fc4f87a218e0595026accd09b8235ce54f0b4` (`origin/sub/AST-1445/AST-1447-wire-extra-emails-into-bind-lookup`)
+**Overall:** CLEAN
+**Internal grade:** CLEAN
+
+Diff: `origin/ftr/AST-1445-extra-emails-not-used-for-binding...origin/sub/AST-1445/AST-1447-wire-extra-emails-into-bind-lookup` — layers `{core, docs}`; change_types `{modify}`. Parent shape: **normal** (live `origin/ftr/AST-1445-extra-emails-not-used-for-binding` is an ancestor of the publish tip).
+
+### Statutes checked
+
+Active-set harvest: 64 rows; all scoped/universal verdicts **conforms** or **not-applicable** (see Linear/thread artifact). Config bind list from `CANDIDATE_LOOKUP_CONFIG["email_list_paths"]`; no new imports; engineer did not touch tests.
+
+### Pattern conformance
+
+none cited.
+
+### Plan adherence
+
+Proposed change lands exactly: after the scalar path loop, expand `email_list_paths` via `_iter_uniqueness_path_values`, same casefold rule, unique-hit semantics unchanged. Did not put extras on scalar `email_paths`, did not walk uniqueness `list_paths`, did not touch Profile / `DATA_SHAPES` / save coerce / uniqueness gate / inbox header order.
+
+### Fix-specific checks
+
+**[bug-repro] not applicable** — `[board-betty] TESTS: OK`; no qa-fix. Existing `TestAst1092ExtraBindingEmails::test_lookup_binds_extra_email_not_websites` already pins extra-only bind.
+
+**## What must still hold — OK** (persist extras, labels, scalar email_paths, bind list emails only, uniqueness pool, shared extra still no unique id, no Admin/preamble/new routes).
+
+### Findings
+
+None.
+
+### Frame diff
+
+`src/core/candidate.py` `get_candidate_id_for_query`: after scalar path collection, for each `email_list_paths` value, append stripped entries from `_iter_uniqueness_path_values` with optional `casefold`. Feature-doc plan-fix sections only.
+
+Gate **PROCEED**. resolve-child skipped (clean). context_tokens≈22000
+
+Board TESTS: OK — docs-acceptance (no qa-fix / no test-tree delivery).

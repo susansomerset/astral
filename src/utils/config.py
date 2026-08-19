@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373)
+  AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
@@ -4527,16 +4527,14 @@ def admin_brain_setting_catalog() -> list[dict[str, Any]]:
 # NAV_CONFIG: UI navigation structure. Grouped sidebar sections with labels
 # and route paths. Served to React frontend via /api/nav_config.
 #
-# Optional group-level "visible": a CANDIDATE_STATES key. Group is hidden
-# unless the candidate is at or past that state. Omit = always visible.
-#
 # Optional group-level "admin_only": True. When True, /api/nav_config omits
 # the group for non-admin users (resolved via nav_admin_only_group_labels).
-# Omit the key (or False) = visible to every authenticated user subject to
-# other gates.
+# Omit the key (or False) = visible to every authenticated user.
 #
 # Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
 # or past that state) or False (permanently disabled stub). Omit = always enabled.
+#
+# Group-level candidate-state "visible" is not a NAV_CONFIG key. Do not add it.
 #
 # ADMIN_CONFIG: Frontend-facing admin UI configuration served via /api/admin/config.
 # ---------------------------------------------------------------------------
@@ -4584,6 +4582,11 @@ AUTH_CONFIG = {
     # Non-secret Stytch client session policy (AST-1373) — retune here, not SPA constants.
     "session_duration_minutes": 20,
     "activity_extension_interval_minutes": 10,
+    # Synthetic operator for local-deploy API passthrough. Not a Stytch user.
+    "local_operator": {
+        "user_id": "local-operator",
+        "name": "Local Operator",
+    },
 }
 
 
@@ -4633,9 +4636,10 @@ UI_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# The /api/nav_config endpoint in system.py resolves these against the
-# selected candidate's state before serving. The frontend renders the
-# resolved response with no additional visibility logic.
+# The /api/nav_config endpoint in api_system.py resolves item-level enabled
+# gates against the selected candidate's state and omits admin_only groups
+# for non-admins before serving. The frontend renders the resolved response
+# with no additional visibility logic.
 #
 # SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
 #       If you add/remove/rename a nav item, update routes.tsx to match.
@@ -4643,7 +4647,6 @@ UI_CONFIG = {
 NAV_CONFIG = [
     {
         "label": "Jobs",
-        "visible": "ACTIVE_SEARCH",
         "items": [
             {"label": "In Review", "path": "/jobs/in_review"},
             {"label": "Skipped", "path": "/jobs/skipped"},
@@ -4654,7 +4657,6 @@ NAV_CONFIG = [
     },
     {
         "label": "Companies",
-        "visible": "ACTIVE_SEARCH",
         "items": [
             {"label": "Watch List", "path": "/companies/watch_list"},
             {"label": "New List", "path": "/companies/new_list"},
@@ -4665,7 +4667,6 @@ NAV_CONFIG = [
     },
     {
         "label": "Artifacts",
-        "visible": "RESUME_READY",
         "items": [
             {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
             {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},

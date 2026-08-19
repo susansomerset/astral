@@ -21,6 +21,7 @@ describe("AdminRoute", () => {
       isAdmin: false,
       loading: false,
       refreshMe: () => {},
+      localAuthPassthrough: false,
     })
 
     render(
@@ -42,6 +43,7 @@ describe("AdminRoute", () => {
       isAdmin: true,
       loading: false,
       refreshMe: () => {},
+      localAuthPassthrough: false,
     })
 
     render(
@@ -61,6 +63,7 @@ describe("AdminRoute", () => {
       isAdmin: false,
       loading: true,
       refreshMe: () => {},
+      localAuthPassthrough: false,
     })
 
     render(
@@ -80,6 +83,7 @@ describe("AdminRoute", () => {
       isAdmin: true,
       loading: true,
       refreshMe: () => {},
+      localAuthPassthrough: false,
     })
 
     render(
@@ -100,6 +104,7 @@ describe("AdminRoute", () => {
       isAdmin: false,
       loading: true,
       refreshMe: () => {},
+      localAuthPassthrough: false,
     })
 
     render(

@@ -2,6 +2,8 @@
 
 **Test tree:** `tests/component/components/`
 
+Local-deploy RequireAuth skip Login / Log-off: **`docs/test-bible/frontend/lib.md`** § AST-1441.
+
 ### AST-427 · AST-426
 
 **`CollapsiblePanel`** shared by **`AdminTaskPrompts`** (Manage Tasks list + edit modal) and **`ArtifactEditor`** (criteria). Zero expanded sections: list phases and edit modal (`editOpenPanel === null` on collapse, same pattern as criteria `expandedTabId === ""`).
@@ -965,3 +967,30 @@ npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1450 · AST-1444
+
+**Parent:** [AST-1444 — Remove navigation filter for selected candidate](https://linear.app/astralcareermatch/issue/AST-1444/remove-navigation-filter-for-selected-candidate). **Publish:** `origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker`.
+
+Pinned chrome shows the selected candidate’s stored `state` string as a read-only `.sidebar-candidate-state` line under the wide `<select>` and under the narrow picker toggle. Exact stored name (including retry/error companions); omit when blank or when the candidate list is empty. No nav gating, no state editor, no display aliases. No page-file product diff — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Wide: line under select; exact string; not editable; updates on picker change | `NavigationShell.tsx` + `App.css` | **`test_NavigationShell.test.tsx`** — **`AST-1450 selected candidate state under picker` → wide: read-only stored state sits under the select and updates on change** |
+| Omit blank stored state | same | **`wide: omits the line when stored state is blank`** |
+| Narrow: same line under toggle (stays under it when menu open); updates on select | same | **`narrow: same read-only line under the toggle; stays under it when the menu opens`** |
+| Empty list | same | **`empty candidate list omits the state line`** |
+| Chrome / responsive regression | same | **`AST-1369 pinned left-nav chrome`** + **`AST-1286 responsive shell`** (existing) |
+
+**Broken / obsolete:** shared `candidatesFixture` in `test_NavigationShell.test.tsx` — `c2.state` is `REQUESTED_RESUME_RETRY` so picker-change can assert a different stored name; existing cases do not assert state text.
+
+**Integration:** `tests/integration/scenarios/test_candidate_nav_api.py` — API/nav membership only; this child does not change `NAV_CONFIG` or `/api/candidates`. No revision. Do not invent new integration coverage.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx
+```
+
+**Pass criterion:** Vitest green on the NavigationShell file (AST-1450 + existing shell cases) — not zero-arg harness / branch-lock gate.

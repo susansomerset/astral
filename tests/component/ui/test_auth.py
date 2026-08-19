@@ -111,6 +111,60 @@ class TestRequireAdmin:
         assert resp.status_code == 200
 
 
+# Branches: local skip Stytch; ignore present Bearer; always-admin; non-local still 401.
+class TestAst1440LocalAuthPassthrough:
+    def test_local_missing_bearer_sets_operator(
+        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        resp = flask_app.test_client().get("/secure")
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload["user_id"] == "local-operator"
+        assert payload["is_admin"] is True
+
+    def test_local_ignores_bearer_and_skips_stytch(
+        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+
+        def _boom(_token: str):
+            raise AssertionError("local passthrough must not validate Bearer")
+
+        monkeypatch.setattr(auth_mod, "validate_bearer_token", _boom)
+        with caplog.at_level("WARNING"):
+            resp = flask_app.test_client().get(
+                "/secure", headers={"Authorization": "Bearer bad"}
+            )
+        assert resp.status_code == 200
+        assert resp.get_json()["user_id"] == "local-operator"
+        assert "Bearer token validation failed" not in caplog.text
+        assert "Stytch session_not_found" not in caplog.text
+
+    def test_local_admin_route_without_token(
+        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        assert flask_app.test_client().get("/admin-only").status_code == 200
+
+    def test_staging_missing_bearer_returns_401(
+        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        assert flask_app.test_client().get("/secure").status_code == 401
+
+    def test_production_missing_bearer_returns_401(
+        self, flask_app: Flask, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(auth_mod, "_ALLOWED_IPS", set())
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "production")
+        assert flask_app.test_client().get("/secure").status_code == 401
+
+
 class TestClientIp:
     def test_prefers_forwarded_for_header(self, flask_app: Flask) -> None:
         with flask_app.test_request_context(headers={"X-Forwarded-For": "203.0.113.5, 198.51.100.2"}):
