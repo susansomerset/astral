@@ -214,3 +214,127 @@ context_tokens≈40000
 - Stage 1: `fetchAuthPassthrough()` raw `GET /api/auth_passthrough`, fail-closed
 - Stage 2: AuthContext loads `/api/me` without Stytch session; skip extend loop
 - Stage 3: RequireAuth skips Login/Log-off; Authenticate skips `authenticateByUrl`
+
+## Radia review
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1441  
+**Publish ref:** `origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh` @ `6fe151986a633d9a322b1616a73adc383471a2d8`  
+**Overall:** CLEAN  
+**Internal grade:** CLEAN
+
+## Frame diff
+
+Three-dot vs `origin/dev` also contains sibling **AST-1440** (ftr sync `a5ae76cb`). AST-1441 `code()` commits only touch the four planned SPA files.
+
+- **This child’s product paths:** `src/ui/frontend/src/lib/authPassthrough.ts` (A); `src/ui/frontend/src/contexts/AuthContext.tsx`; `src/ui/frontend/src/components/RequireAuth.tsx`; `src/ui/frontend/src/pages/Authenticate.tsx`; plus `docs/features/foundation/ast-1441-…` and Betty test-tree
+- **Inherited sibling (not re-opened):** AST-1440 Flask/config/pattern/bible/tests already scored CLEAN
+- **Diff layers:** `docs`, `ui`, `utils`
+- **Diff change_types:** `add`, `modify`
+
+## Statutes checked
+
+Harvested active set (64 ids).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | inherited `config.py` only; no confidence literals |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `src/core/**` |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no `src/core/**` |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.config.config-source-of-truth` | scoped | conforms | SPA consumes API boolean; no second identity source in React |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | no secrets in SPA; gate is the public payload, not hostname |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no `artifacts/**` / `scripts/spikes/**` |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | `docs/features/**` is the plan file, not a spike |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | inherited `config.py`; no `seed_auto` change |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | inherited `config.py`; no `run_next` change |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | one `ast-1441-…` plan file |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | `test()` / `merge-tests` stay off `src/` and `docs/features/` |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | test-tree only on `test()` / `merge-tests` |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no `src/core/**` / `src/external/**` |
+| `astral.layers.import-direction` | scoped | conforms | SPA-only TS; inherited ui→utils unchanged |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/**` |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | React branches on API-resolved `local_auth_passthrough`, not a hostname/env parse |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no `src/core/**` |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no `src/core/**` |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | no decorator stripping; SPA does not invent an open admin API |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | no agent JSON change |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | no catalog override |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | no seed on the request path |
+| `astral.seed.define-approved` | scoped | conforms | no seed-catalog define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | no operator-row restore |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | no coverage-join change |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | no data-layer logging |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no `src/data/**` |
+| `astral.standards.debug-contract-gated` | scoped | conforms | no backend debug-contract on this child’s files; §5f does not require frontend debug |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | one fetch helper; short-circuits in existing surfaces |
+| `astral.standards.in-scope-only` | scoped | conforms | `code()` did not touch Login / LogOff / sessionExtend / App / Flask |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new Python logger; SPA has no `print` |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `fetchAuthPassthrough` / `localAuthPassthrough`; AST-1440 only in a comment |
+| `astral.standards.no-cross-contamination` | scoped | conforms | stays in `src/ui/frontend` |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | no hostname/`local-operator` literals in React; identity from `/api/me` |
+| `astral.standards.public-then-helpers` | scoped | conforms | new helper is a single-export lib module |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | this child did not edit `src/utils/**` |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no `src/core/**` / `src/data/**` |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | no `JOB_STATES` change |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no `src/core/**` |
+| `astral.ui.frontend-file-placement` | scoped | conforms | helper in `lib/`; edits stay in `contexts/` / `components/` / `pages/` |
+| `astral.ui.naming-conventions` | scoped | conforms | PascalCase components; `/api/auth_passthrough` snake_case |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | no worker count change |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | one `merge-tests(AST-1441)` |
+| `orch.git.commit-vocabulary` | universal | conforms | `code()` / `docs()` / `test()` / `merge-tests()` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | work on `origin/sub/…` |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1438/AST-1441-…` |
+| `orch.git.merge-on-checkout` | universal | conforms | no rebase of `origin/dev` onto the sub |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commits plus merge-tests |
+| `orch.git.no-dev-agent-branches` | universal | conforms | not `dev-<agent>` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | `astral-AST-1438` |
+| `orch.git.three-permanent-branches` | universal | conforms | no extra permanent |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | StytchProvider Decision already in Joan-approved plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–3 match the plan snippets |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Foundation child AST-1441 |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute file edits |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | bible/tests on `test()` / `merge-tests` |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Katherine Johnson |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | implementer remains assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | engineer `code()` did not touch test-tree |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.auth.local-deploy-passthrough` | conforms | child reads the public boolean endpoint; no runtime pattern-id lookup; `status: proposed` as authored by sibling 1 |
+
+## Plan adherence
+
+Stage 1: `fetchAuthPassthrough()` is byte-for-byte the plan (`raw fetch`, `=== true`, fail-closed `catch`). Stage 2: signal fetched first; `loading` held while `null`; on `true` `loadMe()` with no `markHadSession` / policy / extend; extend effect returns unless `localAuthPassthrough === false`; 401 log-off skipped when passthrough is on; `refreshMe` loads without a session. Stage 3: RequireAuth loading + children short-circuit; Authenticate navigates `/` without `completeAuthenticateFromUrl`. Out of scope held: no `Login.tsx` / `LogOffScreen.tsx` / `sessionExtend.ts` / `App.tsx` / Flask. Estimate 3 matches.
+
+C6: `catch { return false }` is the plan’s fail-closed Decision (justified). No hostname gate. §5f N/A for frontend. Spawn `Relations: (none)`; sibling 1440 in the three-dot is ftr inheritance, not smuggled new Flask work.
+
+Joan’s plan **discuss** (StytchProvider stays / leftover SDK hydrate) is already decided and implemented as specified. Not re-raised.
+
+## Findings
+
+(none)
+
+## C4
+
+Joan APPROVED attached. No Excluded statute table — no straggler rows.
+
+## What’s solid
+
+Fail-closed public fetch; extend loop gated on the signal not `sessionPresent`; Login/Log-off unmounted via RequireAuth; `/authenticate` cannot call `authenticateByUrl` when the signal is on.
+
+## Notes (Chuckles writeback only)
+
+- Full verdict in the issue doc; Linear gets the slim line (no `revision=N`).
+- Do not treat inherited AST-1440 files as new 1441 findings.
+- Pattern remains `proposed` until Archie approves on the parent — not this child’s fix.
+- Betty already stubbed `localAuthPassthrough` on AdminRoute mocks / `stubAuthPublicFetches` — no extra QA spawn from this review.
+
+context_tokens≈28000
