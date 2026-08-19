@@ -1337,7 +1337,7 @@ def _store_prompt_blocks(
     caches_resolved_four: Any = _PB_SLOT_OMIT,
     cache_content: Any = _PB_SLOT_OMIT,
     debug: bool = False,
-    entity_id: Optional[str] = None,
+    entity_id: Optional[str] = None,  # AST-1431 prompt-row stamp tests (do_task / helper / Ad Hoc)
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
     Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only).
