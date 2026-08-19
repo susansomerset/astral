@@ -263,3 +263,133 @@ Existing `tests/component/ui/test_auth.py::TestRequireAuth` 401 cases will 200 i
 - Stage 1: `pattern.auth.local-deploy-passthrough` proposed; Code Rules §2.9 local exception + §2.1 `AUTH_CONFIG`
 - Stage 2: `AUTH_CONFIG["local_operator"]`; `local_operator_user()` / `local_auth_passthrough_payload()`
 - Stage 3: `@require_auth` local early-return; open `GET /api/auth_passthrough`; `env.example`
+
+## Radia review
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1440  
+**Publish ref:** `origin/sub/AST-1438/AST-1440-local-api-auth-passthrough` @ `8f04677299acd2d66b7177b27d7133ca7c6aadfe`  
+**Overall:** CLEAN  
+**Internal grade:** CLEAN
+
+## Frame diff
+
+- **Diff paths:** `canon/patterns/auth/pattern.auth.local-deploy-passthrough.md` (A); `docs/ASTRAL_CODE_RULES.md`; `docs/features/foundation/ast-1440-local-api-auth-passthrough.md` (A); `docs/test-bible/integration/README.md`; `docs/test-bible/ui/api/api_system.md`; `docs/test-bible/ui/auth.md`; `docs/test-bible/utils/auth.md`; `env.example`; `src/ui/api/api_system.py`; `src/ui/auth.py`; `src/utils/auth.py`; `src/utils/config.py`; `tests/component/ui/api/test_api_system.py`; `tests/component/ui/conftest.py`; `tests/component/ui/test_auth.py`; `tests/component/utils/test_auth.py`; `tests/integration/conftest.py`
+- **Diff layers:** `docs` (canon/docs/env.example), `ui`, `utils`; test-tree paths are Betty-owned (no product layer)
+- **Diff change_types:** `add`, `modify`
+
+## Statutes checked
+
+Harvested active set (registry table; retired skipped). 64 ids.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| `astral.agent.confidence-bounds` | scoped | conforms | `config.py` touched; no confidence/bounds literals |
+| `astral.agent.do-task-delegation` | scoped | not-applicable | no `src/core/**` |
+| `astral.agent.grade-vector-validation` | scoped | not-applicable | no `src/core/**` |
+| `astral.batch.batch-id-first` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.batch.batch-id-format` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.batch.claim-process-release` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.batch.entity-agent-responses-latest-only` | scoped | not-applicable | no `src/data/**` / `src/core/**` |
+| `astral.config.config-source-of-truth` | scoped | conforms | `local_operator` lives in `AUTH_CONFIG`; decorator reads helpers |
+| `astral.config.secrets-and-env-specific-from-environ` | scoped | conforms | identity literals are non-secret; gate remains `ASTRAL_DEPLOY_ENV` via `is_local_deploy_env()` |
+| `astral.debug.no-repo-root-artifacts-dir` | scoped | not-applicable | no `artifacts/**` / `scripts/spikes/**` |
+| `astral.debug.spikes-under-debug-dir` | scoped | conforms | `docs/features/**` hit; added plan file is not a spike |
+| `astral.dispatch.seed-auto-false` | scoped | conforms | `config.py` touched; no `seed_auto` change |
+| `astral.dispatch.run-next-is-chain-authority` | scoped | conforms | `config.py` touched; no `run_next` change |
+| `astral.docs.features-single-file-per-ticket` | scoped | conforms | single `docs/features/foundation/ast-1440-…` file |
+| `astral.git.betty-no-src-or-features` | scoped | conforms | `test()` / `merge-tests` commits stay off `src/` and `docs/features/` |
+| `astral.git.engineer-test-tree-ban` | scoped | conforms | test-tree only on `test()` / `merge-tests`; `code()` is product/docs |
+| `astral.layers.core-vs-external-bright-line` | scoped | not-applicable | no `src/core/**` / `src/external/**` |
+| `astral.layers.import-direction` | scoped | conforms | ui→utils; utils→utils; no new ui→data/external |
+| `astral.layers.scripts-exempt-from-layer-rules` | scoped | not-applicable | no `scripts/**` |
+| `astral.layers.ui-config-driven-business-logic` | scoped | conforms | operator identity from `AUTH_CONFIG`; no React rule duplication |
+| `astral.idioms.coat-check-never-store-empty` | scoped | not-applicable | no `src/core/**` |
+| `astral.idioms.render-verdict-orchestrates-consult` | scoped | not-applicable | no `src/core/**` |
+| `astral.idioms.require-auth-on-protected-endpoints` | scoped | conforms | `@require_auth` / `@require_admin` kept; `/auth_passthrough` is an explicit public non-secret read |
+| `astral.seed.agent-tables-in-repo-json` | scoped | conforms | `config.py` touched; no agent JSON / bootstrap change |
+| `astral.seed.archie-catalog-wins` | scoped | conforms | `config.py` touched; no catalog override |
+| `astral.seed.boot-only-not-hot-path` | scoped | conforms | no seed/boot work on the request path |
+| `astral.seed.define-approved` | scoped | conforms | no seed-catalog define |
+| `astral.seed.operator-rows-stay-deleted` | scoped | conforms | `config.py` touched; no operator-row restore |
+| `astral.seed.other-via-coverage-join` | scoped | conforms | `config.py` touched; no coverage-join change |
+| `astral.standards.data-raises-caller-logs` | scoped | conforms | no data-layer logging; new route returns JSON only |
+| `astral.standards.database-header-inventory` | scoped | not-applicable | no `src/data/**` |
+| `astral.standards.debug-contract-gated` | scoped | conforms | no debug-contract emission; local branch does not log |
+| `astral.standards.dry-and-focused-functions` | scoped | conforms | two small helpers; decorator early-return only |
+| `astral.standards.in-scope-only` | scoped | conforms | no SPA / Stytch / `@require_ip` / decorator stripping |
+| `astral.standards.logging-via-utils` | scoped | conforms | no new `print` / `getLogger`; pre-existing utils `logging` warnings untouched |
+| `astral.standards.names-not-ticket-ids` | scoped | conforms | `local_operator_user` / `auth_passthrough`; no AST in new symbols |
+| `astral.standards.no-cross-contamination` | scoped | conforms | stays in ui/utils; no out-of-layer imports |
+| `astral.standards.no-hardcoded-sets` | scoped | conforms | identity literals in `AUTH_CONFIG`; `is_admin: True` is the planned passthrough invariant |
+| `astral.standards.public-then-helpers` | scoped | conforms | new publics sit with `normalize_user` as the plan specified |
+| `astral.standards.utils-data-late-import-only` | scoped | conforms | no utils→data import |
+| `astral.state.core-decides-transitions` | scoped | not-applicable | no `src/core/**` / `src/data/**` |
+| `astral.state.job-prior-states-enforced` | scoped | conforms | `config.py` touched; no `JOB_STATES` change |
+| `astral.state.no-daisy-chain-in-run` | scoped | not-applicable | no `src/core/**` |
+| `astral.ui.frontend-file-placement` | scoped | not-applicable | no `src/ui/frontend/**` |
+| `astral.ui.naming-conventions` | scoped | conforms | `/auth_passthrough` snake_case |
+| `astral.ui.single-gunicorn-worker` | scoped | conforms | ui/config touched; no worker count change |
+| `orch.git.betty-merge-tests-one-sha` | universal | conforms | one `merge-tests(AST-1440)`; later `test()` is follow-up, not a second merge-tests |
+| `orch.git.commit-vocabulary` | universal | conforms | `code()` / `docs()` / `test()` / `merge-tests()` |
+| `orch.git.flow-direction-inviolable` | universal | conforms | child work on `origin/sub/…`; not landed on `dev` |
+| `orch.git.ftr-sub-topology` | universal | conforms | `sub/AST-1438/AST-1440-local-api-auth-passthrough` |
+| `orch.git.merge-on-checkout` | universal | conforms | no rebase of `origin/dev` onto the sub |
+| `orch.git.no-cherry-pick-rebase-force` | universal | conforms | linear commits plus one merge-tests merge |
+| `orch.git.no-dev-agent-branches` | universal | conforms | publish ref is `sub/…`, not `dev-<agent>` |
+| `orch.git.one-epic-worktree-per-parent` | universal | conforms | review tree `astral-AST-1438` |
+| `orch.git.three-permanent-branches` | universal | conforms | no extra permanent branch |
+| `orch.pipeline.call-susan-for-product-decisions` | universal | conforms | product calls already in the Joan-approved plan |
+| `orch.pipeline.plan-is-bible` | universal | conforms | Stages 1–3 match the plan snippets |
+| `orch.pipeline.project-scoped-queues` | universal | conforms | Foundation child AST-1440 |
+| `orch.pipeline.status-gates-skill-entry` | universal | conforms | Tests Passed is the correct review entry |
+| `orch.roles.archie-approves-statutes` | universal | conforms | no statute file edits; pattern lands `proposed` per AUTHORING |
+| `orch.roles.betty-owns-test-tree` | universal | conforms | bible/tests on `test()` / `merge-tests` |
+| `orch.roles.chuckles-never-ticket-assignee` | universal | conforms | assignee Ada Lovelace |
+| `orch.roles.engineer-assignee-through-resolve` | universal | conforms | implementer remains assignee |
+| `orch.roles.pre-commit-path-bans` | universal | conforms | engineer `code()` did not touch test-tree |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.auth.local-deploy-passthrough` | conforms | authored `proposed` (plan/AUTHORING); product matches Solution shape; no runtime id lookup |
+| `pattern.config.config-block` | conforms | `AUTH_CONFIG["local_operator"]`; callers read config, not inline decorator literals |
+| `pattern.ui.admin-endpoint` | conforms | `@require_admin` kept; new route is a public non-secret signal, not an open admin mutator |
+
+C5 letter (“unapproved citation → fix-now”) is not applied as a finding: the child plan’s job is to **author** this id as `proposed`, Joan APPROVED that, and implementation follows the plan bible rather than depending on the catalog id.
+
+## Plan adherence
+
+Stage 1: proposed catalog entry + §2.1 `AUTH_CONFIG` bullet + rewritten §2.9. Stage 2: `local_operator` literals; `local_operator_user()` / `local_auth_passthrough_payload()`; not routed through `normalize_user` / admin lists. Stage 3: `is_local_deploy_env()` first in `@require_auth` (Bearer ignored, no Stytch, no log); open `GET /api/auth_passthrough`; `env.example` comments; session-policy payload unchanged. Out of scope held: no `src/ui/frontend/**`, no `stytch.py` / `auth_bootstrap.py` / `@require_ip`, no decorator removal. Sibling AST-1441 owns SPA Login / `RequireAuth` / extend. Estimate 3 matches the footprint.
+
+C6 §5a–§5g: top-level imports; ui→utils only on the new line; no swallowed exceptions; no `debug=` / LLM-external surfaces. Fail-closed: `is_local_deploy_env()` is stripped case-insensitive `"local"` only (unset/staging/production/test stay 401).
+
+## Findings
+
+(none)
+
+## C4
+
+Joan `## Joan validate` is attached (APPROVED). No Excluded statute table in that attachment — no straggler rows.
+
+## What’s solid
+
+Decorator kept; gate is deploy env not hostname; synthetic always-admin from `AUTH_CONFIG`; public boolean payload has no secrets; Betty isolated 401s from dotenv `local` and covered the new path.
+
+## Notes (Chuckles writeback only — not extra agent work)
+
+- Full verdict belongs in the issue doc; Linear gets the slim line only (no `revision=N`).
+- Pattern stays `proposed` until Archie approves on the parent catalog — parent follow-up, not a child fix-now.
+- Review tip is `origin/sub/…` @ `8f046772`; local worktree HEAD `5d8713f3` is a sync commit on a different tracking branch.
+- Registry prose says “65 active”; harvested table on this tree has **64** ids — all 64 scored.
+
+## Recommended actions (Chuckles)
+
+1. Append this artifact to `docs/features/foundation/ast-1440-local-api-auth-passthrough.md`.
+2. `docs(AST-1440): Radia review — clean` on the publish ref; push.
+3. `linear_proxy.py --as radia save-comment` with the slim upshot.
+4. Tests Passed → Review Posted; datt §3h PROCEED → User Testing (skip resolve-child).
+
+context_tokens≈48000
