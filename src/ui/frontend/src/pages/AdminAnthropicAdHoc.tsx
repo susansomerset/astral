@@ -48,6 +48,12 @@ interface TaskSummary {
 
 interface EntityOption { id: string; label: string }
 interface EntityMeta { entity_type: string; trigger_state: string; batch_mode: boolean; entities: EntityOption[] }
+interface ImportRun {
+  batch_id: string
+  created_at: string | null
+  entity_id: string | null
+  task_key: string | null
+}
 
 function taskHasExistingPrompts(t: TaskSummary): boolean {
   return (
@@ -115,6 +121,8 @@ export default function AnthropicAdHoc() {
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [confirmTask, setConfirmTask] = useState<string | null>(null)
   const [confirmFetch, setConfirmFetch] = useState<string | null>(null)
+  const [importRuns, setImportRuns] = useState<ImportRun[]>([])
+  const [selectedImportBatchId, setSelectedImportBatchId] = useState<string>("")
   const saveRef = useRef<HTMLDivElement>(null)
   const isInitialMount = useRef(true)
 
@@ -137,6 +145,14 @@ export default function AnthropicAdHoc() {
     if (!taskKey) isInitialMount.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
+
+  useEffect(() => {
+    api("/api/admin/adhoc/runs")
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => setImportRuns(Array.isArray(d) ? d : []))
+      .catch(e => setToast({ text: e.message, variant: "error" }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Dismiss save-as dropdown on outside click
   useEffect(() => {
@@ -391,8 +407,41 @@ export default function AnthropicAdHoc() {
         </div>
       )}
 
+      <div className="list-page-table-wrap" style={{ marginBottom: 16, maxHeight: "none" }}>
+        <table className="list-page-table">
+          <thead>
+            <tr>
+              <th>timestamp</th>
+              <th>entity_id</th>
+              <th>task_key</th>
+            </tr>
+          </thead>
+          <tbody>
+            {importRuns.map(run => (
+              <tr
+                key={run.batch_id}
+                className="clickable"
+                onClick={() => setSelectedImportBatchId(run.batch_id)}
+                style={selectedImportBatchId === run.batch_id ? { background: "var(--bg-card)" } : undefined}
+              >
+                <td>{run.created_at ?? ""}</td>
+                <td>{run.entity_id ?? ""}</td>
+                <td>{run.task_key ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* ── Action buttons ── */}
       <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
+        <button
+          className="btn primary"
+          disabled={!selectedImportBatchId}
+          onClick={() => {}}
+        >
+          Load
+        </button>
         <button className="btn secondary" onClick={handlePreview} disabled={previewing || !agentId}>
           {previewing ? "Loading..." : "Preview Prompt"}
         </button>
