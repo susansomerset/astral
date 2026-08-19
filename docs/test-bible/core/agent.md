@@ -561,14 +561,35 @@ Workbench Test assembles and stores Cache A–D via **`_assemble_blocks_seven_se
 
 ### AST-984 · AST-975
 
-**Scope:** No `append_agent_response`; RESPONSE rows tagged with `entity_id`; hop/hydrate via `list_entity_latest_agent_refs`.
+**Scope:** No `append_agent_response`; RESPONSE rows tagged with `entity_id`; hop/hydrate via `list_entity_latest_agent_refs`. AST-1429 stamps the same `entity_id` on prompt rows when index is known (AST-1431 tests).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| No append symbol; RESPONSE save carries `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired` |
+| No append symbol; RESPONSE save carries `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired::test_do_task_success_tags_response_entity_id` |
+| Prompt-row `entity_id` stamp (SYSTEM / CACHE_* / TASK / NO_CACHE) when index is known | `src/core/agent.py` | `TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id`; `test_store_prompt_blocks_stamps_entity_id_when_known`; `TestAst515AdhocWorkbenchLedger` call-site |
 | Hop skips failure prefix / prefers anchor batch | same | hop tests in `TestAst597*` / `TestAst769*` (list API mocks) |
 
 **AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` (§ AST-984).
+
+### AST-1431 · AST-1423
+
+**Scope:** Gap from AST-1429 `[board-betty] TESTS: REVISE` — `do_task` / `_store_prompt_blocks` / Ad Hoc Test stamp `entity_id` on prompt rows, not only RESPONSE.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt saves share RESPONSE `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id` |
+| Helper kwarg on / omitted | same | `TestAst984EntityColumnRetired::test_store_prompt_blocks_stamps_entity_id_when_known` |
+| Ad Hoc call-site forwards `entity_id` | same | `TestAst515AdhocWorkbenchLedger` success + failure |
+
+**AST-1431** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id \
+  tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_store_prompt_blocks_stamps_entity_id_when_known \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  -q
+```
 
 ---
 
