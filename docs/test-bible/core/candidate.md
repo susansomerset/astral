@@ -346,6 +346,16 @@ Board REVISE: **`TestAst972CandidateStageConsultRouting`** was entry-hop-only an
 
 **Integration:** none revised.
 
+### AST-1434 · AST-1426 (product — shares AST-1437 repro)
+
+**Parent:** [AST-1426](https://linear.app/astralcareermatch/issue/AST-1426). **Gap tests:** AST-1437. **Publish:** `origin/sub/AST-1426/AST-1434-fix-requested-artifacts-daisy-chain`.
+
+Same consult [bug-repro] as AST-1437 — do not duplicate. Product make-fix on this ticket flips it green.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Mid-hop `craft_joblist_rubric` + live `run_next` | `src/core/consult.py` | **`TestAst972CandidateStageConsultRouting::test_mid_hop_with_run_next_routes_to_daisy_chain_worker`** (**[bug-repro]**, owned AST-1437) |
+
 ### AST-1253 · AST-1243
 
 **Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.

@@ -43,3 +43,13 @@ Board REVISE: no bible-backed node asserts pasted one-line `A ==` … `B ==` per
 **Broken / obsolete this pass:** none — AST-906 empty / single-grade still-reject stays.
 
 **Integration:** none revised.
+
+### AST-1434 · AST-1426 (product — shares AST-1437 repro)
+
+**Parent:** [AST-1426](https://linear.app/astralcareermatch/issue/AST-1426). **Gap tests:** AST-1437. **Publish:** `origin/sub/AST-1426/AST-1434-fix-requested-artifacts-daisy-chain`.
+
+Same [bug-repro] node as AST-1437 — do not duplicate. Product make-fix on this ticket flips it green.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inline one-line A== B== persist | `src/utils/rubric_text.py` | **`TestAst1437InlineGradePersist::test_inline_aeq_one_physical_line_parses_and_rewrites`** (**[bug-repro]**, owned AST-1437) |
