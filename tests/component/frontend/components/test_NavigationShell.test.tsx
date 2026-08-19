@@ -20,7 +20,13 @@ const mockedApi = vi.mocked(api)
 
 const candidatesFixture = [
   { astral_candidate_id: "c1", state: "ACTIVE", first: "Ada", last: "Lovelace", candidate_data: {} },
-  { astral_candidate_id: "c2", state: "ACTIVE", first: "Grace", last: "Hopper", candidate_data: {} },
+  {
+    astral_candidate_id: "c2",
+    state: "REQUESTED_RESUME_RETRY",
+    first: "Grace",
+    last: "Hopper",
+    candidate_data: {},
+  },
 ]
 
 function PathProbe() {
@@ -28,7 +34,12 @@ function PathProbe() {
   return <div data-testid="pathname">{pathname}</div>
 }
 
-function mockShellApis(opts: { isAdmin: boolean; navGroups?: unknown[] }) {
+function mockShellApis(opts: {
+  isAdmin: boolean
+  navGroups?: unknown[]
+  candidates?: typeof candidatesFixture
+}) {
+  const candidateList = opts.candidates ?? candidatesFixture
   const navGroups = opts.navGroups ?? [
     {
       label: "Jobs",
@@ -51,7 +62,7 @@ function mockShellApis(opts: { isAdmin: boolean; navGroups?: unknown[] }) {
       } as Response
     }
     if (url === "/api/candidates") {
-      return { json: async () => candidatesFixture } as Response
+      return { json: async () => candidateList } as Response
     }
     if (url.startsWith("/api/nav_config")) {
       return { ok: true, json: async () => navGroups } as Response
@@ -304,6 +315,74 @@ describe("NavigationShell", () => {
         expect(document.querySelector(".sidebar-scroll .sidebar-error")).not.toBeNull()
       })
       expect(document.querySelector(".sidebar-chrome .sidebar-error")).toBeNull()
+    })
+  })
+
+  describe("AST-1450 selected candidate state under picker", () => {
+    it("wide: read-only stored state sits under the select and updates on change", async () => {
+      stubNavViewport(true)
+      mockShellApis({ isAdmin: true })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByRole("combobox")).not.toBeDisabled())
+
+      const wrap = document.querySelector(".sidebar-candidate-select") as HTMLElement
+      const select = wrap.querySelector("select") as HTMLElement
+      const line = wrap.querySelector(":scope > p.sidebar-candidate-state") as HTMLElement
+      expect(select.nextElementSibling).toBe(line)
+      expect(line.tagName).toBe("P")
+      expect(line).toHaveTextContent("ACTIVE")
+      expect(line).not.toHaveAttribute("contenteditable")
+      expect(line.querySelector("input, select, textarea")).toBeNull()
+      expect(screen.queryByRole("textbox")).toBeNull()
+
+      await userEvent.selectOptions(screen.getByRole("combobox"), "c2")
+      expect(wrap.querySelector(":scope > p.sidebar-candidate-state")).toHaveTextContent(
+        "REQUESTED_RESUME_RETRY",
+      )
+    })
+
+    it("wide: omits the line when stored state is blank", async () => {
+      stubNavViewport(true)
+      mockShellApis({
+        isAdmin: true,
+        candidates: [
+          { astral_candidate_id: "c1", state: "   ", first: "Ada", last: "Lovelace", candidate_data: {} },
+        ],
+      })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByRole("combobox")).toBeInTheDocument())
+      expect(document.querySelector(".sidebar-candidate-state")).toBeNull()
+    })
+
+    it("narrow: same read-only line under the toggle; stays under it when the menu opens", async () => {
+      stubNavViewport(false)
+      mockShellApis({ isAdmin: true })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByRole("button", { name: "Ada Lovelace" })).toBeInTheDocument())
+
+      const menu = document.querySelector(".sidebar-candidate-menu") as HTMLElement
+      const toggle = menu.querySelector(".sidebar-candidate-menu-toggle") as HTMLElement
+      const line = menu.querySelector(":scope > p.sidebar-candidate-state") as HTMLElement
+      expect(toggle.nextElementSibling).toBe(line)
+      expect(line).toHaveTextContent("ACTIVE")
+      expect(line.tagName).toBe("P")
+      expect(line).not.toHaveAttribute("contenteditable")
+
+      await userEvent.click(toggle)
+      expect(document.querySelector(".sidebar-candidate-menu-list")).not.toBeNull()
+      expect(toggle.nextElementSibling).toBe(menu.querySelector(":scope > p.sidebar-candidate-state"))
+
+      await userEvent.click(within(document.querySelector(".sidebar-candidate-menu-list") as HTMLElement).getByRole("button", { name: /Grace Hopper/ }))
+      await waitFor(() => expect(screen.getByRole("button", { name: "Grace Hopper" })).toBeInTheDocument())
+      expect(document.querySelector(".sidebar-candidate-state")).toHaveTextContent("REQUESTED_RESUME_RETRY")
+    })
+
+    it("empty candidate list omits the state line", async () => {
+      stubNavViewport(true)
+      mockShellApis({ isAdmin: true, candidates: [] })
+      renderWithProviders(<NavigationShell />, { router: { initialEntries: ["/jobs"] } })
+      await waitFor(() => expect(screen.getByText("Jobs")).toBeInTheDocument())
+      expect(document.querySelector(".sidebar-candidate-state")).toBeNull()
     })
   })
 })
