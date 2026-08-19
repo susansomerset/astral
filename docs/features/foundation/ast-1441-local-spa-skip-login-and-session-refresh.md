@@ -187,3 +187,22 @@ Flask API on `:5001` and Vite on `:5173` from the epic worktree (`launch.sh`). B
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1441
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh` @ `9f9b1a69cd00bcf7f6e03e55f677efeff5433a13`
+
+## Traceability
+AC1→S2+S3; AC2→S2+S3; AC3→S1+S2+S3. Parent AC1 API 200 / AC2 logs / AC4 401 / AC5 decorators → N/A — “Does not own Flask `@require_auth` internals, local-operator identity, or the public local-auth signal (sibling 1).”
+
+## Findings
+
+**discuss** — Stage 2 Decision (`StytchProvider` stays) vs child AC2 / parent AC3 (“SPA does not call Stytch session authenticate, extend, or refresh”). Plan skips the extend loop and `/authenticate` handoff and treats SDK construction as out of scope. `useStytch` / `useStytchSession` remain; a leftover Stytch cookie may still SDK-hydrate. Happy path (cleared site data) is specified. Does not block: unwrapping `StytchProvider` would throw, and sibling 1 already ignores Bearer on local. If leftover-cookie client authenticate is in AC2, suppress SDK recovery when the signal is on; if not, the Decision is enough.
+
+No `fix-now` findings. Consumes AST-1440’s public boolean (fail-closed, raw `fetch`, not hostname). Login / Log-off unmounted via `RequireAuth`, not edited. `authPassthrough.ts` belongs in `lib/`. `pattern.auth.local-deploy-passthrough` is `proposed`; this child reads the endpoint, not the pattern id. Inner shells already wait on `authLoading` / `user`.
+
+context_tokens≈40000
