@@ -601,3 +601,147 @@ Do not edit `agent_data`. Do not copy full hop JSON into `artifacts.job_resume`.
 
 Statutes skimmed (`astral.agent.do-task-delegation`, `astral.idioms.coat-check-never-store-empty`, `astral.batch.entity-agent-responses-latest-only`, `astral.dispatch.run-next-is-chain-authority`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.data-raises-caller-logs`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`, `astral.standards.logging-via-utils`, `astral.standards.no-cross-contamination`, `astral.state.no-daisy-chain-in-run`): conforms. `pattern.batch.entity-agent-responses`: conforms (pin stays a pointer; `resume_content` is the pre-existing job blob). No canon file needs updating. Dual pin + sibling blob is not a new Archie precedent.
 
+## Radia review (review-fix AST-1428)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1428
+**Publish ref:** `origin/sub/AST-1422/AST-1428-copy-job-resume-blob-keep-pin` @ `da1b045b`
+**Diff base:** `origin/ftr/AST-1422-finalize-job-resume-not-parsed...origin/sub/AST-1422/AST-1428-copy-job-resume-blob-keep-pin`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Betty `merge-tests(AST-1430)` one SHA on merged test tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `merge-tests` / `merge-child` / `docs` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Forward publish on `origin/sub/...` only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1422/AST-1428-...` stacked on live `ftr` |
+| orch.git.merge-on-checkout | universal | conforms | `merge-child(AST-1430)` integration; no illegal pull-merge subjects on product tip |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in AST-1428 history |
+| orch.git.no-dev-agent-branches | universal | conforms | Fix sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1422` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Implements Susan keep-pin + sibling-blob contract from plan |
+| orch.pipeline.plan-is-bible | universal | conforms | All five proposed-change items landed |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single bug ticket |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Tests/bible from AST-1430 merge; engineer `code` commit is `src/` only |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Ada remains assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | No assignee change by this review |
+| orch.roles.pre-commit-path-bans | universal | conforms | Doc-only Radia commit expected on sub; engineer stayed on product paths |
+| astral.agent.confidence-bounds | scoped | not-applicable | no graded-confidence path in diff |
+| astral.agent.do-task-delegation | scoped | conforms | Copy extends post-RESPONSE persist inside `do_task`; no bypass |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector changes |
+| astral.batch.batch-id-first | scoped | not-applicable | no claim/batch API signature changes |
+| astral.batch.batch-id-format | scoped | not-applicable | no `batch_id` format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/release changes |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | `job_resume` stays RESPONSE id string; body copied to `resume_content` only |
+| astral.config.config-source-of-truth | scoped | not-applicable | `src/utils/config.py` not in diff |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no `artifacts/**` spike paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | plan patch under `docs/features/` only |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | Copy fires after pin and before `run_next` recurse |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Plan-fix patch appended to existing `ast-1099-…` file |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commits are tests/bible; engineer owns `src/` |
+| astral.git.engineer-test-tree-ban | scoped | conforms | `code(AST-1428)` touches `src/` only |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | `parsed_matches_job_resume_content` gate; hydrate/builder skip empty |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/`render_verdict` paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `put_job_resume_pin_key` retains `@require_auth` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core persist + display overlay; no external I/O |
+| astral.layers.import-direction | scoped | conforms | Lazy tracker imports in `agent.py`; builder uses `tracker_mod` |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | API handler delegates to tracker helper; no business logic in UI |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no `data/admin/**` |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed/catalog paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | hot-path `do_task` only; seed statutes N/A |
+| astral.seed.define-approved | scoped | not-applicable | no seed define paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed operator paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage paths |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` |
+| astral.standards.data-raises-caller-logs | scoped | conforms | `save_job_data` via existing helpers; core owns copy error log |
+| astral.standards.debug-contract-gated | scoped | conforms | No new ungated `[DEBUG]`; pin debug path unchanged |
+| astral.standards.dry-and-focused-functions | scoped | conforms | One `persist_finalize_job_resume_content` helper; reuses `_resume_payload_body` / `save_job_artifact_resume_content` |
+| astral.standards.in-scope-only | scoped | conforms | Resume sibling blob + keep-pin only; cover/proposed_answers untouched |
+| astral.standards.logging-via-utils | scoped | conforms | `logger.error` on copy failure mirrors deviations path |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Ticket ids in comments only |
+| astral.standards.no-cross-contamination | scoped | conforms | Stays in core/tracker/builder + thin API |
+| astral.standards.no-hardcoded-sets | scoped | conforms | No new task/slot literals outside existing config map |
+| astral.standards.public-then-helpers | scoped | conforms | Helper beside deviations/resume save helpers |
+| astral.standards.utils-data-late-import-only | scoped | conforms | No new utils→data import |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state-machine transition edits |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job prior-state edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | Mid-chain copy under existing `run_next`; no new daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no `src/ui/frontend/**` |
+| astral.ui.naming-conventions | scoped | not-applicable | no frontend component changes |
+| astral.ui.single-gunicorn-worker | scoped | conforms | API touch is handler-only; no worker config |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.batch.entity-agent-responses | conforms | Pin remains RESPONSE id pointer; `resume_content` is pre-existing job blob sibling, not entity-row mirror |
+
+## Plan adherence
+
+All five plan-fix items are implemented on the isolated fix diff:
+
+1. **`do_task` copy after pin** (`src/core/agent.py`) — lazy-import `persist_finalize_job_resume_content` on `finalize_job_resume` success, before `run_next`; best-effort `logger.error` on failure (matches deviations pattern).
+2. **Tracker helper** (`persist_finalize_job_resume_content`) — coat-check via `parsed_matches_job_resume_content`, unwrap via `_resume_payload_body`, write via `save_job_artifact_resume_content` (pin slot untouched).
+3. **GET overlay** (`hydrate_job_artifacts_for_display`) — prefers nonempty `resume_content` for `job_resume` display; else resolves pin and unwraps `.resume` for section ids.
+4. **Editor save** (`put_job_resume_pin_key`) — routes body to `save_job_artifact_resume_content`; no dict onto `artifacts.job_resume`.
+5. **Print** (`_resolve_resume_sections`) — pin fallback unwraps via `_resume_payload_body(resolve…)`; legacy dict pin branch retained.
+
+`persist_job_artifact_from_parsed` not revived. `agent_data` not written. Config pin map unchanged. Cover / `proposed_answers` paths untouched.
+
+## Fix-specific checks
+
+**[bug-repro]:** OK  
+Sibling AST-1430 repro merged on tip (`ee5f867c` / `merge-child`):
+
+- `TestAst1430DoTaskResumeContentCopy::test_finalize_copies_resume_content_keeps_pin` — asserts copy helper invoked after pin with concrete parsed `professional_summary`; would fail pre-fix (no copy call). Mocks helper (wiring bar, not end-to-end `resume_content` persist).
+- `TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin` — asserts `save_job_artifact_resume_content` receives edited dict and `save_job_data` never writes a dict onto the pin; would fail pre-fix AST-1100 clobber behavior.
+
+**## What must still hold:** OK
+
+| Item | Verdict |
+|------|---------|
+| Pin = RESPONSE `agent_data_id` after successful `finalize_job_resume` | Pin path unchanged; copy writes `resume_content` only |
+| Failed/empty hops do not blank prior pin | Copy gated on `result.success` + `resp_id`; helper coat-checks |
+| Pin never-store-empty; Style D when `debug=True` | `pin_job_artifact_agent_data_id` untouched |
+| `agent_data` never updated | Copy uses in-memory `parsed`; hydrate overlay is read-only |
+| No full hop JSON in pin slot | `_resume_payload_body` strips envelope; pin slot not written by copy/save |
+| `cover_letter` / `proposed_answers` unchanged | Only `finalize_job_resume` triggers copy |
+| `PUT …/resume_content` unchanged | Separate route intact |
+| `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` unchanged | No `config.py` diff |
+
+## Findings
+
+**advisory:** `TestAst1430DoTaskResumeContentCopy` mocks `persist_finalize_job_resume_content` — locks wiring, not that `artifacts.resume_content` is populated. Helper is thin glue over existing `_resume_payload_body` / `save_job_artifact_resume_content` coverage; acceptable for this tip but hydrate overlay + envelope unwrap paths (plan items 3 & 5) lack dedicated repro tests.
+
+**advisory:** `[bug-repro]` marker is in the Betty commit subject, not the test class first line/docstring; bible cites `TestAst1430…` by name. Hygiene only.
+
+## What’s solid
+
+- Dual contract (pin pointer + sibling editable blob) matches Susan’s binding product language in the plan patch.
+- Hydrate overlay fixes pin-only legacy jobs for JAR without persist-on-GET.
+- PUT keep-pin directly reverses AST-1100 clobber regression.
+- Engineer product commit is tightly scoped to four `src/` files; Betty gap landed via AST-1430 merge.
+
+## Frame diff
+
+Product delta is `origin/ftr/AST-1422-finalize-job-resume-not-parsed...origin/sub/AST-1422/AST-1428-copy-job-resume-blob-keep-pin` (9 files, +278/−22). Parent AST-1422 is a live mini-parent with `ftr` (not Done/orphaned intake shape).
+
+## Recommended actions — Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (live `ftr`, not orphaned Done) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+context_tokens≈52000
+
+[code-rubric] PROCEED (Commit: da1b045b) keep-pin resume blob copy
+
