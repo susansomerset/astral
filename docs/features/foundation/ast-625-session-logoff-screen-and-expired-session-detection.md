@@ -526,3 +526,9 @@ Vite prefix-matches those keys, so `/candidate/resume/base`, `/candidate/resume/
 - §3.5: non-API, non-file, non-print document paths serve `index.html`.
 - Vite local: `/api` and print HTML still proxy to `:5001`; candidate SPA pages are Vite-owned again.
 - After Refresh on LogOff, Login appears (marks cleared) and the user can authenticate and reach the app.
+
+### Board (AST-1433)
+
+**Joan CANON: OK** — Narrowing AST-1117 `serve_react` / Vite proxy from all `/candidate/*` to print-HTML prefixes restores §3.5 (Flask catch-all serves `index.html` for non-API, non-file paths). `astral.idioms.require-auth-on-protected-endpoints` is API-scoped; document serving stays session-blind. `astral.standards.no-hardcoded-sets` does not bind print URL prefixes. No `canon/patterns/**` match. No statute/pattern amend; no Archie fork.
+
+**Betty TESTS: REVISE** — `docs/test-bible/ui/server.md` — broken test — `TestAst1117CandidateSpaGuard` / `TestAst1117ViteCandidateProxy` assert blanket `/candidate` 404+proxy; repro GET `/candidate/backstory` → 200 `index.html` uncovered. Test hole filed as a sibling gap child (orphaned-branch rule: not qa-fix inline on this ticket).
