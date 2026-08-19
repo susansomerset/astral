@@ -429,3 +429,7 @@ Job `BUILD_ARTIFACTS` hop labels stay on the existing consult job path (`dispatc
 
 [board-joan] CANON: OK — proposed change aligns with `astral.dispatch.run-next-is-chain-authority` / `astral.state.no-daisy-chain-in-run`; `skip_daisy_chain` is inside the §2.6.0 carve-out; inline `A ==` parsing is not a statute gap. No ESCALATE.
 
+## Radia review (AST-1434)
+
+[code-rubric] Overall CLEAN · PROCEED. Diff `origin/ftr/AST-1426-craft-jobdesc-rubric-requested-artifacts...origin/sub/AST-1426/AST-1434-fix-requested-artifacts-daisy-chain` @ `1fd85ad1`. No fix-now. Discuss: stale TestAst972 until AST-1437. Advisory: error text; terminal hop without skip unhandled.
+
