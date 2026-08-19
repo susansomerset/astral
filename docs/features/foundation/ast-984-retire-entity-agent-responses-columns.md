@@ -1113,3 +1113,137 @@ Engineer does **not** commit `tests/` or `docs/test-bible/**`. Betty lands the f
 - Empty cache slots omitted; no empty CACHE_B/D rows.
 - Engineer still does not commit `tests/` or `docs/test-bible/**` on this ticket’s `code()` if any — Betty owns those trees.
 - Joan CANON: OK on AST-1429 — this gap does not amend `canon/statutes/**` or `canon/patterns/**`.
+
+## Radia review (AST-1431)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1431
+**Publish ref:** `917d91457bc5b1c98a6d2a92f2188eb974288e1a` (`origin/sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp`)
+**Overall:** DISCUSS
+
+Diff baseline: `origin/ftr/AST-1423-entity-id-not-populated-for-all-agent-data-rows...origin/sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp` (4 commits on publish ref: `ee5f867c` AST-1430 tests, `5dda9288` plan, `5e70ea21` qa-fix, `917d9145` merge-tests). No `src/**` delta — tests + bible + plan-fix doc only.
+
+## Fix-specific checks
+
+**[bug-repro]** OK (substantive; tag hygiene advisory below). Primary repro: `TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id` — collects `save_agent_data` kwargs where `block_type != "RESPONSE"`, asserts non-empty, every `entity_id == "job-1"`, every `block_type` in SYSTEM/CACHE_A–D/TASK/NO_CACHE. Pins concrete values from plan `## To-be` / `## Repro`; would fail on pre-AST-1429 product (prompt rows null). Not tautological. Helper test `test_store_prompt_blocks_stamps_entity_id_when_known` covers direct kwarg on/off; Ad Hoc ledger tests assert `store_prompt` call-site `entity_id=="j1"` on success and failure.
+
+**## What must still hold** — OK. Tests assert AST-1429 write rule (shared `entity_id` when index known; omitted → null). No `list_entity_latest_agent_refs` rewrite. Helper uses `caches_resolved_four=("a", "", "", "")` — empty slots not stored. No product/canon edits. Betty `merge-tests(AST-1431)` owns test-tree; engineer plan commit touches `docs/features/` only.
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+| -- | -- | -- | -- |
+| astral.agent.confidence-bounds | scoped | not-applicable | layers miss |
+| astral.agent.do-task-delegation | scoped | not-applicable | layers miss |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layers miss |
+| astral.batch.batch-id-first | scoped | not-applicable | layers miss |
+| astral.batch.batch-id-format | scoped | not-applicable | layers miss |
+| astral.batch.claim-process-release | scoped | not-applicable | layers miss |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers miss |
+| astral.config.config-source-of-truth | scoped | not-applicable | layers miss |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | layers miss |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | paths miss |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | paths miss |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | layers miss |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | paths miss |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Plan-fix patches existing AST-984 feature doc |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | paths miss (Betty merge-tests: tests/bible only) |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Betty merge-tests; engineer plan commit has no test-tree paths |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | layers miss |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | layers miss |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | layers miss |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers miss |
+| astral.layers.import-direction | scoped | not-applicable | layers miss |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | paths miss |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | layers miss |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | paths miss |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | paths miss |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | layers miss |
+| astral.seed.define-approved | scoped | conforms | No seed define edits |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | layers miss |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | layers miss |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | layers miss |
+| astral.standards.database-header-inventory | scoped | not-applicable | layers miss |
+| astral.standards.debug-contract-gated | scoped | not-applicable | layers miss |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | layers miss |
+| astral.standards.in-scope-only | scoped | not-applicable | layers miss |
+| astral.standards.logging-via-utils | scoped | not-applicable | layers miss |
+| astral.standards.names-not-ticket-ids | scoped | not-applicable | layers miss |
+| astral.standards.no-cross-contamination | scoped | not-applicable | layers miss |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | layers miss |
+| astral.standards.public-then-helpers | scoped | not-applicable | layers miss |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layers miss |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers miss |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | layers miss |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layers miss |
+| astral.ui.frontend-file-placement | scoped | not-applicable | layers miss |
+| astral.ui.naming-conventions | scoped | not-applicable | layers miss |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | layers miss |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | One `merge-tests(AST-1431)` @ `917d9145` |
+| orch.git.commit-vocabulary | universal | conforms | `plan` / `test` / `merge-tests` on publish-ref |
+| orch.git.flow-direction-inviolable | universal | conforms | Tip on child `sub/` publish-ref |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1423/AST-1431-gap-tests-for-prompt-row-entity-id-stamp` |
+| orch.git.merge-on-checkout | universal | conforms | Stacked on parent ftr |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No cherry-pick/rebase/force in AST-1431 commits |
+| orch.git.no-dev-agent-branches | universal | conforms | No agent-named publish branch |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1423` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branch |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Test-gap only; no product decision reopened |
+| orch.pipeline.plan-is-bible | universal | needs-discussion | AST-1431 plan items 1–4 delivered; `ee5f867c` AST-1430 stack outside plan § Proposed change |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-bug review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No canon amend |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty qa-fix + merge-tests; engineer plan on features only |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada (engineer/test-fix path) |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Review does not flip assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | Docs-only Radia commit expected on sub |
+
+## Pattern conformance
+
+none cited
+
+## Plan adherence
+
+AST-1431 `## Proposed change` items 1–4 delivered: `test_do_task_success_tags_prompt_entity_id`; `test_store_prompt_blocks_stamps_entity_id_when_known` (on/off kwarg); Ad Hoc `TestAst515AdhocWorkbenchLedger` success + failure `entity_id` assertions; bible `docs/test-bible/core/agent.md` AST-984 row narrowed + § AST-1431 manifest. Item 5 honored (no product/canon). **Discuss:** commit `ee5f867c` (`test(AST-1430): bug-repro`) is an ancestor of this publish ref and appears in the ftr three-dot diff — `TestAst1430DoTaskResumeContentCopy`, `TestAst1099DoTaskArtifactPin` monkeypatch, `test_api_jobs.py` PUT keep-pin, bible § AST-1430 in `agent.md` and `api_jobs.md` — parent AST-1422, not listed in AST-1431 blast radius. `merge-tests(AST-1431)` correctly merges only `5e70ea21`; the AST-1430 commit is separate earlier history on this branch.
+
+## Findings
+
+**discuss:** Cross-ticket stack on publish ref — `ee5f867c` lands AST-1422 gap sibling AST-1430 on `sub/AST-1423/AST-1431-*` before AST-1431 plan/qa-fix. ~132 lines of AST-1430 test/bible work pollutes this ticket’s three-dot diff and merge attribution. Tests look coherent for AST-1430; Chuckles should confirm intentional co-stack on AST-1423 ftr vs move/re-attribute to `sub/AST-1422/AST-1430-*` before Done credit.
+
+**advisory:** `[bug-repro]` first-line docstring tag missing on `test_do_task_success_tags_prompt_entity_id` (docstring is `AST-1431: …` only; commit message carries bug-repro). Assertion body is sound; optional Betty tag hygiene for qa-fix discoverability.
+
+**advisory:** Success-path Ad Hoc assertion also checks `caches_resolved_four` / no `cache_content` — beyond plan item 3 minimum; strengthens AST-1411 seven-segment contract; no conflict.
+
+**Notes:** No Joan `plan-rubric` verdict for AST-1431 bug patch (fix-board `[board-joan] CANON: OK` on AST-1429). `blockedBy AST-1429` at User Testing — product on ftr supports green repro.
+
+## Frame diff
+
+(none)
+
+## What’s solid
+
+- Repro-first bar pins exact `entity_id` values tied to AST-1429 to-be, not RESPONSE-only tautology.
+- Direct helper test covers kwarg present vs omitted without conflating Style D inner `index`.
+- Bible § AST-1431 narrowed run matches new methods.
+- Single Betty merge-tests SHA on tip.
+
+## Recommended actions
+
+1. Chuckles: acknowledge cross-ticket `ee5f867c` stack (discuss) — document in issue doc whether AST-1430 credit stays on this ref or splits.
+2. Optional: Betty adds `[bug-repro]` to repro method docstring for convention parity.
+3. Normal parent AST-1423: **Review Posted** → if discuss acknowledged without code action, §3h clean shortcut → **User Testing**; if Chuckles wants branch hygiene, route through `resolve-child` only for git attribution (not product).
+
+## Chuckles branching (read-only)
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (discuss, C7 complete) | Normal (AST-1423 live ftr) | → Review Posted → acknowledge discuss OR resolve-child if re-attributing `ee5f867c` → User Testing |
+
+context_tokens≈42000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 917d9145) prompt entity_id tests OK
+```
