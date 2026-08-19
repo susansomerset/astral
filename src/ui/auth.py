@@ -2,7 +2,8 @@
 
 @require_auth validates the Stytch session JWT from Authorization: Bearer or the
 stytch_session_jwt cookie (opaque/HttpOnly SDK mode — cookie forwarded via Vite proxy
-or same-site deploy). Sets g.user to {user_id, name, is_admin}.
+or same-site deploy), unless local-deploy passthrough applies. Sets g.user to
+{user_id, name, is_admin}.
 
 @require_admin requires is_admin on g.user (403 otherwise).
 
@@ -15,7 +16,8 @@ from functools import wraps
 
 from flask import g, jsonify, request
 
-from src.utils.auth import validate_bearer_token
+from src.utils.auth import local_operator_user, validate_bearer_token
+from src.utils.deploy_status import is_local_deploy_env
 
 _STYTCH_JWT_COOKIE = "stytch_session_jwt"
 
@@ -70,9 +72,16 @@ def _session_jwt_from_request() -> str | None:
 
 
 def require_auth(f):
-    """Validate Stytch session JWT from Bearer header or stytch_session_jwt cookie."""
+    """Validate Stytch session JWT from Bearer header or stytch_session_jwt cookie.
+
+    When deploy env is local, skip token validation and set g.user to the
+    synthetic always-admin local operator.
+    """
     @wraps(f)
     def decorated(*args, **kwargs):
+        if is_local_deploy_env():
+            g.user = local_operator_user()
+            return f(*args, **kwargs)
         token = _session_jwt_from_request()
         if not token:
             return jsonify({"error": "Missing or invalid session credentials"}), 401

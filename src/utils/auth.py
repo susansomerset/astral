@@ -3,23 +3,28 @@ Provider-agnostic authentication helpers (AST-609 / AST-610).
 
 Normalizes authenticated users for g.user and resolves admin from AUTH_CONFIG.
 Token validation uses a registerable authenticator so utils never imports external.
+Local-deploy passthrough uses local_operator_user (synthetic always-admin).
 
 AST-611 must call register_token_authenticator(stytch.authenticate_session_jwt)
 before require_auth can validate real Stytch sessions.
 
-Public API: register_token_authenticator, validate_bearer_token, normalize_user, is_admin
+Public API: register_token_authenticator, validate_bearer_token, normalize_user,
+is_admin, local_operator_user, local_auth_passthrough_payload
 """
 
 import logging
 from typing import Any, Callable, Mapping
 
 from src.utils.config import AUTH_CONFIG
+from src.utils.deploy_status import is_local_deploy_env
 
 __all__ = [
     "register_token_authenticator",
     "validate_bearer_token",
     "normalize_user",
     "is_admin",
+    "local_operator_user",
+    "local_auth_passthrough_payload",
     "TokenAuthenticator",
 ]
 
@@ -50,6 +55,21 @@ def normalize_user(*, user_id: str, name: str, email: str | None) -> dict:
         "name": display_name,
         "is_admin": is_admin(user_id=user_id, email=email),
     }
+
+
+def local_operator_user() -> dict:
+    """Synthetic always-admin g.user for local-deploy passthrough. Not a Stytch user."""
+    op = AUTH_CONFIG["local_operator"]
+    return {
+        "user_id": str(op["user_id"]),
+        "name": str(op["name"]),
+        "is_admin": True,
+    }
+
+
+def local_auth_passthrough_payload() -> dict:
+    """Public non-secret SPA signal. Never include secrets or admin lists."""
+    return {"local_auth_passthrough": is_local_deploy_env()}
 
 
 def validate_bearer_token(raw_token: str) -> dict | None:

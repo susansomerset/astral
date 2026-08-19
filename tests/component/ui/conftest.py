@@ -23,6 +23,12 @@ os.environ.setdefault("GOOGLE_REFRESH_TOKEN", "test-refresh-token")
 
 
 @pytest.fixture(autouse=True)
+def _ui_fail_closed_deploy_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    # AST-1440: host ASTRAL_DEPLOY_ENV=local would skip Stytch and flip 401 tests to 200.
+    monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def _ui_default_anthropic_llm_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     from src.utils import config as cfg_mod
 
@@ -56,6 +62,7 @@ def _register_mock_authenticator(monkeypatch: pytest.MonkeyPatch) -> None:
         {
             "admin_user_ids": frozenset({"susan"}),
             "admin_emails": frozenset({"susan@susansomerset.com"}),
+            "local_operator": {"user_id": "local-operator", "name": "Local Operator"},
         },
         raising=False,
     )

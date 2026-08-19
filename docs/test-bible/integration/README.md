@@ -33,7 +33,7 @@ Default target: all of `tests/integration/`. Pass pytest paths or flags after th
 
 **Status:** has coverage
 
-**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs group visibility follows candidate state (`ACTIVE_SEARCH` shows Jobs; `NEW_CANDIDATE` hides the group); unauthenticated nav returns 401.
+**What it proves:** Seeded SQLite + Bearer auth for `GET /api/candidates` and `GET /api/nav_config`; Jobs group visibility follows candidate state (`ACTIVE_SEARCH` shows Jobs; `NEW_CANDIDATE` hides the group); unauthenticated nav returns 401. Unauthenticated 401 assumes deploy env is not `local` (AST-1440 passthrough). Harness autouse sets `ASTRAL_DEPLOY_ENV=staging` so `load_dotenv()` cannot restore `local`. Component coverage: [`ui/auth.md`](../ui/auth.md) § AST-1440.
 
 **Scenarios:**
 

@@ -392,3 +392,52 @@ class TestAst1373AuthSessionPolicyRoute:
             "activity_extension_interval_minutes": 15,
         }
 
+
+class TestAst1440AuthPassthroughRoute:
+    """AST-1440: public GET /api/auth_passthrough + local /api/me and /api/nav_config."""
+
+    @pytest.mark.parametrize(
+        "env, expected",
+        [
+            ("local", True),
+            ("staging", False),
+            ("production", False),
+            (None, False),
+        ],
+    )
+    def test_auth_passthrough_follows_deploy_env(
+        self,
+        system_client: FlaskClient,
+        monkeypatch: pytest.MonkeyPatch,
+        env: str | None,
+        expected: bool,
+    ) -> None:
+        if env is None:
+            monkeypatch.delenv("ASTRAL_DEPLOY_ENV", raising=False)
+        else:
+            monkeypatch.setenv("ASTRAL_DEPLOY_ENV", env)
+        resp = system_client.get("/api/auth_passthrough")
+        assert resp.status_code == 200
+        payload = resp.get_json()
+        assert payload == {"local_auth_passthrough": expected}
+        for forbidden in ("stytch_secret", "stytch_project_id", "admin_user_ids", "admin_emails"):
+            assert forbidden not in payload
+
+    def test_me_and_nav_config_passthrough_when_local(
+        self, system_client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        me = system_client.get("/api/me")
+        assert me.status_code == 200
+        body = me.get_json()
+        assert body["user_id"] == "local-operator"
+        assert body["is_admin"] is True
+        nav = system_client.get("/api/nav_config")
+        assert nav.status_code == 200
+
+    def test_me_still_401_when_staging(
+        self, system_client: FlaskClient, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
+        assert system_client.get("/api/me").status_code == 401
+
