@@ -6870,6 +6870,12 @@ class TestAst1099DoTaskArtifactPin:
         persist = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist)
+        # AST-1430 helper lands at make-fix; swallow so this pin-only case stays isolated.
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_job_resume_content",
+            MagicMock(return_value=True),
+            raising=False,
+        )
         monkeypatch.setattr(
             "src.core.candidate.pin_experience_job_facts_from_base",
             lambda parsed, cd: None,
@@ -7030,6 +7036,70 @@ class TestAst1099DoTaskArtifactPin:
         pin.assert_not_called()
         combined = "\n".join(r.message for r in caplog.records)
         assert "artifact_pin key=cover_letter skipped reason=store_failed" in combined
+
+
+class TestAst1430DoTaskResumeContentCopy:
+    """AST-1430: finalize_job_resume copies unwrapped resume onto resume_content; pin stays."""
+
+    def _pin_ctx(self) -> Dict[str, Any]:
+        return {"candidate_data": {"artifacts": {}}}
+
+    def _ok_resume(self) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "parsed_response": {
+                "professional_summary": "Summary",
+                "experience": [],
+            },
+            "api_response": _api_response("{}"),
+            "timesheet": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_finalize_copies_resume_content_keeps_pin(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        pin = MagicMock(return_value=True)
+        persist_parsed = MagicMock(return_value=True)
+        persist_copy = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist_parsed)
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_job_resume_content",
+            persist_copy,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.pin_experience_job_facts_from_base",
+            lambda parsed, cd: None,
+        )
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="")
+        )
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_resume())
+        )
+        out = await agent_mod.do_task(
+            "finalize_job_resume",
+            index="job-1430",
+            ctx=self._pin_ctx(),
+        )
+        assert out["success"] is True
+        persist_parsed.assert_not_called()
+        pin.assert_called_once()
+        assert pin.call_args.args[:2] == ("job-1430", "job_resume")
+        assert isinstance(pin.call_args.args[2], str) and pin.call_args.args[2]
+        persist_copy.assert_called_once()
+        assert persist_copy.call_args.args[0] == "job-1430"
+        parsed_arg = persist_copy.call_args.args[1]
+        assert isinstance(parsed_arg, dict)
+        assert parsed_arg.get("professional_summary") == "Summary"
+
+
 # Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
 class TestAst1083StoreResponseDebugResult:
     def test_intake_initiate_debug_binds_save_agent_data_result(

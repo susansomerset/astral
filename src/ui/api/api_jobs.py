@@ -200,7 +200,7 @@ def put_job_resume_content(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1100: ArtifactEditor saves under remapped job_resume key (body dict replaces pin)."""
+    """AST-1428: ArtifactEditor PUTs job_resume URL; body writes resume_content, pin stays."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -208,7 +208,7 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_data(astral_job_id, {"artifacts": {"job_resume": body}})
+    save_job_artifact_resume_content(astral_job_id, body)
     return jsonify({"ok": True})
 
 
