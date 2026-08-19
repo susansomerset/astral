@@ -538,3 +538,12 @@ In `src/data/database.py` only.
 ### Review (AST-1432)
 
 **Radia [code-rubric] PROCEED** @ `83575853`. C1–C7 complete. fix-now: none. discuss: none. [bug-repro] OK. What must still hold: OK. Advisory only: `[bug-repro]` tag in commit subject not test docstring; stale "unclaimed pool" comment on inflow helper test.
+
+
+## Bug: AST-1436 — gap tests for bound-candidate Avail 0/1
+
+Test-only sibling of AST-1432. Lands `TestAst1436BoundCandidateAvail` (two-candidate bound Avail 1 → 0 when bound locked) and rewrites `TestAst1258CandidatePoolEligibility` pool-2 assertion on a bound row. Product change is AST-1432.
+
+### Review (AST-1436)
+
+**Radia [code-rubric] REVIEW** — owned work OK (no fix-now). Discuss: `ftr…sub` three-dot diff included sibling origin/tests collateral; Chuckles restacked this sub on ftr so merge-child does not attribute AST-1430/1431/1435/1437 tests to this epic.
