@@ -529,3 +529,8 @@ In `src/data/database.py` only.
 - Empty `claim_states` still returns 0 **before** entity-type branches.
 - No dispatcher / core wrapper / `CANDIDATE_DATA_MODEL.md` edits in this bug.
 
+### Board (AST-1432)
+
+**Joan (CANON: OK).** Pool claim stays cross-candidate; Avail scoping via optional `candidate_id` on `count_candidates_unclaimed_in_states` is not a statute/pattern change. `astral.batch.claim-process-release` / `pattern.batch.entity-claim-process-release` govern claim → process → release, not Avail display.
+
+**Betty (TESTS: REVISE).** Sibling gap AST-1436: `TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked` asserts pool 2 on a bound row; missing two-candidate repro (bound Avail 1; lock bound / other unclaimed → 0).
