@@ -592,3 +592,12 @@ Do not edit `agent_data`. Do not copy full hop JSON into `artifacts.job_resume`.
 - `artifacts.cover_letter` / `proposed_answers` pin semantics unchanged; this copy path must not write those keys.
 - Manual `PUT …/artifacts/resume_content` still merges the section dict into the sibling blob only.
 - Config pin map `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` unchanged.
+
+## Joan validate (fix-board AST-1428)
+
+[board-joan] CANON: OK
+
+**Question:** Does the Proposed change conflict with or require updating `canon/statutes/**` or `canon/patterns/**`?
+
+Statutes skimmed (`astral.agent.do-task-delegation`, `astral.idioms.coat-check-never-store-empty`, `astral.batch.entity-agent-responses-latest-only`, `astral.dispatch.run-next-is-chain-authority`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.data-raises-caller-logs`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`, `astral.standards.logging-via-utils`, `astral.standards.no-cross-contamination`, `astral.state.no-daisy-chain-in-run`): conforms. `pattern.batch.entity-agent-responses`: conforms (pin stays a pointer; `resume_content` is the pre-existing job blob). No canon file needs updating. Dual pin + sibling blob is not a new Archie precedent.
+
