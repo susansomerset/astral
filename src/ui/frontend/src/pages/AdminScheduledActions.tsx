@@ -173,6 +173,9 @@ function ScheduledPhaseTable({
             const thread = threadStatus[row.id]
             const isRunning = thread?.running ?? false
             const isDraining = thread?.draining ?? false
+            const avail = row.available_count ?? 0
+            const isSweep = avail > 0
+            const sweepDisabled = !!row.auto_mode && avail >= (row.min_count || 1)
             return (
               <tr
                 key={row.id}
@@ -206,11 +209,11 @@ function ScheduledPhaseTable({
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <button
                       className="btn primary in-row"
-                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (row.auto_mode ? 0.25 : 1), pointerEvents: (isRunning || row.auto_mode) ? "none" : "auto" }}
-                      disabled={isRunning || !!row.auto_mode}
+                      style={{ whiteSpace: "nowrap", opacity: isRunning ? 0 : (sweepDisabled ? 0.25 : 1), pointerEvents: (isRunning || sweepDisabled) ? "none" : "auto" }}
+                      disabled={isRunning || sweepDisabled}
                       onClick={e => handleRun(e, row)}
                     >
-                      Run
+                      {isSweep ? "Sweep" : "Run"}
                     </button>
                     {isRunning && (
                       <button

@@ -1951,8 +1951,6 @@ async def qualify_meteorite(
         # AST-1152: length/blank content gate only — not roster title-pattern screening.
         elif len(job_title) < min_title:
             fail_reason = f"title too short len={len(job_title)} min={min_title}"
-        elif not job_link.startswith("http") and not is_email_link:
-            fail_reason = f"job_link not http/email: {job_link!r}"
         elif len(jd_text) < min_jd:
             fail_reason = f"jd_text too short len={len(jd_text)} min={min_jd}"
 
