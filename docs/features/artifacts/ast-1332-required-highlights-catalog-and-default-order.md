@@ -1,3 +1,105 @@
+<!-- linear-archive: AST-1332 archived 2026-08-19 -->
+
+## Linear archive (AST-1332)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1332/required-highlights-catalog-and-default-order-make-highlights-a  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** ada  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1326 — Make "Highlights" a REQUIRED resume section  
+**Blocked by / blocks / related:** parent: AST-1326; blocks: AST-1333
+
+### Description
+
+## What this implements
+
+Elevate `highlights` into the required resume-structure catalog and default structure: present + enabled, default format `bullet_list`, order immediately above Experience; normalize/resolve mint and coerce order accordingly. Drives base_resume_content ordering. Does **not** own hop schema or agent_task prompt text (sibling #2).
+
+## Citations
+
+`pattern.config.config-block`, `pattern.layers.import-discipline`, `astral.config.config-source-of-truth`, `astral.standards.no-hardcoded-sets`
+
+## Acceptance criteria
+
+1. [x] A structure missing `highlights` fails normalize the same way a missing required section does today; `enabled=false` on Highlights is rejected.
+2. [x] Default / newly minted structures place Highlights immediately above Experience by `order` on base_resume_content.
+3. [x] A candidate who already had Highlights below Experience shows Highlights immediately above Experience after resolve/normalize (without the operator manually reordering).
+4. [x] HTML emit for Highlights continues via the existing `bullet_list` (or chosen closed format) path — no new visual language.
+
+## Boundaries
+
+- [X] Does **not** own hop schema or agent_task prompt text (sibling Craft/parse schema).
+- [X] Does **not** invent a new body format.
+- [X] Does **not** strip historical optional sections.
+
+## Notes for planning
+
+Citations as above. Config + core normalize/resolve; UI follows structure order.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1326-make-highlights-a-required-resume-section`, child `sub/AST-1326/<this-id>-…`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. **Existing (revised):** `TestAst1303ResumeStructureCatalog` (config + candidate) — required eight + `highlights: bullet_list`; extras use `publications`.
+2. **Broken / revised:** `TestAst1306ResumeStructureSavePrep` pending-slug → Publications; `TestAst1324HydrateResumeStructureFromBaseResumeGet` hydrates `publications` (not required `highlights`).
+3. **Gaps (new):** `TestAst1332RequiredHighlightsCatalog`; `TestAst1332RequiredHighlightsNormalize` (omit/disable + order coerce).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1332RequiredHighlightsCatalog \
+  tests/component/utils/test_config.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1332RequiredHighlightsNormalize \
+  tests/component/core/test_candidate.py::TestAst1303ResumeStructureCatalog \
+  tests/component/core/test_candidate.py::TestAst1306ResumeStructureSavePrep \
+  tests/component/ui/api/test_api_candidate.py::TestAst1324HydrateResumeStructureFromBaseResumeGet \
+  -q
+```
+
+**Bible shasum** (`origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order`):
+
+* `docs/test-bible/core/candidate.md` · `02927f20202c8dea91754697f85a6c191a29fa1c`
+
+### Comments
+
+#### betty — 2026-08-12T13:51:15.616Z
+[check-linear]
+Restored AST-1334 test-tree from `origin/dev` onto publish tip `6649ab66` (`docs/test-bible/frontend/components.md` § AST-1334; `test_Modal.test.tsx`; `test_JobAnalysisReportModal.test.tsx`). AST-1332 bible/tests intact. Reassigned Ada for resolve-child.
+
+#### ada — 2026-08-12T13:48:11.712Z
+[qa-handoff]
+@Betty White
+
+Radia FIX-NOW on AST-1332: publish ref had incorrectly dropped AST-1334 UI/docs/tests vs `origin/dev` (bad sync merge).
+
+Product restored on tip `da55f5e981694ee250ad3f3fc523eb0ff394dc8b`:
+- `Modal.tsx` / `JobAnalysisReportModal.tsx` (`showFooter`)
+- `docs/features/interface/ast-1334-remove-recommended-job-report-modal-footer.md`
+
+Engineer cannot commit test-tree. Please restore from `origin/dev` (keep AST-1332 bible/tests intact):
+- `docs/test-bible/frontend/components.md` (AST-1334 section)
+- `tests/component/frontend/components/test_Modal.test.tsx`
+- `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx`
+
+Then `merge-tests` onto `origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order` and reassign Ada.
+
+#### radia — 2026-08-12T13:46:37.616Z
+[code-rubric] REVIEW (Commit: 5a74865a) AST-1334 merge regression
+
+#### betty — 2026-08-12T13:42:17.486Z
+`origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order` @ `5a74865a2ea8e9e1b52e36533943091d5a4c69f6` · required Highlights tests
+
+#### joan — 2026-08-12T13:33:39.469Z
+[plan-rubric] PROCEED (Commit: 17530d63a5a31f94f6a615bbdaeb2c7807437bc4) config coerce highlights order
+
+#### ada — 2026-08-12T13:30:20.277Z
+`origin/sub/AST-1326/AST-1332-required-highlights-catalog-and-default-order` @ `17530d63a5a31f94f6a615bbdaeb2c7807437bc4` · plan catalog coerce
+
+---
+
 # AST-1332 — Required Highlights catalog and default order
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1332/required-highlights-catalog-and-default-order  
