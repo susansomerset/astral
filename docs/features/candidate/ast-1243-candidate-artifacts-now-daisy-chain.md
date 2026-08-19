@@ -424,3 +424,8 @@ Job `BUILD_ARTIFACTS` hop labels stay on the existing consult job path (`dispatc
 - Per-artifact UI generate for live chain keys stays 409 → `generate_artifacts` (AST-1253).
 - Wrapper task keys `candidate_requested_artifacts` / `candidate_requested_resume` stay retired (AC1).
 - Backend `debug=True` per-hop found/recorded (AC9) on touched persist/succession paths.
+
+## Joan board (AST-1434)
+
+[board-joan] CANON: OK — proposed change aligns with `astral.dispatch.run-next-is-chain-authority` / `astral.state.no-daisy-chain-in-run`; `skip_daisy_chain` is inside the §2.6.0 carve-out; inline `A ==` parsing is not a statute gap. No ESCALATE.
+
