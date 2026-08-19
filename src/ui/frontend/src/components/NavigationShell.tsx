@@ -108,6 +108,11 @@ export default function NavigationShell() {
   const selectedLabel = selectedCandidate
     ? candidateLabel(selectedCandidate)
     : (selectedId ?? "")
+  const selectedState =
+    typeof selectedCandidate?.state === "string" ? selectedCandidate.state.trim() : ""
+  const candidateStateLine = selectedState ? (
+    <p className="sidebar-candidate-state">{selectedState}</p>
+  ) : null
 
   return (
     <UserPromptProvider>
@@ -151,6 +156,7 @@ export default function NavigationShell() {
                     </option>
                   ))}
                 </select>
+                {candidateStateLine}
               </div>
             ) : (
               <div className="sidebar-candidate-menu">
@@ -162,6 +168,7 @@ export default function NavigationShell() {
                 >
                   {selectedLabel}
                 </button>
+                {candidateStateLine}
                 {candidateMenuOpen && (
                   <ul className="sidebar-candidate-menu-list">
                     {candidates.map(c => {
