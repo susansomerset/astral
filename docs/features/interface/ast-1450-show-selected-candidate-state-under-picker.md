@@ -139,3 +139,50 @@ R1–R5 pass. Definition fidelity, layers, config, placement, and cited statutes
 context_tokens≈48000
 
 [plan-rubric] PROCEED (Commit: c907a0daac32dae9d8a98d1866c0957eca0438c2) picker state line
+
+## Radia review
+
+**Publish ref:** `origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker` @ `714298cc1235c16145b353a552af9606d0218ae0`
+**Baseline:** `origin/dev` @ `d5795070e57adbafe8dc1812960c875c87b60d90`
+**Overall:** CLEAN
+
+### Statutes checked
+
+Full active-set statute sweep — all scoped statutes not-applicable or conforms; universal orch.* statutes conform. No fix-now statute violations.
+
+### Pattern conformance
+
+Plan cites statute ids (`astral.ui.*`, `astral.layers.ui-config-driven-business-logic`); no `canon/patterns/**` catalog ids in plan or parent Architectural definition for this child.
+
+### Plan adherence
+
+Stage 1 landed as specified. `NavigationShell.tsx` derives `selectedState` from the existing `selectedCandidate` row (`astral_candidate_id` match), trims the stored string, omits the line when blank, and renders one shared `<p className="sidebar-candidate-state">` under the wide `<select>` and narrow toggle (before the menu `<ul>`). No `NAV_CONFIG` import, no state alias map, no nav gating, no picker-admin gating changes, no new component file. `App.css` adds TOC `4d` and `.sidebar-candidate-state` with `--text-secondary`, placed before the `4c` section header as planned.
+
+Joan's plan **discuss** on the duplicate dual-key `find` snippet was resolved at build: implementer used `selectedCandidate?.state` directly — cleaner than the plan snippet and aligned with Joan's recommendation.
+
+Betty's `test_NavigationShell.test.tsx` cases cover wide/narrow placement, picker-change updates (`REQUESTED_RESUME_RETRY` companion string), blank-state omission, and empty-list omission — matches bible manifest and traceability ACs. Estimate **2** fits the footprint.
+
+**Cross-ticket:** Three-dot `src/` diff contains only `NavigationShell.tsx` and `App.css` — no AST-1449 `NAV_CONFIG` / `api_system.py` smuggle. Publish-ref ancestry includes other epic commits in git history, but the reviewed file change set for product code is AST-1450-only.
+
+### Findings
+
+#### fix-now
+
+(none)
+
+#### discuss
+
+(none)
+
+#### advisory
+
+- **Sub-branch history noise:** `git log origin/dev...origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker` lists archive-doc and AST-1447 commits in ancestry; **file diff** for `src/**` is limited to this ticket. No action for resolve-child; useful context for `merge-child` / ftr rollup reviewers.
+
+### What's solid
+
+- Exact stored `state` string display (including `REQUESTED_RESUME_RETRY`) with no display alias table.
+- Read-only `<p>` with no inputs; wide and narrow DOM order matches plan (control → state line → menu list).
+- CSS uses design token `--text-secondary`; TOC `4d` appended without renumbering.
+- Betty tests assert DOM sibling order, non-editability, and state updates on picker change.
+
+[code-rubric] PROCEED (Commit: 714298cc) picker state line clean
