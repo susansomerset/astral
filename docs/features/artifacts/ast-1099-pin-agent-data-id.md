@@ -497,3 +497,98 @@ context_tokens≈42000
 
 - **discuss (C4 straggler):** Closed without code change. Radia confirmed the three Joan-excluded statutes **conform** on the tip (`astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.debug.spikes-under-debug-dir`). No disagreement; no product edit.
 - **advisory (pointer-string until AST-1100):** Left as planned Medium risk; sibling AST-1100 owns reader remap.
+
+---
+
+## Bug: AST-1428 — Copy job resume onto job blob, keep pin
+
+Parent mini-bug: [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer) / child [AST-1428](https://linear.app/astralcareermatch/issue/AST-1428/copy-job-resume-onto-job-blob-keep-pin-finalize-job-resume-isnt). Approved ancestor: AST-1099 (archived — this file). Binding product contract (Susan): copy the resume from the original `agent_data` RESPONSE onto the job as an editable blob; pin persists; `agent_data` is never edited; do not replace `artifacts.job_resume` with a dict on save.
+
+Original AST-1099 Stages 1–3 stay: pin map, `pin_job_artifact_agent_data_id`, pin after RESPONSE store before `run_next`. This bug walks back only Stage 3's "stop `resume_content` body writes from the terminal path" for `finalize_job_resume` — pin stays; a sibling blob is copied. Cover letter / `proposed_answers` are out of scope.
+
+### As-is
+
+After a successful `finalize_job_resume` hop, `job_data.artifacts.job_resume` is the RESPONSE `agent_data_id` string (pin works). That `agent_data` row has a full `agent_payload.resume`. There is no editable resume blob on the job (`artifacts.resume_content` absent). `artifacts.deviations` was copied. JAR Job Resume fields are blank. Preview/Print is contact-only (no title/sections). AST-1100 `PUT /api/jobs/<id>/artifacts/job_resume` writes a dict onto the pin slot, replacing the id.
+
+### To-be
+
+On successful `finalize_job_resume`, copy the unwrapped `agent_payload.resume` onto the job as `artifacts.resume_content` (sibling of the pin). Keep `artifacts.job_resume` as the RESPONSE id. JAR Job Resume fields and Print/preview read that blob (unwrapped sections). Later editor saves write `resume_content` only. Never update `agent_data`. Never replace the pin string with a dict.
+
+### Repro
+
+Fixture (file/JSON persist — not a SQL row). After `finalize_job_resume` success:
+
+```json
+{
+  "job_data": {
+    "artifacts": {
+      "job_resume": "<RESPONSE agent_data_id>",
+      "deviations": ["…"]
+    }
+  }
+}
+```
+
+Pinned `agent_data.block_data` (same id) is hop JSON whose parsed form has `agent_payload.resume` with section keys (`title`, `professional_summary`, `experience`, …). `artifacts.resume_content` is missing. GET `/api/jobs/<id>` hydrates `artifacts.job_resume` to the `agent_payload` envelope (nested `resume`), so ArtifactEditor `use_resume_structure` looks up section ids at the top level and renders blanks. `build_resume_from_job` has no `resume_content`; pin resolve returns the envelope dict; Print emits contact from candidate snapshot and no job title/sections.
+
+### Root cause
+
+AST-1099 Stage 3 removed `do_task`'s terminal `persist_job_artifact_from_parsed` for `finalize_job_resume` so the pin string would not be overwritten. That also stopped the sibling `resume_content` copy. The pin is the hop envelope id; JAR/Print readers expect a flat section dict. AST-1100 then remapped the Job Resume tab to `artifact_key: "job_resume"` and shipped `PUT …/artifacts/job_resume` as "body dict replaces pin", which is the opposite of the keep-pin contract.
+
+### Proposed change
+
+Sibling blob key is existing `artifacts.resume_content` (not a new slot; not stuffed into `job_resume`). Do **not** re-enable `persist_job_artifact_from_parsed` for finalize hops (that helper also writes `cover_letter` as a dict and would clobber the cover pin).
+
+**1. Copy after pin — `src/core/agent.py` `do_task`**
+
+Immediately after a successful `pin_job_artifact_agent_data_id` for `task_key == "finalize_job_resume"` (same success path: `result.success`, `index` set, `resp_id` stored — **before** `run_next`, so mid-chain hops copy too):
+
+- Lazy-import a tracker helper (same agent↔tracker cycle break as the pin / deviations calls).
+- Call it with `index` and the in-memory `parsed` hop JSON already used for `_store_response_block`. Do not re-read `agent_data` to copy. Do not write `agent_data`.
+- Best-effort: log and continue if copy raises (mirror `persist_draft_job_resume_deviations`). Pin already recorded; a copy failure must not blank the pin.
+
+**2. Copy helper — `src/core/tracker.py`**
+
+Add `persist_finalize_job_resume_content(astral_job_id, parsed) -> bool` next to `persist_draft_job_resume_deviations` / `save_job_artifact_resume_content`:
+
+- If `parsed_matches_job_resume_content(astral_job_id, parsed)` is false → return `False` without `save_job_data` (coat-check: never store empty; do not clear a prior blob).
+- Else `body = _resume_payload_body(parsed)` (already unwraps `agent_payload.resume` then flat section keys; skips nest/metadata keys via `TASK_CONFIG["draft_job_resume"]`).
+- `save_job_artifact_resume_content(astral_job_id, body)` — existing prepare filters to candidate structure and snapshots contact. Deep-merge writes only `artifacts.resume_content`; `job_resume` pin untouched.
+- Return `True` when a write happened.
+
+**3. GET overlay — `hydrate_job_artifacts_for_display`**
+
+Keep `_JOB_ARTIFACT_PIN_KEYS` iteration. For `job_resume` only (not cover / proposed_answers):
+
+- If `artifacts.resume_content` is a nonempty dict, set in-memory `out["job_resume"]` to that dict (display overlay; disk pin unchanged).
+- Else resolve the pin via `resolve_job_artifact_agent_data_body`, then `out["job_resume"] = _resume_payload_body(body)` when that yields a nonempty section dict. (`resolve` already unwraps stored JSON to `agent_payload`; `_resume_payload_body` then unwraps `.resume`. This fills JAR for already-finalized pin-only jobs without regenerate and without persist-on-GET.)
+- Do not persist the overlay. Do not write `agent_data`.
+
+**4. Editor save — `src/ui/api/api_jobs.py` `put_job_resume_pin_key`**
+
+`PUT /api/jobs/<id>/artifacts/job_resume` stays the ArtifactEditor URL (`JOBS_RECOMMENDED_ARTIFACT_TABS` `artifact_key` remains `"job_resume"` — do not remap the tab). Change the handler: require `job_resume` dict body as today; call `save_job_artifact_resume_content(astral_job_id, body)` instead of `save_job_data(… {"job_resume": body})`. Never assign a dict to `artifacts.job_resume`. Pin string stays. Existing `PUT …/artifacts/resume_content` is unchanged.
+
+**5. Print — `src/core/builder.py` `_resolve_resume_sections`**
+
+Keep prefer-`resume_content` first. When falling back to a string pin, unwrap with `_resume_payload_body(resolve_job_artifact_agent_data_body(pin))` and use that section dict when nonempty. Do not treat the hop envelope as resume sections. Leave the legacy `pin` dict branch (pre-fix PUT clobber) as a last resort before `base_resume`.
+
+Do not edit `agent_data`. Do not copy full hop JSON into `artifacts.job_resume`. Do not change cover-letter / `proposed_answers` pin, hydrate, or PUT.
+
+### Blast radius
+
+- AST-1099 tests that assert finalize hops do not body-copy into `resume_content` / do not call `persist_job_artifact_from_parsed` — Betty; this ticket restores a sibling copy without reviving that helper for finalize hops.
+- AST-1100 tests that `PUT …/job_resume` replaces the pin string with a dict — those must flip: pin remains a string; blob lands in `resume_content`.
+- `consult._run_cover_letter_for_job` resume-first gate already keys on `resume_content`; a successful copy makes that standalone path see a blob (main chain still uses `run_next` and is unchanged).
+- JAR Job Resume tab still reads `artifacts.job_resume` from GET (hydrated overlay). Cover / application tabs unchanged.
+- Cancel still clears both `resume_content` and `job_resume` via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`.
+- `_prepare_job_resume_content` contact snapshot from candidate `base_resume` still runs on copy/save.
+
+### What must still hold
+
+- After successful `finalize_job_resume` (mid-chain or terminal), `artifacts.job_resume` **equals** that hop's RESPONSE `agent_data_id` string (AST-1099 AC1). Failed/empty hops do not blank a good prior pin.
+- Pin helper never-store-empty; Style D debug only when `debug=True`.
+- `agent_data` RESPONSE rows are the content store for the pin; this ticket copies onto the job and never updates those rows.
+- Do not copy full hop JSON into the pin slot.
+- `artifacts.cover_letter` / `proposed_answers` pin semantics unchanged; this copy path must not write those keys.
+- Manual `PUT …/artifacts/resume_content` still merges the section dict into the sibling blob only.
+- Config pin map `JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK` unchanged.
