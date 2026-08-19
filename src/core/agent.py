@@ -55,7 +55,6 @@ from src.utils.config import (
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
     get_task_keys,
     dispatch_chain_graduation_target,
-    CANDIDATE_STAGE_DISPATCH,
     _TOKEN_RE,
     RUBRIC_FEEDBACK_CONFIG,
     CRAFT_RUBRIC_MAX_TOKENS,
@@ -1035,13 +1034,10 @@ def _should_write_candidate_craft_hop_label(
     ctx: Optional[Dict[str, Any]],
     trigger_state: str,
 ) -> bool:
-    """AST-1388: REQUESTED_ARTIFACTS craft chain success labels (parallel to job gate)."""
+    """AST-1388 / AST-1434: candidate craft chain success labels (parallel to job gate)."""
     if entity_type != "candidate" or not index or not trigger_state:
         return False
-    if not (ctx or {}).get("persist_candidate_craft_hops"):
-        return False
-    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
-    return trigger_state == stage_trigger
+    return bool((ctx or {}).get("persist_candidate_craft_hops"))
 
 
 def _write_dispatch_hop_label_on_success(

@@ -2541,7 +2541,7 @@ async def run_consult_task(
         )
 
     if entity_type == "candidate":
-        from src.utils.config import CANDIDATE_STAGE_DISPATCH, INFLOW_CONFIG
+        from src.utils.config import CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY, INFLOW_CONFIG
         from src.core.candidate import (
             run_requested_artifacts_dispatch,
         )
@@ -2551,8 +2551,23 @@ async def run_consult_task(
             return await roster.run_inflow_discovery_batch(
                 entities[0], batch_id, ctx, debug,
             )
-        if tk == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]:
-            return await run_requested_artifacts_dispatch(cid, debug=debug)
+        from src.core.agent import _current_agent_task_run_next
+        skip_daisy = bool(
+            (ctx or {}).get("skip_daisy_chain") or (ctx or {}).get("suppress_run_next")
+        )
+        has_run_next = bool(_current_agent_task_run_next(tk))
+        persistable = (
+            tk in CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY
+            or tk in ("craft_company_search_terms", "craft_resume_base")
+        )
+        if has_run_next or (skip_daisy and persistable):
+            return await run_requested_artifacts_dispatch(
+                cid,
+                debug=debug,
+                task_key=tk,
+                trigger_state=input_state,
+                skip_daisy_chain=skip_daisy,
+            )
         logger.warning(
             "run_consult_task: unhandled candidate task_key=%s",
             tk,

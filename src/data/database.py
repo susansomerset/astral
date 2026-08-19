@@ -6713,6 +6713,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 auto_mode INTEGER NOT NULL DEFAULT 0,
                 debug INTEGER NOT NULL DEFAULT 0,
                 skip_cache INTEGER NOT NULL DEFAULT 0,
+                skip_daisy_chain INTEGER NOT NULL DEFAULT 0,
                 max_runs INTEGER DEFAULT 1,
                 score_floor REAL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -6826,6 +6827,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             "batch_size":     "INTEGER",
             "debug":          "INTEGER DEFAULT 0",
             "skip_cache":     "INTEGER DEFAULT 0",
+            "skip_daisy_chain": "INTEGER NOT NULL DEFAULT 0",
             "max_runs":       "INTEGER DEFAULT 1",
             "auto_mode":      "INTEGER NOT NULL DEFAULT 0",
             "trigger_state":  "TEXT",
@@ -7415,7 +7417,7 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
 
 _DISPATCH_TASK_UPDATE_COLS = {
     "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
-    "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor",
+    "debug", "skip_cache", "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor",
     "task_key", "sort_by", "batch_call_mode",
 }
 
@@ -7423,6 +7425,7 @@ _DISPATCH_TASK_UPDATE_COLS = {
 _DISPATCH_TASK_TEMPLATE_COPY_COLS = frozenset({
     "task_key", "entity_type", "trigger_state", "sort_by", "batch_call_mode",
     "freq_hrs", "min_count", "batch_size", "auto_mode", "debug", "skip_cache",
+    "skip_daisy_chain",
     "max_runs", "score_floor",
 })
 
@@ -7485,7 +7488,7 @@ def _dispatch_task_schedule_assign(template_row: Dict[str, Any]) -> Dict[str, An
         elif col == "trigger_state":
             ts = "" if val is None else str(val).strip()
             assign[col] = ts if ts else None
-        elif col in ("auto_mode", "debug", "skip_cache", "batch_call_mode"):
+        elif col in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain", "batch_call_mode"):
             assign[col] = int(bool(val)) if isinstance(val, bool) else int(val or 0)
         elif col == "min_count":
             assign[col] = int(val)

@@ -13,6 +13,31 @@ from typing import Dict, List
 # A–F and X; case-insensitive on input, normalized to uppercase in output.
 # Prefer == before = so "A == text" does not split on a single '='.
 _GRADE_LINE = re.compile(r"^([ABCDEFX])\s*(?:==|=|:)\s*(.+)$", re.IGNORECASE)
+# Inline form (AST-1434): "A == … B == …" on one physical line.
+_GRADE_INLINE = re.compile(r"([ABCDEFX])\s*(?:==|=|:)\s*", re.IGNORECASE)
+
+
+def _parse_inline_grade_tokens(text: str) -> List[Dict[str, str]]:
+    """Split inline ``A == … B == …`` (no newlines) into grade rows. Empty if fewer than two."""
+    raw = (text or "").rstrip()
+    matches = list(_GRADE_INLINE.finditer(raw))
+    if len(matches) < 2:
+        return []
+    out: List[Dict[str, str]] = []
+    for i, m in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(raw)
+        desc = raw[m.end():end].strip()
+        if not desc:
+            return []
+        out.append({"grade": m.group(1).upper(), "description": desc})
+    return out if len(out) >= 2 else []
+
+
+def _content_has_newline_grade_table(content: str) -> bool:
+    lines = (content or "").rstrip().split("\n")
+    if len(lines) < 2:
+        return False
+    return bool(_GRADE_LINE.match(lines[-1].strip()) and _GRADE_LINE.match(lines[-2].strip()))
 
 
 def coerce_embedded_newline_escapes(content: str) -> str:
@@ -48,18 +73,24 @@ def parse_trailing_grade_table_lines(content: str) -> List[Dict[str, str]]:
         else:
             break
     block = lines[j + 1 :]
-    if len(block) < 2:
+    if len(block) >= 2:
+        out: List[Dict[str, str]] = []
+        for ln in block:
+            m = _GRADE_LINE.match(ln.strip())
+            if not m:
+                raise ValueError(f"invalid grade line in trailing block: {ln!r}")
+            out.append({"grade": m.group(1).upper(), "description": m.group(2).strip()})
+        return out
+    inline_src = lines[-1] if lines else raw
+    inline = _parse_inline_grade_tokens(inline_src)
+    if len(inline) < 2:
+        inline = _parse_inline_grade_tokens(raw)
+    if len(inline) < 2:
         raise ValueError(
             "rubric text must end with at least two lines of the form "
             "'A = description' / 'B: text' / 'C == text' (one grade letter per line)"
         )
-    out: List[Dict[str, str]] = []
-    for ln in block:
-        m = _GRADE_LINE.match(ln.strip())
-        if not m:
-            raise ValueError(f"invalid grade line in trailing block: {ln!r}")
-        out.append({"grade": m.group(1).upper(), "description": m.group(2).strip()})
-    return out
+    return inline
 
 
 def rubric_vector_content_fingerprint(label: str, content: str) -> str:
@@ -73,7 +104,12 @@ def ensure_criterion_grade_table(item: dict) -> None:
     """Parse ``item['content']`` and set ``item['grade_descriptions']``. Mutates ``item``."""
     original = item.get("content") or ""
     content = coerce_embedded_newline_escapes(original)
-    if content != original:
-        item["content"] = content
     rows = parse_trailing_grade_table_lines(content)
     item["grade_descriptions"] = rows
+    if not _content_has_newline_grade_table(content):
+        m = _GRADE_INLINE.search(content)
+        preamble = content[:m.start()].rstrip() if m else ""
+        grade_block = "\n".join(f"{r['grade']} == {r['description']}" for r in rows)
+        item["content"] = f"{preamble}\n{grade_block}".strip() if preamble else grade_block
+    elif content != original:
+        item["content"] = content
