@@ -903,3 +903,25 @@ Unique range `origin/ftr/AST-1422-finalize-job-resume-not-parsed...origin/sub/AS
 context_tokens≈38000
 
 [code-rubric] REVIEW (Commit: 8d35b2ae) gap repro wiring-only
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/4f6469835de76b2c9a126ba58b2efbb2/d2215b5e-b37d-4149-bd1d-557eb7ab857d/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/ae332cfb-e3e3-43b4-b1d7-4df0f331aa0b/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/4f6469835de76b2c9a126ba58b2efbb2/cd101524-f16d-43f0-9b6b-e0fd61ad486c/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1422 (parent) | ftr/AST-1422-finalize-job-resume-not-parsed |
+| AST-1428 | sub/AST-1422/AST-1428-copy-job-resume-blob-keep-pin |
+| AST-1430 | sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin |
+
+**Epic worktree:** `astral-AST-1422/` — one active sub checked out at a time.
