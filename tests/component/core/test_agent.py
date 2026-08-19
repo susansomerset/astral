@@ -4952,6 +4952,82 @@ class TestAst515AdhocWorkbenchLedger:
         assert any(u[1].get("total_errors") == 1 for u in ledger_trackers["updates"])
         assert agent_mod.log_batch_id.get() is None
 
+    async def test_prefixed_workbench_key_does_not_double_adhoc(
+        self, monkeypatch: pytest.MonkeyPatch, ledger_trackers: Dict[str, Any]
+    ) -> None:
+        # One leading adhoc- strip so Test of an imported adhoc-* run stays adhoc-<task_key>.
+        async def _ok(**kwargs: Any) -> Dict[str, Any]:
+            return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
+
+        monkeypatch.setattr(agent_mod, "run_adhoc", _ok)
+        out = await agent_mod.run_adhoc_workbench_test(
+            workbench_task_key="adhoc-evaluate_jd",
+            candidate_id="c1",
+            entity_id="j1",
+        )
+        assert out["success"] is True
+        save_args, save_kw = ledger_trackers["saves"][0]
+        assert save_args[1] == "adhoc-evaluate_jd"
+        assert save_args[0].startswith("adhoc-evaluate_jd-")
+        assert "adhoc-adhoc-" not in save_args[0]
+        assert save_kw["entity_type"] == "job"
+
+
+class TestAst1451ListAgentDataRuns:
+    """AST-1451: list_agent_data_runs returns data rows; Style D only when debug=True."""
+
+    _ROWS = [
+        {
+            "batch_id": "b-new",
+            "created_at": "2026-08-01 12:00:00",
+            "entity_id": "job-new",
+            "task_key": "adhoc-evaluate_jd",
+        },
+        {
+            "batch_id": "b-old",
+            "created_at": "2026-01-01 00:00:00",
+            "entity_id": "job-old",
+            "task_key": "evaluate_jd",
+        },
+    ]
+
+    def test_returns_data_rows_debug_false_skips_contract(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "list_agent_data_batches", lambda: list(self._ROWS))
+        gl = MagicMock(wraps=agent_mod.get_logger)
+        monkeypatch.setattr(agent_mod, "get_logger", gl)
+        out = agent_mod.list_agent_data_runs(debug=False)
+        assert out == self._ROWS
+        assert not any(c.kwargs.get("debug_flag") for c in gl.call_args_list)
+
+    def test_debug_true_emits_index_found_recorded_per_run(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(agent_mod, "list_agent_data_batches", lambda: list(self._ROWS))
+        dbg = MagicMock()
+        real = agent_mod.get_logger
+        monkeypatch.setattr(
+            agent_mod,
+            "get_logger",
+            lambda *a, **k: dbg if k.get("debug_flag") else real(*a, **k),
+        )
+        out = agent_mod.list_agent_data_runs(debug=True)
+        assert out == self._ROWS
+        index_kw = [c.kwargs for c in dbg.debug_index.call_args_list]
+        assert len(index_kw) == 2
+        assert index_kw[0]["func"] == "list_agent_data_runs"
+        assert index_kw[0]["index"] == 1 and index_kw[0]["total"] == 2
+        assert index_kw[0]["identifier"] == "b-new"
+        assert index_kw[0]["outcome"] == "listed"
+        assert index_kw[1]["index"] == 2 and index_kw[1]["identifier"] == "b-old"
+        details = [c.args[0] for c in dbg.debug_detail.call_args_list]
+        assert details[0].startswith("found ")
+        assert "task_key='adhoc-evaluate_jd'" in details[0]
+        assert details[1].startswith("recorded ")
+        assert "batch_id='b-new'" in details[1]
+        dbg.debug_detail_block.assert_not_called()
+
 
 class TestAst724VectorFeedbackCapture:
     """AST-724: lenient vector_reviews capture on SUCCESS — parse failures store FEEDBACK only."""
