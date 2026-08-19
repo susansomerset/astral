@@ -167,3 +167,23 @@ Body sections in SCHEMA order:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1448
+**Overall:** APPROVED
+**Commit:** `ecf7bbbe2640a391a61e49ab7a9834f131ea0952` (`origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`)
+
+## Traceability
+AC1 production persist-before-call → S2; AC2 workbench Test same → S3; AC3–4 RESPONSE success/failure after return → S2–S3 (do not move `_store_response_block`); AC5 kill/restart prompt-only + later run on a new `batch_id` → S2–S3 relocate-only; AC6 storage-off → S2 `_should_store` / S3 no persist in `run_adhoc`; AC7 debug found/recorded before await, RESPONSE after, quiet when off → S2; AC8 latest-per-task stays RESPONSE-gated → S2–S3 (no `list_entity_latest_agent_refs` edit); S1 → parent New patterns proposed (`pattern.agent.prompt-persist-before-provider` as `status: proposed`, no runtime id lookup).
+
+**Findings**
+
+- **acceptable** — Stage 1 README: insert-after `pattern.ui.in-place-live-refresh` is stale; current last `proposed` row is `pattern.dispatch.run-next-chain-authority`. Engineer should bump the harvested-corpus proposed count to four and add the new row with the other proposed entries; not a definition miss.
+- No `fix-now`. No R3 `violates`. R5 maps. R6: files stay `core` + `canon/patterns`; no new tables/config/`ui`; reuse `_store_prompt_blocks`; `save_agent_data` already `conn.commit()`s per row; AUTHORING “must not depend on unapproved id” is honored (catalog file only). Cited reuse patterns resolve `status: approved`. Parent AC and this child’s AC match.
+
+R1–R4 executed in-session (universal set scored; scoped exclusions are layer/path misses: `data`/`ui`/`utils`/`scripts`/`tests`/`docs/features/**`/seed-admin paths). Slim R7: statute table not appended.
+
+context_tokens≈48000
