@@ -5,6 +5,7 @@ from typing import Optional
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
+from src.utils.auth import local_auth_passthrough_payload
 from src.core.candidate import (
     get_candidate,
     requested_artifacts_chain_artifact_keys,
@@ -134,6 +135,12 @@ def health():
 def auth_session_policy():
     """Non-secret session duration + extend cadence for SPA (AST-1373). Public on purpose."""
     return jsonify(get_auth_session_policy())
+
+
+@system_bp.route("/auth_passthrough")
+def auth_passthrough():
+    """Public non-secret local-auth signal for SPA. Public on purpose."""
+    return jsonify(local_auth_passthrough_payload())
 
 
 # --- Authenticated endpoints ---
