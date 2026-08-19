@@ -8,6 +8,8 @@
 | --- | --- | --- |
 | `src/ui/api/api_system.py` | `tests/component/ui/api/test_api_system.py` | yes |
 
+Public `GET /api/auth_passthrough` (AST-1440): **`docs/test-bible/ui/auth.md`** § AST-1440.
+
 ---
 
 ### AST-792
