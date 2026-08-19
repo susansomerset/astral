@@ -1,3 +1,180 @@
+<!-- linear-archive: AST-1271 archived 2026-08-19 -->
+
+## Linear archive (AST-1271)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1271/deviations-metadata-retention-on-draft-hop-draft-job-resume-response  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** susan  
+**Priority / estimate:** None / —  
+**Parent:** AST-1268 — draft_job_resume response schema is wrong  
+**Blocked by / blocks / related:** parent: AST-1268
+
+### Description
+
+## What this implements
+
+After #1: ensure successful draft responses retain `deviations` as hop/artifact metadata separate from resume body for the artifacts cycle (decision-drift visibility). Does not invent a full approve-artifacts UI (AST-1205).
+
+## Acceptance criteria
+
+- [X] Job resume render/persist uses only the resume body (`.resume` / equivalent); including `deviations` in that body path does not occur.
+- [X] `deviations` is retained as metadata for the artifacts cycle (not dropped silently on a successful hop).
+
+## Boundaries
+
+Does not own nested contract / prompt / normalize (sibling #1). Does not own debug trail (sibling #3). Does not invent approve-artifacts UI (AST-1205).
+
+## In scope
+
+- [X] `astral.config.config-source-of-truth` — `deviations_artifact_key` on `TASK_CONFIG["draft_job_resume"]`; clear-key literal stays with that config source.
+- [X] `astral.standards.in-scope-only` — persist sibling metadata only; no AST-1205 UI, no prompt/normalize, no debug trail.
+- [X] `astral.standards.no-hardcoded-sets` — no new core frozenset of metadata names; skip keys via `payload_metadata_keys` / named artifact key from TASK_CONFIG.
+
+## Considered but excluded
+
+- [X] `astral.standards.debug-contract-gated` — Style D whitelist/unwrap trail is AST-1272 (`src/core` debug paths).
+- [X] `astral.agent.do-task-delegation` — no new Anthropic call shape; only a post-success artifacts write on existing `draft_job_resume`.
+- [X] `pattern.config.config-block` — nest/metadata keys already landed on AST-1270; this child adds only the artifact slot name.
+- [X] Approve-artifacts / JAR deviations UI — AST-1205 (`src/ui`).
+- [X] Nested unwrap / base_resume whitelist / Manage Tasks seed — AST-1270.
+
+## Notes for planning
+
+After AST-1270. Persist deviations as sibling metadata — never merge into resume section content.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1268-draft-job-resume-response-schema-is-wrong`, child `sub/AST-1268/<child-id>-<slug>`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-08T01:23:02.649Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+
+`validate-sub-log` fails on `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop`: subjects `Merge remote-tracking branch 'origin/dev'…` / `Merge remote-tracking branch 'origin/ftr/…'` in the range ahead of `origin/ftr/AST-1268-draft-job-resume-response-schema-is-wrong` (likely from sync-child during resolve).
+
+@Hedy Lamarr — republish a clean tip: rebuild `sub` stacked on current `origin/ftr/AST-1268-draft-job-resume-response-schema-is-wrong` with only AST-1271 plan→resolve commits (no `Merge remote-tracking branch` subjects in `sub --not ftr`). Force-with-lease push to `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` is OK for this hygiene republish. Stay User Testing.
+
+— Chuckles
+
+#### radia — 2026-08-08T01:20:53.122Z
+[code-rubric] revision=1
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1271
+**Overall:** CLEAN
+**Diff:** `origin/dev...origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` @ `36ef32c8` (product tip `7ecf8cd5`)
+
+## Frame diff
+
+No frame changes from Joan's `plan-rubric.v1` verdict. Both `discuss` findings confirmed resolved in the built code:
+1. `meta_key` ambiguity (Stage 2 step 1) — resolved to `deviations_artifact_key`-only lookup; no hardcoded literal in `tracker.py`.
+2. `persist_job_artifact_from_parsed` `allow_resume` gate (Stage 2 step 5) — the deviations write landed unconditional, outside that gate, as Revision 1 required.
+
+No new architectural surface beyond the plan's three files (`config.py`, `tracker.py`, `agent.py`).
+
+## Summary
+
+Full-set sweep: 68 active statutes (18 universal + 50 scoped) scored in-session; 17 scoped apply on touched layers (core + utils config), all conform. Zero violations, zero new findings. Pattern conformance: none cited. Plan adherence: Stages 1–3 landed in order, literal match on every instruction (config slot + clear-key, extract/save/persist helpers, `_resume_payload_body` meta skip, `do_task` success hook placement/gating/try-except style). Confirmed via `git log` that Hedy's `code()` commits touch only the three planned files — `candidate.py` in the diff is entirely AST-1270's inherited work via the `ftr` merge, not re-touched.
+
+Full verdict appended to the plan doc: `docs/features/artifacts/ast-1271-deviations-metadata-retention-on-draft-hop.md`.
+
+— Radia
+
+#### betty — 2026-08-08T01:08:53.647Z
+## QA test manifest — AST-1271
+
+**Publish:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` @ `7ecf8cd5`
+**tests SHA:** `af4ec7da23f64da2d669c5664ca2da33f05a0a5d` (`merge-tests(AST-1271): origin/tests af4ec7da…`)
+
+### Gaps (new)
+1. `tests/component/core/test_tracker.py::TestAst1271DeviationsMetadataRetention` — extract/save/persist; string-typed deviations skipped from resume body; `persist_job_artifact_from_parsed` writes sibling slot; cancel clears `deviations`
+2. `tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig` — `deviations_artifact_key` + `JOB_BUILD_ARTIFACT_CLEAR_KEYS`
+3. `tests/component/core/test_agent.py::TestAst1271DoTaskDeviationsPersist` — success calls persist helper; validation failure does not
+
+### Existing (reuse)
+4. `tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody` — nested envelope still excludes deviations from body
+
+### Broken / obsolete this pass
+none — additive retention path; AST-1270 nest body prefer remains.
+
+### Integration
+None — no existing scenario for this hop; did not invent coverage.
+
+### Run (test-child)
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1271DeviationsMetadataRetention \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  tests/component/core/test_agent.py::TestAst1271DoTaskDeviationsPersist \
+  -q
+```
+
+### Bible shasums on publish tip
+- `docs/test-bible/core/tracker.md` `d30d12203ba24db228a87555592001e020bb9609`
+- `docs/test-bible/utils/config.md` `ccb2d3293af71668c2b0cd68fa367ca710fffe5f`
+- `docs/test-bible/core/agent.md` `a3e76ce76cc7c4819bde382bb46da512c43b71c0`
+
+— Betty
+
+#### hedy — 2026-08-08T01:01:59.357Z
+[check-linear]
+- Plan Rev 1: extract uses `TASK_CONFIG["draft_job_resume"]["deviations_artifact_key"]` only (no literal / tuple-membership ambiguity).
+- `persist_job_artifact_from_parsed` deviations write ungated on `allow_resume`; documented as manual/API defense-in-depth — AC2 live path remains Stage 3 `do_task`.
+- `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` @ `7a8c5d40`
+
+#### joan — 2026-08-08T01:00:13.139Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1271
+**Overall:** APPROVED
+**Publish ref tip:** `origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` @ `c9c838d7`
+
+## Traceability
+
+AC1→S2; AC2→S1–S3. No unmapped AC, no orphan stage.
+
+**Considered:** 36 active statutes (18 universal + 18 scoped); 9 scoped excluded on layer/path predicates; 3 retired ignored. One `needs-discussion`, zero `violates`.
+
+## Findings
+
+**discuss** — Stage 2 step 1, the `meta_key` instruction (`orch.pipeline.plan-is-bible`). The bullet reads: "Read `meta_key = "deviations"` from membership in `TASK_CONFIG["draft_job_resume"]["payload_metadata_keys"]` — do **not** hardcode a second parallel set; look up the string that is already in that tuple (use the literal `"deviations"` only as the known metadata field name...)". That instructs the engineer both to look the name up and to use the literal, and there is no lookup that yields one element of a five-element tuple. The Execution contract says an ambiguous step means stop and comment, so as written this will stall the build for a question the plan can answer itself. Recommendation: read the field name from `deviations_artifact_key`, which Stage 1 already puts on the same config block — one source, no literal in `tracker.py`, and it satisfies the `no-hardcoded-sets` intent the bullet is reaching for.
+
+**discuss** — Stage 2 step 5, `persist_job_artifact_from_parsed`. That function has no caller anywhere in `src/`; AST-1099 removed the `do_task` terminal body-copy, and `docs/test-bible/core/tracker.md` keeps it only "for manual/API callers". So the deviations write added there never fires in production, and AC2 rests entirely on the Stage 3 agent hook. Keeping the two paths in sync is defensible, but the Code rules check claims "agent and `persist_job_artifact_from_parsed` both call the wrapper" as DRY evidence, which reads as two live paths when there is one. Related: the step gates the deviations persist on `allow_resume`, a resume-content flag — a caller passing `allow_resume=False` would silently skip metadata that has nothing to do with resume bodies. Both are worth one clarifying line; neither changes the product outcome.
+
+**acceptable** — the absent-vs-empty distinction in the extract helper is the right call and easy to get wrong. Key absent → `None` → no write, so a later hop cannot wipe a prior list; key present but empty → `[]` → written, so "the model reported no deviations" is recorded rather than indistinguishable from "never ran". That is what makes AC2's "not dropped silently" actually hold.
+
+**acceptable** — adding a list-valued key to `job_data.artifacts` does not introduce a new class of reader risk: the dict is already heterogeneous (AST-1099 pins store bare id strings alongside `resume_content` / `cover_letter` dicts), and `resume_content` itself is untouched.
+
+## Notes
+
+I re-read the tree rather than trusting the plan's dependency claim, and AST-1270 has landed on `origin/ftr/AST-1268-...` @ `39913979`. Everything this plan builds on is real: `nested_resume_key` and `payload_metadata_keys` (including `deviations`) are on `TASK_CONFIG["draft_job_resume"]`, `_resume_payload_body` already prefers the nested resume dict, and `tracker.py` already imports `TASK_CONFIG`, so Stage 2 needs no new import. Stage 3's insertion point is equally concrete — the AST-1252 craft-persist block sitting right after the AST-1099 pin is the exact shape Stage 3 describes (success + truthy `index`, lazy import, try/except that logs without failing the hop), and `parsed` is in scope and post-validate there.
+
+Stage 2 step 4 is worth a word because its value is not where it looks. With the nest present, `deviations` is already a sibling of the nest and excluded; on the flat post-normalize path it is a list and excluded by the string gate. What the skip actually catches is a string-typed `deviations`, plus `astral_job_id` / `company` / `title`, which are strings and do leak into the body dict today. That leak is currently harmless because `filter_content_to_resume_structure` drops them downstream and they are not section ids, so the match gates never saw them either — which is also why the change breaks nothing: `test_resume_payload_body_keeps_job_array`, `test_prefers_nested_resume_dict`, and `test_flat_unwrapped_payload_unchanged` all use inputs with no metadata keys.
+
+On cancel: adding `"deviations"` to `JOB_BUILD_ARTIFACT_CLEAR_KEYS` is safe against the existing guard, and `test_clear_keys_include_pin_slots` asserts membership rather than an exact tuple, so it stays green. Merge note for `merge-child` — this child and AST-1270 both edit `_resume_payload_body`; the `blockedBy` on AST-1270 already declares the ordering.
+
+R7 satisfied — slim comment gates the flip. Status → Plan Approved.
+
+— Joan
+
+context_tokens≈138000
+
+#### hedy — 2026-08-08T00:56:14.903Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop/docs/features/artifacts/ast-1271-deviations-metadata-retention-on-draft-hop.md
+
+`origin/sub/AST-1268/AST-1271-deviations-metadata-retention-on-draft-hop` @ `c9c838d7`
+
+**Scope:** Single-Component — config artifact slot + tracker extract/save + `_resume_payload_body` meta skip + `do_task` success hook; no UI.
+
+**Conf:** high — AST-1270 already leaves `deviations` on the payload and out of resume body; this adds the durable `job_data.artifacts.deviations` write on successful draft.
+
+**Risk:** Medium — writing into `resume_content` would poison render; failing the hop on metadata save would regress draft success (plan keeps resume body meta-aware and deviations persist best-effort).
+
+---
+
 # AST-1271 — Deviations metadata retention on draft hop
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1271/deviations-metadata-retention-on-draft-hop-draft-job-resume-response  
