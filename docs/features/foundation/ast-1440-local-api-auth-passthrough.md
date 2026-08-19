@@ -234,6 +234,24 @@ From the epic worktree with the Flask API on `:5001`:
 
 Confirm Chuckles estimate: 3 — agree
 
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1440
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1438/AST-1440-local-api-auth-passthrough` @ `a0891a19fb496e7206f7a51e63c0296055d1afb6`
+
+## Traceability
+AC1→S2+S3; AC2→S3; AC3→S3; AC4→S3 (S1 authors proposed `pattern.auth.local-deploy-passthrough` + §2.9 exception). Parent AC1 SPA Login / AC3 / AC4 Login-extend → N/A — “Does not own React Login, RequireAuth, or session extend (sibling 2).”
+
+## Notes
+Files Changed layer `canon` mapped to `docs` (unrecognized layer).
+
+No `fix-now` or `discuss` findings. Plan matches parent API passthrough, synthetic always-admin `AUTH_CONFIG["local_operator"]`, public `GET /api/auth_passthrough`, fail-closed non-`local`, decorators kept; SPA skip stays AST-1441. Reuses `is_local_deploy_env()` / `pattern.config.config-block`; `pattern.ui.admin-endpoint` honored by not stripping `@require_admin`. Pattern lands `proposed` without runtime id lookup (AUTHORING). Test isolation deferred to Betty.
+
+context_tokens≈32000
+
 ## Betty / test-tree (do not implement)
 
 Existing `tests/component/ui/test_auth.py::TestRequireAuth` 401 cases will 200 if the process env is `ASTRAL_DEPLOY_ENV=local` (common on this host). Betty owns isolating those tests (monkeypatch env off `local`) plus new coverage for the passthrough / public route. Engineers do not edit `tests/` or `docs/test-bible/**`.
