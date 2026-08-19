@@ -918,3 +918,71 @@ Retarget entity-story coverage from roster → agent; add dangling `propose_appl
   tests/component/core/test_agent.py::TestAst1354AgentStoryDanglingTaskSibling \
   -q
 ```
+
+### AST-1448 · AST-1442 (persist prompt before provider)
+
+**Parent:** [AST-1442](https://linear.app/astralcareermatch/issue/AST-1442). **Publish:** `origin/sub/AST-1442/AST-1448-persist-prompt-before-provider`.
+
+Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_prompt_blocks` **before** `send_to_anthropic` / `run_adhoc`. `_store_response_block` stays after return. Persist failure is swallowed. `store_agent_data=False` and bare `run_adhoc` write no `agent_data`. Latest-per-task stays RESPONSE-gated. Debug found/recorded for prompt persist happens before the provider await; quiet when `debug=False`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| `do_task` prompt-before-await + RESPONSE after | `src/core/agent.py` | **`tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider`** |
+| Kill mid-call + later batch isolation | same | **`test_do_task_provider_raise_keeps_prompt_omits_response`**, **`test_do_task_later_success_does_not_rewrite_interrupted_batch_prompts`** |
+| Storage-off / persist failure / debug | same | **`test_do_task_storage_off_skips_prompt_and_response`**, **`test_do_task_prompt_persist_failure_still_calls_provider`**, **`test_do_task_debug_emits_prompt_found_recorded_before_provider`**, **`test_do_task_debug_false_skips_persist_contract_lines`** |
+| Workbench Test sequencing; bare `run_adhoc` | same | **`test_workbench_stores_prompt_before_run_adhoc`**, **`test_workbench_raise_keeps_prompt_omits_response`**, **`test_bare_run_adhoc_does_not_store_agent_data`** |
+| Prompt-only batch is not latest story | `src/data/database.py` | **`test_prompt_only_batch_is_not_latest_ref`**; existing **`tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key`** |
+| Existing store-once + ledger | `src/core/agent.py` | **`TestDoTask::test_returns_api_failure_and_stores_agent_data`**, **`TestAst515AdhocWorkbenchLedger`**, **`TestDoTaskStorageFailures`** |
+
+**Broken / obsolete:** none — `_store_prompt_blocks` still runs once; order moved before the await. Count-only tests still hold.
+
+**Integration:** no existing scenario asserts in-flight `agent_data` vs provider await — no revision; do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent_ast1448.py::TestAst1448PersistPromptBeforeProvider \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/data/database/test_agent_responses.py::TestAst984EntityColumnRetired::test_list_latest_per_task_key \
+  -q
+```
+
+### AST-1451 · AST-1439 (Ad Hoc import list and load payload)
+
+**Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload`.
+
+Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`, no filter/cap); `GET /api/admin/adhoc/runs` `@require_admin`; Style D found→recorded on the list when `debug=True`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| One row per batch; newest first; adhoc + production; no `block_data` | `src/data/database.py` (`list_agent_data_batches`) | **`TestAst1451ListAgentDataBatches`** |
+| Core list + debug gate | `src/core/agent.py` (`list_agent_data_runs`) | **`TestAst1451ListAgentDataRuns`** |
+| Catalog key still `adhoc-<task_key>` | same (`run_adhoc_workbench_test`) | existing **`TestAst515AdhocWorkbenchLedger`** |
+| Prefixed workbench key does not double `adhoc-`; `TASK_CONFIG` uses stripped key | same | **`TestAst515AdhocWorkbenchLedger::test_prefixed_workbench_key_does_not_double_adhoc`** |
+| Admin list JSON + auth + `ui_llm_debug` | `src/ui/api/api_admin.py` (`adhoc_runs`) | **`TestAst1451AdhocRuns`** |
+| Load payload (existing GET) | `src/ui/api/api_system.py` | existing **`TestSystemAuthRoutes::test_agent_data_returns_rows`** |
+
+**Broken / obsolete this pass:** none — AST-515 catalog-key ledger assertion still holds.
+
+**Integration:** no existing scenario covers admin Ad Hoc list/load — v1 harness is system+candidate only. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Data list: `tests/component/data/database/test_agent_data.py::TestAst1451ListAgentDataBatches`
+2. Core list debug: `tests/component/core/test_agent.py::TestAst1451ListAgentDataRuns`
+3. Ledger prefix (existing + new): `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+4. Admin GET: `tests/component/ui/api/test_api_admin.py::TestAst1451AdhocRuns`
+5. Load GET (existing): `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_agent_data_returns_rows`
+
+**AST-1451** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1451ListAgentDataBatches \
+  tests/component/core/test_agent.py::TestAst1451ListAgentDataRuns \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/ui/api/test_api_admin.py::TestAst1451AdhocRuns \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_agent_data_returns_rows \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
