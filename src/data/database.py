@@ -3409,9 +3409,19 @@ def clear_candidate_batch(batch_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
-def count_candidates_unclaimed_in_states(states: List[str]) -> int:
-    """Count unclaimed candidates in the given state set (global pool; AST-1258)."""
+def count_candidates_unclaimed_in_states(
+    states: List[str], candidate_id: Optional[str] = None
+) -> int:
+    """Count unclaimed candidates in the given state set (global pool; AST-1258).
+
+    When candidate_id is set, count is that row only (0 or 1; AST-1432 Avail).
+    """
     state_sql, state_params = _state_in_sql(states)
+    cid = (candidate_id or "").strip()
+    extra_sql = " AND astral_candidate_id = ?" if cid else ""
+    params: List[Any] = list(state_params)
+    if cid:
+        params.append(cid)
 
     def _with_conn() -> int:
         conn = _get_connection()
@@ -3419,8 +3429,8 @@ def count_candidates_unclaimed_in_states(states: List[str]) -> int:
             _ensure_candidate_schema(conn)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM candidate
-                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
-                tuple(state_params),
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = ''){extra_sql}""",
+                tuple(params),
             ).fetchone()
             return int(row[0])
         finally:
@@ -7744,8 +7754,10 @@ def dispatch_task_freq_allows(task: Dict[str, Any]) -> bool:
 
 
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
-    """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH).
+    """Count eligible entities for this dispatch row (unclaimed + scan cadence for WATCH).
 
+    Candidate non-inflow Avail is this row's candidate only (0 or 1: unclaimed and in
+    claim_states). inflow_discovery still uses count_candidate_inflow_discovery_eligible.
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
@@ -7770,12 +7782,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        # inflow_discovery keeps term/state helper; other candidate claim queues use pool count.
+        # inflow_discovery keeps term/state helper; other keys: this row's candidate (AST-1432).
         if (task_key or "").strip() == INFLOW_CONFIG["discovery"]["task_key"]:
             return count_candidate_inflow_discovery_eligible(
                 candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
             )
-        return count_candidates_unclaimed_in_states(claim_states)
+        return count_candidates_unclaimed_in_states(claim_states, candidate_id=candidate_id)
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)
