@@ -56,3 +56,39 @@ class TestEnsureCriterionGradeTableAst906:
         # One grade line even after \\n expand — still reject.
         with pytest.raises(ValueError, match="at least two lines"):
             rt.ensure_criterion_grade_table({"content": "intro\\nA = only"})
+
+
+class TestAst1437InlineGradePersist:
+    """[bug-repro] AST-1434 Repro step 1: pasted one-line A== B== persist.
+
+    Pre-fix: parse_trailing_grade_table_lines is newline-only → ValueError
+    "at least two lines". Post AST-1434: inline [ABCDEFX] + ==/=/: tokens split
+    and content rewrites to one grade letter per line.
+    """
+
+    # Plan-fix fixture (candidate somerset / craft_joblist_rubric Onsite Requirement).
+    _INLINE = (
+        "Susan, scanning a bare listing summary, asking only whether the fields "
+        "shown already rule this one out. A == location field states Remote, Fully "
+        "Remote, or Work From Home. B == location field states a Bay Area city "
+        "(San Francisco, Oakland, Berkeley, Walnut Creek, Alameda) with no onsite "
+        "requirement stated. C == location field states Hybrid with a Bay Area city. "
+        "D == location field states Hybrid with a non-Bay Area city. F == location "
+        "field states On-Site, Onsite, In-Office, or In-Person. X == location field "
+        "is absent or blank."
+    )
+
+    def test_inline_aeq_one_physical_line_parses_and_rewrites(self) -> None:
+        item = {
+            "label": "Onsite Requirement",
+            "code": "OR",
+            "importance": 10,
+            "content": self._INLINE,
+        }
+        rt.ensure_criterion_grade_table(item)
+        assert [r["grade"] for r in item["grade_descriptions"]] == [
+            "A", "B", "C", "D", "F", "X",
+        ]
+        # Successful inline split rewrites to canonical newline form.
+        assert item["content"].count("\n") >= 5
+        assert "Remote" in item["grade_descriptions"][0]["description"]

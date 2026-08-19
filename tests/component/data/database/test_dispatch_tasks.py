@@ -1395,7 +1395,7 @@ class TestAst972CandidateStageEligibility:
 
 
 class TestAst1258CandidatePoolEligibility:
-    """AST-1258: stage Avail pool count + locked rows; inflow_discovery path unchanged."""
+    """AST-1258 + AST-1436: bound-row Avail is 0/1; locked rows → 0; inflow_discovery unchanged."""
 
     def test_pool_count_zero_when_all_matching_rows_locked(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
@@ -1407,7 +1407,8 @@ class TestAst1258CandidatePoolEligibility:
             "candidate_id": "c1258e1",
             "task_key": "craft_get_rubric",
         }
-        assert db.count_eligible_for_dispatch_task(task) == 2
+        # Bound row: only c1258e1 counts (retry companion is a different candidate).
+        assert db.count_eligible_for_dispatch_task(task) == 1
         n = db.claim_candidate_batch(
             "lock-all-1258",
             "REQUESTED_ARTIFACTS",
@@ -1439,6 +1440,28 @@ class TestAst1258CandidatePoolEligibility:
             "task_key": "craft_get_rubric",
         }
         assert db.count_eligible_for_dispatch_task(stage) == 1
+
+
+class TestAst1436BoundCandidateAvail:
+    """AST-1436: two unclaimed candidates → bound Avail 1; lock bound, other free → 0."""
+
+    def test_two_unclaimed_bound_row_is_one_then_zero_when_bound_locked(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        db.save_candidate("c-a", state="REQUESTED_ARTIFACTS", candidate_data={})
+        db.save_candidate("c-b", state="REQUESTED_ARTIFACTS", candidate_data={})
+        task = {
+            "entity_type": "candidate",
+            "trigger_state": "REQUESTED_ARTIFACTS",
+            "candidate_id": "c-a",
+            "task_key": "craft_get_rubric",
+        }
+        assert db.count_eligible_for_dispatch_task(task) == 1
+        n = db.claim_candidate_batch("lock-ca-1436", "REQUESTED_ARTIFACTS", 1)
+        assert n == 1
+        claimed = {r["astral_candidate_id"] for r in db.get_candidate_batch("lock-ca-1436")}
+        assert claimed == {"c-a"}
+        assert db.count_eligible_for_dispatch_task(task) == 0
+
 
 class TestAst1088NullCandidateGazeEmail:
     """AST-1134: save_dispatch_task rejects null candidate_id for gaze_email too."""

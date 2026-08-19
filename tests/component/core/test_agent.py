@@ -4907,6 +4907,10 @@ class TestAst515AdhocWorkbenchLedger:
         assert save_args[2] == "c1"
         assert ledger_trackers["saves"][0][1]["status"] == "RUNNING"
         assert ledger_trackers["store_prompt"].call_count == 1
+        store_kw = ledger_trackers["store_prompt"].call_args.kwargs
+        assert store_kw["caches_resolved_four"] == ("", "", "", "")
+        assert "cache_content" not in store_kw
+        assert store_kw.get("entity_id") == "j1"
         assert ledger_trackers["store_response"].call_args[0][3] == "ok"
         final = ledger_trackers["updates"][-1][1]
         assert final["status"] == "COMPLETED"
@@ -4928,6 +4932,7 @@ class TestAst515AdhocWorkbenchLedger:
         assert out["success"] is False
         assert ledger_trackers["updates"][-1][1]["status"] == "FAILED"
         assert ledger_trackers["updates"][-1][1]["total_failed"] == 1
+        assert ledger_trackers["store_prompt"].call_args.kwargs.get("entity_id") == "j1"
         assert ledger_trackers["store_response"].call_count == 1
 
     async def test_exception_updates_ledger_then_reraises(
@@ -6499,6 +6504,77 @@ class TestAst984EntityColumnRetired:
         ]
         assert resp_saves
         assert resp_saves[-1].get("entity_id") == "job-1"
+
+    async def test_do_task_success_tags_prompt_entity_id(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        """AST-1431: SYSTEM/CACHE_*/TASK/NO_CACHE saves share RESPONSE entity_id when index is set."""
+        _prompt_types = {
+            "SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "TASK", "NO_CACHE",
+        }
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": "0|CRA2"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+        )
+        assert out["success"] is True
+        prompt_saves = [
+            c.kwargs for c in stub_agent_storage["save"].call_args_list
+            if c.kwargs.get("block_type") != "RESPONSE"
+        ]
+        assert prompt_saves
+        assert all(s.get("entity_id") == "job-1" for s in prompt_saves)
+        assert all(s.get("block_type") in _prompt_types for s in prompt_saves)
+
+    def test_store_prompt_blocks_stamps_entity_id_when_known(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: List[Dict[str, Any]] = []
+
+        def _rec(**kw: Any) -> str:
+            saves.append(kw)
+            return kw["agent_data_id"]
+
+        monkeypatch.setattr(agent_mod, "save_agent_data", _rec)
+        agent_mod._store_prompt_blocks(
+            "job",
+            "t",
+            "b1",
+            "sys",
+            caches_resolved_four=("a", "", "", ""),
+            user_content="u",
+            entity_id="somerset",
+        )
+        assert saves
+        assert all(s.get("entity_id") == "somerset" for s in saves)
+
+        saves.clear()
+        agent_mod._store_prompt_blocks(
+            "job",
+            "t",
+            "b2",
+            "sys",
+            caches_resolved_four=("a", "", "", ""),
+            user_content="u",
+        )
+        assert saves
+        assert all(not s.get("entity_id") for s in saves)
 
 
 class TestAst1005ItemsSchemaObjectValidation:

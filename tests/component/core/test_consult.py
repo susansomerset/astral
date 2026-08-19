@@ -3991,6 +3991,12 @@ class TestAst898QualifyNewRetry:
         assert consult_mod._INPUT_STATE_TO_TASK["VALID_TITLE_RETRY"] == "qualify_job_listings"
 
 
+def _assert_artifacts_worker_cid(worker: AsyncMock, cid: str) -> None:
+    """AST-1437: do not pin extra kwargs — make-fix will pass task_key/trigger/skip."""
+    worker.assert_awaited_once()
+    assert worker.await_args.args[0] == cid
+
+
 @pytest.mark.skipif(
     not hasattr(__import__("src.utils.config", fromlist=["CANDIDATE_STAGE_DISPATCH"]), "CANDIDATE_STAGE_DISPATCH"),
     reason="AST-972 product not on this publish tip",
@@ -4015,7 +4021,38 @@ class TestAst972CandidateStageConsultRouting:
             dispatch_task_key="craft_get_rubric",
         )
         assert out["total_passed"] == 1
-        worker.assert_awaited_once_with("c2", debug=False)
+        _assert_artifacts_worker_cid(worker, "c2")
+        assert worker.await_args.kwargs.get("debug", False) is False
+
+    @pytest.mark.asyncio
+    async def test_mid_hop_with_run_next_routes_to_daisy_chain_worker(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """[bug-repro] AST-1434 Repro step 3: mid-hop craft_joblist_rubric is not unhandled.
+
+        Pre-fix: consult membership-gates on craft_get_rubric → zeros, worker idle.
+        Post AST-1434: live run_next on that task_key calls the daisy-chain worker.
+        """
+        worker = AsyncMock(
+            return_value={"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
+        )
+        monkeypatch.setattr("src.core.candidate.run_requested_artifacts_dispatch", worker)
+        monkeypatch.setattr(
+            "src.core.agent._current_agent_task_run_next",
+            lambda tk: "craft_jobdesc_rubric" if tk == "craft_joblist_rubric" else "",
+        )
+        entity = {"astral_candidate_id": "c-mid", "state": "REQUESTED_ARTIFACTS"}
+        out = await consult_mod.run_consult_task(
+            "candidate",
+            "REQUESTED_ARTIFACTS",
+            [entity],
+            "b1",
+            entity,
+            False,
+            dispatch_task_key="craft_joblist_rubric",
+        )
+        assert out["total_passed"] == 1
+        _assert_artifacts_worker_cid(worker, "c-mid")
 
     @pytest.mark.asyncio
     async def test_wrapper_keys_no_longer_routed(self, monkeypatch: pytest.MonkeyPatch) -> None:
