@@ -3037,6 +3037,18 @@ async def do_task(
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             from src.core.tracker import pin_job_artifact_agent_data_id
             pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
+            # AST-1428: sibling resume blob after pin; do not re-enable persist_job_artifact_from_parsed.
+            if task_key == "finalize_job_resume":
+                try:
+                    from src.core.tracker import persist_finalize_job_resume_content
+                    persist_finalize_job_resume_content(index, parsed)
+                except Exception as persist_err:
+                    logger.error(
+                        "persist_finalize_job_resume_content failed task=%s index=%s err=%s",
+                        task_key,
+                        index,
+                        persist_err,
+                    )
         elif debug:
             reason = (
                 "store_failed" if store_failed
