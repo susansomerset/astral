@@ -1,3 +1,177 @@
+<!-- linear-archive: AST-1278 archived 2026-08-19 -->
+
+## Linear archive (AST-1278)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1278/admin-score-floor-dropdown-allows-0-remove-pass-threshold-from-task  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1275 — Remove "pass_threshold" from task_config  
+**Blocked by / blocks / related:** parent: AST-1275; blocks: AST-1279
+
+### Description
+
+## What this implements
+
+Fix Scheduled Actions / Edit Dispatch Task Score Floor options and save path so `0` appears and persists (Susan: control still mins at `1`). Does not own consult verdict math (sibling Ada).
+
+## Acceptance criteria
+
+- [X] 3. Admin Score Floor dropdown lists `0` and saving `0` persists `0` on the dispatch task row.
+
+## Boundaries
+
+Does not own stripping `pass_threshold` or consult verdict wiring (sibling Ada). Does not own canon/docs (sibling Hedy).
+
+## In scope
+
+- [X] `pattern.config.config-block` — floor option catalog remains `DISPATCH_SCORE_FLOOR_VALUES` in config
+- [X] `astral.config.config-source-of-truth` — UI options served from config via admin API
+- [X] `astral.layers.ui-config-driven-business-logic` — remove hardcoded React 1.00–10.00 array; load `/score_floor_options`
+- [X] `pattern.dispatch.score-floor` (proposed) — admin can select and persist explicit `0` on the dispatch row
+- [X] `astral.standards.no-hardcoded-sets` — no resurrected inline floor list in React
+- [X] `astral.docs.features-single-file-per-ticket` — plan at `docs/features/foundation/ast-1278-…`
+- [X] `astral.git.engineer-test-tree-ban` — no engineer edits under `tests/`
+
+## Considered but excluded
+
+- [X] `astral.patterns.render-verdict-orchestrates-consult` — verdict/pass math is AST-1277 (core), not admin UI
+- [X] `pattern.batch.entity-claim-process-release` — claim/count already reads row `score_floor`; not this AC
+- [X] `pattern.state.entity-state-transitions` — pass/fail/error state names unchanged
+- [X] `astral.config.pass-threshold-vs-score-floor` — statute retirement is AST-1279 (Hedy)
+- [X] `src/utils/config.py` catalog edit — `DISPATCH_SCORE_FLOOR_VALUES` already includes `0.0` on tip; Stage 1 verifies only
+
+## Notes for planning
+
+`DISPATCH_SCORE_FLOOR_VALUES` already includes `0`; restore missing `GET /api/admin/dispatch_tasks/score_floor_options`, wire Scheduled Actions to it, and fix `parseFloat || 1` zero-save coercion.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1275-remove-pass-threshold-from-task-config`; child `sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-08T01:53:40.406Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1278
+**Publish ref:** `sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` @ `d55701b3` (product tip `f409edb3`)
+**Overall:** CLEAN
+
+## Plan adherence
+
+- Stage 1 + Stage 2 delivered exactly as planned: `GET /dispatch_tasks/score_floor_options` placed immediately after `dispatch_task_state_options`; `AdminScheduledActions.tsx` drops the hardcoded 1.00–10.00 `useMemo` and fixes the zero-save coercion via `Number.isFinite` (not `|| 1`).
+- Self-Assessment (`Single-Component` / `high` conf / `low` risk) matches the actual diff footprint — one admin GET route, one React page, no core/data/config.py edits.
+- Boundaries held: no `pass_threshold` / `render_verdict` (AST-1277/Ada) or canon/docs retirement (AST-1279/Hedy) touched; `tests/` + `docs/test-bible/**` arrive only via the single `merge-tests(AST-1278)` SHA from Betty's line, never in an engineer commit.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | Options sourced from `dispatch_score_floor_option_labels()`; no re-invented catalog. |
+| `pattern.ui.admin-endpoint` | conforms | New route cited in-code; `@require_admin` (wraps `@require_auth`) + thin JSON shape, catalog resolved server-side. |
+| `pattern.dispatch.score-floor` (proposed) | not-applicable | Parent's "New patterns proposed" list cites this for AST-1278, but it isn't under `canon/patterns/**` / Archie-approved yet. Parent text explicitly gates on this ("Archie approval required before implementation depends on the catalog id") — diff correctly does not build against it, citing the already-approved `pattern.ui.admin-endpoint` instead. Advisory, not a fix-now invalid citation. |
+
+## Frame diff
+
+(none) — no scope drift; description checkboxes already match delivered behavior.
+
+**What's solid:** Full active-set (64 `status: active` statutes under `canon/statutes/**`) scored in-session against the diff — no fix-now, no discuss. Central statutes for this ticket (`astral.standards.no-hardcoded-sets`, `astral.layers.ui-config-driven-business-logic`, `astral.config.config-source-of-truth`, `astral.idioms.require-auth-on-protected-endpoints`) all conform.
+
+**Notes:** No Joan plan-rubric verdict attachment on this ticket (per C4 — absence noted, not a block).
+
+context_tokens≈38000
+
+— Radia
+
+#### betty — 2026-08-08T01:45:49.826Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` @ `f409edb3`
+**merge-tests:** `merge-tests(AST-1278): origin/tests eec54bc01779bdd0d75dedc25dc447bad7fce707`
+
+### 1. Existing coverage (bible-backed)
+
+1. `tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog` — catalog 21 values, first `0.0` / label `"0.00"`
+2. `tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls` — GET `/api/admin/dispatch_tasks/score_floor_options` first `"0.00"`, 21 entries
+3. `tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor` — PUT `score_floor: 0` persists `0.0`
+
+### 2. Broken / obsolete
+
+None. Frontend mocks already called `score_floor_options`; product tip restores the route + `Number.isFinite` save.
+
+### 3. Gaps (this pass)
+
+1. `tests/component/frontend/pages/test_AdminScheduledActions.test.tsx` — **`AST-1278: edit save sends score_floor 0 when 0.00 selected`** (§6c): options from API mock start at `0.00`; Save PUT body `score_floor === 0`
+
+**Integration:** none revised (admin UI only).
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst750DispatchScoreFloorCatalog \
+  tests/component/ui/api/test_api_admin.py::TestDispatchTasks::test_scheduler_and_run_controls \
+  tests/component/ui/api/test_api_admin.py::TestApiAdminBranchGaps::test_update_dispatch_task_scored_zero_score_floor \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1278"
+```
+
+### Bible shasums (`origin/<publish-ref>`)
+
+- `docs/test-bible/frontend/pages.md` `7fc5617cc225e5a270055a270223e76491a417c5`
+- `docs/test-bible/utils/config.md` `f7e69bf2e42936251a72fc2e2591b9fb0ea4b406`
+- `docs/test-bible/ui/api/api_admin.md` `aefce6f234a26a3bc5d7fe357d3fa78c8d327fe6`
+
+— Betty
+
+#### joan — 2026-08-08T01:39:50.533Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1278
+**Overall:** APPROVED
+**Publish ref tip:** `sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` @ `b1933d58`
+
+## Traceability
+
+AC1 (parent AC3) →S1–S2; S3 = QA handoff table (no product change, Betty-owned).
+
+**Considered:** universal `orch.*` set plus the `ui`-layer scoped set (auth-on-endpoints, import-direction, ui-config-driven-business-logic, config-source-of-truth, no-hardcoded-sets, frontend-file-placement, naming-conventions, in-scope-only, dry-and-focused-functions, engineer-test-tree-ban). Zero `violates`. Scored in-session per R7 — no table pasted.
+
+## Findings
+
+**discuss — `pattern.dispatch.score-floor` cited but not drafted.** The ticket's In-scope list cites `pattern.dispatch.score-floor (proposed)`, but no file with that id exists under `canon/patterns/**` (the only dispatch entry is `pattern.dispatch.run-next-chain-authority`). Rubric R6 scores a flagged-but-undrafted pattern as `discuss`. Non-blocking here: AST-1279 owns authoring it, and the plan implements the parent's plain-language rule (`0` selectable and persisted) rather than depending on the catalog id. Recommendation: none for Katherine — the citation resolves when AST-1279 lands.
+
+**discuss — uncited pattern match: `pattern.ui.admin-endpoint`.** Stage 1 adds a new admin blueprint route, which is exactly the shape of approved pattern `pattern.ui.admin-endpoint`, yet neither the parent Architectural definition nor this child's In-scope list cites it. The plan *conforms* to that pattern's Solution shape — route on `admin_bp`, auth decorator, option catalog resolved in the API layer from config, React renders the resolved response — so this is a citation gap, not a design defect. Recommendation: mention `pattern.ui.admin-endpoint` in the implementation notes so Radia's code rubric sees the intended authority.
+
+**acceptable — empty dropdown when the options fetch fails.** Stage 2 deliberately omits a client-side fallback list, so a failed `score_floor_options` GET leaves the Score Floor `<select>` with no options until reload. This mirrors the existing `stateOptions` failure behavior and is the right call under `astral.layers.ui-config-driven-business-logic` / `astral.standards.no-hardcoded-sets` — a fallback array would resurrect exactly the hardcoded set this ticket removes. No data risk: `openEdit` still seeds `form.score_floor` from the row, so a save during that window preserves the stored floor.
+
+## Verification notes
+
+Every factual claim in the plan's **Verified (plan time)** block checks out against the publish ref: `DISPATCH_SCORE_FLOOR_VALUES = tuple(i * 0.5 for i in range(21))` (21 values, first `0.0`); `dispatch_score_floor_option_labels()` present; `AdminScheduledActions.tsx:320–323` hardcodes 19 options starting at `1.00`; `parseFloat(form.score_floor) || 1` appears at both save sites (lines 619 and 644); `api_admin.py` has `/dispatch_tasks/state_options` but no `/dispatch_tasks/score_floor_options`. Backend zero-persist confirmed on both paths — create (`api_admin.py:1049`) and update (`api_admin.py:1167`) coerce with `is not None`, not truthiness, so `0` survives. `scoreFloorOptions` feeds three call sites (Floor min filter, Floor max filter, edit modal); replacing the shared source covers all three, which the Stage 2 done-when explicitly calls out. Frontend tests already mock the new endpoint in four files, so Betty's tree expects it.
+
+Layer, config, file-placement, DRY and self-assessment checks pass: `ui → utils` only, no new files or subdirectories, `Number.isFinite` fix is the minimal correct change, and `Conf: high` / `Risk: low` match a two-file admin surface with the backend already correct.
+
+context_tokens≈86000
+
+— Joan
+
+#### katherine — 2026-08-08T01:36:43.985Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0/docs/features/foundation/ast-1278-admin-score-floor-dropdown-allows-0.md
+
+`origin/sub/AST-1275/AST-1278-admin-score-floor-dropdown-allows-0` @ `b1933d58`
+
+**Self-assessment**
+- **Scope:** Single-Component — restore missing admin `score_floor_options` GET + wire Scheduled Actions; config catalog already has `0.0`.
+- **Conf:** high — tip regression is hardcoded React `1.00–10.00` plus `parseFloat || 1`; backend already persists numeric `0`.
+- **Risk:** low — admin dropdown/save payload only; claim gating and verdict math stay with siblings.
+
+---
+
 # Admin Score Floor dropdown allows 0 (Remove "pass_threshold" from task_config)
 
 **Linear:** [AST-1278](https://linear.app/astralcareermatch/issue/AST-1278/admin-score-floor-dropdown-allows-0-remove-pass-threshold-from-task)  
