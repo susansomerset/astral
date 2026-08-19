@@ -206,3 +206,11 @@ AC1→S2+S3; AC2→S2+S3; AC3→S1+S2+S3. Parent AC1 API 200 / AC2 logs / AC4 40
 No `fix-now` findings. Consumes AST-1440’s public boolean (fail-closed, raw `fetch`, not hostname). Login / Log-off unmounted via `RequireAuth`, not edited. `authPassthrough.ts` belongs in `lib/`. `pattern.auth.local-deploy-passthrough` is `proposed`; this child reads the endpoint, not the pattern id. Inner shells already wait on `authLoading` / `user`.
 
 context_tokens≈40000
+
+## Review (build)
+
+**Built @ `f8d33808`** — `origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh`
+
+- Stage 1: `fetchAuthPassthrough()` raw `GET /api/auth_passthrough`, fail-closed
+- Stage 2: AuthContext loads `/api/me` without Stytch session; skip extend loop
+- Stage 3: RequireAuth skips Login/Log-off; Authenticate skips `authenticateByUrl`
