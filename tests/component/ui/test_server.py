@@ -91,22 +91,43 @@ class TestWarnStaleFrontendDist:
         assert capsys.readouterr().err == ""
 
 
+def _vite_proxies(text: str, prefix: str) -> bool:
+    target = "http://localhost:5001"
+    return f"'{prefix}': '{target}'" in text or f'"{prefix}": "{target}"' in text
+
+
 class TestAst1117CandidateSpaGuard:
-    """AST-1117: SPA catch-all must not serve index.html for /candidate/*."""
+    """AST-1117 / AST-1435: print-HTML prefixes JSON-404; candidate SPA paths get index.html."""
 
-    def test_candidate_prefix_returns_404_json_not_spa(
-        self, server_client: FlaskClient
-    ) -> None:
+    def test_candidate_backstory_serves_index(self, server_client: FlaskClient) -> None:
+        # AST-1435 [bug-repro]: document GET of a candidate SPA route must not be JSON 404.
+        resp = server_client.get("/candidate/backstory")
+        assert resp.status_code == 200
+        assert b"ok" in resp.data
+        assert not resp.is_json
+
+    def test_candidate_prefix_spa_routes_serve_index(self, server_client: FlaskClient) -> None:
         resp = server_client.get("/candidate/not-a-real-html-route")
-        assert resp.status_code == 404
-        assert resp.is_json
-        assert resp.get_json() == {"error": "Not found"}
-        assert b"ok" not in resp.data  # not the tmp dist index.html
+        assert resp.status_code == 200
+        assert b"ok" in resp.data
 
-    def test_candidate_exact_path_returns_404_json(
+    def test_candidate_exact_path_serves_index(self, server_client: FlaskClient) -> None:
+        resp = server_client.get("/candidate")
+        assert resp.status_code == 200
+        assert b"ok" in resp.data
+
+    def test_unmatched_print_resume_prefix_returns_404_json(
         self, server_client: FlaskClient
     ) -> None:
-        resp = server_client.get("/candidate")
+        # Blueprint owns /candidate/resume/base and /candidate/resume/<job_id> only.
+        resp = server_client.get("/candidate/resume")
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "Not found"}
+
+    def test_unmatched_print_cover_prefix_returns_404_json(
+        self, server_client: FlaskClient
+    ) -> None:
+        resp = server_client.get("/candidate/cover")
         assert resp.status_code == 404
         assert resp.get_json() == {"error": "Not found"}
 
@@ -119,18 +140,17 @@ class TestAst1117CandidateSpaGuard:
 
 
 class TestAst1117ViteCandidateProxy:
-    """AST-1117: Vite local UAT proxies /candidate to Flask (same as /api)."""
+    """AST-1117 / AST-1435: Vite proxies print HTML prefixes only — not candidate SPA routes."""
 
-    def test_vite_config_proxies_candidate_to_flask(self) -> None:
+    def test_vite_config_proxies_print_html_not_candidate_spa(self) -> None:
         from pathlib import Path
 
         text = (
             Path(__file__).resolve().parents[3]
             / "src/ui/frontend/vite.config.ts"
         ).read_text(encoding="utf-8")
-        assert "'/candidate': 'http://localhost:5001'" in text or (
-            '"/candidate": "http://localhost:5001"' in text
-        )
-        assert "'/api': 'http://localhost:5001'" in text or (
-            '"/api": "http://localhost:5001"' in text
-        )
+        assert _vite_proxies(text, "/api")
+        assert _vite_proxies(text, "/candidate/resume")
+        assert _vite_proxies(text, "/candidate/cover")
+        # Blanket /candidate would steal SPA routes (backstory, profile, …) from Vite.
+        assert not _vite_proxies(text, "/candidate")

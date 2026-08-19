@@ -544,14 +544,35 @@ Workbench Test success path stringifies the extracted body via **`_caller_respon
 
 ### AST-984 · AST-975
 
-**Scope:** No `append_agent_response`; RESPONSE rows tagged with `entity_id`; hop/hydrate via `list_entity_latest_agent_refs`.
+**Scope:** No `append_agent_response`; RESPONSE rows tagged with `entity_id`; hop/hydrate via `list_entity_latest_agent_refs`. AST-1429 stamps the same `entity_id` on prompt rows when index is known (AST-1431 tests).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| No append symbol; RESPONSE save carries `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired` |
+| No append symbol; RESPONSE save carries `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired::test_do_task_success_tags_response_entity_id` |
+| Prompt-row `entity_id` stamp (SYSTEM / CACHE_* / TASK / NO_CACHE) when index is known | `src/core/agent.py` | `TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id`; `test_store_prompt_blocks_stamps_entity_id_when_known`; `TestAst515AdhocWorkbenchLedger` call-site |
 | Hop skips failure prefix / prefers anchor batch | same | hop tests in `TestAst597*` / `TestAst769*` (list API mocks) |
 
 **AST-984** narrowed run: see `docs/test-bible/data/database/agent_responses.md` (§ AST-984).
+
+### AST-1431 · AST-1423
+
+**Scope:** Gap from AST-1429 `[board-betty] TESTS: REVISE` — `do_task` / `_store_prompt_blocks` / Ad Hoc Test stamp `entity_id` on prompt rows, not only RESPONSE.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt saves share RESPONSE `entity_id` | `src/core/agent.py` | `TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id` |
+| Helper kwarg on / omitted | same | `TestAst984EntityColumnRetired::test_store_prompt_blocks_stamps_entity_id_when_known` |
+| Ad Hoc call-site forwards `entity_id` | same | `TestAst515AdhocWorkbenchLedger` success + failure |
+
+**AST-1431** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_do_task_success_tags_prompt_entity_id \
+  tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_store_prompt_blocks_stamps_entity_id_when_known \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  -q
+```
 
 ---
 
@@ -661,19 +682,40 @@ Same `_store_response_block` / `debug=True` `result` bind as **AST-1076** (intak
 
 **Parent:** [AST-1091 — Job resume artifact, cover letter and suggested responses is not saved in job_data](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1099-pin-agent-data-id`.
 
-After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, `do_task` pins the RESPONSE `agent_data_id` into `job_data.artifacts` **before** `run_next` (mid-chain + terminal). Failed hops do not pin. Terminal body-copy via `persist_job_artifact_from_parsed` removed for finalize hops. Config map: **`docs/test-bible/utils/config.md`**. Tracker helper: **`docs/test-bible/core/tracker.md`**.
+After successful RESPONSE store for `finalize_job_resume` / `finalize_cover_letter` / `propose_application_responses`, `do_task` pins the RESPONSE `agent_data_id` into `job_data.artifacts` **before** `run_next` (mid-chain + terminal). Failed hops do not pin. Terminal body-copy via `persist_job_artifact_from_parsed` removed for finalize hops. Sibling `resume_content` copy after the resume pin is **AST-1430**. Config map: **`docs/test-bible/utils/config.md`**. Tracker helper: **`docs/test-bible/core/tracker.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Mid-chain / terminal pin + no body-copy | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
+| Mid-chain / terminal pin + no `persist_job_artifact_from_parsed` | `src/core/agent.py` | **`TestAst1099DoTaskArtifactPin`** |
 
-**Broken / obsolete:** any expectation that terminal `do_task` body-copies `finalize_job_resume` / `finalize_cover_letter` into `artifacts.resume_content` / dict `cover_letter` — superseded by pointer pin (AST-1100 remaps readers).
+**Broken / obsolete:** terminal `persist_job_artifact_from_parsed` for finalize hops (still unused). Cover / `proposed_answers` stay pin-only. Resume sibling blob copy is **AST-1430**.
 
 **Integration:** none — do not invent new integration coverage.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_agent.py::TestAst1099DoTaskArtifactPin \
+  -q
+```
+
+### AST-1430 · AST-1422
+
+**Parent:** [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer). **Publish:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin`. Product fix: **AST-1428**.
+
+After a successful `finalize_job_resume` pin, `do_task` calls `persist_finalize_job_resume_content(index, parsed)` (best-effort; does not revive `persist_job_artifact_from_parsed`). Pin string stays. PUT keep-pin: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1430.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Sibling copy after pin | `src/core/agent.py` | **`TestAst1430DoTaskResumeContentCopy::test_finalize_copies_resume_content_keeps_pin`** |
+
+**Broken / obsolete:** none on the pin suite — `TestAst1099DoTaskArtifactPin` still asserts `persist_job_artifact_from_parsed` unused.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1430DoTaskResumeContentCopy \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin \
   -q
 ```
 
