@@ -151,3 +151,12 @@ Findings: none (`fix-now` / `discuss`).
 
 context_tokens≈48000
 
+---
+
+## Review stub (Ada / build)
+
+**Publish ref:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload`  
+**Product commits:** `0990d1af` (Stage 1 — `list_agent_data_batches`), `b378cd81` (Stage 2 — `list_agent_data_runs` debug + one `adhoc-` strip), `5a1c95a5` (Stage 3 — `GET /api/admin/adhoc/runs`)
+
+Frontend picker, editor mapping, and `GET /api/agent_data/<batch_id>` left untouched.
+
