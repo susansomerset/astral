@@ -107,6 +107,12 @@ No API modules, no `NAV_CONFIG` / `src/utils/config.py`, no `CandidateContext.ts
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review (build)
+
+**Built:** `origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker` @ `8e46c2d2774f42a4de30f44d0929d978f97b1b15`
+
+Stage 1: read-only `.sidebar-candidate-state` line under wide `<select>` and narrow picker toggle from `selectedCandidate.state`. Tests deferred to Betty.
+
 ## Joan validate
 
 Worktree `AGENTS.md` is still **Ada** (Chuckles did not seed Joan). Linear is correct: **AST-1450** is **Plan Ready**, assignee **Joan**. Pass continued on that gate. Status is not Plan Discuss (no `[plan-discuss]` rounds). Not UAT-thin / not fix-mode.
