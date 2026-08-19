@@ -255,3 +255,11 @@ context_tokens≈32000
 ## Betty / test-tree (do not implement)
 
 Existing `tests/component/ui/test_auth.py::TestRequireAuth` 401 cases will 200 if the process env is `ASTRAL_DEPLOY_ENV=local` (common on this host). Betty owns isolating those tests (monkeypatch env off `local`) plus new coverage for the passthrough / public route. Engineers do not edit `tests/` or `docs/test-bible/**`.
+
+## Review (build)
+
+**Built @ `399e648c`** — `origin/sub/AST-1438/AST-1440-local-api-auth-passthrough`
+
+- Stage 1: `pattern.auth.local-deploy-passthrough` proposed; Code Rules §2.9 local exception + §2.1 `AUTH_CONFIG`
+- Stage 2: `AUTH_CONFIG["local_operator"]`; `local_operator_user()` / `local_auth_passthrough_payload()`
+- Stage 3: `@require_auth` local early-return; open `GET /api/auth_passthrough`; `env.example`
