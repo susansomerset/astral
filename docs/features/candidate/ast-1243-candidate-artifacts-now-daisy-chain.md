@@ -307,3 +307,120 @@ run_next for craft_do_rubric did not run.
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+---
+
+## Bug: AST-1434 — REQUESTED_ARTIFACTS daisy chain
+
+Delta only. Original AST-1243 Purpose / Functional scope / AC1–AC9 / Boundaries still stand; this section does not re-plan them. Mini-parent is AST-1426 (fresh `ftr` off `origin/dev`, not a resurrection of AST-1243).
+
+### As-is
+
+`REQUESTED_ARTIFACTS` is supposed to walk the live `agent_task.run_next` craft-rubric chain with per-hop persist. In the pasted 2026-08-18 run the hop that executed was `craft_joblist_rubric` (`in_run_next_chain=True`). The LLM returned a valid `joblist_rubric` payload, then `persist_candidate_craft_hops` rejected vector **Onsite Requirement** because grade letters were inline on one physical line (`A == … B == …`) instead of one `A =` / `B:` / `C ==` line each. Persist raised, `do_task` returned failure before `_write_dispatch_hop_label_on_success`, `chain_hop_failed`, so later hops — including `craft_jobdesc_rubric` — never run.
+
+Chain participation is still not “`run_next` is set, period.” `src/core/consult.py` candidate branch only calls `run_requested_artifacts_dispatch` when `dispatch_task.task_key == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]` (`craft_get_rubric`); any other candidate `task_key` with live `run_next` (including a mid-hop `craft_joblist_rubric` row) logs `unhandled candidate task_key` and returns zeros. Dispatcher mid-chain reclaim (`requested_artifacts_dispatch_claim_states`) is gated on that same entry-hop equality. `run_requested_artifacts_dispatch` always starts at the stage entry hop and hardcodes `dispatch_trigger_state` from `CANDIDATE_STAGE_DISPATCH`, not from the `dispatch_task` row.
+
+A mid-hop one-off has no `dispatch_task` skip-daisy-chain toggle. UI generate already sets `ctx["suppress_run_next"]=True`; that flag is not wired from a dispatch row. Hop output is not `<dispatch_task.trigger_state>.<completed_task_key>` as a row-driven contract: candidate hop labels require `persist_candidate_craft_hops` plus `trigger_state == REQUESTED_ARTIFACTS`, and persist failure short-circuits the write.
+
+### To-be
+
+Daisy chain is entirely database-driven. If an `agent_task` has `run_next` set, that is the only participation signal — no leftover code/config membership list on this path. A regular `dispatch_task` that starts on a `task_key` with `run_next` uses the daisy-chain path (persist each hop, follow `run_next`, write hop labels). A `skip_daisy_chain` toggle on the `dispatch_task` itself covers a one-off mid-hop (do not walk the rest; do not graduate the stage). The output state of the daisy chain (current and future) is `<dispatch_task.trigger_state>.<completed_task_key>` (bare trigger prefix if the row’s `trigger_state` is already a hop label). `craft_joblist_rubric` / `craft_jobdesc_rubric` persist the pasted inline `A ==` form and the live `REQUESTED_ARTIFACTS` walk continues.
+
+### Repro
+
+Fixture is the pasted `craft_joblist_rubric` `agent_payload` (candidate `somerset`), not a SQL seed. One criterion is enough to fail persist today:
+
+```json
+{
+  "agent_performance": {"status": "success", "failure_note": ""},
+  "agent_payload": {
+    "criteria": [
+      {
+        "label": "Onsite Requirement",
+        "code": "OR",
+        "importance": 10,
+        "content": "Susan, scanning a bare listing summary, asking only whether the fields shown already rule this one out. A == location field states Remote, Fully Remote, or Work From Home. B == location field states a Bay Area city (San Francisco, Oakland, Berkeley, Walnut Creek, Alameda) with no onsite requirement stated. C == location field states Hybrid with a Bay Area city. D == location field states Hybrid with a non-Bay Area city. F == location field states On-Site, Onsite, In-Office, or In-Person. X == location field is absent or blank."
+      }
+    ]
+  }
+}
+```
+
+Steps that must all pass after the fix:
+
+1. `ensure_criterion_grade_table` / `normalize_rubric_artifacts_on_save` on that `joblist_rubric` criterion succeeds (inline `A ==` … `X ==` on one physical line). Newline form (`A == …\nB == …`) still succeeds.
+2. Candidate in `REQUESTED_ARTIFACTS`; dispatch row `task_key=craft_get_rubric`, `trigger_state=REQUESTED_ARTIFACTS`, `skip_daisy_chain` unset/false. Chain walks live `run_next` through `craft_joblist_rubric` and `craft_jobdesc_rubric` (and the rest). Each successful hop persists via `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` and writes candidate.state `REQUESTED_ARTIFACTS.<completed_task_key>`. Terminal hop with empty `run_next` graduates to `ARTIFACTS_READY`.
+3. Dispatch row whose `task_key` is a mid-chain hop with live `run_next` (e.g. `craft_joblist_rubric`) and `trigger_state=REQUESTED_ARTIFACTS`, `skip_daisy_chain` unset/false: consult uses the daisy-chain worker starting at that `task_key` (not `unhandled`); persist + succession continue from there.
+4. Same mid-hop row with `skip_daisy_chain=true`: that hop persists (and hop-label writes); `run_next` is not followed; candidate is **not** force-graduated to `ARTIFACTS_READY`.
+
+### Root cause
+
+Three defects, one chain-stop:
+
+1. **Persist parser is newline-only.** `src/utils/rubric_text.py` `parse_trailing_grade_table_lines` splits on `\n` and requires two trailing `_GRADE_LINE` matches. `coerce_embedded_newline_escapes` only expands literal `\n` when there are fewer than two real newlines — it does not split inline `A == … B == …` on one physical line. `_persist_craft_dispatch_success` → `normalize_rubric_artifacts_on_save` raises; `do_task` returns before hop-label write and before `run_next` recurse.
+2. **Consult still membership-gates the daisy-chain worker** on `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]` (`craft_get_rubric`). Live `agent_task.run_next` is not the participation signal. Dispatcher reclaim of `REQUESTED_ARTIFACTS.<hop>` labels is gated the same way.
+3. **No dispatch-row skip-daisy-chain; hop prefix is stage-hardcoded.** `suppress_run_next` exists only as a `do_task` ctx flag (UI generate). Candidate hop labels require `trigger_state == REQUESTED_ARTIFACTS` from `CANDIDATE_STAGE_DISPATCH`, not the dispatch row. `run_requested_artifacts_dispatch` always starts at the stage entry hop and, on `do_task` success, always `transition_candidate_state(..., pass_state)` — a one-off mid-hop would wrongly graduate if we only set `suppress_run_next` without changing that.
+
+Not the root: `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (persist routing, not hop order). `_walk_requested_artifacts_chain_task_keys` already walks live `run_next` (UI labels / claim expansion). Do not revive AST-1109 `config.py` hop-membership frozensets.
+
+### Proposed change
+
+**1. Accept inline grade letters in persist (unstick the pasted hop). Do not change `agent_task` prompt copy (AST-1243 Boundaries).**
+
+In `src/utils/rubric_text.py` `parse_trailing_grade_table_lines` (used by `ensure_criterion_grade_table`): keep the existing trailing-newline parse. When that yields fewer than two grade lines, parse the last physical line (or whole content if it is one line) for inline grade tokens `[ABCDEFX]` + `==` / `=` / `:` and split into one row per token so `A == … B == …` on one line is accepted. Require at least two grades; same `ValueError` text if still short. After a successful inline split, rewrite `item["content"]` in `ensure_criterion_grade_table` to the canonical newline form (`A == desc\nB == desc`) so stored rubric_vector rows stay one-grade-letter-per-line for consult. Newline tables and `\\n` escapes keep working. This path is shared with Artifacts Save — intentional: the same payload must persist from dispatch and from UI save.
+
+**2. Daisy-chain participation = live `run_next`, from the dispatch row’s `task_key`.**
+
+In `src/core/consult.py` candidate branch: stop gating on `tk == CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["task_key"]`. If `_current_agent_task_run_next(tk)` is non-empty (or this is already a chain child — not needed at consult entry) **and** `skip_daisy_chain` is false, call the candidate craft daisy-chain worker for **that** `tk`. If `skip_daisy_chain` is true and `tk` maps through `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (or the existing `_persist_craft_dispatch_success` special cases), still run the worker for the single hop. Other candidate keys stay unhandled.
+
+Generalize `run_requested_artifacts_dispatch` in `src/core/candidate.py` to take the dispatch row’s `task_key`, `trigger_state`, and `skip_daisy_chain` (consult passes them; existing entry-hop caller may keep defaults from `CANDIDATE_STAGE_DISPATCH`). Start `do_task` at that `task_key`, not always `craft_get_rubric`. Set `ctx["persist_candidate_craft_hops"]=True`, `ctx["dispatch_trigger_state"]` to the **bare** trigger (`parse_dispatch_hop_label(row.trigger_state)[0]` if the row trigger is already a hop label, else `row.trigger_state`), and `ctx["suppress_run_next"]=True` iff `skip_daisy_chain`.
+
+On `do_task` success: if `skip_daisy_chain`, do **not** `transition_candidate_state` to `pass_state` (`ARTIFACTS_READY`); leave the hop label. If not skip and `dispatch_trigger_state` is the REQUESTED_ARTIFACTS stage trigger, graduate to `CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["pass_state"]` as today. Failure paths keep `_requested_stage_failure_target` / AST-1388 leave-last-hop-label behavior.
+
+Keep `CANDIDATE_STAGE_DISPATCH` as stage trigger / pass_state / entry-hop **for Generate/Regenerate and claim defaults**. It is not a hop-membership list. Do not add `craft_joblist_rubric` (or any hop) as a second consult `if tk ==` special case.
+
+**3. `skip_daisy_chain` on `dispatch_task` (mirror `skip_cache`).**
+
+- `src/data/database.py`: INTEGER NOT NULL DEFAULT 0 column; add to `_ensure_dispatch_task_schema` `_migrate_cols`, `_DISPATCH_TASK_UPDATE_COLS`, `_DISPATCH_TASK_TEMPLATE_COPY_COLS`, and the bool-int coercion branch next to `skip_cache`. Default 0 on insert (`save_dispatch_task` need not take it — update/PUT sets it, same as `skip_cache` today).
+- `src/ui/api/api_admin.py`: add `skip_daisy_chain` to the PUT `allowed` set and the int-bool branch; POST may omit (default 0).
+- `src/ui/frontend/src/pages/AdminScheduledActions.tsx`: checkbox on create/edit next to Debug; include in PUT/POST body; `DispatchTask` / form types.
+- `src/core/dispatcher.py` `_dispatch_one`: if `task.get("skip_daisy_chain")`, set `ctx["suppress_run_next"]=True` (same pattern as `skip_cache` → `ctx["skip_cache"]`). Consult still passes the flag into the worker so graduation is skipped even if ctx were omitted.
+
+UI generate (`run_candidate_artifact_generation`) keeps `suppress_run_next=True` independently. Do not replace that path with the dispatch column.
+
+**4. Hop output = `<dispatch_task.trigger_state>.<completed_task_key>`.**
+
+`dispatch_hop_label` already formats `{ts}.{tk}`. Changes:
+
+- `run_requested_artifacts_dispatch` (generalized) sets `dispatch_trigger_state` from the dispatch row as in (2), not hardcoded `CANDIDATE_STAGE_DISPATCH["trigger_state"]`.
+- `_should_write_candidate_craft_hop_label`: drop the `trigger_state == stage_trigger` equality. Keep `entity_type == "candidate"`, non-empty index/trigger, and `persist_candidate_craft_hops`. Any candidate daisy-chain with persist writes `write_candidate_dispatch_hop_label(index, trigger_state, task_key)`.
+- Persist still runs **before** the hop-label write (today’s order). After (1), persist succeeds so the write is reached.
+- Dispatcher candidate claim: when `input_state` is `REQUESTED_ARTIFACTS` (or a hop label whose trigger is that stage), expand claim states via `requested_artifacts_dispatch_claim_states()` **without** requiring `dispatch_task_key == craft_get_rubric`. Mid-hop rows can reclaim `REQUESTED_ARTIFACTS.<parent>` / bare trigger the same way job `dispatch_chain_claim_states_for_row` does.
+
+Job `BUILD_ARTIFACTS` hop labels stay on the existing consult job path (`dispatch_trigger_state` already from the row). Do not change job graduation maps.
+
+**5. Persist mapping unchanged.** `_persist_craft_dispatch_success` keeps `CRAFT_RUBRIC_TASK_TO_ARTIFACT_KEY` (and `craft_company_search_terms` / `craft_resume_base` special cases). That map routes hop → artifact field; it is not chain succession. `craft_jobdesc_rubric` QC/GC merge (`_merge_embedded_evaluate_jd_criteria`) stays.
+
+### Blast radius
+
+- `src/utils/rubric_text.py` — shared by dispatch persist, Artifacts Save, consult hydrate. Inline parse must not break existing newline tables or raise on legitimate two-line suffixes.
+- `src/core/consult.py` candidate branch — every candidate `dispatch_task` with `run_next` now hits the daisy-chain worker; unhandled warning must remain for keys that are neither run_next-chain nor skip-one-off craft persist.
+- `src/core/candidate.py` `run_requested_artifacts_dispatch` — start hop, trigger, skip, graduation. `requested_artifacts_dispatch_claim_states` / dispatcher reclaim. Generate/Regenerate still enter via `start_requested_artifacts` + entry hop `craft_get_rubric` (AST-1253).
+- `src/core/agent.py` hop-label gate and persist-then-label order. `suppress_run_next` already used by UI generate and `select_job_page` special cases — skip-daisy-chain must not change those.
+- `src/data/database.py` + Admin Scheduled Actions — new column; template copy; PUT whitelist.
+- Tests (Betty owns `tests/`): `test_candidate.py` (requested-artifacts dispatch, `suppress_run_next` on UI generate), `test_agent.py` (hop labels, persist), `test_dispatcher.py` (claim states, skip_cache ctx copy), `test_api_admin.py` (PUT allowed), rubric_text component tests if present. Do not patch `tests/` on this ticket.
+- Job `BUILD_ARTIFACTS` / `DISPATCH_CHAIN_TERMINAL_GRADUATION` — out of product scope except hop-label format already matches; do not retune job maps.
+- Resume daisy-chain (`craft_resume_base` / `REQUESTED_RESUME` generation) stays out of scope (AST-1243 Boundaries).
+
+### What must still hold
+
+- AST-1243 AC5: execution history shows the daisy chain hop-by-hop comparably to `BUILD_ARTIFACTS`.
+- AST-1243 AC6: on success, `ARTIFACTS_READY` and each chain rubric visible/editable under Artifacts nav.
+- AST-1243 AC7: failure paths land on retry/error companions without silent stuck mid-chain (persist still raises on truly unparseable grade text; hop-label left in place per AST-1388 when already on a compound label).
+- AST-1243 AC8: no craft-rubric hop sequencing list in `config.py`; succession remains `agent_task.run_next`; per-hop persist matches `BUILD_ARTIFACTS` posture. `CANDIDATE_STAGE_DISPATCH` stays stage wiring, not a hop set.
+- `astral.dispatch.run-next-is-chain-authority` — `run_next` is succession authority; do not add a parallel membership frozenset or a second `if tk == "craft_joblist_rubric"` consult gate.
+- `astral.state.no-daisy-chain-in-run` — only the documented `run_next` carve-out (§2.6.0); skip-daisy-chain is the one-off off-switch, not a second pipeline.
+- `REQUESTED_RESUME` / `REQUESTED_ARTIFACTS` remain selectable for `craft_get_rubric` with no new trigger-state validation (AC2).
+- Per-artifact UI generate for live chain keys stays 409 → `generate_artifacts` (AST-1253).
+- Wrapper task keys `candidate_requested_artifacts` / `candidate_requested_resume` stay retired (AC1).
+- Backend `debug=True` per-hop found/recorded (AC9) on touched persist/succession paths.
