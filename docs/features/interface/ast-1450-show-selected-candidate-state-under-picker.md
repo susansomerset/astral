@@ -106,3 +106,30 @@ No API modules, no `NAV_CONFIG` / `src/utils/config.py`, no `CandidateContext.ts
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+Worktree `AGENTS.md` is still **Ada** (Chuckles did not seed Joan). Linear is correct: **AST-1450** is **Plan Ready**, assignee **Joan**. Pass continued on that gate. Status is not Plan Discuss (no `[plan-discuss]` rounds). Not UAT-thin / not fix-mode.
+
+Publish ref: `origin/sub/AST-1444/AST-1450-show-selected-candidate-state-under-picker` @ `c907a0daac32dae9d8a98d1866c0957eca0438c2`
+
+---
+
+[plan-rubric]
+revision: 1
+**Rubric:** plan-rubric
+**Ticket:** AST-1450
+**Overall:** APPROVED
+**Publish-ref tip:** `c907a0daac32dae9d8a98d1866c0957eca0438c2`
+
+## Traceability
+AC1–3 → Stage 1 (exact stored `state` under wide `<select>` and narrow toggle; not an input; re-render on `selectedId`). Parent nav-ungate ACs → N/A — “Does not gate nav membership (sibling #1).”
+
+## Findings
+- **discuss** — Stage 1 Decision “dual-key” snippet runs `candidates.find(… astral_candidate_id === selectedId)` twice. `CandidateInfo` has only that id; `NavigationShell` already has `selectedCandidate` on the same key. Implement from that row (or drop the duplicate `??`). Do not invent a second identifier.
+
+R1–R5 pass. Definition fidelity, layers, config, placement, and cited statutes (`astral.ui.naming-conventions`, `astral.ui.frontend-file-placement`, `astral.layers.ui-config-driven-business-logic`) hold: display the stored string, no React nav gates, no new files, `App.css` only. Parent `pattern.config.config-block` is sibling NAV membership, not this chrome line.
+
+context_tokens≈48000
+
+[plan-rubric] PROCEED (Commit: c907a0daac32dae9d8a98d1866c0957eca0438c2) picker state line
