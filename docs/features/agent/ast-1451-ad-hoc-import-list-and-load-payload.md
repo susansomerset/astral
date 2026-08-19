@@ -131,3 +131,23 @@ def adhoc_runs():
 Confirm Chuckles estimate: 3 — agree
 
 Known admin-list + existing GET load + one prefix strip. Debug contract is mechanical (same Style D as `_store_prompt_blocks`). No schema migration, no frontend.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1451
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload` @ `f0f511714d010d4615a3f9f34c70a128d4aba013`
+
+### Traceability
+Child AC1→S1+S3; AC2→S2 one-prefix strip + no `agent_data` writes (Load body = existing `GET /api/agent_data/<batch_id>`); AC3→S2 debug gate. Parent AC2 editor/panes fill, AC4 no catalog overwrite, AC5 `entity_id` restore, AC6 dirty confirm = N/A — sibling AST-1452 / child Boundaries (“Does **not** own the picker chrome or editor mapping”).
+
+R1–R3 (in-session): 18 universal considered, all `conforms`. 36 scoped considered, all `conforms` (auth via `@require_admin` which wraps `@require_auth`; list/load stay ui→core→data; header inventory updated on `agent_data`; debug only when `debug=True` via `get_logger`/`debug_index`/`debug_detail`; data raises, no data-layer logs; reuse existing batch GET, no second inspector). 10 scoped excluded (path/layer miss): `astral.debug.no-repo-root-artifacts-dir`, `astral.debug.spikes-under-debug-dir`, `astral.dispatch.seed-auto-false`, `astral.docs.features-single-file-per-ticket`, `astral.git.engineer-test-tree-ban`, `astral.layers.scripts-exempt-from-layer-rules`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`, `astral.standards.utils-data-late-import-only`, `astral.ui.frontend-file-placement`. Cited patterns `pattern.ui.admin-endpoint`, `pattern.layers.import-discipline`, `pattern.config.config-block` are `status: approved` and match the plan shape. Estimate 3 is honest.
+
+R6: plan matches the child definition (read path + Test prefix, not chrome). No `src/utils/config.py` change is justified (`BLOCK_TYPES` already complete). No frontend files. No claim/process/release or new `do_task` hop.
+
+Findings: none (`fix-now` / `discuss`).
+
+context_tokens≈48000
+
