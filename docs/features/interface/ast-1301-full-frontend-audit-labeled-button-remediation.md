@@ -1,3 +1,352 @@
+<!-- linear-archive: AST-1301 archived 2026-08-19 -->
+
+## Linear archive (AST-1301)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1301/full-frontend-audit-labeled-button-remediation-button-consistency  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / —  
+**Parent:** AST-1166 — Button consistency  
+**Blocked by / blocks / related:** parent: AST-1166
+
+### Description
+
+## What this implements
+
+After #1: evaluate each UI file against the patterns; map every labeled action; remediate anomalies onto `btn primary` / `secondary` / `danger` / `in-flight`. Does not own list icon-control remediations (#3).
+
+## Citations
+
+`pattern.ui.shared-button-roles`; `astral.standards.in-scope-only`.
+
+## Acceptance criteria
+
+- [X] 2. An inventory (plan or Code Complete note) maps every labeled `<button>` (and button-styled action) in `src/ui/frontend` to a catalog class or a named exception.
+- [X] 3. Manage Email toolbar actions, list bulk/toolbar actions, modal footers, detail/edit save bars, and export actions all use the shared labeled classes — no bare/browser-default toolbar buttons beside themed controls.
+- [X] 4. Duplicate parallel families (`dep-btn` vs `modal-btn`, gold bulk vs green save as separate systems) are gone; one class system remains.
+- [X] 5. In-flight primaries share one gold busy treatment wherever busy already exists.
+- [X] 6. No regression in enablement or actions on touched flows (e.g. Land Meteorite still gated correctly).
+
+## Boundaries
+
+* Does not land the pattern docs (sibling #1).
+* Does not own list icon-control remediations (sibling #3).
+
+## In scope
+
+- [X] `pattern.ui.shared-button-roles` — call sites pair `btn` with `primary` / `secondary` / `danger` / `in-flight`
+- [X] `astral.standards.in-scope-only` — labeled remediations only; no icon-control sweep; no pattern-corpus edit
+- [X] `astral.standards.dry-and-focused-functions` — one labeled family; leftover `modal-btn` / `dep-btn` / bulk / export / toolbar / skip CSS deleted after migration
+- [X] `astral.ui.frontend-file-placement` — styles only in `src/ui/frontend/src/App.css`; no `Button.tsx`
+- [X] `astral.ui.naming-conventions` — domain class names (`btn primary` …); no ticket ids in selectors
+- [X] `astral.standards.names-not-ticket-ids` — no `AST-1301` in product selectors
+- [X] `astral.standards.no-cross-contamination` — stay in `src/ui/frontend/**`
+- [X] `astral.layers.ui-config-driven-business-logic` — presentation only; enablement/API unchanged (Land Meteorite gate stays)
+- [X] `astral.docs.features-single-file-per-ticket` — one plan under `docs/features/interface/`
+- [X] Inventory in the plan maps every labeled control or names an exception
+- [X] Manage Email / list bulk / modal footers / save bars / exports use catalog classes
+- [X] Inline background overrides on labeled actions removed (`#c0392b`, `#ff6b6b`)
+
+## Considered but excluded
+
+- [X] `pattern.ui.icon-control` — sibling AST-1302 owns glyph/list-row remediations
+- [X] `pattern.ui.admin-endpoint` — no new admin HTTP surface
+- [X] `astral.ui.single-gunicorn-worker` — path matches `src/ui/**`; no server/worker change
+- [X] `astral.patterns.require-auth-on-protected-endpoints` / `astral.idioms.require-auth-on-protected-endpoints` — no endpoints
+- [X] `astral.standards.logging-via-utils` — no logging
+- [X] `astral.standards.debug-contract-gated` — no debug-contract lines
+- [X] `astral.standards.public-then-helpers` — TSX className swaps; no new Python helpers
+- [X] `astral.standards.data-raises-caller-logs` — no raise/log paths
+- [X] `astral.layers.import-direction` — no new imports
+- [X] `astral.config.config-source-of-truth` — no `config.py`; tokens stay on `App.css` `:root`
+- [X] `astral.config.secrets-and-env-specific-from-environ` — no secrets or env-specific values
+- [X] `astral.seed.define-approved` — not a seed-catalog ticket
+- [X] Pattern docs / `canon/patterns/**` — sibling AST-1300
+- [X] `CandidateJobRowActions.tsx`, `list-page-edit-btn`, `modal-close`, `job-list-icon-btn`, `sql-hist-btn`, chevrons — AST-1302
+- [X] Nav / tabs / side-tab / section-header / swatch / rubric-link / batch-link chrome — not catalog buttons
+- [X] Adding `in-flight` where busy is text-only today (Run/Parse/Test)
+- [X] `--text-on-danger` token — leave `#fff` as AST-1300 landed it
+
+## Notes for planning
+
+Citations as above. After #1. Plan inventory is the AC2 map.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/<parent-segment>`, child `sub/<parent-id>/<child-segment>`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-11T05:42:02.172Z
+[code-rubric] revision=2
+**Overall:** DISCUSS
+Discuss: test-tree on tip (pipeline norm) + AST-1302 won row/icon controls — no engineer fix. Stage 5 rg clean.
+context_tokens≈65000
+— Radia
+
+#### betty — 2026-08-11T05:37:40.344Z
+[check-linear]
+
+`[qa-handoff]` cleared. Stay Tests Ready — Hedy.
+
+**Publish:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `12019dda`
+**origin/tests:** `61a18bf2` `test(AST-1301): fix [qa-handoff] — JobDetailModal state_ui_manifest stub`
+First `merge-tests(AST-1301)` stays `29850995` (no second merge-tests).
+
+### What changed
+
+`test_JobDetailModal` already-skipped path: stub `/api/state_ui_manifest` with `STATE_UI_MANIFEST_FIXTURE` (`already_skipped_state: CANDIDATE_SKIPPED`). Skip class assert unchanged. Still do **not** run names matching `AST-1302`.
+
+### Manifest (same file lists; filter unchanged)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx \
+  ../../../tests/component/frontend/components/test_LogOffScreen.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  -t '^(?!.*AST-1302)'
+```
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminCostReconciliation.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx \
+  ../../../tests/component/frontend/pages/test_CompaniesNewList.test.tsx \
+  -t '^(?!.*AST-1302)'
+```
+
+**Bible (on publish ref):**
+`docs/test-bible/frontend/components.md` `618dccde9be4321d5e5849fdcc77fff58e35f9103f9e0fc37c9e4116484278b7`
+
+#### hedy — 2026-08-11T05:35:58.559Z
+[qa-handoff]
+
+@Betty White — one leftover mock gap after your AuthContext / `ok: true` / AST-634 fixes. Product Skip class is correct.
+
+**Tip:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `0ecfac8d` (matches your republish SHA). Worktree stayed on 1301.
+
+**Command:** same two file lists, one vitest, `-t '^(?!.*AST-1302)'`.
+
+**Result:** 26 files passed / 1 failed; 276 passed / 1 failed / 7 skipped.
+
+### `JobDetailModal` > shows not-found and already-skipped states
+
+Not-found path is fine (`Job not found.`). Second mount (`j2`, `state: CANDIDATE_SKIPPED`) still shows **Skip This Job** (`btn secondary`), not **Already Skipped**.
+
+`alreadySkipped` is `manifest ? job.state === manifest.jobs.detail.already_skipped_state : false`. `StateUiProvider` loads `/api/state_ui_manifest`. This test’s `vi.mock` does not return that URL (throws), so `manifest` stays null and the label never flips.
+
+First case in the same file passed: Skip click + `toHaveClass("btn", "secondary")`.
+
+Please stub `/api/state_ui_manifest` (fixture already has `already_skipped_state: "CANDIDATE_SKIPPED"` in `stateUiManifestFixture.ts`), republish, reassign Hedy. Still skip AST-1302-named cases.
+
+#### betty — 2026-08-11T05:33:52.797Z
+[check-linear]
+
+`[qa-handoff]` cleared. Stay Tests Ready — Hedy.
+
+**Publish:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `0ecfac8d`
+**origin/tests:** `39eaaf23` `test(AST-1301): fix [qa-handoff] — AuthContext stubs + agent Response.ok`
+First `merge-tests(AST-1301)` stays `29850995` (no second merge-tests).
+
+### What changed
+
+1. `test_JobDetailModal` / `test_CompaniesNewList` / `test_AdminCostReconciliation` — stub `setAuthTokenGetter` + `setUnauthorizedHandler` on the partial `lib/api` mock.
+2. `test_AdminAgentPrompts` — `ok: true` on agent GETs (`/api/admin/agents/agent_a` and list/models/brain_settings). Token-meta `ok: false` case unchanged.
+3. `test_AdminPerformanceMonitor` AST-634 — fixture `first` is top-level (`candidateLabel` reads `c.first`, not `candidate_data.first`).
+4. Still do **not** run names matching `AST-1302`.
+
+### Manifest (same file lists; filter unchanged)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx \
+  ../../../tests/component/frontend/components/test_LogOffScreen.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  -t '^(?!.*AST-1302)'
+```
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminCostReconciliation.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx \
+  ../../../tests/component/frontend/pages/test_CompaniesNewList.test.tsx \
+  -t '^(?!.*AST-1302)'
+```
+
+**Bible (on publish ref):**
+`docs/test-bible/frontend/components.md` `8ca9ed2e7f355361570efd12ec15756e05964c60f12fd05e817c76377b7a6614`
+
+#### hedy — 2026-08-11T05:30:17.090Z
+[qa-handoff]
+
+@Betty White — manifest reds are test/harness defects, not labeled-button product. Stay Tests Ready.
+
+**Tip:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `e53474ff` (Betty `merge-tests` `29850995` + ftr merge after AST-1302 landed: row Delete / Set dispatch `T` taken as `icon-control`). Worktree stayed on 1301 for this run.
+
+**Command** (both §6 lists, one vitest, filter as posted):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  <28 manifest files> \
+  -t '^(?!.*AST-1302)'
+```
+
+**Result:** 22 files passed / 5 failed; 265 passed / 12 failed / 7 skipped.
+
+### Incomplete `vi.mock` of `lib/api` (AuthContext)
+
+`JobDetailModal` (2), `CompaniesNewList` (3), `AdminCostReconciliation` (2) crash on render:
+
+`No "setAuthTokenGetter" export is defined on the ".../lib/api" mock`  
+(same for `setUnauthorizedHandler`)
+
+Product classNames are not involved. Add those exports (or `importOriginal`) like the passing files.
+
+### `AdminAgentPrompts` (4) — mock `Response.ok` missing
+
+List renders `+ Add Agent` as `btn primary` (1301 contract). Row click then toast **HTTP undefined** — mock returns `{ json: ... }` without `ok: true`, and `openEdit` does `if (!r.ok) await readApiError(...)`. Timeouts on AST-636 / AST-632 are the same hang. Set `ok: true` on GET `/api/admin/agents/agent_a` (and other agent GETs). Not a className bug.
+
+After ftr/1302: row Delete is `icon-control` + `D` (1302 owns it). Do not assert labeled `btn danger` / name `Delete` on that row in 1301 cases.
+
+### `AdminPerformanceMonitor` AST-634
+
+`expected [ 'All', 'c1', 'c2' ] to include 'Ada'` (also Betty). Fixture vs filter labels; unrelated to copy-logs `btn secondary`.
+
+Please patch tests / republish `merge-tests(AST-1301)` and reassign Hedy. Do not run AST-1302-named cases on this ticket.
+
+#### betty — 2026-08-11T05:25:00.989Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `29850995`
+**merge-tests:** `merge-tests(AST-1301): origin/tests 95af9296d42a68073af0e9a3ac755d4eb8346559`
+
+`origin/tests` is cumulative — this merge also brought **AST-1302** test files onto the tip. **Do not** run names matching `AST-1302` (× / `icon-control` / `modal-close`). They belong on the sibling sub.
+
+### 1. Existing coverage (bible-backed)
+
+Handlers / `disabled` / labels unchanged. Land Meteorite still `disabled={!landEnabled}` — keep **AST-1142** toolbar tests. Skip still posts and closes — keep **JobDetailModal** Skip click. Intake Continue / Profile Save stay existing flows. Integration: no scenario asserts labeled-button catalogs — no drift.
+
+### 2. Broken / obsolete (revised this pass)
+
+`test_ArtifactEditor.test.tsx` **AST-645** `toHaveClass("save")` → `btn` + `primary`. Generate busy still `in-flight`.
+
+### 3. Gaps
+
+New catalog-class asserts + leftover-family CSS read on `App.css`. Icon-control files stay **AST-1302**.
+
+### Manifest (run on the publish tip)
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_Modal.test.tsx \
+  ../../../tests/component/frontend/components/test_ListPage.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/components/test_SectionExpandChrome.test.tsx \
+  ../../../tests/component/frontend/components/test_LogOffScreen.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageEmail.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsCompanySearchTerms.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateIntake.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateProfile.test.tsx \
+  -t '^(?!.*AST-1302)'
+```
+
+§6c page renders (class-only remediations; skip **AST-1302** cases):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminCostReconciliation.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageCandidates.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminManageSlack.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminPerformanceMonitor.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminScheduledQueries.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionCoverLetter.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminSessionResumePaste.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurfer.test.tsx \
+  ../../../tests/component/frontend/pages/test_CandidateSurferConsent.test.tsx \
+  ../../../tests/component/frontend/pages/test_CompaniesNewList.test.tsx \
+  -t '^(?!.*AST-1302)'
+```
+
+**Bible (on publish ref):**
+`docs/test-bible/frontend/components.md` `87b999aece62ec0099e2468bf5b7208ac4e2aa93f8a519e3b14b2f32e28f001d`
+
+#### joan — 2026-08-11T05:11:49.362Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+discuss (non-blocking): AST-1302 overlap on two row actions; Conf high vs Risk Medium — Stage 5 rg + Land Meteorite check.
+context_tokens≈85000
+— Joan
+
+#### hedy — 2026-08-11T05:08:06.154Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation/docs/features/interface/ast-1301-full-frontend-audit-labeled-button-remediation.md
+
+Publish ref `origin/sub/AST-1166/AST-1301-full-frontend-audit-labeled-button-remediation` @ `58d8191b`.
+
+**Scope:** MAJOR-CHANGE — labeled `className` swaps across shared components and most pages in `src/ui/frontend`, plus deletion of leftover button-family CSS in `App.css`; no API or config.
+
+**Conf:** high — AST-1300 already landed the exact classes; the plan enumerates every labeled control and the exception list; swaps are mechanical.
+
+**Risk:** Medium — handlers and enablement stay put, but a wrong role (primary vs danger) would mis-signal Kill All / confirm-regen / Skip, and Scheduled Actions Run/Stop cells will grow to catalog size.
+
+Locked in-plan: gold bulk → green primary; modal Skip → secondary (reversible); red-background fakes on save → `btn danger`; no new `in-flight` where the class is absent today; icon-control files left for AST-1302.
+
+---
+
 # AST-1301 — Full frontend audit + labeled-button remediations (Button consistency)
 
 - **Linear:** [AST-1301](https://linear.app/astralcareermatch/issue/AST-1301/full-frontend-audit-labeled-button-remediation-button-consistency)

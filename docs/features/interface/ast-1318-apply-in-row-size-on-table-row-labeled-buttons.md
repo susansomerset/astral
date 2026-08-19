@@ -1,3 +1,89 @@
+<!-- linear-archive: AST-1318 archived 2026-08-19 -->
+
+## Linear archive (AST-1318)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1318/apply-in-row-size-on-table-row-labeled-buttons-add-a-button-style-for  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** hedy  
+**Priority / estimate:** None / 2  
+**Parent:** AST-1309 — Add a button style for in-row buttons  
+**Blocked by / blocks / related:** parent: AST-1309
+
+### Description
+
+## What this implements
+
+After #1: put the in-row size on every labeled shared-role button that sits in a data-table row (Scheduled Actions Run / Stop included). Does not restyle full-size surfaces or icon-controls.
+
+## Citations
+
+`pattern.ui.shared-button-roles`; `astral.standards.in-scope-only`; `astral.standards.no-hardcoded-sets`.
+
+## Acceptance criteria
+
+- [X] 2. A labeled button in a data-table row uses the in-row size and is about 60% the height of a page/toolbar labeled button on the same screen.
+- [X] 3. Scheduled Actions row Run / Stop (including the in-row busy/stop label) use the in-row size and no longer set the row height to the full labeled-button size.
+- [X] 4. Page, toolbar, modal, and card-footer labeled buttons still use the existing full size.
+- [X] 5. Icon-only row actions are still icon-controls.
+- [X] 6. No change in enablement or actions on touched flows (including auto-mode / running gating on Scheduled Actions).
+
+## Boundaries
+
+- [X] Does not land the catalog/style (sibling #1).
+- [X] Does not restyle page, toolbar, modal-footer, or card-footer labeled buttons.
+- [X] Does not convert labeled actions to icon-controls.
+
+## Notes for planning
+
+After #1. Presentation only — do not change handlers, enablement, or label meaning.
+
+## Git branch (authoritative)
+
+`sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### radia — 2026-08-11T22:44:03.143Z
+[code-rubric] PROCEED (Commit: 7e75f0e4) SA row in-row apply
+
+#### betty — 2026-08-11T22:14:15.516Z
+[check-linear]
+- Fixed leave-alone case: `mockApi(true)` so Stop All opens Kill Running Threads (empty `activeThreads` was product-correct disable, not a product bug).
+- Manifest unchanged (`AST-1318|AST-1301`); bible notes the running-thread setup.
+- `origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons` @ `7e75f0e4`
+- Hedy — re-run test-child.
+
+#### hedy — 2026-08-11T22:12:40.683Z
+[qa-handoff]
+
+Command:
+```
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  -t "AST-1318|AST-1301"
+```
+
+Result: 3 passed, 1 failed — `AST-1318: row Run uses in-row; toolbar and modals stay full size` at `test_AdminScheduledActions.test.tsx:1322` (`getByText("Kill Running Threads")`).
+
+Why test, not product: that case calls `mockApi(false)` so no thread is running. Toolbar Stop All stays `disabled={activeThreads.length === 0}`; a click does not open the kill modal. Product enablement is unchanged (plan AC6). Sibling `AST-1301: labeled actions use catalog classes` already uses `mockApi(true)` and passed. Row Stop / Draining cases passed.
+
+Please switch the leave-alone modal setup to a running thread (same as AST-1301) so Cancel / Kill Now can be asserted. Row Run `btn primary in-row` already matches before the Stop All click.
+
+@Betty White
+
+#### betty — 2026-08-11T22:11:45.496Z
+`origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons` @ `f1da6fb1` · in-row SA tests
+
+#### joan — 2026-08-11T22:07:41.730Z
+[plan-rubric] PROCEED (Commit: ac4b1bd3) apply in-row call sites
+
+#### hedy — 2026-08-11T22:05:37.847Z
+`origin/sub/AST-1309/AST-1318-apply-in-row-size-on-table-row-labeled-buttons` @ `ac4b1bd3` · in-row apply plan
+
+---
+
 # AST-1318 — Apply in-row size on table-row labeled buttons (Add a button style for in-row buttons)
 
 - **Linear:** [AST-1318](https://linear.app/astralcareermatch/issue/AST-1318/apply-in-row-size-on-table-row-labeled-buttons-add-a-button-style-for)

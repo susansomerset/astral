@@ -1,3 +1,187 @@
+<!-- linear-archive: AST-1272 archived 2026-08-19 -->
+
+## Linear archive (AST-1272)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1272/draft-hop-debug-whitelist-trail-draft-job-resume-response-schema-is  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** susan  
+**Priority / estimate:** None / —  
+**Parent:** AST-1268 — draft_job_resume response schema is wrong  
+**Blocked by / blocks / related:** parent: AST-1268
+
+### Description
+
+## What this implements
+
+After #1: when `debug=True`, emit Style D found/recorded detail for base_resume whitelist, unwrap, and accepted/rejected keys. Does not change allowlist rules.
+
+## In scope
+
+- [X] `astral.standards.debug-contract-gated` — Style D `debug_index` / `debug_detail` only when `debug=True` on draft normalize + validate; no new contract lines when `debug=False`
+- [X] Pass `debug=` from `do_task` into `normalize_draft_job_resume_agent_payload` and `validate_draft_job_resume_payload` (both pre-schema and post-rubric-decode sites)
+
+## Considered but excluded
+
+- [X] Nested contract / prompt alignment / base_resume whitelist rules — AST-1270 (`src/core/candidate.py` normalize/validate behavior; `TASK_CONFIG` nest/metadata keys; Manage Tasks seed)
+- [X] Deviations retention as hop/artifact metadata — AST-1271
+- [X] Allowlist membership or error-string changes — out of this child (observe only)
+- [X] HTML builders / cover-letter hops / craft-base parse — out of epic
+- [X] `tests/`, `docs/test-bible/**` — Betty
+
+## Acceptance criteria
+
+- [X] With `debug=True`, whitelist keys and unwrap/accept/reject outcomes are visible under Style D headers.
+
+## Boundaries
+
+Does not own nested contract / prompt alignment (sibling #1). Does not own deviations retention (sibling #2).
+
+## Notes for planning
+
+After AST-1270. Style D index headers + `|` detail; AST-538 contract only when debug=True.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1268-draft-job-resume-response-schema-is-wrong`, child `sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-08T01:18:30.063Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+
+`validate-sub-log` failed on `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`:
+- `a200f5a2 Merge remote-tracking branch 'origin/dev' into sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`
+
+@Katherine Johnson — republish sub without `Merge remote-tracking branch 'origin/dev'` (rebase/replay onto `origin/ftr/AST-1268-draft-job-resume-response-schema-is-wrong`, push publish-ref). Then merge-child can land.
+
+— Chuckles
+
+#### radia — 2026-08-08T01:14:06.108Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1272
+**Publish ref:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail` @ `366be114`
+**Overall:** CLEAN
+
+## Pattern conformance
+
+`none cited` — ticket citations are statute ids only; the parent's `pattern.config.config-block` was fully consumed by AST-1270 (this child reads `TASK_CONFIG` but does not extend it).
+
+## Plan adherence
+
+- Stages 1–2 executed in order. Diff = exactly the plan's 2 Files Changed (`src/core/candidate.py`, `src/core/agent.py`); `config.py`/`tracker.py`/`agent_task.json` diffs are inherited AST-1270 content, already reviewed under that ticket.
+- Checked all three of Joan's plan-rubric `discuss` findings against the built code:
+  1. **Sticky debug flag** — plan text said `if debug: logger.set_debug_flag(True)`; built code uses the unconditional `logger.set_debug_flag(debug)` form Joan recommended (matches the file's other 11 sites). **Resolved.**
+  2. **break hazard** on the experience job-array loop — a bare inner `break` would have silently rewritten the returned error string. Built code uses a `bad_job` flag to break the *outer* loop, preserving the correct error. **Resolved.**
+  3. Unwrap trail invisible to non-`do_task` `validate(debug=True)` callers — by design (`do_task` is the only production path); no action needed.
+- Full §5f backend-debug-logging pass: gated behind `debug=True` (double-gated — `debug_detail` also checks `_debug_flag`), found/recorded vocabulary, single-job `index 1/1` header, no body text logged, no new `logger.info("[DEBUG]…")`, no data-layer logging.
+
+## Findings
+
+None. No fix-now, no discuss.
+
+## Frame diff
+
+(none)
+
+Full 65-statute active-set sweep (same corpus as AST-1270's review) lives in the docs() append on the plan file (`366be114`) — not pasted here per rubric scope.
+
+## Notes
+
+Build self-caught and reverted an AST-1271 persist-call bleed in `agent.py` mid-implementation (dedicated `d4d3d366` commit) before publish — clean, no residue in the final diff. Good scope discipline.
+
+context_tokens≈98000
+— Radia
+
+#### betty — 2026-08-08T01:07:45.521Z
+## QA test manifest — AST-1272
+
+**Publish:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail` @ `fbb9e495`
+**tests SHA:** `460f329fc88d82d72c2a941c1b524382d6286ed7` (`merge-tests(AST-1272): origin/tests 460f329f…`)
+
+### Gaps (new)
+1. `tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail` — Style D unwrap (`popped` / `flat` / `invalid`) + whitelist/accepted/rejected trails; silent when `debug=False`
+2. `tests/component/core/test_agent.py::TestDoTaskShouldStoreBranches::test_draft_job_resume_passes_debug_flag_to_normalize_and_validate` — `do_task(..., debug=True)` forwards into normalize + validate
+
+### Existing
+3. Reuse AST-1270 / AST-594 draft suites (no fixture edits required — `debug=` defaults False)
+
+### Broken / obsolete this pass
+none
+
+### Integration
+none — observe-only debug; did not invent coverage
+
+### Run (test-child)
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1272DraftHopDebugWhitelistTrail \
+  tests/component/core/test_agent.py::TestDoTaskShouldStoreBranches::test_draft_job_resume_passes_debug_flag_to_normalize_and_validate \
+  -q
+```
+
+### Bible shasum on publish tip
+- `docs/test-bible/core/candidate.md` `8c4160af9ecabec2bf54e1c20ae67d310e71b54a`
+
+— Betty
+
+#### joan — 2026-08-08T01:01:14.561Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1272
+**Overall:** APPROVED
+**Publish ref tip:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail` @ `e762c0d2`
+
+## Traceability
+
+AC1→S1–S2 (S1 unwrap outcome, S2 whitelist keys + accepted/rejected + error). Maps to parent Functional scope bullet 8 and parent AC 7. No unmapped AC, no orphan stage.
+
+**Considered:** 48 active statutes (18 universal + 30 scoped); 17 scoped excluded on layer/path predicates; 3 retired ignored. One `needs-discussion`, zero `violates`.
+
+**Dependency verified:** AST-1270 is landed on `origin/ftr/AST-1268-…` and present on this child's branch — `draft_job_resume_allowed_section_keys`, `nested_resume_key`, and `payload_metadata_keys` all resolve. Every anchor the plan cites exists, and the `debug_index` / `debug_detail` keyword signatures in `src/utils/logging.py` match the plan's call shapes exactly.
+
+## Findings
+
+**discuss** — `src/core/candidate.py`, Stage 1 step 2 and Stage 2 step 5 (`astral.standards.debug-contract-gated`). Both stages use `if debug: logger.set_debug_flag(True)` and never set it back. `candidate.py`'s `logger` is a module-level singleton and `set_debug_flag` also raises the named logger to `DEBUG`, so one debug draft run leaves `src.core.candidate` in debug state for the life of the worker — every other debug-gated emission in that module (and bare `.debug()` / `.test()`) then fires on subsequent `debug=False` runs, until some other function happens to reset it. The helper's own docstring names this: *"restores INFO when disabled so bare .debug() does not leak after a debug run."*
+
+The new lines themselves are correctly guarded, so nothing this ticket adds emits at `debug=False` — which is why this is `discuss` and not `fix-now`. It is also an established idiom elsewhere in the repo. But `candidate.py` overwhelmingly prefers the unconditional form (`logger.set_debug_flag(debug)` at 11 sites vs `if debug: set_debug_flag(True)` at one). Recommendation: call `logger.set_debug_flag(debug)` unconditionally at the top of both functions and keep the `if debug:` guard on the emissions only. Same cost, matches the file's prevailing style, and a non-debug draft run then actively clears a sticky flag instead of inheriting it.
+
+**discuss** — `src/core/candidate.py`, Stage 2 step 4, nested-loop `break` hazard. The step says hard failures should "append `key` to `rejected`, set `err`…, break (or return via the shared emit path)." One of the five in-loop failures is **not** at loop top level: the `"Section 'experience' must be a job array or prose string"` return sits inside `for job in val:` (currently `candidate.py:2280–2282`). A literal `break` there exits only the inner job loop and falls through to the coercion at 2290, where `_coerce_resume_section_string` returns `None` for a job array — so the error silently becomes `"Section 'experience' must be prose text (string or coercible list)"`. That is an error-string change, which this plan's own Execution contract forbids. Recommendation: pin step 4 to the shared-emit **`return`** form (not `break`) at that site, or hoist the inner check to a helper that yields the error string. The other four failure points are loop-top-level and safe either way.
+
+**discuss** — unwrap trail is invisible to non-`do_task` callers. Pinning `validate`'s internal `normalize_draft_job_resume_agent_payload(parsed)` to `debug=False` is the right call for the production path — I confirmed `do_task` normalizes at `agent.py:2562` and `2751` before validate runs, so a validate-side peek really would always report `flat`. The trade is that anyone calling `validate_draft_job_resume_payload(parsed, cd, debug=True)` on a payload that has **not** been pre-normalized gets whitelist and accept/reject detail but no unwrap line at all. `do_task` is the only production path, so this does not dent the AC — flagging it so nobody later reads a missing unwrap line as "flat".
+
+**acceptable** — Stage 2 step 5 says "Before every `return` from this function… emit", while step 4 routes everything through one shared emit path. The shared path is the DRY reading and the one §1.3 / `astral.standards.dry-and-focused-functions` wants; five duplicated emit blocks would not be. Read step 5 as describing the single exit, not five.
+
+## Notes
+
+The plan's central design decision is correct and non-obvious, and Katherine showed the work: because `do_task` calls normalize before schema validation and validate calls it again, the nest key is already gone by the second pass, so unwrap logging has to live on normalize with the flag coming from the agent's first call. I verified both normalize call sites (`agent.py:2562`, `2751`) and both validate call sites (`2597`, `2775`) sit inside `do_task`, where `debug` is in scope — so the four-site wiring in Stage 1 step 4 and Stage 2 step 6 is complete and accurate.
+
+Stage 2's enumeration of pre-loop early returns is exhaustive against the current code: `agent_payload must be a dict` (2260), the nest non-dict error (2265), and `candidate has no base_resume section keys` (2268) are the only three. Detail lines carry keys and counts, never section bodies, so the AST-538 truncation rule is not in play.
+
+Self-assessment is honest. `Single-Component` fits two files with no new modules; `Conf: high` survives the dependency check above; `Risk: low` is fair given `debug=False` defaults and the contract against touching accept/reject rules — the one place that risk could bite is the `break` hazard in the second finding.
+
+R7 satisfied — slim comment gates the flip. Status → Plan Approved.
+
+— Joan
+
+context_tokens≈152000
+
+#### katherine — 2026-08-08T00:55:36.111Z
+Plan published on `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail` @ `e762c0d2`.
+
+**Plan:** https://github.com/susansomerset/astral/blob/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail/docs/features/artifacts/ast-1272-draft-hop-debug-whitelist-trail.md
+
+**Self-assessment**
+- **Scope:** Single-Component — Style D on existing draft normalize/validate in `candidate.py` plus `debug=` passthrough at both `agent.py` call-site pairs.
+- **Conf:** high — AST-1270 already owns unwrap + whitelist; this ticket only gates observability behind `debug=True` with the same helpers as AST-538 / AST-1148.
+- **Risk:** low — default `debug=False` keeps production quiet; plan forbids changing accept/reject rules or error strings.
+
+**Note:** `do_task` normalizes before validate, so unwrap Style D is on the agent’s first normalize call; validate’s internal normalize stays `debug=False` to avoid a false `flat` / duplicate trail.
+
+---
+
 # AST-1272 — Draft hop debug whitelist trail
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1272/draft-hop-debug-whitelist-trail-draft-job-resume-response-schema-is  
