@@ -29,3 +29,17 @@
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate unless **`test-child`** widens.
+
+### AST-1437 · AST-1426 (gap — inline A== persist for AST-1434)
+
+**Parent:** [AST-1426](https://linear.app/astralcareermatch/issue/AST-1426). **Sibling product:** AST-1434. **Publish:** `origin/sub/AST-1426/AST-1437-gap-inline-aeq-persist-coverage`.
+
+Board REVISE: no bible-backed node asserts pasted one-line `A ==` … `B ==` persist (AST-1434 Repro step 1). Product fix lands on AST-1434; this gap owns the [bug-repro] bar. Newline / literal-`\n` coerce stays AST-906.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Inline one-line A== B== persist | `src/utils/rubric_text.py` (`ensure_criterion_grade_table`) | **`TestAst1437InlineGradePersist::test_inline_aeq_one_physical_line_parses_and_rewrites`** (**[bug-repro]**) |
+
+**Broken / obsolete this pass:** none — AST-906 empty / single-grade still-reject stays.
+
+**Integration:** none revised.

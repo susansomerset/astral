@@ -331,6 +331,21 @@ Board REVISE: no bible-backed node asserts `REQUESTED_ARTIFACTS.<hop>` after cra
 
 **Pass criterion:** both nodes fail on pre-fix tree for the named gap; flip green after AST-1388 `make-fix`.
 
+### AST-1437 · AST-1426 (gap — consult mid-hop for AST-1434)
+
+**Parent:** [AST-1426](https://linear.app/astralcareermatch/issue/AST-1426). **Sibling product:** AST-1434. **Publish:** `origin/sub/AST-1426/AST-1437-gap-inline-aeq-persist-coverage`.
+
+Board REVISE: **`TestAst972CandidateStageConsultRouting`** was entry-hop-only and pinned `assert_awaited_once_with("c2", debug=False)` (breaks when consult passes `task_key` / trigger / skip). Primary persist bar: **`docs/test-bible/utils/rubric_text.md`** § AST-1437.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Loosen entry-hop worker call (extra kwargs) | `src/core/consult.py` | revised **`TestAst972CandidateStageConsultRouting::test_routes_requested_artifacts_via_stage_task_key`** |
+| Mid-hop `craft_joblist_rubric` + live `run_next` routes worker | `src/core/consult.py` | **`TestAst972CandidateStageConsultRouting::test_mid_hop_with_run_next_routes_to_daisy_chain_worker`** (**[bug-repro]**) |
+
+**Broken / obsolete this pass:** exact `assert_awaited_once_with("c2", debug=False)` — rewritten, not left to fail on make-fix kwargs.
+
+**Integration:** none revised.
+
 ### AST-1253 · AST-1243
 
 **Parent:** [AST-1243 — Candidate Artifacts now daisy chain](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1253-generate-regenerate-handoff`.
