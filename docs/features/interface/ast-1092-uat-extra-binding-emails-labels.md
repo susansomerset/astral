@@ -451,3 +451,42 @@ In `src/core/candidate.py` `get_candidate_id_for_query`, after the existing scal
 - Uniqueness email pool stays `email_paths` ∪ `email_list_paths` under casefold email compare (AST-1095); this fix does not weaken or bypass that gate.
 - Unique match only: extra shared by two candidates still returns no id (same as scalar collision).
 - No Admin Manage Candidates expand, no preamble/intake, no new routes.
+
+## Radia review (AST-1447)
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1447
+**Publish ref:** `6a1fc4f87a218e0595026accd09b8235ce54f0b4` (`origin/sub/AST-1445/AST-1447-wire-extra-emails-into-bind-lookup`)
+**Overall:** CLEAN
+**Internal grade:** CLEAN
+
+Diff: `origin/ftr/AST-1445-extra-emails-not-used-for-binding...origin/sub/AST-1445/AST-1447-wire-extra-emails-into-bind-lookup` — layers `{core, docs}`; change_types `{modify}`. Parent shape: **normal** (live `origin/ftr/AST-1445-extra-emails-not-used-for-binding` is an ancestor of the publish tip).
+
+### Statutes checked
+
+Active-set harvest: 64 rows; all scoped/universal verdicts **conforms** or **not-applicable** (see Linear/thread artifact). Config bind list from `CANDIDATE_LOOKUP_CONFIG["email_list_paths"]`; no new imports; engineer did not touch tests.
+
+### Pattern conformance
+
+none cited.
+
+### Plan adherence
+
+Proposed change lands exactly: after the scalar path loop, expand `email_list_paths` via `_iter_uniqueness_path_values`, same casefold rule, unique-hit semantics unchanged. Did not put extras on scalar `email_paths`, did not walk uniqueness `list_paths`, did not touch Profile / `DATA_SHAPES` / save coerce / uniqueness gate / inbox header order.
+
+### Fix-specific checks
+
+**[bug-repro] not applicable** — `[board-betty] TESTS: OK`; no qa-fix. Existing `TestAst1092ExtraBindingEmails::test_lookup_binds_extra_email_not_websites` already pins extra-only bind.
+
+**## What must still hold — OK** (persist extras, labels, scalar email_paths, bind list emails only, uniqueness pool, shared extra still no unique id, no Admin/preamble/new routes).
+
+### Findings
+
+None.
+
+### Frame diff
+
+`src/core/candidate.py` `get_candidate_id_for_query`: after scalar path collection, for each `email_list_paths` value, append stripped entries from `_iter_uniqueness_path_values` with optional `casefold`. Feature-doc plan-fix sections only.
+
+Gate **PROCEED**. resolve-child skipped (clean). context_tokens≈22000
