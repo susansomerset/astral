@@ -26,7 +26,7 @@ Proposed and retired files are excluded from that set.
 
 ## Harvested corpus
 
-Full AC cite map and crosswalk live in [HARVEST.md](HARVEST.md). Nine catalog entries below are `status: approved`; three are `status: proposed`.
+Full AC cite map and crosswalk live in [HARVEST.md](HARVEST.md). Nine catalog entries below are `status: approved`; four are `status: proposed`.
 
 | id | status | path |
 |----|--------|------|
@@ -40,5 +40,6 @@ Full AC cite map and crosswalk live in [HARVEST.md](HARVEST.md). Nine catalog en
 | `pattern.ui.icon-control` | approved | `ui/pattern.ui.icon-control.md` |
 | `pattern.ui.dirty-leave-save-then-navigate` | proposed | `ui/pattern.ui.dirty-leave-save-then-navigate.md` |
 | `pattern.ui.in-place-live-refresh` | proposed | `ui/pattern.ui.in-place-live-refresh.md` |
+| `pattern.agent.prompt-persist-before-provider` | proposed | `agent/pattern.agent.prompt-persist-before-provider.md` |
 | `pattern.dispatch.score-floor` | approved | `dispatch/pattern.dispatch.score-floor.md` |
 | `pattern.dispatch.run-next-chain-authority` | proposed | `dispatch/pattern.dispatch.run-next-chain-authority.md` |

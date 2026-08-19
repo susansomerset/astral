@@ -89,15 +89,12 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
 
 
 def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> list:
-    """Walk NAV_CONFIG and resolve visible/enabled gates against candidate_state."""
+    """Walk NAV_CONFIG and resolve item-level enabled gates against candidate_state."""
     company_counts = _get_company_counts(candidate_id)
     job_counts = _get_job_counts(candidate_id)
     nav_counts = {**company_counts, **job_counts}
     resolved = []
     for group in NAV_CONFIG:
-        visible_gate = group.get("visible")
-        if isinstance(visible_gate, str) and not _is_at_or_past(candidate_state, visible_gate):
-            continue
         resolved_items = []
         for item in group["items"]:
             enabled_gate = item.get("enabled")
