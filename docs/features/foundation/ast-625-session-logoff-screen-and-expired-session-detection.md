@@ -427,3 +427,102 @@ Radia posted **fix-now: none**, **discuss: none**. Two **advisory** items accept
 **§9a dry-run:** publish ref merges cleanly into `origin/dev` and `origin/ftr/ast-624-log-off-screen`.
 
 **Status:** → **User Testing** (implementer assignee unchanged).
+
+## Bug: AST-1433 — Expired-session deeplink refresh 404
+
+### As-is
+
+When the Stytch session has expired, a hard refresh or paste of an in-app path (e.g. `/candidate/backstory` on staging) returns a white page whose body is `{"error":"Not found"}`. The SPA never boots, so neither Login nor `LogOffScreen` runs.
+
+The same JSON 404 happens on refresh of any `/candidate/…` **SPA** route even with a live session — Flask does not inspect the session. Expired-session is the UAT scenario (deeplink refresh after idle), not a separate auth branch.
+
+### To-be
+
+An expired or missing session on any in-app URL lands on an auth page — Login, or the existing log-off screen if this tab had a session — never a JSON 404. After they authenticate they can use the app again. Returning to the original path after sign-in is nicer; **not required** for this cut (`Authenticate` may keep navigating to `/`).
+
+### Repro
+
+1. Staging (`https://astral-staging.up.railway.app`) or Flask serving `frontend/dist/` (`:5001`).
+2. While on a candidate SPA route (literal example: `/candidate/backstory`), let the Stytch session expire **or** open that path in a tab with no session.
+3. Hard-refresh, or paste the URL into the address bar (document GET, not in-app React navigation).
+4. **Broken:** white page, body exactly `{"error":"Not found"}`. **Expected:** SPA `index.html` loads; `RequireAuth` shows Login (no had-session) or `LogOffScreen` (had-session in this tab).
+
+Same 404 without expiry: refresh `/candidate/backstory` while still signed in. Client-side nav to that path still works; only the document request fails.
+
+### Root cause
+
+AST-625’s gate (`RequireAuth` / `LogOffScreen` / `sessionAuthMark`) never runs because Flask answers the **document** request before the SPA loads.
+
+`src/ui/server.py` `serve_react` (AST-1117 print-HTML guard) returns JSON 404 for **every** path `candidate` or `candidate/…`:
+
+```python
+if path == "candidate" or path.startswith("candidate/"):
+    return jsonify({"error": "Not found"}), 404
+```
+
+That body is the white page. AST-1117 needed it so unmatched `/candidate/resume/…` and `/candidate/cover/…` would not get `index.html` (React `*` then `<Navigate to="/jobs/recommended">`). The guard is too broad: React client routes live under the same prefix (`routes.tsx`: `candidate/backstory`, `candidate/profile`, …). Print HTML is the only Flask owner of `/candidate` (`resume_html_bp` in `api_resume_html.py`); those blueprint routes already match first when the URL is a real print path.
+
+Local Vite compounds it: `vite.config.ts` proxies the entire `'/candidate'` prefix to Flask, so `:5173/candidate/backstory` hits the same 404 instead of the Vite SPA.
+
+`ASTRAL_CODE_RULES.md` §3.5: Flask catch-all serves `index.html` for any non-API, non-file path. The AST-1117 blanket is the exception that broke candidate SPA refreshes.
+
+### Proposed change
+
+No frontend auth-gate edits. Once `index.html` loads, AST-625 Stage 4 already routes Login vs LogOff vs children. Do not add return-to-original-path storage; Stytch still redirects to `/authenticate`, which still `navigate("/", { replace: true })`.
+
+**1. `src/ui/server.py` `serve_react`** — narrow the JSON 404 to print-HTML prefixes only (`resume_html_bp`: `/candidate/resume…`, `/candidate/cover…`). SPA `/candidate/backstory` (and siblings) fall through to `index.html`.
+
+Replace the current `candidate` / `candidate/` block with:
+
+```python
+    # Print HTML (resume_html_bp). Blueprint matches first for real print
+    # routes; unmatched print-shaped paths must not SPA-fallback (AST-1117:
+    # React `*` → /jobs/recommended). Candidate SPA routes share /candidate/.
+    if (
+        path == "candidate/resume"
+        or path.startswith("candidate/resume/")
+        or path == "candidate/cover"
+        or path.startswith("candidate/cover/")
+    ):
+        return jsonify({"error": "Not found"}), 404
+```
+
+Update the function docstring: it currently says “Never steal `/candidate/*` HTML routes” — that must mean **print** HTML only, not the candidate SPA section.
+
+Keep the existing static-file then `index.html` fallback unchanged. Do not auth-gate document serving (`@require_auth` stays on the print blueprint and `/api/*` only — AST-611 / AST-625 frozen Flask auth).
+
+**2. `src/ui/frontend/vite.config.ts`** — stop proxying the whole `/candidate` prefix. Proxy only the print HTML prefixes so local UAT Print / Materials still hit Flask, while `/candidate/backstory` stays on Vite:
+
+```ts
+    proxy: {
+      '/api': 'http://localhost:5001',
+      // AST-1117 / AST-1433: print HTML only — not candidate SPA routes.
+      '/candidate/resume': 'http://localhost:5001',
+      '/candidate/cover': 'http://localhost:5001',
+    },
+```
+
+Vite prefix-matches those keys, so `/candidate/resume/base`, `/candidate/resume/<job_id>`, and `/candidate/cover/<job_id>` still proxy (JAR / Materials `api()` fetches and `window.open` included).
+
+**3. Do not change** `RequireAuth.tsx`, `LogOffScreen.tsx`, `sessionAuthMark.ts`, `AuthContext.tsx`, `api.ts`, `Login.tsx`, `Authenticate.tsx`, `routes.tsx`, `api_resume_html.py`, or Stytch Dashboard / session duration.
+
+**4. Compile:** `cd src/ui/frontend && npm run build` (Vite config) and `python3 -m py_compile src/ui/server.py`.
+
+⚠️ **Decision:** Narrow the AST-1117 guard by **print path prefix**, not an allowlist of SPA routes copied from `routes.tsx` (new candidate pages would 404 again). Rejected: redirect-to-login in Flask (session-blind document 404 is the bug; valid-session refresh must also get the SPA). Rejected: return-URL after authenticate (AC optional; extra Stytch/Dashboard surface).
+
+### Blast radius
+
+- **Touches:** `src/ui/server.py` `serve_react`; `src/ui/frontend/vite.config.ts` `server.proxy`.
+- **Print HTML (must keep working):** `resume_html_bp` (`/candidate/resume/base`, `/candidate/resume/<job_id>`, `/candidate/cover/<job_id>`); JAR / Materials open those URLs. Blueprint still wins when the route matches. Unmatched print-shaped paths still JSON 404, not recommended-jobs SPA.
+- **SPA candidate section:** every `routes.tsx` `candidate/…` child (profile, backstory, intake, …) document GET now receives `index.html` — same as `/jobs/recommended` today.
+- **Tests (Betty / qa-fix — engineer must not edit `tests/`):** `tests/component/ui/test_server.py` `TestAst1117CandidateSpaGuard` currently expects JSON 404 for `/candidate/not-a-real-html-route` and `/candidate`; those become SPA 200 after this change. `TestAst1117ViteCandidateProxy` asserts `'/candidate': 'http://localhost:5001'` and must assert the resume/cover keys instead. Bible `docs/test-bible/ui/server.md` AST-1117 row (“404 JSON for unmatched `candidate/*`”) is the same over-broad contract. New cases that should exist: GET `/candidate/backstory` → 200 `index.html`; print prefixes without a blueprint match still 404 JSON; Vite still proxies `/candidate/resume` and `/candidate/cover`.
+- **AST-625 tests:** `test_RequireAuth` / `test_LogOffScreen` / `test_sessionAuthMark` unchanged — product files they cover are not edited.
+- **Siblings:** AST-1117 print delivery; AST-612/613 login + `/authenticate`; no other `/candidate` Flask blueprint.
+
+### What must still hold
+
+- AST-625 AC: valid session → app unchanged; timeout / 401 → log-off with distinct copy + Refresh; first-time visitor → Login not LogOff; no Stytch duration / Dashboard / manual sign-out; no Flask `@require_auth` / `/api/me` shape change.
+- AST-1117 AC: Print Resume / Print Cover Letter still open Flask HTML, not `/jobs/recommended`.
+- §3.5: non-API, non-file, non-print document paths serve `index.html`.
+- Vite local: `/api` and print HTML still proxy to `:5001`; candidate SPA pages are Vite-owned again.
+- After Refresh on LogOff, Login appears (marks cleared) and the user can authenticate and reach the app.
