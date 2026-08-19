@@ -221,3 +221,22 @@ onChange={e => { setImportEntityLock(null); setTaskKey(e.target.value) }}
 Confirm Chuckles estimate: 3 — agree
 
 One page, existing GET + `BatchAgentDataPanes`, confirm cloned from fetch-from-task, one skip-fetch ref. No new routes or schema.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1452
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load` @ `590f37461b21e84ed5012792785cf6a98e5dfa66`
+
+### Traceability
+AC2→S2 editor fill + `BatchAgentDataPanes` on imported `batch_id`; AC3→S2 task-key strip + no catalog fetch (Test prefix = AST-1451); AC4→S2 `skipCatalogFetchRef`; AC5→S2 `importEntityLock` + entity option append; AC6→S2 `confirmLoad` banner. Parent AC1 list chrome→S1 table + row select (data from AST-1451 `GET /api/admin/adhoc/runs`); parent AC7 debug list→N/A (sibling #1).
+
+R1–R3 (in-session): 18 universal considered, all `conforms`. 18 scoped considered, all `conforms` (single `ui` page edit; reuses `BatchAgentDataPanes` + fetch-from-task confirm shape; `btn primary` / `btn danger` / `btn secondary`; block-type strings match existing `BatchAgentDataModal` `BLOCK_TYPE_ORDER`; no new routes/API; `importEntityLock` is presentation/session state, not duplicated catalog rules). 28 scoped excluded (no `src/core`/`data`/scripts/docs touch). Cited patterns `pattern.ui.shared-button-roles`, `pattern.config.config-block`, all `status: approved` and match plan shape. Sibling contract for list/load GET is explicit; does not reimplement AST-1451.
+
+R6: faithful to child definition (picker + Load only). Boundaries respected (no list query, no Save As/Preview chrome, no `do_task`). `skipCatalogFetchRef` placement matches existing `taskKey` effect (`isInitialMount` return first, then skip, then `confirmFetch`/`doFetchFrom`). Estimate 3 is honest.
+
+Findings: none (`fix-now` / `discuss`).
+
+context_tokens≈58000
