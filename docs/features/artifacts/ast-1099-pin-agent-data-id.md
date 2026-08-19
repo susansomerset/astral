@@ -745,3 +745,161 @@ context_tokens≈52000
 
 [code-rubric] PROCEED (Commit: da1b045b) keep-pin resume blob copy
 
+## Radia review (review-fix AST-1430)
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1430
+**Publish ref:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin` @ `8d35b2ae`
+**Reviewed delivery:** `ee5f867c` (`test(AST-1430): bug-repro`) + `c5dd7b40` (`merge-tests(AST-1430)`)
+**Diff base:** `origin/ftr/AST-1422-finalize-job-resume-not-parsed...origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin` — **empty** (sub tip = ftr tip; tests rolled in via `merge-child` → AST-1428 → ftr)
+**Overall:** DISCUSS
+
+## Statutes checked
+
+Reviewed change set = `ee5f867c` (4 files, +132/−12). Diff layers: `docs` only.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1430)` @ `c5dd7b40` → `ee5f867c` |
+| orch.git.commit-vocabulary | universal | conforms | `test` / `merge-tests` vocabulary on gap sub |
+| orch.git.flow-direction-inviolable | universal | conforms | Forward publish on `origin/sub/...` only |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1422/AST-1430-...` gap sibling on live `ftr` |
+| orch.git.merge-on-checkout | universal | conforms | `merge-child(AST-1430)` onto AST-1428 for test-fix; no illegal subjects |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None in AST-1430 history |
+| orch.git.no-dev-agent-branches | universal | conforms | Gap sub only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1422` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Test-only gap; product contract unchanged |
+| orch.pipeline.plan-is-bible | universal | conforms | Board REVISE items addressed in delivery commit |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single gap ticket |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | `ee5f867c` is tests + bible only |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Ada remains assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | No assignee change by this review |
+| orch.roles.pre-commit-path-bans | universal | conforms | Doc-only Radia commit expected; Betty stayed on tests/bible |
+| astral.agent.confidence-bounds | scoped | not-applicable | no `src/core/**` in delivery |
+| astral.agent.do-task-delegation | scoped | not-applicable | no product paths in delivery |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no product paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch API paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch API paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch API paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no product paths (reinforced by tests) |
+| astral.config.config-source-of-truth | scoped | not-applicable | no `src/utils/config.py` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no spike paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | bible-only diff |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no product paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no seed paths |
+| astral.docs.features-single-file-per-ticket | scoped | not-applicable | no `docs/features/**` in delivery |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commit is tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | No `src/` edits in `ee5f867c` |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no product paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no `src/ui/**` in delivery |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no product paths |
+| astral.layers.import-direction | scoped | not-applicable | no product paths |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/**` |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no product paths |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed paths |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed paths |
+| astral.seed.define-approved | scoped | not-applicable | no seed paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed paths |
+| astral.standards.database-header-inventory | scoped | not-applicable | no `src/data/**` |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no product paths |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no product paths |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | no product paths |
+| astral.standards.in-scope-only | scoped | conforms | Gap scoped to board-flagged bible rows + two repro paths |
+| astral.standards.logging-via-utils | scoped | not-applicable | no product paths |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Ticket ids in comments/class names only |
+| astral.standards.no-cross-contamination | scoped | not-applicable | no product paths |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | no product paths |
+| astral.standards.public-then-helpers | scoped | not-applicable | no product paths |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no product paths |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state paths |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no state paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no product paths |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend paths |
+| astral.ui.naming-conventions | scoped | not-applicable | no frontend paths |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker config |
+
+## Pattern conformance
+
+`none cited` — gap ticket; board REVISE did not cite catalog patterns.
+
+## Plan adherence (board REVISE + AST-1428 blast radius)
+
+**Board source (`[board-betty] TESTS: REVISE`):**
+1. Broken `TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_body_dict` (dict onto pin) — **fixed** → `test_put_job_resume_writes_resume_content_keeps_pin` asserts `save_job_artifact_resume_content` called and `save_job_data` never writes pin dict.
+2. Missing sibling `resume_content` copy after finalize pin (`docs/test-bible/core/agent.md` AST-1099) — **addressed** → `TestAst1430DoTaskResumeContentCopy` + bible § AST-1430; `TestAst1099DoTaskArtifactPin` gets isolation mock for new helper.
+
+**Bible (`ee5f867c`):**
+- `docs/test-bible/core/agent.md` § AST-1430 — manifest lines match landed tests; AST-1099 broken/obsolete row revised (pin suite still asserts `persist_job_artifact_from_parsed` unused).
+- `docs/test-bible/ui/api/api_jobs.md` § AST-1430 — PUT keep-pin manifest honest; obsolete `test_put_job_resume_writes_body_dict` called out.
+
+**AST-1428 blast radius (test half):** Delivery does not revive `persist_job_artifact_from_parsed` for finalize hops; AST-1099 pin suite preserved with helper swallow mock.
+
+**Not in gap delivery (product AST-1428 owns):** hydrate overlay + builder envelope-unwrap repro tests — acceptable deferral; product paths reviewed on AST-1428.
+
+## Fix-specific checks
+
+**[bug-repro]:** DISCUSS
+
+Betty Linear (`[bug-repro]` @ `c5dd7b40` · "repro lands red, awaits fix"):
+
+| Test | Pre-fix fail? | To-be tie-in | Verdict |
+|------|---------------|--------------|---------|
+| `TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin` | Yes — pre-AST-1428 handler wrote dict onto `artifacts.job_resume` | Concrete blob `{"professional_summary": "Edited"}` via `save_job_artifact_resume_content`; `pin_writes == []` with seed `job_resume: "pin-keep"` | **OK** — substantive keep-pin repro |
+| `TestAst1430DoTaskResumeContentCopy::test_finalize_copies_resume_content_keeps_pin` | Yes — pre-AST-1428 no `persist_finalize_job_resume_content` call | Asserts pin called (`job-1430`, `job_resume`, nonempty id); `persist_copy` once with parsed `professional_summary == "Summary"`; `persist_parsed` not called | **Partial** — mocks `persist_finalize_job_resume_content`; locks call-order wiring only, does not assert `artifacts.resume_content` populated on job (primary ## Repro symptom). Would pass if helper were broken no-op. |
+
+**Hygiene:** `[bug-repro]` tag appears in Betty Linear comment and commit subject, not on test class/method first line (bible cites `TestAst1430…` by name).
+
+**## What must still hold (AST-1428 §, product on same tree):** OK
+
+Tests reinforce, do not undermine, the seven keep-pin contract items:
+
+| Item | Test impact |
+|------|-------------|
+| Pin = RESPONSE id after finalize | `TestAst1430` asserts pin called with nonempty id before copy |
+| Failed hops do not blank pin | Unchanged AST-1099 failure paths |
+| Pin never-store-empty | No pin-helper edits |
+| `agent_data` never updated | Tests mock storage; no agent_data writes asserted |
+| No hop JSON in pin slot | PUT repro blocks dict-on-pin; copy test asserts `persist_parsed` not called |
+| cover/proposed_answers unchanged | Only `finalize_job_resume` path touched in new suite |
+| `PUT …/resume_content` unchanged | Not modified |
+| Config pin map unchanged | No config tests altered |
+
+`TestAst1099DoTaskArtifactPin` isolation mock prevents new copy path from breaking pin-only assertions.
+
+## Findings
+
+**discuss:** `[bug-repro]` copy path is wiring-only — `TestAst1430DoTaskResumeContentCopy` mocks `persist_finalize_job_resume_content` instead of asserting `job_data.artifacts.resume_content` receives unwrapped section dict after a real helper call. PUT keep-pin repro is strong; together they satisfy Betty's repro-first gate at merge time, but the gap ticket that owns `[bug-repro]` leaves the ## Repro table's missing-`resume_content` symptom unlocked at integration depth. Consider one tracker-level or unmocked `do_task` assertion in a follow-up (resolve-child or Betty pass) — not merge-blocking given thin helper composition and AST-1428 product review.
+
+**advisory:** No `[bug-repro]` first-line source tag on the test method/class (machinery expects qa-fix handoff tag). Bible + commit subject carry intent.
+
+**advisory:** Unique `ftr...sub` three-dot is empty — expected docs-acceptance shape; delivery reviewed at `ee5f867c`.
+
+## What’s solid
+
+- Board's broken PUT test flipped correctly; seed includes existing pin string.
+- AST-1099 pin suite stays isolated via `persist_finalize` swallow mock.
+- Bible manifest lines are cross-linked and runnable per § AST-1430.
+- `merge-tests(AST-1430)` one-SHA discipline on `c5dd7b40`.
+- Delivery already on `ftr` with AST-1428 product; no product regression against ## What must still hold.
+
+## Frame diff
+
+Unique range `origin/ftr/AST-1422-finalize-job-resume-not-parsed...origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin` is **empty** (both @ `8d35b2ae`). Reviewed artifact = test-gap delivery `ee5f867c` (+ `c5dd7b40`), integrated via `merge-child(AST-1430)` → AST-1428 → ftr.
+
+## Recommended actions — Chuckles
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **REVIEW** (discuss repro depth, C7 complete) | Normal (live `ftr`, not orphaned Done) | → **Review Posted** → `resolve-child` (optional: tracker/integration `[bug-repro]` depth) → **User Testing** |
+
+context_tokens≈38000
+
+[code-rubric] REVIEW (Commit: 8d35b2ae) gap repro wiring-only
