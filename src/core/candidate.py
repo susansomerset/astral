@@ -3067,28 +3067,39 @@ def _requested_stage_failure_target(primary_state: str, current_state: str) -> s
     return error
 
 
-async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → craft_get_rubric run_next chain → ARTIFACTS_READY / retry / error."""
+async def run_requested_artifacts_dispatch(
+    candidate_id: str,
+    *,
+    debug: bool = False,
+    task_key: Optional[str] = None,
+    trigger_state: Optional[str] = None,
+    skip_daisy_chain: bool = False,
+) -> Dict[str, int]:
+    """Claim worker: live run_next craft chain from the dispatch row's task_key (AST-1252 / AST-1434)."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {**zero, "total_processed": 1, "total_errors": 1}
     stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-    primary = stage["trigger_state"]
+    raw_trigger = (trigger_state or "").strip() or stage["trigger_state"]
+    parsed_trig = parse_dispatch_hop_label(raw_trigger)
+    bare_trigger = parsed_trig[0] if parsed_trig else raw_trigger
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
-    task_key = (stage.get("task_key") or "").strip()
+    start_key = (task_key or "").strip() or (stage.get("task_key") or "").strip()
     try:
-        # Native do_task run_next (hop ledgers); persist via ctx flag — no suppress_run_next.
+        # Native do_task run_next (hop ledgers); persist via ctx flag.
         task_ctx = {
             **(candidate or {}),
             "astral_candidate_id": candidate_id,
             "persist_candidate_craft_hops": True,
-            "dispatch_trigger_state": primary,
+            "dispatch_trigger_state": bare_trigger,
         }
+        if skip_daisy_chain:
+            task_ctx["suppress_run_next"] = True
         response = await do_task(
-            task_key=task_key,
+            task_key=start_key,
             live_content="",
             index=candidate_id,
             ctx=task_ctx,
@@ -3096,18 +3107,21 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
         )
         if not response or not response.get("success"):
             raise RuntimeError(
-                (response or {}).get("error") if response else f"do_task None for {task_key}"
+                (response or {}).get("error") if response else f"do_task None for {start_key}"
             )
-        transition_candidate_state(candidate_id, pass_state)
+        if not skip_daisy_chain and bare_trigger == stage["trigger_state"]:
+            transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
         logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
         # AST-1388: leave last successful compound hop label; bare trigger still → retry/error.
         after = ((database.get_candidate(candidate_id) or {}).get("state") or "").strip()
         parsed = parse_dispatch_hop_label(after)
-        if parsed and parsed[0] == primary:
+        if parsed and parsed[0] == bare_trigger:
             return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
-        target = _requested_stage_failure_target(primary, current)
+        if bare_trigger not in CANDIDATE_STATES:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        target = _requested_stage_failure_target(bare_trigger, current)
         try:
             transition_candidate_state(candidate_id, target)
         except ValueError:

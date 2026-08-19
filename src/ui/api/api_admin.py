@@ -1097,6 +1097,8 @@ def create_dtask():
                 )
             }), 409
         return jsonify({"error": str(e)}), 500
+    if data.get("skip_daisy_chain"):
+        update_dispatch_task(task_id, skip_daisy_chain=1)
     return jsonify({"id": task_id}), 201
 
 
@@ -1154,7 +1156,7 @@ def update_dtask(task_id):
     if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
         return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
     allowed = {
-        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs",
+        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "skip_daisy_chain", "freq_hrs",
         "max_runs", "score_floor", "trigger_state", "task_key",
     }
     updates: Dict[str, Any] = {}
@@ -1181,7 +1183,7 @@ def update_dtask(task_id):
         if k in data and k != "task_key":
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
-            elif k in ("auto_mode", "debug", "skip_cache"):
+            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain"):
                 updates[k] = int(bool(data[k]))
             elif k == "freq_hrs":
                 updates[k] = float(data[k])
