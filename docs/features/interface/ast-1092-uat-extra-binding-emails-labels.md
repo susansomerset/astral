@@ -490,3 +490,5 @@ None.
 `src/core/candidate.py` `get_candidate_id_for_query`: after scalar path collection, for each `email_list_paths` value, append stripped entries from `_iter_uniqueness_path_values` with optional `casefold`. Feature-doc plan-fix sections only.
 
 Gate **PROCEED**. resolve-child skipped (clean). context_tokens≈22000
+
+Board TESTS: OK — docs-acceptance (no qa-fix / no test-tree delivery).
