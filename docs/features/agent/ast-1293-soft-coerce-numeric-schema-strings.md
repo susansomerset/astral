@@ -1,3 +1,132 @@
+<!-- linear-archive: AST-1293 archived 2026-08-19 -->
+
+## Linear archive (AST-1293)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1293/soft-coerce-numeric-schema-strings-on-do-task-validate-handling  
+**Status at archive:** Archive  
+**Project:** Astral Agent  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1289 — Handling datatype issues in responses  
+**Blocked by / blocks / related:** parent: AST-1289
+
+### Description
+
+## What this implements
+
+Own the pre-validate soft-coerce so integer values on schema-string fields (including nested `jobs[].astral_job_id` slot echoes) become strings before type checks; keep schema declarations as string; leave claim/slot binding and non-string type rules alone. Observable outcome: Deepseek-style integer slot ids no longer sink an otherwise-valid batch envelope. Does **not** own prompt rewrites, scrape/bot handling, or per-field schema type flips.
+
+## In scope
+
+- [X] `astral.agent.do-task-delegation` — extend shared `do_task` pre-validate soft-coerce (`_coerce_schema_str_fields_from_list` in `src/core/agent.py`) for int→str + nested `items_schema`
+- [X] `pattern.config.config-block` / `astral.config.config-source-of-truth` — leave `TASK_CONFIG` response_schema field types as `str` (no type flips)
+- [X] `astral.standards.debug-contract-gated` — Style D found→recorded for int→str only when `debug=True`
+- [X] `astral.standards.in-scope-only` / `astral.standards.dry-and-focused-functions` — one coerce family; no scrape/bot/prompt/claim-binding work
+
+## Considered but excluded
+
+* Prompt / catalog rewrites — out of Boundaries; identity still claim/slot binding after validate
+* Scrape / bot-block / qualify state machines — datatype tolerance only (`src/core/agent.py` validate path)
+* Per-field schema type flips to `int` in `src/utils/config.py` — config stays source of truth as `str`
+* Zero-pad invention on coerce — plain `str(int)` only
+* Soft-accept of `bool` / `dict` / `float` on schema-`str` fields — validator remains strict
+* Parallel coerce helper — would duplicate schema walk; extend existing list→str helper instead
+
+## Acceptance criteria
+
+1. [x] A successful agent envelope whose `jobs[n].astral_job_id` is an integer batch-slot echo (e.g. `0`) validates and is available for downstream apply the same way an equivalent string slot echo already is — no `Field 'astral_job_id' must be str, got int` rejection for that case alone.
+2. [x] A chunk that previously failed solely for integer slot ids (while sibling chunks with string ids succeeded) no longer fails on that type nit; other real schema failures still reject.
+3. [x] Declared schema type for these fields remains string in config after the change.
+4. [x] With `debug=True`, a coerced integer slot id is visible as found→recorded under Style D; with `debug=False`, this path adds no new debug lines.
+5. [x] Boolean `true`/`false` and object values for string fields still fail validation (no accidental bool/dict soft-accept).
+
+## Boundaries
+
+Does not own prompt rewrites, scrape/bot handling, per-field schema type flips, claim-binding rule changes, or zero-pad invention. Single-child epic — no sibling slices.
+
+## Notes for planning
+
+Soft-coerce sits beside the existing pre-validate list→string habit on the shared `do_task` validation path. Extend that family for int→string (exclude bool).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1289-handling-datatype-issues-in-responses`, child `sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-09T18:03:30.689Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1293
+**Publish ref:** `sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings` @ `160a211b`
+**Overall:** CLEAN
+
+## Plan adherence
+- Stage 1 matches plan: extend `_coerce_schema_str_fields_from_list` for int→str + nested `items_schema`; both `do_task` sites pass `debug=debug`.
+- Self-Assessment Scope `Single-Component` matches footprint (`src/core/agent.py` + bible/tests); no config type flips or claim/slot binding changes.
+- AC1–AC5 covered; bool/dict/float stay hard-fail via `type(val) is int`.
+
+## Pattern conformance
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | Left `TASK_CONFIG` schema types as `str`; no second source of truth |
+
+## Frame diff
+(none)
+
+**What’s solid:** One soft-coerce family on the shared validate path; Style D found→recorded gated on `debug=True` (§5f); Joan plan-rubric APPROVED with no Excluded list (no C4 straggler). Full active set (64) scored in-session.
+
+context_tokens≈48000
+— Radia
+
+#### betty — 2026-08-09T17:57:37.937Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings` @ `1cfe278a` (`merge-tests(AST-1293): origin/tests a88fd54b`)
+
+1. `./scripts/testing/run_component_tests.sh tests/component/core/test_agent.py::TestAst1293SoftCoerceNumericSchemaStrings tests/component/core/test_agent.py::TestResponseSchemaBranches::test_coerce_schema_str_list_to_newlines_before_validate -q`
+   - Nested int `jobs[].astral_job_id` → `"0"` then validates
+   - list→str regression
+   - bool / dict / float still hard-fail
+   - Style D found→recorded when `debug=True`; silent when `debug=False`
+   - `TASK_CONFIG["qualify_meteorite"]` slot id type remains `str`
+
+**Broken / obsolete:** none
+
+**Integration:** none revised
+
+**Bible shasum** (`origin/<publish-ref>`):
+- `docs/test-bible/core/agent.md` `cb0021818d48158bb132ff7ac06a47af2b5f0f1f`
+
+— Betty
+
+#### joan — 2026-08-09T17:52:44.962Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1293
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings` @ `e1de3d52`
+
+## Traceability
+AC1→S1; AC2→S1; AC3→S1; AC4→S1; AC5→S1
+
+Plan faithfully implements the child scope: extend `_coerce_schema_str_fields_from_list` on the shared `do_task` pre-validate path for int→str (with `type(val) is int` bool exclusion), recurse `items_schema` for nested `jobs[]`, pass `debug` to both call sites for Style D found→recorded, leave `TASK_CONFIG` types as `str`, and keep claim/slot binding untouched. Single-file `core` change respects layer/import rules; DRY extends existing walker rather than parallel helper.
+
+context_tokens≈52000
+
+— Joan
+
+#### ada — 2026-08-09T17:48:02.176Z
+Plan: [`docs/features/agent/ast-1293-soft-coerce-numeric-schema-strings.md`](https://github.com/susansomerset/astral/blob/sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings/docs/features/agent/ast-1293-soft-coerce-numeric-schema-strings.md) on `origin/sub/AST-1289/AST-1293-soft-coerce-numeric-schema-strings` @ `e1de3d52`.
+
+**Self-assessment**
+- **Scope:** Single-Component — extend `_coerce_schema_str_fields_from_list` + two `do_task` call sites in `src/core/agent.py` only.
+- **Conf:** high — reuses the existing list→str pre-validate habit and Style D `_do_task_debug_logger`; int→str uses `type(val) is int` so bool stays hard-fail.
+- **Risk:** Medium — sits on every json/python `do_task` validate; gate is narrow (schema `str` + exact `int`) so bool/dict/float still reject.
+
+---
+
 # Soft-coerce numeric schema strings on do_task validate
 
 - **Linear:** [AST-1293](https://linear.app/astralcareermatch/issue/AST-1293/soft-coerce-numeric-schema-strings-on-do-task-validate-handling)
