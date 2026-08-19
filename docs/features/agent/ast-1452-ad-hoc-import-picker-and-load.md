@@ -240,3 +240,11 @@ R6: faithful to child definition (picker + Load only). Boundaries respected (no 
 Findings: none (`fix-now` / `discuss`).
 
 context_tokens≈58000
+
+## Review stub (Hedy / build)
+
+**Publish ref:** `origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load`  
+**Product commits:** `7a5d1f19` (Stage 1 — import run list + Load button), `5cd9cef2` (Stage 2 — editor mapping, skip catalog fetch, entity lock, replace confirm)
+
+No API or `config.py` edits. List source remains `GET /api/admin/adhoc/runs`; Load body remains `GET /api/agent_data/<batch_id>`; panes reuse `BatchAgentDataPanes`.
+
