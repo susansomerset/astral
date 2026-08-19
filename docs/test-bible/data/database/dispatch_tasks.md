@@ -361,12 +361,12 @@ Deletes `_gaze_email_available_count`; `count_eligible_for_dispatch_task` / `get
 
 **Parent:** [AST-1257 — candidate table does not have batch_id](https://linear.app/astralcareermatch/issue/AST-1257/candidate-table-does-not-have-batch-id). **Publish:** `origin/sub/AST-1257/AST-1258-candidate-batch-lock-schema-and-pool-claim-apis`.
 
-`count_eligible_for_dispatch_task` for `entity_type=candidate`: **`inflow_discovery`** keeps `count_candidate_inflow_discovery_eligible`; every other candidate claim-queue task reports **`count_candidates_unclaimed_in_states(claim_states)`** (global unclaimed pool). Claim/get/clear APIs: **`docs/test-bible/data/database/candidates.md`** § AST-1258.
+`count_eligible_for_dispatch_task` for `entity_type=candidate`: **`inflow_discovery`** keeps `count_candidate_inflow_discovery_eligible`; every other candidate claim-queue task reports **bound-candidate Avail 0/1** (`count_candidates_unclaimed_in_states(..., candidate_id=)` after **AST-1432**; product on sibling). Claim/get/clear stay the cross-candidate pool: **`docs/test-bible/data/database/candidates.md`** § AST-1258. Test gap: **AST-1436** below.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Non-inflow stage Avail = unclaimed pool | `src/data/database.py` | revised **`TestAst972CandidateStageEligibility::test_candidate_stage_avail_is_unclaimed_pool`** |
-| Pool count 0 when all matching rows locked | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked`** |
+| Non-inflow stage Avail = bound 0/1 (was pool; AST-1436) | `src/data/database.py` | **`TestAst972CandidateStageEligibility::test_candidate_stage_avail_is_unclaimed_pool`** (one row still 1) |
+| Bound Avail 1 then 0 when all matching rows locked | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked`** (rewrote pool-2 → bound 1) |
 | `inflow_discovery` still uses inflow helper | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_inflow_discovery_still_uses_inflow_helper`** |
 
 **Broken / obsolete (Betty revision):** `TestAst972CandidateStageEligibility::test_candidate_entity_avail_is_inflow_not_stage` (expected `0` via inflow helper) → renamed/revised to expect pool count `1` for one unclaimed `REQUESTED_ARTIFACTS` row.
@@ -380,4 +380,27 @@ Deletes `_gaze_email_available_count`; `count_eligible_for_dispatch_task` / `get
   tests/component/data/database/test_candidates.py::TestAst1258CandidateBatchClaim \
   -q
 ```
+
+### AST-1436 · AST-1425
+
+**Parent:** [AST-1425](https://linear.app/astralcareermatch/issue/AST-1425). **Sibling product:** AST-1432 (Avail 0/1). **Publish:** `origin/sub/AST-1425/AST-1436-gap-tests-bound-candidate-avail`.
+
+Board REVISE on AST-1432: pool-2 on a bound row was wrong; two-candidate bound Avail (1, then 0 when bound locked / other unclaimed) had no coverage. Tests land red on the pre-fix tree; AST-1432 make-fix flips them green.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Two unclaimed → bound Avail 1; lock bound, other free → 0 | `src/data/database.py` | **`TestAst1436BoundCandidateAvail::test_two_unclaimed_bound_row_is_one_then_zero_when_bound_locked`** |
+| Invalidated pool-2 rewritten to bound 1 | `src/data/database.py` | **`TestAst1258CandidatePoolEligibility::test_pool_count_zero_when_all_matching_rows_locked`** |
+
+**Broken / obsolete (this pass):** `test_pool_count_zero_when_all_matching_rows_locked` no longer asserts pool `2` on a bound row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1436BoundCandidateAvail \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst1258CandidatePoolEligibility \
+  -q
+```
+
 

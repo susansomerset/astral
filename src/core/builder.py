@@ -944,14 +944,13 @@ def _resolve_resume_sections(job_data: dict, candidate_data: dict) -> dict:
     rc = artifacts.get("resume_content")
     if _is_nonempty_resume_dict(rc):
         return dict(rc)
-    # AST-1100: resolve finalize_job_resume pin when legacy body missing.
+    # AST-1100/AST-1428: pin fallback unwraps agent_payload.resume; do not treat hop envelope as sections.
     pin = artifacts.get("job_resume")
     if isinstance(pin, str) and pin.strip():
-        from src.core.tracker import resolve_job_artifact_agent_data_body
-
-        body = resolve_job_artifact_agent_data_body(pin)
-        if _is_nonempty_resume_dict(body):
-            return dict(body)
+        body = tracker_mod.resolve_job_artifact_agent_data_body(pin)
+        unwrapped = tracker_mod._resume_payload_body(body)
+        if _is_nonempty_resume_dict(unwrapped):
+            return dict(unwrapped)
     if isinstance(pin, dict) and _is_nonempty_resume_dict(pin):
         return dict(pin)
     br = (candidate_data.get("artifacts") or {}).get("base_resume")

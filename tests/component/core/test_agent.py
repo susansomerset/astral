@@ -4907,6 +4907,10 @@ class TestAst515AdhocWorkbenchLedger:
         assert save_args[2] == "c1"
         assert ledger_trackers["saves"][0][1]["status"] == "RUNNING"
         assert ledger_trackers["store_prompt"].call_count == 1
+        store_kw = ledger_trackers["store_prompt"].call_args.kwargs
+        assert store_kw["caches_resolved_four"] == ("", "", "", "")
+        assert "cache_content" not in store_kw
+        assert store_kw.get("entity_id") == "j1"
         assert ledger_trackers["store_response"].call_args[0][3] == "ok"
         final = ledger_trackers["updates"][-1][1]
         assert final["status"] == "COMPLETED"
@@ -4928,6 +4932,7 @@ class TestAst515AdhocWorkbenchLedger:
         assert out["success"] is False
         assert ledger_trackers["updates"][-1][1]["status"] == "FAILED"
         assert ledger_trackers["updates"][-1][1]["total_failed"] == 1
+        assert ledger_trackers["store_prompt"].call_args.kwargs.get("entity_id") == "j1"
         assert ledger_trackers["store_response"].call_count == 1
 
     async def test_exception_updates_ledger_then_reraises(
@@ -6500,6 +6505,77 @@ class TestAst984EntityColumnRetired:
         assert resp_saves
         assert resp_saves[-1].get("entity_id") == "job-1"
 
+    async def test_do_task_success_tags_prompt_entity_id(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        """AST-1431: SYSTEM/CACHE_*/TASK/NO_CACHE saves share RESPONSE entity_id when index is set."""
+        _prompt_types = {
+            "SYSTEM", "CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D", "TASK", "NO_CACHE",
+        }
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda task_key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": "0|CRA2"},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+        )
+        assert out["success"] is True
+        prompt_saves = [
+            c.kwargs for c in stub_agent_storage["save"].call_args_list
+            if c.kwargs.get("block_type") != "RESPONSE"
+        ]
+        assert prompt_saves
+        assert all(s.get("entity_id") == "job-1" for s in prompt_saves)
+        assert all(s.get("block_type") in _prompt_types for s in prompt_saves)
+
+    def test_store_prompt_blocks_stamps_entity_id_when_known(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saves: List[Dict[str, Any]] = []
+
+        def _rec(**kw: Any) -> str:
+            saves.append(kw)
+            return kw["agent_data_id"]
+
+        monkeypatch.setattr(agent_mod, "save_agent_data", _rec)
+        agent_mod._store_prompt_blocks(
+            "job",
+            "t",
+            "b1",
+            "sys",
+            caches_resolved_four=("a", "", "", ""),
+            user_content="u",
+            entity_id="somerset",
+        )
+        assert saves
+        assert all(s.get("entity_id") == "somerset" for s in saves)
+
+        saves.clear()
+        agent_mod._store_prompt_blocks(
+            "job",
+            "t",
+            "b2",
+            "sys",
+            caches_resolved_four=("a", "", "", ""),
+            user_content="u",
+        )
+        assert saves
+        assert all(not s.get("entity_id") for s in saves)
+
 
 class TestAst1005ItemsSchemaObjectValidation:
     """AST-1005: list items_schema validates object fields, not agent envelopes."""
@@ -6870,6 +6946,12 @@ class TestAst1099DoTaskArtifactPin:
         persist = MagicMock(return_value=True)
         monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
         monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist)
+        # AST-1430 helper lands at make-fix; swallow so this pin-only case stays isolated.
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_job_resume_content",
+            MagicMock(return_value=True),
+            raising=False,
+        )
         monkeypatch.setattr(
             "src.core.candidate.pin_experience_job_facts_from_base",
             lambda parsed, cd: None,
@@ -7030,6 +7112,70 @@ class TestAst1099DoTaskArtifactPin:
         pin.assert_not_called()
         combined = "\n".join(r.message for r in caplog.records)
         assert "artifact_pin key=cover_letter skipped reason=store_failed" in combined
+
+
+class TestAst1430DoTaskResumeContentCopy:
+    """AST-1430: finalize_job_resume copies unwrapped resume onto resume_content; pin stays."""
+
+    def _pin_ctx(self) -> Dict[str, Any]:
+        return {"candidate_data": {"artifacts": {}}}
+
+    def _ok_resume(self) -> Dict[str, Any]:
+        return {
+            "success": True,
+            "parsed_response": {
+                "professional_summary": "Summary",
+                "experience": [],
+            },
+            "api_response": _api_response("{}"),
+            "timesheet": {},
+        }
+
+    @pytest.mark.asyncio
+    async def test_finalize_copies_resume_content_keeps_pin(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        pin = MagicMock(return_value=True)
+        persist_parsed = MagicMock(return_value=True)
+        persist_copy = MagicMock(return_value=True)
+        monkeypatch.setattr("src.core.tracker.pin_job_artifact_agent_data_id", pin)
+        monkeypatch.setattr("src.core.tracker.persist_job_artifact_from_parsed", persist_parsed)
+        monkeypatch.setattr(
+            "src.core.tracker.persist_finalize_job_resume_content",
+            persist_copy,
+            raising=False,
+        )
+        monkeypatch.setattr(
+            "src.core.candidate.pin_experience_job_facts_from_base",
+            lambda parsed, cd: None,
+        )
+        monkeypatch.setattr(
+            agent_mod, "_resolve_task_prompts", lambda key: _agent_rows(run_next="")
+        )
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(
+            agent_mod, "send_to_anthropic", AsyncMock(return_value=self._ok_resume())
+        )
+        out = await agent_mod.do_task(
+            "finalize_job_resume",
+            index="job-1430",
+            ctx=self._pin_ctx(),
+        )
+        assert out["success"] is True
+        persist_parsed.assert_not_called()
+        pin.assert_called_once()
+        assert pin.call_args.args[:2] == ("job-1430", "job_resume")
+        assert isinstance(pin.call_args.args[2], str) and pin.call_args.args[2]
+        persist_copy.assert_called_once()
+        assert persist_copy.call_args.args[0] == "job-1430"
+        parsed_arg = persist_copy.call_args.args[1]
+        assert isinstance(parsed_arg, dict)
+        assert parsed_arg.get("professional_summary") == "Summary"
+
+
 # Branches: same RESPONSE debug result= bind on intake initiate path (AST-1083 UAT).
 class TestAst1083StoreResponseDebugResult:
     def test_intake_initiate_debug_binds_save_agent_data_result(
