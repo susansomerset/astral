@@ -106,6 +106,17 @@ class TestSystemAuthRoutes:
         jobs = next(group for group in payload if group["label"] == "Jobs")
         assert jobs["items"][0]["count"] == 1
 
+    def test_nav_config_early_state_keeps_candidate_facing_groups(
+        self, system_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr("ui.api.api_system.get_candidate", lambda candidate_id: {"state": "NEW_CANDIDATE"})
+        monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
+        monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
+        resp = system_client.get("/api/nav_config?candidate_id=cand-1", headers=auth_headers)
+        assert resp.status_code == 200
+        labels = {group["label"] for group in resp.get_json()}
+        assert {"Jobs", "Companies", "Artifacts", "Candidate"} <= labels
+
     def test_nav_config_admin_agent_ad_hoc_label(self, system_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         payload = system_client.get("/api/nav_config", headers=auth_headers).get_json()
         tools = next(group for group in payload if group["label"] == "Tools")
@@ -241,15 +252,24 @@ class TestSystemNavHelpers:
         monkeypatch.setattr("src.core.tracker.count_jobs_below_dispatch_score_floor", lambda candidate_id: (_ for _ in ()).throw(RuntimeError("boom")))
         assert system_mod._get_job_counts("cand-1") == {}
 
-    def test_resolve_nav_honors_visible_and_enabled_gates(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_resolve_nav_keeps_candidate_facing_groups_and_stubs(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # AST-1449: no group-level visible skip; Applied/Responded stay disabled stubs.
         monkeypatch.setattr(system_mod, "_get_company_counts", lambda candidate_id: {})
         monkeypatch.setattr(system_mod, "_get_job_counts", lambda candidate_id: {})
-        nav = system_mod._resolve_nav("RESUME_READY", "cand-1")
-        labels = {group["label"] for group in nav}
-        assert "Jobs" not in labels
-        artifacts = next(group for group in nav if group["label"] == "Artifacts")
+        facing = {"Jobs", "Companies", "Artifacts", "Candidate"}
+        for state in ("NEW_CANDIDATE", "RESUME_READY"):
+            nav = system_mod._resolve_nav(state, "cand-1")
+            labels = {group["label"] for group in nav}
+            assert facing <= labels
+            jobs = next(group for group in nav if group["label"] == "Jobs")
+            applied = next(item for item in jobs["items"] if item["label"] == "Applied")
+            responded = next(item for item in jobs["items"] if item["label"] == "Responded")
+            assert applied["enabled"] is False
+            assert responded["enabled"] is False
+        nav_ready = system_mod._resolve_nav("RESUME_READY", "cand-1")
+        artifacts = next(group for group in nav_ready if group["label"] == "Artifacts")
         assert all(item["enabled"] for item in artifacts["items"])
-        candidate = next(group for group in nav if group["label"] == "Candidate")
+        candidate = next(group for group in nav_ready if group["label"] == "Candidate")
         assert candidate["items"][0]["enabled"] is True
 
     def test_resolve_nav_uses_string_enabled_gate(self, monkeypatch: pytest.MonkeyPatch) -> None:
