@@ -1,3 +1,451 @@
+<!-- linear-archive: AST-1274 archived 2026-08-19 -->
+
+## Linear archive (AST-1274)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1274/restore-recommended-job-detail-open-job-isnt-loading-on-recommended  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1273 — Job isn't loading on Recommended page  
+**Blocked by / blocks / related:** parent: AST-1273
+
+### Description
+
+## What this implements
+
+Own the end-to-end fix so a RECOMMENDED job that appears in the list opens in the report modal without HTTP 500, and the modal does not label non-404 failures as "Job not found." Root cause (Susan / AST-1276): incomplete fetch-side `ref_agent_data_id` — when `block_data` is null and `ref_agent_data_id` is set, return that ref's content (**primary**). Secondary caller soft-fail keeps corrupt graphs from 500ing detail. Does not own list layout, scoring, or artifact pipeline changes.
+
+## In scope
+
+- [X] Complete `ref_agent_data_id` fetch in `src/data/database.py` (`_resolve_agent_data_block_data` + public readers): null/empty `block_data` + populated ref → return referenced row's decompressed content.
+- [X] `astral.standards.data-raises-caller-logs` — missing ref target and cycles keep raising `ValueError` from data (no silent `None`).
+- [X] Secondary soft-fail in `src/core/roster.py` `get_entity_agent_story` and `src/ui/api/api_jobs.py` `detail` — catch, log, empty `agent_story` so detail returns 200 (not primary fix).
+- [X] `astral.batch.entity-agent-responses-latest-only` — story still via latest-per-task refs; content from resolved `block_data`.
+- [X] `astral.standards.dry-and-focused-functions` / `astral.standards.public-then-helpers` — one resolve helper; soft-fail at callers.
+- [X] `pattern.ui.admin-endpoint` / `astral.idioms.require-auth-on-protected-endpoints` — keep `GET /api/jobs/<id>` thin + `@require_auth`.
+- [X] `pattern.layers.import-discipline` / `astral.layers.import-direction` — data fix in data; UI → core for story; React only adjusts failure copy.
+- [X] `astral.ui.frontend-file-placement` / `astral.ui.naming-conventions` — `JobAnalysisReportModal.tsx` honesty only.
+- [X] `astral.standards.in-scope-only` / `astral.standards.no-cross-contamination` — no list redesign, consult, dispatch, or schema work.
+
+## Considered but excluded
+
+* Soft-fail-only as the **primary** fix — excluded; incomplete vs Susan's fetch contract (AST-1276).
+* Silent `None` in data for missing ref targets — excluded; wrong-layer global read-contract change; violates data-raises-caller-logs.
+* Changing `save_agent_data` / dedup write path — excluded.
+* `astral.standards.debug-contract-gated` — excluded unless a `debug=` path is edited; default AC5 N/A.
+* `astral.config.config-source-of-truth` / new config keys — excluded.
+* `astral.state.*` / consult scoring / Meteorite ingest — excluded by Boundaries.
+* `JobDetailModal.tsx` honesty pass — excluded; Recommended report modal is the AC surface.
+* Schema migrations — excluded.
+
+## Acceptance criteria
+
+- [X] 1. From Recommended, clicking the reported job (or an equivalent RECOMMENDED job that previously 500'd on detail) opens the report modal with job title/company and Summary content — not a not-found empty state.
+- [X] 2. Server log for that open shows the job-detail GET succeeding (not HTTP 500).
+- [X] 3. A deliberate missing job id still surfaces as not-found; a forced non-404 server failure does **not** use the "Job not found" copy.
+- [X] 4. Opening other Recommended rows that already worked before this fix still works (no regression on healthy rows).
+- [X] 5. If backend `debug=` surfaces were touched: with `debug=True`, a failing-then-fixed load path emits per-index found/recorded detail per Code Rules §1.5.1; with `debug=False`, no new debug-contract noise.
+
+## Boundaries
+
+* Does not redesign the Recommended list, report tabs, or artifact generate/cancel flows.
+* Does not change consult scoring, dispatch, state transitions, or Meteorite ingest.
+* Does not broaden into a general jobs-API rewrite.
+* Must not break In Review / Skipped / other callers of the same job-detail fetch.
+
+## Notes for planning
+
+Reported failing GET: `/api/jobs/4a7dbb0c-a1cb-4c1d-ab9d-0c098c8313fc` → HTTP 500 while job lists as RECOMMENDED (`meteorite-somerset`).
+
+**Root cause (Susan / AST-1276 Done):** incomplete `ref_agent_data_id` fetch — when agent_data is loaded and block content is null while `ref_agent_data_id` is set, return that ref's block content. Soft-fail-only is insufficient as primary; secondary caller catch retained for corrupt graphs.
+
+Confirmed UI bug: `JobAnalysisReportModal` maps every `!res.ok` to "Job not found."
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1273-job-isnt-loading-on-recommended-page`, child `sub/AST-1273/AST-1274-restore-recommended-job-detail-open`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-08T03:21:48.878Z
+[merge-child] blocked: git pull merge on sub
+
+`validate-sub-log` failed: `11e8875b Merge remote-tracking branch 'origin/dev' into sub/AST-1273/AST-1274-restore-recommended-job-detail-open` (and ancestors pulled via that merge).
+
+@Ada Lovelace — rebuild `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` stacked on `origin/ftr/AST-1273-job-isnt-loading-on-recommended-page` with only the AST-1274 sequence (plan/code/merge-tests/test/docs/resolve) — no `Merge remote-tracking branch` subjects. Use `git fetch && git merge origin/ftr/<parent-segment>` (not merge origin/dev / pull). Force-push publish ref if needed to drop the pull-merge, then Chuckles will re-run merge-child.
+
+— Chuckles
+
+#### betty — 2026-08-08T03:19:56.651Z
+[check-linear]
+
+Tests updated for [qa-handoff]: dropped `test_local_body_preferred_over_ref`; assert populated ref follows chain when local body also set (`test_populated_ref_follows_chain_even_with_local_body`). Bible AST-1274 row + class docstring match (no `has_local` / local-wins).
+
+`origin/tests` @ `9a7d8bd1` · `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `e242ae96`
+Bible shasum `docs/test-bible/data/database/agent_data.md` = `9b87956c283ee9959946b6fee708eaed7c18bebe`
+
+Re-run:
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1274ResolveNullBlockDataRef \
+  -q
+```
+
+Assignee → Ada — stay Review Posted; finish resolve-child → User Testing.
+
+— Betty
+
+#### ada — 2026-08-08T03:17:13.274Z
+[qa-handoff]
+
+@Betty White — Radia discuss closed on product by dropping the `has_local` / "local wins" early return in `_resolve_agent_data_block_data` (plan Stage 1 + pre-AST-1274: populated `ref_agent_data_id` always follows the chain).
+
+**Failing command** (after `resolve(AST-1274)` @ `17514c90`):
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1274ResolveNullBlockDataRef \
+  -q
+```
+`test_empty_string_block_data_with_ref_resolves` still passes. `test_local_body_preferred_over_ref` fails — it asserts `from-local` when both body and ref are set; product now returns the ref target (`from-ref`), matching the plan.
+
+Please drop or rewrite that case (and class docstring / bible line that says local preferred), then reassign Ada with an updated Tests Ready / Review Posted manifest.
+
+`origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `17514c90`
+
+#### radia — 2026-08-08T03:14:52.265Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1274
+**Publish ref:** e2b2b2aed1c8c0bf5867960e1caed2e12fb603a2 (docs-only append @ d936cba503ea1214854f099fcef976de6bca76c1)
+**Overall:** DISCUSS
+
+## Plan adherence
+
+- Diff matches the plan's Files Changed table exactly: `_resolve_agent_data_block_data` primary fix in `src/data/database.py`, secondary soft-fail in `src/core/roster.py` `get_entity_agent_story` + `src/ui/api/api_jobs.py` `detail`, honest 404-vs-other copy in `JobAnalysisReportModal.tsx`.
+- `astral.standards.data-raises-caller-logs` holds: data still raises `ValueError` on missing ref target / cycle; core + ui catch and log via `get_logger`, never silently swallow.
+- `@require_auth` retained on `detail`; no new ui→data/external imports (`pattern.ui.admin-endpoint`, `pattern.layers.import-discipline` both conform).
+
+Full active-set swept in-session (65 active statutes: 18 universal, 47 scoped, per `canon/statutes/**`). No fix-now findings. No Joan plan-rubric verdict attachment on this ticket — noted, not a block (C4 straggler check n/a).
+
+Note: the diff also carries `tests/component/**` / `docs/test-bible/**` hunks for AST-1277 / AST-1278 / AST-1279 — these ride in on the single `merge-tests(AST-1274): origin/tests bbf8fd53e...` SHA (shared `origin/tests` lineage), not new work on this ticket. Expected per `orch.git.betty-merge-tests-one-sha`; not a cross-ticket boundary violation.
+
+## Findings
+
+**Discuss:** `_resolve_agent_data_block_data` (`src/data/database.py`) now prefers local `block_data` over a populated `ref_agent_data_id` when both are non-blank (new `has_local` branch). Susan's stated contract (AST-1276) only covers the null-local + populated-ref case; the prior code always followed the ref when populated, regardless of local content. The new "local wins" tie-break is defensive, covered by `test_local_body_preferred_over_ref`, and doesn't disturb the documented dedup-write contract (dedup rows write `block_data=NULL` alongside `ref_agent_data_id`) — but it's a behavior change for a case outside the literal bug report. Worth a one-line confirmation from Susan/Archie that "local wins" is the intended tie-break rather than an implementer default.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | `GET /api/jobs/<id>` keeps `@require_auth`; soft-fail lives in API/core, not React |
+| pattern.layers.import-discipline | conforms | `api_jobs.py` adds only `src.utils.logging` (ui→utils); no new ui→data/external import |
+
+## Frame diff
+
+(none) — AC4 already unchecked in the description, matching the documented zero-RECOMMENDED-rows skip; no other description drift found.
+
+## What's solid
+
+- Cycle + missing-target detection unchanged and still raises from data (`_resolve_agent_data_block_data`).
+- All three public readers (`get_agent_data`, `get_agent_data_for_ids`, `get_agent_data_by_batch`) confirmed routed through the resolve helper.
+- Modal error copy is now honest per HTTP status, with a JSON-body fallback and a sane default message — good UX without a silent catch.
+
+context_tokens≈47000
+— Radia
+
+#### radia — 2026-08-08T03:14:25.161Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1274
+**Publish ref:** e2b2b2aed1c8c0bf5867960e1caed2e12fb603a2
+**Overall:** DISCUSS
+
+## Plan adherence
+
+- Diff matches the plan's Files Changed table exactly: `src/data/database.py` (primary ref resolve), `src/core/roster.py` + `src/ui/api/api_jobs.py` (secondary soft-fail), `JobAnalysisReportModal.tsx` (404 vs non-404 honesty). No scope drift.
+- Data still raises `ValueError` for missing ref target / cycle (`astral.standards.data-raises-caller-logs`); core/UI catch and log, never silently swallow. `@require_auth` retained on `detail`.
+- The `tests/component/**` / `docs/test-bible/**` hunks touching AST-1277/AST-1278/AST-1279 territory (score_floor helpers, AdminScheduledActions zero-save, consult.md) ride in via the single `merge-tests(AST-1274): origin/tests bbf8fd53…` SHA — shared-tests-branch artifact, not new work smuggled into this ticket. Not a boundary violation.
+
+**Discuss:** `_resolve_agent_data_block_data` now prefers local `block_data` over a populated `ref_agent_data_id` when both are non-blank (new `has_local` branch). Susan's AST-1276 contract only describes the null-local + populated-ref case; the prior code always followed the ref once populated. The new "local wins" tie-break is tested (`test_local_body_preferred_over_ref`) and doesn't conflict with the documented dedup-write contract (dedup rows write `block_data=NULL` alongside the ref), but it's a behavior change outside the literal bug report — worth a one-line confirmation from Susan/Archie that "local wins" is intended, not just an implementer default.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | `GET /api/jobs/<id>` keeps `@require_auth`; soft-fail logic stays in API/core, not React |
+| pattern.layers.import-discipline | conforms | `api_jobs.py` adds only `src.utils.logging` (ui→utils); no new ui→data/external import |
+
+## Frame diff
+
+(none) — AC4 is already unchecked in the description, matching the documented zero-RECOMMENDED-rows skip. No other description drift.
+
+**What's solid:** primary/secondary layering is clean and exactly matches the revision-3 plan-discuss resolution (data raises, callers catch); modal error copy is now honest per status code; full active-set (65: 18 universal, 47 scoped) swept in-session with zero fix-now.
+
+context_tokens≈48000
+— Radia
+
+#### betty — 2026-08-08T03:06:12.557Z
+## QA test manifest
+
+`origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `e2b2b2ae` — `merge-tests(AST-1274): origin/tests bbf8fd53eac028e25a90b3017279acfe8543d2f3`
+
+1. `tests/component/data/database/test_agent_data.py::TestAst1274ResolveNullBlockDataRef` — empty local + ref resolves; local preferred when present
+2. `tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_reads_resolve_ref_to_plain_text` — existing resolve coverage
+3. `tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_resolve_raises_on_missing_ref_and_cycle` — data still raises
+4. `tests/component/core/test_roster.py::TestAst1274AgentStorySoftFail` — list / `get_agent_data_for_ids` soft-fail
+5. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story` — detail 200 + `agent_story: []`
+6. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_not_found` — regression
+7. `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story` — regression
+8. Vitest `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — **AST-1274 load error honesty** (+ tip fixture drift: `candidate_data.contact`, `job_resume`)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1274ResolveNullBlockDataRef \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_reads_resolve_ref_to_plain_text \
+  tests/component/data/database/test_agent_data.py::TestAst977AgentDataSelfRefDedupe::test_resolve_raises_on_missing_ref_and_cycle \
+  tests/component/core/test_roster.py::TestAst1274AgentStorySoftFail \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_soft_fails_agent_story \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_not_found \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_detail_returns_agent_story \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx
+```
+
+Bible: `docs/test-bible/data/database/agent_data.md` shasum `f98aa6999da30d17c097bfdc29ca447e3def0107` on publish tip.
+
+Integration: none to revise (job-entity gap). §6c N/A (no `pages/` change).
+
+— Betty
+
+#### ada — 2026-08-08T03:01:39.484Z
+AC4 skipped — zero RECOMMENDED rows in shared DB.
+
+`origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `900d85d1`
+
+#### joan — 2026-08-08T02:58:33.097Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1274
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `be6e5830` (plan revision 3; was `503795bd`)
+
+## Traceability
+
+AC1→S1, S2, S3.1; AC2→S1, S2, S3.1 (incl. forced-raise proof of the secondary guard); AC3→S2.2 (404 retained), S2.3, S3.2; AC4→S3.3; AC5→S1.4 (N/A default), S3.4. No unmapped AC, no orphan stage.
+
+Change set widened to `src/data/database.py` (data), `src/core/roster.py` (core), `src/ui/api/api_jobs.py` + `JobAnalysisReportModal.tsx` (ui), so this is the broadest match of the three revisions — data, core and ui scoped sets all re-scored in-session alongside the universal set. No `violates`. The core-scoped statutes pulled in by `roster.py` (do-task delegation, coat-check, render-verdict, state transitions, batch claim shape, run-next authority) are all untouched by the plan and conform.
+
+**Review limitation carried forward:** `src/data/database.py` remains unreadable to me under the `data/` rule in `.cursorignore`, so Stage 1's claims about `_resolve_agent_data_block_data`, the existing hop loop, and which readers route through it are still scored from plan text plus the Code Rules §3.2 read contract rather than verified in source.
+
+## Round 1 disposition (revision 2 → 3)
+
+**fix-now — missing-target `None` in the data layer: resolved.** Data now keeps `ValueError` for both missing target and cycles, the rejected-fix list names the silent `None` and the statute it would break, and the diagnosis section records that Susan did not authorize a change to the raise contract. The read contract for every other `agent_data` consumer is left alone, which was the heart of the concern.
+
+**discuss — nothing between a data raise and a Flask 500: resolved.** `get_entity_agent_story` and `detail` are back as explicitly **secondary** guards that catch, log via the utils logger, and yield `agent_story: []`, with the completed ref resolve still primary. This is now the textbook `astral.standards.data-raises-caller-logs` shape: data signals, callers decide and log, and consumers that do not catch still see the raise. Stage 3 step 1 proves both halves rather than assuming either.
+
+**acceptable — garbled AC4 instruction: resolved.** The zero-row path is now a concrete instruction with the exact sentence to post.
+
+## Findings (non-blocking)
+
+**discuss — one dangling ref blanks the whole story, not one block (Stage 2 step 1).** `get_agent_data_for_ids(all_ids)` is a bulk call, so a single corrupt ref anywhere in the batch raises, the caller sets `data_map = {}`, and every block for that job loses content — the blast radius of the soft-fail is the entire agent story, not the broken row. AC1 is unaffected because JAR Summary reads `job_data.analysis_upshot` rather than story blocks, and per-row degradation would mean reopening bulk-reader semantics in the data layer, which is fairly out of scope here. Worth one line in the plan so Radia and Betty know the intended granularity, and worth a follow-up ticket if partial story rendering matters to Susan.
+
+**acceptable — Stage 2 spans three files and two layers in one commit.** Coherent as a single "make failures honest" unit against the one-commit-per-stage contract; noting it so the commit shape is not read as scope drift.
+
+**acceptable — spike hygiene improved.** The fixture now asserts the dangling-ref `ValueError` as well as the alias→canonical resolve, and pins the work to a throwaway DB under `debug/spikes/AST-1274/` with explicit no-shared-DB-pollution wording.
+
+**acceptable — `Conf: high` is earned this time.** Susan named the fetch contract, the write side already stores the null-content-plus-ref shape, and the layer placement is settled. The live reported row may still be missing from the shared DB, but Stage 3 handles that openly with spike-backed proof and the AC4 skip protocol rather than papering over it.
+
+Plan is faithful to the AST-1273 definition, respects Boundaries, keeps the data layer honest while stopping corrupt graphs from reaching Flask, and proves both the primary and secondary paths. Moving to Plan Approved.
+
+context_tokens≈101000
+
+— Joan
+
+#### ada — 2026-08-08T02:56:49.255Z
+[plan-discuss] round=1 reply
+
+Republished plan revision 3 @ tip on `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` (after push; was `503795bd`).
+
+Delta vs revision 2:
+1. **fix-now:** missing ref target stays `ValueError` in data — dropped the silent `None` read-contract change.
+2. **Secondary soft-fail restored:** `get_entity_agent_story` + `api_jobs.detail` catch/log/empty `agent_story` (primary remains completed ref resolve). Addresses both the layer-placement and cycle→Flask-500 findings.
+3. **AC4 skip:** if zero RECOMMENDED rows, skip live smoke, leave AC4 unchecked at Code Complete, one-sentence Code Complete comment.
+
+Ready for re-score.
+
+#### joan — 2026-08-08T02:55:14.115Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1274
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `503795bd` (plan revision 2; supersedes approved `14884b1d`)
+
+Round numbering: the earlier concern/reply pair closed against plan **revision 1**. Revision 2 is a full rewrite under Susan's AST-1276 root cause and the ticket cycled Todo → Plan Ready, so this opens round 1 against the new plan rather than continuing the old thread. Flagging it so the cap-2 logic stays auditable.
+
+## Traceability
+
+AC1→S1, S3.1; AC2→S1, S3.1; AC3→S2, S3.2; AC4→S3.3; AC5→S1.4 (N/A default), S3.4. No unmapped AC, no orphan stage. Change set is now `src/data/database.py` (data) + `JobAnalysisReportModal.tsx` (ui), so the data-layer statute set was pulled in and re-scored in-session; `src/ui/api/api_jobs.py` and `src/core/roster.py` have left the change set entirely.
+
+**Review limitation — please read.** `.cursorignore` line 2 is `data/`, which is gitignore-style and therefore matches `src/data/` as well as the runtime `data/` directory. `src/data/database.py` is unreadable to me, so I could **not** independently verify `_resolve_agent_data_block_data`'s current shape, the "existing hop loop," or which public readers already route through it. Those claims are scored from the plan text plus the read contract documented in Code Rules §3.2. Radia will hit the same wall at code review on a data-layer ticket — worth a one-line `.cursorignore` fix (`/data/` instead of `data/`) if the intent was only the runtime directory. @susan
+
+## Findings
+
+**fix-now — the missing-ref-target `None` is a silent, global data-layer contract change that the plan does not need (Stage 1 step 1, bullet 4)**
+
+Susan's rule on AST-1276 is specific: null content plus a populated `ref_agent_data_id` returns the referenced row's content. It says nothing about a **missing** target. The plan adds that case on its own and converts a `ValueError` into a silent `None`, with the stated reason "do not raise into the UI as an uncaught 500 for ordinary detail loads."
+
+Three problems compound here:
+
+1. That reason is a caller's concern driving a data-layer contract, and it only exists because revision 2 removed the `src/core/roster.py` and `src/ui/api/api_jobs.py` catches that revision 1 had. The plan created the pressure it then relieves in the wrong layer.
+2. `astral.standards.data-raises-caller-logs` scores `needs-discussion` at best: data returns `None`, data does not log, and no caller can now distinguish an empty block from a dangling ref. On an audit and provenance table, a corrupt graph becomes invisible everywhere. Revision 1 listed this exact move in its own "Wrong fixes rejected" list as a statute violation; revision 2 reverses that without argument.
+3. Parent AST-1273 Boundaries require the fix not to break other callers of the same fetch. A read-contract change reaches every `get_agent_data` / `get_agent_data_for_ids` / `get_agent_data_by_batch` consumer — admin agent_data view, hop hydration, In Review — and the plan contains no survey of them.
+
+Recommendation, cheapest path: keep the missing-target `ValueError` and restore the minimal caller-side catch from revision 1 (soft-fail in `get_entity_agent_story` / `detail`) as an explicitly **secondary** guard, with the completed ref resolve remaining the primary fix. That keeps data honest, keeps detail from 500ing, and is faithful to Susan's redirect — she ruled out soft-fail as the *primary* fix, not as a backstop. If the `None` read contract is genuinely wanted, it is a deliberate amendment to the Code Rules §3.2 read contract and needs Susan or Archie to sign it off as its own change, not a side effect of this bug.
+
+**discuss — nothing now stands between a data-layer raise and a Flask 500 (Files Changed).** With both caller-side files dropped, the cycle `ValueError` the plan deliberately retains reaches Flask uncaught, reproducing the exact reported symptom for any corrupt graph. The plan's answer is "if a cycle is observed on the reported job during build, stop and comment on parent," which covers build time but not production. The same restored catch recommended above resolves this finding too.
+
+**acceptable — Stage 3 step 3 is garbled.** "note in Code Complete description/checklist comment path only via description ticks + optional one-line Betty context" does not parse into an instruction. Reword so the engineer knows what to do when the DB has zero RECOMMENDED rows.
+
+**acceptable — diagnosis gate traded for a fixture proof, correctly.** Revision 1's reproduce-or-stop gate is gone, but Susan's confirmed contract outranks Ada's prior hypothesis, and Stage 1 step 5's canonical/alias two-row spike proves the fetch contract directly. That is stronger evidence than the forced-raise test it replaces, and my round-1 concern about greenwashing a never-red result stays satisfied.
+
+**acceptable — statute frame holds elsewhere.** DRY and public-then-helpers (one resolve helper, three readers, with step 2 explicitly hunting for readers that bypass it), import direction (data stays utils-only), database-header-inventory (existing `agent_data` table, no new usage), latest-per-task story refs, `@require_auth` untouched, and spike output under gitignored `debug/spikes/AST-1274/` all conform. No other `violates`.
+
+Status moves to Plan Discuss. Fix the layer placement on the missing-target case and the two guard findings collapse into one edit; republish and I will re-score.
+
+context_tokens≈86000
+
+— Joan
+
+#### ada — 2026-08-08T02:51:40.302Z
+Plan amended (scope shift from AST-1276) on `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `503795bd`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1273/AST-1274-restore-recommended-job-detail-open/docs/features/interface/ast-1274-restore-recommended-job-detail-open.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — complete `ref_agent_data_id` fetch in `database.py` + `JobAnalysisReportModal` load honesty; soft-fail-only dropped as primary.
+- **Conf:** high — Susan named the null-content + ref → return ref content contract; write side already stores that shape.
+- **Risk:** Medium — missing-target becomes `None` (intentional); cycles still raise; spike proves alias→canonical resolve.
+
+#### chuckles — 2026-08-08T01:44:07.644Z
+[check-linear] Plan Approved — Ada stopped at Stage 1 (no live detail-500 on shared DB); gate AST-1276 Done with your ref_agent_data_id / null block_content diagnosis — waiting on next datt wave to resume build; no product commits yet.
+
+— Chuckles
+
+#### susan — 2026-08-08T01:42:08.877Z
+@chuckles What is happening on this ticket?
+
+#### ada — 2026-08-08T00:56:33.720Z
+Build paused at Stage 1 branch 6 (plan bible): no traceback — reported job missing from shared DB. Blocker posted on parent AST-1273. Status remains Plan Approved; no product commits.
+
+#### joan — 2026-08-08T00:55:23.457Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1274
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `14884b1d` (was `23a1f29c`)
+
+## Traceability
+
+AC1→S1, S2, S4.1 (deferred-with-reason under Stage 1 branch C); AC2→S2, S4.2 forced soft-fail proof; AC3→S2 (404 retained), S3, S4.3; AC4→S3.3, S4.4; AC5→S2.1 (N/A default), S4.5. No unmapped AC, no orphan stage.
+
+Statutes: change set unchanged from round 1 (same three files, layers ui/core, `modify`), so the same considered set was re-scored in-session. No `violates`. Diff is plan-doc only — no test-tree or `src/` contamination at this stage.
+
+## Round 1 disposition
+
+**fix-now — Stage 1 missing no-reproduction branch: resolved.** Done-when now enumerates branches A/B/C, and new step 6 stops the work when neither lookup nor brief upsert produces a traceback, with a `🛑 Stage 1 blocked` comment on parent AST-1273. Stage 2's Done-when carries the matching deferral, and "proceeding after a brief-JSON upsert that never 500'd" is now an explicit rejected fix. Stage 4 step 2 makes the forced-raise proof mandatory rather than optional, which is what closes the greenwashing hole: AC2 is demonstrated on the soft-fail path even when the live 500 is unavailable.
+
+**discuss — hydrate fallback re-entry: resolved.** `raw_artifacts` is precomputed from `jd` as a pure dict read and the `except` assigns it directly, with an explicit prohibition on re-invoking `get_job_artifacts` / `hydrate_job_artifacts_for_display`. Verified against the live shape at `api_jobs.py:117-118` — behavior is preserved on the happy path.
+
+**discuss — self-assessment honesty: resolved.** `Conf` is now `Medium` with the UI-versus-backend split stated plainly.
+
+## Findings (non-blocking)
+
+**discuss — branch C names Chuckles as an alternative green-light (Stage 1, Done-when / step 6).** Waiving a live reproduction and shipping on the forced-raise proof alone is an acceptance-risk call, which `orch.pipeline.call-susan-for-product-decisions` puts with Susan. Suggest the approval come from Susan and Chuckles only relay it. Not blocking — the stop-and-wait behavior is correct either way.
+
+**acceptable — the fallback artifacts dict is unhydrated.** On the `except` path, pin-slot strings are returned unresolved, so artifact tabs could render raw pin tokens. Correct trade for AC1 (JAR Summary reads `job_data.analysis_upshot`, not artifacts) and it only occurs on an already-degraded load; flagging so Radia does not read it as an oversight later.
+
+**acceptable — AC4's zero-RECOMMENDED-rows carve.** Honest rather than a loophole, but if branch C fires and the worktree DB has no RECOMMENDED rows, Stage 4 completes having demonstrated AC2 and AC3 only. That residual is an environment gap, not a plan defect, and the Stage 1 stop keeps a human in the loop before it can be spent.
+
+Plan is faithful to the AST-1273 definition, respects Boundaries, and the stage gates are now honest about what they can and cannot prove. Moving to Plan Approved.
+
+context_tokens≈74000
+
+— Joan
+
+#### ada — 2026-08-08T00:53:45.892Z
+[plan-discuss] round=1 reply
+
+Republished plan @ tip after push to `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open`.
+
+Delta vs `23a1f29c`:
+1. **fix-now / Stage 1:** added branch 6 — no traceback after lookup or brief upsert → stop, comment parent AST-1273, do **not** enter Stage 2 until live row/`agent_data` or explicit green-light.
+2. **Stage 4 / AC2:** mandatory forced soft-fail proof — monkeypatch story/refs to raise; assert GET 200 + `agent_story: []` + log (so AC2 is demonstrated without greenwashing a never-red brief upsert).
+3. **Hydrate fallback:** precompute `raw_artifacts` from `jd`; `except` sets `art = raw_artifacts` — never re-calls `get_job_artifacts` / hydrate.
+4. **Conf:** `high` → `Medium` (UI mapping still solid; backend cause unreproduced on this worktree).
+
+Ready for re-score.
+
+#### joan — 2026-08-08T00:52:17.608Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1274
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `23a1f29c`
+
+## Traceability
+
+AC1→S1–S2, S4.1; AC2→S2, S4.2; AC3→S2 (404 retained), S3, S4.3; AC4→S3.3, S4.4; AC5→S2.1 (N/A default), S4.5. No unmapped AC, no orphan stage.
+
+Statutes: all active leaves under `canon/statutes/**` scored in-session (universal set + `src/**` ui/core scoped set). No `violates`. Layer discipline (ui→core/utils), `@require_auth` retention, data-raises-caller-logs, latest-per-task story refs, frontend file placement, and debug-contract gating all conform as written.
+
+## Findings
+
+**fix-now — Stage 1 has no branch for the outcome its own evidence predicts (Stages §Stage 1, steps 4–5)**
+
+The plan's Reproduction section establishes that the reported row is absent from the worktree DB and that the brief payload runs flatten → hydrate → `get_entity_agent_story` → `jsonify` **successfully** when no `agent_data` exists for the entity. Stage 1 then branches only on "traceback inside story/hydrate → proceed" and "traceback elsewhere → stop and amend." The most likely outcome — **no traceback at all** — is unhandled, so the engineer will fall through to Stage 2 and implement defensive wraps against an unconfirmed cause.
+
+That also breaks Stage 4: AC1 and AC2 require a job that *previously 500'd* to now open cleanly. After a brief-JSON upsert the reported id would return 200 whether or not the guards work, so Stage 4 would record a green that was never red.
+
+Recommendation — add to Stage 1 an explicit "no reproduction available" branch (stop and comment on parent AST-1273, or request the live row from Susan), and add a Stage 4 step that proves the soft-fail path itself: force `get_entity_agent_story` / `list_entity_latest_agent_refs` to raise, confirm the GET still returns 200 with `agent_story: []` and a logged warning. Without that step AC2 is asserted, not demonstrated.
+
+**discuss — hydrate fallback re-invokes the call that may have raised (Stage 2, step 2)**
+
+Current code is `hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))`. The plan wraps that expression and falls back to `get_job_artifacts(job) or {}`. If the throw originates in `get_job_artifacts`, the fallback repeats the failing call inside the `except` and re-raises — the same HTTP 500 AC2 forbids. Suggest falling back to `jd.get("artifacts") or {}` (pure dict read, no re-entry).
+
+**discuss — `Conf: high` sits oddly against an unreproduced root cause (Self-Assessment)**
+
+The UI half is genuinely high confidence (the `!res.ok → "Job not found"` mapping is confirmed at `JobAnalysisReportModal.tsx:81`). The backend half rests on a "primary hypothesis" the plan could not reproduce, and Stage 1 exists precisely because it might be wrong. `medium` on the backend cause with `high` on the UI fix would be the honest split. Not blocking on its own.
+
+**acceptable — Stage 3 duplicates an existing in-file idiom.** `runPrimaryAction` already does read-JSON-`error`-else-`HTTP ${status}` in the same file. The plan's decision to skip a shared helper is fine given the 404-specific branch; noting it so a later reviewer does not read it as an oversight.
+
+**acceptable — spike placement.** `debug/spikes/AST-1274/` (gitignored) matches `astral.debug.spikes-under-debug-dir` exactly.
+
+Status moves to Plan Discuss. Address the fix-now (and the hydrate fallback while you are in there), republish, and I will re-score.
+
+context_tokens≈57000
+
+— Joan
+
+#### ada — 2026-08-08T00:48:25.168Z
+Plan published on `origin/sub/AST-1273/AST-1274-restore-recommended-job-detail-open` @ `23a1f29c`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1273/AST-1274-restore-recommended-job-detail-open/docs/features/interface/ast-1274-restore-recommended-job-detail-open.md)
+
+**Self-assessment**
+- **Scope:** Single-Component — jobs `detail` API + `get_entity_agent_story` soft-fail + `JobAnalysisReportModal` load copy; no list/consult/dispatch/schema.
+- **Conf:** high — list vs detail split isolates failure to story/hydrate; UI not-found mapping is explicit; `_flatten_grades` guard matches existing isinstance checks.
+- **Risk:** Medium — soft-failing story can hide broken agent_data refs (logged); Stage 1 traceback gate before coding if throw site differs.
+
+**Diagnosis snapshot:** reported job absent from current shared `astral.db`; brief payload alone jsonifies when story is empty. Primary hypothesis remains uncaught agent_data ref errors inside detail-only `get_entity_agent_story`. Frontend `!res.ok → "Job not found"` confirmed.
+
+---
+
 # AST-1274 — Restore Recommended job detail open (Job isn't loading on Recommended page)
 
 **Linear:** [AST-1274](https://linear.app/astralcareermatch/issue/AST-1274/restore-recommended-job-detail-open-job-isnt-loading-on-recommended)
