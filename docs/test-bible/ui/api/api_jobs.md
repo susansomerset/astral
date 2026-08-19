@@ -12,19 +12,39 @@
 
 **Parent:** [AST-1091](https://linear.app/astralcareermatch/issue/AST-1091/job-resume-artifact-cover-letter-and-suggested-responses-is-not-saved). **Publish:** `origin/sub/AST-1091/AST-1100-resolve-artifact-agent-data-id`.
 
-Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT aliases `…/artifacts/job_resume` and `…/artifacts/proposed_answers` write body dicts onto those keys.
+Job GET runs `hydrate_job_artifacts_for_display` (overlay only). PUT `…/artifacts/proposed_answers` still writes a body dict onto that key. PUT `…/artifacts/job_resume` keep-pin rewrite is **AST-1430**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | GET hydrate + PUT aliases | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi`** |
 
-**Broken / obsolete:** none — legacy `resume_content` / `application_responses` PUT routes retained.
+**Broken / obsolete:** `test_put_job_resume_writes_body_dict` — AST-1430 (dict-onto-pin). Legacy `resume_content` / `application_responses` PUT routes retained.
 
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi \
+  -q
+```
+
+### AST-1430 · AST-1422
+
+**Parent:** [AST-1422](https://linear.app/astralcareermatch/issue/AST-1422/finalize-job-resume-isnt-getting-parsed-into-the-job-resume-renderer). **Publish:** `origin/sub/AST-1422/AST-1430-test-gap-resume-content-copy-put-pin`. Product fix: **AST-1428**.
+
+`PUT /api/jobs/<id>/artifacts/job_resume` keeps `artifact_key: "job_resume"` but calls `save_job_artifact_resume_content` (sibling blob). Never `save_job_data` a dict onto `artifacts.job_resume`. Copy-after-pin: **`docs/test-bible/core/agent.md`** § AST-1430.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| PUT keep-pin | `src/ui/api/api_jobs.py` | **`TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin`** |
+
+**Broken / obsolete:** `test_put_job_resume_writes_body_dict` (dict onto pin).
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestAst1100JobArtifactPinResolveApi::test_put_job_resume_writes_resume_content_keeps_pin \
   -q
 ```
 
