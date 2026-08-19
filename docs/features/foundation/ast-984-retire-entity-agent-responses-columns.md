@@ -1049,3 +1049,67 @@ context_tokens≈38000
 ```
 [code-rubric] PROCEED (Commit: 4e1cfd4b) entity_id on prompt rows
 ```
+
+## Bug: AST-1431 — Tests for prompt-row entity_id stamp
+
+Sibling of AST-1429 (`## Bug: AST-1429` above). Product stamp already landed and merged to ftr. This ticket is tests/bible only. Do not rewrite AST-1429 stages or re-implement `_store_prompt_blocks`.
+
+### As-is
+
+`tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_do_task_success_tags_response_entity_id` asserts only RESPONSE `save_agent_data` kwargs carry `entity_id=="job-1"`. Direct `_store_prompt_blocks` tests (`test_store_seven_segment_optional_sections` and siblings) stub `save_agent_data` as `lambda **kw: kw["agent_data_id"]` and never inspect `entity_id`. `TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks` mocks `_store_prompt_blocks` and checks `call_count == 1` only — not `entity_id="j1"`. Bible `docs/test-bible/core/agent.md` AST-984 row: “RESPONSE save carries `entity_id`” / `TestAst984EntityColumnRetired`. Betty: missing coverage — `do_task` / `_store_prompt_blocks` never assert prompt-row stamp (SYSTEM / CACHE_* / TASK / NO_CACHE).
+
+### To-be
+
+A test exists that would have been red against pre-AST-1429 product (prompt `save_agent_data` kwargs omit/`None` `entity_id` when `index` is set) and is green on current ftr (same kwargs equal the RESPONSE’s `entity_id`). Bible names that coverage. Ad Hoc Test call site is covered the same way.
+
+### Repro
+
+Same fixture as `test_do_task_success_tags_response_entity_id`: `do_task("evaluate_jd", index="job-1", ...)` with `stub_agent_storage["save"]`. Collect `c.kwargs` where `block_type != "RESPONSE"`.
+
+Pre-AST-1429:
+
+```
+block_type  entity_id
+SYSTEM      None
+CACHE_*     None   # only slots actually stored
+TASK        None
+RESPONSE    job-1
+```
+
+Post-AST-1429 (current ftr): every stored prompt row’s `entity_id` is `"job-1"`. Empty/whitespace cache slots still absent (no row to assert).
+
+### Root cause
+
+AST-984 tests locked the RESPONSE-only write rule. AST-1429 changed the write rule; `[board-betty] TESTS: REVISE` on AST-1429 filed this gap instead of qa-fix inline. Coverage hole, not a product defect.
+
+### Proposed change
+
+Engineer does **not** commit `tests/` or `docs/test-bible/**`. Betty lands the following (qa-fix on this ticket when the board says TESTS: REVISE; engineer make-fix is a no-op on product).
+
+1. **`tests/component/core/test_agent.py` — `TestAst984EntityColumnRetired`**
+   - Add `test_do_task_success_tags_prompt_entity_id` next to `test_do_task_success_tags_response_entity_id`. Reuse the same stubs (`_resolve_task_prompts` / `send_to_anthropic` / `index="job-1"` / `stub_agent_storage`).
+   - After success: `prompt_saves = [c.kwargs for c in stub_agent_storage["save"].call_args_list if c.kwargs.get("block_type") != "RESPONSE"]`.
+   - Assert `prompt_saves` is non-empty; every entry has `entity_id == "job-1"`; every `block_type` is one of SYSTEM / CACHE_A / CACHE_B / CACHE_C / CACHE_D / TASK / NO_CACHE.
+   - Keep the existing RESPONSE-only test unchanged (still holds).
+
+2. **Direct helper:** one new test on `_store_prompt_blocks` (same class or adjacent store-prompt class). Monkeypatch `save_agent_data` to record kwargs (not `lambda **kw: kw["agent_data_id"]`). Call with `caches_resolved_four=("a", "", "", "")`, `user_content="u"`, `entity_id="somerset"`. Assert every recorded save has `entity_id=="somerset"`. Second call with `entity_id` omitted: every save has `entity_id` None/absent. Do not overload the Style D inner `index` int.
+
+3. **Ad Hoc:** in `TestAst515AdhocWorkbenchLedger::test_success_completes_ledger_and_stores_blocks` (already passes `entity_id="j1"`), assert `ledger_trackers["store_prompt"].call_args.kwargs.get("entity_id") == "j1"` (and the failure path the same, or one extra assertion on the existing failure test). The fixture mocks `_store_prompt_blocks`; this is the call-site stamp, not a second save-kwargs test.
+
+4. **`docs/test-bible/core/agent.md` AST-984 table:** add a row: prompt-row `entity_id` stamp (SYSTEM / CACHE_* / TASK / NO_CACHE) when index is known — `TestAst984EntityColumnRetired` (new method) + Ad Hoc call-site assertion. Narrow the existing RESPONSE row so it does not claim prompt coverage.
+
+5. **Out of scope:** no product edits (`agent.py` / `database.py` / Code Rules / canon). No historical DB backfill. No `list_entity_latest_agent_refs` test rewrite (still RESPONSE-only). Do not revert AST-1429 to manufacture a red run on this branch — product is already on ftr; the assertion *defines* the red-vs-pre-fix contract.
+
+### Blast radius
+
+- `TestAst984EntityColumnRetired` / `_store_prompt_blocks` tests / `TestAst515AdhocWorkbenchLedger` in `test_agent.py`. Existing RESPONSE assertion and Style D / seven-segment store tests stay.
+- Bible `docs/test-bible/core/agent.md` only; not `agent_responses.md` unless Betty finds a list-API row that wrongly says prompt rows stay null (none expected).
+- AST-1429 product remains the write-rule source (`## Bug: AST-1429` Proposed change).
+
+### What must still hold
+
+- AST-1429 write rule: when index is known, prompt and RESPONSE saves share `entity_id`; omitted index → null.
+- `list_entity_latest_agent_refs` RESPONSE-only; hop/story unchanged.
+- Empty cache slots omitted; no empty CACHE_B/D rows.
+- Engineer still does not commit `tests/` or `docs/test-bible/**` on this ticket’s `code()` if any — Betty owns those trees.
+- Joan CANON: OK on AST-1429 — this gap does not amend `canon/statutes/**` or `canon/patterns/**`.
