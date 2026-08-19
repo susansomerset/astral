@@ -265,6 +265,44 @@ npm run test:component -- \
 
 ---
 
+### AST-1441 · AST-1438
+
+**Parent:** [AST-1438 — Disable authentication on localhost](https://linear.app/astralcareermatch/issue/AST-1438/disable-authentication-on-localhost). **Publish:** `origin/sub/AST-1438/AST-1441-local-spa-skip-login-and-session-refresh`.
+
+SPA consumes AST-1440 `GET /api/auth_passthrough`: fail-closed raw `fetch`; when `true`, AuthContext loads `/api/me` with no Stytch session and skips extend; RequireAuth renders children (no Login / Log-off); Authenticate navigates `/` without `authenticateByUrl`. Flask signal = **AST-1440**. Does **not** unwrap `StytchProvider`.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Public-signal fetch | `authPassthrough.ts` | **`test_authPassthrough.test.ts`** |
+| `/api/me` without session; skip extend | `AuthContext.tsx` | **`test_AuthContext.test.tsx`** — **`AST-1441:*`** |
+| Skip Login / Log-off | `RequireAuth.tsx` | **`test_RequireAuth.test.tsx`** — **`AST-1441:*`** |
+| `/authenticate` page (§6c) | `Authenticate.tsx` | **`test_Authenticate.test.tsx`** — **`AST-1441:*`** |
+
+**Broken / obsolete:** existing AuthContext / RequireAuth / Authenticate suites assumed no `/api/auth_passthrough` wait — revised to `stubAuthPublicFetches(false)` (shared in `test-utils.tsx`). RequireAuth AST-1408 keep-mounted now `waitFor` (passthrough must settle). AdminRoute `useAuth` mocks include `localAuthPassthrough: false`.
+
+**Integration:** no existing scenario asserts SPA Login / extend — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Fail-closed fetch helper: `tests/component/frontend/lib/test_authPassthrough.test.ts`
+2. AuthContext passthrough `/api/me` + skip extend: `tests/component/frontend/contexts/test_AuthContext.test.tsx`
+3. RequireAuth skip Login/Log-off: `tests/component/frontend/components/test_RequireAuth.test.tsx`
+4. Authenticate page §6c skip handoff: `tests/component/frontend/pages/test_Authenticate.test.tsx`
+
+**AST-1441** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_authPassthrough.test.ts \
+  ../../../tests/component/frontend/contexts/test_AuthContext.test.tsx \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1421 · AST-1419
 
 **Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1421-job-modal-copy-control`.
