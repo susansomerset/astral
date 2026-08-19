@@ -831,3 +831,82 @@ Joan Excluded `astral.debug.spikes-under-debug-dir`, `astral.docs.features-singl
 
 `entity_cost` remains on batch `agent_ref` for consult/roster tagging but is omitted from `list_entity_latest_agent_refs` output per plan (UI does not require it). No change.
 
+## Bug: AST-1429 — Stamp entity_id on all agent_data rows in a batch
+
+AST-984 `Replacement lookup` item 2 and Stage 1 step 4 stay as the original shipped contract. This section is the write-rule delta for AST-1429. Do not rewrite those stages.
+
+### As-is
+
+A single-entity batch write stores one row per prompt/response block; only RESPONSE has `entity_id` set. Dump that triggered this ticket: `craft_company_search_terms` batch with five `agent_data` rows — SYSTEM / CACHE_A / CACHE_B / TASK have `entity_id` null; RESPONSE has `entity_id=somerset`. Same split on Ad Hoc Test (`run_adhoc_workbench_test`): `_store_response_block(..., index=entity_id)` already tags RESPONSE; `_store_prompt_blocks` does not. This is the AST-984 write rule, not a missed assignment.
+
+### To-be
+
+When the entity index is known, every `agent_data` row written for that `do_task` / Ad Hoc Test — SYSTEM, CACHE_A–D (only slots that are stored), TASK, NO_CACHE, and RESPONSE — carries the same `entity_id` as the RESPONSE. `list_entity_latest_agent_refs` remains a RESPONSE-only index (attach prompt blocks via `get_agent_data_by_batch` as today). Historical prompt rows already in the DB stay null. Shared multi-entity consult/roster prompt rows are not copied per entity.
+
+### Repro
+
+1. Production: `do_task("craft_company_search_terms", index="somerset", ...)` with `store_agent_data=True` (or any single-entity hop that stores prompts). After return, `get_agent_data_by_batch(batch_id)` yields rows shaped like:
+
+```
+block_type  entity_id
+SYSTEM      null
+CACHE_A     null
+CACHE_B     null
+TASK        null
+RESPONSE    somerset
+```
+
+(CACHE_C / CACHE_D / NO_CACHE appear only when those slots are non-empty; they are also null today.)
+
+2. Ad Hoc: `POST /api/admin/adhoc/test` with `entity_id` set; `run_adhoc_workbench_test` stores the same five-ish rows under `batch_id=adhoc-<task_key>-<uuid>`. RESPONSE has `entity_id`; prompt rows do not.
+
+To-be fixture for the same batch: every stored row’s `entity_id` equals the RESPONSE’s (`somerset` / the Test `entity_id`).
+
+### Root cause
+
+AST-984 designed prompt blocks as batch-scoped shared rows **without** `entity_id` (`Replacement lookup` item 2; Stage 1 step 4: “Do not set `entity_id` on `_store_prompt_blocks` saves”). Live code matches that:
+
+- `_store_response_block` passes `entity_id=index if index else None` into `save_agent_data`.
+- `_store_prompt_blocks` inner `_save` calls `save_agent_data` with no `entity_id` (the helper’s `index` kwarg is the AST-1411 Style D 1-based loop counter, not the entity id).
+- `run_adhoc_workbench_test` has `entity_id` and already forwards it to `_store_response_block` only.
+- `docs/ASTRAL_CODE_RULES.md` §2.4.1: “Shared prompt blocks (SYSTEM / CACHE_* / TASK / NO_CACHE) stay without `entity_id` (batch-scoped).”
+- `save_agent_data` docstring: “omit for shared prompt blocks.”
+
+Prompt-block primary keys are `{batch_id}-{block_type}-{content_hash}` (content hash does not include entity id), so identical prompts in one `batch_id` collapse to one row (`INSERT OR IGNORE`). That is why AST-984 left them untagged. AST-1429 changes the **per-entity** write (index known) so those rows are tagged; it does not split shared rows per entity.
+
+### Proposed change
+
+Contract change, confirmed: stamp. Do not keep the AST-984 “prompt rows stay null” write rule.
+
+1. **`src/core/agent.py` `_store_prompt_blocks`**
+   - Add kwarg `entity_id: Optional[str] = None` on the public helper (do **not** overload the inner `_save(..., index: int)` Style D counter).
+   - Pass `entity_id=entity_id if entity_id else None` into every `save_agent_data` inside `_save`.
+   - When `entity_id` is omitted/empty, behavior is unchanged (null column).
+
+2. **`do_task` call site** (the `_store_prompt_blocks` call after the provider returns, currently around the `_should_store` block): pass `entity_id=index if index else None` — same truthiness as `_store_response_block`. Prompt rows are stored on both success and failure-audit paths (they are written before the success/fail RESPONSE branch); this one argument covers both.
+
+3. **`run_adhoc_workbench_test` call site:** pass `entity_id=entity_id if entity_id else None` into `_store_prompt_blocks`, matching the existing `_store_response_block(..., index=entity_id)` calls. Empty Ad Hoc `entity_id` → prompt and RESPONSE both stay null.
+
+4. **`src/data/database.py` `save_agent_data`:** update the docstring so `entity_id` is no longer “RESPONSE only / omit for shared prompt blocks.” The column is set whenever the caller passes it (prompt or RESPONSE). Do **not** change INSERT / content-dedup / `INSERT OR IGNORE` behavior. Do **not** change `list_entity_latest_agent_refs` — it already filters `block_type = 'RESPONSE'`, so tagging prompt rows cannot enter the latest-ref index. Do **not** change `ensure_batch_response_entity_ids` (still copies RESPONSE per processed entity; does not copy prompt blocks). Do **not** change prompt-block id generation to include entity id.
+
+5. **`docs/ASTRAL_CODE_RULES.md` §2.4.1** — replace the write-rule sentence that currently says prompt blocks stay without `entity_id` with: when an entity index is known, `_store_prompt_blocks` and `_store_response_block` both set `agent_data.entity_id` on the rows they write; `list_entity_latest_agent_refs` still selects RESPONSE rows only and still attaches non-RESPONSE blocks via `get_agent_data_by_batch`. Keep the statute citation. Do **not** edit `canon/statutes/astral/batch/astral.batch.entity-agent-responses-latest-only.md` or `canon/patterns/batch/pattern.batch.entity-agent-responses.md` in this ticket: the statute Statement still requires RESPONSE tagging + RESPONSE-only list API (both still hold); prompt tagging is additive. If the board requires a statute/pattern amend, that is a later Archie-gated step — not this patch.
+
+6. **Out of scope (explicit):** no historical `UPDATE` of old prompt rows; no per-entity copies of shared consult/roster SYSTEM/CACHE/TASK rows; no schema change (`entity_id` already exists); no `GET /api/agent_data/<batch_id>` query-param rewrite (that path extracts TASK/RESPONSE *content* segments; it does not SQL-filter the `entity_id` column).
+
+### Blast radius
+
+- `_store_prompt_blocks` is shared by production `do_task` and Ad Hoc Test (AST-1411). Style D debug (`debug_index` N/M on the inner loop `index`) must keep using the integer counter, not the new `entity_id`.
+- Multi-entity consult/roster: one `do_task` may share a `batch_id` and identical prompt text; `INSERT OR IGNORE` still first-writer-wins on the prompt PK. `ensure_batch_response_entity_ids` continues to mint per-entity RESPONSE copies. Do not extend that copier to prompt blocks.
+- Hop hydration / `get_entity_agent_story` / tracker snapshot: still `list_entity_latest_agent_refs` + batch attach — SQL already `block_type = 'RESPONSE'`.
+- Betty tests likely to assume the old split: `tests/component/core/test_agent.py::TestAst984EntityColumnRetired::test_do_task_success_tags_response_entity_id` (RESPONSE-only assertion today — still valid, but prompt-save kwargs will now include `entity_id`); `_store_prompt_blocks` / Ad Hoc store tests under `test_agent.py` / admin Ad Hoc tests. Engineer does not edit `tests/` or the bible.
+
+### What must still hold
+
+- AST-984 replacement lookup algorithm: `list_entity_latest_agent_refs` is RESPONSE-only; `prompt_blocks` on each ref still come from `get_agent_data_by_batch` non-RESPONSE rows plus this RESPONSE `{type, id}` only (exclude sibling entities’ RESPONSE rows in the same batch).
+- `_store_response_block` still sets `entity_id=index` when index is truthy, including failure-audit RESPONSE writes.
+- Empty/whitespace cache slots still omitted (`if blob and blob.strip()`); no empty CACHE_B/D rows.
+- `save_agent_data` still accepts omitted `entity_id` (NULL).
+- No `append_agent_response` / entity JSON `agent_responses` columns.
+- AST-1411 seven-segment Ad Hoc persist (SYSTEM + stored CACHE_* + TASK + RESPONSE, `batch_id` on Test result) unchanged except the new `entity_id` kwarg on prompt saves.
+- Engineer does not commit `tests/` or `docs/test-bible/**`.
+
