@@ -908,7 +908,7 @@ Contract change, confirmed: stamp. Do not keep the AST-984 “prompt rows stay n
 - `save_agent_data` still accepts omitted `entity_id` (NULL).
 - No `append_agent_response` / entity JSON `agent_responses` columns.
 - AST-1411 seven-segment Ad Hoc persist (SYSTEM + stored CACHE_* + TASK + RESPONSE, `batch_id` on Test result) unchanged except the new `entity_id` kwarg on prompt saves.
-- Engineer does not commit `tests/` or `docs/test-bible/**`.
+- Engineer does not commit `tests/` or `docs/test-bible/**`. Coverage is sibling AST-1431 (docs-acceptance on this ticket).
 
 ### Joan board (fix-board F2)
 
