@@ -1,3 +1,252 @@
+<!-- linear-archive: AST-1286 archived 2026-08-19 -->
+
+## Linear archive (AST-1286)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1286/responsive-left-nav-hamburger-shell-make-left-nav-responsive  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1284 — Make left nav responsive  
+**Blocked by / blocks / related:** parent: AST-1284; related: AST-1273; related: AST-1166
+
+### Description
+
+## What this implements
+
+Owns NavigationShell responsive behavior end-to-end: collapse below 1024px, hamburger + overlay drawer with backdrop dismiss, drawer carrying today's sidebar contents (checked candidate list/submenu, nav groups, admin footer), post-navigate close, and unchanged always-visible sidebar at ≥1024px. Does not own page-level mobile redesigns or nav-config content changes.
+
+## In scope
+
+- [X] `astral.ui.frontend-file-placement` — shell/CSS stay in `src/ui/frontend/src/components/NavigationShell.tsx` and `src/ui/frontend/src/App.css`
+- [X] `astral.ui.naming-conventions` — existing PascalCase component / snake_case routes unchanged
+- [X] `astral.layers.ui-config-driven-business-logic` — nav visibility/enablement stays `/api/nav_config`; no new business rules in React
+- [X] `astral.standards.in-scope-only` — shell responsiveness only
+- [X] `astral.standards.dry-and-focused-functions` — single shared `<nav>` tree (column vs overlay), not duplicated markup
+
+## Considered but excluded
+
+- [X] `pattern.ui.admin-endpoint` — no new admin HTTP surface; deploy footer data sources unchanged (`AdminDeployFooter` / existing API)
+- [X] `astral.config.config-source-of-truth` / new `config.py` breakpoint key — 1024px is presentation chrome (TS constant + CSS media query), not business eligibility
+- [X] proposed `pattern.ui.responsive-nav-shell` citation — dropped from In scope until Archie authors + approves a canon file under `canon/patterns/**` (behavior already shipped; not catalog law)
+- [X] Canon file for `pattern.ui.responsive-nav-shell` — Archie approval before catalog law; this ticket implements parent-defined behavior only
+- [X] NAV_CONFIG / nav group labels / routes / badges — out of bounds
+- [X] Page-level mobile redesigns, tables, modals — out of bounds
+- [X] Auth / who may change candidate / admin deploy-footer data sources — out of bounds
+- [X] [AST-1166](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency) button consistency, [AST-1273](https://linear.app/astralcareermatch/issue/AST-1273/job-isnt-loading-on-recommended-page) Recommended page — related, not owned
+
+## Acceptance criteria
+
+- [X] Below 1024px width, the persistent left sidebar is not occupying a fixed column; a hamburger control is visible and opens an overlay drawer over content.
+- [X] Backdrop tap dismisses the open drawer without navigating away.
+- [X] The open drawer shows the same nav groups/items Susan sees on desktop for the same candidate (including disabled items as disabled), plus admin deploy footer for admins only.
+- [X] From the open drawer, Susan can select a different candidate via a checked list/submenu; the selected candidate is visually marked; admin/non-admin selection rules match desktop.
+- [X] Choosing an enabled nav destination navigates successfully and leaves the content area usable at full width (drawer closed).
+- [X] At 1024px and above, the left sidebar is always visible as today (including current candidate select); hamburger collapse is not required for normal use.
+- [X] Non-admin sessions still omit the admin deploy footer in both desktop and collapsed modes.
+
+## Boundaries
+
+- [X] Does not redesign nav group labels, routes, badges, or NAV_CONFIG content.
+- [X] Does not redesign individual page layouts, tables, or modals for mobile.
+- [X] Does not change auth rules, who may change candidate, or admin deploy-footer data sources.
+- [X] Does not own [AST-1166](https://linear.app/astralcareermatch/issue/AST-1166/button-consistency) or [AST-1273](https://linear.app/astralcareermatch/issue/AST-1273/job-isnt-loading-on-recommended-page).
+
+## Notes for planning
+
+Breakpoint is 1024px; overlay drawer; backdrop dismiss; checked candidate list in drawer; desktop native select unchanged. Proposed pattern needs Archie approval before treated as catalog law.
+
+## Git branch (authoritative)
+
+`sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### radia — 2026-08-08T20:26:56.678Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1286
+**Publish ref:** `sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell` @ `8441b2257d324973e7e8737b4d5c2283ac52c9b4`
+**Overall:** DISCUSS
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|---|---|---|---|
+| orch.git.betty-merge-tests-one-sha | universal | conforms | exactly one `merge-tests(AST-1286): origin/tests 5a98fb36...` commit for one `origin/tests` SHA |
+| orch.git.commit-vocabulary | universal | conforms | only `docs()`/`code()`/`test()`/`merge-tests()` used; no `feat()`/`fix()` |
+| orch.git.flow-direction-inviolable | universal | conforms | tests→sub via merge-tests only; no tests↔dev crossing |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1284/AST-1286-...` matches child-under-parent topology |
+| orch.git.merge-on-checkout | universal | conforms | sub tip's merge-base with dev/ftr is dev HEAD itself — already current |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear commit history, no rebase/cherry-pick evidence |
+| orch.git.no-dev-agent-branches | universal | conforms | branch is `sub/AST-1284/...`, not agent-named |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | reviewed from `astral-AST-1284/` (parent AST-1284) |
+| orch.git.three-permanent-branches | universal | conforms | `origin/dev`, `origin/main`, `origin/tests` all present |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product-decision bypass found |
+| orch.pipeline.plan-is-bible | universal | conforms | diff matches Stage 1/2 plan steps (hamburger/drawer/backdrop/close-on-nav; checked candidate list) |
+| orch.pipeline.project-scoped-queues | universal | conforms | reviewed via explicit ticket id, not a mis-scoped queue pull |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | entered review-child only at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | diff does not touch `canon/statutes/**` |
+| orch.roles.betty-owns-test-tree | universal | conforms | `tests/**`/`docs/test-bible/**` changes arrive only via `test()`/`merge-tests()` commits, not engineer `code()` commits |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee is Katherine Johnson |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | assignee unchanged through Tests Passed; left as-is |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer `code()` commits touch only `src/ui/frontend/**` |
+| astral.config.config-source-of-truth | scoped | conforms | `NAV_WIDE_MIN_PX` is a documented presentation-chrome constant, not a business/eligibility value; plan explicitly excluded a `config.py` key with reasoning |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no secrets/env-specific values introduced |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | `docs/features/interface/ast-1286-...md` is a production feature plan, not a spike deliverable |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single file carries plan + review stub |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty's `test()`/`merge-tests()` commits touch only `tests/`+`docs/test-bible/`, not `src/`/`docs/features/` |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer `code()` commits never touch `tests/` or `docs/test-bible/**` |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | diff adds no new API endpoints |
+| astral.layers.import-direction | scoped | conforms | `NavigationShell.tsx` imports only react/react-router-dom, sibling components, contexts, `lib/api` — no `src.data`/`src.external` |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | candidate/admin gating reuses existing `CandidateContext`/`useAuth`; no new hardcoded visibility rules in React |
+| astral.seed.define-approved | scoped | conforms | no product seed/catalog rows invented; `docs/features` path match is the plan doc, not seed behavior |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no data-layer or error-raising code touched |
+| astral.standards.debug-contract-gated | scoped | conforms | frontend-only diff; backend debug contract (§1.5.1) is backend-only |
+| astral.standards.dry-and-focused-functions | scoped | conforms | one shared `<nav>` tree toggled by `isWide`, not duplicated markup (plan's own ⚠️ Decision) |
+| astral.standards.in-scope-only | scoped | conforms | touches only `NavigationShell.tsx` + `App.css`; no `NAV_CONFIG`/API/auth/page-layout edits |
+| astral.standards.logging-via-utils | scoped | conforms | no logging/print introduced |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `NAV_WIDE_MIN_PX`, `candidateLabel`, `sidebar-candidate-menu-*` — no ticket ids embedded in identifiers |
+| astral.standards.no-cross-contamination | scoped | conforms | no imports outside the layered structure |
+| astral.standards.no-hardcoded-sets | scoped | conforms | breakpoint is a named module constant with a doc comment; no inline magic-number sprawl |
+| astral.standards.public-then-helpers | scoped | conforms | `candidateLabel` grouped with pre-existing `loadExpanded`/`saveExpanded` helpers above the component, consistent with the file's established layout |
+| astral.ui.frontend-file-placement | scoped | conforms | shell/CSS changes stay in `components/NavigationShell.tsx` and `App.css` per placement table |
+| astral.ui.naming-conventions | scoped | conforms | PascalCase component unchanged; new CSS classes kebab-case |
+| astral.ui.single-gunicorn-worker | scoped | conforms | diff doesn't touch server startup/worker config |
+| astral.agent.confidence-bounds | scoped | not-applicable | layers core/utils don't intersect diff layers (ui, docs) |
+| astral.agent.do-task-delegation | scoped | not-applicable | layer core not in diff |
+| astral.agent.grade-vector-validation | scoped | not-applicable | layer core not in diff |
+| astral.batch.batch-id-first | scoped | not-applicable | layers data/core not in diff |
+| astral.batch.batch-id-format | scoped | not-applicable | layers core/data not in diff |
+| astral.batch.claim-process-release | scoped | not-applicable | layers core/data not in diff |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | layers core/data not in diff |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no `artifacts/**`/`scripts/spikes/**` path in diff |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | layers core/utils not in diff |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | layers core/utils not in diff; `dispatcher.py`/`config.py` untouched |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | layer core not in diff |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | layer core not in diff |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | layers core/external not in diff |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | layer scripts not in diff; no `scripts/**` path touched |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | paths (`data/admin/**`, `repo_admin_json.py`, `config.py`, `bootstrap.py`) not touched |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | paths (`dispatcher.py`, `config.py`, `data/admin/**`) not touched |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | layers core/data/utils/scripts not in diff |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | layers core/data/utils not in diff |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | layers core/data/utils not in diff |
+| astral.standards.database-header-inventory | scoped | not-applicable | layer data not in diff |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | layer utils not in diff |
+| astral.state.core-decides-transitions | scoped | not-applicable | layers core/data not in diff |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | layers core/data/utils not in diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | layer core not in diff |
+
+Retired (ignored per algorithm step 4): `astral.config.pass-threshold-vs-score-floor`, `astral.patterns.coat-check-never-store-empty`, `astral.patterns.render-verdict-orchestrates-consult`, `astral.patterns.require-auth-on-protected-endpoints`.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|---|---|---|
+| pattern.ui.responsive-nav-shell | discuss | Not found under `canon/patterns/**` — per C5 text a missing id reads as invalid citation, but the ticket self-discloses it as proposed/pending ("Considered but excluded: Canon file for pattern.ui.responsive-nav-shell — Archie approval before catalog law"), not a false catalog claim. Diff behavior matches the described shape. Routing as discuss rather than fix-now since there is no code fix — resolution is Archie authoring+approving the canon file (or the plan dropping the id until it lands). |
+
+## Plan adherence
+
+- Stage 1 (hamburger, overlay drawer, backdrop dismiss, close-on-navigate, desktop parity ≥1024px) and Stage 2 (narrow checked candidate list, admin/non-admin gate, native `<select>` unchanged on wide) both land exactly as specced, one `<nav>` tree shared between modes per the plan's own DRY decision.
+- Self-Assessment (`Single-Component`, `Conf: high`) matches the real footprint — only `NavigationShell.tsx` + `App.css` in the product commits.
+- No scope creep into `NAV_CONFIG`, `AdminDeployFooter.tsx`, auth, or page layouts; AST-1166/AST-1273 boundaries respected.
+
+## Findings
+
+**discuss:** Pattern conformance table above — `pattern.ui.responsive-nav-shell` has no canon file yet.
+
+Notes: no plan-rubric (Joan) verdict attachment on this ticket — C4 straggler check has nothing to cross-check against; not a block.
+
+## What's solid
+
+- Single shared `<nav>` markup toggled by `isWide`/`sidebar--open` — no duplicated tree.
+- `matchMedia` listener correctly forces `drawerOpen`/`candidateMenuOpen` closed on resize-to-wide, so a desktop resize never leaves an orphan open drawer.
+- Wide-mode `<select>` markup/logic is untouched byte-for-byte in behavior (just factored through `candidateLabel`).
+
+context_tokens≈9000
+— Radia
+
+#### betty — 2026-08-08T20:18:22.646Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell` @ `8441b225`
+**Betty delivery:** `merge-tests(AST-1286): origin/tests 5a98fb36c1f56ebe1b2ab0d274622d5aa7ac203e`
+
+### Run
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_NavigationShell.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx
+```
+
+### Manifest
+
+1. **Existing (revised):** `tests/component/frontend/components/test_NavigationShell.test.tsx` — wide-mode nav groups/badges/combobox + admin footer; non-admin disabled select + no deploy footer; loading/error — needs `stubNavViewport(true)` after Stage 1 `matchMedia`.
+2. **Existing (revised via stub):** `tests/component/frontend/pages/test_AdminAgentTimesheets.test.tsx` — AST-709 nav-escape under `NavigationShell` (jsdom `matchMedia` default wide in `test-utils`).
+3. **Gap — AST-1286 wide:** native `<select>` still used; checked candidate menu absent.
+4. **Gap — AST-1286 narrow drawer:** hamburger opens overlay; backdrop dismiss leaves pathname unchanged; drawer closed.
+5. **Gap — AST-1286 close-on-navigate:** enabled `NavLink` changes route and closes drawer.
+6. **Gap — AST-1286 narrow candidate list (admin):** checked list marks current (`✓` / `is-selected`); admin select updates `astral_selected_candidate`.
+7. **Gap — AST-1286 narrow non-admin:** menu rows disabled; selection unchanged; deploy footer omitted.
+
+**Broken / obsolete:** all prior `NavigationShell` mounts crashed on `window.matchMedia is not a function` — fixed with `stubNavViewport` in `tests/component/frontend/test-utils.tsx`.
+
+**Integration:** no existing scenario asserts shell/CSS; `test_candidate_nav_api.py` unchanged; no new integration coverage.
+
+**Bible (on publish ref):**
+`docs/test-bible/frontend/components.md` sha1 `9dea96c7cb5e6c29ccb7f7a7ed943b37d4e34010`
+
+— Betty
+
+#### joan — 2026-08-08T20:13:21.781Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1286
+**Overall:** APPROVED
+**Publish ref tip:** `origin/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell` @ `2d98108f`
+
+## Traceability
+
+AC1→S1; AC2→S1; AC3→S1+S2.4; AC4→S2; AC5→S1; AC6→S1+S2; AC7→S1+S2.4. No unmapped AC, no orphan stage — both stages trace to parent Functional scope (breakpoint/overlay/backdrop/close-on-navigate; checked candidate list) and Purpose (full-width content on narrow viewports).
+
+**Considered:** 37 active statutes (18 universal + 19 scoped on layer `ui`, paths `src/ui/frontend/**`, change_type `modify`); all scored `conforms`. 27 scoped actives excluded (non-`ui` layers or non-matching paths — core/data/external/utils/scripts/docs). Scored in-session per R7; no table pasted here.
+
+## Findings
+
+**discuss — Stage 1 steps 9/10 contradict each other on backdrop z-index.** Step 9 says `backdrop 30`, step 10 writes `z-index: 40` for `.nav-backdrop`, which equals the hamburger's `40`. Since the backdrop is later in the DOM, it paints over the button, so the `aria-label="Close navigation"` state is unreachable while the drawer is open. AC2 (backdrop dismiss) still works either way, so this does not block. Recommend fixing one stack in the plan before build — e.g. backdrop 40, sidebar 50, hamburger 60 — so the plan stays binding without the builder guessing.
+
+**discuss — close-on-navigate misses the same-route tap.** Stage 1 step 5 closes the drawer on `location.pathname` change and claims that "covers enabled nav destination clicks". Tapping the nav item for the route you are already on does not change the pathname, so the drawer stays open over the content. AC5's precondition ("navigates successfully") is not met in that case, so it is not a strict violation, but it is a cheap gap to close. Recommend adding `onClick={() => setDrawerOpen(false)}` to the enabled `NavLink` in addition to the pathname effect.
+
+**discuss — fractional-width seam between the JS and CSS breakpoints.** JS matches `(min-width: 1024px)` and CSS matches `(max-width: 1023px)`. A viewport of 1023.5px (browser zoom, some device pixel ratios) satisfies neither, so React renders the narrow-mode checked candidate list while CSS still renders the desktop column. Recommend `max-width: 1023.98px` in the media query so the two agree at every width.
+
+**discuss — non-admin drawer shows the whole roster where desktop does not.** Stage 2 says "Always allow open/close for reading the list", but today's desktop control is a `disabled` `<select>` a non-admin cannot open at all. Selection rules do match desktop (rows `disabled`, and `setSelectedId` is already gated on `isAdmin` inside `CandidateContext`), and `/api/candidates` already ships the full list to every authenticated client, so this is a visibility delta rather than an auth-rule change — outside AC4's letter but worth Susan's eye. Recommend either collapsing the narrow list to the current candidate for non-admins, or confirming the roster is fine to display.
+
+**discuss — proposed `pattern.ui.responsive-nav-shell` is flagged but not drafted.** `canon/patterns/ui/` holds only `pattern.ui.admin-endpoint`; there is no `status: proposed` file for the responsive shell. Parent and plan both correctly defer to Archie before treating it as catalog law, so this is a corpus gap, not a plan defect (plan-rubric R6). No approved pattern matches this plan's shape, so the parent's "no established pattern applies" holds.
+
+**acceptable — plan assumptions verified against the tree at the publish ref.** `.shell` is `display: flex`, `.sidebar` is `width: 240px` with `overflow-y: auto` and `flex-shrink: 0`, the App.css TOC and the section 4 / section 5 boundary are where step 8 and step 9 expect them, all cited design tokens exist, and `{isAdmin ? <AdminDeployFooter /> : <span className="nav-footer-spacer" />}` is the single footer branch. No codebase drift.
+
+**acceptable — breakpoint literal stays out of `config.py`.** `NAV_WIDE_MIN_PX` as a documented module-level TS constant satisfies §1.4 ("named constants from config or module-level constants") and `astral.config.config-source-of-truth` is not engaged: 1024px is presentation chrome, and nav visibility/enablement stays resolved server-side at `/api/nav_config`. The `AST-1286` references live in comments and CSS section headers, which is inside the `astral.standards.names-not-ticket-ids` carve-out.
+
+**acceptable — self-assessment is honest.** `Single-Component` matches a two-file frontend change; `high` conf is justified because AC and the parent Architectural definition pin every behavior; `Medium` risk correctly names nav chrome as app-wide blast radius with containment to the shell.
+
+context_tokens≈64000
+
+— Joan
+
+#### katherine — 2026-08-08T20:09:16.797Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell/docs/features/interface/ast-1286-responsive-left-nav-hamburger-shell.md (`origin/sub/AST-1284/AST-1286-responsive-left-nav-hamburger-shell` @ `2d98108f`)
+
+**Scope:** Single-Component — only `NavigationShell.tsx` + `App.css`; no API/core/data.
+
+**Conf:** high — AC and parent architectural definition pin breakpoint, overlay drawer, backdrop, checked list, and desktop parity on the existing shell.
+
+**Risk:** Medium — nav chrome regression would block every route, but blast radius stays in the shell component/CSS.
+
+---
+
 # AST-1286 — Responsive left-nav hamburger shell (Make left nav responsive)
 
 **Linear:** [AST-1286](https://linear.app/astralcareermatch/issue/AST-1286/responsive-left-nav-hamburger-shell-make-left-nav-responsive)  
