@@ -37,6 +37,7 @@ type DispatchFormState = {
   score_floor: string
   auto_mode: boolean
   debug: boolean
+  skip_daisy_chain: boolean
   entity_type: string
   is_scored: boolean
 }
@@ -64,6 +65,7 @@ interface DispatchTask {
   auto_mode: number
   debug: number
   skip_cache: number
+  skip_daisy_chain: number
   max_runs: number | null
   last_run_at: string | null
   updated_at: string | null
@@ -279,7 +281,7 @@ export default function ScheduledActions() {
   // Modal state (add/edit)
   const [showModal, setShowModal] = useState(false)
   const [editRow, setEditRow] = useState<DispatchTask | null>(null)
-  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, entity_type: "", is_scored: false })
+  const [form, setForm] = useState({ candidate_id: "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
   const [saving, setSaving] = useState(false)
 
   // Thread status (polled every 5s)
@@ -578,7 +580,7 @@ export default function ScheduledActions() {
 
   const openAdd = () => {
     setEditRow(null)
-    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, entity_type: "", is_scored: false })
+    setForm({ candidate_id: selectedId ?? "", task_key: "", trigger_state: "", freq_hrs: "0", min_count: "1", batch_size: "", max_runs: "1", score_floor: "1.00", auto_mode: false, debug: false, skip_daisy_chain: false, entity_type: "", is_scored: false })
     setShowModal(true)
   }
   const openEdit = (row: DispatchTask) => {
@@ -599,6 +601,7 @@ export default function ScheduledActions() {
       score_floor: (row.score_floor ?? 1).toFixed(2),
       auto_mode: !!row.auto_mode,
       debug: !!row.debug,
+      skip_daisy_chain: !!row.skip_daisy_chain,
       entity_type: row.entity_type || cfg?.entity_type || "",
       is_scored: row.is_scored ?? !!cfg?.is_scored,
     })
@@ -627,6 +630,7 @@ export default function ScheduledActions() {
               : null,
             auto_mode: form.auto_mode,
             debug: form.debug,
+            skip_daisy_chain: form.skip_daisy_chain,
           }),
         })
         if (!res.ok) {
@@ -656,6 +660,7 @@ export default function ScheduledActions() {
                 })()
               : null,
             auto_mode: form.auto_mode,
+            skip_daisy_chain: form.skip_daisy_chain,
           }),
         })
         if (!res.ok) {
@@ -942,6 +947,10 @@ export default function ScheduledActions() {
               <div className="modal-detail-row">
                 <span className="modal-detail-label">Debug</span>
                 <input type="checkbox" checked={form.debug} onChange={e => setForm({ ...form, debug: e.target.checked })} />
+              </div>
+              <div className="modal-detail-row">
+                <span className="modal-detail-label">Skip daisy chain</span>
+                <input type="checkbox" checked={form.skip_daisy_chain} onChange={e => setForm({ ...form, skip_daisy_chain: e.target.checked })} />
               </div>
             </div>
             <div className="modal-footer">
