@@ -910,3 +910,9 @@ Contract change, confirmed: stamp. Do not keep the AST-984 “prompt rows stay n
 - AST-1411 seven-segment Ad Hoc persist (SYSTEM + stored CACHE_* + TASK + RESPONSE, `batch_id` on Test result) unchanged except the new `entity_id` kwarg on prompt saves.
 - Engineer does not commit `tests/` or `docs/test-bible/**`.
 
+### Joan board (fix-board F2)
+
+**[board-joan] CANON: OK**
+
+Prompt-row `entity_id` stamping is additive: `astral.batch.entity-agent-responses-latest-only` still requires RESPONSE tagging and a RESPONSE-only `list_entity_latest_agent_refs` index (both unchanged); it never mandates null prompt rows. `pattern.batch.entity-agent-responses` describes that lookup shape only — tagging SYSTEM/CACHE/TASK when `index` is known does not contradict it. The AST-984 “prompts stay null” rule lives in `docs/ASTRAL_CODE_RULES.md` §2.4.1 (and `save_agent_data` docstring), which the plan updates; no `canon/statutes/**` or `canon/patterns/**` amend needed before `make-fix`.
+
