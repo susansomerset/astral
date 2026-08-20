@@ -1,7 +1,7 @@
 # ASTRAL Core Dependencies
 
 # AI/API
-anthropic>=0.7.0
+anthropic>=0.7.0,<1.0.0  # v1.0.0 (2026-08-20) is a breaking release; src/external/anthropic.py and deepseek.py use the pre-v1 client API
 stytch
 
 # Web scraping & automation
