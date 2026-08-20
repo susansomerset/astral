@@ -1016,13 +1016,15 @@ async def _run_dispatch_loop(
         logger.set_debug_flag(True)
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
+    ui_initiated = bool(task.get("_ui_initiated"))
     run_count = 0
     while True:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         available = database.count_eligible_for_dispatch_task(task)
-        # min_count gate only applies to AUTO — CLICK runs regardless of queue depth
-        effective_min = (task.get("min_count") or 1) if is_auto else 1
+        # min_count gate only applies to unattended AUTO ticks — CLICK and manual
+        # Sweep (UI-initiated run on an AUTO row) bypass it and run whatever's available.
+        effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated) else 1
         if available < effective_min:
             if debug:
                 if run_count == 0:
