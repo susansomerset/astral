@@ -109,3 +109,31 @@ After success, reuse the GET `detail` body: call `detail(astral_job_id)` **or** 
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1453
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `147c59ae1dcf95e75ada48b22cc7454ac1592c1b`
+
+**Gates:** Plan Ready · assignee Joan · 0 Plan Discuss rounds · child scope only
+
+## Traceability
+AC1→S2 (API: `fields_editable`/`legal_next_states`; editable controls→AST-1454) · AC2→S1+S2 · AC3→S1 · AC4→S1+S2 · AC5→S1+S2 · AC6→S1+S2 · parent AC7→N/A (sibling scope; plan excludes `/copy`, `/skip`, bulk Retry)
+
+## Findings
+
+No `fix-now` findings.
+
+### acceptable
+- **Location:** Stage 2 — `PUT` on `jobs_bp` vs `api_admin.py`
+- **Finding:** `pattern.ui.admin-endpoint` names the admin blueprint; plan routes persist on authenticated `jobs_bp` alongside existing `skip`/`copy`/`GET detail`.
+- **Recommendation:** Keep as written; plan ⚠️ Decision matches pattern intent (auth + thin API + server-side eligibility), not blueprint name alone.
+
+### acceptable
+- **Location:** Stage 1 — column/JD writes before `transition_job_state`
+- **Finding:** One PUT can persist field edits even when the requested state hop returns 409.
+- **Recommendation:** Explicit plan decision; consistent with “correct the record.” No change unless Susan wants transactional all-or-nothing save.
+
+**Considered (in-session):** Universal orchestration statutes — N/A to this product diff. Scoped statutes/plan citations — all conform. Files Changed stays inside child scope (`tracker.py`, `api_jobs.py` only).
