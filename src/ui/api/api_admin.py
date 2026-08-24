@@ -67,7 +67,6 @@ from src.utils.config import (
     admin_always_visible_under_avail_gt0_dispatch_task_keys,
     CHARS_PER_TOKEN,
     DISPATCH_RETIRED_TASK_KEYS,
-    GAZE_EMAIL_CONFIG,
     dispatch_task_admin_defaults,
     dispatch_task_grouping_catalog_key,
     dispatch_task_key_is_scored,
@@ -877,24 +876,23 @@ _DISPATCH_TASK_COLUMNS = [
 def list_dtasks():
     rows = list_dispatch_tasks()
     rows = [r for r in rows if r.get("task_key") not in DISPATCH_RETIRED_TASK_KEYS]
-    gaze_tk = GAZE_EMAIL_CONFIG["task_key"]
 
     def _inbox_avail_task_key(tk: str) -> bool:
-        # gaze_email + meteorite mailbox fold share Gmail inbox ping Avail (AST-1214).
-        return tk == gaze_tk or is_meteorite_email_mailbox_task_key(tk)
+        # meteorite mailbox fold — Gmail inbox ping Avail (AST-1214 / AST-1466).
+        return is_meteorite_email_mailbox_task_key(tk)
 
     # One inbox snapshot when any candidate-bound mailbox Avail row is present.
-    need_gaze_counts = any(
+    need_mailbox_counts = any(
         _inbox_avail_task_key((r.get("task_key") or "").strip())
         and str(r.get("candidate_id") or "").strip()
         for r in rows
     )
     bound_counts: Dict[str, int] = {}
-    if need_gaze_counts:
+    if need_mailbox_counts:
         try:
             bound_counts = count_inbox_bound_by_candidate()
         except Exception as exc:
-            logger.warning("list_dtasks: gaze_email inbox bind counts failed: %s", exc)
+            logger.warning("list_dtasks: meteorite_email inbox bind counts failed: %s", exc)
             bound_counts = {}
     # Enrich each row with live available entity count
     for row in rows:
@@ -1110,8 +1108,8 @@ def _dispatch_task_key_trigger_error(task_key: str, trigger_state: str | None) -
     retired = dispatch_task_key_retired_message(tk)
     if retired:
         return retired
-    # Mailbox identities (gaze_email + meteorite fold) — null/empty trigger only.
-    if tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk):
+    # Mailbox identities (meteorite fold) — null/empty trigger only.
+    if is_meteorite_email_mailbox_task_key(tk):
         ts = (trigger_state or "").strip()
         if ts:
             return (
