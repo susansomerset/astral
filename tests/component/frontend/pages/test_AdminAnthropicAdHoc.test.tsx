@@ -59,13 +59,31 @@ const tasks = [
   { task_key: "task_b_only", ...emptyLens, cache_prompt_b_len: 4 },
 ]
 
+const defaultImportRuns = [
+  {
+    batch_id: "import-batch-1",
+    created_at: "2026-01-01T12:00:00Z",
+    entity_id: "job-1",
+    task_key: "adhoc-task_a",
+  },
+  {
+    batch_id: "import-batch-2",
+    created_at: "2026-01-02T12:00:00Z",
+    entity_id: "orphan-entity",
+    task_key: "adhoc-evaluate_jd",
+  },
+]
+
 describe("AdminAnthropicAdHoc", () => {
   beforeEach(() => {
     localStorage.clear()
     mockedApi.mockReset()
   })
 
-  function mockApi(testResult?: { ok?: boolean; json: Record<string, unknown> }) {
+  function mockApi(
+    testResult?: { ok?: boolean; json: Record<string, unknown> },
+    opts?: { importRuns?: typeof defaultImportRuns; agentDataByBatch?: Record<string, unknown[]> },
+  ) {
     const testOk = testResult?.ok !== false
     const testJson = testResult?.json ?? {
       success: true,
@@ -73,7 +91,12 @@ describe("AdminAnthropicAdHoc", () => {
       response_text: "{\"ok\":true}",
       timesheet: { duration: 1.2, inputtotal: 10, outputtotal: 5, inputcached: 2 },
     }
+    const importRuns = opts?.importRuns ?? defaultImportRuns
+    const agentDataByBatch = opts?.agentDataByBatch ?? {}
     installBaseApiMocks(mockedApi, async (url: string, init?: RequestInit) => {
+      if (url === "/api/admin/adhoc/runs") {
+        return { ok: true, json: async () => importRuns } as Response
+      }
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
       if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => tasks } as Response
@@ -100,12 +123,12 @@ describe("AdminAnthropicAdHoc", () => {
         return { ok: testOk, json: async () => testJson } as Response
       }
       if (url.startsWith("/api/agent_data/")) {
-        return {
-          json: async () => [
-            { agent_data_id: "1", block_type: "SYSTEM", block_data: "sys-block", token_size: 1, task_key: "t", created_at: "now" },
-            { agent_data_id: "2", block_type: "RESPONSE", block_data: "{\"ok\":true}", token_size: 1, task_key: "t", created_at: "now" },
-          ],
-        } as Response
+        const batchId = decodeURIComponent(url.slice("/api/agent_data/".length))
+        const blocks = agentDataByBatch[batchId] ?? [
+          { agent_data_id: "1", block_type: "SYSTEM", block_data: "sys-block", token_size: 1, task_key: "t", created_at: "now" },
+          { agent_data_id: "2", block_type: "RESPONSE", block_data: "{\"ok\":true}", token_size: 1, task_key: "t", created_at: "now" },
+        ]
+        return { ok: true, json: async () => blocks } as Response
       }
       if (url.startsWith("/api/admin/timesheets")) {
         return {
@@ -196,6 +219,7 @@ describe("AdminAnthropicAdHoc", () => {
       { task_key: "mid", user_prompt_len: 0, cache_prompt_len: 0, nocache_prompt_len: 0 },
     ]
     installBaseApiMocks(mockedApi, async (url: string) => {
+      if (url === "/api/admin/adhoc/runs") return { ok: true, json: async () => [] } as Response
       if (url === "/api/admin/agents/ids") return { json: async () => ["agent_a"] } as Response
       if (url === "/api/admin/tasks/meta/tokens") return { json: async () => ["candidate_name"] } as Response
       if (url === "/api/admin/tasks" || url.startsWith("/api/admin/tasks?")) return { json: async () => unsortedTasks } as Response
@@ -430,5 +454,134 @@ describe("AdminAnthropicAdHoc", () => {
     await waitFor(() => expect(screen.getByText("Test succeeded without batch_id")).toBeInTheDocument())
     expect(screen.queryByText("Tokens & Cost")).not.toBeInTheDocument()
     expect(agentDataGets()).toEqual([])
+  }, 20000)
+
+  function taskGets(): string[] {
+    return mockedApi.mock.calls
+      .map(([u, init]) => [String(u), (init as RequestInit | undefined)?.method ?? "GET"] as const)
+      .filter(([u, m]) => u.startsWith("/api/admin/tasks/") && m === "GET" && !u.includes("?"))
+      .map(([u]) => u)
+  }
+
+  function importBlocks(batchId: string) {
+    return [
+      { agent_data_id: "s1", block_type: "SYSTEM", block_data: "imported-system", token_size: 1, task_key: "t", created_at: "now" },
+      { agent_data_id: "a1", block_type: "CACHE_A", block_data: "imported-cache-a", token_size: 1, task_key: "t", created_at: "now" },
+      { agent_data_id: "u1", block_type: "TASK", block_data: "imported-user", token_size: 1, task_key: "t", created_at: "now" },
+      { agent_data_id: "r1", block_type: "RESPONSE", block_data: "{\"imported\":true}", token_size: 1, task_key: "t", created_at: "now" },
+    ]
+  }
+
+  async function selectImportRow(batchId: string) {
+    const row = screen.getByText(batchId === "import-batch-1" ? "2026-01-01T12:00:00Z" : "2026-01-02T12:00:00Z").closest("tr")
+    expect(row).toBeTruthy()
+    await userEvent.click(row as HTMLElement)
+  }
+
+  it("AST-1452: mount loads import runs into the table", async () => {
+    mockApi(undefined, { importRuns: defaultImportRuns })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() =>
+      expect(mockedApi.mock.calls.some(([u]) => String(u) === "/api/admin/adhoc/runs")).toBe(true),
+    )
+    expect(screen.getByRole("columnheader", { name: "timestamp" })).toBeInTheDocument()
+    expect(screen.getByText("2026-01-01T12:00:00Z")).toBeInTheDocument()
+    expect(screen.getByText("orphan-entity")).toBeInTheDocument()
+    expect(screen.getByText("adhoc-evaluate_jd")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Load" })).toBeDisabled()
+  }, 15000)
+
+  it("AST-1452: Load fills editors and mounts panes for the imported batch", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      agentDataByBatch: { "import-batch-2": importBlocks("import-batch-2") },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    await selectImportRow("import-batch-2")
+    expect(screen.getByRole("button", { name: "Load" })).toBeEnabled()
+    await userEvent.click(screen.getByRole("button", { name: "Load" }))
+    await waitFor(() => expect(screen.getByText("Loaded agent data import-batch-2")).toBeInTheDocument())
+    expect(screen.getByDisplayValue("imported-system")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Cache Block A" }))
+    expect(screen.getByDisplayValue("imported-cache-a")).toBeInTheDocument()
+    await userEvent.click(screen.getByRole("button", { name: "Cache Block B" }))
+    expect(screen.getByPlaceholderText("Cache block B (optional).")).toHaveValue("")
+    await userEvent.click(screen.getByRole("button", { name: "User Prompt" }))
+    expect(screen.getByDisplayValue("imported-user")).toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "RESPONSE" })).toBeInTheDocument()
+    expect(agentDataGets()).toContain("/api/agent_data/import-batch-2")
+  }, 20000)
+
+  it("AST-1452: Load strips one adhoc- prefix without catalog fetch-from-task", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      agentDataByBatch: { "import-batch-2": importBlocks("import-batch-2") },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    await selectImportRow("import-batch-2")
+    await userEvent.click(screen.getByRole("button", { name: "Load" }))
+    await waitFor(() => expect(screen.getByDisplayValue("imported-system")).toBeInTheDocument())
+    expect(taskGets()).not.toContain("/api/admin/tasks/evaluate_jd")
+    expect(screen.queryByText(/Loaded prompts from "evaluate_jd"/)).not.toBeInTheDocument()
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[1], "agent_a")
+    await userEvent.click(screen.getByRole("button", { name: "Preview Prompt" }))
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Preview: evaluate_jd" })).toBeInTheDocument())
+  }, 20000)
+
+  it("AST-1452: importEntityLock sends restored entity_id on Preview", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      agentDataByBatch: { "import-batch-2": importBlocks("import-batch-2") },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    await selectImportRow("import-batch-2")
+    await userEvent.click(screen.getByRole("button", { name: "Load" }))
+    await waitFor(() => expect(screen.getByDisplayValue("imported-system")).toBeInTheDocument())
+    expect(screen.getAllByRole("combobox")[2]).toHaveValue("orphan-entity")
+    await userEvent.selectOptions(screen.getAllByRole("combobox")[1], "agent_a")
+    await userEvent.click(screen.getByRole("button", { name: "Preview Prompt" }))
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Preview: evaluate_jd" })).toBeInTheDocument())
+    const preview = lastJsonBody("/api/admin/adhoc/preview", "POST")
+    expect(preview.entity_id).toBe("orphan-entity")
+    expect(preview.entity_ids).toBeUndefined()
+  }, 20000)
+
+  it("AST-1452: dirty editors confirm Load; Cancel leaves content unchanged", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      agentDataByBatch: { "import-batch-2": importBlocks("import-batch-2") },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText("User prompt content..."), { target: { value: "keep-me" } })
+    await selectImportRow("import-batch-2")
+    await userEvent.click(screen.getByRole("button", { name: "Load" }))
+    expect(screen.getByText("Replace current prompt content with imported run?")).toBeInTheDocument()
+    const loadGetsBeforeCancel = agentDataGets().length
+    await userEvent.click(screen.getByRole("button", { name: "Cancel" }))
+    expect(screen.queryByText("Replace current prompt content with imported run?")).not.toBeInTheDocument()
+    expect(screen.getByDisplayValue("keep-me")).toBeInTheDocument()
+    expect(agentDataGets()).toHaveLength(loadGetsBeforeCancel)
+    expect(screen.queryByRole("button", { name: "RESPONSE" })).not.toBeInTheDocument()
+  }, 20000)
+
+  it("AST-1452: dirty confirm Yes replaces editor content", async () => {
+    mockApi(undefined, {
+      importRuns: defaultImportRuns,
+      agentDataByBatch: { "import-batch-2": importBlocks("import-batch-2") },
+    })
+    renderWithProviders(<AnthropicAdHoc />)
+    await waitFor(() => expect(screen.getByText("Agent Ad Hoc")).toBeInTheDocument())
+    fireEvent.change(screen.getByPlaceholderText("User prompt content..."), { target: { value: "draft" } })
+    await selectImportRow("import-batch-2")
+    await userEvent.click(screen.getByRole("button", { name: "Load" }))
+    await userEvent.click(screen.getByRole("button", { name: "Yes, Replace" }))
+    await waitFor(() => expect(screen.getByDisplayValue("imported-system")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "User Prompt" }))
+    expect(screen.getByDisplayValue("imported-user")).toBeInTheDocument()
+    expect(screen.queryByDisplayValue("draft")).not.toBeInTheDocument()
   }, 20000)
 })

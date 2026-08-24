@@ -832,7 +832,7 @@ class TestAst785ListDtasksRobustness:
     reason="AST-1106 always-visible stamp not on this publish tip",
 )
 class TestAst1106ListDtasksAlwaysVisibleFlag:
-    def test_gaze_email_flag_true_other_false_avail_unchanged(
+    def test_meteorite_email_flag_true_other_false_avail_unchanged(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         monkeypatch.setattr(
@@ -841,7 +841,7 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
             lambda: [
                 {
                     "id": 1,
-                    "task_key": "gaze_email",
+                    "task_key": "meteorite_email",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": None,
@@ -861,7 +861,7 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
         monkeypatch.setattr(
             admin_mod,
             "admin_always_visible_under_avail_gt0_dispatch_task_keys",
-            lambda: frozenset({"gaze_email"}),
+            lambda: frozenset({"meteorite_email"}),
         )
 
         def _count(row):
@@ -878,12 +878,12 @@ class TestAst1106ListDtasksAlwaysVisibleFlag:
 
 
 
-# AST-1135: list_dtasks stamps live bind-filtered available_count for gaze_email rows.
+# AST-1135 / AST-1467: list_dtasks stamps live bind-filtered available_count for mailbox rows.
 @pytest.mark.skipif(
-    not hasattr(admin_mod, "GAZE_EMAIL_CONFIG"),
-    reason="AST-1135 gaze Avail stamp not on this publish tip",
+    not hasattr(admin_mod, "is_meteorite_email_mailbox_task_key"),
+    reason="AST-1466 meteorite mailbox Avail stamp path on tip",
 )
-class TestAst1135ListDtasksGazeAvail:
+class TestAst1135ListDtasksMeteoriteMailboxAvail:
     def test_stamps_bound_counts_once(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
@@ -893,7 +893,7 @@ class TestAst1135ListDtasksGazeAvail:
             lambda: [
                 {
                     "id": 1,
-                    "task_key": "gaze_email",
+                    "task_key": "meteorite_email",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": "A",
@@ -901,7 +901,7 @@ class TestAst1135ListDtasksGazeAvail:
                 },
                 {
                     "id": 2,
-                    "task_key": "gaze_email",
+                    "task_key": "meteorite_email",
                     "trigger_state": None,
                     "entity_type": None,
                     "candidate_id": "B",
@@ -2887,7 +2887,7 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert keys["fetch_jd"]["trigger_state"] == "PASSED_JOBLIST"
 
     def test_mailbox_trigger_null_only_and_unsupported_craft_wording(self) -> None:
-        for tk in ("parse_meteorite_email", "meteorite_email", "gaze_email"):
+        for tk in ("parse_meteorite_email", "meteorite_email"):
             assert admin_mod._dispatch_task_key_trigger_error(tk, None) is None
             assert admin_mod._dispatch_task_key_trigger_error(tk, "") is None
             bad = admin_mod._dispatch_task_key_trigger_error(tk, "ACTIVE_SEARCH")
@@ -2929,10 +2929,10 @@ class TestAst1214AdminCatalogAlphabeticalWritable:
         assert mailbox.get_json()["id"] == 72
         assert save.call_count == 2
 
-    def test_list_dtasks_meteorite_mailbox_avail_without_gaze_email_row(
+    def test_list_dtasks_meteorite_mailbox_avail_without_extra_mailbox_row(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        # need_gaze_counts + per-row stamp must fire for mailbox keys even with no gaze_email row.
+        # need_gaze_counts + per-row stamp must fire for mailbox keys without a legacy gaze row.
         monkeypatch.setattr(
             admin_mod,
             "list_dispatch_tasks",
@@ -3267,3 +3267,50 @@ class TestAst1412EnrichTaskLens:
         assert rows[0]["cache_prompt_b_len"] == 9
         assert rows[0]["cache_prompt_len"] == 0
         assert rows[0]["system_prompt_len"] == 0
+
+
+class TestAst1451AdhocRuns:
+    """AST-1451: GET /api/admin/adhoc/runs is admin-auth list; debug follows ui_llm_debug."""
+
+    _ROWS = [
+        {
+            "batch_id": "b1",
+            "created_at": "2026-08-01 12:00:00",
+            "entity_id": "job-1",
+            "task_key": "evaluate_jd",
+        },
+        {
+            "batch_id": "b2",
+            "created_at": "2026-07-01 00:00:00",
+            "entity_id": None,
+            "task_key": "adhoc-evaluate_jd",
+        },
+    ]
+
+    def test_admin_returns_json_array_and_forwards_debug(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[bool] = []
+
+        def _list(*, debug: bool = False) -> list[dict[str, Any]]:
+            seen.append(debug)
+            return list(self._ROWS)
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == self._ROWS
+        assert seen == [True]
+
+    def test_unauthenticated_401(self, admin_client: FlaskClient) -> None:
+        assert admin_client.get("/api/admin/adhoc/runs").status_code == 401
+
+    def test_non_admin_403(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=non_admin_headers)
+        assert resp.status_code == 403
