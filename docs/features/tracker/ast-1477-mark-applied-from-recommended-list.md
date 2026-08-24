@@ -102,8 +102,8 @@ context_tokens≈35000
 ## Review
 
 **Publish ref:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list`
-**Tip (pre-review):** _(filled at Code Complete)_
+**Tip (pre-review):** `d47122f23a79`
 
 | Stage | Commit | Summary |
 |-------|--------|---------|
-| 1–2 | _(SHA)_ | Applied icon on legal Recommended priors; JobsRecommended onAction comment |
+| 1–2 | `d47122f23a79` | Applied icon on legal Recommended priors; JobsRecommended onAction comment |
