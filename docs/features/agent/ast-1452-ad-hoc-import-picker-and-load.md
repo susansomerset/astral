@@ -248,3 +248,27 @@ context_tokens≈58000
 
 No API or `config.py` edits. List source remains `GET /api/admin/adhoc/runs`; Load body remains `GET /api/agent_data/<batch_id>`; panes reuse `BatchAgentDataPanes`.
 
+## Radia review
+
+```
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1452
+**Publish ref:** origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load @ bb58525ce540f117af1fd662b9b43c093f408500
+**Overall:** CLEAN
+```
+
+Full-set statute sweep: 64 active rows — all conforms or not-applicable. Pattern conformance: `pattern.ui.shared-button-roles`, `pattern.config.config-block` — conforms. Plan adherence: Stage 1 list + Load button; Stage 2 editor mapping, panes, adhoc- strip, skip catalog fetch, entity lock, dirty confirm — matches plan. Sibling boundary (AST-1451) respected.
+
+### fix-now
+(none)
+
+### discuss
+(none)
+
+### advisory
+1. merge-tests footprint includes sibling AST-1451 tests — product review footprint is `AdminAnthropicAdHoc.tsx` only.
+2. Dual confirm banners (fetch + load) could both render if both flags set — unlikely in practice.
+
+context_tokens≈72000
+
