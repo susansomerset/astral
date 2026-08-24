@@ -87,3 +87,53 @@ describe("CandidateJobRowActions — AST-1302 icon-control", () => {
     expect(appCss).not.toMatch(/\.collapsible-panel-chevron-btn\s*\{/)
   })
 })
+
+describe("CandidateJobRowActions — AST-1477 Applied mark", () => {
+  it("shows Applied icon-control on legal Recommended priors and calls onAction(applied)", async () => {
+    const onAction = vi.fn()
+    const { rerender } = render(
+      <CandidateJobRowActions
+        state="RECOMMENDED"
+        onSkip={() => {}}
+        onAction={onAction}
+        showViewAnalysis={false}
+      />,
+    )
+    const applied = screen.getByRole("button", { name: "Applied" })
+    expect(applied).toHaveClass("icon-control")
+    expect(applied).toHaveTextContent("A")
+    await userEvent.click(applied)
+    expect(onAction).toHaveBeenCalledWith("applied")
+
+    for (const state of ["BUILD_ARTIFACTS", "CANDIDATE_REVIEW"] as const) {
+      onAction.mockClear()
+      rerender(
+        <CandidateJobRowActions
+          state={state}
+          onSkip={() => {}}
+          onAction={onAction}
+          showViewAnalysis={false}
+        />,
+      )
+      expect(screen.getByRole("button", { name: "Applied" })).toBeInTheDocument()
+    }
+  })
+
+  it("hides Applied on PASSED_LIKE and when onAction is omitted", () => {
+    const { rerender } = render(
+      <CandidateJobRowActions
+        state="PASSED_LIKE"
+        onSkip={() => {}}
+        onAction={() => {}}
+        showViewAnalysis={false}
+      />,
+    )
+    expect(screen.queryByRole("button", { name: "Applied" })).not.toBeInTheDocument()
+    expect(screen.getByRole("button", { name: "Skip" })).toBeInTheDocument()
+
+    rerender(
+      <CandidateJobRowActions state="RECOMMENDED" onSkip={() => {}} showViewAnalysis={false} />,
+    )
+    expect(screen.queryByRole("button", { name: "Applied" })).not.toBeInTheDocument()
+  })
+})
