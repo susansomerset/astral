@@ -3218,7 +3218,16 @@ def dispatch_task_admin_defaults(
     if retired:
         raise KeyError(retired)
     # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
+    # Canonical meteorite_email: poller seed (MAILBOX_CONFIG entity_type None).
+    # Legacy parse_meteorite_email: AST-1214 admin form meta keeps admin_entity_type candidate.
     if is_meteorite_email_mailbox_task_key(tk):
+        if tk == METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]:
+            return {
+                "entity_type": METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
+                "trigger_state": METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
+                "sort_by": None,
+                "batch_call_mode": 0,
+            }
         return {
             "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
             "trigger_state": None,

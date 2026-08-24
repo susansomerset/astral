@@ -7071,11 +7071,17 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
     conn.commit()
 
-    # AST-1466: retire gaze_email dispatch rows; purge orphans whose task_key is absent from agent_task.
+    # AST-1466: retire gaze_email dispatch rows; purge orphans whose task_key is
+    # absent from agent_task — only when agent_task exists and has rows (schema
+    # ensure may run before agent_task is created in unit tests / boot order).
     conn.execute("DELETE FROM dispatch_task WHERE task_key = 'gaze_email'")
-    conn.execute(
-        "DELETE FROM dispatch_task WHERE task_key NOT IN (SELECT task_key FROM agent_task)"
-    )
+    agent_task_present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_task'"
+    ).fetchone()
+    if agent_task_present and conn.execute("SELECT 1 FROM agent_task LIMIT 1").fetchone():
+        conn.execute(
+            "DELETE FROM dispatch_task WHERE task_key NOT IN (SELECT task_key FROM agent_task)"
+        )
     conn.commit()
 
     # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
@@ -7325,10 +7331,22 @@ def save_dispatch_task(
         defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
         raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
-    if not (entity_type and str(entity_type).strip()):
-        entity_type = defaults["entity_type"]
-    if not (trigger_state and str(trigger_state).strip()):
-        trigger_state = defaults["trigger_state"]
+    # late: avoid widening module-top config imports
+    from src.utils.config import (
+        METEORITE_EMAIL_MAILBOX_CONFIG,
+        is_meteorite_email_mailbox_task_key,
+    )
+    if is_meteorite_email_mailbox_task_key(tk):
+        # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
+        if not (entity_type and str(entity_type).strip()):
+            entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
+        if not (trigger_state and str(trigger_state).strip()):
+            trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+    else:
+        if not (entity_type and str(entity_type).strip()):
+            entity_type = defaults["entity_type"]
+        if not (trigger_state and str(trigger_state).strip()):
+            trigger_state = defaults["trigger_state"]
     sort_by = defaults["sort_by"]
     batch_call_mode = defaults["batch_call_mode"]
     now = _utc_now()
