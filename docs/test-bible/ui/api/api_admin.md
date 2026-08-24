@@ -626,3 +626,5 @@ Ad-hoc `qualify_meteorite` assemble lockstep with consult: numbered `job_link:` 
   tests/component/ui/api/test_api_admin.py::TestAst1412EnrichTaskLens \
   -q
 ```
+
+Ad Hoc import list route lives with parent **AST-1451** in **`docs/test-bible/core/agent.md`** (`TestAst1451AdhocRuns`).

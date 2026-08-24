@@ -3267,3 +3267,50 @@ class TestAst1412EnrichTaskLens:
         assert rows[0]["cache_prompt_b_len"] == 9
         assert rows[0]["cache_prompt_len"] == 0
         assert rows[0]["system_prompt_len"] == 0
+
+
+class TestAst1451AdhocRuns:
+    """AST-1451: GET /api/admin/adhoc/runs is admin-auth list; debug follows ui_llm_debug."""
+
+    _ROWS = [
+        {
+            "batch_id": "b1",
+            "created_at": "2026-08-01 12:00:00",
+            "entity_id": "job-1",
+            "task_key": "evaluate_jd",
+        },
+        {
+            "batch_id": "b2",
+            "created_at": "2026-07-01 00:00:00",
+            "entity_id": None,
+            "task_key": "adhoc-evaluate_jd",
+        },
+    ]
+
+    def test_admin_returns_json_array_and_forwards_debug(
+        self,
+        admin_client: FlaskClient,
+        auth_headers: dict[str, str],
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        seen: list[bool] = []
+
+        def _list(*, debug: bool = False) -> list[dict[str, Any]]:
+            seen.append(debug)
+            return list(self._ROWS)
+
+        monkeypatch.setattr(admin_mod, "list_agent_data_runs", _list)
+        monkeypatch.setattr(admin_mod, "ui_llm_debug", lambda: True)
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=auth_headers)
+        assert resp.status_code == 200
+        assert resp.get_json() == self._ROWS
+        assert seen == [True]
+
+    def test_unauthenticated_401(self, admin_client: FlaskClient) -> None:
+        assert admin_client.get("/api/admin/adhoc/runs").status_code == 401
+
+    def test_non_admin_403(
+        self, admin_client: FlaskClient, non_admin_headers: dict[str, str]
+    ) -> None:
+        resp = admin_client.get("/api/admin/adhoc/runs", headers=non_admin_headers)
+        assert resp.status_code == 403
