@@ -124,3 +124,16 @@ AC1–AC2→Stage 1 §1 (reword accomplishments clause, preserve job-array + bar
 **Recommendation:** None.
 
 **Considered (in-session):** 18 universal orchestration statutes → all `conforms`. Scoped in-scope: `astral.git.engineer-test-tree-ban` → `conforms` (engineer `code()` excludes `tests/**`; Betty qa-child owns glyph lock). Remaining scoped active statutes excluded on layer/path/change_type predicates.
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs`
+**Plan path:** `docs/features/artifacts/ast-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs.md`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `3f62eca2` | Reword draft_job_resume accomplishments clause — bare text, no list-marker prefixes (no instructional `•`/`-`/`*` glyphs) |
+
+**Tip:** `3f62eca2935b1f9c767b7015fc0acaf1825b8a32`
+
+**Betty note:** Glyph-regression assertions remain qa-child (engineer `code()` did not touch `tests/**`).
