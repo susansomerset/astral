@@ -1288,3 +1288,90 @@ class TestAst1353SaveBaseResumeSnapshotApi:
         after = db.get_current_artifact("candidate", "c1353c", "base_resume")
         assert after["artifact_uuid"] == before["artifact_uuid"]
         assert after["artifact_data"]["professional_summary"] == "intentional"
+
+
+class TestAst1474PageBreakPolicyCatalogApi:
+    """AST-1474: GET catalog + all_sections page_break_policy; PUT persist / reject."""
+
+    def _cd(self) -> dict:
+        return TestAst519ResumeStructureApi()._three_section_cd()
+
+    def _patch_put(self, monkeypatch: pytest.MonkeyPatch) -> MagicMock:
+        save_data = MagicMock()
+        monkeypatch.setattr(candidate_mod, "save_candidate_data", save_data)
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        monkeypatch.setattr(candidate_mod, "normalize_rubric_artifacts_on_save", MagicMock())
+        monkeypatch.setattr(candidate_mod, "apply_company_search_terms_save", MagicMock())
+        return save_data
+
+    def test_get_catalog_and_all_sections_include_page_break_fields(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import (
+            RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
+            RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
+            RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+            RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
+        )
+
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: self._cd())
+        resp = candidate_client.get("/api/candidates/c1/resume_structure", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        cat = body["catalog"]
+        assert cat["page_break_policies"] == list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES)
+        assert cat["page_break_policy_labels"] == dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS)
+        assert cat["page_break_policy_default"] == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        assert cat["page_break_policy_defaults"] == dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID)
+        by_id = {row["id"]: row for row in body["all_sections"]}
+        assert by_id["prior_experience"]["page_break_policy"] == "avoid_split"
+        assert by_id["experience"]["page_break_policy"] == "avoid_split"
+
+    def test_get_soft_defaults_invalid_stored_policy_on_all_sections(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        cd = self._cd()
+        # Pre-epic / corrupt blob: GET must not raise; all_sections falls back to default.
+        cd["candidate_data"]["artifacts"]["resume_structure"]["sections"][
+            "professional_summary"
+        ]["page_break_policy"] = "keep_with_next"
+        monkeypatch.setattr(candidate_mod, "get_candidate", lambda candidate_id: cd)
+        resp = candidate_client.get("/api/candidates/c1/resume_structure", headers=auth_headers)
+        assert resp.status_code == 200
+        by_id = {row["id"]: row for row in resp.get_json()["all_sections"]}
+        assert by_id["professional_summary"]["page_break_policy"] == "avoid_split"
+
+    def test_put_persists_page_break_before_and_rejects_unknown(
+        self, candidate_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.core.candidate import default_resume_structure
+        from src.utils.config import RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+
+        save_data = self._patch_put(monkeypatch)
+        sections = {
+            sid: dict(spec)
+            for sid, spec in default_resume_structure()["sections"].items()
+            if sid in RESUME_STRUCTURE_REQUIRED_SECTION_IDS
+        }
+        sections["prior_experience"] = dict(
+            default_resume_structure()["sections"]["prior_experience"]
+        )
+        sections["professional_summary"]["page_break_policy"] = "page_break_before"
+        sections["prior_experience"]["page_break_policy"] = "normal"
+        resp = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"resume_structure": {"sections": sections}}},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        stored = save_data.call_args.args[1]["artifacts"]["resume_structure"]["sections"]
+        assert stored["professional_summary"]["page_break_policy"] == "page_break_before"
+        assert stored["prior_experience"]["page_break_policy"] == "normal"
+        sections["professional_summary"]["page_break_policy"] = "keep_with_next"
+        bad = candidate_client.put(
+            "/api/candidates/c1/data",
+            json={"artifacts": {"resume_structure": {"sections": sections}}},
+            headers=auth_headers,
+        )
+        assert bad.status_code == 400
+        assert "page_break_policy" in bad.get_json()["error"]
