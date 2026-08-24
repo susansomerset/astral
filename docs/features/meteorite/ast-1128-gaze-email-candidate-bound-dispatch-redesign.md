@@ -411,4 +411,15 @@ AST-1128 shipped the candidate-bound redesign under a separate `gaze_email` disp
 
 ---
 
+## Resolution: AST-1467 (2026-08-24)
+
+Radia FIX-NOW on Review Posted (bible + frontend gap — Betty `[qa-handoff]`):
+
+1. **`docs/test-bible/core/meteorite_email.md`** — all `run_component_tests` blocks retargeted from deleted `test_gaze_email.py` to `test_meteorite_email.py` (+ matching node ids). Tip `0fa5bc81` / merge-tests `31bffc80`.
+2. **`test_AdminScheduledActions_AST1106.test.tsx`** — retired (gaze Avail-gt0 carve-out obsolete post–AST-1134/1466); `docs/test-bible/frontend/pages.md` § AST-1106 + `repo_admin_json.md` AST-1219 Vitest pointer retargeted.
+
+Inventory gate `TestAst1467GazeEmailRetired` green (6 passed) on tip. No product code change this resolve pass.
+
+---
+
 _Implementation detail may live in git history on `origin/dev`._
