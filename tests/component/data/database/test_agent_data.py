@@ -535,3 +535,54 @@ class TestAst1377EnsureRefAgentDataId:
         assert _type.upper() == "TEXT"
         assert notnull == 0
         assert dflt is None
+
+
+class TestAst1451ListAgentDataBatches:
+    """AST-1451: one metadata row per batch_id, newest first; no filter/cap; no block_data."""
+
+    def test_empty_table_returns_empty_list(self, sqlite_in_memory) -> None:
+        assert sqlite_in_memory.list_agent_data_batches() == []
+
+    def test_one_row_per_batch_newest_first_includes_adhoc_and_production(
+        self, sqlite_in_memory
+    ) -> None:
+        db = sqlite_in_memory
+        db.save_agent_data(
+            "old-sys",
+            "job",
+            "evaluate_jd",
+            "batch-prod",
+            "SYSTEM",
+            "sys-prod",
+            created_at="2026-01-01 00:00:00",
+            entity_id="job-old",
+        )
+        db.save_agent_data(
+            "old-task",
+            "job",
+            "evaluate_jd",
+            "batch-prod",
+            "TASK",
+            "user-prod",
+            created_at="2026-01-01 00:00:01",
+            entity_id="job-old",
+        )
+        db.save_agent_data(
+            "new-sys",
+            "job",
+            "adhoc-evaluate_jd",
+            "batch-adhoc",
+            "SYSTEM",
+            "sys-adhoc",
+            created_at="2026-08-01 12:00:00",
+            entity_id="job-new",
+        )
+        rows = db.list_agent_data_batches()
+        assert [r["batch_id"] for r in rows] == ["batch-adhoc", "batch-prod"]
+        assert rows[0]["task_key"] == "adhoc-evaluate_jd"
+        assert rows[0]["entity_id"] == "job-new"
+        assert rows[1]["task_key"] == "evaluate_jd"
+        assert rows[1]["entity_id"] == "job-old"
+        for row in rows:
+            assert set(row) >= {"batch_id", "created_at", "entity_id", "task_key"}
+            assert "block_data" not in row

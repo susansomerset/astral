@@ -2162,3 +2162,38 @@ npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1452 · AST-1439
+
+**Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load`.
+
+Agent Ad Hoc import picker table (`GET /api/admin/adhoc/runs` on mount — sibling **AST-1451**), row select, **Load** into seven editors from `GET /api/agent_data/<batch_id>` (TASK → User; missing slots empty), `BatchAgentDataPanes` on imported `batch_id`, one leading `adhoc-` strip on workbench task key with `skipCatalogFetchRef` (no catalog fetch-from-task), `importEntityLock` for Preview/Test `entity_id`, dirty-editor replace confirm matching fetch-from-task. Does **not** own list query implementation or Test persist prefix (**AST-1451**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page + import list on mount (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1452: mount loads import runs into the table`** |
+| Load → editors + panes (**AC2**) | same | **`AST-1452: Load fills editors and mounts panes for the imported batch`** |
+| Strip `adhoc-`; skip catalog fetch (**AC4**) | same | **`AST-1452: Load strips one adhoc- prefix without catalog fetch-from-task`** |
+| `importEntityLock` + orphan entity option (**AC5**) | same | **`AST-1452: importEntityLock sends restored entity_id on Preview`** |
+| Dirty replace confirm (**AC6**) | same | **`AST-1452: dirty editors confirm Load; Cancel leaves content unchanged`**; **`AST-1452: dirty confirm Yes replaces editor content`** |
+| List/load GET contracts | **AST-1451** | **`docs/test-bible/core/agent.md`** § AST-1451 (no duplicate API tests here) |
+| Preview modal / post-Test panes baseline | **AST-1413** | existing **`AST-1413`** cases (unchanged) |
+
+**Broken / obsolete this pass:** all `mockApi` paths must stub **`GET /api/admin/adhoc/runs`** on mount (empty array default) — added to shared handler + AST-1215 inline mock.
+
+**Integration:** no existing scenario covers Ad Hoc import picker/load — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page + import picker/load (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx` — pattern **`AST-1452`**
+2. Regression: existing **`AST-1413`** / **`AST-1412`** / kitchen-sink cases in the same file (full file run)
+
+**AST-1452** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1452|AST-1413|previews, tests, fetches|AST-1215|AST-1394|AST-1412"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
