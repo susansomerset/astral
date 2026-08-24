@@ -48,6 +48,12 @@ interface TaskSummary {
 
 interface EntityOption { id: string; label: string }
 interface EntityMeta { entity_type: string; trigger_state: string; batch_mode: boolean; entities: EntityOption[] }
+interface ImportRun {
+  batch_id: string
+  created_at: string | null
+  entity_id: string | null
+  task_key: string | null
+}
 
 function taskHasExistingPrompts(t: TaskSummary): boolean {
   return (
@@ -115,8 +121,13 @@ export default function AnthropicAdHoc() {
   const [saveAsOpen, setSaveAsOpen] = useState(false)
   const [confirmTask, setConfirmTask] = useState<string | null>(null)
   const [confirmFetch, setConfirmFetch] = useState<string | null>(null)
+  const [importRuns, setImportRuns] = useState<ImportRun[]>([])
+  const [selectedImportBatchId, setSelectedImportBatchId] = useState<string>("")
+  const [importEntityLock, setImportEntityLock] = useState<string | null>(null)
+  const [confirmLoad, setConfirmLoad] = useState<string | null>(null)
   const saveRef = useRef<HTMLDivElement>(null)
   const isInitialMount = useRef(true)
+  const skipCatalogFetchRef = useRef(false)
 
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
@@ -137,6 +148,14 @@ export default function AnthropicAdHoc() {
     if (!taskKey) isInitialMount.current = false
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedId])
+
+  useEffect(() => {
+    api("/api/admin/adhoc/runs")
+      .then(r => r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`)))
+      .then(d => setImportRuns(Array.isArray(d) ? d : []))
+      .catch(e => setToast({ text: e.message, variant: "error" }))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // Dismiss save-as dropdown on outside click
   useEffect(() => {
@@ -163,6 +182,11 @@ export default function AnthropicAdHoc() {
     // (user's own prompts are already restored from localStorage)
     if (isInitialMount.current) { isInitialMount.current = false; return }
 
+    if (skipCatalogFetchRef.current) {
+      skipCatalogFetchRef.current = false
+      return
+    }
+
     // User actively changed the task key — offer to load its prompts
     const existing = tasks.find(t => t.task_key === taskKey)
     if (!existing) return
@@ -176,6 +200,18 @@ export default function AnthropicAdHoc() {
 
   const hasContent = [systemPrompt, userPrompt, cachePrompt, cachePromptB, cachePromptC, cachePromptD, nocachePrompt]
     .some(s => s.trim())
+
+  function stripOneAdhocPrefix(raw: string): string {
+    const s = (raw || "").trim()
+    return s.startsWith("adhoc-") ? s.slice("adhoc-".length) : s
+  }
+
+  function textOfBlocks(blocks: { block_type?: string; block_data?: string }[], blockType: string): string {
+    return blocks
+      .filter(b => b.block_type === blockType)
+      .map(b => (typeof b.block_data === "string" ? b.block_data : ""))
+      .join("\n\n")
+  }
 
   // Explicit lexicographic task_key order (do not rely on API array order alone).
   const taskKeysSorted = useMemo(
@@ -204,8 +240,10 @@ export default function AnthropicAdHoc() {
       body: JSON.stringify({
         agent_id: agentId,
         task_key: taskKey || "",
-        entity_id: entityMeta_batchIds ? "" : (entityId || ""),
-        entity_ids: entityMeta_batchIds || undefined,
+        entity_id: importEntityLock !== null
+          ? importEntityLock
+          : (entityMeta_batchIds ? "" : (entityId || "")),
+        entity_ids: importEntityLock !== null ? undefined : (entityMeta_batchIds || undefined),
         ...editorSegmentBody(),
         candidate_id: selectedId || "",
       }),
@@ -233,8 +271,10 @@ export default function AnthropicAdHoc() {
       body: JSON.stringify({
         agent_id: agentId,
         task_key: taskKey || "",
-        entity_id: entityMeta_batchIds ? "" : (entityId || ""),
-        entity_ids: entityMeta_batchIds || undefined,
+        entity_id: importEntityLock !== null
+          ? importEntityLock
+          : (entityMeta_batchIds ? "" : (entityId || "")),
+        entity_ids: importEntityLock !== null ? undefined : (entityMeta_batchIds || undefined),
         ...editorSegmentBody(),
         candidate_id: selectedId || "",
       }),
@@ -254,6 +294,43 @@ export default function AnthropicAdHoc() {
       })
       .catch(e => setToast({ text: e.message, variant: "error" }))
       .finally(() => setTesting(false))
+  }
+
+  function doLoad(batchId: string) {
+    setConfirmLoad(null)
+    api(`/api/agent_data/${encodeURIComponent(batchId)}`)
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || `HTTP ${r.status}`) })
+        return r.json()
+      })
+      .then(data => {
+        const blocks = Array.isArray(data) ? data : []
+        setSystemPrompt(textOfBlocks(blocks, "SYSTEM"))
+        setCachePrompt(textOfBlocks(blocks, "CACHE_A"))
+        setCachePromptB(textOfBlocks(blocks, "CACHE_B"))
+        setCachePromptC(textOfBlocks(blocks, "CACHE_C"))
+        setCachePromptD(textOfBlocks(blocks, "CACHE_D"))
+        setNocachePrompt(textOfBlocks(blocks, "NO_CACHE"))
+        setUserPrompt(textOfBlocks(blocks, "TASK"))
+        const run = importRuns.find(r => r.batch_id === batchId)
+        const catalog = stripOneAdhocPrefix(run?.task_key || "")
+        if (catalog !== taskKey) {
+          skipCatalogFetchRef.current = true
+          setTaskKey(catalog)
+        }
+        const restoredEntity = run?.entity_id == null ? "" : String(run.entity_id)
+        setEntityId(restoredEntity)
+        setImportEntityLock(restoredEntity)
+        setTestBatchId(batchId)
+        setToast({ text: `Loaded agent data ${batchId}`, variant: "success" })
+      })
+      .catch(e => setToast({ text: e.message, variant: "error" }))
+  }
+
+  function handleLoadClick() {
+    if (!selectedImportBatchId) return
+    if (hasContent) setConfirmLoad(selectedImportBatchId)
+    else doLoad(selectedImportBatchId)
   }
 
   function doFetchFrom(fetchKey: string) {
@@ -325,7 +402,7 @@ export default function AnthropicAdHoc() {
       <div style={{ display: "flex", gap: 16, marginBottom: 12, alignItems: "flex-end" }}>
         <div className="dep-field" style={{ flex: 1, maxWidth: 340 }}>
           <label className="dep-field-label">Task Key <span style={{ color: "var(--text-muted)", fontWeight: 400 }}>(loads prompts + entities)</span></label>
-          <select className="dep-input" value={taskKey} onChange={e => setTaskKey(e.target.value)}>
+          <select className="dep-input" value={taskKey} onChange={e => { setImportEntityLock(null); setTaskKey(e.target.value) }}>
             <option value="">— No Task (ad hoc) —</option>
             {taskKeysSorted.map(t => <option key={t.task_key} value={t.task_key}>{t.task_key}</option>)}
           </select>
@@ -364,7 +441,7 @@ export default function AnthropicAdHoc() {
                   type="number" min={1} max={entityMeta.entities.length || 30}
                   className="dep-input"
                   value={batchCount}
-                  onChange={e => setBatchCount(Math.max(1, parseInt(e.target.value) || 1))}
+                  onChange={e => { setImportEntityLock(null); setBatchCount(Math.max(1, parseInt(e.target.value) || 1)) }}
                   style={{ width: 64, textAlign: "center" }}
                 />
                 <span style={{ fontSize: 12, color: "var(--text-muted)", whiteSpace: "nowrap" }}>
@@ -375,11 +452,14 @@ export default function AnthropicAdHoc() {
               <select
                 className="dep-input"
                 value={entityId}
-                onChange={e => setEntityId(e.target.value)}
+                onChange={e => { setImportEntityLock(null); setEntityId(e.target.value) }}
                 style={{ fontSize: 13 }}
               >
                 <option value="">— No entity (ad hoc) —</option>
-                {entityMeta.entities.map(e => (
+                {(entityId && !entityMeta.entities.some(ent => ent.id === entityId)
+                  ? [...entityMeta.entities, { id: entityId, label: entityId }]
+                  : entityMeta.entities
+                ).map(e => (
                   <option key={e.id} value={e.id}>{e.label}</option>
                 ))}
               </select>
@@ -391,8 +471,41 @@ export default function AnthropicAdHoc() {
         </div>
       )}
 
+      <div className="list-page-table-wrap" style={{ marginBottom: 16, maxHeight: "none" }}>
+        <table className="list-page-table">
+          <thead>
+            <tr>
+              <th>timestamp</th>
+              <th>entity_id</th>
+              <th>task_key</th>
+            </tr>
+          </thead>
+          <tbody>
+            {importRuns.map(run => (
+              <tr
+                key={run.batch_id}
+                className="clickable"
+                onClick={() => setSelectedImportBatchId(run.batch_id)}
+                style={selectedImportBatchId === run.batch_id ? { background: "var(--bg-card)" } : undefined}
+              >
+                <td>{run.created_at ?? ""}</td>
+                <td>{run.entity_id ?? ""}</td>
+                <td>{run.task_key ?? ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
       {/* ── Action buttons ── */}
       <div style={{ marginBottom: 16, display: "flex", gap: 12, alignItems: "center" }}>
+        <button
+          className="btn primary"
+          disabled={!selectedImportBatchId}
+          onClick={handleLoadClick}
+        >
+          Load
+        </button>
         <button className="btn secondary" onClick={handlePreview} disabled={previewing || !agentId}>
           {previewing ? "Loading..." : "Preview Prompt"}
         </button>
@@ -440,6 +553,17 @@ export default function AnthropicAdHoc() {
           <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
             <button className="btn danger" onClick={() => doFetchFrom(confirmFetch)}>Yes, Replace</button>
             <button className="btn secondary" onClick={() => setConfirmFetch(null)}>Cancel</button>
+          </div>
+        </div>
+      )}
+      {confirmLoad && (
+        <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
+          <span style={{ color: "var(--accent-gold)", fontSize: 13 }}>
+            Replace current prompt content with imported run?
+          </span>
+          <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+            <button className="btn danger" onClick={() => doLoad(confirmLoad)}>Yes, Replace</button>
+            <button className="btn secondary" onClick={() => setConfirmLoad(null)}>Cancel</button>
           </div>
         </div>
       )}
