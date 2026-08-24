@@ -311,4 +311,104 @@ Why wasn't this caught by test coverage?
 
 ---
 
+## Bug: AST-1466 — Retire gaze_email stack
+
+### As-is
+
+AST-1128’s candidate-bound mailbox architecture still runs under the legacy `gaze_email` product identity: `data/admin/agent_task.json` carries a `gaze_email` catalog row (empty prompts; dispatch-only shell), `GAZE_EMAIL_CONFIG` + `TASK_CONFIG["gaze_email"]` drive per-candidate `dispatch_task` rows, `src/core/gaze_email.py` owns the runner (`run_gaze_email`, `_handle_bound`, `run_gaze_email_selected_ids`, `process_gaze_email_messages`), `dispatcher.py` provisions/dispatches via `ensure_gaze_email_dispatch_task` / `provision_gaze_email_dispatch_tasks` / `_gaze_email_due_tasks` and calls `run_gaze_email` from `_dispatch_one`, `api_inbox.py` Land Meteorite POST calls `run_gaze_email_selected_ids`, `api_admin.py` still branches on `GAZE_EMAIL_CONFIG["task_key"]` alongside `is_meteorite_email_mailbox_task_key`, and `SEED_CONFIG["dispatch_task-gaze-email"]` can still insert a null-candidate shell. That duplicates the consolidated `meteorite_email` mailbox fold (Ruth parse already on `meteorite_email`; AST-1282 dispatcher fold). Orphan `dispatch_task` rows whose `task_key` is absent from current `agent_task` may also remain.
+
+### To-be
+
+No live `gaze_email` identity anywhere (agent_task seed, dispatch_task rows, config blocks, module, imports). Candidate-bound mailbox intake — bind-filtered Avail, AUTO due merge, unbound Trash hygiene, `last_email_check` stamping, and Land Meteorite selected-ids — runs exclusively under `meteorite_email` dispatch/config, preserving AST-1128 behavioral contracts on the surviving key. Orphan `dispatch_task` rows whose `task_key` is not in current `agent_task` are removed idempotently.
+
+### Repro
+
+1. On a dev tree at pre-fix tip, confirm `data/admin/agent_task.json` contains a `task_key: "gaze_email"` object and `rg 'gaze_email' src/core/dispatcher.py` hits provision/dispatch branches.
+2. Start backend against a DB that has per-candidate `dispatch_task` rows with `task_key='gaze_email'` (normal post–AST-1134 state).
+3. Open Admin → Scheduled Actions: rows show `task_key=gaze_email` with live bind-filtered Avail.
+4. Run one candidate’s `gaze_email` row (CLICK or AUTO): `src/core/gaze_email.py` executes; `candidate.last_email_check` stamps for that candidate.
+5. POST Manage Email Land Meteorite with selected message ids: handler imports `run_gaze_email_selected_ids` from `src.core.gaze_email`.
+6. After fix lands, repeat steps 1–5: every step must fail the old identity (no `gaze_email` seed/config/module) and succeed on `meteorite_email` equivalents only.
+
+Fixture anchor: any candidate with a bound inbox message (e.g. somerset + From-bound html_links mail from AST-1144 UAT logs) on a DB carrying `gaze_email` dispatch rows pre-migration.
+
+### Root cause
+
+AST-1128 shipped the candidate-bound redesign under a separate `gaze_email` dispatch identity before later epics (AST-1182 / AST-1212 / AST-1282) consolidated Ruth parse and dispatcher mailbox handling onto `meteorite_email`. Both keys stayed live, leaving duplicate provision, Avail enrichment, runner, and Land Meteorite entrypoints.
+
+### Proposed change
+
+**1. Rehome runner module (`src/core/meteorite_email.py`)**
+
+- Move the full contents of `src/core/gaze_email.py` into new `src/core/meteorite_email.py` (same module boundary — not `gazer.py`; gazer stays create-job strip/extract).
+- Rename public entrypoints:
+  - `run_gaze_email` → `run_meteorite_email`
+  - `run_gaze_email_selected_ids` → `run_meteorite_email_selected_ids`
+  - `process_gaze_email_messages` → `process_meteorite_email_messages` (AST-1129 reuse path)
+- Replace every `GAZE_EMAIL_CONFIG[...]` read with `METEORITE_EMAIL_MAILBOX_CONFIG[...]`.
+- Update Style D `debug_func` strings to `meteorite_email.run` / `meteorite_email.selected_ids`.
+- Delete `src/core/gaze_email.py`.
+
+**2. Config consolidation (`src/utils/config.py`)**
+
+- Add `METEORITE_EMAIL_MAILBOX_CONFIG` (sibling to `METEORITE_EMAIL_PARSE_CONFIG`) carrying the former `GAZE_EMAIL_CONFIG` literals keyed to `METEORITE_EMAIL_PARSE_CONFIG["task_key"]` (`"meteorite_email"`): `account_address`, `unbound_retention_days`, `auto_mode`, `min_count`, `batch_size`, `freq_hrs`, `entity_type`, `trigger_state`, `subject_url_schemes`, `debug_func`, `debug_func_selected`, selected-id outcome strings.
+- Delete `GAZE_EMAIL_CONFIG` and its asserts.
+- Delete `TASK_CONFIG["gaze_email"]` entry; keep existing `TASK_CONFIG["meteorite_email"]` Ruth parse block unchanged.
+- Point `INBOX_BIND_CONFIG["inbox_address"]` at `METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]` (stop aliasing deleted block).
+- In `dispatch_task_admin_defaults`, remove the `tk == GAZE_EMAIL_CONFIG["task_key"]` branch; `is_meteorite_email_mailbox_task_key(tk)` is the sole mailbox path.
+- Delete `SEED_CONFIG["dispatch_task-gaze-email"]` null-shell INSERT tuple.
+- Update module inventory docstring lines that name `GAZE_EMAIL_CONFIG`.
+
+**3. Dispatcher (`src/core/dispatcher.py`)**
+
+- Remove `GAZE_EMAIL_CONFIG` import.
+- Rename and retarget:
+  - `ensure_gaze_email_dispatch_task` → `ensure_meteorite_email_dispatch_task` (uses `METEORITE_EMAIL_MAILBOX_CONFIG` + `METEORITE_EMAIL_PARSE_CONFIG["task_key"]`; same idempotent insert semantics as AST-1134).
+  - `provision_gaze_email_dispatch_tasks` → `provision_meteorite_email_dispatch_tasks` (retire any remaining null-candidate `gaze_email` rows during migration window; ensure per-candidate `meteorite_email` rows via coverage join over `database.list_candidates()`).
+  - `_gaze_email_due_tasks` → `_meteorite_email_due_tasks` (filter `_is_inbox_mailbox_task_key` rows — after step 2 that helper is equivalent to `is_meteorite_email_mailbox_task_key` + non-empty `candidate_id`).
+- Simplify `_is_inbox_mailbox_task_key` to delegate to `is_meteorite_email_mailbox_task_key` only (drop `gaze_email` literal).
+- In `_dispatch_one` mailbox branch: `from src.core.meteorite_email import run_meteorite_email`; call `run_meteorite_email`; update log strings (`gaze_email` → `meteorite_email`).
+- Startup tick: call `provision_meteorite_email_dispatch_tasks()` instead of gaze provision.
+
+**4. Database migration (`src/data/database.py`)**
+
+- Add idempotent migration function (next sequential migration id) that:
+  1. `DELETE FROM dispatch_task WHERE task_key = 'gaze_email'`.
+  2. `DELETE FROM dispatch_task WHERE task_key NOT IN (SELECT task_key FROM agent_task)` (orphan sweep — same pattern as existing `gaze_board`/`validate_title` purge at ~7047).
+- Update module docstring/comments referencing gaze_email live Avail to `meteorite_email`.
+- No Ruth parse or qualify SQL changes.
+
+**5. API layers**
+
+- `src/ui/api/api_inbox.py`: import `run_meteorite_email_selected_ids` from `src.core.meteorite_email`; Land Meteorite handler calls renamed function.
+- `src/ui/api/api_admin.py`: remove `GAZE_EMAIL_CONFIG` import and `gaze_tk` local; `_inbox_avail_task_key(tk)` becomes `is_meteorite_email_mailbox_task_key(tk)` only; update warning log text; keep bind-count enrichment path unchanged.
+
+**6. Seed / fixture**
+
+- `data/admin/agent_task.json`: delete the `task_key: "gaze_email"` object (empty dispatch shell at task_seq 2.3); leave `meteorite_email` and legacy `parse_meteorite_email` rows untouched.
+- `docs/uat-fixtures/AST-756/expected-agent_task.json`: same removal, byte-identical lockstep with catalog.
+
+**7. Tests / bible (Betty at Code Complete — make-fix may stub imports only)**
+
+- Delete `tests/component/core/test_gaze_email.py`.
+- Retarget `tests/component/core/test_dispatcher.py`, `tests/component/ui/api/test_api_inbox.py`, `tests/component/ui/api/test_api_admin.py`, `tests/component/data/database/test_dispatch_tasks.py`, and any `test_config.py` gaze branches to `meteorite_email` / `METEORITE_EMAIL_MAILBOX_CONFIG` names.
+- Retire or fold `docs/test-bible/core/gaze_email.md` into meteorite-mailbox bible (Betty).
+
+### Blast radius
+
+- **AST-1129 / Manage Email:** any caller of `process_gaze_email_messages` must switch to `process_meteorite_email_messages` (grep before delete).
+- **AST-1282 fold:** `_is_inbox_mailbox_task_key` simplification — ensure legacy `parse_meteorite_email` dispatch rows (if any) still match `is_meteorite_email_mailbox_task_key`.
+- **AST-756 seed integrity:** removing `gaze_email` agent_task row triggers fixture lockstep + orphan sweep may delete other stale dispatch rows beyond gaze.
+- **Frontend Scheduled Actions tests:** any hardcoded `gaze_email` task_key strings.
+- **Existing DBs:** migration deletes live `gaze_email` dispatch rows before `provision_meteorite_email_dispatch_tasks` re-creates under new key — brief window where no mailbox dispatch row exists until startup provision runs.
+
+### What must still hold
+
+- AST-1128 AC 1–9 behavior unchanged on the `meteorite_email` key: per-candidate dispatch rows (coverage join), From→selected-candidate inbox filter on run, real bind-filtered Avail (no carve-out), `last_email_check` stamped every dispatch run (not on selected-ids path), unbound retention→Trash hygiene without null-candidate shell, bound ingest stops at **METEORITE_NEW** (no qualify/GDL daisy-chain), Style D debug contract when `debug=True`, Gmail secrets environ-only, Ruth uses bound candidate API key.
+- `meteorite_email` remains the sole mailbox intake agent_task identity; Ruth parse prompts/schema on `TASK_CONFIG["meteorite_email"]` are not redesigned.
+- Land Meteorite selected-ids outcomes (`skipped-unbound`, `skipped-not-in-inbox`, `skipped-unmatched`) and per-id Style D logging preserved under renamed config keys.
+- `INBOX_BIND_CONFIG` header order and bind rules unchanged; only `inbox_address` source moves to mailbox config block.
+
+---
+
 _Implementation detail may live in git history on `origin/dev`._
