@@ -45,6 +45,10 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+    RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+    RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
@@ -163,6 +167,12 @@ def get_candidate_resume_structure(candidate_id):
             "job_agent_editable": bool(spec.get("job_agent_editable")),
             "required": sid in required,
             "format_locked": sid == "experience" or sid in contact,
+            "page_break_policy": (
+                spec["page_break_policy"]
+                if isinstance(spec.get("page_break_policy"), str)
+                and spec["page_break_policy"] in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
+                else RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+            ),
         })
     catalog = {
         "body_formats": list(RESUME_STRUCTURE_BODY_FORMATS),
@@ -171,6 +181,10 @@ def get_candidate_resume_structure(candidate_id):
         "extra_id_pattern": RESUME_STRUCTURE_EXTRA_ID_PATTERN,
         "reserved_extra_ids": list(RESUME_STRUCTURE_RESERVED_EXTRA_IDS),
         "new_extra_default_format": RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT,
+        "page_break_policies": list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES),
+        "page_break_policy_labels": dict(RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS),
+        "page_break_policy_default": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
+        "page_break_policy_defaults": dict(RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID),
     }
     return jsonify({
         "sections": enabled_resume_structure_sections(resolved),
