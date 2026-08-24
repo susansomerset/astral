@@ -98,3 +98,12 @@ None (`fix-now`).
 **Considered (in-session):** Universal `orch.*` (20) — conforms. Scoped: `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets` — conforms or acceptable; `astral.layers.ui-config-driven-business-logic` — acceptable. Excluded: `astral.state.*` (no core/data/config touch).
 
 context_tokens≈35000
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list`
+**Tip (pre-review):** _(filled at Code Complete)_
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1–2 | _(SHA)_ | Applied icon on legal Recommended priors; JobsRecommended onAction comment |

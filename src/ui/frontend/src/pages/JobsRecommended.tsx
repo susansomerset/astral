@@ -200,6 +200,7 @@ export default function Recommended() {
                     {sorted.map(job => (
                       <tr key={job.astral_job_id} className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
                         <td onClick={e => e.stopPropagation()}>
+                          {/* onAction covers list Applied (notes → candidate_action) plus post-applied R/I/X/G */}
                           <CandidateJobRowActions
                             state={job.state}
                             showViewAnalysis={false}
