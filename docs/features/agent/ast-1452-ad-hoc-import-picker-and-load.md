@@ -272,3 +272,7 @@ Full-set statute sweep: 64 active rows — all conforms or not-applicable. Patte
 
 context_tokens≈72000
 
+## Resolution
+
+**2026-08-24** — Radia **CLEAN** / Linear `[code-rubric] PROCEED` @ `bb58525c`. No `fix-now` or `discuss`. Advisories left as-is (merge-tests sibling footprint noted; dual-banner edge left without product change). `resolve(AST-1452): — clean` on publish ref after Radia `docs()` intake; §9a dry-run vs `origin/dev` before User Testing.
+
