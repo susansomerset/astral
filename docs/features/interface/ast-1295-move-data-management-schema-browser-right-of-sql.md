@@ -1,3 +1,107 @@
+<!-- linear-archive: AST-1295 archived 2026-08-19 -->
+
+## Linear archive (AST-1295)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1295/move-data-management-schema-browser-right-of-sql-move-table-lookup-and  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1291 — Move table lookup and field lookup objects on Data Management page  
+**Blocked by / blocks / related:** parent: AST-1291
+
+### Description
+
+## What this implements
+
+Relocate the tables + fields lookup grouping from the left of the SQL workbench to the right of the SQL input on Data Management. Preserve selection and display behavior; do not own upsert, SQL execution, or other Admin pages.
+
+## Acceptance criteria
+
+- [X] On Admin → Data Management, the tables lookup panel is visually to the **right** of the SQL input window (not to the left).
+- [X] After selecting a table, the fields lookup for that table appears with the tables lookup on the **right** of the SQL input (same grouping as today, mirrored side).
+- [X] SQL history controls, Run, result display, Copy Output, and Table Upsert still work as before this change.
+- [X] No other Admin page layout changes ship in this epic.
+
+## Boundaries
+
+Does not own upsert, SQL execution, or other Admin pages. Does not change schema discovery or result-grid presentation beyond layout adjacency.
+
+## In scope
+
+- [X] `astral.standards.in-scope-only` — layout adjacency only on Data Management; no feature creep
+- [X] `astral.ui.frontend-file-placement` — edit stays in existing `AdminDataManagement.tsx` page placement
+- [X] `astral.ui.naming-conventions` — no rename churn
+- [X] `astral.layers.ui-config-driven-business-logic` — no new frontend business rules while moving chrome
+
+## Considered but excluded
+
+- [X] `astral.git.engineer-test-tree-ban` — engineers do not edit `tests/` / bible; Betty owns any test updates if DOM-order assertions appear later
+- [X] Admin API / SQL execution / upsert paths (`src/ui/api/api_admin.py`) — behavior unchanged; layout-only
+- [X] Other Admin pages / nav shell — out of epic boundaries (responsive nav is AST-1284 / AST-1286)
+- [X] CSS / `App.css` — this page uses inline flex styles; no shared stylesheet change planned
+
+## Notes for planning
+
+Layout-only slice. Plan: `docs/features/interface/ast-1295-move-data-management-schema-browser-right-of-sql.md`.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1291-move-table-lookup-and-field-lookup-objects-on-data`, child `sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-10T02:02:13.610Z
+[code-rubric] revision=2
+**Overall:** CLEAN
+No fix-now, no discuss. Pure sibling JSX reorder; commit provenance clean (src/tests/docs split).
+— Radia
+
+#### betty — 2026-08-10T01:57:27.283Z
+1. **Existing §6c regression (AC3):** `tests/component/frontend/pages/test_AdminDataManagement.test.tsx` — sql run / copy / schema click → fields / upsert modal + toast / sql-error paths (labels + behavior).
+2. **New (AC1–AC2 layout):** same file — `AST-1295: Tables/Fields schema browser follows SQL textarea in DOM (right of workbench)` (document order = visual right under default flex row).
+
+**Broken / obsolete:** none.
+**Integration:** none — chrome reorder only.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminDataManagement.test.tsx
+```
+
+`origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql` @ `df604923` (`merge-tests(AST-1295): origin/tests 3b99c01d`)
+
+`docs/test-bible/frontend/pages.md` shasum: `8f5fe992c32dfa7d0d5e2df41fd82375fca0600d`
+
+— Betty
+
+#### joan — 2026-08-10T01:52:43.556Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1295
+**Overall:** APPROVED
+**Publish-ref:** `origin/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql` @ `8b49545ef33cdc15cdaf1b16cae1cd365c9852b7`
+
+## Traceability
+AC1→S1; AC2→S1; AC3→S1; AC4→S1
+
+No `fix-now` findings. Self-assessment (minor / high / low) matches a one-file sibling reorder in `AdminDataManagement.tsx`. Parent Purpose/Functional scope/Boundaries respected; statutes cited on the child plus the universal orchestration set scored in-session (R1–R3) with no violations.
+
+— Joan
+context_tokens≈52000
+
+#### katherine — 2026-08-10T01:50:46.716Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1291/AST-1295-move-data-management-schema-browser-right-of-sql/docs/features/interface/ast-1295-move-data-management-schema-browser-right-of-sql.md
+
+**Scope:** minor — one React page file; sibling reorder in the existing workbench flex row; no API/config.
+
+**Conf:** high — left-then-right JSX in `AdminDataManagement.tsx` is explicit; flipping Main query panel before Schema browser panel is the whole deliverable.
+
+**Risk:** low — wrong order only misplaces chrome on this Admin page; SQL/upsert/history paths stay untouched if Stage 1 steps 3–4 are followed literally.
+
+---
+
 # AST-1295 — Move Data Management schema browser right of SQL
 
 **Linear:** [AST-1295](https://linear.app/astralcareermatch/issue/AST-1295/move-data-management-schema-browser-right-of-sql-move-table-lookup-and)  

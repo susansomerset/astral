@@ -428,6 +428,24 @@ Close orphaned job `batch_id` after provider Connection-style failure on hop-lab
   tests/component/external/test_anthropic.py::TestAst903JsonMaxTokensHardFail
 ```
 
+### AST-1380 / AST-1383 · AST-1379 (fix + gap)
+
+**AST-1380** Decision A: for `CRAFT_RUBRIC_UI_TASK_KEYS` on DeepSeek, `do_task` forces `tier_meta.thinking=False` / `reasoning_effort=None` (Big thinking otherwise shares the craft `max_tokens` floor and starves mid-`criteria[].content`) while keeping the AST-903 floor. Provider-failure RESPONSE rows use `_provider_failure_audit_body` (`Provider failed …` / optional `(failure_class)` + `--- model response ---`) so a truncated success-shaped envelope cannot look like a finished hop. Gap **AST-1383** lands this bible + component coverage (product stays on AST-1380). **AST-1391:** that craft DeepSeek Big hop still forces thinking off; `max_tokens` is now the DeepSeek Big floor (not `CRAFT_RUBRIC_MAX_TOKENS`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Craft DeepSeek Big thinking-off + floor | `src/core/agent.py` | **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_craft_get_rubric_deepseek_big_forces_thinking_false`** |
+| Non-craft Big keeps thinking | `src/core/agent.py` | **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_non_craft_deepseek_big_keeps_thinking`** |
+| Provider-failure RESPONSE banner | `src/core/agent.py` | **`TestAst1380CraftRubricThinkingOffAndFailureBanner::test_provider_failure_response_banner_prefixes_success_shaped_envelope`** |
+
+**AST-1383** narrowed run (repro = thinking-off + banner nodes):
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1380CraftRubricThinkingOffAndFailureBanner \
+  tests/component/core/test_agent.py::TestAst903CraftRubricMaxTokensFloor
+```
+
 ### AST-1391 · AST-1390 (DeepSeek Big output floor)
 
 **AST-1391:** DeepSeek **Big** `do_task` hops send `max_tokens` of at least **384000** (named `tier_map["deepseek"][BRAIN_BIG]["max_tokens"]`, applied via `deepseek_brain_max_tokens_floor` after the craft 32000 floor). Agent-row values above 384000 still win (floor, not cap). Little / Medium DeepSeek hops and Anthropic Big are unchanged. Craft DeepSeek Big still disables thinking (AST-1380 Decision A). Admin `run_adhoc` / `_resolve_adhoc` out of scope. Config helper + SKU-default guard: **`docs/test-bible/utils/config.md`** § AST-1391.
@@ -490,44 +508,9 @@ Workbench Test success path stringifies the extracted body via **`_caller_respon
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-### AST-1411 · AST-1403 (Ad Hoc seven-segment resolve, assemble, persist)
-
-**Parent:** [AST-1403](https://linear.app/astralcareermatch/issue/AST-1403). **Publish:** `origin/sub/AST-1403/AST-1411-ad-hoc-seven-segment-resolve-assemble-persist`.
-
-Workbench Test assembles and stores Cache A–D via **`_assemble_blocks_seven_segment`** / **`_store_prompt_blocks(..., caches_resolved_four=)`** (empty B/D omitted). Result dict includes **`batch_id`**. **`_store_prompt_blocks`** prompt-block debug is Style D index + found→recorded when **`debug=True`** (replaces `agent_data_write` on prompt blocks only). RESPONSE stringify/debug remains **AST-1393** / **AST-977**. Admin HTTP: **`docs/test-bible/ui/api/api_admin.md`** § AST-1411.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Persist SYSTEM+CACHE_A+CACHE_C+TASK+RESPONSE; omit empty B/D; `batch_id` | `src/core/agent.py` (`run_adhoc_workbench_test`) | **`TestAst1411AdhocSevenSegment::test_workbench_persists_a_and_c_omits_empty_b_d`** |
-| Assemble omits empty cache slots | same (`run_adhoc`) | **`test_run_adhoc_assembles_nonempty_cache_slots`** |
-| Style D prompt-block debug gated | same (`_store_prompt_blocks`) | **`test_store_prompt_blocks_style_d_debug_gated`** |
-| `batch_id` + `caches_resolved_four=` store (no `cache_content=`) | same | revised **`TestAst515AdhocWorkbenchLedger`** (success + failure `batch_id`) |
-
-**Broken / obsolete this pass:** AST-515 success now asserts four-slot store kwargs (legacy `cache_content=` would TypeError). Prompt-block `agent_data_write` mapping on **AST-977** is stale — see keeper note there.
-
-**Integration:** no existing scenario asserts Ad Hoc seven-segment store / Preview cache_b–d — no revision; do not invent new integration coverage.
-
-## QA test manifest
-
-1. Existing workbench ledger + new `batch_id` / four-slot store kwargs: `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
-2. RESPONSE stringify regression: `tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody`
-3. Seven-segment persist / assemble / Style D: `tests/component/core/test_agent.py::TestAst1411AdhocSevenSegment`
-
-**AST-1411** narrowed run (core; HTTP in **`ui/api/api_admin.md`**):
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
-  tests/component/core/test_agent.py::TestAst1393SerializeAdhocSuccessBody \
-  tests/component/core/test_agent.py::TestAst1411AdhocSevenSegment \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
-
 ### AST-977 · AST-974
 
-`agent_data` dedupe write/read debug in **`agent.py`**: **`_store_response_block`** still emits `agent_data_write` found/recorded when `debug=True`; **`_store_prompt_blocks`** prompt-block write trail is Style D as of **AST-1411** (not `agent_data_write`); `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
+`agent_data` dedupe write/read debug in **`agent.py`**: `_store_prompt_blocks` / `_store_response_block` emit `agent_data_write` found/recorded when `debug=True`; `_block_text_by_type` emits `agent_data_read` resolve/direct; quiet when `debug=False`. Data-layer contract: **`docs/test-bible/data/database/agent_data.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |

@@ -1,3 +1,111 @@
+<!-- linear-archive: AST-1312 archived 2026-08-19 -->
+
+## Linear archive (AST-1312)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1312/mailbox-to-on-list-and-get-payloads-email-bind-where-email-is-in-the  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1308 — Email bind where email is in the To: field (alone)  
+**Blocked by / blocks / related:** parent: AST-1308; blocks: AST-1313
+
+### Description
+
+## What this implements
+
+Owns making inbox list/get rows carry the message **To** so bind can see it. Does **not** own the From-then-To decision or debug bind source (sibling From-then-To bind).
+
+## In scope
+
+- [X] `pattern.layers.import-discipline` — To is mailbox I/O in `src/external/gmail.py`; core/UI do not call Gmail
+- [X] `astral.layers.import-direction` — no new imports; gmail stays external → utils
+- [X] `astral.layers.core-vs-external-bright-line` — header read in external only; bind decision stays out
+- [X] `astral.standards.in-scope-only` — one raw field (`to_address`) on existing list/get shapes
+- [X] `astral.standards.dry-and-focused-functions` — reuse `_header_map` / `_message_metadata`; no parallel To parser
+
+## Considered but excluded
+
+* `pattern.config.config-block` / `astral.config.config-source-of-truth` / `astral.standards.no-hardcoded-sets` for inbox identity or bind-header order — **AST-1313**
+* `astral.standards.debug-contract-gated` — bind-source Style D is **AST-1313**
+* `astral.layers.ui-config-driven-business-logic` — no React To rules; Manage Email chrome unchanged
+* `pattern.ui.admin-endpoint` — no new inbox API; existing jsonify already forwards the dict
+* `astral.patterns.require-auth-on-protected-endpoints` — no route changes; existing `@require_admin` stays
+* From-then-To bind, ignoring the Astral inbox address, parsing/splitting To — **AST-1313**
+* ingest / scrape / create / archive / gaze_email bind consumers — not this slice
+
+## Acceptance criteria
+
+- [X] `list_inbox_messages()` rows include `to_address` = the raw `To` header (empty string if missing)
+- [X] `get_message_html()` payloads include `to_address` the same way
+- [X] From-only `candidate_match` / create rematch behavior is unchanged
+- [X] Manage Email chrome is unchanged
+- [X] This slice does **not** itself complete parent AC 2–5 (sibling bind)
+
+## Boundaries
+
+Does **not** decide From-then-To bind, ignore the Astral inbox address, or emit bind-source debug. Does **not** change ingest, scrape, create, archive, or Manage Email chrome.
+
+## Notes for planning
+
+Parent AC 2 requires a single remaining To address after ignoring the Astral inbox — this child only exposes the raw To field.
+
+Plan: `docs/features/meteorite/ast-1312-mailbox-to-on-list-and-get-payloads.md` on the publish ref below.
+
+## Git branch (authoritative)
+
+`sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### radia — 2026-08-11T20:23:22.218Z
+[code-rubric] revision=2
+**Overall:** CLEAN
+Stage 1 plan literal in `40612c89`; Betty tests assert metadataHeaders + raw To. No findings.
+context_tokens≈38000
+— Radia
+
+#### betty — 2026-08-11T20:18:07.569Z
+1. `tests/component/external/test_gmail.py::TestAst1312ToAddress::test_list_requests_to_and_copies_raw_header` — list copies raw To (display name + extra address, unparsed); metadata get requests `["Subject", "From", "Date", "To"]`.
+2. `tests/component/external/test_gmail.py::TestAst1312ToAddress::test_get_copies_raw_to_or_empty` — get copies raw To; missing header → `""`.
+3. Revised exact dicts: `TestListInboxMessages` (`test_paginates_and_preserves_order`, `test_non_dict_metadata_payload_yields_empty_fields`); `TestGetMessageHtml` (`test_extracts_nested_html_body`, `test_includes_subject_and_from_headers` now includes To, `test_top_level_html_and_empty_when_missing`).
+4. Existing From-only bind: `tests/component/core/test_inbox.py::TestAst1047InboxFromBind`.
+
+§6c N/A (no page/filter UX). Integration: none to revise.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_gmail.py \
+  tests/component/core/test_inbox.py::TestAst1047InboxFromBind \
+  -q
+```
+
+Pass: pytest green on narrowed args; `src/external/gmail.py` stays LOCKED_AT_100.
+
+`origin/sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads` @ `eb63c656`
+`merge-tests(AST-1312): origin/tests 2f4d1ad02ff7bc1d36469a61b22005771fe9d727`
+
+bible `docs/test-bible/external/gmail.md` `c8993a815b3a9cff54f1b380e826e0028a0a05de`
+
+#### joan — 2026-08-11T20:13:29.388Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+AST-1312 plan approved @ a8aa15f — external-only raw `to_address` on list/get via `_header_map`; `"To"` on metadataHeaders; bind/core/UI untouched for AST-1313.
+context_tokens≈42000
+— Joan
+
+#### katherine — 2026-08-11T20:11:30.598Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1308/AST-1312-mailbox-to-on-list-and-get-payloads/docs/features/meteorite/ast-1312-mailbox-to-on-list-and-get-payloads.md
+
+**Scope:** Single-Component — only `src/external/gmail.py`; core list/get already pass the extra key through.
+**Conf:** high — same raw-header path as `from_address` (AST-1032 / AST-1049).
+**Risk:** low — additive `to_address`; From bind stays as-is. List must request `"To"` on `metadataHeaders` or list rows stay empty and AST-1313 has nothing to read.
+
+Raw To only. No parse, no inbox-address filter, no bind-source debug, no Manage Email chrome — those are AST-1313 / out of scope.
+
+---
+
 # AST-1312 — Mailbox To on list and get payloads
 
 **Linear:** [AST-1312](https://linear.app/astralcareermatch/issue/AST-1312/mailbox-to-on-list-and-get-payloads-email-bind-where-email-is-in-the)

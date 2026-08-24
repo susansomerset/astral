@@ -383,6 +383,10 @@ Parent mini-bug: [AST-1362](https://linear.app/astralcareermatch/issue/AST-1362/
 - Prior Experience default format in config may stay `word_cloud`; operator override to `free_prose` must survive Save → Print.
 - Cover from-block `|`→`•` behavior unchanged except insofar as shared helpers are reused deliberately.
 
+### Resolution (2026-08-15, resolve-child)
+
+Product landed on `origin/sub/AST-1362/AST-1381-fix-base-resume-issues` (emit `|`→`•`, collapsible roles, content-Save + `resume_structure`, accomplishments list emit). Sibling AST-1382 landed bug-repro + UI/bible retarget. Radia fix-now cleared: Betty restored alien `tests/component/core/test_agent.py` + `docs/test-bible/core/agent.md` to match ftr (orphan AST-1383 coverage removed). No product revert of AST-1381/1382. Advancing to User Testing.
+
 
 ## Bug: AST-1382 — gap: bible + repro for emit / `|`→`•` / collapsible / format-Save (board-betty REVISE)
 

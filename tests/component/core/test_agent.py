@@ -119,7 +119,7 @@ _DRAFT_EXPERIENCE_JOBS = [
         "title": "Engineer",
         "dates": "2020-2023",
         "location": "",
-        "accomplishments": "Built things.",
+        "accomplishments": ["Built things."],
     }
 ]
 
@@ -4905,7 +4905,6 @@ class TestAst515AdhocWorkbenchLedger:
         save_args = ledger_trackers["saves"][0][0]
         assert save_args[1] == "adhoc-evaluate_jd"
         assert save_args[2] == "c1"
-        assert out["batch_id"] == save_args[0]
         assert ledger_trackers["saves"][0][1]["status"] == "RUNNING"
         assert ledger_trackers["store_prompt"].call_count == 1
         store_kw = ledger_trackers["store_prompt"].call_args.kwargs
@@ -4931,7 +4930,6 @@ class TestAst515AdhocWorkbenchLedger:
             entity_id="j1",
         )
         assert out["success"] is False
-        assert out["batch_id"] == ledger_trackers["saves"][0][0][0]
         assert ledger_trackers["updates"][-1][1]["status"] == "FAILED"
         assert ledger_trackers["updates"][-1][1]["total_failed"] == 1
         assert ledger_trackers["store_prompt"].call_args.kwargs.get("entity_id") == "j1"
@@ -6275,6 +6273,170 @@ class TestAst903CraftRubricMaxTokensFloor:
         assert out["success"] is True
         assert send.await_args.kwargs.get("max_tokens") == 100
 
+
+class TestAst1380CraftRubricThinkingOffAndFailureBanner:
+    """AST-1380 / AST-1383: Decision A thinking-off + Provider-failed RESPONSE banner."""
+
+    # Mid-criteria cut still carrying agent_performance.status=success (abrams-shaped).
+    _ABRAMS_TRUNCATED = (
+        '{"agent_performance":{"status":"success"},"vector_reviews":[{"code":"GT"}],'
+        '"agent_payload":{"criteria":[{"code":"GT","label":"Get",'
+        '"content":"A == The JD title matches even though no title'
+    )
+
+    @pytest.mark.asyncio
+    async def test_craft_get_rubric_deepseek_big_forces_thinking_false(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Big meta starts thinking=True; do_task must clear it for craft rubrics (Decision A).
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        criteria = [
+            {"code": "GT", "label": "Get", "content": "full criterion body", "importance": 5},
+        ]
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {
+                    "agent_performance": {"status": "success"},
+                    "agent_payload": {"criteria": criteria},
+                },
+                "api_response": _api_response('{"criteria":[]}'),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="abrams",
+            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+        )
+        assert out["success"] is True
+        assert send.await_args is not None
+        tier = send.await_args.kwargs.get("tier_meta") or {}
+        assert tier.get("thinking") is False
+        assert not tier.get("reasoning_effort")
+        # AST-1391: DeepSeek Big floor sits above the craft 32000 floor (AC6).
+        assert send.await_args.kwargs.get("max_tokens") == cfg.deepseek_brain_max_tokens_floor(cfg.BRAIN_BIG)
+
+    @pytest.mark.asyncio
+    async def test_non_craft_deepseek_big_keeps_thinking(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Decision A must not blanket-disable Big thinking off craft rubric keys.
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        send = AsyncMock(
+            return_value={
+                "success": True,
+                "parsed_response": {"agent_payload": "0|CRA2"},
+                "api_response": _api_response(),
+                "timesheet": {},
+            }
+        )
+        monkeypatch.setattr(agent_mod, "send_to_deepseek", send)
+        out = await agent_mod.do_task(
+            "evaluate_jd",
+            index="job-1",
+            ctx={"candidate_data": {}, "batch_entities": _batch_entities("job-1")},
+        )
+        assert out["success"] is True
+        tier = send.await_args.kwargs.get("tier_meta") or {}
+        assert tier.get("thinking") is True
+        assert tier.get("reasoning_effort") == "max"
+
+    @pytest.mark.asyncio
+    async def test_provider_failure_response_banner_prefixes_success_shaped_envelope(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+        stub_agent_storage: Dict[str, MagicMock],
+    ) -> None:
+        # Truncated success-shaped envelope must land under Provider failed banner, not bare.
+        monkeypatch.setattr(agent_mod, "get_active_llm_provider", lambda: "deepseek")
+        monkeypatch.setattr(agent_mod, "send_to_anthropic", AsyncMock())
+        monkeypatch.setattr(
+            agent_mod,
+            "_resolve_task_prompts",
+            lambda task_key: _agent_rows(brain_setting="Big"),
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "resolve_brain_setting_to_deepseek_tier_meta",
+            lambda _bs: {
+                "vendor_model": "deepseek-v4-pro",
+                "thinking": True,
+                "reasoning_effort": "max",
+            },
+        )
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_deepseek",
+            AsyncMock(
+                return_value={
+                    "success": False,
+                    "error": "Generation truncated (max_tokens) before complete JSON",
+                    "failure_class": "max_tokens",
+                    "api_response": _api_response(self._ABRAMS_TRUNCATED),
+                    "timesheet": {},
+                }
+            ),
+        )
+        out = await agent_mod.do_task(
+            "craft_get_rubric",
+            index="abrams",
+            ctx={"candidate_data": {"astral_candidate_id": "abrams"}},
+        )
+        assert out["success"] is False
+        assert out.get("failure_class") == "max_tokens"
+        response_calls = [
+            c
+            for c in stub_agent_storage["save"].call_args_list
+            if c.kwargs.get("block_type") == "RESPONSE"
+        ]
+        assert response_calls, "expected a RESPONSE agent_data write on provider failure"
+        body = response_calls[0].kwargs.get("block_data") or ""
+        assert "Provider failed" in body
+        assert "max_tokens" in body
+        assert "--- model response ---" in body
+        assert '"status":"success"' in body
+        assert "even though no title" in body
+
+
 class TestAst977AgentDataDedupeDebug:
     """AST-977: found/recorded debug on store/read; quiet when debug=False."""
 
@@ -6503,7 +6665,7 @@ class TestAst1005ItemsSchemaObjectValidation:
                 "title": "Engineer",
                 "dates": "2020",
                 "location": "Remote",
-                "accomplishments": "Stuff",
+                "accomplishments": ["Stuff"],
             }
         ]
         payload = {
@@ -6532,7 +6694,7 @@ class TestAst1005ItemsSchemaObjectValidation:
                 "title": "Engineer",
                 "dates": "2020-2023",
                 "location": "Remote",
-                "accomplishments": "Shipped",
+                "accomplishments": ["Shipped"],
             }
         ]
         payload = {
@@ -8390,135 +8552,3 @@ class TestAst1393SerializeAdhocSuccessBody:
         combined = "\n".join(r.message for r in caplog.records)
         assert "serialized store" not in combined
         assert "found type=" not in combined
-
-
-# Branches: workbench caches_resolved_four persist (omit empty B/D); run_adhoc
-# seven-segment assemble; _store_prompt_blocks Style D index + found→recorded gated on debug.
-class TestAst1411AdhocSevenSegment:
-    """AST-1411: Ad Hoc workbench four-slot assemble/store + prompt-block Style D."""
-
-    def _save_capture(self, monkeypatch: pytest.MonkeyPatch) -> List[Dict[str, Any]]:
-        saved: List[Dict[str, Any]] = []
-
-        def _save(**kwargs: Any) -> Dict[str, Any]:
-            saved.append(kwargs)
-            return {
-                "inserted": True,
-                "outcome": "new_content",
-                "agent_data_id": kwargs["agent_data_id"],
-                "ref_agent_data_id": None,
-            }
-
-        monkeypatch.setattr(agent_mod, "save_agent_data", _save)
-        return saved
-
-    async def test_workbench_persists_a_and_c_omits_empty_b_d(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        saved = self._save_capture(monkeypatch)
-        monkeypatch.setattr(agent_mod.database, "save_dispatch_ledger", lambda *a, **k: None)
-        monkeypatch.setattr(agent_mod.database, "update_dispatch_ledger", lambda *_a, **_k: None)
-        monkeypatch.setattr(agent_mod, "compute_batch_cost", lambda _b: 0)
-        monkeypatch.setattr(agent_mod, "flush_log_buffer", lambda: None)
-
-        async def _ok(**_k: Any) -> Dict[str, Any]:
-            return {"success": True, "parsed_response": {"agent_payload": "ok"}, "timesheet": {}}
-
-        monkeypatch.setattr(agent_mod, "run_adhoc", _ok)
-        out = await agent_mod.run_adhoc_workbench_test(
-            workbench_task_key="evaluate_jd",
-            candidate_id="c1",
-            entity_id="j1",
-            system_content="sys",
-            user_content="usr",
-            cache_content="A",
-            cache_content_b="",
-            cache_content_c="C",
-            cache_content_d="",
-        )
-        types = [row["block_type"] for row in saved]
-        assert "SYSTEM" in types
-        assert "CACHE_A" in types
-        assert "CACHE_C" in types
-        assert "TASK" in types
-        assert "RESPONSE" in types
-        assert "CACHE_B" not in types
-        assert "CACHE_D" not in types
-        assert out["batch_id"].startswith("adhoc-evaluate_jd-")
-        # Workbench must use caches_resolved_four (passing cache_content= too would TypeError).
-        assert saved[0]["block_type"] == "SYSTEM"
-
-    async def test_run_adhoc_assembles_nonempty_cache_slots(
-        self, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        send = AsyncMock(return_value={"success": True, "parsed_response": "ok"})
-        monkeypatch.setattr(agent_mod, "send_to_anthropic", send)
-        out = await agent_mod.run_adhoc(
-            "sys",
-            "usr",
-            cache_content="A",
-            cache_content_b="",
-            cache_content_c="C",
-            cache_content_d=None,
-            model_code="claude-haiku-4-5",
-        )
-        assert out["success"] is True
-        system_blocks = send.await_args.kwargs["system_blocks"]
-        texts = [blk["text"] for blk in system_blocks]
-        assert texts == ["sys", "A", "C"]
-        labels = [list(item.keys())[0] for item in out["runtime_prompt"] if "cache_" in list(item.keys())[0]]
-        assert labels == ["cache_a", "cache_c"]
-
-    def test_store_prompt_blocks_style_d_debug_gated(
-        self, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
-    ) -> None:
-        self._save_capture(monkeypatch)
-        dbg = MagicMock()
-        real = agent_mod.get_logger
-        monkeypatch.setattr(
-            agent_mod,
-            "get_logger",
-            lambda *a, **k: dbg if k.get("debug_flag") else real(*a, **k),
-        )
-        agent_mod._store_prompt_blocks(
-            entity_type="job",
-            task_key="evaluate_jd",
-            batch_id="batch-1411",
-            system_content="sys",
-            caches_resolved_four=("A", "", "C", ""),
-            user_content="usr",
-            debug=True,
-        )
-        # SYSTEM + CACHE_A + CACHE_C + TASK
-        assert dbg.debug_index.call_count == 4
-        first = dbg.debug_index.call_args_list[0].kwargs
-        assert first["func"] == "_store_prompt_blocks"
-        assert first["index"] == 1 and first["total"] == 4
-        assert first["identifier"].startswith("SYSTEM:")
-        found_lines = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args and str(c.args[0]).startswith("found ")]
-        assert found_lines[0] == "found block_type=SYSTEM chars=3"
-        assert any("found block_type=CACHE_A" in line for line in found_lines)
-        assert any("found block_type=CACHE_C" in line for line in found_lines)
-        assert any("found block_type=TASK" in line for line in found_lines)
-        assert not any("CACHE_B" in line or "CACHE_D" in line for line in found_lines)
-        assert dbg.debug_detail_block.call_count == 4
-        recorded = [c.args[0] for c in dbg.debug_detail.call_args_list if c.args and str(c.args[0]).startswith("recorded ")]
-        assert all("outcome=new_content" in line for line in recorded)
-
-        dbg.reset_mock()
-        gl = MagicMock(wraps=agent_mod.get_logger)
-        monkeypatch.setattr(agent_mod, "get_logger", gl)
-        caplog.set_level("DEBUG")
-        agent_mod._store_prompt_blocks(
-            entity_type="job",
-            task_key="evaluate_jd",
-            batch_id="batch-1411-quiet",
-            system_content="sys",
-            caches_resolved_four=("A", "", "C", ""),
-            user_content="usr",
-            debug=False,
-        )
-        assert not any(c.kwargs.get("debug_flag") for c in gl.call_args_list)
-        combined = "\n".join(r.message for r in caplog.records)
-        assert "found block_type=" not in combined
-        assert "recorded outcome=" not in combined

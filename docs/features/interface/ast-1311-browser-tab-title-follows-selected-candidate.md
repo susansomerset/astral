@@ -1,3 +1,114 @@
+<!-- linear-archive: AST-1311 archived 2026-08-19 -->
+
+## Linear archive (AST-1311)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1311/browser-tab-title-follows-selected-candidate-please-set-the-page-title  
+**Status at archive:** Archive  
+**Project:** Astral Interface  
+**Assignee:** katherine  
+**Priority / estimate:** None / —  
+**Parent:** AST-1307 — Please set the page title to Astral - <full_name>  
+**Blocked by / blocks / related:** parent: AST-1307
+
+### Description
+
+## What this implements
+
+Owns setting the SPA browser tab title from the selected candidate’s Full Name and keeping it in sync with selection and reload. Does not own nav layout, picker UX, Profile name editing, or exported document titles.
+
+## In scope
+
+- [X] `astral.ui.frontend-file-placement` — formatter in `src/ui/frontend/src/lib/documentTitle.ts`; sync stays in existing `contexts/CandidateContext.tsx`
+- [X] `astral.ui.naming-conventions` — `documentTitle.ts` / `browserTabTitle` domain names; no ticket id in identifiers
+- [X] `astral.layers.ui-config-driven-business-logic` — React reads payload `full` only; does not re-join first+last or invent a second Full Name rule
+- [X] `astral.standards.in-scope-only` — two frontend files; no nav / Profile / builder / picker-label edits
+- [X] `astral.standards.names-not-ticket-ids` — helper and module use document-title language
+- [X] `astral.standards.dry-and-focused-functions` — one formatter used by apply + unmount-reset effects
+
+## Considered but excluded
+
+* Catalog UI patterns (`pattern.ui.shared-button-roles`, `pattern.ui.icon-control`, `pattern.ui.admin-endpoint`) — do not govern `document.title`
+* `no established pattern applies` — one-place shell presentation of an already-loaded column; not a new catalog shape
+* `NavigationShell.tsx` / AST-1284 / AST-1286 — parent forbids restyling or restructuring the nav shell
+* `src/ui/frontend/src/lib/candidateLabel.ts` — picker label (first+last, id fallback, collision id suffix) is not Full Name
+* Profile Full Name editing / `recompute_full_name` — AST-1081 / AST-1082; this ticket consumes `full`
+* `src/core/builder.py` exported resume/cover `<title>` values — parent boundary
+* `src/utils/config.py` / new API for the word `Astral` — presentation chrome already in `index.html`, not a state set
+* `index.html`, `Login.tsx`, `Authenticate.tsx`, `LogOffScreen.tsx` — unauthenticated chrome stays static `Astral`; provider unmount resets after a session
+* Universal `orch.*` — pipeline only, not per-child product scope
+
+## Acceptance criteria
+
+1. [X] With a candidate selected whose Full Name is `Jolane Abrams`, the browser tab title is exactly `Astral - Jolane Abrams`.
+2. [X] Changing the selected candidate updates the tab title to `Astral - ` plus that candidate’s Full Name without a reload.
+3. [X] Reloading a session that already has a persisted selected candidate shows that candidate’s Full Name in the tab title after the app loads.
+4. [X] With no candidate selected, or when Full Name cannot be formed, the tab title is exactly `Astral`.
+5. [X] Navigating between app pages does not add route or page names to the tab title; the title remains product name plus selected Full Name (or `Astral` alone).
+6. [X] Unauthenticated / sign-in chrome still shows `Astral`.
+
+## Boundaries
+
+Does not own nav layout, picker UX, Profile name editing, or exported resume/cover HTML titles. Does not restyle the nav shell (AST-1284). Single child — no sibling slice.
+
+## Notes for planning
+
+Use the existing candidate Full Name field (first-plus-last join when empty — already applied on save in core). Format is `Astral - <Full Name>` with space-hyphen-space. Fallback title is `Astral` with no dangling hyphen. React must not re-derive the join.
+
+## Git branch (authoritative)
+
+`sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### radia — 2026-08-11T18:23:04.724Z
+[code-rubric] revision=2
+**Overall:** CLEAN
+no findings — title helper + CandidateProvider sync match plan
+context_tokens≈28000
+— Radia
+
+#### betty — 2026-08-11T18:16:36.482Z
+1. `tests/component/frontend/lib/test_documentTitle.test.ts` — `browserTabTitle` empty/whitespace → `Astral`; `Jolane Abrams` → `Astral - Jolane Abrams`; trim.
+2. `tests/component/frontend/contexts/test_CandidateContext.test.tsx` — describe `CandidateProvider — AST-1311 browser tab title`: selected `full` sets tab title; `setSelectedId` updates without reload; persisted `localStorage` id after load; missing `full` / first+last only → `Astral`; unmount → `Astral`.
+
+§6c N/A (no `pages/` or filter UX). Broken/obsolete: none. Integration: none.
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_documentTitle.test.ts \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx
+```
+
+`origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` @ `0cfab525` (`merge-tests(AST-1311): origin/tests f5dcc87c3f67f4c26a2cd9f51db57491c61c0690`)
+
+bible shasum on publish tip:
+- `docs/test-bible/frontend/lib.md` `5db215ae651eb6945143d461b66f730b1686309b`
+- `docs/test-bible/frontend/contexts.md` `ed9ec090bf87da647d4e517104379dfa924848ea`
+
+#### joan — 2026-08-11T18:11:54.293Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+AST-1311 plan approved @ c65d6626 — `browserTabTitle` + two `CandidateProvider` effects cover all six ACs; `full`-only, no nav/router title churn.
+context_tokens≈14000
+— Joan
+
+#### katherine — 2026-08-11T18:09:20.348Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate/docs/features/interface/ast-1311-browser-tab-title-follows-selected-candidate.md
+
+`origin/sub/AST-1307/AST-1311-browser-tab-title-follows-selected-candidate` @ `c65d6626`
+
+Title sync lives in `CandidateProvider` (same home as the timezone side effect) and reads list-payload `full` only — not picker `candidateLabel`, not a first+last join in React. A `lib/documentTitle.ts` `browserTabTitle` helper owns the `Astral` / `Astral - <name>` strings; provider unmount resets to `Astral` so login chrome does not keep the last candidate. No `NavigationShell` edit, no helmet/router titles, no `config.py`.
+
+**Scope:** Single-Component — one new `lib/` formatter and two effects on the existing candidate context.
+
+**Conf:** high — `CandidateInfo.full` is already on `/api/candidates`; format and fallback are parent AC literals.
+
+**Risk:** low — `document.title` only; unmount cleanup is the AC 6 guard after logout.
+
+---
+
 # Browser tab title follows selected candidate
 
 **Linear:** [AST-1311](https://linear.app/astralcareermatch/issue/AST-1311/browser-tab-title-follows-selected-candidate)

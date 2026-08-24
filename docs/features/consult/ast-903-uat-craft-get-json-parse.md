@@ -282,3 +282,198 @@ None (no fix-now / discuss).
 | §2.2 | Core raises budget; external owns provider I/O and stop_reason gate. |
 | §1.3 DRY | Same gate in anthropic + deepseek mirrors existing parse-failure return shape. |
 | §3.3 | No new cross-layer imports from UI/data. |
+
+---
+
+## Bug: AST-1380 — craft_get_rubric RESPONSE truncation (289-token cut)
+
+**Parent:** AST-1379 (orphaned mini-parent; `ftr/AST-1379-response-truncated-after-289-tokens` off `origin/dev`).  
+**Publish ref:** `origin/sub/AST-1379/AST-1380-fix-craft-get-rubric-truncation`  
+**Ancestor:** this doc (AST-903) — prior craft_get truncate + `CRAFT_RUBRIC_MAX_TOKENS=32000` + JSON `stop_reason==max_tokens` hard-fail. Archived; no related-issue link.
+
+### As-is
+
+`craft_get_rubric` for candidate `abrams` (batch `craft_get_rubric-ff19fa20-5f6d-469c-a1bf-5c09b4574948`) stores a RESPONSE whose `block_data` cuts mid-criteria after ~289 tokens (`token_size: 289`). The model envelope shows `agent_performance.status=success` with a full `vector_reviews` list, but `agent_payload.criteria` is incomplete (first criterion `content` ends mid-grade-row at `…even though no title`; remaining criteria never written). Downstream parse/use treats that truncated payload like a finished hop.
+
+### To-be
+
+A successful `craft_get_rubric` RESPONSE is complete, parseable JSON with every crafted criterion fully written — **or** the hop fails loudly under the existing `max_tokens` / unusable-response failure class. Never `agent_performance.status=success` (or hop success) with a partial truncated payload.
+
+### Repro
+
+1. Candidate `abrams` → generate `craft_get_rubric` (UI generate or REQUESTED_ARTIFACTS chain entry — both call `do_task`).
+2. Inspect RESPONSE for batch `craft_get_rubric-ff19fa20-5f6d-469c-a1bf-5c09b4574948` (or a fresh re-run with `debug=True`).
+3. Observe `token_size ≈ 289` and mid-`criteria[].content` cut while the envelope still claims `agent_performance.status=success`.
+
+### Root cause
+
+AST-903’s controls are still present on this tree:
+
+- `CRAFT_RUBRIC_MAX_TOKENS = 32000` in `src/utils/config.py`
+- `do_task` floors `max_tokens` for every `task_key in CRAFT_RUBRIC_UI_TASK_KEYS` (`src/core/agent.py`)
+- DeepSeek + Anthropic hard-fail JSON when `stop_reason == "max_tokens"` before heal/parse (`failure_class: max_tokens`)
+
+The abrams cut is the same truncation *signature* as AST-903 (`karfo`), so one of these holes is still open (confirm which on the live hop before coding):
+
+1. **Budget starvation under thinking** — `craft_get_rubric` uses agent `ats_expert_atlas` (`brain_setting=Big`). On DeepSeek, Big enables thinking (`reasoning_effort=max`). Thinking tokens share the same `max_tokens` budget as the visible JSON answer, so the text block can stop mid-`criteria[].content` after a few hundred estimated tokens even when the floor sent `32000`.
+2. **Hard-fail miss** — truncation lands without `stop_reason == "max_tokens"` (or the gate is skipped), and heal/parse still yields a success-shaped path; or raw truncated envelope is stored as the RESPONSE audit body with no failure marker so operators/downstream read `status=success` inside the blob.
+3. **Floor bypass** — unlikely for current `do_task` (UI generate and REQUESTED_ARTIFACTS both call it with `task_key=craft_get_rubric`); only reopen if debug shows `max_tokens < 32000` on the hop.
+
+`heal_json` does **not** recover unterminated mid-string craft criteria (same as AST-903). A true `success=True` persist unwraps to `agent_payload` only; a RESPONSE that still contains `agent_performance` is usually the failure-audit raw body (`_audit_response_body` stores raw text with no `Validation failed:` prefix on the provider-failure path).
+
+### Proposed change
+
+Execute in order; stop when the confirmed hole is closed. Do not invent new token caps or “close enough to max_tokens” heuristics without an explicit Decision below.
+
+1. **Confirm the hop (make-fix first action)** — Re-run `craft_get_rubric` for `abrams` (or equivalent) with `debug=True`, or read timesheet + RESPONSE for batch `…ff19fa20…` if still available. Record: `provider`, `brain_setting` / DeepSeek `thinking`, `max_tokens` actually passed to the provider, `stop_reason`, `usage.output_tokens`, whether `do_task` returned `success` / `failure_class`.
+
+2. **If `max_tokens` sent `< CRAFT_RUBRIC_MAX_TOKENS`** — restore the AST-903 floor on that entry path in `src/core/agent.py` (only if a real bypass is found; do not duplicate the existing floor).
+
+3. **If `stop_reason == "max_tokens"` but provider result is still `success=True`** — fix the Stage-3 gate regression in `src/external/deepseek.py` and/or `src/external/anthropic.py`: JSON + `stop_reason == "max_tokens"` must return `success=False`, `failure_class: "max_tokens"`, error `"Generation truncated (max_tokens) before complete JSON"` **before** heal/parse (same return shape as AST-903).
+
+4. **If DeepSeek Big thinking starved the visible JSON** (floor applied, truncation mid-criteria) — apply **Decision A** below so craft rubric hops keep enough output budget for a full `criteria` array.
+
+5. **Fail closed on truncated craft JSON even when heal would run** — In both provider clients, for `response_format == "json"`: if raw text fails `json.loads` with a truncation-class decode error (`Unterminated string` / incomplete JSON) **and** `stop_reason == "max_tokens"`, keep the existing hard-fail (no heal). If diagnose shows truncation with a different `stop_reason` string that still means output-length stop, map that provider value to the same hard-fail **only when observed** (do not invent aliases without evidence — same rule as AST-903 execution contract).
+
+6. **Never surface truncated envelope as a successful craft result** — On provider `success=False` for craft rubric tasks, ensure `run_candidate_artifact_generation` / REQUESTED_ARTIFACTS persist paths do not stash or write criteria; ledger `FAILED` (AST-903 Stage 4 already forwards `error` — verify still true). Prefix provider-failure RESPONSE audit bodies the same way validation failures do (`Validation failed:` / explicit failure banner) so a raw `agent_performance.status=success` envelope cannot be mistaken for a finished hop when browsing `agent_data`.
+
+7. **Verify** — Re-run `craft_get_rubric` for `abrams` (or fixture): either full parseable `criteria` with RESPONSE `token_size` well above a mid-vector cut, or loud `failure_class: max_tokens` (or unusable-response) with no success persist.
+
+⚠️ **Decision A (thinking vs floor):** Prefer **force DeepSeek `thinking=False` for `CRAFT_RUBRIC_UI_TASK_KEYS` only** inside `do_task` when resolving `tier_meta` (structured JSON emit; thinking burns the shared output budget). Alternative if board rejects: raise `CRAFT_RUBRIC_MAX_TOKENS` to a single new config literal large enough for thinking+full criteria — do not add a second ad-hoc number in `agent.py`. Pick one; do not do both.
+
+⚠️ **Decision B (scope):** Same six `CRAFT_RUBRIC_UI_TASK_KEYS` as AST-903 (includes `craft_get_rubric`). No prompt/schema redesign, no `grade_*` / ArtifactEditor, no AST-1190 hollow classification ownership beyond consuming existing failure classes.
+
+### Blast radius
+
+- All six craft rubric UI tasks share the floor / thinking Decision A.
+- DeepSeek Big thinking change (if chosen) affects only those task keys’ hops, not other Big-brain tasks.
+- Provider hard-fail path already used by AST-903 tests; any gate fix must keep text-format `max_tokens` succeeding.
+- Failure-RESPONSE banner change touches every provider-failure audit row shape operators see in Admin agent_data.
+- Neighbor AST-1377 parked `craft_do_rubric max_tokens / truncated JSON` as out of epic — this bug owns that symptom family for Get (and shared craft keys if Decision A/B apply).
+
+### What must still hold
+
+- AST-903 AC: craft rubric generate returns complete parseable criteria **or** a clear truncation/unusable failure — never heal-into-partial-success on `max_tokens`.
+- `CRAFT_RUBRIC_MAX_TOKENS` remains a floor (`max(agent, floor)`), not a downward override of a higher admin `max_tokens`.
+- UI generate and REQUESTED_ARTIFACTS both keep using `do_task` with `task_key=craft_get_rubric` (no parallel provider call path).
+- Empty-criteria / pending-stash failure behavior from AST-901 unchanged except that truncated runs must not look like COMPLETED success.
+- No changes to rubric grading semantics, consult batches, or craft prompt prose except as required for token/budget correctness (ticket boundaries).
+
+## Radia review-fix (AST-1380)
+
+**Overall:** DISCUSS (no fix-now). Decision A + failure banner solid; AST-903 floor/gates retained.
+
+**discuss (process):**
+1. Plan step 1 hop-confirm evidence not recorded in issue doc (code implies thinking starvation).
+2. Board TESTS:REVISE deferred to sibling gap **AST-1383** (Todo) — no merge-tests on this sub; expected orphaned-path shape.
+
+**advisory:** unrelated AST-1352 Threads mirror noise in three-dot diff; residual truncate risk if future stop_reason ≠ max_tokens.
+
+**Chuckles:** clean-review shortcut → User Testing; drive AST-1383 for bible/repro coverage before parent finish-up.
+
+## Docs-acceptance (AST-1380)
+
+No test-tree delivery on this sub — Betty TESTS:REVISE filed as sibling gap **AST-1383**.
+
+---
+
+## Bug: AST-1383 — Gap: craft rubric truncated-success RESPONSE coverage (agent bible/tests)
+
+**Parent:** AST-1379 (orphaned mini-parent).  
+**Publish ref:** `origin/sub/AST-1379/AST-1383-gap-craft-get-truncation-tests`  
+**Sibling product:** AST-1380 (`code(AST-1380)` Decision A thinking-off + provider-failure RESPONSE banner — already on `ftr` / this epic).  
+**Source verdict:** AST-1380 `[board-betty] TESTS: REVISE` — `docs/test-bible/core/agent.md` missing Decision A / truncated-success RESPONSE coverage.
+
+### As-is
+
+`docs/test-bible/core/agent.md` § AST-903 and `TestAst903CraftRubricMaxTokensFloor` / provider `TestAst903JsonMaxTokensHardFail` lock the 32000 floor and JSON `stop_reason==max_tokens` hard-fail. They do **not** cover AST-1380 Decision A (DeepSeek Big craft rubrics force `thinking=False`) or the provider-failure RESPONSE audit banner (`Provider failed …`) that prevents a truncated success-shaped envelope from looking like a finished hop (abrams-shaped path).
+
+### To-be
+
+Bible + component tests document and assert: (1) `craft_get_rubric` (and craft rubric UI keys) on DeepSeek with Big brain still floors `max_tokens` and passes `tier_meta.thinking is False` into `send_to_deepseek`; (2) when the provider returns `success=False` with a success-shaped raw JSON body, the stored RESPONSE `block_data` is prefixed with `Provider failed` (optionally `(failure_class)`) so operators/recovery cannot treat it as a completed craft payload.
+
+### Repro
+
+Fixture-shaped (no live LLM / no DB seed):
+
+1. **Thinking-off:** Monkeypatch `get_active_llm_provider` → `"deepseek"`, `_resolve_task_prompts` → `_agent_rows(brain_setting="Big")`, stub `resolve_brain_setting_to_deepseek_tier_meta` to return Big meta with `thinking=True` / `reasoning_effort="max"` (as production Big does). Mock `send_to_deepseek` success with a full craft criteria envelope. Call `do_task("craft_get_rubric", …)`.
+2. **Pre-fix vs post-fix (repro gate):** Against a tree **without** AST-1380’s `tier_meta = {**tier_meta, "thinking": False, …}` line, assert would see `send_to_deepseek` kwargs `tier_meta["thinking"] is True`. Against current product tip (AST-1380 landed), assert `tier_meta["thinking"] is False` and `reasoning_effort is None`, and `max_tokens == CRAFT_RUBRIC_MAX_TOKENS`.
+3. **Failure banner:** Monkeypatch provider to return `success=False`, `failure_class="max_tokens"`, `error="Generation truncated (max_tokens) before complete JSON"`, `api_response` whose text is truncated abrams-shaped JSON still containing `"agent_performance":{"status":"success"}`. With `store_agent_data`/batch so RESPONSE is written, capture `save_agent_data` kwargs for `block_type=="RESPONSE"`: body must start with `Provider failed` (and include `max_tokens` when `failure_class` set) and must still contain the raw model snippet after `--- model response ---`.
+
+### Root cause
+
+Coverage gap only — product fix is on AST-1380. Board correctly flagged that AST-903’s existing suite does not lock Decision A or the failure-RESPONSE banner, so a future regression could re-enable thinking on craft Big hops or store bare success-shaped failure bodies without a bible/test tripwire.
+
+### Proposed change
+
+**No product code.** Lands **test-tree + bible only** (Betty / `astral-tests` → `merge-tests` onto this `sub/*`). Ada does not edit `tests/` or `docs/test-bible/**` on the epic worktree.
+
+1. **Bible** — In `docs/test-bible/core/agent.md`, immediately after the existing **### AST-903 · AST-900 (UAT fix)** block, add **### AST-1380 / AST-1383 · AST-1379 (fix + gap)**:
+   - One paragraph: Decision A forces DeepSeek `thinking=False` / `reasoning_effort=None` for `CRAFT_RUBRIC_UI_TASK_KEYS` in `do_task` while keeping the AST-903 `max_tokens` floor; provider-failure RESPONSE rows use `_provider_failure_audit_body` (`Provider failed …` / optional `(failure_class)` + `--- model response ---`).
+   - Table rows pointing at the new test class(es) below.
+   - Narrowed run command listing those node ids (plus keep AST-903 ids as regression neighbors if useful).
+
+2. **Tests** — In `tests/component/core/test_agent.py`, add class **`TestAst1380CraftRubricThinkingOffAndFailureBanner`** (or `TestAst1383…` — prefer **1380** in the name since it locks the product behavior; bible cites AST-1383 as the gap that landed coverage):
+
+   - **`test_craft_get_rubric_deepseek_big_forces_thinking_false`**
+     - Provider deepseek; agent rows `brain_setting="Big"`.
+     - Real or stubbed Big tier meta initially `thinking=True` (must exercise the override path — if stubbing `resolve_brain_setting_to_deepseek_tier_meta`, return thinking True so the assertion proves `do_task` cleared it).
+     - Assert `send_to_deepseek` awaited with `tier_meta["thinking"] is False`, `tier_meta.get("reasoning_effort") in (None,)` / falsy, and `max_tokens == cfg.CRAFT_RUBRIC_MAX_TOKENS`.
+     - Non-goal: do not assert Anthropic path thinking (N/A).
+
+   - **`test_non_craft_deepseek_big_keeps_thinking`** (optional but preferred — blast control)
+     - Same Big deepseek setup for a **non**-`CRAFT_RUBRIC_UI_TASK_KEYS` task that still runs on deepseek in this suite (pick an existing deepseek-covered task key already used in `test_agent.py`).
+     - Assert thinking remains True when tier meta says so — Decision A must not blanket-disable Big thinking.
+
+   - **`test_provider_failure_response_banner_prefixes_success_shaped_envelope`**
+     - `do_task("craft_get_rubric", …)` with provider mock `success=False`, `failure_class="max_tokens"`, truncated raw body containing `agent_performance.status=success` mid-criteria cut (literal fixture string ending at `even though no title` without closing the content string is fine — banner path uses raw text, not parse).
+     - Ensure agent_data store path runs (`batch_id` / `store_agent_data` fixtures as in neighboring store tests).
+     - Assert saved RESPONSE `block_data` contains `Provider failed` and `max_tokens`, contains `--- model response ---`, and still embeds the success-status substring so the banner is visibly guarding the abrams-shaped blob.
+
+3. **Publish** — Betty commits on `astral-tests`, `merge-tests(AST-1383)` onto `origin/sub/AST-1379/AST-1383-gap-craft-get-truncation-tests`. No `origin/dev` / `ftr` push from this gap alone.
+
+⚠️ **Decision:** Gap ownership is **Betty test-tree** (bible + component tests). Product remains AST-1380 only — do not re-touch `src/core/agent.py` here unless a new product defect appears (then file a separate bug, do not expand this gap).
+
+### Blast radius
+
+- Extends `docs/test-bible/core/agent.md` and `tests/component/core/test_agent.py` only.
+- Neighbor AST-903 tests must stay green (floor + provider hard-fail unchanged).
+- Optional non-craft thinking-keep test protects other Big deepseek hops from accidental Decision A bleed.
+- Does not change canon (Joan CANON: OK on AST-1380).
+
+### What must still hold
+
+- AST-903 floor + JSON `max_tokens` hard-fail tests and bible wording remain accurate.
+- AST-1380 product behavior (thinking-off for craft rubrics; failure RESPONSE banner) is not weakened.
+- No prompt/schema/`grade_*`/ArtifactEditor changes.
+- Gap does not re-implement or amend AST-1380’s Decision A / banner code.
+
+## Radia review-fix (AST-1383)
+
+**Overall:** CLEAN. Gap bible + three Decision A / failure-banner tests lock AST-1380; [bug-repro] OK; no product delta.
+
+## Resolution (AST-1383)
+
+**2026-08-15** — Radia CLEAN (no fix-now). Empty vocabulary `code(AST-1383): no product delta — gap is test/bible only` so `validate-sub-log` accepts the test/bible-only gap; `resolve(AST-1383): — clean` @ `a07015e3`. Product remains AST-1380 on ftr.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/8738d45b0e8e501fc064c51e998b4704/fabb1934-558e-481e-8a0f-1ee47a129b7f/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/19092c53-1387-4f1e-8b51-6767ce09e11a/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8738d45b0e8e501fc064c51e998b4704/af1904ee-91cc-461c-b59b-6ed6c841f0ab/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1379 (parent) | ftr/AST-1379-response-truncated-after-289-tokens |
+| AST-1380 | sub/AST-1379/AST-1380-fix-craft-get-rubric-truncation |
+| AST-1383 | sub/AST-1379/AST-1383-gap-craft-get-truncation-tests |
+
+**Epic worktree:** `astral-AST-1379/` — one active sub checked out at a time.

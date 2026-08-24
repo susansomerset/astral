@@ -1,3 +1,92 @@
+<!-- linear-archive: AST-1333 archived 2026-08-19 -->
+
+## Linear archive (AST-1333)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1333/craftparse-schema-and-agent-task-prompts-make-highlights-a-required  
+**Status at archive:** Archive  
+**Project:** Astral Artifacts  
+**Assignee:** katherine  
+**Priority / estimate:** None / 3  
+**Parent:** AST-1326 — Make "Highlights" a REQUIRED resume section  
+**Blocked by / blocks / related:** parent: AST-1326
+
+### Description
+
+## What this implements
+
+Add required `highlights` to the shared craft-base / simple-resume-parse response schema; update those agent_task prompts so Highlights is required and ordered above Experience (segment inventory / instructions stay consistent with the schema). Does **not** own structure-catalog membership or UI order (sibling #1).
+
+## Citations
+
+`pattern.config.config-block`, `astral.agent.do-task-delegation`, `astral.seed.agent-tables-in-repo-json`, `astral.seed.archie-catalog-wins`
+
+## Acceptance criteria
+
+- [X] 4. Craft-base and simple-resume-parse response schemas require a `highlights` string; responses omitting the key fail schema validation.
+- [X] 5. `craft_resume_base` and `simple_resume_parse` agent_task prompts state that Highlights is required and sits above Experience, consistent with the schema field inventory / segment instructions.
+
+## Boundaries
+
+- [X] Does **not** own required catalog membership, default order, or normalize mint/coerce (sibling Required Highlights catalog). Does **not** change draft_job_resume nested envelope work.
+
+## Notes for planning
+
+After #1. Shared `_CRAFT_RESUME_BASE_RESPONSE_SCHEMA` + agent_task seed prompts for craft_resume_base and simple_resume_parse.
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1326-make-highlights-a-required-resume-section`, child `sub/AST-1326/<this-id>-…`. Created at dispatch-parent.
+
+## QA test manifest
+
+1. **Existing:** `TestAst1037SimpleResumeParseConfig` (shared schema identity).
+2. **Broken / revised:** AST-517 inject + AST-1005 `_OTHER_REQUIRED` add `highlights: ""`; AST-996 / AST-1027–1030 prompt contracts retargeted to `simple_resume_parse` `current=1`.
+3. **Gaps:** `TestAst1333CraftParseHighlightsSchema`; `TestAst1333CraftParseHighlightsPrompts` (+ fixture twin).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1333CraftParseHighlightsSchema \
+  tests/component/utils/test_config.py::TestAst1037SimpleResumeParseConfig \
+  tests/component/core/test_candidate.py::TestAst1333CraftParseHighlightsPrompts \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_normalize_injects_default_when_resume_structure_missing \
+  tests/component/core/test_candidate.py::TestAst517ResumeStructure::test_normalize_injects_default_when_resume_structure_sections_empty \
+  tests/component/core/test_candidate.py::TestAst1005FalseMissingCandidateName \
+  tests/component/core/test_candidate.py::TestAst996ExperienceJobArray::test_craft_resume_base_prompt_requires_job_array_contract \
+  tests/component/core/test_candidate.py::TestAst1027CraftResumeBaseMarkerPreserve \
+  tests/component/core/test_candidate.py::TestAst1028CraftResumeBaseTitleTaglineSplit \
+  tests/component/core/test_candidate.py::TestAst1029CraftResumeBaseCompetenciesBullets \
+  tests/component/core/test_candidate.py::TestAst1030CraftResumeBaseNoBulletPreserve \
+  -q
+```
+
+**Bible shasum** (`origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts`):
+
+* `docs/test-bible/utils/config.md` · `d49cbf8fe38a1f01735f6caf48a35667d8903f34`
+
+### Comments
+
+#### radia — 2026-08-12T14:12:30.335Z
+[code-rubric] PROCEED (Commit: 6d2d6874) craft parse highlights schema
+
+#### betty — 2026-08-12T14:07:58.409Z
+`origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` @ `6d2d6874` · craft/parse Highlights tests
+
+#### joan — 2026-08-12T14:01:32.918Z
+[plan-rubric] PROCEED (Commit: df4946127a6f449fbe8db704967b657b7d8806f4) schema prompts highlights
+
+#### katherine — 2026-08-12T14:00:07.023Z
+[plan-discuss] round=1 reply
+`origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` @ `df4946127a6f449fbe8db704967b657b7d8806f4` · checklist allows empty highlights
+
+#### joan — 2026-08-12T13:59:04.704Z
+[plan-rubric] REVIEW (Commit: d11875f794f1cb05802d64ddbc4ddeec9012f2fc) checklist empty highlights clash
+
+#### katherine — 2026-08-12T13:57:11.453Z
+`origin/sub/AST-1326/AST-1333-craft-parse-schema-and-agent-task-prompts` @ `d11875f794f1cb05802d64ddbc4ddeec9012f2fc` · plan ready for Joan
+
+---
+
 # AST-1333 — Craft/parse schema and agent_task prompts
 
 **Linear:** https://linear.app/astralcareermatch/issue/AST-1333/craftparse-schema-and-agent-task-prompts  

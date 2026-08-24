@@ -7,6 +7,7 @@ from ui.auth import require_auth
 from src.core.consult import _phase_score_breakdown
 from src.core.agent import get_entity_agent_story
 from src.core.tracker import (
+    assemble_job_copy_snapshot,
     cancel_artifact_build,
     count_jobs,
     get_job,
@@ -29,6 +30,7 @@ from src.utils.config import (
     RECOMMENDED_JOB_STATES,
     SKIPPED_STATES,
 )
+from src.utils.deploy_status import ui_llm_debug
 from src.utils.logging import get_logger
 
 jobs_bp = Blueprint("jobs", __name__, url_prefix="/api/jobs")
@@ -160,6 +162,26 @@ def detail(astral_job_id):
     return jsonify(job)
 
 
+@jobs_bp.route("/<astral_job_id>/copy")
+@require_auth
+def copy_snapshot(astral_job_id):
+    """Diagnostic snapshot: stored job plus populated agent_data hops."""
+    explicit = request.args.get("debug", "").lower() in ("1", "true", "yes")
+    debug = ui_llm_debug(explicit_debug=explicit)
+    try:
+        snapshot = assemble_job_copy_snapshot(astral_job_id, debug=debug)
+    except Exception as exc:
+        logger.warning(
+            "copy_snapshot failed astral_job_id=%s: %s",
+            astral_job_id,
+            exc,
+        )
+        return jsonify({"error": str(exc)}), 500
+    if snapshot is None:
+        return jsonify({"error": "Not found"}), 404
+    return jsonify(snapshot)
+
+
 @jobs_bp.route("/<astral_job_id>/artifacts/resume_content", methods=["PUT"])
 @require_auth
 def put_job_resume_content(astral_job_id):
@@ -178,7 +200,7 @@ def put_job_resume_content(astral_job_id):
 @jobs_bp.route("/<astral_job_id>/artifacts/job_resume", methods=["PUT"])
 @require_auth
 def put_job_resume_pin_key(astral_job_id):
-    """AST-1100: ArtifactEditor saves under remapped job_resume key (body dict replaces pin)."""
+    """AST-1428: ArtifactEditor PUTs job_resume URL; body writes resume_content, pin stays."""
     job = get_job(astral_job_id)
     if not job:
         return jsonify({"error": "Not found"}), 404
@@ -186,7 +208,7 @@ def put_job_resume_pin_key(astral_job_id):
     body = data.get("job_resume")
     if not isinstance(body, dict):
         return jsonify({"error": "job_resume must be a dict"}), 400
-    save_job_data(astral_job_id, {"artifacts": {"job_resume": body}})
+    save_job_artifact_resume_content(astral_job_id, body)
     return jsonify({"ok": True})
 
 

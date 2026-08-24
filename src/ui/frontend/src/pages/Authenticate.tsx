@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react"
 import { Link, useNavigate } from "react-router-dom"
 import { useStytch, useStytchSession } from "@stytch/react"
+import { useAuth } from "../contexts/AuthContext"
 import { completeAuthenticateFromUrl } from "../lib/stytchAuthenticateHandoff"
 
 type Phase = "loading" | "handoff" | "error"
@@ -8,12 +9,20 @@ type Phase = "loading" | "handoff" | "error"
 export default function Authenticate() {
   const stytch = useStytch()
   const { session, isInitialized } = useStytchSession()
+  const { localAuthPassthrough } = useAuth()
   const navigate = useNavigate()
   const handoffStarted = useRef(false)
   const [phase, setPhase] = useState<Phase>("loading")
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
   useEffect(() => {
+    if (localAuthPassthrough === null) {
+      return
+    }
+    if (localAuthPassthrough) {
+      navigate("/", { replace: true })
+      return
+    }
     if (!isInitialized) {
       return
     }
@@ -37,7 +46,7 @@ export default function Authenticate() {
       setErrorMessage(result.message ?? "Sign-in could not be completed.")
       setPhase("error")
     })()
-  }, [stytch, session, isInitialized, navigate])
+  }, [localAuthPassthrough, stytch, session, isInitialized, navigate])
 
   if (phase === "error") {
     return (

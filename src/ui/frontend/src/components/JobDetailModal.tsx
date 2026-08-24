@@ -5,6 +5,7 @@ import StateTimeline from "./StateTimeline"
 import AgentStoryTab, { type AgentStoryEntry } from "./AgentStoryTab"
 import Time from "./Time"
 import api from "../lib/api"
+import { copyJobSnapshotToClipboard } from "../lib/copyJobSnapshot"
 import { useStateUi } from "../contexts/StateUiContext"
 
 interface JobDetail {
@@ -30,6 +31,8 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   const [job, setJob] = useState<JobDetail | null>(null)
   const [loading, setLoading] = useState(false)
   const [skipping, setSkipping] = useState(false)
+  const [snapshotCopied, setSnapshotCopied] = useState(false)
+  const [snapshotCopying, setSnapshotCopying] = useState(false)
 
   const load = useCallback(async () => {
     if (!jobId) return
@@ -43,6 +46,17 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
   }, [jobId])
 
   useEffect(() => { load() }, [load])
+  useEffect(() => { setSnapshotCopied(false) }, [jobId])
+
+  async function handleCopySnapshot() {
+    if (!jobId || snapshotCopying) return
+    setSnapshotCopying(true)
+    const ok = await copyJobSnapshotToClipboard(jobId)
+    setSnapshotCopying(false)
+    if (!ok) return
+    setSnapshotCopied(true)
+    window.setTimeout(() => setSnapshotCopied(false), 2000)
+  }
 
   async function handleSkip() {
     if (!jobId || skipping) return
@@ -75,6 +89,9 @@ export default function JobDetailModal({ jobId, onClose, onRefresh }: Props) {
           job={job}
           onSkip={handleSkip}
           skipping={skipping}
+          onCopy={handleCopySnapshot}
+          copied={snapshotCopied}
+          copying={snapshotCopying}
         />
       )
     }
@@ -115,10 +132,16 @@ function InfoTab({
   job,
   onSkip,
   skipping,
+  onCopy,
+  copied,
+  copying,
 }: {
   job: JobDetail | null
   onSkip: () => void
   skipping: boolean
+  onCopy: () => void
+  copied: boolean
+  copying: boolean
 }) {
   const { manifest, loadState } = useStateUi()
   if (!job) return null
@@ -152,6 +175,16 @@ function InfoTab({
           <div className="modal-detail-row"><span className="modal-detail-label">Created</span><span><Time value={job.created_at} /></span></div>
           <div className="modal-detail-row"><span className="modal-detail-label">Last Transition</span><span><Time value={job.state_changed_at} /></span></div>
 
+          <div className="entity-summary-actions">
+            <button
+              type="button"
+              className="btn secondary"
+              onClick={onCopy}
+              disabled={copying}
+            >
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
           <div style={{ marginTop: 20 }}>
             <button
               className="btn secondary"

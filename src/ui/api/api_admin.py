@@ -93,10 +93,12 @@ from src.utils.rubric_feedback import hydrate_vector_review_strings
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
+    list_agent_data_runs,
     _decode_payload,
     resolved_agent_content,
     resolved_task_system,
     _chain_context,
+    _caller_response_blob,
 )
 from scripts.migrations.backfill_culture_links import run_backfill, EXCLUDE_STATES
 
@@ -367,7 +369,8 @@ def _enrich_tasks(candidate_id: str) -> list:
             brain_setting_eff = ""
             resolved_model_key = ""
             model_cfg: Dict = {}
-            _cc = _chain_context(agent, cd, task_key, None) if agent else None
+            # List probe, not a hop — empty {$CALLER_*} is expected (AST-530 chain_entry).
+            _cc = _chain_context(agent, cd, task_key, None, chain_entry=True) if agent else None
             if agent:
                 brain_setting_eff = (agent.get("brain_setting") or "").strip()
                 if not brain_setting_eff:
@@ -381,9 +384,13 @@ def _enrich_tasks(candidate_id: str) -> list:
                     resolved_model_key = vm
                     model_cfg = DEEPSEEK_MODEL_PRICING.get(vm, {})
             if full_task and agent:
-                system_content = resolved_task_system(agent, full_task, cd, task_key, _cc)
+                system_content = resolved_task_system(
+                    agent, full_task, cd, task_key, _cc, chain_entry=True
+                )
             elif agent:
-                system_content = resolve_tokens(agent.get("content") or "", cd, task_key, _cc)
+                system_content = resolve_tokens(
+                    agent.get("content") or "", cd, task_key, _cc, chain_entry=True
+                )
             else:
                 system_content = ""
             system_tokens = len(system_content) // CHARS_PER_TOKEN
@@ -402,7 +409,9 @@ def _enrich_tasks(candidate_id: str) -> list:
             cache_probe_parts = []
             if full_task and agent_id:
                 for ck in ("cache_prompt", "cache_prompt_b", "cache_prompt_c", "cache_prompt_d"):
-                    txt = resolve_tokens(full_task.get(ck) or "", cd, task_key, _cc)
+                    txt = resolve_tokens(
+                        full_task.get(ck) or "", cd, task_key, _cc, chain_entry=True
+                    )
                     cache_probe_parts.append(txt)
                 combined_cache_probe = "\n---\n".join(cache_probe_parts)
             else:
@@ -447,6 +456,13 @@ def _enrich_tasks(candidate_id: str) -> list:
                 "avg_output_tokens":    avg_output,
                 "task_ready":           task_ready,
                 "updated_at":           t.get("updated_at"),
+                "user_prompt_len":       int(t.get("user_prompt_len") or 0),
+                "cache_prompt_len":      int(t.get("cache_prompt_len") or 0),
+                "cache_prompt_b_len":    int(t.get("cache_prompt_b_len") or 0),
+                "cache_prompt_c_len":    int(t.get("cache_prompt_c_len") or 0),
+                "cache_prompt_d_len":    int(t.get("cache_prompt_d_len") or 0),
+                "nocache_prompt_len":    int(t.get("nocache_prompt_len") or 0),
+                "system_prompt_len":     int(t.get("system_prompt_len") or 0),
                 **_grouping_from_agent_task_row(t, task_key),
             })
         return rows
@@ -1082,6 +1098,8 @@ def create_dtask():
                 )
             }), 409
         return jsonify({"error": str(e)}), 500
+    if data.get("skip_daisy_chain"):
+        update_dispatch_task(task_id, skip_daisy_chain=1)
     return jsonify({"id": task_id}), 201
 
 
@@ -1139,7 +1157,7 @@ def update_dtask(task_id):
     if row.get("auto_mode") and (set(data.keys()) - {"auto_mode"}):
         return jsonify({"error": "Turn AUTO mode off before editing this row"}), 400
     allowed = {
-        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "freq_hrs",
+        "min_count", "batch_size", "auto_mode", "debug", "skip_cache", "skip_daisy_chain", "freq_hrs",
         "max_runs", "score_floor", "trigger_state", "task_key",
     }
     updates: Dict[str, Any] = {}
@@ -1166,7 +1184,7 @@ def update_dtask(task_id):
         if k in data and k != "task_key":
             if k in ("min_count", "batch_size", "max_runs"):
                 updates[k] = int(data[k]) if data[k] is not None else None
-            elif k in ("auto_mode", "debug", "skip_cache"):
+            elif k in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain"):
                 updates[k] = int(bool(data[k]))
             elif k == "freq_hrs":
                 updates[k] = float(data[k])
@@ -1326,6 +1344,13 @@ def adhoc_entities():
     })
 
 
+@admin_bp.route("/adhoc/runs")
+@require_admin
+def adhoc_runs():
+    """Import picker source: one agent_data batch per row, newest first."""
+    return jsonify(list_agent_data_runs(debug=ui_llm_debug()))
+
+
 def _resolve_adhoc(body):
     """Load agent, resolve tokens, return resolved prompts + model params.
     Returns (dict, error_tuple). On success error_tuple is None."""
@@ -1391,13 +1416,26 @@ def _resolve_adhoc(body):
 
                 jc = build_job_token_context(job, cd)
     _cc = _chain_context(agent, cd, task_key, jc)
-    agent_task_for_system = (
-        {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
-    )
+    if "system_prompt" in body:
+        # Editor sent the field (sibling #2): empty → agent content via resolved_task_system.
+        agent_task_for_system = {"system_prompt": body.get("system_prompt") or ""}
+    else:
+        # Key omitted (today’s three-slot UI): keep DB task system, then agent content.
+        agent_task_for_system = (
+            {"system_prompt": ""} if agent_task_row is None and task_key == "adhoc" else (agent_task_row or {})
+        )
+    cache_a = resolve_tokens(body.get("cache_prompt", "") or "", cd, task_key, _cc, jc)
+    cache_b = resolve_tokens(body.get("cache_prompt_b", "") or "", cd, task_key, _cc, jc)
+    cache_c = resolve_tokens(body.get("cache_prompt_c", "") or "", cd, task_key, _cc, jc)
+    cache_d = resolve_tokens(body.get("cache_prompt_d", "") or "", cd, task_key, _cc, jc)
     return {
         "system": resolved_task_system(agent, agent_task_for_system, cd, task_key, _cc, jc),
         "user": resolve_tokens(body.get("user_prompt", ""), cd, task_key, _cc, jc),
-        "cache": resolve_tokens(body.get("cache_prompt", ""), cd, task_key, _cc, jc),
+        "cache": cache_a,
+        "cache_a": cache_a,
+        "cache_b": cache_b,
+        "cache_c": cache_c,
+        "cache_d": cache_d,
         "nocache": resolve_tokens(body.get("nocache_prompt", ""), cd, task_key, _cc, jc),
         "model_code": model_code,
         "tier_meta": tier_meta,
@@ -1424,6 +1462,10 @@ def adhoc_preview():
         "system": resolved["system"],
         "user": resolved["user"],
         "cache": resolved["cache"],
+        "cache_a": resolved["cache_a"],
+        "cache_b": resolved["cache_b"],
+        "cache_c": resolved["cache_c"],
+        "cache_d": resolved["cache_d"],
         "nocache": resolved["nocache"],
         "live_content": live_content,
     })
@@ -1452,8 +1494,11 @@ def adhoc_test():
             entity_id=entity_id or None,
             system_content=resolved["system"],
             user_content=resolved["user"],
-            cache_content=resolved["cache"] or None,
-            nocache_content=resolved["nocache"] or None,
+            cache_content=resolved.get("cache") or None,
+            cache_content_b=resolved.get("cache_b") or None,
+            cache_content_c=resolved.get("cache_c") or None,
+            cache_content_d=resolved.get("cache_d") or None,
+            nocache_content=resolved.get("nocache") or None,
             live_content=live_content,
             response_format=task_response_format,
             model_code=resolved["model_code"],
@@ -1468,15 +1513,17 @@ def adhoc_test():
         return jsonify({"success": False, "error": str(e)}), 500
 
     if not result.get("success"):
-        return jsonify({"success": False, "error": result.get("error", "Unknown error")}), 500
+        err_body = {"success": False, "error": result.get("error", "Unknown error")}
+        if result.get("batch_id"):
+            err_body["batch_id"] = result["batch_id"]
+        return jsonify(err_body), 500
 
-    response_text = result.get("parsed_response") or ""
-    # For tasks with JSON envelope, do_task auto-extracts agent_payload into parsed_response.
-    # If it's still a dict here (e.g. run_adhoc doesn't do the extraction), pull it out.
-    if isinstance(response_text, dict) and "agent_payload" in response_text:
-        response_text = response_text["agent_payload"] or ""
-    if not isinstance(response_text, str):
-        response_text = str(response_text)
+    parsed = result.get("parsed_response")
+    if isinstance(parsed, dict) and "agent_payload" in parsed:
+        body = parsed["agent_payload"]
+    else:
+        body = parsed
+    response_text = _caller_response_blob(body)
     timesheet = result.get("timesheet", {})
 
     # Decode encoded payload if the task uses a compact encoded output_type
@@ -1490,7 +1537,13 @@ def adhoc_test():
         except Exception as e:
             hydrated = {"error": str(e)}
 
-    return jsonify({"success": True, "response_text": response_text, "hydrated": hydrated, "timesheet": timesheet})
+    return jsonify({
+        "success": True,
+        "response_text": response_text,
+        "hydrated": hydrated,
+        "timesheet": timesheet,
+        "batch_id": result.get("batch_id"),
+    })
 
 
 # ---------------------------------------------------------------------------

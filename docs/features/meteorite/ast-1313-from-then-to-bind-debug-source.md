@@ -1,3 +1,143 @@
+<!-- linear-archive: AST-1313 archived 2026-08-19 -->
+
+## Linear archive (AST-1313)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1313/from-then-to-bind-debug-source-email-bind-where-email-is-in-the-to  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1308 — Email bind where email is in the To: field (alone)  
+**Blocked by / blocks / related:** parent: AST-1308
+
+### Description
+
+## What this implements
+
+After the mailbox-To sibling, owns the single bind rule: From unique hit wins; otherwise To-bind only when To has a single remaining address after ignoring the Astral inbox; that unique hit binds; every consumer of `candidate_match` and every leftover rematch uses that rule; Style D records which header bound. Does **not** own exposing To on mailbox rows. Does **not** own ingest/scrape/create beyond who is bound.
+
+## In scope
+
+- [X] `pattern.config.config-block` — `INBOX_BIND_CONFIG` in `src/utils/config.py` owns header order and inbox identity
+- [X] `astral.config.config-source-of-truth` — bind order and inbox address are not inline in callers
+- [X] `astral.standards.no-hardcoded-sets` — `header_order` is the config tuple (asserted `("from", "to")`); callers read it
+- [X] `pattern.layers.import-discipline` — bind decision stays in `src/core/inbox.py`; Gmail stays external; UI does not parse To
+- [X] `astral.layers.import-direction` — core imports candidate + gmail + utils; no ui→external
+- [X] `astral.layers.core-vs-external-bright-line` — To header I/O is AST-1312; From-then-To decision is this ticket
+- [X] `astral.standards.debug-contract-gated` — Style D `inbox_bind` bind_header / bind_address only when `debug=True`
+- [X] `astral.standards.dry-and-focused-functions` — one helper; list enrichment and create rematch both call it
+- [X] `astral.layers.ui-config-driven-business-logic` — match eligibility stays server `candidate_match`; React does not grow To rules
+- [X] `astral.standards.in-scope-only` — bind rule + debug source only; no new mailbox product
+
+## Considered but excluded
+
+* Exposing raw To on mailbox list/get (`to_address`) — **AST-1312**
+* `pattern.ui.admin-endpoint` — no new inbox API; existing list jsonify already forwards `candidate_match`
+* `astral.patterns.require-auth-on-protected-endpoints` — no route changes; existing `@require_admin` stays (AC6)
+* CC / BCC / Reply-To / Delivered-To / Resent-To / X-Forwarded-* bind
+* To-bind when more than one remaining address after ignoring the Astral inbox (not unique-among-many)
+* New Manage Email column or chrome — existing match indicator is enough
+* Ingest / scrape / dedupe / create / archive / unbound Trash beyond who is bound
+* Changing `get_candidate_id_for_query` homes or inventing a second lookup
+* Reading `GMAIL_USER` environ as the ignore address — product identity is `GAZE_EMAIL_CONFIG["account_address"]`
+* Adding `bind_header` onto the `candidate_match` JSON payload — Style D only
+
+## Acceptance criteria
+
+- [X] A message whose **From** uniquely matches candidate A still binds to A, even if **To** uniquely matches candidate B or matches no one.
+- [X] A message whose **From** does not uniquely match, and whose **To** (after ignoring the Astral inbox address) is a single remaining address that uniquely matches candidate A, binds to A on Manage Email, is eligible for that candidate's gaze_email run and Avail count, and can be Land Meteorite ingested for A.
+- [X] A message whose **From** does not uniquely match and whose **To** is missing, has more than one remaining address after ignoring the Astral inbox, or does not uniquely match one candidate stays unbound: no ingest as matched, no Avail credit.
+- [X] The configured Astral inbox address appearing on To never produces a candidate bind by itself.
+- [X] With `debug=True` on touched bind paths, each message emits Style D found/recorded detail including which header bound and the address used; with `debug=False`, those paths emit no new debug-contract lines.
+- [X] Unauthenticated callers still cannot run inbox list/match or Land Meteorite.
+
+## Boundaries
+
+Does **not** expose To on mailbox rows (sibling). Does **not** attempt To-bind when To has more than one remaining address after ignoring the Astral inbox. Does **not** bind from CC/BCC/Reply-To or forwarding-only headers. Does **not** own ingest/scrape/create beyond who is bound.
+
+## Notes for planning
+
+Archie chose single-remaining-address To-bind (not unique-among-many) to avoid google-group noise.
+
+Plan: `docs/features/meteorite/ast-1313-from-then-to-bind-debug-source.md` on the publish ref below.
+
+## Git branch (authoritative)
+
+`sub/AST-1308/AST-1313-from-then-to-bind-debug-source` — ignore Linear `gitBranchName`.
+
+### Comments
+
+#### chuckles — 2026-08-11T20:43:58.201Z
+[merge-child] blocked: git pull merge on sub — use: git fetch && git merge origin/ftr/<parent-segment>
+
+`validate-sub-log` failed on `origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source` (not `origin/ftr/AST-1308-email-bind-where-email-is-in-the-to-field-alone`):
+
+- `9af4e20a Merge remote-tracking branch 'origin/ftr/AST-1308-email-bind-where-email-is-in-the-to-field-alone' into sub/AST-1308/AST-1313-from-then-to-bind-debug-source`
+- missing `resolve(AST-1313):` (Radia CLEAN — need `resolve(AST-1313): — clean`)
+
+@Ada Lovelace — rewrite tip onto `origin/ftr/AST-1308-email-bind-where-email-is-in-the-to-field-alone` (replay plan/code/test/docs; ftr absorb as `merge-resume(AST-1313):` if needed, not `Merge remote-tracking branch`). Stay User Testing.
+
+— Chuckles
+
+#### radia — 2026-08-11T20:42:48.733Z
+[code-rubric] revision=2
+**Overall:** CLEAN
+Stages 1–2 literal in `8ce2d70c`/`b5ed286c`; Betty tests cover From-then-To + Style D. No findings.
+context_tokens≈48000
+— Radia
+
+#### betty — 2026-08-11T20:37:13.226Z
+1. `tests/component/utils/test_config.py::TestAst1313InboxBindConfig` — `header_order == ("from", "to")`; `inbox_address` aliases `GAZE_EMAIL_CONFIG["account_address"]`.
+2. `tests/component/core/test_inbox.py::TestAst1313FromThenToBind` — From unique wins over conflicting To; To single-remaining after inbox ignore; empty / multi / inbox-only To stay unbound; duplicate To tokens count as one; create rematch uses To when From misses + Style D `bind_header=to`; `debug=False` emits no contract lines.
+3. Revised `TestAst1047InboxFromBind::test_list_debug_emits_style_d` — `func="inbox_bind"` + `bind_header=` (empty `bind_address` is omitted by `truncate_debug_content`).
+4. Existing create rematch: `TestAst1049CreateMeteoriteJobFromInboxMessage`.
+5. Existing auth (AC6): `TestAst1033InboxApi::test_list_requires_auth` / `test_get_requires_auth`; `TestAst1049InboxCreateJobApi::test_create_job_requires_auth`; `TestAst1141InboxLandMeteoriteApi::test_land_meteorite_requires_auth`.
+
+§6c N/A. Integration: none to revise.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1313InboxBindConfig \
+  tests/component/core/test_inbox.py::TestAst1047InboxFromBind \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi::test_list_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1033InboxApi::test_get_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi::test_create_job_requires_auth \
+  tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi::test_land_meteorite_requires_auth \
+  -q
+```
+
+Pass: pytest green on narrowed args.
+
+`origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source` @ `d197a847`
+`merge-tests(AST-1313): origin/tests 94163472e21d521ccf9fce69764ee32e7caef5be`
+
+bible `docs/test-bible/core/inbox.md` `3e405051feeab921b68abe41b559b6b9953e33c8`
+
+#### joan — 2026-08-11T20:32:00.952Z
+[plan-rubric] revision=1
+**Overall:** APPROVED
+AST-1313 plan approved @ a55cf1f — INBOX_BIND_CONFIG + single `_bind_inbox_message` for list/create; From-first, single-remaining To after inbox ignore; Style D bind source; AST-1312 preflight required.
+context_tokens≈55000
+— Joan
+
+#### ada — 2026-08-11T20:29:38.806Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1308/AST-1313-from-then-to-bind-debug-source/docs/features/meteorite/ast-1313-from-then-to-bind-debug-source.md
+
+`origin/sub/AST-1308/AST-1313-from-then-to-bind-debug-source` @ `a55cf1f9`
+
+**Scope:** Single-Component — `INBOX_BIND_CONFIG` plus one core helper in `inbox.py` (list enrichment + create rematch + Style D). Gmail To field, gaze/Avail/Land consumers, and Manage Email chrome stay out.
+
+**Conf:** high — same `get_candidate_id_for_query` as today's From bind; AST-1312 already ships `to_address`; `candidate_match` shape does not change.
+
+**Risk:** Medium — a wrong From-then-To result would Avail / ingest / Land the wrong candidate (or leave autoforwards unbound). Shared helper is the only decision point.
+
+From unique hit still wins (To not consulted). To fallback uses `getaddresses`, drops `GAZE_EMAIL_CONFIG["account_address"]`, and binds only when exactly one distinct remaining address uniquely matches. Bind source is Style D (`inbox_bind` / `bind_header` / `bind_address`), not a new JSON key.
+
+---
+
 # AST-1313 — From-then-To bind + debug source
 
 **Linear:** [AST-1313](https://linear.app/astralcareermatch/issue/AST-1313/from-then-to-bind-debug-source-email-bind-where-email-is-in-the-to)

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react"
 import Toast, { type ToastMessage } from "../components/Toast"
 import { useUserConfirm } from "../components/UserPrompt"
+import { useInPlaceLiveRefresh } from "../hooks/useInPlaceLiveRefresh"
 import api from "../lib/api"
 
 type ScheduledQuery = {
@@ -25,16 +26,16 @@ const emptyForm = {
 
 export default function AdminScheduledQueries() {
   const [rows, setRows] = useState<ScheduledQuery[]>([])
-  const [loading, setLoading] = useState(true)
   const [busy, setBusy] = useState(false)
   const [editingId, setEditingId] = useState<string | null>(null)
   const [form, setForm] = useState({ ...emptyForm })
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
   const confirm = useUserConfirm()
+  const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
 
-  const load = useCallback(async () => {
-    setLoading(true)
+  const load = useCallback(async (showSpinner = false) => {
+    beginRefresh(showSpinner)
     try {
       const res = await api("/api/admin/scheduled_queries")
       const data = await res.json().catch(() => [])
@@ -48,12 +49,12 @@ export default function AdminScheduledQueries() {
       setToast({ text: (e as Error).message, variant: "error" })
       setRows([])
     } finally {
-      setLoading(false)
+      endRefresh()
     }
-  }, [])
+  }, [beginRefresh, endRefresh])
 
   useEffect(() => {
-    void load()
+    void load(true)
   }, [load])
 
   function startCreate() {

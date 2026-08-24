@@ -65,6 +65,10 @@ from src.utils.config import (
     TASK_CONFIG,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_OWNER_TASK_BY_ARTIFACT_KEY,
+    dispatch_claim_states,
+    dispatch_hop_label,
+    is_valid_candidate_batch_claim_state,
+    parse_dispatch_hop_label,
     rubric_owner_task_key,
 )
 from src.utils.formatting import value_to_str
@@ -1495,13 +1499,15 @@ def get_new_candidate_batch(
     batch_id: when provided, uses this batch_id instead of generating a new one.
     context: prefix for auto-generated batch_id (required when batch_id is not provided).
     """
-    allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
+    # Registry keys + REQUESTED_ARTIFACTS.<hop> runtime labels (AST-1388).
     if states is None:
-        if not allowed or state not in allowed:
+        if not is_valid_candidate_batch_claim_state(state):
+            allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
             raise ValueError(f"state must be one of {allowed!r}, got {state!r}")
     else:
         for s in states:
-            if not allowed or s not in allowed:
+            if not is_valid_candidate_batch_claim_state(s):
+                allowed = list(CANDIDATE_STATES.keys()) if CANDIDATE_STATES else []
                 raise ValueError(f"state must be one of {allowed!r}, got {s!r}")
     limit_val = limit if limit is not None else 10
     if not batch_id and not context:
@@ -1576,6 +1582,11 @@ def get_candidate_id_for_query(
             v = _lookup_path_value(candidate, path)
             if v:
                 values.append(v.casefold() if casefold else v)
+        # List emails (extra_emails); do not walk uniqueness list_paths (websites).
+        for path in CANDIDATE_LOOKUP_CONFIG["email_list_paths"]:
+            for v in _iter_uniqueness_path_values(candidate, path):
+                if v:
+                    values.append(v.casefold() if casefold else v)
         if needle_cmp not in values:
             continue
         cid = (candidate.get("astral_candidate_id") or "").strip()
@@ -1710,7 +1721,44 @@ def _candidate_state_allowed(from_state: str, to_state: str) -> bool:
     prior = _candidate_prior_states(to_state)
     if prior is None:
         return True
-    return from_state in prior
+    st = (from_state or "").strip()
+    if st in prior:
+        return True
+    # Runtime hop labels: trigger in prior_states counts (mirror tracker._job_state_matches_prior).
+    parsed = parse_dispatch_hop_label(st)
+    if parsed and parsed[0] in prior:
+        return True
+    return False
+
+
+def write_candidate_dispatch_hop_label(
+    candidate_id: str, trigger_state: str, completed_task_key: str,
+) -> str:
+    """Write runtime dispatch hop label to candidate.state (not a CANDIDATE_STATES key)."""
+    label = dispatch_hop_label(trigger_state, completed_task_key)
+    candidate = database.get_candidate(candidate_id)
+    if not candidate:
+        raise ValueError(f"Candidate not found: {candidate_id}")
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+    from_state = (candidate.get("state") or "").strip()
+    history = _append_candidate_state_history(candidate, from_state, label, now)
+    database.save_candidate(candidate_id, state=label, state_history=history)
+    return label
+
+
+def requested_artifacts_dispatch_claim_states() -> List[str]:
+    """Bare trigger + retry + live-chain hop labels for craft_get_rubric @ REQUESTED_ARTIFACTS."""
+    trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    states: List[str] = list(dispatch_claim_states(trigger, "candidate"))
+    for tk in _walk_requested_artifacts_chain_task_keys():
+        states.append(dispatch_hop_label(trigger, tk))
+    seen: set[str] = set()
+    out: List[str] = []
+    for s in states:
+        if s not in seen:
+            seen.add(s)
+            out.append(s)
+    return out
 
 
 def _start_candidate_reap_timer(candidate_id: str) -> None:
@@ -3024,27 +3072,39 @@ def _requested_stage_failure_target(primary_state: str, current_state: str) -> s
     return error
 
 
-async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = False) -> Dict[str, int]:
-    """Claim worker: REQUESTED_ARTIFACTS → craft_get_rubric run_next chain → ARTIFACTS_READY / retry / error."""
+async def run_requested_artifacts_dispatch(
+    candidate_id: str,
+    *,
+    debug: bool = False,
+    task_key: Optional[str] = None,
+    trigger_state: Optional[str] = None,
+    skip_daisy_chain: bool = False,
+) -> Dict[str, int]:
+    """Claim worker: live run_next craft chain from the dispatch row's task_key (AST-1252 / AST-1434)."""
     zero = {"total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0}
     logger.set_debug_flag(debug)
     candidate = database.get_candidate(candidate_id)
     if not candidate:
         return {**zero, "total_processed": 1, "total_errors": 1}
     stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
-    primary = stage["trigger_state"]
+    raw_trigger = (trigger_state or "").strip() or stage["trigger_state"]
+    parsed_trig = parse_dispatch_hop_label(raw_trigger)
+    bare_trigger = parsed_trig[0] if parsed_trig else raw_trigger
     pass_state = stage["pass_state"]
     current = (candidate.get("state") or "").strip()
-    task_key = (stage.get("task_key") or "").strip()
+    start_key = (task_key or "").strip() or (stage.get("task_key") or "").strip()
     try:
-        # Native do_task run_next (hop ledgers); persist via ctx flag — no suppress_run_next.
+        # Native do_task run_next (hop ledgers); persist via ctx flag.
         task_ctx = {
             **(candidate or {}),
             "astral_candidate_id": candidate_id,
             "persist_candidate_craft_hops": True,
+            "dispatch_trigger_state": bare_trigger,
         }
+        if skip_daisy_chain:
+            task_ctx["suppress_run_next"] = True
         response = await do_task(
-            task_key=task_key,
+            task_key=start_key,
             live_content="",
             index=candidate_id,
             ctx=task_ctx,
@@ -3052,13 +3112,21 @@ async def run_requested_artifacts_dispatch(candidate_id: str, *, debug: bool = F
         )
         if not response or not response.get("success"):
             raise RuntimeError(
-                (response or {}).get("error") if response else f"do_task None for {task_key}"
+                (response or {}).get("error") if response else f"do_task None for {start_key}"
             )
-        transition_candidate_state(candidate_id, pass_state)
+        if not skip_daisy_chain and bare_trigger == stage["trigger_state"]:
+            transition_candidate_state(candidate_id, pass_state)
         return {"total_processed": 1, "total_passed": 1, "total_failed": 0, "total_errors": 0}
     except Exception as e:
         logger.error("run_requested_artifacts_dispatch failed candidate_id=%s error=%s", candidate_id, e)
-        target = _requested_stage_failure_target(primary, current)
+        # AST-1388: leave last successful compound hop label; bare trigger still → retry/error.
+        after = ((database.get_candidate(candidate_id) or {}).get("state") or "").strip()
+        parsed = parse_dispatch_hop_label(after)
+        if parsed and parsed[0] == bare_trigger:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        if bare_trigger not in CANDIDATE_STATES:
+            return {"total_processed": 1, "total_passed": 0, "total_failed": 1, "total_errors": 0}
+        target = _requested_stage_failure_target(bare_trigger, current)
         try:
             transition_candidate_state(candidate_id, target)
         except ValueError:

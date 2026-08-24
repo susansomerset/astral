@@ -44,6 +44,7 @@ from src.utils.config import (
     is_dispatch_chain_trigger,
     is_meteorite_email_mailbox_task_key,
     template_candidate_id,
+    parse_dispatch_hop_label,
     CANDIDATE_STAGE_DISPATCH,
     DISPATCH_RETIRED_TASK_KEYS,
 )
@@ -484,6 +485,14 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     claim_states: Optional[List[str]] = None
     if entity_type == "candidate":
         claim_states = dispatch_claim_states(input_state, "candidate")
+        stage = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]
+        # AST-1388 / AST-1434: reclaim mid-chain REQUESTED_ARTIFACTS.<hop> for any hop's dispatch row.
+        raw_in = (input_state or "").strip()
+        parsed_in = parse_dispatch_hop_label(raw_in)
+        stage_trigger = stage["trigger_state"]
+        if raw_in == stage_trigger or (parsed_in and parsed_in[0] == stage_trigger):
+            from src.core.candidate import requested_artifacts_dispatch_claim_states
+            claim_states = requested_artifacts_dispatch_claim_states()
         bid, entities = get_new_candidate_batch(
             input_state,
             limit=limit,
@@ -862,6 +871,9 @@ async def _dispatch_one(task: Dict) -> None:
     ctx = dict(ctx)
     if task.get("skip_cache"):
         ctx["skip_cache"] = True
+    if task.get("skip_daisy_chain"):
+        ctx["skip_daisy_chain"] = True
+        ctx["suppress_run_next"] = True
     if task_key == INFLOW_CONFIG["discovery"]["task_key"]:
         ctx["inflow_discovery_freq_hrs"] = float(task.get("freq_hrs") or 0)
 
@@ -1004,13 +1016,15 @@ async def _run_dispatch_loop(
         logger.set_debug_flag(True)
     max_runs = task.get("max_runs")
     is_auto = bool(task.get("auto_mode"))
+    ui_initiated = bool(task.get("_ui_initiated"))
     run_count = 0
     while True:
         et = task.get("entity_type")
         ts = task.get("trigger_state")
         available = database.count_eligible_for_dispatch_task(task)
-        # min_count gate only applies to AUTO — CLICK runs regardless of queue depth
-        effective_min = (task.get("min_count") or 1) if is_auto else 1
+        # min_count gate only applies to unattended AUTO ticks — CLICK and manual
+        # Sweep (UI-initiated run on an AUTO row) bypass it and run whatever's available.
+        effective_min = (task.get("min_count") or 1) if (is_auto and not ui_initiated) else 1
         if available < effective_min:
             if debug:
                 if run_count == 0:

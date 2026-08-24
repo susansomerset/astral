@@ -364,6 +364,10 @@ AST-1349 locked `experience` as a job **array** but left `_EXPERIENCE_JOB_ITEM_S
 - `prior_experience` stays `str`.
 - AST-756 `expected-agent_task.json` remains a whole-file twin of `data/admin/agent_task.json`.
 
+### Resolution (2026-08-15, resolve-child)
+
+Product landed on `origin/sub/AST-1362/AST-1381-fix-base-resume-issues` (schema/prompts/validate). Sibling AST-1382 retargeted fixtures/bible. Radia review-fix fix-now: orphan AST-1383 `TestAst1380…` / `docs/test-bible/core/agent.md` additions stripped by Betty (`test(AST-1381):` restore from `origin/ftr/AST-1362-base-resume-issues`) — no matching craft-thinking product on this tip. Discuss (multi-ticket frame / AST-1382 on sub) left as expected sibling ancestry. Advancing to User Testing.
+
 
 ## Bug: AST-1382 — gap: retarget accomplishments `string[]` fixtures + bible (board-betty REVISE)
 

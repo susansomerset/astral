@@ -92,10 +92,11 @@ All behavior-driving values live in `src/utils/config.py`. Config is thoughtfull
 - **AGENT_CONFIG**: Anthropic model catalog — model_code (alias), model_label, cpm_input, cpm_output, cpm_cache_write, cpm_cache_read, default_temperature, default_max_tokens, cache_min_tokens. Keyed by model_code alias for O(1) lookup. Use `get_model(model_code)` helper.
 - **ASTRAL_CONFIG**: Paths, company_state_transitions, gazer, tick_rate_minutes, max_auto_threads, dispatch_timeout_seconds, db_retry, html_cull, cookie_dismiss_selectors, support_email (alert recipient for monitor.py), etc.
 - **RAILWAY_CONFIG**: Gunicorn deployment settings (workers, timeout, playwright_browsers_path). Read by `scripts/start_server.py` to build the gunicorn command. Single worker required — the in-process scheduler thread runs per-worker.
+- **AUTH_CONFIG**: Authentication. Stytch credentials and admin user-id/email sets from env; non-secret session duration / activity-extension literals; `local_operator` identity literals for the local-deploy passthrough (§2.9).
 - **BLOCK_TYPES**: Content block type enum for the `agent_data` table: SYSTEM, CACHE_A-D, NO_CACHE, TASK, RESPONSE. Used by `agent.py` for storage and validation.
 - **ENTITY_TYPES**: Valid entity type strings (candidate, company, job). Single source of truth used across `agent_data` (including RESPONSE `entity_id` latest-per-task lookup), `dispatch_ledger`, and config. The standalone `agent_responses` **table** is retired (AST-975); entity-row JSON `agent_responses` columns are retired by AST-984 in favor of `list_entity_latest_agent_refs`.
 - **DISPATCH_TASKS**: Removed. See `dispatch_tasks` DB table above.
-- **NAV_CONFIG**: UI navigation structure — sidebar groups, labels, and route paths. Groups may declare `visible` and items may declare `enabled` as candidate state strings or `False` (permanently disabled). The `/api/nav_config` endpoint in `system.py` resolves these against the selected candidate's state before serving. The frontend renders the resolved structure with no additional visibility logic.
+- **NAV_CONFIG**: UI navigation structure — sidebar groups, labels, and route paths. Groups may declare `admin_only: True` (omitted for non-admins via `nav_admin_only_group_labels`). Items may declare `enabled` as a `CANDIDATE_STATES` key (disabled unless at or past that state) or `False` (permanently disabled stub). Omit `enabled` = always enabled. Group-level candidate-state `visible` is not used. The `/api/nav_config` endpoint in `api_system.py` resolves item `enabled` against the selected candidate's state and omits `admin_only` groups for non-admins before serving. The frontend renders the resolved structure with no additional visibility logic.
 
 #### dispatch_task.score_floor (sole numeric floor)
 
@@ -192,7 +193,7 @@ Do not select by state (or single-ctx) and process without batch_id. Use claim /
 
 The standalone `agent_responses` **table** is retired (AST-975). Entity-row JSON `agent_responses` columns are retired (AST-984). Latest-per-`task_key` lookup uses `agent_data` RESPONSE rows tagged with `entity_id`.
 
-After each `do_task` RESPONSE write when an entity index is known, `_store_response_block` / `save_agent_data` set `agent_data.entity_id` on that RESPONSE row. Shared prompt blocks (SYSTEM / CACHE_* / TASK / NO_CACHE) stay without `entity_id` (batch-scoped).
+When an entity index is known, `_store_prompt_blocks` and `_store_response_block` both set `agent_data.entity_id` on the rows they write. `list_entity_latest_agent_refs` still selects RESPONSE rows only and still attaches non-RESPONSE blocks via `get_agent_data_by_batch`.
 
 Readers that need latest-per-task refs call `list_entity_latest_agent_refs(entity_type, entity_id)`:
 
@@ -318,18 +319,22 @@ Some data fields need to be lazily populated — the value may or may not exist 
 ### 2.9 Authentication Decorator
 
 **Statute:** `astral.idioms.require-auth-on-protected-endpoints`
+**Pattern:** `pattern.auth.local-deploy-passthrough` (proposed AST-1438)
 
-UI API endpoints use `@require_auth` to enforce authentication. The decorator checks for an `Authorization: Bearer <token>` header, validates the token, and sets `g.user` with the authenticated user's identity. Endpoints without the decorator are open (e.g., health checks).
+UI API endpoints use `@require_auth` to enforce authentication. The decorator reads the Stytch session JWT from `Authorization: Bearer` or the `stytch_session_jwt` cookie, validates it via the registered authenticator (`src/utils/auth.py` → `src/external/stytch.py`), and sets `g.user` to `{user_id, name, is_admin}`. Endpoints without the decorator are open (e.g. health, `GET /api/auth_session_policy`, `GET /api/auth_passthrough`).
 
 **Pattern:**
 
-- `@require_auth` = protected. Returns 401 if no valid Bearer token.
+- `@require_auth` = protected. Returns 401 if credentials are missing or invalid — **except** the local-deploy passthrough below.
+- `@require_admin` = `@require_auth` plus `g.user["is_admin"]`; 403 when the authenticated user is not admin. Local passthrough supplies an always-admin identity; it does not strip this decorator.
 - No decorator = open. No auth check.
 - Authenticated user available via `flask.g.user` inside the endpoint function.
 
-**Stub implementation:** Accepts any Bearer token and hardcodes a default user. To be replaced with Auth0 JWT validation. When Auth0 is wired in, only the decorator internals change — no endpoint code changes.
+**Local-deploy passthrough:** When `is_local_deploy_env()` is true (`ASTRAL_DEPLOY_ENV` stripped, case-insensitive `"local"`), `@require_auth` does not read or validate a Stytch token, does not call the authenticator, and sets `g.user` from `AUTH_CONFIG["local_operator"]` with `is_admin: True`. That path must not log `Bearer token validation failed` or `Stytch session_not_found`. Browser hostname is not the gate. When deploy env is anything other than `local` (including unset), missing/invalid Bearer still 401.
 
-**React side:** All API calls go through a shared `api()` client (`src/ui/frontend/src/api.ts`) that injects the `Authorization` header on every request. The token source is a single constant today (stub); becomes the Auth0 JWT from login flow later.
+**Public signal:** `GET /api/auth_passthrough` is open on purpose and returns only `{"local_auth_passthrough": <bool>}` from the same `is_local_deploy_env()` gate. It must not include secrets, admin lists, or Stytch credentials. SPA consumption of that signal is a separate ticket.
+
+**React side:** Authenticated API calls go through the shared `api()` client (`src/ui/frontend/src/lib/api.ts`) that injects the `Authorization` header when a Stytch session JWT exists.
 
 ---
 

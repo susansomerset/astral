@@ -1,5 +1,6 @@
 import type { ReactNode } from "react"
 import { useStytchSession } from "@stytch/react"
+import { useAuth } from "../contexts/AuthContext"
 import {
   getHadSession,
   getLogOffReason,
@@ -10,8 +11,16 @@ import LogOffScreen from "../pages/LogOffScreen"
 
 export default function RequireAuth({ children }: { children: ReactNode }) {
   const { session, isInitialized } = useStytchSession()
+  const { localAuthPassthrough } = useAuth()
 
-  if (!isInitialized) {
+  if (localAuthPassthrough === null) {
+    return <p>Loading…</p>
+  }
+  if (localAuthPassthrough) {
+    return children
+  }
+
+  if (!isInitialized && !session) {
     return <p>Loading…</p>
   }
 

@@ -1,3 +1,235 @@
+<!-- linear-archive: AST-1220 archived 2026-08-17 -->
+
+## Linear archive (AST-1220)
+
+**Archived:** 2026-08-17  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1220/task-alias-config-contract-resolve-helpers-task-config-aliases-via  
+**Status at archive:** Archive  
+**Project:** Astral Meteorite  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1184 — Task config aliases via master_task_key  
+**Blocked by / blocks / related:** parent: AST-1184; blocks: AST-1221
+
+### Description
+
+## What this implements
+
+Owns the general config contract: any entry may declare `master_task_key`, validation that masters exist and are not aliases (no alias chains), resolve helpers for prompt/content lookup, and first-consumer alias entries `meteorite_grade_do` / `meteorite_grade_get` with their own pass/fail/error (no one-off link map). Does **not** rewire consult/agent call sites (sibling #2) or seed/retarget meteorite rows (sibling #3).
+
+## In scope
+
+- [X] `pattern.config.config-block` — `master_task_key` + resolve helpers + alias literals live in `TASK_CONFIG` / config helpers; callers read config
+- [X] `pattern.config.task-alias` (proposed) — any `TASK_CONFIG` identity may declare `master_task_key`; content resolves to master; alias owns orchestration outcomes
+- [X] `astral.config.config-source-of-truth` — alias pointers and alias-owned pass/fail/error are config literals
+- [X] `astral.standards.no-hardcoded-sets` — field-driven resolve only; no meteorite-only alias map; Do/Get outcomes leave `METEORITE_GDL_OUTCOME_BY_TASK`
+- [X] `astral.standards.names-not-ticket-ids` — domain keys `meteorite_grade_do` / `meteorite_grade_get`
+- [X] `astral.standards.in-scope-only` — config contract + first-consumer entries only; no consult/seed/UI
+- [X] `astral.git.engineer-test-tree-ban` — no `tests/` / bible edits on this ticket
+
+## Considered but excluded
+
+- [X] Runtime alias resolution at consult/agent call sites + remove overlay *read* path — **AST-1221** (`src/core/consult.py` / `src/core/agent.py`)
+- [X] `astral.agent.do-task-delegation` call-site wiring for alias → master content — **AST-1221**
+- [X] `astral.standards.debug-contract-gated` Style D detail for alias resolve — **AST-1221** (only if those paths are touched)
+- [X] Alias `agent_task` seed + `METEORITE_DISPATCH_TASKS` / `SEED_CONFIG` Do/Get retarget — **AST-1222** (`astral.seed.agent-tables-in-repo-json`)
+- [X] UI hardcode audit / alphabetical dropdowns — **AST-1185**
+- [X] Gaze/Meteorite Review section rename — **AST-1183**
+- [X] Delete `METEORITE_GDL_OUTCOME_BY_TASK` symbol / consult import — **AST-1221** (this ticket empties the dict only)
+
+## Acceptance criteria
+
+- [X] Config declares a general alias contract: any entry may set `master_task_key` to a live non-alias master; a resolve helper returns the master for prompt/content lookup and returns the key unchanged when not an alias — without a one-off meteorite-only link map.
+- [X] Alias entries for first consumers carry their own pass/fail/error (and related orchestration); `METEORITE_GDL_OUTCOME_BY_TASK` no longer supplies Do/Get meteorite outcomes.
+
+## Boundaries
+
+Does **not** rewire consult/agent call sites (sibling runtime resolution). Does **not** seed/retarget meteorite dispatch or `agent_task` rows (sibling seed). Does **not** own UI hardcode audit (AST-1185).
+
+## Notes for planning
+
+First consumers: `meteorite_grade_do` → `grade_do`, `meteorite_grade_get` → `grade_get`. Field-driven resolve only — no one-off alias maps. Proposed pattern `pattern.config.task-alias` flagged for Archie (parent Todo = define approval).
+
+## Git branch (authoritative)
+
+Per orientation § Branch law: parent `ftr/AST-1184-task-config-aliases-via-master-task-key`, child `sub/AST-1184/<this-id>-task-alias-config-contract-resolve-helpers`. Created at dispatch-parent.
+
+### Comments
+
+#### chuckles — 2026-08-06T07:34:59.984Z
+[merge-child] blocked: git pull merge on sub — `a2e70b2c Merge remote-tracking branch 'origin/dev' into sub/AST-1184/AST-1220-…` is in `origin/sub` ahead of refreshed `origin/ftr/AST-1184-task-config-aliases-via-master-task-key` (@Ada Lovelace).
+
+validate-sub-log refuses subjects matching `^Merge remote-tracking branch`. ftr already fast-forwarded to `8af21e14` (same tip the pull-merge brought in). Rebuild/republish `origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers` stacked on current ftr without that pull-merge commit (keep plan/code/merge-tests/test/docs/resolve sequence). Stay User Testing.
+
+— Chuckles
+
+#### radia — 2026-08-06T07:30:50.765Z
+[code-rubric] revision=1
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1220
+**Publish ref:** `9ce78b40` (`origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers`)
+**Overall:** CLEAN
+
+## Plan adherence
+
+- Both stages match the plan's binding code blocks verbatim, including the Revision 1 fixes that closed Joan's round-1 findings (field-driven `trigger_state`, extended `JOB_STATES` assert loop, documented `_TRANSITION_STATES_USED_BY_SCORED_TASKS` delta).
+- Diff footprint is exactly the plan's single-row Files Changed table (`src/utils/config.py`) plus Betty's separate `merge-tests` commit (`docs/test-bible/**`, `tests/**`) — no scope creep into AST-1221 (consult/agent call sites) or AST-1222 (seed/retarget).
+- Commit hygiene holds: `code(AST-1220)` commits touch only `src/utils/config.py`; `test(AST-1220)` + `merge-tests(AST-1220)` touch only Betty's test-tree paths.
+
+**Advisory (not fix-now, carried from Joan's plan-rubric):** alias entries duplicate scoring/schema fields (`response_schema`, `grades_key`, `rubric_artifact`, `output_type`, `context_format`, `fallback_batch_size`, `pass_threshold`) alongside the master instead of routing through `resolve_task_key_for_content`. Parent AC requires alias-owned orchestration, so this is accepted — flagging only as a live handoff note for AST-1221.
+
+**Pattern conformance:** `pattern.config.config-block` — conforms. `pattern.config.task-alias` — proposed, correctly unauthored (Archie approval is the parent's define-approved gate, not this child).
+
+Full active-set sweep scored in-session: 65 active statutes (18 universal + 47 scoped-applicable against this diff's `{utils, docs}` layers / `src/utils/config.py`, `docs/features/**`, `docs/test-bible/**`, `tests/**` paths) — zero `violates`, zero `needs-discussion`. `python3 -m py_compile src/utils/config.py` clean at tip.
+
+## Frame diff
+
+(none — ticket description/AC unchanged; no findings to fold in)
+
+context_tokens≈68000
+
+— Radia
+
+#### betty — 2026-08-06T07:22:13.804Z
+## QA test manifest
+
+`origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers` @ `aa820952` (`merge-tests(AST-1220): origin/tests 5a352d1bab5eef5191f6b0f9671e838c5a7b16ca`)
+
+1. `tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract` — resolve helpers, `meteorite_grade_do`/`get` alias entries + empty `METEORITE_GDL_OUTCOME_BY_TASK`, field-driven admin defaults / batch-mode / scored-transition delta; dispatch rows still shared `grade_do`/`grade_get` until AST-1222
+2. `tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay` — revised for empty overlay interim (Gaze outcomes for METEORITE_* entity states until AST-1221)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1220TaskAliasConfigContract \
+  tests/component/core/test_consult.py::TestAst1054MeteoriteGdlOutcomeOverlay \
+  -q
+```
+
+**Broken / obsolete revised:** AST-1054 overlay asserts that indexed `METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]` / expected meteorite overlay pass/fail.
+
+**Bible shasum** (`origin/sub/...` tip):
+- `docs/test-bible/utils/config.md` `f8d52c9e2e54f37f15fac86236a224b832099c3a`
+- `docs/test-bible/core/consult.md` `a0d61e62cc90092740e6301d26da005278ce287f`
+
+Do **not** exercise meteorite Do/Get operator path on AST-1220-only tip — wait for AST-1221 + AST-1222.
+
+— Betty
+
+#### joan — 2026-08-06T07:12:58.594Z
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1220
+**Overall:** APPROVED
+**Publish-ref tip:** `4e85e9ff` (`origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers`)
+**Rounds:** 1 completed (concern + reply). Re-validated at revision 1.
+
+**Considered:** 44 active statutes (18 universal + 26 scoped), 21 scoped excluded — unchanged from round 1; Files Changed is still the single `src/utils/config.py` row (layers `{utils}`, change_types `{modify}`). Scored in-session. Round-1 `violates` on `astral.standards.no-hardcoded-sets` and `astral.standards.dry-and-focused-functions` now score `conforms`.
+
+## Traceability
+
+AC1→S1 (helpers + asserts), S2 (first-consumer entries prove resolve); AC2→S2 (alias-owned outcomes), S1.3 (overlay emptied). No orphan stages — S1↔parent Functional scope §1 + AC1; S2↔parent Functional scope §3–§4 + AC2.
+
+## Round-1 items — all closed
+
+**fix-now (closed).** Alias entries now carry `"trigger_state": "METEORITE_PASSED_JD"` / `"METEORITE_PASSED_DO"`, the per-key `_dispatch_trigger_state_for_task_key` branches are gone, and Stage 2 states "Do **not** edit `_dispatch_trigger_state_for_task_key` for these keys." I traced the resolution path rather than taking it on faith: no earlier branch in that function matches either alias key (the `CHAIN`/`ERROR_BUILD_ARTIFACTS_STATE` test at 2867 fails because aliases declare no `task_type`, and the cover-letter tuple at 2871 does not contain them), so both fall through to the generic `TASK_CONFIG[key]["trigger_state"]` return at 2878–2880. The verify script exercises exactly that, and pins `TASK_CONFIG['grade_do'].get('trigger_state') is None` so the masters are provably untouched.
+
+**discuss (closed).** The Stage 1 assert loop now requires job-entity alias `pass_state` / `fail_state` / `error_state` ∈ `JOB_STATES`. Scoping it to entries that declare `master_task_key` is the right call — it restores the invariant the emptied overlay gave up without retroactively validating legacy non-alias entries.
+
+**discuss (closed).** The `_TRANSITION_STATES_USED_BY_SCORED_TASKS` delta is documented with the four `METEORITE_FAILED_*` strings named, the benign rationale stated, and verify asserts on both set membership and `dispatch_claim_uses_score_floor`. The added warning not to point an alias `not_ready_state` at its own claim trigger is a good catch beyond what I asked for.
+
+**acceptable (carried).** QA note on the intermediate window is in the plan.
+
+## Findings
+
+**discuss — two component tests on the current base go red, and the plan does not name them.** The `origin/dev` merge (`a2e70b2c`) brought AST-1210's test work onto this branch, including `TestAst1054MeteoriteGdlOutcomeOverlay` in `tests/component/core/test_consult.py`. Emptying the overlay breaks two of its cases: `test_overlay_for_meteorite_entity_states` raises `KeyError` on `METEORITE_GDL_OUTCOME_BY_TASK["grade_do"]` (line 78), and `test_render_pass_fail_uses_meteorite_overlay` asserts `_render_pass_fail("grade_do", …, entity_state="METEORITE_PASSED_JD") == "METEORITE_PASSED_DO"`, which returns classic `PASSED_DO` once the overlay is `{}` and consult still reads it. `test_evaluate_jd_has_no_meteorite_overlay` and both `tests/component/utils/test_config.py` overlay checks stay green (`not in` / `.items()` are fine on `{}`).
+
+These are not defects — they encode the AST-1054 overlay contract this child deliberately retires, so they are tests invalidated by intended product change. Not blocking, because the plan's "no `tests/` changes" boundary is *correct authority*: `orch.roles.betty-owns-test-tree` forbids the engineer patching them, and `test-child` already routes this through `[qa-handoff]`. But the plan currently reads as "no test impact," so naming these two cases in the Files Changed note (or the QA note) would save Betty a discovery round trip and keep `orch.pipeline.plan-is-bible` honest at Code Complete. Fold it in opportunistically — it does not need another validate pass.
+
+**discuss — handoff note for AST-1221, not a new gate item.** The alias entries duplicate content-shaped fields alongside the orchestration ones (`response_schema`, `grades_key`, `rubric_artifact`, `output_type`, `context_format`, `fallback_batch_size`, `pass_threshold`). Parent AC mandates alias-owned *orchestration*, so the pass/fail/error/threshold duplication is required; the schema/rubric duplication is a second source that will not track master edits. I accepted this field shape in round 1 and I am not reopening it. Flagging only so AST-1221 decides explicitly which fields it reads from the alias versus resolves through `resolve_task_key_for_content`, since the parent's clean-alias rule is that editing the master changes what the alias runs.
+
+**Self-assessment:** honest. Scope Single-Component matches the one-file table. Conf `high` is now earned — the justifications name the specific fallback, the specific asserts, and the specific derived set. Risk Medium with the `JOB_STATES` assert cited as mitigation is accurate.
+
+Base check: `src/utils/config.py` is untouched by the `origin/dev` merge, so every line reference in the plan (~1017, ~2878–2880, ~5047) still resolves. The only non-merge commit on this branch is the plan revision itself.
+
+Good revision — you fixed the shape rather than arguing the precedent, and the extra `not_ready_state` guard shows you read the surrounding hazard. Cleared for build.
+
+context_tokens≈118000
+
+— Joan
+
+#### ada — 2026-08-06T07:08:36.361Z
+[plan-discuss] round=1 reply
+
+Plan tip: `4e85e9ff` — https://github.com/susansomerset/astral/blob/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers/docs/features/meteorite/ast-1220-task-alias-config-contract-resolve-helpers.md
+
+**fix-now:** Alias entries now set field-driven `trigger_state` (`METEORITE_PASSED_JD` / `METEORITE_PASSED_DO`). Removed the Stage 2 `_dispatch_trigger_state_for_task_key` per-key branches — admin defaults use the existing `TASK_CONFIG[…]["trigger_state"]` fallback.
+
+**discuss (JOB_STATES):** Stage 1 alias-contract assert loop now requires job-entity alias `pass_state` / `fail_state` / `error_state` ∈ `JOB_STATES`, restoring the invariant emptied overlay would have lost.
+
+**discuss (derived set):** Plan documents the expected `_TRANSITION_STATES_USED_BY_SCORED_TASKS` widening for the four `METEORITE_FAILED_*` / `*_TECHNICAL_*` strings (benign; symmetric with classic FAILED_DO; no FAILED claim rows). Verify script asserts membership + `dispatch_claim_uses_score_floor`.
+
+**acceptable:** QA note added — do not exercise meteorite Do/Get on a tree with only AST-1220 merged.
+
+Status left **Plan Discuss** for Joan re-validate.
+
+#### joan — 2026-08-06T07:05:03.383Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1220
+**Overall:** REVISE
+**Publish-ref tip:** `f9d5f6d3` (`origin/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers`)
+
+**Considered:** 44 active statutes (18 universal + 26 scoped), 21 scoped excluded on layer/path predicates — plan layers `{utils}`, path `src/utils/config.py`, change_types `{modify}`. Scored in-session.
+
+## Traceability
+
+AC1→S1 (helpers + asserts), S2 (first-consumer entries prove resolve); AC2→S2 (alias-owned outcomes), S1.3 (overlay emptied). No orphan stages — S1↔parent Functional scope §1 + AC1; S2↔parent Functional scope §3–§4 + AC2.
+
+## Findings
+
+**fix-now — Stage 2 step 3 hardcodes what the config field already carries.** `astral.standards.no-hardcoded-sets`, `astral.standards.dry-and-focused-functions`.
+
+Stage 2 step 1 sets `"trigger_state": None` on both alias entries, then step 3 adds two per-key branches (`if task_key == "meteorite_grade_do": return "METEORITE_PASSED_JD"`) to `_dispatch_trigger_state_for_task_key`. That is a meteorite-only inline rule in a helper, and this ticket's own in-scope checkbox is "field-driven resolve only; no meteorite-only alias map" — parent AC says resolution is field-driven, "not a one-off explicit link table".
+
+The field-driven path already exists and is the designed mechanism:
+- `config.py:2878–2880` — `dispatch_task_admin_defaults` falls through to `TASK_CONFIG[key]["trigger_state"]` when no branch matched.
+- `api_admin._dispatch_task_key_form_meta` (930–941) reads the same field as its fallback.
+
+**Recommendation:** set `"trigger_state": "METEORITE_PASSED_JD"` / `"METEORITE_PASSED_DO"` on the alias entries and delete step 3. I verified this is side-effect free: `_task_config_transition_strings` (3014–3023) does not read `trigger_state`, and both states are already in `PASSED_SCORE_GATED_STATES` (2716–2720) and `JOB_STATES`, so `_dispatch_sort_by_for` and `dispatch_task_admin_defaults` resolve unchanged. The cited AST-1055 precedent (`meteorite_like`, 2860) is real but predates nothing that binds you — the generic fallback is live today.
+
+**discuss — emptying the overlay silently retires the only guard on those state strings.** The assert at `config.py:2498–2502` (all overlay values ∈ `JOB_STATES`) becomes vacuous on `{}`. I checked every module-level assert in `config.py`: there is no generic TASK_CONFIG `pass_state`/`fail_state`/`error_state` → `JOB_STATES` check. So the alias entries become the sole source of meteorite Do/Get outcomes with zero import-time validation, while the plan's own Risk section names "wrong alias pass/fail strings would mis-route meteorite state" as the hazard.
+
+**Recommendation:** extend the Stage 1 alias-contract assert loop to require alias `pass_state` / `fail_state` / `error_state` ∈ `JOB_STATES` for job-entity entries. Near-zero cost and it restores the invariant you are removing.
+
+**discuss — derived-set widening is unanalyzed.** Adding two `scored: True` entries injects `METEORITE_FAILED_DO`, `METEORITE_FAILED_TECHNICAL_DO`, `METEORITE_FAILED_GET`, `METEORITE_FAILED_TECHNICAL_GET` into `_TRANSITION_STATES_USED_BY_SCORED_TASKS` (3026–3031), which flips `dispatch_claim_uses_score_floor` to True for those four states (admin row `is_scored` / `score_floor` defaults, Jobs UI below-floor membership). Probably benign — it is symmetric with classic `FAILED_DO`, already in the set via `grade_do`, and no dispatch row claims a FAILED state. But `evaluate_meteorite`'s own comment (615–623) treats this derived set as a live hazard, so state the expected delta in the plan rather than leaving it implicit.
+
+**acceptable — the intermediate window is correctly scoped and honestly disclosed.** Between this child and AST-1221/1222, meteorite jobs still claimed under shared `grade_do`/`grade_get` will take classic Gaze outcomes and may trip `prior_states` in `transition_job_state`. Child AC2 requires the overlay retirement here, so this is right sequencing and ftr-internal only. Worth carrying into the QA note: do not exercise meteorite Do/Get on a tree with only AST-1220 merged.
+
+**acceptable — proposed `pattern.config.task-alias` stays unauthored.** Plan does not add a statute or pattern file, which is correct (`orch.roles.archie-approves-statutes`); parent's move to Todo is the define approval.
+
+**Self-assessment:** Scope Single-Component and Risk Medium are honest and specifically justified. Conf `high` is slightly generous given the two config-shape items above, but the justifications name real patterns rather than hand-waving.
+
+Nothing here requires a rewrite — the contract, the helper names, the alias field shape, and the boundary discipline are all sound. Fix the one `fix-now`, fold in the two `discuss` items, and this should approve on the next pass.
+
+context_tokens≈79000
+
+— Joan
+
+#### ada — 2026-08-06T06:59:10.742Z
+Plan: https://github.com/susansomerset/astral/blob/sub/AST-1184/AST-1220-task-alias-config-contract-resolve-helpers/docs/features/meteorite/ast-1220-task-alias-config-contract-resolve-helpers.md
+
+**Scope:** Single-Component — only `src/utils/config.py` (alias contract helpers, first-consumer `meteorite_grade_do`/`meteorite_grade_get`, empty Do/Get overlay).
+
+**Conf:** high — field-driven `master_task_key` + load-time asserts mirror existing config-block patterns; scored fields follow `meteorite_like` twin shape.
+
+**Risk:** Medium — emptying `METEORITE_GDL_OUTCOME_BY_TASK` before AST-1221/1222 means shared-key meteorite Do/Get temporarily use classic Gaze outcomes until siblings retarget.
+
+---
+
 # AST-1220 — Task alias config contract + resolve helpers
 
 **Linear:** [AST-1220](https://linear.app/astralcareermatch/issue/AST-1220/task-alias-config-contract-resolve-helpers-task-config-aliases-via)

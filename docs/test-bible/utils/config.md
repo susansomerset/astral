@@ -836,7 +836,7 @@ Consult fail-dest matrix: **`docs/test-bible/core/consult.md`** (**AST-1339**). 
 | --- | --- | --- |
 | Tier literal + helper | `src/utils/config.py` | **`TestAst1391DeepseekBigMaxTokensFloor`** |
 
-### AST-1397 · AST-1395 (gap — tests)
+### AST-1397 · AST-1396 · AST-1395 (gap — tests)
 
 **Parent:** [AST-1395 — Loading ad hoc agent screen spills log warnings to the console](https://linear.app/astralcareermatch/issue/AST-1395/loading-ad-hoc-agent-screen-spills-log-warnings-to-the-console). **Publish:** `origin/sub/AST-1395/AST-1397-cover-empty-candidate-first-name-silence`. Product gate: sibling **AST-1396**.
 

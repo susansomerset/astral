@@ -14,7 +14,7 @@ Tables used (inventory):
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
-- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
+- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
 - dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
@@ -78,6 +78,7 @@ from src.utils.config import (
     CANDIDATE_LEGACY_TRIGGER_STATES,
     CANDIDATE_LIBRARY_CONFIG,
     CANDIDATE_STATES,
+    is_valid_candidate_batch_claim_state,
     remap_legacy_candidate_state,
     COMPANY_STATES,
     METEORITE_CONFIG,
@@ -96,6 +97,7 @@ from src.utils.config import (
     fetch_website_prefilter_second_strike_filter,
     dispatch_chain_claim_states_for_row,
     is_dispatch_chain_trigger,
+    is_valid_candidate_batch_claim_state,
     validate_allowed_brain_setting,
     RUBRIC_CRITERIA_ARTIFACT_KEYS,
     RUBRIC_FEEDBACK_CONFIG,
@@ -3167,8 +3169,8 @@ def save_candidate(
             if existing is None:
                 if not state:
                     raise ValueError("state required for new candidate")
-                allowed = list(CANDIDATE_STATES.keys())
-                if state not in allowed:
+                if not is_valid_candidate_batch_claim_state(state):
+                    allowed = list(CANDIDATE_STATES.keys())
                     raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                 cdata_str = json.dumps(candidate_data) if candidate_data else "{}"
                 hist_str = json.dumps(state_history if state_history is not None else [])
@@ -3191,8 +3193,8 @@ def save_candidate(
                 sets: List[str] = []
                 params: List[Any] = []
                 if state is not None:
-                    allowed = list(CANDIDATE_STATES.keys())
-                    if state not in allowed:
+                    if not is_valid_candidate_batch_claim_state(state):
+                        allowed = list(CANDIDATE_STATES.keys())
                         raise ValueError(f"Invalid candidate state '{state}'. Must be one of: {allowed}")
                     sets.append("state = ?")
                     params.append(state)
@@ -3407,9 +3409,19 @@ def clear_candidate_batch(batch_id: str) -> int:
     return _run_with_retry(_with_conn)
 
 
-def count_candidates_unclaimed_in_states(states: List[str]) -> int:
-    """Count unclaimed candidates in the given state set (global pool; AST-1258)."""
+def count_candidates_unclaimed_in_states(
+    states: List[str], candidate_id: Optional[str] = None
+) -> int:
+    """Count unclaimed candidates in the given state set (global pool; AST-1258).
+
+    When candidate_id is set, count is that row only (0 or 1; AST-1432 Avail).
+    """
     state_sql, state_params = _state_in_sql(states)
+    cid = (candidate_id or "").strip()
+    extra_sql = " AND astral_candidate_id = ?" if cid else ""
+    params: List[Any] = list(state_params)
+    if cid:
+        params.append(cid)
 
     def _with_conn() -> int:
         conn = _get_connection()
@@ -3417,8 +3429,8 @@ def count_candidates_unclaimed_in_states(states: List[str]) -> int:
             _ensure_candidate_schema(conn)
             row = conn.execute(
                 f"""SELECT COUNT(*) FROM candidate
-                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = '')""",
-                tuple(state_params),
+                   WHERE {state_sql} AND (batch_id IS NULL OR batch_id = ''){extra_sql}""",
+                tuple(params),
             ).fetchone()
             return int(row[0])
         finally:
@@ -5865,7 +5877,7 @@ def save_agent_data(
 ) -> bool:
     """Insert a single content block into agent_data. Returns True on success, False on duplicate.
     block_data is compressed before storage. block_type must be in BLOCK_TYPES.
-    entity_id tags RESPONSE rows for latest-per-task lookup (AST-984); omit for shared prompt blocks."""
+    entity_id is set whenever the caller passes it (prompt or RESPONSE); omit to store NULL."""
     if block_type not in BLOCK_TYPES:
         raise ValueError(f"Invalid block_type '{block_type}'. Must be one of: {BLOCK_TYPES}")
     if not isinstance(block_data, str):
@@ -6124,6 +6136,29 @@ def get_agent_data_by_batch(
                 d["block_data"] = _resolve_agent_data_block_data(conn, d)
                 result.append(d)
             return result
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
+def list_agent_data_batches() -> List[Dict[str, Any]]:
+    """One metadata row per agent_data.batch_id, newest batch first. No filter, no cap."""
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_agent_data_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT batch_id,
+                       MAX(created_at) AS created_at,
+                       MAX(task_key) AS task_key,
+                       MAX(entity_id) AS entity_id
+                FROM agent_data
+                GROUP BY batch_id
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+            return [_row_to_dict(row) for row in rows]
         finally:
             conn.close()
     return _run_with_retry(_with_conn)
@@ -6711,6 +6746,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 auto_mode INTEGER NOT NULL DEFAULT 0,
                 debug INTEGER NOT NULL DEFAULT 0,
                 skip_cache INTEGER NOT NULL DEFAULT 0,
+                skip_daisy_chain INTEGER NOT NULL DEFAULT 0,
                 max_runs INTEGER DEFAULT 1,
                 score_floor REAL,
                 updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -6824,6 +6860,7 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
             "batch_size":     "INTEGER",
             "debug":          "INTEGER DEFAULT 0",
             "skip_cache":     "INTEGER DEFAULT 0",
+            "skip_daisy_chain": "INTEGER NOT NULL DEFAULT 0",
             "max_runs":       "INTEGER DEFAULT 1",
             "auto_mode":      "INTEGER NOT NULL DEFAULT 0",
             "trigger_state":  "TEXT",
@@ -7413,7 +7450,7 @@ def get_dispatch_row_or_seed_preview_meta(task_key: str) -> Optional[Dict[str, A
 
 _DISPATCH_TASK_UPDATE_COLS = {
     "min_count", "batch_size", "auto_mode", "last_run_at", "entity_type", "trigger_state",
-    "debug", "skip_cache", "freq_hrs", "max_runs", "score_floor",
+    "debug", "skip_cache", "skip_daisy_chain", "freq_hrs", "max_runs", "score_floor",
     "task_key", "sort_by", "batch_call_mode",
 }
 
@@ -7421,6 +7458,7 @@ _DISPATCH_TASK_UPDATE_COLS = {
 _DISPATCH_TASK_TEMPLATE_COPY_COLS = frozenset({
     "task_key", "entity_type", "trigger_state", "sort_by", "batch_call_mode",
     "freq_hrs", "min_count", "batch_size", "auto_mode", "debug", "skip_cache",
+    "skip_daisy_chain",
     "max_runs", "score_floor",
 })
 
@@ -7483,7 +7521,7 @@ def _dispatch_task_schedule_assign(template_row: Dict[str, Any]) -> Dict[str, An
         elif col == "trigger_state":
             ts = "" if val is None else str(val).strip()
             assign[col] = ts if ts else None
-        elif col in ("auto_mode", "debug", "skip_cache", "batch_call_mode"):
+        elif col in ("auto_mode", "debug", "skip_cache", "skip_daisy_chain", "batch_call_mode"):
             assign[col] = int(bool(val)) if isinstance(val, bool) else int(val or 0)
         elif col == "min_count":
             assign[col] = int(val)
@@ -7588,7 +7626,7 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         try:
             _ensure_dispatch_task_schema(conn)
             rows = conn.execute(
-                "SELECT * FROM dispatch_task WHERE auto_mode = 1 ORDER BY id"
+                "SELECT * FROM dispatch_task WHERE auto_mode = 1 ORDER BY last_run_at"
             ).fetchall()
             return [_row_to_dict(r) for r in rows]
         finally:
@@ -7742,8 +7780,10 @@ def dispatch_task_freq_allows(task: Dict[str, Any]) -> bool:
 
 
 def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
-    """Count entities this task would actually claim now (unclaimed + scan cadence for WATCH).
+    """Count eligible entities for this dispatch row (unclaimed + scan cadence for WATCH).
 
+    Candidate non-inflow Avail is this row's candidate only (0 or 1: unclaimed and in
+    claim_states). inflow_discovery still uses count_candidate_inflow_discovery_eligible.
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
@@ -7768,12 +7808,12 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     is_scored = dispatch_claim_uses_score_floor(state)
     floor = float(task.get("score_floor")) if (is_scored and task.get("score_floor") is not None) else (1.0 if is_scored else None)
     if entity_type == "candidate":
-        # inflow_discovery keeps term/state helper; other candidate claim queues use pool count.
+        # inflow_discovery keeps term/state helper; other keys: this row's candidate (AST-1432).
         if (task_key or "").strip() == INFLOW_CONFIG["discovery"]["task_key"]:
             return count_candidate_inflow_discovery_eligible(
                 candidate_id, float(task.get("freq_hrs") or 0), task.get("last_run_at")
             )
-        return count_candidates_unclaimed_in_states(claim_states)
+        return count_candidates_unclaimed_in_states(claim_states, candidate_id=candidate_id)
     if entity_type == "company":
         if task_key == INFLOW_CONFIG["vet"]["task_key"]:
             return count_company_new_pending_inflow_vet(candidate_id)

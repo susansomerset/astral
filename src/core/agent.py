@@ -24,6 +24,7 @@ from src.data.database import (
     get_agent,
     save_agent_data,
     get_agent_data_by_batch,
+    list_agent_data_batches,
     get_agent_data as _get_agent_data_row,
     get_agent_data_for_ids,
     sum_cost_by_batch,
@@ -49,6 +50,7 @@ from src.utils.config import (
     get_active_llm_provider,
     resolve_brain_setting_to_anthropic_agent_key,
     resolve_brain_setting_to_deepseek_tier_meta,
+    deepseek_brain_max_tokens_floor,
     CALLER_HOP_TOKEN_NAMES,
     ENTITY_TYPES,
     _CRAFT_RESUME_NORMALIZE_TASK_KEYS,
@@ -1026,6 +1028,19 @@ def _should_write_dispatch_hop_label(
     return dispatch_chain_graduation_target(trigger_state) is not None
 
 
+def _should_write_candidate_craft_hop_label(
+    *,
+    entity_type: str,
+    index: Optional[str],
+    ctx: Optional[Dict[str, Any]],
+    trigger_state: str,
+) -> bool:
+    """AST-1388 / AST-1434: candidate craft chain success labels (parallel to job gate)."""
+    if entity_type != "candidate" or not index or not trigger_state:
+        return False
+    return bool((ctx or {}).get("persist_candidate_craft_hops"))
+
+
 def _write_dispatch_hop_label_on_success(
     *,
     task_key: str,
@@ -1035,18 +1050,37 @@ def _write_dispatch_hop_label_on_success(
     trigger_state: str,
     debug: bool,
 ) -> None:
-    if not _should_write_dispatch_hop_label(
+    write_job = _should_write_dispatch_hop_label(
         entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
-    ):
+    )
+    write_cand = _should_write_candidate_craft_hop_label(
+        entity_type=entity_type, index=index, ctx=ctx, trigger_state=trigger_state,
+    )
+    if not write_job and not write_cand:
         return
-    from src.core import tracker as tracker_mod
 
-    before_state = (tracker_mod.get_job(index) or {}).get("state") if index else None
+    before_state = None
+    if write_job:
+        from src.core import tracker as tracker_mod
+        before_state = (tracker_mod.get_job(index) or {}).get("state") if index else None
+    elif write_cand:
+        # Lazy import breaks agent↔candidate cycle (candidate imports agent).
+        from src.core.candidate import get_candidate
+        before_state = (get_candidate(index) or {}).get("state") if index else None
+
     if ctx is not None and "_dispatch_chain_hop_index" not in ctx:
         ctx["_dispatch_chain_hop_index"] = 1
     elif ctx is not None:
         ctx["_dispatch_chain_hop_index"] = int(ctx.get("_dispatch_chain_hop_index") or 0) + 1
-    label = tracker_mod.write_job_dispatch_hop_label(index, trigger_state, task_key)
+
+    if write_job:
+        from src.core import tracker as tracker_mod
+        label = tracker_mod.write_job_dispatch_hop_label(index, trigger_state, task_key)
+    else:
+        # Lazy import breaks agent↔candidate cycle (candidate imports agent).
+        from src.core.candidate import write_candidate_dispatch_hop_label
+        label = write_candidate_dispatch_hop_label(index, trigger_state, task_key)
+
     if debug:
         hop_idx = int((ctx or {}).get("_dispatch_chain_hop_index") or 1)
         hop_idx, hop_total = _dispatch_chain_hop_debug_counts(ctx, hop_index=hop_idx)
@@ -1300,12 +1334,13 @@ def _store_prompt_blocks(
     caches_resolved_four: Any = _PB_SLOT_OMIT,
     cache_content: Any = _PB_SLOT_OMIT,
     debug: bool = False,
+    entity_id: Optional[str] = None,  # AST-1431 prompt-row stamp tests (do_task / helper / Ad Hoc)
 ) -> List[Dict[str, str]]:
     """Store prompt blocks in agent_data. Returns prompt_blocks refs for ledger.
-    Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only)."""
-    prompt_blocks: List[Dict[str, str]] = []
+    Production: ``caches_resolved_four``. Legacy tests/callers: ``cache_content`` (slot A only).
+    entity_id is the entity index (AST-1429), distinct from inner _save's Style D loop index."""
 
-    def _save(block_type: str, content: str) -> str:
+    def _save(block_type: str, content: str, *, index: int, total: int) -> str:
         content_hash = hashlib.sha256(f"{batch_id}:{block_type}:{content}".encode()).hexdigest()[:16]
         agent_data_id = f"{batch_id}-{block_type.lower()}-{content_hash}"
         result = save_agent_data(
@@ -1317,43 +1352,59 @@ def _store_prompt_blocks(
             block_data=content,
             token_size=len(content) // CHARS_PER_TOKEN,
             created_at=created_at,
+            entity_id=entity_id if entity_id else None,
         )
         if debug:
             dbg = get_logger(__name__, debug_flag=True)
+            outcome = result.get("outcome")
+            dbg.debug_index(
+                func="_store_prompt_blocks",
+                index=index,
+                total=total,
+                identifier=f"{block_type}:{result.get('agent_data_id') or agent_data_id}",
+                outcome=str(outcome) if outcome is not None else "saved",
+            )
+            dbg.debug_detail(f"found block_type={block_type} chars={len(content)}")
+            dbg.debug_detail_block(content)
             dbg.debug_detail(
-                f"agent_data_write block_type={block_type} outcome={result.get('outcome')} "
-                f"agent_data_id={result.get('agent_data_id')} "
+                f"recorded outcome={outcome} agent_data_id={result.get('agent_data_id')} "
                 f"ref_agent_data_id={result.get('ref_agent_data_id')!r}"
             )
         return agent_data_id
 
-    prompt_blocks.append({"type": "SYSTEM",   "id": _save("SYSTEM",   system_content)})
+    # Collect membership first so Style D can emit index N/M per stored prompt block.
+    segments: List[Tuple[str, str]] = [("SYSTEM", system_content)]
     if cache_content is not _PB_SLOT_OMIT:
         if caches_resolved_four is not _PB_SLOT_OMIT:
             raise TypeError("_store_prompt_blocks: pass caches_resolved_four or cache_content, not both")
         if cache_content:
-            prompt_blocks.append({"type": "CACHE_A", "id": _save("CACHE_A", cache_content)})
+            segments.append(("CACHE_A", cache_content))
         if nocache_content:
-            prompt_blocks.append({"type": "NO_CACHE","id": _save("NO_CACHE", nocache_content)})
+            segments.append(("NO_CACHE", nocache_content))
         if live_content:
-            prompt_blocks.append({"type": "NO_CACHE", "id": _save("NO_CACHE", live_content)})
+            segments.append(("NO_CACHE", live_content))
         if user_content:
-            prompt_blocks.append({"type": "TASK",     "id": _save("TASK",     user_content)})
-        return prompt_blocks
+            segments.append(("TASK", user_content))
+    else:
+        if caches_resolved_four is _PB_SLOT_OMIT:
+            raise TypeError("_store_prompt_blocks: missing caches_resolved_four or cache_content")
+        type_names = ("CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D")
+        for bt, blob in zip(type_names, caches_resolved_four):
+            if blob and blob.strip():
+                segments.append((bt, blob))
+        if nocache_content:
+            segments.append(("NO_CACHE", nocache_content))
+        if live_content:
+            segments.append(("NO_CACHE", live_content))
+        if user_content:
+            segments.append(("TASK", user_content))
 
-    if caches_resolved_four is _PB_SLOT_OMIT:
-        raise TypeError("_store_prompt_blocks: missing caches_resolved_four or cache_content")
-    type_names = ("CACHE_A", "CACHE_B", "CACHE_C", "CACHE_D")
-    for bt, blob in zip(type_names, caches_resolved_four):
-        if blob and blob.strip():
-            prompt_blocks.append({"type": bt, "id": _save(bt, blob)})
-    if nocache_content:
-        prompt_blocks.append({"type": "NO_CACHE","id": _save("NO_CACHE", nocache_content)})
-    if live_content:
-        prompt_blocks.append({"type": "NO_CACHE", "id": _save("NO_CACHE", live_content)})
-    if user_content:
-        prompt_blocks.append({"type": "TASK",     "id": _save("TASK",     user_content)})
-
+    prompt_blocks: List[Dict[str, str]] = []
+    total = len(segments)
+    for i, (block_type, content) in enumerate(segments, start=1):
+        prompt_blocks.append(
+            {"type": block_type, "id": _save(block_type, content, index=i, total=total)}
+        )
     return prompt_blocks
 
 
@@ -1376,6 +1427,21 @@ def _validation_failure_audit_body(err: str, raw_text: Optional[str], parsed: An
     """RESPONSE row body for schema/catalog failures — error message always visible (AST-594)."""
     body = _audit_response_body(raw_text, parsed, None)
     return f"Validation failed: {err}\n\n--- model response ---\n{body}"
+
+
+def _provider_failure_audit_body(
+    err: str,
+    raw_text: Optional[str],
+    parsed: Any = None,
+    *,
+    failure_class: Optional[str] = None,
+) -> str:
+    """RESPONSE row for provider failures — banner so success-shaped envelopes are not mistaken for finished hops (AST-1380)."""
+    body = _audit_response_body(raw_text, parsed, None)
+    head = f"Provider failed: {err}"
+    if failure_class:
+        head = f"Provider failed ({failure_class}): {err}"
+    return f"{head}\n\n--- model response ---\n{body}"
 
 
 def _failure_response_block_data(index: Optional[str], body: str) -> str:
@@ -2156,6 +2222,14 @@ async def do_task(
     # Craft rubrics emit long per-criterion content — floor so Get cannot truncate mid-JSON (AST-903).
     if task_key in CRAFT_RUBRIC_UI_TASK_KEYS:
         agent_max_tokens = max(int(agent_max_tokens), int(CRAFT_RUBRIC_MAX_TOKENS))
+        # AST-1380 Decision A: DeepSeek Big thinking shares max_tokens with the JSON answer —
+        # disable thinking so craft criteria are not starved mid-string.
+        if provider == "deepseek" and tier_meta is not None:
+            tier_meta = {**tier_meta, "thinking": False, "reasoning_effort": None}
+    if provider == "deepseek":
+        _ds_floor = deepseek_brain_max_tokens_floor(brain_setting)
+        if _ds_floor is not None:
+            agent_max_tokens = max(int(agent_max_tokens), _ds_floor)
 
     _hop_kw = dict(
         chain_entry=chain_entry,
@@ -2388,6 +2462,25 @@ async def do_task(
             f"runtime_prompt_segments={len(runtime_prompt)}"
         )
 
+    prompt_blocks: List[Dict[str, str]] = []
+    _should_store = store_agent_data and batch_id and entity_type
+    if _should_store:
+        try:
+            prompt_blocks = _store_prompt_blocks(
+                entity_type=entity_type,
+                task_key=task_key,
+                batch_id=batch_id,
+                system_content=system_content,
+                caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or ""),
+                nocache_content=nocache_content,
+                user_content=user_content,
+                live_content=live_content,
+                debug=debug,
+                entity_id=index if index else None,
+            )
+        except Exception:
+            logger.debug("_store_prompt_blocks failed", exc_info=True)
+
     if provider == "anthropic":
         result = await send_to_anthropic(
             user_blocks,
@@ -2440,25 +2533,6 @@ async def do_task(
             err,
         )
 
-    # Store prompt blocks in agent_data (non-blocking; best-effort)
-    prompt_blocks: List[Dict[str, str]] = []
-    _should_store = store_agent_data and batch_id and entity_type
-    if _should_store:
-        try:
-            prompt_blocks = _store_prompt_blocks(
-                entity_type=entity_type,
-                task_key=task_key,
-                batch_id=batch_id,
-                system_content=system_content,
-                caches_resolved_four=(rca or "", rcb or "", rcc or "", rcd or ""),
-                nocache_content=nocache_content,
-                user_content=user_content,
-                live_content=live_content,
-                debug=debug,
-            )
-        except Exception:
-            logger.debug("_store_prompt_blocks failed", exc_info=True)
-
     if not result.get("success"):
         raw_for_audit = None
         api_resp = result.get("api_response")
@@ -2467,10 +2541,14 @@ async def do_task(
                 raw_for_audit = extract_api_response_text(api_resp)
             except ValueError:
                 pass
-        audit_body = _audit_response_body(
+        # Banner so raw agent_performance.status=success envelopes are not mistaken for finished hops (AST-1380).
+        _fc = result.get("failure_class")
+        _fc_s = str(_fc).strip() if _fc is not None else ""
+        audit_body = _provider_failure_audit_body(
+            str(result.get("error") or "Generation failed"),
             raw_for_audit,
             parsed=result.get("parsed_response"),
-            err=result.get("error"),
+            failure_class=_fc_s or None,
         )
         if _should_store:
             try:
@@ -2955,6 +3033,18 @@ async def do_task(
             # Lazy import breaks agent↔tracker cycle (consult imports agent).
             from src.core.tracker import pin_job_artifact_agent_data_id
             pin_job_artifact_agent_data_id(index, pin_slot, resp_id, debug=debug)
+            # AST-1428: sibling resume blob after pin; do not re-enable persist_job_artifact_from_parsed.
+            if task_key == "finalize_job_resume":
+                try:
+                    from src.core.tracker import persist_finalize_job_resume_content
+                    persist_finalize_job_resume_content(index, parsed)
+                except Exception as persist_err:
+                    logger.error(
+                        "persist_finalize_job_resume_content failed task=%s index=%s err=%s",
+                        task_key,
+                        index,
+                        persist_err,
+                    )
         elif debug:
             reason = (
                 "store_failed" if store_failed
@@ -3367,6 +3457,9 @@ async def run_adhoc_workbench_test(
     system_content: str = "",
     user_content: str = "",
     cache_content: Optional[str] = None,
+    cache_content_b: Optional[str] = None,
+    cache_content_c: Optional[str] = None,
+    cache_content_d: Optional[str] = None,
     nocache_content: Optional[str] = None,
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
@@ -3381,9 +3474,12 @@ async def run_adhoc_workbench_test(
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Wrap run_adhoc with dispatch_ledger, log_batch_id, and agent_data for workbench Test."""
-    ledger_task_key = f"adhoc-{workbench_task_key}"
+    catalog_task_key = (workbench_task_key or "").strip()
+    if catalog_task_key.startswith("adhoc-"):
+        catalog_task_key = catalog_task_key[len("adhoc-"):]
+    ledger_task_key = f"adhoc-{catalog_task_key}"
     batch_id = f"{ledger_task_key}-{_uuid4()}"
-    entity_type = (TASK_CONFIG.get(workbench_task_key) or {}).get("entity_type") or "candidate"
+    entity_type = (TASK_CONFIG.get(catalog_task_key) or {}).get("entity_type") or "candidate"
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     database.save_dispatch_ledger(
@@ -3405,10 +3501,34 @@ async def run_adhoc_workbench_test(
     result: Dict[str, Any]
     try:
         try:
+            _store_prompt_blocks(
+                entity_type=entity_type,
+                task_key=workbench_task_key,
+                batch_id=batch_id,
+                system_content=system_content,
+                caches_resolved_four=(
+                    cache_content or "",
+                    cache_content_b or "",
+                    cache_content_c or "",
+                    cache_content_d or "",
+                ),
+                nocache_content=nocache_content,
+                user_content=user_content,
+                live_content=live_content,
+                debug=debug,
+                entity_id=entity_id if entity_id else None,
+            )
+        except Exception:
+            logger.debug("_store_prompt_blocks failed", exc_info=True)
+
+        try:
             result = await run_adhoc(
                 system_content=system_content,
                 user_content=user_content,
                 cache_content=cache_content,
+                cache_content_b=cache_content_b,
+                cache_content_c=cache_content_c,
+                cache_content_d=cache_content_d,
                 nocache_content=nocache_content,
                 live_content=live_content,
                 model_code=model_code,
@@ -3433,21 +3553,6 @@ async def run_adhoc_workbench_test(
             )
             raise
 
-        try:
-            _store_prompt_blocks(
-                entity_type=entity_type,
-                task_key=workbench_task_key,
-                batch_id=batch_id,
-                system_content=system_content,
-                cache_content=cache_content or None,
-                nocache_content=nocache_content,
-                user_content=user_content,
-                live_content=live_content,
-                debug=debug,
-            )
-        except Exception:
-            logger.debug("_store_prompt_blocks failed", exc_info=True)
-
         if not result.get("success"):
             err = result.get("error", "Ad hoc test failed")
             logger.error(
@@ -3463,10 +3568,13 @@ async def run_adhoc_workbench_test(
                     raw_for_audit = extract_api_response_text(api_resp)
                 except ValueError:
                     pass
-            audit_body = _audit_response_body(
+            _fc = result.get("failure_class")
+            _fc_s = str(_fc).strip() if _fc is not None else ""
+            audit_body = _provider_failure_audit_body(
+                str(result.get("error") or "Generation failed"),
                 raw_for_audit,
                 parsed=result.get("parsed_response"),
-                err=result.get("error"),
+                failure_class=_fc_s or None,
             )
             try:
                 _store_response_block(
@@ -3481,10 +3589,34 @@ async def run_adhoc_workbench_test(
         else:
             parsed = result.get("parsed_response")
             if isinstance(parsed, dict) and "agent_payload" in parsed:
-                response_text = parsed["agent_payload"] or ""
+                body = parsed["agent_payload"]
             else:
-                response_text = str(parsed) if parsed is not None else ""
+                body = parsed
             try:
+                response_text = _caller_response_blob(body)
+                if debug:
+                    dbg = get_logger(__name__, debug_flag=True)
+                    if isinstance(body, dict):
+                        shape = f"keys={sorted(body.keys())}"
+                    elif isinstance(body, list):
+                        shape = f"len={len(body)}"
+                    elif isinstance(body, str):
+                        shape = f"len={len(body)}"
+                    elif body is None:
+                        shape = "none"
+                    else:
+                        shape = type(body).__name__
+                    dbg.debug_index(
+                        func="run_adhoc_workbench_test",
+                        index=1,
+                        total=1,
+                        identifier=workbench_task_key,
+                        outcome="serialized store",
+                    )
+                    dbg.debug_detail(
+                        f"found type={type(body).__name__} shape={shape}"
+                    )
+                    dbg.debug_detail_block(response_text)
                 _store_response_block(
                     entity_type,
                     workbench_task_key,
@@ -3526,6 +3658,7 @@ async def run_adhoc_workbench_test(
             bool(result.get("success")),
             total_cost,
         )
+        result["batch_id"] = batch_id
         return result
     finally:
         flush_log_buffer()
@@ -3536,6 +3669,9 @@ async def run_adhoc(
     system_content: str,
     user_content: str,
     cache_content: Optional[str] = None,
+    cache_content_b: Optional[str] = None,
+    cache_content_c: Optional[str] = None,
+    cache_content_d: Optional[str] = None,
     nocache_content: Optional[str] = None,
     live_content: Optional[str] = None,
     model_code: Optional[str] = None,
@@ -3555,10 +3691,10 @@ async def run_adhoc(
     if not model_code:
         raise ValueError("run_adhoc requires model_code (Anthropic AGENT_CONFIG key or DeepSeek vendor_model)")
 
-    system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks(
+    system_blocks, user_blocks, runtime_prompt, no_cache_prompt_tokens, no_cache_live_tokens = _assemble_blocks_seven_segment(
         system_content=system_content,
         user_content=user_content,
-        cache_content=cache_content,
+        caches_resolved_four=(cache_content, cache_content_b, cache_content_c, cache_content_d),
         nocache_content=nocache_content,
         live_content=live_content,
         model_code=model_code,
@@ -3762,6 +3898,34 @@ def get_agent_data(
             row["block_data"] = segment
         result.append(row)
     return result
+
+
+def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
+    """Ad Hoc import list: one dict per stored batch, newest first."""
+    rows = list_agent_data_batches()
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        total = len(rows)
+        for i, row in enumerate(rows, start=1):
+            batch_id = row.get("batch_id") or ""
+            created_at = row.get("created_at")
+            entity_id = row.get("entity_id")
+            task_key = row.get("task_key")
+            dbg.debug_index(
+                func="list_agent_data_runs",
+                index=i,
+                total=total,
+                identifier=str(batch_id),
+                outcome="listed",
+            )
+            dbg.debug_detail(
+                f"found created_at={created_at!r} entity_id={entity_id!r} task_key={task_key!r}"
+            )
+            dbg.debug_detail(
+                f"recorded batch_id={batch_id!r} created_at={created_at!r} "
+                f"entity_id={entity_id!r} task_key={task_key!r}"
+            )
+    return rows
 
 
 def get_entity_response(batch_id: str, entity_id: str) -> Optional[Dict[str, Any]]:

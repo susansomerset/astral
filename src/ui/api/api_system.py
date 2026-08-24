@@ -5,6 +5,7 @@ from typing import Optional
 from flask import Blueprint, g, jsonify, request
 
 from ui.auth import require_auth, require_admin
+from src.utils.auth import local_auth_passthrough_payload
 from src.core.candidate import (
     get_candidate,
     requested_artifacts_chain_artifact_keys,
@@ -15,6 +16,7 @@ from src.utils.config import (
     NAV_CONFIG,
     DATA_SHAPES,
     CANDIDATE_STATES,
+    CANDIDATE_STAGE_DISPATCH,
     IN_REVIEW_STATES,
     RECOMMENDED_JOB_STATES,
     SKIPPED_STATES,
@@ -24,7 +26,9 @@ from src.utils.config import (
     TOPIC_MENU_GEN_CONFIG,
     COVER_FROM_BLOCK_CONFIG,
     build_state_ui_manifest,
+    dispatch_hop_label,
     get_auth_session_policy,
+    nav_admin_only_group_labels,
 )
 from src.utils.logging import get_logger
 from src.core.deploy_status import get_deploy_status_payload
@@ -85,15 +89,12 @@ def _get_job_counts(candidate_id: Optional[str]) -> dict:
 
 
 def _resolve_nav(candidate_state: str, candidate_id: Optional[str] = None) -> list:
-    """Walk NAV_CONFIG and resolve visible/enabled gates against candidate_state."""
+    """Walk NAV_CONFIG and resolve item-level enabled gates against candidate_state."""
     company_counts = _get_company_counts(candidate_id)
     job_counts = _get_job_counts(candidate_id)
     nav_counts = {**company_counts, **job_counts}
     resolved = []
     for group in NAV_CONFIG:
-        visible_gate = group.get("visible")
-        if isinstance(visible_gate, str) and not _is_at_or_past(candidate_state, visible_gate):
-            continue
         resolved_items = []
         for item in group["items"]:
             enabled_gate = item.get("enabled")
@@ -116,7 +117,8 @@ def _nav_config_for_user(candidate_state: str, candidate_id: Optional[str]) -> l
     nav = _resolve_nav(candidate_state, candidate_id)
     if g.user.get("is_admin"):
         return nav
-    return [group for group in nav if group.get("label") != "Admin"]
+    admin_labels = nav_admin_only_group_labels()
+    return [group for group in nav if group.get("label") not in admin_labels]
 
 
 # --- Open endpoints (no auth) ---
@@ -130,6 +132,12 @@ def health():
 def auth_session_policy():
     """Non-secret session duration + extend cadence for SPA (AST-1373). Public on purpose."""
     return jsonify(get_auth_session_policy())
+
+
+@system_bp.route("/auth_passthrough")
+def auth_passthrough():
+    """Public non-secret local-auth signal for SPA. Public on purpose."""
+    return jsonify(local_auth_passthrough_payload())
 
 
 # --- Authenticated endpoints ---
@@ -204,6 +212,14 @@ def state_ui_manifest():
         cand["artifacts_chain_task_keys"] = requested_artifacts_chain_task_keys()
         cand["artifacts_chain_hop_labels"] = requested_artifacts_chain_hop_labels()
         cand["artifacts_chain_artifact_keys"] = requested_artifacts_chain_artifact_keys()
+        # AST-1388: hide Generate while on REQUESTED_ARTIFACTS.<hop> compound labels.
+        trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+        hide = list(cand.get("artifact_generate_inflight_hide_states") or [])
+        for tk in cand["artifacts_chain_task_keys"]:
+            label = dispatch_hop_label(trigger, tk)
+            if label not in hide:
+                hide.append(label)
+        cand["artifact_generate_inflight_hide_states"] = hide
     except Exception as exc:
         _log.warning("artifacts chain manifest walk failed: %s", exc)
         cand["artifacts_chain_task_keys"] = []

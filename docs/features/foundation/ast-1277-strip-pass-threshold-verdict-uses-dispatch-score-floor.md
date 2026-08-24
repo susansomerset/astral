@@ -1,3 +1,244 @@
+<!-- linear-archive: AST-1277 archived 2026-08-19 -->
+
+## Linear archive (AST-1277)
+
+**Archived:** 2026-08-19  
+**Linear URL:** https://linear.app/astralcareermatch/issue/AST-1277/strip-pass-threshold-verdict-uses-dispatch-score-floor-remove-pass  
+**Status at archive:** Archive  
+**Project:** Astral Foundation  
+**Assignee:** ada  
+**Priority / estimate:** None / —  
+**Parent:** AST-1275 — Remove "pass_threshold" from task_config  
+**Blocked by / blocks / related:** parent: AST-1275; blocks: AST-1279
+
+### Description
+
+## What this implements
+
+Remove every `TASK_CONFIG` `pass_threshold` (including `prefilter_company`). Scored verdict path reads `score_floor` from the candidate’s dispatch task row, with `0` meaning no numeric soft-fail. Dealbreaker/error paths unchanged. Does not own admin dropdown or canon retirement.
+
+## Acceptance criteria
+
+- [X] No `TASK_CONFIG` entry defines `pass_threshold` (roster, meteorite aliases, and `prefilter_company` included).
+- [X] A scored consult/prefilter run soft-fails or passes using the candidate dispatch task’s `score_floor`, including when that value is `0` (always-pass on numeric floor; dealbreaker/error still fail).
+
+## Boundaries
+
+Does not own admin Score Floor dropdown (sibling Katherine). Does not own statute retirement / pattern authoring / Code Rules rewrite (sibling Hedy).
+
+## In scope
+
+- [X] `pattern.config.config-block` — delete `pass_threshold` keys from `TASK_CONFIG`; no resurrected task-config threshold; `dispatch_row_task_key` for consult≠dispatch rename (prefilter)
+- [X] `pattern.batch.entity-claim-process-release` — claim floor normalizer shared; claim/count still reads row `score_floor`; verdict lookup via tracker trigger filter (no parallel hop parser)
+- [X] `pattern.state.entity-state-transitions` — pass/fail/error state names unchanged
+- [X] `astral.config.config-source-of-truth` — soft-fail floor from dispatch row / config helper, not hardcoded in core
+- [X] `astral.patterns.render-verdict-orchestrates-consult` — scored verdict applies dispatch `score_floor`
+- [X] `pattern.dispatch.score-floor` (proposed / plain-language until AST-1279 lands) — sole numeric floor; `0` allowed
+- [X] `astral.standards.no-hardcoded-sets` — no leftover magic `6.0` / `0.0` task-config threshold
+- [X] `astral.standards.in-scope-only`
+- [X] `astral.standards.dry-and-focused-functions`
+- [X] `astral.docs.features-single-file-per-ticket`
+- [X] `astral.git.engineer-test-tree-ban`
+
+## Considered but excluded
+
+- [X] `astral.config.pass-threshold-vs-score-floor` — retiring; owned by AST-1279 (do not rewrite Code Rules §2.1 here)
+- [X] `astral.layers.ui-config-driven-business-logic` — admin Score Floor dropdown is AST-1278
+- [X] `astral.layers.import-direction` / `astral.layers.core-vs-external-bright-line` — no new cross-layer edges beyond existing consult→tracker/config
+- Universal `orch.*` — not listed per-child
+
+## Notes for planning
+
+Sole numeric floor is `dispatch_task.score_floor`. Explicit `0` is valid. No resurrected task-config threshold.
+
+## Git branch (authoritative)
+
+Parent `ftr/AST-1275-remove-pass-threshold-from-task-config`; child `sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor`. Created at dispatch-parent.
+
+### Comments
+
+#### radia — 2026-08-08T02:04:40.077Z
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1277
+**Publish ref:** `sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `0cdf1e97` (post `merge-resume(AST-1277)` sync of the advanced `ftr/AST-1275` tip — AST-1278 landed + resolved mid-review)
+**Overall:** DISCUSS
+
+## Plan adherence
+
+- Both of Joan's round-1 fix-nows verified against the shipped diff, not just the plan text: `dispatch_row_task_key` correctly maps `prefilter_company` → dispatch row key `prefilter`; `_dispatch_score_floor_for_task` takes newest-first (`id DESC` via `tracker.list_dispatch_tasks_for_candidate`) with the documented single fallback.
+- `rg pass_threshold src/` returns no matches — Stage 1/2 done-when criteria fully met, exactly the seven enumerated `TASK_CONFIG` keys stripped; binary qualify/evaluate `_render_score(..., 0.0)` call sites untouched per plan step 5.
+- `roster.py`'s prefilter soft-fail sets `verdict_state = cfg["fail_state"]` *before* the decomposed/legacy `new_state` branching — verified by reading the full function, matches plan step 4 exactly.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.config.config-block` | conforms | `pass_threshold` keys deleted in place; new helpers added beside sibling score-floor helpers — no re-invented catalog. |
+| `pattern.batch.entity-claim-process-release` | conforms | Claim/process/release shape untouched; only the floor value computation inside the existing claim path swapped to the shared normalizer. |
+| `pattern.state.entity-state-transitions` | conforms | Core (`roster.py`) still decides `verdict_state`/`new_state`; no daisy-chaining introduced. |
+| `pattern.dispatch.score-floor` (proposed) | not-applicable | Not yet under `canon/patterns/**` (AST-1279 owns authoring). Plan conforms to the parent's plain-language rule instead of building against an unapproved id — correctly deferred. |
+
+## Findings
+
+**discuss (straggler, C4) — no reply needed, already resolved at plan/parent level.** `astral.config.pass-threshold-vs-score-floor` is still `status: active` and its text forbids feeding `dispatch_task.score_floor` into the verdict path — the plan's own "Considered but excluded" list named it (owned by AST-1279), so this sweep's C4 belt-and-suspenders check surfaces it as a straggler, and on the merits it does score `violates`, by design. Not a code defect: parent AST-1275 AC4/AC5 explicitly orders retirement of this statute in blocking sibling AST-1279, and Joan's `[plan-rubric] revision=1` **APPROVED** verdict reviewed this exact "law sequencing" interval and accepted it on parent authority. Flagged here only so the interval stays visible in both the plan bible and this review — nothing for Ada or this ticket to fix.
+
+**advisory — three more excluded-list ids matched generically.** `astral.layers.import-direction`, `astral.layers.core-vs-external-bright-line`, `astral.layers.ui-config-driven-business-logic` all matched this diff's `src/core/**` / `src/utils/config.py` paths (C4 mechanics) but all score `conforms` — no new cross-layer edges, no UI logic added to `config.py`. Noted for C4 completeness only, no action.
+
+## Frame diff
+
+(none) — no scope drift; description checkboxes already match delivered behavior.
+
+**What's solid:** Full active-set (64 `status: active` statutes) scored in-session — no fix-now anywhere. Shared `effective_dispatch_score_floor` used by both claim (`dispatcher.py`) and verdict (`consult.py`/`roster.py`) — one normalizer, no drift risk. Test-tree boundary held: `test(AST-1277)` + `merge-tests(AST-1277)` are the only commits touching `tests/`/`docs/test-bible/**`.
+
+**Notes:** Diff recomputed after syncing `origin/ftr/AST-1275` mid-review (`merge-resume(AST-1277)`, no conflicts) — the `src/ui/api_admin.py` / `AdminScheduledActions.tsx` / frontend-test content now riding in this three-dot diff is AST-1278's already-reviewed-CLEAN work arriving via that merge, not new AST-1277 content.
+
+context_tokens≈52000
+
+— Radia
+
+#### betty — 2026-08-08T01:55:47.314Z
+## QA test manifest
+
+**Publish:** `origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `138b239f`
+**merge-tests:** `merge-tests(AST-1277): origin/tests 5727659e1601f2faee2eb1dabde94e0794956e6d`
+
+### 1. Existing coverage (bible-backed)
+
+1. `tests/component/core/test_consult.py::TestRenderScore` — soft-fail math still positional on `_render_score(..., score_floor)`
+2. `tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states` — claim NULL→1.0 via shared normalizer
+
+### 2. Broken / obsolete (revised this pass)
+
+1. `TestRenderVerdict` scored cases (4) — empty table rubric broke hydrate after scored path always resolves floor; fixtures now mock `_rubric_criteria_for_cfg` + dispatch row floor
+2. `TestAst726…::test_apply_render_verdict_always_persists_notes_including_empty` — same fixture revision
+
+### 3. Gaps (this pass)
+
+1. `tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers` — no `pass_threshold` on seven TASK_CONFIG keys; `effective_dispatch_score_floor` NULL/`0`/`6`; `dispatch_row_task_key` prefilter + identity
+2. `tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict` — lookup NULL→1.0, prefilter→`prefilter` newest-first `0`; apply soft-fail under high floor; pass at floor `0`
+
+**Integration:** none revised (no existing scenarios assert TASK_CONFIG `pass_threshold` / scored floor source).
+
+### Run
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1277ScoreFloorHelpers \
+  tests/component/core/test_consult.py::TestAst1277DispatchScoreFloorVerdict \
+  tests/component/core/test_consult.py::TestRenderVerdict \
+  tests/component/core/test_consult.py::TestAst726LatestOnlyConsultOutcomes::test_apply_render_verdict_always_persists_notes_including_empty \
+  tests/component/core/test_dispatcher.py::TestRunUnified::test_uses_default_score_floor_for_scored_states \
+  -q
+```
+
+### Bible shasums (`origin/<publish-ref>`)
+
+- `docs/test-bible/core/consult.md` `ccb4932707219e2a3e5177455f773ad26004f9dd`
+- `docs/test-bible/utils/config.md` `02bfe34248f1ebbfa81a8cc290bb08baa80a4e4a`
+
+— Betty
+
+#### joan — 2026-08-08T01:45:31.119Z
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1277
+**Overall:** APPROVED
+**Publish ref tip:** `sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `46b341f3` (round-1 rubric ran at `87f191ce`)
+**Plan Discuss:** 1 completed round (concern + reply); no round 2 opened.
+
+## Traceability
+
+AC1→S1; AC2→S2 (parent AC1→S1; AC2→S2; parent AC3/AC4/AC5 N/A — boundary, AST-1278 / AST-1279). No orphan stages.
+
+**Considered:** full active corpus re-scored in-session against the revised change set (unchanged layers `utils` + `core`; paths `src/utils/config.py`, `src/core/{consult,roster,dispatcher}.py`). No `violates` remain.
+
+## Findings
+
+**Both round-1 fix-now items are closed — verified against source, not just against the reply.**
+
+*Prefilter dispatch key.* Stage 1 step 3 adds `dispatch_row_task_key` in `config.py` as the inverse of `dispatch_task_grouping_catalog_key`, mapping both `prefilter` and `ROSTER_CONFIG["prefilter"]["task_key"]` to the dispatch row key `prefilter`, identity for everything else. Checked: `ROSTER_CONFIG["prefilter"]["task_key"]` is `"prefilter_company"` (`config.py:1934`), defined well above the proposed insertion point next to `dispatch_task_grouping_catalog_key` (`config.py:2991`), so the reference resolves. Neither helper name already exists in `src/`. Identity for the meteorite aliases is right — `meteorite_grade_do` / `meteorite_grade_get` / `meteorite_like` are the same string on both the dispatch row and in `TASK_CONFIG`, and prefilter is the only consult≠dispatch pair the scored paths touch. Stage 2's Done-when now names the reachable `0` on the `prefilter` row explicitly, which is the AC2 half that was previously unreachable.
+
+*Tie-break ordering.* Stage 2 step 1 now states newest-first (`id DESC`) with the correct reason — `tracker.list_dispatch_tasks_for_candidate` walks `database.list_dispatch_tasks()`, which is `ORDER BY id DESC` — and explicitly bars consult from calling `database.list_dispatch_tasks_for_candidate`. Trigger filtering is delegated to the tracker helper's keyword-only `trigger_state=` (which owns `parse_dispatch_hop_label`), with a single documented fallback to the unfiltered list. That also closes the round-1 DRY discuss: no parallel hop parser in consult, and `dispatch_row_task_key` is the one rename point. The keyword-only call shape matches the helper's real signature.
+
+**acceptable — the three remaining round-1 discuss items are now written into the bible where a reviewer will find them.** *Post-land floor expectations* states plainly that roster `grade_do` / `grade_get` / `grade_like` soft-fail against `1.0` rather than today's `6.0` until Susan sets floors, that there is no backfill in this ticket, and what the Susan/UAT action is. *Law sequencing* records the accepted interval where the tree contradicts still-active `astral.config.pass-threshold-vs-score-floor` until AST-1279 lands. *Pattern citations* notes `pattern.dispatch.score-floor` is not yet under `canon/patterns/**` and that the parent's `astral.patterns.render-verdict-orchestrates-consult` citation is retired in favour of `astral.idioms.render-verdict-orchestrates-consult`. All three are non-blocking and none is this child's to resolve.
+
+**acceptable — revision hygiene.** The revision is doc-only (`git diff --name-only 87f191ce..46b341f3` = the plan file alone), so nothing landed in `src/` during Plan Discuss. `## Revisions` records the driver and the changes. Conf dropped `high` → `Medium` with an honest reason, which now matches the plan's actual complexity; Scope `Single-Component` and Risk `Medium` still read true.
+
+**note — carried forward for build, not blocking.** The trigger preference passes the job's pre-transition state, which is the dispatch trigger for the `grade_*` hops; if a runtime hop label ever reaches it, the tracker filter yields nothing and the documented fallback takes the newest row for that `task_key`. That degradation is intentional and written down — worth a glance at test time rather than a plan change.
+
+— Joan
+
+context_tokens≈96000
+
+#### ada — 2026-08-08T01:43:28.500Z
+[plan-discuss] round=1 reply
+
+Plan revised on `origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `46b341f3`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor/docs/features/foundation/ast-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor.md)
+
+**fix-now — prefilter key:** Added `dispatch_row_task_key` (maps `prefilter_company` / `prefilter` → dispatch row key `prefilter`; identity otherwise). Stage 2 / roster call still passes the consult key; lookup never queries migrated-away `prefilter_company` rows.
+
+**fix-now — tie-break order:** Lookup uses `tracker.list_dispatch_tasks_for_candidate(..., trigger_state=)` (compound hop labels included). Multi-row tie-break is **newest first** (`id DESC` via tracker’s walk of `list_dispatch_tasks`) — dropped the false `id ASC` claim; consult does not call `database.list_dispatch_tasks_for_candidate`.
+
+**discuss — NULL→1.0 verdict:** Documented under **Post-land floor expectations** — same normalizer as claim; roster GDL with NULL floors soft-fail at `1.0` (not historical `6.0`) until Susan sets floors; no backfill in this ticket; meteorite seeds already `0.0`.
+
+**discuss — active law interval:** Plan now states parent-ordered contradiction of still-active `astral.config.pass-threshold-vs-score-floor` until AST-1279 lands; this child does not rewrite Code Rules.
+
+**discuss — DRY trigger match / patterns:** Trigger filtering delegated to tracker helper; pattern citation note (plain-language until AST-1279; retired vs live render-verdict idiom id) added.
+
+**Self-assessment:** Conf → `Medium` (prefilter key miss was real). Scope/Risk unchanged.
+
+#### joan — 2026-08-08T01:40:58.697Z
+[plan-discuss] round=1 concern
+[plan-rubric] revision=1
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1277
+**Overall:** REVISE
+**Publish ref tip:** `sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `87f191ce`
+
+## Traceability
+
+AC1→S1; AC2→S2 (parent AC1→S1; AC2→S2; parent AC3/AC4/AC5 N/A — boundary, AST-1278 / AST-1279). No orphan stages.
+
+**Considered:** full active corpus scored in-session (universal `orch.*` set + scoped `core`/`utils` matches on `src/core/**`, `src/utils/config.py`).
+
+## Findings
+
+**fix-now — Stage 2 step 4: prefilter dispatch lookup key is wrong.** The plan calls `_dispatch_score_floor_for_task(candidate_id, "prefilter_company")`, but `prefilter_company` is the **TASK_CONFIG** key, not the dispatch row key. Dispatch rows use `task_key = "prefilter"`: `config.dispatch_task_grouping_catalog_key` exists specifically because "dispatch key differs from consult key" for prefilter, `_dispatch_entity_type_for_task_key` / `_dispatch_trigger_state_for_task_key` special-case `"prefilter"`, and `database.py` (AST-823 migration) does `UPDATE dispatch_task SET task_key = 'prefilter' … WHERE entity_type = 'company' AND task_key = 'prefilter_company'` — so no `prefilter_company` row survives. As written, the lookup matches zero rows, falls to the NULL normalizer, and prefilter soft-fails at a permanent `1.0`. Parent AC2 ("prefilter … using the candidate dispatch task's `score_floor`, including when that value is `0`") would be unmet, and AST-1278's `0` would be unreachable for prefilter. **Recommendation:** resolve the dispatch key from config rather than hardcoding the consult key, and say in the stage which key the lookup takes when the two differ (meteorite aliases are fine — `meteorite_grade_do` etc. are the same string on both sides).
+
+**fix-now — Stage 2 step 1: tie-break ordering claim is inverted.** The plan says multiple same-`task_key` rows resolve to "the **first** row in the list order returned by `list_dispatch_tasks_for_candidate` (stable `id ASC` from data layer)". `tracker.list_dispatch_tasks_for_candidate` does not use the data-layer function of that name — it iterates `database.list_dispatch_tasks()`, which is `ORDER BY id DESC` (newest first). Only `database.list_dispatch_tasks_for_candidate` is `id ASC`, and that would be core reaching past its tracker wrapper. An engineer implementing the sentence literally gets the opposite row. **Recommendation:** state the intended row explicitly (newest vs oldest, and why), and prefer passing `trigger_state=` into the tracker helper — it already resolves compound hop labels via `parse_dispatch_hop_label`.
+
+**discuss — NULL→`1.0` on the verdict path is new semantics with a production consequence.** The parent preserves NULL→`1.0` for **claim**; it says nothing about NULL for **verdict**. Roster `grade_do` / `grade_get` / `grade_like` dispatch rows are not seeded with a floor (only `METEORITE_DISPATCH_TASKS` carries explicit `0.0`), so on the day this lands those jobs grade against `1.0` instead of today's `6.0` until Susan sets floors in admin. That is a defensible read of the parent, but the plan should state the expected post-land floor values and whether any row backfill or Susan action is required before this ships. (`orch.pipeline.call-susan-for-product-decisions`)
+
+**discuss — sequencing against still-active law.** `astral.config.pass-threshold-vs-score-floor` is `status: active` and forbids exactly this wiring ("Do not feed `dispatch_task.score_floor` into this path"). Parent AC4 retires it in AST-1279, which AST-1277 **blocks** — so this child lands first and the tree contradicts active law in the interval. Accepted on parent authority; the plan should say so where a reviewer will look, since the plan's §2.1 self-review only mentions not rewriting Code Rules.
+
+**discuss — DRY on the trigger match.** `_dispatch_score_floor_for_task` re-implements trigger filtering that `tracker.list_dispatch_tasks_for_candidate(..., trigger_state=…)` already performs, including compound `{trigger}.{task_key}` hop labels. The plan's exact-equality compare misses those labels and silently falls through to the unfiltered set. (`astral.standards.dry-and-focused-functions`)
+
+**discuss — pattern citations.** `pattern.dispatch.score-floor` is cited but not yet drafted under `canon/patterns/**` (AST-1279 owns authoring) — plain-language conformance is the only thing checkable now. Separately, the parent cites `astral.patterns.render-verdict-orchestrates-consult`, which is `status: retired`; the live id is `astral.idioms.render-verdict-orchestrates-consult`. Neither is this child's to fix.
+
+**acceptable — verified against source.** The seven `pass_threshold` keys are exactly the ones enumerated (`prefilter_company` `0.0`; `grade_do` / `grade_get` / `grade_like` / `meteorite_grade_do` / `meteorite_grade_get` / `meteorite_like` `6.0`). The `dispatcher.py` claim-line replacement is numerically equivalent to today's ternary. Dropping the artifact `{rubric_key}_threshold` override is safe — `consult.py:1099` is the only `*_threshold` artifact reader in `src/` and nothing writes those keys. `roster._apply_prefilter_decoded_company_outcome` already has `candidate_id` from `ctx` and already local-imports the consult helpers, so step 4's wiring lands where the plan says. Helper placement, layer edges (`core`→`utils`, existing `roster`→`consult`), test-tree ban, and single-file-per-ticket docs all hold.
+
+Self-assessment: `Single-Component` / `Medium` risk are honest. `high` conf is a touch generous given the prefilter key miss — the enumeration it rests on is right for `TASK_CONFIG` but not for the dispatch rows.
+
+— Joan
+
+context_tokens≈79000
+
+#### ada — 2026-08-08T01:34:52.385Z
+Plan published on `origin/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor` @ `87f191ce`.
+
+[Plan doc](https://github.com/susansomerset/astral/blob/sub/AST-1275/AST-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor/docs/features/foundation/ast-1277-strip-pass-threshold-verdict-uses-dispatch-score-floor.md)
+
+**Scope:** Single-Component — strip seven `TASK_CONFIG` `pass_threshold` keys; scored soft-fail in consult (+ prefilter) reads candidate `dispatch_task.score_floor` via shared NULL→1.0 / keep-`0` normalizer; dispatcher claim reuses the helper.
+
+**Conf:** high — keys and call sites are enumerated; claim already owns `score_floor`; AST-1278/1279 own admin `0` and law rewrite.
+
+**Risk:** Medium — wrong row lookup or NULL→1.0 on prefilter changes who soft-fails vs historical `6.0`/`0.0` task-config thresholds; dealbreaker/error paths stay, but a bad floor still parks fail states.
+
+---
+
 # AST-1277 — Strip pass_threshold; verdict uses dispatch score_floor
 
 **Linear:** [AST-1277](https://linear.app/astralcareermatch/issue/AST-1277/strip-pass-threshold-verdict-uses-dispatch-score-floor-remove-pass)  

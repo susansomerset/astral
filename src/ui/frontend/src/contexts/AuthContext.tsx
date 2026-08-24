@@ -4,11 +4,13 @@ import {
   useContext,
   useEffect,
   useLayoutEffect,
+  useRef,
   useState,
   type ReactNode,
 } from "react"
 import { useStytch, useStytchSession } from "@stytch/react"
 import api, { setAuthTokenGetter, setUnauthorizedHandler } from "../lib/api"
+import { fetchAuthPassthrough } from "../lib/authPassthrough"
 import { fetchAuthSessionPolicy } from "../lib/authSessionPolicy"
 import { startSessionExtendLoop } from "../lib/sessionExtend"
 import { markHadSession, setLogOffReason } from "../lib/sessionAuthMark"
@@ -24,6 +26,7 @@ interface AuthCtx {
   isAdmin: boolean
   loading: boolean
   refreshMe: () => void
+  localAuthPassthrough: boolean | null
 }
 
 const AuthContext = createContext<AuthCtx>({
@@ -31,6 +34,7 @@ const AuthContext = createContext<AuthCtx>({
   isAdmin: false,
   loading: true,
   refreshMe: () => {},
+  localAuthPassthrough: null,
 })
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -39,6 +43,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MeUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [, setAuthEpoch] = useState(0)
+  const identityResolvedRef = useRef(false)
+  const sessionPresent = Boolean(session)
+  const [localAuthPassthrough, setLocalAuthPassthrough] = useState<boolean | null>(null)
 
   // Stable string dep — Stytch hook objects may change identity every render.
   const sessionJwt =
@@ -55,13 +62,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const loadMe = useCallback(async () => {
-    setLoading(true)
+    if (!identityResolvedRef.current) {
+      setLoading(true)
+    }
     try {
       const r = await api("/api/me")
       if (!r.ok) {
         if (r.status === 401) {
-          setLogOffReason("server-rejection")
-          setAuthEpoch((n) => n + 1)
+          if (localAuthPassthrough !== true) {
+            setLogOffReason("server-rejection")
+            setAuthEpoch((n) => n + 1)
+          }
+          setUser(null)
+          return
         }
         setUser(null)
         return
@@ -71,24 +84,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch {
       setUser(null)
     } finally {
+      identityResolvedRef.current = true
       setLoading(false)
+    }
+  }, [localAuthPassthrough])
+
+  useEffect(() => {
+    let cancelled = false
+    void (async () => {
+      const on = await fetchAuthPassthrough()
+      if (!cancelled) setLocalAuthPassthrough(on)
+    })()
+    return () => {
+      cancelled = true
     }
   }, [])
 
   useEffect(() => {
-    if (!session) {
+    if (localAuthPassthrough === null) {
+      setLoading(true)
+      return
+    }
+    if (localAuthPassthrough) {
+      loadMe()
+      return
+    }
+    if (!sessionPresent) {
+      identityResolvedRef.current = false
       setUser(null)
       setLoading(false)
       return
     }
     markHadSession()
-    // sessionJwt may be null when Stytch uses opaque cookies — /api/me uses cookie auth.
     loadMe()
-  }, [session, sessionJwt, loadMe])
+  }, [localAuthPassthrough, sessionPresent, sessionJwt, loadMe])
 
   // Config-backed Stytch session extend while a client session exists (AST-1374).
   useEffect(() => {
-    if (!session) return
+    if (localAuthPassthrough !== false) return
+    if (!sessionPresent) return
     let cancelled = false
     let clear: (() => void) | undefined
     void (async () => {
@@ -109,11 +143,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       cancelled = true
       clear?.()
     }
-  }, [session, stytch])
+  }, [localAuthPassthrough, sessionPresent, stytch])
 
   const refreshMe = useCallback(() => {
-    if (session) loadMe()
-  }, [session, loadMe])
+    if (localAuthPassthrough || session) loadMe()
+  }, [localAuthPassthrough, session, loadMe])
 
   return (
     <AuthContext.Provider
@@ -122,6 +156,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isAdmin: Boolean(user?.is_admin),
         loading,
         refreshMe,
+        localAuthPassthrough,
       }}
     >
       {children}

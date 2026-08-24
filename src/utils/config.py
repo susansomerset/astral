@@ -32,7 +32,7 @@ Config sections:
   NAV_CONFIG      — UI navigation structure
   DATA_SHAPES     — UI data contracts per entity
   BUILD_CONFIG    — artifact rendering tokens, section metadata, JSON shape contracts
-  AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373)
+  AUTH_CONFIG     — Stytch credentials, admin lists (AST-609), session duration / activity-extension cadence (AST-1373), local_operator identity literals
   ADMIN_CONFIG    — admin UI (reconciliation + Avail-gt0 always-visible dispatch keys AST-1106)
   MERGE_TICKET_LOG_CONFIG — append-only parent epic land history (AST-675/681)
   REPO_ADMIN_JSON_CONFIG — repo-owned agent / agent_task JSON under data/admin/ (AST-782)
@@ -111,9 +111,9 @@ _ENCODED_CONSULT_JOB_ITEM_SCHEMA = {
 
 _CRAFT_RUBRIC_CRITERION_ITEMS_SCHEMA: Dict[str, Dict[str, Any]] = {
     "label": {"type": "str", "required": True},
-    "code": {"type": "str", "required": True},
-    "content": {"type": "str", "required": True},
+    "code": {"type": "str", "required": True, "example": "<code (unique to rubric)>"},
     "importance": {"type": "int", "required": True, "min": 0, "max": 10},
+    "content": {"type": "str", "required": True},
 }
 _CRAFT_RUBRIC_CRITERIA_RESPONSE_SCHEMA: Dict[str, Dict[str, Any]] = {
     "criteria": {
@@ -4349,8 +4349,9 @@ LLM_PROVIDER_CONFIG = {
             },
             BRAIN_BIG: {
                 "vendor_model": "deepseek-v4-pro",
-                "thinking": True,
+                "thinking": False,
                 "reasoning_effort": "max",
+                "max_tokens": 384000,  # AST-1391: hop output floor; not the shared v4-pro SKU default
             },
         },
     },
@@ -4464,6 +4465,20 @@ def resolve_brain_setting_to_deepseek_tier_meta(brain_setting: str) -> Dict[str,
     return tier
 
 
+def deepseek_brain_max_tokens_floor(brain_setting: str) -> Optional[int]:
+    """AST-1391: DeepSeek tier output-token floor, or None when the tier has none."""
+    validate_allowed_brain_setting(brain_setting)
+    raw = (
+        LLM_PROVIDER_CONFIG["tier_map"]
+        .get("deepseek", {})
+        .get(brain_setting, {})
+        .get("max_tokens")
+    )
+    if raw is None:
+        return None
+    return int(raw)
+
+
 def validate_llm_provider_environment() -> None:
     """Fatal startup parity: require secrets for whichever vendor config selects (no fallback)."""
     provider = get_active_llm_provider()
@@ -4512,11 +4527,14 @@ def admin_brain_setting_catalog() -> list[dict[str, Any]]:
 # NAV_CONFIG: UI navigation structure. Grouped sidebar sections with labels
 # and route paths. Served to React frontend via /api/nav_config.
 #
-# Optional group-level "visible": a CANDIDATE_STATES key. Group is hidden
-# unless the candidate is at or past that state. Omit = always visible.
+# Optional group-level "admin_only": True. When True, /api/nav_config omits
+# the group for non-admin users (resolved via nav_admin_only_group_labels).
+# Omit the key (or False) = visible to every authenticated user.
 #
 # Optional item-level "enabled": a CANDIDATE_STATES key (disabled unless at
 # or past that state) or False (permanently disabled stub). Omit = always enabled.
+#
+# Group-level candidate-state "visible" is not a NAV_CONFIG key. Do not add it.
 #
 # ADMIN_CONFIG: Frontend-facing admin UI configuration served via /api/admin/config.
 # ---------------------------------------------------------------------------
@@ -4564,6 +4582,11 @@ AUTH_CONFIG = {
     # Non-secret Stytch client session policy (AST-1373) — retune here, not SPA constants.
     "session_duration_minutes": 20,
     "activity_extension_interval_minutes": 10,
+    # Synthetic operator for local-deploy API passthrough. Not a Stytch user.
+    "local_operator": {
+        "user_id": "local-operator",
+        "name": "Local Operator",
+    },
 }
 
 
@@ -4613,9 +4636,10 @@ UI_CONFIG = {
 }
 
 # ---------------------------------------------------------------------------
-# The /api/nav_config endpoint in system.py resolves these against the
-# selected candidate's state before serving. The frontend renders the
-# resolved response with no additional visibility logic.
+# The /api/nav_config endpoint in api_system.py resolves item-level enabled
+# gates against the selected candidate's state and omits admin_only groups
+# for non-admins before serving. The frontend renders the resolved response
+# with no additional visibility logic.
 #
 # SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
 #       If you add/remove/rename a nav item, update routes.tsx to match.
@@ -4623,7 +4647,6 @@ UI_CONFIG = {
 NAV_CONFIG = [
     {
         "label": "Jobs",
-        "visible": "ACTIVE_SEARCH",
         "items": [
             {"label": "In Review", "path": "/jobs/in_review"},
             {"label": "Skipped", "path": "/jobs/skipped"},
@@ -4634,7 +4657,6 @@ NAV_CONFIG = [
     },
     {
         "label": "Companies",
-        "visible": "ACTIVE_SEARCH",
         "items": [
             {"label": "Watch List", "path": "/companies/watch_list"},
             {"label": "New List", "path": "/companies/new_list"},
@@ -4645,7 +4667,6 @@ NAV_CONFIG = [
     },
     {
         "label": "Artifacts",
-        "visible": "RESUME_READY",
         "items": [
             {"label": "Base Resume Content", "path": "/artifacts/base_resume_content"},
             {"label": "Company Watch Criteria", "path": "/artifacts/company_watch_criteria"},
@@ -4674,26 +4695,46 @@ NAV_CONFIG = [
         ],
     },
     {
-        "label": "Admin",
+        "label": "Operations",
+        "admin_only": True,
         "items": [
             {"label": "Scheduled Actions", "path": "/admin/scheduled_actions"},
             {"label": "Execution History", "path": "/admin/performance_monitor"},
-            {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
             {"label": "Vector Feedback", "path": "/admin/vector_feedback"},
-            {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
-            {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
-            {"label": "Manage Agents", "path": "/admin/agent_prompts"},
-            {"label": "Manage Tasks", "path": "/admin/task_prompts"},
-            {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
-            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
-            {"label": "Data Management", "path": "/admin/data_management"},
-            {"label": "Session Resume Paste", "path": "/admin/session_resume_paste"},
-            {"label": "Session Cover Letter", "path": "/admin/session_cover_letter"},
             {"label": "Manage Email", "path": "/admin/manage_email"},
             {"label": "Manage Slack", "path": "/admin/manage_slack"},
+            {"label": "Manage Candidates", "path": "/admin/manage_candidates"},
+        ],
+    },
+    {
+        "label": "Admin",
+        "admin_only": True,
+        "items": [
+            {"label": "Manage Agents", "path": "/admin/agent_prompts"},
+            {"label": "Manage Tasks", "path": "/admin/task_prompts"},
+            {"label": "Scheduled Queries", "path": "/admin/scheduled_queries"},
+            {"label": "Agent Timesheets", "path": "/admin/agent_timesheets"},
+        ],
+    },
+    {
+        "label": "Tools",
+        "admin_only": True,
+        "items": [
+            {"label": "Data Management", "path": "/admin/data_management"},
+            {"label": "Agent Ad Hoc", "path": "/admin/anthropic_ad_hoc"},
+            {"label": "Cost Reconciliation", "path": "/admin/cost_reconciliation"},
+            {"label": "Resume Paste", "path": "/admin/session_resume_paste"},
+            {"label": "Cover Letter Paste", "path": "/admin/session_cover_letter"},
         ],
     },
 ]
+
+
+def nav_admin_only_group_labels() -> frozenset[str]:
+    """Sidebar group labels omitted from /api/nav_config for non-admins (AST-1386)."""
+    return frozenset(
+        group["label"] for group in NAV_CONFIG if group.get("admin_only")
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -5245,6 +5286,20 @@ def is_valid_job_batch_claim_state(state: str) -> bool:
     return False
 
 
+def is_valid_candidate_batch_claim_state(state: str) -> bool:
+    """True for CANDIDATE_STATES keys and REQUESTED_ARTIFACTS.<hop> runtime labels (claim + persist)."""
+    s = (state or "").strip()
+    if not s:
+        return False
+    if s in CANDIDATE_STATES:
+        return True
+    parsed = parse_dispatch_hop_label(s)
+    if parsed is None:
+        return False
+    stage_trigger = CANDIDATE_STAGE_DISPATCH["requested_artifacts"]["trigger_state"]
+    return parsed[0] == stage_trigger
+
+
 def dispatch_hop_label(trigger_state: str, completed_task_key: str) -> str:
     ts = (trigger_state or "").strip()
     tk = (completed_task_key or "").strip()
@@ -5609,6 +5664,12 @@ TOKEN_SOURCES = {
     "COMPANY_SEARCH_TERMS": {"source": "candidate", "path": "artifacts.company_search_terms"},
     # Resolved from rubric_vector rows for active task owner (AST-723).
     "RUBRIC_VECTORS":       {"source": "rubric"},
+    # AST-1405: named pins — same serialize path as RUBRIC_VECTORS; owner is the pin, not the running task.
+    "GET_RUBRIC":           {"source": "rubric", "owner_task_key": "grade_get"},
+    "DO_RUBRIC":            {"source": "rubric", "owner_task_key": "grade_do"},
+    "LIKE_RUBRIC":          {"source": "rubric", "owner_task_key": "grade_like"},
+    "JD_RUBRIC":            {"source": "rubric", "owner_task_key": "evaluate_jd"},
+    "PREFILTER_RUBRIC":     {"source": "rubric", "owner_task_key": "prefilter_company"},
 
     # config-driven (resolved via named function, not dot-path)
     "RESPONSE_SCHEMA":      {"source": "config", "resolver": "stringify_response_schema"},
@@ -5715,6 +5776,9 @@ def _schema_to_example(schema: dict) -> object:
     """Recursively convert a response_schema definition into a JSON example shape."""
     result = {}
     for key, spec in schema.items():
+        if "example" in spec:
+            result[key] = spec["example"]
+            continue
         t = spec.get("type", "str")
         if t == "str":
             enum = spec.get("enum")
@@ -5803,11 +5867,12 @@ def resolve_tokens(
             if spec.get("serialize") == "resume_sections_json":
                 from src.core.candidate import format_base_resume_for_token
                 out = format_base_resume_for_token(candidate_data)
-                if not out:
+                # AST-1396: {} means no candidate in context — empty is expected, not a missing-name bug.
+                if not out and candidate_data:
                     _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
                 return out
             raw = _walk_dot_path(candidate_data, spec["path"])
-            if raw is None or raw == "" or raw == []:
+            if (raw is None or raw == "" or raw == []) and candidate_data:
                 _log.warning("Token {$%s} resolved to empty (path=%s, task=%s)", name, spec["path"], task_key)
             return _value_to_str(raw)
         if spec["source"] == "config":
@@ -5846,12 +5911,18 @@ def resolve_tokens(
         if spec["source"] == "rubric":
             from src.core.candidate import rubric_criteria_for_token
 
-            owner = rubric_owner_task_key(task_key)
+            pinned = spec.get("owner_task_key")
+            owner = pinned or rubric_owner_task_key(task_key)
             if not owner:
                 _log.warning("Token {$%s} unresolved — task %r has no rubric owner", name, task_key)
                 return ""
             cid = (candidate_data or {}).get("_astral_candidate_id") or ""
             if not cid:
+                # AST-1405 / AST-1396: pinned names with no candidate in context (cd == {})
+                # are expected empty — do not spam missing-id warnings. Unpinned
+                # RUBRIC_VECTORS keeps the existing missing-id warning.
+                if pinned and not candidate_data:
+                    return ""
                 _log.warning("Token {$%s} unresolved — missing candidate id (task=%s)", name, task_key)
                 return ""
             return _value_to_str(rubric_criteria_for_token(cid, owner))
