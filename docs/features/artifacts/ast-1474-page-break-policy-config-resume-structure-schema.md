@@ -146,3 +146,33 @@ RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID = {
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1474
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema` @ `56eecd88`
+
+## Traceability
+AC1→Stages 1–2 (config `avoid_split` on all `RESUME_STRUCTURE_DEFAULT` rows + normalize coerce); AC2→Stages 2–3 (persist via normalize on PUT + GET `catalog`/`all_sections`); parent AC2/3/5/6 and end-to-end print CSS→siblings N/A for this child's Scope.
+
+## Findings
+
+### discuss — Missing `## Self-assessment`
+- **Location:** plan doc (after `## Estimate`)
+- **Finding:** No self-assessment / confidence block; other artifact plans carry one.
+- **Recommendation:** Optional add before build — low risk here because stages, scope gate, and binding Decisions are already explicit.
+
+### discuss — Child AC1 names print CSS
+- **Location:** ticket AC1 vs plan Out of scope
+- **Finding:** AC1 text says “in print CSS”; this slice delivers schema/defaults only; print emit is AST-1475.
+- **Recommendation:** Ada should treat AC1 as satisfied at this layer when defaults persist `avoid_split` everywhere including `prior_experience`; full AC1 UAT waits on Hedy.
+
+### acceptable — Hydrate soft-default vs normalize strict-validate
+- **Location:** Stage 2 step 5
+- **Finding:** Hydrate may silently stamp default policy for legacy blobs; PUT/Save still validates via `normalize_resume_structure`.
+- **Recommendation:** Matches stated intent for read-only display of pre-epic data.
+
+context_tokens≈18500
