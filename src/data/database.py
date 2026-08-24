@@ -7603,7 +7603,7 @@ def get_due_tasks() -> List[Dict[str, Any]]:
         try:
             _ensure_dispatch_task_schema(conn)
             rows = conn.execute(
-                "SELECT * FROM dispatch_task WHERE auto_mode = 1 ORDER BY id"
+                "SELECT * FROM dispatch_task WHERE auto_mode = 1 ORDER BY last_run_at"
             ).fetchall()
             return [_row_to_dict(r) for r in rows]
         finally:
