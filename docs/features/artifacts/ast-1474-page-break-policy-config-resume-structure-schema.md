@@ -176,3 +176,9 @@ AC1→Stages 1–2 (config `avoid_split` on all `RESUME_STRUCTURE_DEFAULT` rows 
 - **Recommendation:** Matches stated intent for read-only display of pre-epic data.
 
 context_tokens≈18500
+
+## Review
+
+- **Publish ref:** `sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`
+- **Tip:** `7c53225a`
+- **Files:** `src/utils/config.py`, `src/core/candidate.py`, `src/ui/api/api_candidate.py`
