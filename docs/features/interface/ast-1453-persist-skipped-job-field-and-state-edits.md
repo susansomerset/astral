@@ -143,3 +143,166 @@ No `fix-now` findings.
 **Built:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `58c90b1adad18aef857f327ff348d3f0102bff37`
 
 Stage 1–2: `legal_job_successor_states` + `persist_skipped_job_edits` in tracker; GET detail meta (`fields_editable` / `legal_next_states`) + authenticated PUT persist on `jobs_bp`. Form chrome deferred to AST-1454. Tests deferred to Betty.
+
+## Radia review
+
+# Radia review — AST-1453
+
+**Publish ref:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `23a691710ee3ed4aea4959161d21cc70fa6e0516`  
+**Baseline:** `origin/dev`  
+**Status gate:** Tests Passed (spawn prompt; trusted)  
+**Product delta:** `58c90b1a` (+ Betty `c8ecee59` tests/bible)
+
+---
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1453  
+**Publish ref:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `23a691710ee3ed4aea4959161d21cc70fa6e0516`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+Registry: 64 active rows from `canon/statutes/README.md` § Harvested corpus (doc header says 65; table lists 64 distinct ids at review SHA).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent.py changes in AST-1453 product delta |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / dispatch changes in child delta |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths touched |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim/release in child delta |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id emission in child delta |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/finally paths in child delta |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity_agent_responses writes |
+| astral.config.config-source-of-truth | scoped | conforms | SKIPPED_STATES / JOB_STATES / TRACKER_CONFIG from config, not duplicated |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no env/secret surface in child delta |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifact dirs |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next / chain edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single `ast-1453-*.md` issue doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commit limited to tests + test-bible |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer product commit excludes tests/ |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | child delta stays core + ui/api |
+| astral.layers.import-direction | scoped | conforms | api_jobs → core.tracker only; tracker → data/utils |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/ changes in child delta |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | editability + successors resolved server-side from config/registry |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | JD via direct save_job_data per plan; empty JD is intentional operator edit, not coat-check cache |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | PUT `/api/jobs/<id>` uses `@require_auth`; 401 test present |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed/json changes in child delta |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot/seed hot-path changes |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed row mutations |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed work |
+| astral.standards.data-raises-caller-logs | scoped | conforms | persist_skipped_job_edits logs nothing (plan: do not log) |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py / migration changes in child delta |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no new debug= surfaces in child delta |
+| astral.standards.dry-and-focused-functions | scoped | conforms | two focused helpers; PUT delegates to detail() for shape parity |
+| astral.standards.in-scope-only | scoped | conforms | product commits touch only tracker.py + api_jobs.py |
+| astral.standards.logging-via-utils | scoped | conforms | no new print/logging in persist path |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names throughout |
+| astral.standards.no-cross-contamination | scoped | conforms | no unrelated subsystem edits in child product commits |
+| astral.standards.no-hardcoded-sets | scoped | conforms | SKIPPED_STATES imported; successors derived from JOB_STATES |
+| astral.standards.public-then-helpers | scoped | conforms | new public functions precede existing transition helpers block |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data late-import changes |
+| astral.state.core-decides-transitions | scoped | conforms | state hops via transition_job_state only |
+| astral.state.job-prior-states-enforced | scoped | conforms | legal_job_successor_states mirrors _job_state_matches_prior; illegal hops propagate ValueError |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/daisy-chain edits |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend changes (AST-1454 sibling) |
+| astral.ui.naming-conventions | scoped | not-applicable | no frontend changes |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config in child delta |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip includes merge-tests(AST-1453) single test SHA |
+| orch.git.commit-vocabulary | universal | conforms | code/test/docs commits use standard prefixes |
+| orch.git.flow-direction-inviolable | universal | conforms | sub publish ref topology correct |
+| orch.git.ftr-sub-topology | universal | conforms | child on sub/AST-1446/AST-1453-* |
+| orch.git.merge-on-checkout | universal | conforms | sync(dev) merges present on publish ref |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase/force evidence on child path |
+| orch.git.no-dev-agent-branches | universal | conforms | engineer branch naming follows sub convention |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in astral-AST-1446 worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | plan decisions documented; no unresolved product forks |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches staged plan contract |
+| orch.pipeline.project-scoped-queues | universal | conforms | Astral Interface child reviewed in isolation |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | spawned at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | statute corpus active at review SHA |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty landed manifest + bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Radia recommend-only |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada remains assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed on child delta |
+
+**C4 straggler:** Joan APPROVED @ `147c59ae`; no Excluded statute table attached — `no plan-rubric Excluded list attached`.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.admin-endpoint | conforms | Plan ⚠️ routes on authenticated `jobs_bp` not admin blueprint; auth + thin API + server-side eligibility match pattern intent (Joan acceptable finding stands) |
+
+## Plan adherence
+
+Stages 1–2 delivered exactly as planned:
+
+- **`legal_job_successor_states`** — derives successors from `JOB_STATES` + `_job_state_matches_prior`, excludes self, includes unrestricted `prior_states is None` entries.
+- **`persist_skipped_job_edits`** — gates on `SKIPPED_STATES`; writes JD then columns then optional `transition_job_state`; field-before-hop ordering tested; no logging/dispatch/scrape/consult.
+- **GET detail** — `_attach_skipped_edit_meta` adds `fields_editable` / `legal_next_states`; list_view untouched.
+- **PUT persist** — `@require_auth`, allowed-key filter, 404 pre-check, ValueError→status map per plan, success returns via `detail()` for shape parity.
+
+Estimate **3** fits (~102 LOC product + focused Betty tests). No React / JobDetailModal scope (AST-1454). Cross-ticket: child product commits do not smuggle sibling scope; publish-ref rollup includes epic merges from other AST-1446 children — outside AST-1453 commits, not charged to this ticket.
+
+**Test manifest (Betty):** `TestAst1453LegalJobSuccessorStates`, `TestAst1453PersistSkippedJobEdits`, `TestAst1453SkippedEditMetaAndPut` align with bible entries; status Tests Passed.
+
+## Frame diff
+
+| Plan frame | Tip reality |
+|------------|-------------|
+| Engineer: `tracker.py`, `api_jobs.py` only | `58c90b1a` matches (+ `SKIPPED_STATES` import only) |
+| No tests/docs by engineer | Engineer excluded tests; Betty added bible + component tests (`c8ecee59`) — expected pipeline |
+| No React | unchanged |
+| Form chrome → AST-1454 | unchanged |
+
+(none beyond expected Betty/test-bible additions)
+
+## Findings
+
+### advisory
+
+- **Location:** `tests/component/core/test_tracker.py`, `tests/component/ui/api/test_api_jobs.py` vs bible status map  
+- **Finding:** Bible documents PUT **409** for `job identity collision`, but no component test asserts that path (core or API).  
+- **Recommendation:** Optional Betty follow-up before UT if Susan wants the status map fully locked; not blocking — handler mapping is present in `api_jobs.py`.
+
+- **Location:** `legal_job_successor_states` return order  
+- **Finding:** Successors follow `JOB_STATES.items()` iteration order (unsorted). Plan does not require sort; AST-1454 dropdown may want stable alphabetical order.  
+- **Recommendation:** Discuss with AST-1454 implementer only if UX needs it; no backend change required now.
+
+- **Location:** PUT pre-check vs persist reload (`api_jobs.py` ~188–203)  
+- **Finding:** 404 only on pre-check; if row vanishes between pre-check and persist, client gets **400** `"Job not found: …"` not 404.  
+- **Recommendation:** Accept as extremely rare; document only if operators report confusion.
+
+### acceptable (prior Joan — unchanged)
+
+- **jobs_bp vs admin blueprint** for persist — plan decision + pattern intent satisfied.
+
+- **Field writes before failed transition** — explicit plan decision; tested (`test_field_writes_before_illegal_transition_propagates`).
+
+## What's solid
+
+- Plan-faithful core contract with explicit write ordering and skipped-state gate.
+- PUT reuses `detail()` — response shape cannot drift from GET.
+- Transitions stay on `transition_job_state`; no parallel successor list in TS/config.
+- Component tests cover successor derivation, persist gates/writes/hop ordering, GET meta, PUT auth/status/success shape.
+
+## Notes
+
+- Three-dot diff vs `origin/dev` spans full AST-1446 epic rollup (~203 files); **AST-1453 product scope** is the isolated `58c90b1a` diff above. Statute sweep scored against child product delta + Betty test delta; epic sibling code not flagged.
+- §5f / §5g not applied — no debug= or LLM external changes in child delta.
+- C7 complete — Chuckles may append, commit docs, post slim upshot, move to Review Posted → resolve-child (PROCEED) or UT.
+
+context_tokens≈92000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 23a69171) skipped-job persist clean
+```
