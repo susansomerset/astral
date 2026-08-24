@@ -104,3 +104,32 @@ Out of scope (do not touch): `CandidateJobRowActions`, `JobsRecommended`, `JobAn
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1479
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home` @ `beb7f3d410f9edd3add4c98c8affce9d1edef8da`
+
+## Traceability
+AC4→St2+St3 (API `view=applied` + page load lists post-applied rows; mark-applied entry is sibling AST-1477); AC5→St1+St3 (`APPLIED_JOB_STATES` + nav enable + real `JobsApplied`); AC6→St3 (`CandidateJobRowActions` + `useCandidateJobActions` + notes modal); AC7→St3 (Toast on `actions.error`; API 409 surfaces via `postCandidateAction`).
+
+## Findings
+
+### discuss
+- **Location:** Citations / Stage 3
+- **Finding:** `pattern.ui.in-place-live-refresh` is cited but canon status is `proposed` (not `approved`).
+- **Recommendation:** Plan shape matches `canonical_refs` and sibling lists already use `useInPlaceLiveRefresh`; no stage rewrite needed. Track pattern promotion separately; optional citation tweak to “same hook as `JobsRecommended`” if approved-only refs are enforced later.
+
+### acceptable
+- **Location:** Stage 3 decision note
+- **Finding:** Applied nav badge count left unchanged in `api_system._get_job_counts`.
+- **Recommendation:** Explicit out-of-scope call is correct; badge can follow in a later ticket.
+
+context_tokens≈32000
+```
+
+```
+[plan-rubric] PROCEED (Commit: beb7f3d) applied list home ready
