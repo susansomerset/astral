@@ -946,3 +946,43 @@ Stored `do_task` and Ad Hoc workbench Test commit prompt segments via `_store_pr
   -q
 ```
 
+### AST-1451 · AST-1439 (Ad Hoc import list and load payload)
+
+**Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1451-ad-hoc-import-list-and-load-payload`.
+
+Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per `batch_id`, newest first, includes `adhoc-*`, no filter/cap); `GET /api/admin/adhoc/runs` `@require_admin`; Style D found→recorded on the list when `debug=True`; one leading `adhoc-` strip in `run_adhoc_workbench_test` so ledger stays `adhoc-<task_key>`. Load body is existing `GET /api/agent_data/<batch_id>` (unchanged). Picker chrome: sibling AST-1452.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| One row per batch; newest first; adhoc + production; no `block_data` | `src/data/database.py` (`list_agent_data_batches`) | **`TestAst1451ListAgentDataBatches`** |
+| Core list + debug gate | `src/core/agent.py` (`list_agent_data_runs`) | **`TestAst1451ListAgentDataRuns`** |
+| Catalog key still `adhoc-<task_key>` | same (`run_adhoc_workbench_test`) | existing **`TestAst515AdhocWorkbenchLedger`** |
+| Prefixed workbench key does not double `adhoc-`; `TASK_CONFIG` uses stripped key | same | **`TestAst515AdhocWorkbenchLedger::test_prefixed_workbench_key_does_not_double_adhoc`** |
+| Admin list JSON + auth + `ui_llm_debug` | `src/ui/api/api_admin.py` (`adhoc_runs`) | **`TestAst1451AdhocRuns`** |
+| Load payload (existing GET) | `src/ui/api/api_system.py` | existing **`TestSystemAuthRoutes::test_agent_data_returns_rows`** |
+
+**Broken / obsolete this pass:** none — AST-515 catalog-key ledger assertion still holds.
+
+**Integration:** no existing scenario covers admin Ad Hoc list/load — v1 harness is system+candidate only. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Data list: `tests/component/data/database/test_agent_data.py::TestAst1451ListAgentDataBatches`
+2. Core list debug: `tests/component/core/test_agent.py::TestAst1451ListAgentDataRuns`
+3. Ledger prefix (existing + new): `tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger`
+4. Admin GET: `tests/component/ui/api/test_api_admin.py::TestAst1451AdhocRuns`
+5. Load GET (existing): `tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_agent_data_returns_rows`
+
+**AST-1451** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_agent_data.py::TestAst1451ListAgentDataBatches \
+  tests/component/core/test_agent.py::TestAst1451ListAgentDataRuns \
+  tests/component/core/test_agent.py::TestAst515AdhocWorkbenchLedger \
+  tests/component/ui/api/test_api_admin.py::TestAst1451AdhocRuns \
+  tests/component/ui/api/test_api_system.py::TestSystemAuthRoutes::test_agent_data_returns_rows \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

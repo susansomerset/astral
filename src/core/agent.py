@@ -24,6 +24,7 @@ from src.data.database import (
     get_agent,
     save_agent_data,
     get_agent_data_by_batch,
+    list_agent_data_batches,
     get_agent_data as _get_agent_data_row,
     get_agent_data_for_ids,
     sum_cost_by_batch,
@@ -3473,9 +3474,12 @@ async def run_adhoc_workbench_test(
     debug: bool = False,
 ) -> Dict[str, Any]:
     """Wrap run_adhoc with dispatch_ledger, log_batch_id, and agent_data for workbench Test."""
-    ledger_task_key = f"adhoc-{workbench_task_key}"
+    catalog_task_key = (workbench_task_key or "").strip()
+    if catalog_task_key.startswith("adhoc-"):
+        catalog_task_key = catalog_task_key[len("adhoc-"):]
+    ledger_task_key = f"adhoc-{catalog_task_key}"
     batch_id = f"{ledger_task_key}-{_uuid4()}"
-    entity_type = (TASK_CONFIG.get(workbench_task_key) or {}).get("entity_type") or "candidate"
+    entity_type = (TASK_CONFIG.get(catalog_task_key) or {}).get("entity_type") or "candidate"
     started_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
     database.save_dispatch_ledger(
@@ -3894,6 +3898,34 @@ def get_agent_data(
             row["block_data"] = segment
         result.append(row)
     return result
+
+
+def list_agent_data_runs(*, debug: bool = False) -> List[Dict[str, Any]]:
+    """Ad Hoc import list: one dict per stored batch, newest first."""
+    rows = list_agent_data_batches()
+    if debug:
+        dbg = get_logger(__name__, debug_flag=True)
+        total = len(rows)
+        for i, row in enumerate(rows, start=1):
+            batch_id = row.get("batch_id") or ""
+            created_at = row.get("created_at")
+            entity_id = row.get("entity_id")
+            task_key = row.get("task_key")
+            dbg.debug_index(
+                func="list_agent_data_runs",
+                index=i,
+                total=total,
+                identifier=str(batch_id),
+                outcome="listed",
+            )
+            dbg.debug_detail(
+                f"found created_at={created_at!r} entity_id={entity_id!r} task_key={task_key!r}"
+            )
+            dbg.debug_detail(
+                f"recorded batch_id={batch_id!r} created_at={created_at!r} "
+                f"entity_id={entity_id!r} task_key={task_key!r}"
+            )
+    return rows
 
 
 def get_entity_response(batch_id: str, entity_id: str) -> Optional[Dict[str, Any]]:

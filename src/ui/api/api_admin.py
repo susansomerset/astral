@@ -93,6 +93,7 @@ from src.utils.rubric_feedback import hydrate_vector_review_strings
 # Direct import — AST-292-style admin helpers (`run_adhoc_workbench_test`, `_decode_payload`) plus public `resolved_task_system`
 from src.core.agent import (
     run_adhoc_workbench_test,
+    list_agent_data_runs,
     _decode_payload,
     resolved_agent_content,
     resolved_task_system,
@@ -1341,6 +1342,13 @@ def adhoc_entities():
         "batch_mode": bool(cfg.get("batch_mode")),
         "entities": entities,
     })
+
+
+@admin_bp.route("/adhoc/runs")
+@require_admin
+def adhoc_runs():
+    """Import picker source: one agent_data batch per row, newest first."""
+    return jsonify(list_agent_data_runs(debug=ui_llm_debug()))
 
 
 def _resolve_adhoc(body):
