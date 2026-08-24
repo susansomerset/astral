@@ -228,6 +228,7 @@ describe("JobsRecommended", () => {
   })
 
   describe("AST-1478 report Applied and Skip", () => {
+    // §6c: Recommended page wires shared-hook Skip/Applied into JAR (sibling AST-1477 owns list Applied icon).
     const reportJob = {
       ...sectionedJobs[0],
       astral_job_id: "j-1478-rep",

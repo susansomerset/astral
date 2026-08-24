@@ -847,3 +847,48 @@ describe("JobAnalysisReportModal — AST-1421 snapshot Copy", () => {
   })
 })
 
+describe("JobAnalysisReportModal — AST-1478 Applied and Skip", () => {
+  beforeEach(() => mockedApi.mockReset())
+
+  function reportActionStrip() {
+    return document.querySelector(".recommended-report-header-actions") as HTMLElement | null
+  }
+
+  it("omits labeled Skip/Applied strip when callbacks are absent", async () => {
+    installBaseApiMocks(mockedApi, jobHandler("j1478"))
+    renderWithProviders(<JobAnalysisReportModal jobId="j1478" onClose={() => {}} />)
+    await waitForShell()
+    expect(reportActionStrip()).toBeNull()
+    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
+  })
+
+  it("renders labeled Skip + Applied and invokes parent callbacks (not job_link)", async () => {
+    const onSkip = vi.fn()
+    const onRequestApplied = vi.fn()
+    const openSpy = vi.spyOn(window, "open").mockImplementation(() => null)
+    installBaseApiMocks(mockedApi, jobHandler("j1478"))
+    renderWithProviders(
+      <JobAnalysisReportModal
+        jobId="j1478"
+        onClose={() => {}}
+        onSkip={onSkip}
+        onRequestApplied={onRequestApplied}
+      />,
+    )
+    await waitForShell()
+    const strip = reportActionStrip()
+    expect(strip).toBeTruthy()
+    const skip = within(strip!).getByRole("button", { name: "Skip" })
+    const applied = within(strip!).getByRole("button", { name: "Applied" })
+    expect(skip).toHaveClass("btn", "secondary")
+    expect(applied).toHaveClass("btn", "primary")
+    expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
+    await userEvent.click(skip)
+    await userEvent.click(applied)
+    expect(onSkip).toHaveBeenCalledOnce()
+    expect(onRequestApplied).toHaveBeenCalledOnce()
+    expect(openSpy).not.toHaveBeenCalled()
+    openSpy.mockRestore()
+  })
+})
+
