@@ -76,3 +76,25 @@ No other files. Do **not** edit `JobAnalysisReportModal.tsx`, `api_jobs.py`, `co
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1477
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `06a60cc2023dea7c92a9b34e045db976ccaa2f0d`
+
+## Traceability
+AC1→Stage 1+2 (Applied `icon-control` → `onAction("applied")` → notes modal → `candidate_action` applied); AC2→Stage 2 (row leaves Recommended on success; `/jobs/applied` list home→AST-1479 per Boundaries); AC3→Stage 1 Done-when + Stage 2 (`actions.error` toast, no silent no-op)
+
+## Findings
+None (`fix-now`).
+
+**acceptable** — `PRE_APPLIED_MARK` module-level `Set` in `CandidateJobRowActions.tsx`: extends existing `REVIEW_LIKE` / `POST_APPLIED` pattern; intersection (`RECOMMENDED`, `BUILD_ARTIFACTS`, `CANDIDATE_REVIEW`) matches config; `PASSED_LIKE` excluded; API enforces illegal hops (409). Child scope excludes `config.py`.
+
+**R6 checklist (summary):** Scope gate honored (two in-scope files; AST-1478/1479 exclusions explicit). Ui-only, layer-clean. `pattern.ui.icon-control` conforms. Reuses `useCandidateJobActions` / notes modal — no parallel POST. Stage 2 verify-first on existing `JobsRecommended` wiring. No `JobAnalysisReportModal` props.
+
+**Considered (in-session):** Universal `orch.*` (20) — conforms. Scoped: `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.standards.dry-and-focused-functions`, `astral.standards.in-scope-only`, `astral.standards.no-hardcoded-sets` — conforms or acceptable; `astral.layers.ui-config-driven-business-logic` — acceptable. Excluded: `astral.state.*` (no core/data/config touch).
+
+context_tokens≈35000
