@@ -137,3 +137,22 @@ AC1–AC2→Stage 1 §1 (reword accomplishments clause, preserve job-array + bar
 **Tip:** `3f62eca2935b1f9c767b7015fc0acaf1825b8a32`
 
 **Betty note:** Glyph-regression assertions remain qa-child (engineer `code()` did not touch `tests/**`).
+
+## Radia review
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1465  
+**Publish ref:** `origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `9a1bb3aacb6e6d1f58a7c717767aac2ab597b7ed`  
+**Overall:** CLEAN  
+
+### Findings
+- fix-now: (none)
+- discuss: (none)
+- advisory: Pre-existing red `TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits` on tip (catalog↔UAT twin drift beyond glyph scope) — not AST-1465 manifest; not blocking.
+
+### Plan adherence
+Stage 1 prompt reword + Betty glyph lock match Joan-approved plan; engineer `code()` only `data/admin/agent_task.json`; sibling prompts untouched.
+
+### Slim upshot
+[code-rubric] PROCEED (Commit: 9a1bb3aa) prompt glyph lock clean
