@@ -158,3 +158,9 @@ context_tokens≈23000
 [plan-rubric] PROCEED (Commit: 4aae3fcfb1b2d3d293477265cc170c2e0ee87ceb) report Applied Skip wired
 
 AST-1478 plan approved.
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip` @ `d4bfa409acdd473a08d3dd7c27c4500435e3bba9`
+
+Stages 1–2: labeled Skip (`btn secondary`) + Applied (`btn primary`) on report chrome; `JobsRecommended` wires `skipJob` / `requestAction(..., "applied")` and closes the report when the job leaves recommended rows. CLIENT job-link Apply unchanged. Tests deferred to Betty.
