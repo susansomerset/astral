@@ -125,3 +125,36 @@ Out of scope (do not touch): `CandidateJobRowActions`, `useCandidateJobActions`,
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1478
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip` @ `4aae3fcfb1b2d3d293477265cc170c2e0ee87ceb`
+
+**Gate:** Plan Ready · assignee Joan · parent AST-1464 · first pass (no `[plan-discuss]` rounds).
+
+**Considered:** (in-session — universal `orch.*` delivery set + scoped `astral.standards.dry-and-focused-functions`, `astral.ui.frontend-file-placement`, `astral.ui.naming-conventions`, `astral.layers.import-direction`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only`; parent-cited `astral.state.core-decides-transitions` / `astral.state.job-prior-states-enforced` excluded — plan paths are `src/ui/frontend/**` only, transitions stay on existing API routes; `astral.standards.no-hardcoded-sets` excluded — no `config.py` in Files Changed). All considered statutes **conform**.
+
+## Traceability
+AC2→S1+S2 (labeled Applied → parent `requestAction` / notes / `candidate_action`); AC3→S1+S2 (`onSkip` → `actions.skipJob`); AC4→S1§4 (no `runPrimaryAction` / `job_link` for Applied; title deeplink + artifacts apply unchanged); AC5→S2§2–3 (409/error via existing `actions.error` toast; report closes only when `reportId ∉ rows` after refresh); parent AC1/4–7 N/A — sibling AST-1477 / AST-1479 per Boundaries.
+
+## Findings
+
+**acceptable** · `JobAnalysisReportModal.tsx` Stage 1 · Inline `padding` on the action strip while `App.css` is out of scope — documented ⚠️; reuses `recommended-report-header-actions` + `pattern.ui.shared-button-roles` (`.btn primary` / `.btn secondary` / `in-flight`), not a parallel button family.
+
+**acceptable** · `JobAnalysisReportModal.tsx` Stage 1 §3 · Visibility gated on callbacks supplied, not a React copy of `JOB_STATES` priors — consistent with scope (no `config.py`) and Recommended-only modal context; illegal hops still 409 at API.
+
+No `fix-now` or `discuss` blockers.
+
+**R6 checklist:** Scope gate honored (two files only); layer/import/placement/config checks pass; `pattern.ui.shared-button-roles` matches solution shape; no parallel POSTs (`useCandidateJobActions` on parent); close-on-list-membership fits existing `useInPlaceLiveRefresh` + `load` on `JobsRecommended`; Estimate confirm present (3 — agree).
+
+context_tokens≈23000
+
+---
+
+[plan-rubric] PROCEED (Commit: 4aae3fcfb1b2d3d293477265cc170c2e0ee87ceb) report Applied Skip wired
+
+AST-1478 plan approved.
