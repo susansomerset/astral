@@ -137,3 +137,9 @@ No `fix-now` findings.
 - **Recommendation:** Explicit plan decision; consistent with “correct the record.” No change unless Susan wants transactional all-or-nothing save.
 
 **Considered (in-session):** Universal orchestration statutes — N/A to this product diff. Scoped statutes/plan citations — all conform. Files Changed stays inside child scope (`tracker.py`, `api_jobs.py` only).
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits` @ `58c90b1adad18aef857f327ff348d3f0102bff37`
+
+Stage 1–2: `legal_job_successor_states` + `persist_skipped_job_edits` in tracker; GET detail meta (`fields_editable` / `legal_next_states`) + authenticated PUT persist on `jobs_bp`. Form chrome deferred to AST-1454. Tests deferred to Betty.
