@@ -84,6 +84,14 @@ export default function Recommended() {
 
   useEffect(() => { load(true) }, [load])
 
+  // AST-1478: close report when Skip/Applied removes the job from recommended rows.
+  useEffect(() => {
+    if (!reportId) return
+    if (!rows.some(j => j.astral_job_id === reportId)) {
+      setReportId(null)
+    }
+  }, [rows, reportId])
+
   const phaseFields = useMemo(
     () => manifest?.jobs.recommended.phase_score_columns.map(c => c.field) ?? [],
     [manifest?.jobs.recommended.phase_score_columns],
@@ -200,6 +208,7 @@ export default function Recommended() {
                     {sorted.map(job => (
                       <tr key={job.astral_job_id} className="clickable" onClick={() => openJobReport(job.astral_job_id)}>
                         <td onClick={e => e.stopPropagation()}>
+                          {/* onAction covers list Applied (notes → candidate_action) plus post-applied R/I/X/G */}
                           <CandidateJobRowActions
                             state={job.state}
                             showViewAnalysis={false}
@@ -229,6 +238,16 @@ export default function Recommended() {
         jobId={reportId}
         onClose={() => setReportId(null)}
         onRefresh={load}
+        onSkip={
+          reportId
+            ? () => { void actions.skipJob(reportId) }
+            : undefined
+        }
+        onRequestApplied={
+          reportId
+            ? () => { actions.requestAction(reportId, "applied") }
+            : undefined
+        }
       />
       <CandidateActionNotesModal
         open={!!actions.pending}

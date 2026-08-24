@@ -50,10 +50,20 @@ interface Props {
   jobId: string | null
   onClose: () => void
   onRefresh?: () => void
+  /** Recommended Skip — parent runs shared postSkipJob / useCandidateJobActions.skipJob */
+  onSkip?: () => void
+  /** Opens parent notes modal for candidate_action applied — parent runs requestAction(jobId, "applied") */
+  onRequestApplied?: () => void
 }
 
 /** Shell AST-948; Summary AST-949; Analysis AST-950; Artifacts AST-951. */
-export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Props) {
+export default function JobAnalysisReportModal({
+  jobId,
+  onClose,
+  onRefresh,
+  onSkip,
+  onRequestApplied,
+}: Props) {
   const { manifest } = useStateUi()
   const { selectedId, candidates } = useCandidate()
   const [job, setJob] = useState<JobDetail | null>(null)
@@ -570,6 +580,30 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
                 )
               }}
             />
+            {(onSkip || onRequestApplied) && (
+              <div className="recommended-report-header-actions" style={{ padding: "0 16px 12px" }}>
+                {onSkip && (
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={primaryBusy}
+                    onClick={() => onSkip()}
+                  >
+                    Skip
+                  </button>
+                )}
+                {onRequestApplied && (
+                  <button
+                    type="button"
+                    className={`btn primary${primaryBusy ? " in-flight" : ""}`}
+                    disabled={primaryBusy}
+                    onClick={() => onRequestApplied()}
+                  >
+                    Applied
+                  </button>
+                )}
+              </div>
+            )}
             {topTabs.length > 0 ? (
               <div className="recommended-report-tabs">
                 <TabBar
