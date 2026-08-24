@@ -99,3 +99,28 @@ AC1–AC2→Stage 1 §1 (reword `draft_job_resume` accomplishments clause); AC3�
 **Recommendation:** None required for approval once test ownership is fixed.
 
 **Considered (in-session):** 18 universal orchestration statutes → all `conforms`. Scoped in-scope: `astral.git.engineer-test-tree-ban` → `violates` (above). Remaining scoped active statutes excluded (layer/path/change_type predicates).
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1465
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `873cd34566c726062ab7b6828cae7b0f094077d1`
+
+### Traceability
+AC1–AC2→Stage 1 §1 (reword accomplishments clause, preserve job-array + bare-string semantics); AC3→Betty qa-child glyph lock + Stage 1 optional sanity run of AST-1270/AST-1349 (no weakening); AC4→Stage 1 AC4 note (Susan/UAT; no validator/builder edits).
+
+### Findings
+
+#### acceptable — Plan Discuss round 1 closed
+**Location:** `[plan-discuss] round=1 reply` @ `873cd345`; plan `## Revisions` / Explicit scope gate / Files Changed Owner column
+**Finding:** Prior `astral.git.engineer-test-tree-ban` violation is resolved. Engineer Stage 1 is `data/admin/agent_task.json` only; glyph-regression assertions moved to Betty **qa-child** with explicit Owner split — matches AST-996/AST-997/AST-1270 pattern (Betty owns `tests/**` commits).
+**Recommendation:** None.
+
+#### acceptable — AC4 manual/dispatch smoke
+**Location:** Stage 1 AC4 note
+**Finding:** Wording-only seed edit; no runtime path changes. Explicit UAT boundary is sufficient.
+**Recommendation:** None.
+
+**Considered (in-session):** 18 universal orchestration statutes → all `conforms`. Scoped in-scope: `astral.git.engineer-test-tree-ban` → `conforms` (engineer `code()` excludes `tests/**`; Betty qa-child owns glyph lock). Remaining scoped active statutes excluded on layer/path/change_type predicates.
