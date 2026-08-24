@@ -60,3 +60,33 @@ Ticket **Scope** names only `data/admin/agent_task.json` (current `draft_job_res
 ## Estimate
 
 Confirm Chuckles estimate: 1 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1465
+**Overall:** REVISE
+**Publish ref:** `origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs` @ `4b0662d6f7fecb5efed283cc33f3d9090ee48742`
+
+### Traceability
+AC1–AC2→Stage 1 §1 (reword `draft_job_resume` accomplishments clause); AC3→Stage 1 §§2–3 (extend contract test + run AST-1270/AST-1349); AC4→Stage 1 wording-only boundary (no validator/builder edits; manual/dispatch smoke implicit).
+
+### Findings
+
+#### fix-now — Stage 1 step 2 / Files Changed `tests/component/core/test_candidate.py`
+**Location:** Stage 1 step 2; Files Changed row for `tests/component/core/test_candidate.py`
+**Finding:** Plan assigns the implementer to add glyph-regression assertions under `tests/component/`. `astral.git.engineer-test-tree-ban` is in scope (plan path `tests/**`, change type `modify`; `layers: []` passes). Engineer `code()` commits must not touch `tests/**`; Betty owns the test tree via `qa-child` / `merge-tests` (same pattern as AST-996, AST-997, AST-1270 Joan/Radia notes: engineer `code()` has no `tests/`).
+**Recommendation:** Restrict Stage 1 engineer work to `data/admin/agent_task.json` only. Move the `TestAst1270NestedDraftJobResumeContract` glyph assertions (retired `` `•`/`-`/`*` `` pattern + preserved `ordered **array of strings**` / `ordered array of job objects` wording) into a **qa-child manifest** item for Betty. Engineer may run the listed component tests locally for sanity; Betty lands and commits test changes.
+
+#### acceptable — AC4 / manual dispatch verification
+**Location:** Parent AC4; plan has no explicit smoke step
+**Finding:** No runtime validation path changes; wording-only seed edit. AC4 is satisfied by boundary declaration, not a dedicated stage.
+**Recommendation:** Optional one-line note in plan that post-merge manual/dispatch check is Susan/UAT, not a build gate. Not blocking.
+
+#### acceptable — Parent statute citation vs matching
+**Location:** Child cites `astral.seed.archie-catalog-wins` + `astral.standards.in-scope-only`; parent also cites `astral.seed.agent-tables-in-repo-json`
+**Finding:** Plan layers map to `docs` per rubric (`seed` / `tests` unrecognized); scoped seed/`src/**` statutes exclude on layer/path predicates. Plan substance still conforms: durable edit in committed `data/admin/agent_task.json`, single row, no live-DB-only change.
+**Recommendation:** None required for approval once test ownership is fixed.
+
+**Considered (in-session):** 18 universal orchestration statutes → all `conforms`. Scoped in-scope: `astral.git.engineer-test-tree-ban` → `violates` (above). Remaining scoped active statutes excluded (layer/path/change_type predicates).
