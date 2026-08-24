@@ -1,12 +1,12 @@
-"""AST-1136: candidate-bound gaze_email mailbox runner.
+"""AST-1136: candidate-bound meteorite_email mailbox runner.
 
 List Astral inbox → filter From→selected candidate → unbound age→Trash
 (shared hygiene) → bound shape route → Ruth parse (that candidate’s API key)
 / scrape / per-candidate dedupe → METEORITE_NEW create → archive; stamp
 last_email_check. Style D when debug=True. Never calls qualify/GDL or global
-AST-1061 job_link helpers. process_gaze_email_messages is the AST-1129 reuse path.
+AST-1061 job_link helpers. process_meteorite_email_messages is the AST-1129 reuse path.
 
-AST-1140: ``run_gaze_email_selected_ids`` — Land Meteorite selected-ids ingest
+AST-1140: ``run_meteorite_email_selected_ids`` — Land Meteorite selected-ids ingest
 sharing the same bound helper; does not stamp ``candidate.last_email_check``.
 
 AST-1213: Ruth live payload is visible text + links (not raw HTML); link list
@@ -34,7 +34,7 @@ from src.data.database import (
 )
 from src.external.gmail import archive_message, trash_message
 from src.utils.config import (
-    GAZE_EMAIL_CONFIG,
+    METEORITE_EMAIL_MAILBOX_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
     METEORITE_EMAIL_PARSE_CONFIG,
 )
@@ -45,12 +45,12 @@ logger = get_logger(__name__)
 
 
 def _subject_is_url(subject: str) -> bool:
-    # strip; urlparse; scheme in GAZE_EMAIL_CONFIG["subject_url_schemes"] and netloc non-empty
+    # strip; urlparse; scheme in METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"] and netloc non-empty
     s = (subject or "").strip()
     if not s:
         return False
     parsed = urlparse(s)
-    schemes = set(GAZE_EMAIL_CONFIG["subject_url_schemes"])
+    schemes = set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"])
     return (parsed.scheme or "").lower() in schemes and bool(parsed.netloc)
 
 
@@ -66,7 +66,7 @@ def _body_is_empty(html_body: str) -> bool:
 
 
 def _unbound_is_stale(internal_date_ms: int, *, now_ms: int) -> bool:
-    days = int(GAZE_EMAIL_CONFIG["unbound_retention_days"])
+    days = int(METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"])
     if internal_date_ms <= 0:
         return False  # unknown age → leave untouched
     age_ms = now_ms - internal_date_ms
@@ -77,7 +77,7 @@ def _dbg(debug: bool, *, index: int, total: int, mid: str, outcome: str) -> None
     if not debug:
         return
     logger.debug_index(
-        func=GAZE_EMAIL_CONFIG["debug_func"],
+        func=METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"],
         index=index,
         total=total,
         identifier=(mid or "")[:80],
@@ -89,7 +89,7 @@ def _dbg_selected(debug: bool, *, index: int, total: int, mid: str, outcome: str
     if not debug:
         return
     logger.debug_index(
-        func=GAZE_EMAIL_CONFIG["debug_func_selected"],
+        func=METEORITE_EMAIL_MAILBOX_CONFIG["debug_func_selected"],
         index=index,
         total=total,
         identifier=(mid or "")[:80],
@@ -218,7 +218,7 @@ def _ensure_html_links_jobs_complete(
             for u in missing
         )
         logger.debug_index(
-            func="gaze_email._ensure_html_links_jobs_complete",
+            func="meteorite_email._ensure_html_links_jobs_complete",
             index=1,
             total=1,
             identifier="html_links",
@@ -413,7 +413,7 @@ async def _handle_bound(
     return (1, 1, 0, 0, "ignored")
 
 
-async def process_gaze_email_messages(
+async def process_meteorite_email_messages(
     candidate_id: str,
     messages: list[dict],
     *,
@@ -441,7 +441,7 @@ async def process_gaze_email_messages(
             match = msg.get("candidate_match") or {}
             if not match.get("matched"):
                 _dbg(debug, index=i, total=n, mid=mid, outcome="skipped-unbound")
-                _detail(debug, "process_gaze_email_messages does not mutate unbound mail")
+                _detail(debug, "process_meteorite_email_messages does not mutate unbound mail")
                 processed += 1
                 passed += 1
                 continue
@@ -476,14 +476,14 @@ async def process_gaze_email_messages(
     }
 
 
-async def run_gaze_email_selected_ids(
+async def run_meteorite_email_selected_ids(
     message_ids: list[str],
     *,
     debug: bool = False,
 ) -> dict:
     """Land Meteorite: ingest only these Astral inbox message ids (AST-1140).
 
-    Same bind/route/scrape/dedupe/create/archive outcomes as dispatcher gaze_email.
+    Same bind/route/scrape/dedupe/create/archive outcomes as dispatcher meteorite_email.
     Does not stamp candidate.last_email_check. Does not call Create strip/extract.
     """
     if debug:
@@ -500,7 +500,7 @@ async def run_gaze_email_selected_ids(
     for i, mid in enumerate(normalized_ids, start=1):
         _dbg_selected(debug, index=i, total=n, mid=mid, outcome="found")
         if mid not in by_id:
-            outcome = GAZE_EMAIL_CONFIG["selected_outcome_skipped_not_in_inbox"]
+            outcome = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"]
             results.append(
                 {"message_id": mid, "outcome": outcome, "astral_candidate_id": None}
             )
@@ -515,9 +515,9 @@ async def run_gaze_email_selected_ids(
         if not match.get("matched") or not cid:
             # Skip only — retention Trash stays on the dispatcher hygiene path.
             if not match.get("matched"):
-                outcome = GAZE_EMAIL_CONFIG["selected_outcome_skipped_unbound"]
+                outcome = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"]
             else:
-                outcome = GAZE_EMAIL_CONFIG["selected_outcome_skipped_unmatched"]
+                outcome = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"]
             results.append(
                 {"message_id": mid, "outcome": outcome, "astral_candidate_id": None}
             )
@@ -554,7 +554,7 @@ async def run_gaze_email_selected_ids(
     }
 
 
-async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
+async def run_meteorite_email(task: dict, *, debug: bool = False) -> dict[str, int]:
     """AST-1136: candidate-bound mailbox run + unbound hygiene + last_email_check stamp."""
     cid = str((task or {}).get("candidate_id") or "").strip()
     if not cid:
@@ -563,7 +563,7 @@ async def run_gaze_email(task: dict, *, debug: bool = False) -> dict[str, int]:
         logger.set_debug_flag(True)
         _dbg(debug, index=1, total=1, mid=cid, outcome="run-start")
         env_user = (os.environ.get("GMAIL_USER") or "").casefold()
-        expected = (GAZE_EMAIL_CONFIG["account_address"] or "").casefold()
+        expected = (METEORITE_EMAIL_MAILBOX_CONFIG["account_address"] or "").casefold()
         if env_user != expected:
             _detail(True, f"account_mismatch GMAIL_USER={env_user!r} expected={expected!r}")
 
