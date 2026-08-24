@@ -57,99 +57,7 @@ from src.utils.logging import get_logger
 _log = get_logger(__name__)
 
 
-def _is_fetch_website_infra_error(error: str) -> bool:
-    """True when scrape error is browser infra (AST-853 prefix or scrape_timeout label)."""
-    msg = (error or "").strip()
-    return msg.startswith("[playwright:")
-
-
-def _fetch_website_fail_destination(company_state: str, error: str, cfg: Dict[str, Any]) -> str:
-    """Route infra → retry once; site failure or retry re-fail → CANNOT_READ_WEBSITE."""
-    retry_state = cfg["retry_state"]
-    fail_state = cfg["fail_state"]
-    if _is_fetch_website_infra_error(error):
-        if (company_state or "").strip() == retry_state:
-            return fail_state
-        return retry_state
-    return fail_state
-
-
-def _gazer_job_identifier(job: Dict[str, Any]) -> str:
-    """Primary debug identifier for a job row (§1.5.1 style D)."""
-    return str(job.get("astral_job_id") or job.get("job_title") or "?")
-
-
-def _gazer_company_identifier(row: Dict[str, Any]) -> str:
-    """Primary debug identifier for a company row in gaze batches."""
-    return str(row.get("short_name") or "?")
-
-
-# Maps _classify_jd() return value → scrape-fail / bot state name
-_JD_ERROR_STATES = {
-    "cookie":  "JD_SCRAPE_FAIL_COOKIE",
-    "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
-    "missing": "JD_SCRAPE_FAIL_MISSING",
-    "closed":  "JD_SCRAPE_FAIL_CLOSED",
-}
-
-
-def _prune_jd(text: str, job_title: str = "") -> str:
-    """Apply jd_prune_rules from TRACKER_CONFIG to trim boilerplate from JD text.
-    Rules are applied in order; each mutates the text in place for the next rule.
-    tail: truncate from rightmost match onward. head: discard up to and including match."""
-    for rule in TRACKER_CONFIG.get("jd_prune_rules") or []:
-        needle = (rule.get("prune_text") or "").replace("{$JOB_TITLE}", job_title)
-        if not needle:
-            continue
-        idx = text.lower().find(needle.lower())
-        if idx == -1:
-            continue
-        if rule.get("prune_type") == "tail":
-            idx = text.lower().rfind(needle.lower())
-            text = text[:idx]
-        elif rule.get("prune_type") == "head":
-            text = text[idx:]
-    return text.strip()
-
-
-def _classify_jd(text: str) -> str:
-    """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
-    Check order matters: closed → bot → cookie → missing → ok.
-    Reads all signals and thresholds from TRACKER_CONFIG['jd_classifier']."""
-    cfg = TRACKER_CONFIG.get("jd_classifier", {})
-    text_lower = text.lower()
-    meaningful = re.sub(r"\s+", " ", text.strip())
-
-    # --- No Longer Open ---
-    for sig in cfg.get("closed_signals", []):
-        if sig.lower() in text_lower:
-            return "closed"
-
-    # --- Bot Blocked --- (checked before cookie; LinkedIn auth pages mention "Cookie Policy")
-    bot_hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
-    if bot_hits >= cfg.get("bot_threshold", 2):
-        return "bot"
-
-    # --- Cookie Block ---
-    cookie_hits = sum(1 for s in cfg.get("cookie_signals", []) if s.lower() in text_lower)
-    if cookie_hits >= cfg.get("cookie_threshold", 3):
-        return "cookie"
-    if cookie_hits >= cfg.get("cookie_short_threshold", 1) and len(meaningful) < cfg.get("cookie_short_max", 400):
-        return "cookie"
-
-    # --- Missing Page (wrong page / 404 / job board / empty shell) ---
-    if len(meaningful) < cfg.get("min_meaningful_chars", 500):
-        return "missing"
-    ws_ratio = (text.count("\n") + text.count("\t") + text.count(" ")) / max(len(text), 1)
-    words = re.findall(r"\b\w{4,}\b", text)
-    if ws_ratio > 0.60 and len(words) < 200:
-        return "missing"
-    date_hits = len(re.findall(r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+202\d", text))
-    if date_hits >= cfg.get("date_pattern_threshold", 5):
-        return "missing"
-
-    return "ok"
-
+# ---- public -----------------------------------------------------------------
 
 async def fetch_jd_batch(
     batch_id: str,
@@ -299,33 +207,6 @@ async def fetch_jd_batch(
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
-
-def _website_content_is_recorded(website_content: Any) -> bool:
-    """True when company_data already has usable culture page bodies (AST-874 cache path)."""
-    if isinstance(website_content, list):
-        return any(
-            isinstance(p, dict) and str(p.get("content") or "").strip()
-            for p in website_content
-        )
-    if isinstance(website_content, str):
-        return bool(website_content.strip())
-    return False
-
-
-def _website_content_debug_summary(website_content: Any) -> str:
-    """Short found/recorded summary for fetch_culture_pages debug detail lines."""
-    if isinstance(website_content, list):
-        pages = [
-            p for p in website_content
-            if isinstance(p, dict) and str(p.get("content") or "").strip()
-        ]
-        urls = [str(p.get("url") or "") for p in pages[:5]]
-        return f"pages={len(pages)} urls={urls!r}"
-    if isinstance(website_content, str):
-        return f"chars={len(website_content.strip())}"
-    return "empty"
-
-
 async def fetch_culture_pages_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -469,7 +350,6 @@ async def fetch_culture_pages_batch(
             f"no_links_state={no_links_state!r}"
         )
     return {"passed": passed, "failed": failed, "total": len(jobs)}
-
 
 async def fetch_website_batch(
     batch_id: str,
@@ -651,7 +531,6 @@ async def fetch_website_batch(
         "total": work_total,
     }
 
-
 async def fetch_job_pages_batch(
     batch_id: str,
     companies: List[Dict[str, Any]],
@@ -803,30 +682,6 @@ async def fetch_job_pages_batch(
         )
     return {"passed": passed, "failed": failed, "total": len(companies)}
 
-
-def _compiled_title_patterns(ctx: Dict[str, Any]) -> List[Any]:
-    """Parse contact.title_patterns (newline-delimited regexes). Skip invalid lines; empty / missing => []."""
-    cd = ctx.get("candidate_data") if isinstance(ctx.get("candidate_data"), dict) else ctx
-    if not isinstance(cd, dict):
-        return []
-    contact = cd.get("contact") or {}
-    if not isinstance(contact, dict):
-        return []
-    raw = contact.get("title_patterns") or contact.get("TITLE_PATTERNS") or ""
-    if not isinstance(raw, str):
-        raw = str(raw) if raw else ""
-    out: List[Any] = []
-    for line in raw.splitlines():
-        pat = line.strip()
-        if not pat:
-            continue
-        try:
-            out.append(re.compile(pat, re.IGNORECASE | re.DOTALL))
-        except re.error as e:
-            _log.warning("validate_title_batch: skipping invalid regex %r: %s", pat, e)
-    return out
-
-
 async def validate_title_batch(
     batch_id: str,
     jobs: List[Dict[str, Any]],
@@ -909,9 +764,6 @@ async def validate_title_batch(
         _log.debug_detail(f"summary passed={passed} failed={failed} total={job_total}")
     return {"passed": passed, "failed": failed, "total": len(jobs)}
 
-
-# ---- Scrape ----
-
 async def scrape_one(short_name: str, job_site: str) -> Tuple[str, str, str]:
     """Scrape one company's job page. Creates its own browser context; returns (short_name, job_site, page_html)."""
     async with create_browser_context() as context:
@@ -922,30 +774,6 @@ async def scrape_one(short_name: str, job_site: str) -> Tuple[str, str, str]:
             return (short_name, job_site, dom_html)
         finally:
             await page.close()
-
-
-# ---- Process batch (scrape -> parse -> ingest -> record) ----
-
-def _log_listing_dedupe_trace(
-    log: Any,
-    company: str,
-    raw_job_listings: List[str],
-    title_matchers: Optional[List[Any]],
-) -> None:
-    """Debug-only: mirror ingest_jobs dedupe/title filter without inserting (AST-622)."""
-    cap = 25
-    for li, raw in enumerate(raw_job_listings):
-        if li >= cap:
-            log.debug_detail(f"... {len(raw_job_listings) - cap} more listings omitted from dedupe trace")
-            break
-        if raw_job_listing_is_duplicate(company, raw):
-            log.debug_detail(f"listing {li + 1}: dedupe hit (duplicate)")
-            continue
-        if title_matchers and not any(m.search(raw) for m in title_matchers):
-            log.debug_detail(f"listing {li + 1}: title filter miss (invalid_title)")
-            continue
-        log.debug_detail(f"listing {li + 1}: dedupe miss (would insert)")
-
 
 async def process_gazer_batch(
     batch_id: str,
@@ -1128,61 +956,9 @@ async def process_gazer_batch(
 
     return outcomes
 
-
 # ---------------------------------------------------------------------------
 # AST-1061: gazer reads email → meteorite create (Playwright + dedupe)
 # ---------------------------------------------------------------------------
-
-
-def _meteorite_email_candidate_links(html: str) -> List[str]:
-    """Ordered unique http(s) hrefs from html, minus METEORITE_EMAIL_INGEST_CONFIG excludes."""
-    # B1 lazy import: bs4 only on the email-ingest path.
-    from bs4 import BeautifulSoup
-
-    cfg = METEORITE_EMAIL_INGEST_CONFIG
-    schemes = {s.casefold() for s in cfg["link_schemes"]}
-    excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
-    allows = tuple(s.casefold() for s in cfg["link_allow_substrings"])
-    soup = BeautifulSoup(html or "", "html.parser")
-    seen: set[str] = set()
-    out: List[str] = []
-    for tag in soup.find_all("a", href=True):
-        href = (tag.get("href") or "").strip()
-        if not href or href in seen:
-            continue
-        parsed = urlparse(href)
-        scheme = (parsed.scheme or "").casefold()
-        if scheme not in schemes:
-            continue
-        low = href.casefold()
-        if any(frag in low for frag in excludes):
-            continue
-        # Empty allow = no filter (AST-1132); non-empty requires ≥1 allow substring.
-        if allows and not any(frag in low for frag in allows):
-            continue
-        seen.add(href)
-        out.append(href)
-    return out
-
-
-def _meteorite_email_body_text(html: str) -> str:
-    """Plain visible-ish text from stripped email HTML for body/forward shapes."""
-    from bs4 import BeautifulSoup
-
-    soup = BeautifulSoup(html or "", "html.parser")
-    return (soup.get_text("\n", strip=True) or "").strip()
-
-
-async def _meteorite_fetch_link_visible_text(
-    url: str, *, debug: bool = False
-) -> Tuple[str, str]:
-    """Return (visible_text, final_url) via get_visible_text(..., return_final_url=True)."""
-    result = await get_visible_text(url=url, return_final_url=True)
-    if isinstance(result, tuple):
-        text, final_url = result
-        return (text or ""), (final_url or url)
-    return (result or ""), url
-
 
 async def ingest_meteorite_jobs_from_email_html(
     candidate_id: str,
@@ -1437,7 +1213,6 @@ async def ingest_meteorite_jobs_from_email_html(
         "skipped": skipped,
     }
 
-
 def ingest_meteorite_jobs_from_email_html_sync(
     candidate_id: str,
     html: str,
@@ -1448,3 +1223,221 @@ def ingest_meteorite_jobs_from_email_html_sync(
     return asyncio.run(
         ingest_meteorite_jobs_from_email_html(candidate_id, html, debug=debug)
     )
+
+
+# ---- shared helpers ---------------------------------------------------------
+
+def _gazer_job_identifier(job: Dict[str, Any]) -> str:
+    """Primary debug identifier for a job row (§1.5.1 style D)."""
+    return str(job.get("astral_job_id") or job.get("job_title") or "?")
+
+def _gazer_company_identifier(row: Dict[str, Any]) -> str:
+    """Primary debug identifier for a company row in gaze batches."""
+    return str(row.get("short_name") or "?")
+
+def _compiled_title_patterns(ctx: Dict[str, Any]) -> List[Any]:
+    """Parse contact.title_patterns (newline-delimited regexes). Skip invalid lines; empty / missing => []."""
+    cd = ctx.get("candidate_data") if isinstance(ctx.get("candidate_data"), dict) else ctx
+    if not isinstance(cd, dict):
+        return []
+    contact = cd.get("contact") or {}
+    if not isinstance(contact, dict):
+        return []
+    raw = contact.get("title_patterns") or contact.get("TITLE_PATTERNS") or ""
+    if not isinstance(raw, str):
+        raw = str(raw) if raw else ""
+    out: List[Any] = []
+    for line in raw.splitlines():
+        pat = line.strip()
+        if not pat:
+            continue
+        try:
+            out.append(re.compile(pat, re.IGNORECASE | re.DOTALL))
+        except re.error as e:
+            _log.warning("validate_title_batch: skipping invalid regex %r: %s", pat, e)
+    return out
+
+
+# ---- fetch_jd_batch helpers -------------------------------------------------
+
+# Maps _classify_jd() return value → scrape-fail / bot state name
+_JD_ERROR_STATES = {
+    "cookie":  "JD_SCRAPE_FAIL_COOKIE",
+    "bot":     "BOT_BLOCKED",  # AST-1195: universal bot/challenge state
+    "missing": "JD_SCRAPE_FAIL_MISSING",
+    "closed":  "JD_SCRAPE_FAIL_CLOSED",
+}
+
+def _prune_jd(text: str, job_title: str = "") -> str:
+    """Apply jd_prune_rules from TRACKER_CONFIG to trim boilerplate from JD text.
+    Rules are applied in order; each mutates the text in place for the next rule.
+    tail: truncate from rightmost match onward. head: discard up to and including match."""
+    for rule in TRACKER_CONFIG.get("jd_prune_rules") or []:
+        needle = (rule.get("prune_text") or "").replace("{$JOB_TITLE}", job_title)
+        if not needle:
+            continue
+        idx = text.lower().find(needle.lower())
+        if idx == -1:
+            continue
+        if rule.get("prune_type") == "tail":
+            idx = text.lower().rfind(needle.lower())
+            text = text[:idx]
+        elif rule.get("prune_type") == "head":
+            text = text[idx:]
+    return text.strip()
+
+def _classify_jd(text: str) -> str:
+    """Classify scraped page content. Returns 'ok', 'cookie', 'bot', 'missing', or 'closed'.
+    Check order matters: closed → bot → cookie → missing → ok.
+    Reads all signals and thresholds from TRACKER_CONFIG['jd_classifier']."""
+    cfg = TRACKER_CONFIG.get("jd_classifier", {})
+    text_lower = text.lower()
+    meaningful = re.sub(r"\s+", " ", text.strip())
+
+    # --- No Longer Open ---
+    for sig in cfg.get("closed_signals", []):
+        if sig.lower() in text_lower:
+            return "closed"
+
+    # --- Bot Blocked --- (checked before cookie; LinkedIn auth pages mention "Cookie Policy")
+    bot_hits = sum(1 for s in cfg.get("bot_signals", []) if s.lower() in text_lower)
+    if bot_hits >= cfg.get("bot_threshold", 2):
+        return "bot"
+
+    # --- Cookie Block ---
+    cookie_hits = sum(1 for s in cfg.get("cookie_signals", []) if s.lower() in text_lower)
+    if cookie_hits >= cfg.get("cookie_threshold", 3):
+        return "cookie"
+    if cookie_hits >= cfg.get("cookie_short_threshold", 1) and len(meaningful) < cfg.get("cookie_short_max", 400):
+        return "cookie"
+
+    # --- Missing Page (wrong page / 404 / job board / empty shell) ---
+    if len(meaningful) < cfg.get("min_meaningful_chars", 500):
+        return "missing"
+    ws_ratio = (text.count("\n") + text.count("\t") + text.count(" ")) / max(len(text), 1)
+    words = re.findall(r"\b\w{4,}\b", text)
+    if ws_ratio > 0.60 and len(words) < 200:
+        return "missing"
+    date_hits = len(re.findall(r"(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2},\s+202\d", text))
+    if date_hits >= cfg.get("date_pattern_threshold", 5):
+        return "missing"
+
+    return "ok"
+
+
+# ---- fetch_culture_pages_batch helpers --------------------------------------
+
+def _website_content_is_recorded(website_content: Any) -> bool:
+    """True when company_data already has usable culture page bodies (AST-874 cache path)."""
+    if isinstance(website_content, list):
+        return any(
+            isinstance(p, dict) and str(p.get("content") or "").strip()
+            for p in website_content
+        )
+    if isinstance(website_content, str):
+        return bool(website_content.strip())
+    return False
+
+def _website_content_debug_summary(website_content: Any) -> str:
+    """Short found/recorded summary for fetch_culture_pages debug detail lines."""
+    if isinstance(website_content, list):
+        pages = [
+            p for p in website_content
+            if isinstance(p, dict) and str(p.get("content") or "").strip()
+        ]
+        urls = [str(p.get("url") or "") for p in pages[:5]]
+        return f"pages={len(pages)} urls={urls!r}"
+    if isinstance(website_content, str):
+        return f"chars={len(website_content.strip())}"
+    return "empty"
+
+
+# ---- fetch_website_batch helpers --------------------------------------------
+
+def _is_fetch_website_infra_error(error: str) -> bool:
+    """True when scrape error is browser infra (AST-853 prefix or scrape_timeout label)."""
+    msg = (error or "").strip()
+    return msg.startswith("[playwright:")
+
+def _fetch_website_fail_destination(company_state: str, error: str, cfg: Dict[str, Any]) -> str:
+    """Route infra → retry once; site failure or retry re-fail → CANNOT_READ_WEBSITE."""
+    retry_state = cfg["retry_state"]
+    fail_state = cfg["fail_state"]
+    if _is_fetch_website_infra_error(error):
+        if (company_state or "").strip() == retry_state:
+            return fail_state
+        return retry_state
+    return fail_state
+
+
+# ---- process_gazer_batch helpers --------------------------------------------
+
+def _log_listing_dedupe_trace(
+    log: Any,
+    company: str,
+    raw_job_listings: List[str],
+    title_matchers: Optional[List[Any]],
+) -> None:
+    """Debug-only: mirror ingest_jobs dedupe/title filter without inserting (AST-622)."""
+    cap = 25
+    for li, raw in enumerate(raw_job_listings):
+        if li >= cap:
+            log.debug_detail(f"... {len(raw_job_listings) - cap} more listings omitted from dedupe trace")
+            break
+        if raw_job_listing_is_duplicate(company, raw):
+            log.debug_detail(f"listing {li + 1}: dedupe hit (duplicate)")
+            continue
+        if title_matchers and not any(m.search(raw) for m in title_matchers):
+            log.debug_detail(f"listing {li + 1}: title filter miss (invalid_title)")
+            continue
+        log.debug_detail(f"listing {li + 1}: dedupe miss (would insert)")
+
+
+# ---- ingest_meteorite_jobs_from_email_html helpers --------------------------
+
+def _meteorite_email_candidate_links(html: str) -> List[str]:
+    """Ordered unique http(s) hrefs from html, minus METEORITE_EMAIL_INGEST_CONFIG excludes."""
+    # B1 lazy import: bs4 only on the email-ingest path.
+    from bs4 import BeautifulSoup
+
+    cfg = METEORITE_EMAIL_INGEST_CONFIG
+    schemes = {s.casefold() for s in cfg["link_schemes"]}
+    excludes = tuple(s.casefold() for s in cfg["link_exclude_substrings"])
+    allows = tuple(s.casefold() for s in cfg["link_allow_substrings"])
+    soup = BeautifulSoup(html or "", "html.parser")
+    seen: set[str] = set()
+    out: List[str] = []
+    for tag in soup.find_all("a", href=True):
+        href = (tag.get("href") or "").strip()
+        if not href or href in seen:
+            continue
+        parsed = urlparse(href)
+        scheme = (parsed.scheme or "").casefold()
+        if scheme not in schemes:
+            continue
+        low = href.casefold()
+        if any(frag in low for frag in excludes):
+            continue
+        # Empty allow = no filter (AST-1132); non-empty requires ≥1 allow substring.
+        if allows and not any(frag in low for frag in allows):
+            continue
+        seen.add(href)
+        out.append(href)
+    return out
+
+def _meteorite_email_body_text(html: str) -> str:
+    """Plain visible-ish text from stripped email HTML for body/forward shapes."""
+    from bs4 import BeautifulSoup
+
+    soup = BeautifulSoup(html or "", "html.parser")
+    return (soup.get_text("\n", strip=True) or "").strip()
+
+async def _meteorite_fetch_link_visible_text(
+    url: str, *, debug: bool = False
+) -> Tuple[str, str]:
+    """Return (visible_text, final_url) via get_visible_text(..., return_final_url=True)."""
+    result = await get_visible_text(url=url, return_final_url=True)
+    if isinstance(result, tuple):
+        text, final_url = result
+        return (text or ""), (final_url or url)
+    return (result or ""), url

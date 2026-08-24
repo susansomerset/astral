@@ -79,6 +79,7 @@ from src.utils.formatting import (
 # Logger for this module
 logger = get_logger(__name__)
 
+# ---- public -----------------------------------------------------------
 
 def make_locate_parse_resolver(dom_map: Dict[int, str], visible_map: Dict[int, str]):  # pragma: no cover
     """AST-469: ctx['resolve_run_next_live'] for select_job_page → parse_job_list chain.
@@ -109,85 +110,6 @@ def make_locate_parse_resolver(dom_map: Dict[int, str], visible_map: Dict[int, s
     return resolve_run_next_live
 
 
-def _normalize_job_titles(raw: Any) -> List[str]:
-    """Strip blanks; preserve order from select/company_data."""
-    if not isinstance(raw, list):
-        return []
-    return [str(t).strip() for t in raw if str(t).strip()]
-
-
-def _dom_text_covers_titles(dom_html: str, job_titles: List[str]) -> bool:
-    blob = (dom_html or "").lower()
-    return all(t.lower() in blob for t in job_titles if t.strip())
-
-
-def _culled_dom_for_parse(
-    dom_html: str, job_titles: List[str]
-) -> Tuple[str, List[str], str]:
-    """Returns (dom_joined, containers, outcome_label).
-    outcome_label: no_titles | full_dom | culled | cull_miss."""
-    titles = _normalize_job_titles(job_titles)
-    if not titles:
-        return ("", [], "no_titles")
-    if len(titles) < 2:
-        dom = (dom_html or "").strip()
-        if not dom:
-            return ("", [], "cull_miss")
-        containers = find_job_containers(dom, titles)
-        joined = "\n".join(containers).strip() if containers else ""
-        if not joined:
-            return ("", containers or [], "cull_miss")
-        return (joined, containers, "full_dom")
-    containers = find_job_containers(dom_html or "", titles)
-    dom_joined = "\n".join(containers).strip()
-    if not dom_joined:
-        return ("", containers, "cull_miss")
-    if _dom_text_covers_titles(dom_joined, titles):
-        return (dom_joined, containers, "culled")
-    # find_job_containers fallback [dom_html] may not cover all titles on partial rescrape
-    if _dom_text_covers_titles(dom_html or "", titles):
-        return ((dom_html or "").strip(), containers, "full_dom")
-    return ("", containers, "cull_miss")
-
-
-def _strip_company_data_keys(short_name: str, keys: Tuple[str, ...]) -> None:  # pragma: no cover
-    """Remove keys from merged company_data (AST-469: stale job_list_visible on NO_OPENINGS)."""
-    company = get_company(short_name)
-    if not company:
-        return
-    cd = dict(company.get("company_data") or {})
-    changed = False
-    for k in keys:
-        if k in cd:
-            cd.pop(k, None)
-            changed = True
-    if changed:
-        update_company(short_name, company_data=cd)
-
-
-
-# ---- Multi-use helpers ----
-
-def _extract_company_name_from_url(url: Optional[str]) -> Optional[str]:
-    """Extract company name (display) from URL/domain."""
-    if not url:
-        return None
-    try:
-        parsed = urlparse(url)
-        domain = parsed.netloc or parsed.path.split('/')[0]
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        parts = domain.split('.')
-        if len(parts) >= 2:
-            main_domain = parts[-2]
-        else:
-            main_domain = parts[0] if parts else domain
-        return main_domain.capitalize() if main_domain else None
-    except Exception:
-        return None
-
-
-# ---- Company data ----
 
 def save_company_data(short_name: str, company_data: Dict[str, Any], replace: bool = False) -> None:
     """Update company_data for a company. replace=False: merge keys; replace=True: full overwrite.
@@ -204,7 +126,6 @@ def save_company_data(short_name: str, company_data: Dict[str, Any], replace: bo
         update_company(short_name, company_data=merged)
 
 
-# ---- State transition ----
 
 _COMPANY_STATE_LIST = list(COMPANY_STATES.keys())
 
@@ -231,133 +152,6 @@ def transition_company_state(short_name: str, to_state: str) -> None:
         )
     update_company(short_name, state=to_state, state_history=history)
 
-
-# ---- Roster inflow discovery (AST-505) ----
-
-_INFLOW_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
-
-
-def _normalize_company_url_for_dedupe(url: str) -> str:
-    """Host-level URL key for roster ingest dedupe (strip www. after normalize_url)."""
-    u = (url or "").strip()
-    if not u:
-        return ""
-    try:
-        n = normalize_url(u)
-        parsed = urlparse(n)
-    except ValueError:
-        return ""
-    netloc = parsed.netloc or ""
-    if netloc.startswith("www."):
-        netloc = netloc[4:]
-    path = parsed.path.rstrip("/") if parsed.path else ""
-    out = f"{parsed.scheme.lower() if parsed.scheme else 'https'}://{netloc}{path}"
-    if parsed.query:
-        out += f"?{parsed.query}"
-    return out
-
-
-def _slug_from_discovery_url(url: str) -> str:
-    """Mechanical company slug from a CSE hit URL (hostname-based)."""
-    norm = _normalize_company_url_for_dedupe(url)
-    if not norm:
-        return f"inflow_{hashlib.sha256((url or '').encode()).hexdigest()[:12]}"
-    netloc = urlparse(norm).netloc or ""
-    if netloc.startswith("www."):
-        netloc = netloc[4:]
-    slug = netloc.lower().replace(".", "_")
-    slug = re.sub(r"[^a-z0-9_]", "", slug)
-    if slug:
-        return slug
-    return f"inflow_{hashlib.sha256(norm.encode()).hexdigest()[:12]}"
-
-
-def _discovery_blurb_line(hit: dict, *, index: int = 0) -> str:
-    title = hit.get("title") or ""
-    hit_url = hit.get("url") or ""
-    snippet = (hit.get("snippet") or "")[:500]
-    return f"{index:03d}|{title}|{hit_url}|{snippet}"
-
-
-def _renumber_vet_blurb_line(blurb: str, batch_index: int) -> str:
-    parts = blurb.split("|", 3)
-    if len(parts) >= 4:
-        return f"{batch_index:03d}|{parts[1]}|{parts[2]}|{parts[3]}"
-    return f"{batch_index:03d}|{blurb}"
-
-
-def _apply_vet_inflow_result_row(
-    short_name: str,
-    row: dict,
-    cfg: Dict[str, Any],
-    log: Any,
-    debug: bool,
-    *,
-    index: int,
-    total: int,
-) -> Dict[str, Any]:
-    grade = (row.get("grade") or "").strip().upper()
-    website = (row.get("website") or "").strip()
-    if not website:
-        if debug:
-            log.debug_detail(f"grade={grade!r} missing website")
-        return {"success": False, "state": None, "error": "missing website"}
-    if grade in cfg["fail_grades"]:
-        transition_company_state(short_name, cfg["fail_state"])
-        outcome = f"recorded {cfg['fail_state']} grade={grade} website={website!r}"
-        if debug:
-            log.debug_index(
-                func="roster.vet_inflow_discovery_company",
-                index=index,
-                total=total,
-                identifier=short_name,
-                outcome=outcome,
-            )
-            log.debug_detail(f"grade={grade!r} website={website!r}")
-        return {"success": True, "state": cfg["fail_state"], "error": None}
-    if grade not in cfg["pass_grades"]:
-        logger.warning("[%s] vet_inflow_discovery_company: unknown grade %r", short_name, row.get("grade"))
-        return {"success": False, "state": None, "error": f"unknown grade {grade!r}"}
-    update_company(short_name, company_website=website)
-    transition_company_state(short_name, cfg["pass_state"])
-    if debug:
-        log.debug_index(
-            func="roster.vet_inflow_discovery_company",
-            index=index,
-            total=total,
-            identifier=short_name,
-            outcome=f"recorded {cfg['pass_state']} grade={grade} website={website!r}",
-        )
-        log.debug_detail(f"grade={grade!r} website={website!r}")
-    return {"success": True, "state": cfg["pass_state"], "error": None}
-
-
-def _candidate_company_urls(candidate_id: str) -> Set[str]:
-    urls: Set[str] = set()
-    for row in list_companies(candidate_id=candidate_id):
-        for key in ("company_website", "job_site"):
-            raw = (row.get(key) or "").strip()
-            if not raw:
-                continue
-            norm = _normalize_company_url_for_dedupe(raw)
-            if norm:
-                urls.add(norm)
-        data = row.get("company_data") or {}
-        if not isinstance(data, dict):
-            continue
-        notes = (data.get("inflow_discovery_notes") or "").strip()
-        if notes:
-            norm = _normalize_company_url_for_dedupe(notes)
-            if norm:
-                urls.add(norm)
-        blurb = (data.get("inflow_discovery_blurb") or "").strip()
-        if blurb:
-            parts = blurb.split("|", 3)
-            if len(parts) >= 3 and (parts[2] or "").strip():
-                norm = _normalize_company_url_for_dedupe(parts[2])
-                if norm:
-                    urls.add(norm)
-    return urls
 
 
 def record_inflow_discovery_hit(
@@ -409,27 +203,6 @@ def record_inflow_discovery_hit(
     return True, f"recorded NEW slug={slug}"
 
 
-def _ingest_failure_reason(
-    candidate_id: str,
-    slug: str,
-    website: Optional[str],
-) -> Optional[str]:
-    """Return human-readable ingest failure reason, or None if ingest would succeed."""
-    slug = (slug or "").strip().lower()
-    if not slug or not _INFLOW_SLUG_RE.match(slug):
-        return f"invalid slug {slug!r}"
-    existing = get_company(slug)
-    if existing:
-        if (existing.get("candidate_id") or "") != candidate_id:
-            return f"slug {slug!r} owned by another candidate"
-        return f"duplicate slug {slug!r} for candidate {candidate_id}"
-    site = (website or "").strip()
-    if site:
-        norm = _normalize_company_url_for_dedupe(site)
-        if norm and norm in _candidate_company_urls(candidate_id):
-            return f"duplicate URL {site!r} for candidate {candidate_id}"
-    return None
-
 
 def ingest_new_companies(
     candidate_id: str,
@@ -477,6 +250,7 @@ def ingest_new_companies(
         if note_url:
             save_company_data(slug, {"inflow_discovery_notes": note_url})
     return True
+
 
 
 async def vet_inflow_discovery_company(
@@ -542,6 +316,7 @@ async def vet_inflow_discovery_company(
     return _apply_vet_inflow_result_row(
         short_name, row, cfg, log, debug, index=1, total=1,
     )
+
 
 
 async def vet_inflow_discovery_company_batch(
@@ -655,6 +430,7 @@ async def vet_inflow_discovery_company_batch(
         else:
             errors += 1
     return {"passed": passed, "failed": failed, "skipped": 0, "total": total}
+
 
 
 async def resolve_company_website(
@@ -788,6 +564,7 @@ async def resolve_company_website(
             outcome=f"recorded WEBSITE_FOUND website={website!r}",
         )
     return {"success": True, "state": "WEBSITE_FOUND", "error": None}
+
 
 
 async def run_inflow_discovery_batch(
@@ -925,7 +702,6 @@ async def run_inflow_discovery_batch(
     }
 
 
-# ---- Dispatch entry point (called by consult.run_consult_task) ----
 
 async def run_company_task(
     input_state: str,
@@ -1086,6 +862,7 @@ async def run_company_task(
         return {**zero, "total_errors": 1}
 
 
+
 async def run_select_job_page_dispatch(
     entity: Dict[str, Any],
     batch_id: str,
@@ -1149,133 +926,6 @@ async def run_select_job_page_dispatch(
         )
     return result
 
-
-async def _scrape_list_page_dom_for_parse(
-    url: str,
-    browser_context: Optional[BrowserSession] = None,
-    debug: bool = False,
-    *,
-    batch_session=None,
-    short_name: str = "",
-) -> str:
-    """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
-    try:
-        if batch_session is not None:
-            pg = await get_page(batch_session=batch_session, url=url)
-        else:
-            pg = await get_page(browser_context, url)
-        try:
-            readiness_cfg = roster_scrape_readiness_config()
-            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
-            if debug:
-                log = logger
-                log.set_debug_flag(True)
-                log.debug_index(
-                    func="roster._scrape_list_page_dom_for_parse",
-                    index=1,
-                    total=1,
-                    identifier=url,
-                    outcome=ready_meta.get("outcome")
-                    or ("ready" if ready_meta.get("ready") else "timeout"),
-                )
-                log.debug_detail(
-                    f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
-                    f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
-                    f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
-                )
-            return (await extract_page_dom(pg)) or ""
-        finally:
-            await close_page(pg)
-    except Exception as scrape_err:
-        if isinstance(scrape_err, PlaywrightInfraError):
-            fc = scrape_err.failure_class
-            msg = scrape_err.detail
-        else:
-            fc = classify_playwright_failure(scrape_err)
-            msg = str(scrape_err)
-        if is_playwright_infra_failure(fc):
-            logger.warning(
-                "[%s] playwright infra failure failure_class=%s %s",
-                short_name or url,
-                fc,
-                msg,
-            )
-            if isinstance(scrape_err, PlaywrightInfraError):
-                raise
-            raise PlaywrightInfraError(fc, msg) from scrape_err
-        raise
-
-
-def _resolve_selected_pjl_url(cdata: dict) -> str:
-    key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
-    return str(cdata.get(key) or "").strip()
-
-
-def _parse_dispatch_failure_state(input_state: str) -> str:
-    st = (input_state or "").strip()
-    parse_cfg = ROSTER_CONFIG["parse_job_list"]
-    if st == parse_cfg["dispatch_trigger_state"]:
-        return parse_cfg["retry_state"]
-    if st == parse_cfg["retry_trigger_state"]:
-        return parse_cfg["terminal_fail_state"]
-    return parse_cfg["terminal_fail_state"]
-
-
-def _save_parse_dispatch_failure(
-    short_name: str,
-    company_website: str,
-    list_url: str,
-    input_state: str,
-    raw_response: Optional[Dict[str, Any]] = None,
-    notes: Optional[str] = None,
-    response_type: str = "PARSE_DISPATCH_FAIL",
-) -> Dict[str, Any]:
-    fail_state = _parse_dispatch_failure_state(input_state)
-    if notes:
-        save_company_data(short_name, {"parse_job_list_notes": notes})
-    _save_company(
-        short_name=short_name,
-        company_website=company_website,
-        state=fail_state,
-        page_option_url=list_url or company_website,
-        raw_response=raw_response or {"response_type": response_type},
-        pre_run_job_site="",
-    )
-    return {
-        "short_name": short_name,
-        "state": fail_state,
-        "job_site": "",
-        "response_type": response_type,
-    }
-
-
-def _finalize_parse_dispatch_success(
-    short_name: str,
-    company_website: str,
-    list_url: str,
-    dom_html: str,
-    parsed: Dict[str, Any],
-    job_titles: List[Any],
-) -> Dict[str, Any]:
-    container = (parsed.get("job_container") or "").strip()
-    job_tag = (parsed.get("job_tag") or "").strip()
-    container_index = _compute_container_index(dom_html, container, job_titles)
-    parse_instructions = {"container": container, "job_tag": job_tag, "container_index": container_index}
-    save_company_data(short_name, {"parse_instructions": parse_instructions})
-    _save_company(
-        short_name=short_name,
-        company_website=company_website,
-        state="WATCH",
-        page_option_url=list_url,
-        raw_response=parsed,
-    )
-    return {
-        "short_name": short_name,
-        "state": "WATCH",
-        "job_site": list_url,
-        "response_type": "PARSE_DISPATCH_OK",
-        "parse_instructions": parse_instructions,
-    }
 
 
 async def run_parse_job_list_dispatch(
@@ -1404,6 +1054,7 @@ async def run_parse_job_list_dispatch(
     return result
 
 
+
 async def parse_job_list_batch(
     batch_id: str,
     companies: List[Dict[str, Any]],
@@ -1502,6 +1153,7 @@ async def parse_job_list_batch(
     return {"passed": passed, "failed": 0, "total": company_total, "errors": errors}
 
 
+
 async def process_recheck_no_openings(
     entity: Dict[str, Any],
     batch_id: str,
@@ -1559,7 +1211,7 @@ async def process_recheck_no_openings(
     return {"success": True, "message": "no_jobs_message_absent", "new_state": "JOBS_FOUND"}
 
 
-# ---- Batch API ----
+
 def get_new_company_batch(
     state: str, limit: Optional[int] = None, candidate_id: Optional[str] = None,
     batch_id: Optional[str] = None, context: Optional[str] = None,
@@ -1608,114 +1260,12 @@ def get_new_company_batch(
     companies = get_company_batch(bid)
     return (bid, companies)
 
+
+
 def clear_company_batch(batch_id: str) -> int:
     """Release batch. Returns count cleared."""
     return set_company_batch(batch_id, clear=True)
 
-
-# ---- Prefilter ----
-
-def _vector_labels_from_ctx(ctx: Optional[Dict[str, Any]]) -> Dict[str, str]:
-    from src.core.candidate import rubric_criteria_for_task
-
-    candidate_id = str((ctx or {}).get("astral_candidate_id") or "")
-    criteria = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
-    return {item["code"]: item["label"] for item in criteria if item.get("code") and item.get("label")}
-
-
-def _flatten_prefilter_parsed(parsed: Any) -> Dict[str, Any]:
-    if isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
-        first = parsed["jobs"][0]
-        if isinstance(first, dict):
-            return first
-    if isinstance(parsed, dict) and isinstance(parsed.get("grades"), list):
-        return parsed
-    raise ValueError("prefilter_company: unrecognised parsed_response shape")
-
-
-def _prefilter_api_failure_is_retryable(api_result: Dict[str, Any]) -> bool:
-    """True when the model call returned a body but decode/validation failed (AST-606)."""
-    if api_result.get("raw_response") is not None:
-        return True
-    return api_result.get("api_response") is not None
-
-
-def _prefilter_fail(
-    short_name: str,
-    cfg: Dict[str, Any],
-    result: Dict[str, Any],
-    error: str,
-    *,
-    api_result: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:
-    """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
-    company = get_company(short_name) or {}
-    current_state = (company.get("state") or "").strip()
-    # AST-897: provider balance/credit refusal — hold current loop-eligible state
-    if api_result is not None and is_provider_balance_refusal(api_result):
-        result["error"] = error
-        result["state"] = current_state
-        result["decision"] = "HOLD"
-        result["failure_class"] = api_result.get("failure_class")
-        result["state_held"] = True
-        return result
-    retryable = api_result is None or (
-        not api_result.get("success") and _prefilter_api_failure_is_retryable(api_result)
-    )
-    if not retryable:
-        dest = cfg["error_state"]
-    else:
-        dest = _prefilter_batch_fail_dest(current_state, cfg) or cfg["error_state"]
-    transition_company_state(short_name, dest)
-    result["error"] = error
-    result["state"] = dest
-    result["decision"] = "RETRY" if dest == cfg["retry_state"] else "ERROR"
-    return result
-
-
-def _company_used_inflow_prefilter(short_name: str) -> bool:
-    company = get_company(short_name)
-    if not company:
-        return False
-    for entry in reversed(company.get("state_history") or []):
-        if entry.get("to_state") == "WEBSITE_FOUND" and entry.get("from_state") == "NEW":
-            return True
-    return False
-
-
-def _company_on_decomposed_pjl_path(short_name: str, *, input_state: str = "") -> bool:
-    if _company_used_inflow_prefilter(short_name):
-        return True
-    if input_state == "HOMEPAGE_READY":
-        return True
-    company = get_company(short_name)
-    return (company or {}).get("state") == "HOMEPAGE_READY"
-
-
-def _hydrate_prefilter_pjl_urls(link_indices: List[int], nav_links_enumerated: str) -> List[str]:
-    if not link_indices or not (nav_links_enumerated or "").strip():
-        return []
-    url_map = parse_enumerate_array(nav_links_enumerated)
-    out: List[str] = []
-    for idx in link_indices:
-        raw = url_map.get(int(idx)) if isinstance(idx, int) or str(idx).isdigit() else None
-        if not raw and str(idx).startswith("http"):
-            raw = str(idx)
-        if not raw:
-            continue
-        norm = normalize_link(raw)
-        if norm and norm not in out:
-            out.append(norm)
-    return out
-
-
-def _has_dealbreaker_f(grades: List[Dict[str, Any]]) -> bool:
-    return any(
-        g.get("grade") == "F"
-        and isinstance(g.get("confidence"), int)
-        and g["confidence"] >= 2
-        for g in (grades or [])
-    )
 
 
 def finalize_page_scrape_contract(raw: Dict[str, Any]) -> Dict[str, Any]:
@@ -1727,6 +1277,7 @@ def finalize_page_scrape_contract(raw: Dict[str, Any]) -> Dict[str, Any]:
     out["enumerated_nav_links"] = enumerate_array("", nav_urls) if nav_urls else ""
     out["nav_urls"] = nav_urls
     return out
+
 
 
 async def scrape_loaded_page_contract(page, *, debug: bool = False) -> Dict[str, Any]:
@@ -1748,6 +1299,7 @@ async def scrape_loaded_page_contract(page, *, debug: bool = False) -> Dict[str,
         )
         log.debug_detail(f"collapsed_visible_chars={len(visible_text)}")
     return contract
+
 
 
 async def scrape_company_homepage_content(
@@ -1819,6 +1371,771 @@ async def scrape_company_homepage_content(
     if nav_error:
         logger.warning(f"[{short_name}] nav_links extraction failed (non-fatal): {nav_error}")
     return out
+
+
+
+async def prefilter_company(
+    short_name: str,
+    company_website: str,
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+    browser_context=None,
+) -> Dict[str, Any]:
+    """Scrape company homepage + nav_links, call Estelle's prefilter task (graded rubric
+    + culture page selection in one API call), persist result.
+    ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
+    debug: forwarded to do_task for AST-538 contract debug on the LLM hop.
+    browser_context: optional shared BrowserSession to reuse across a batch.
+    Returns {decision, state, notes, error}."""
+    result: Dict[str, Any] = {"decision": None, "state": None, "notes": None, "error": None}
+    if not company_website:
+        result["error"] = "No company_website"
+        return result
+    try:
+        scrape = await scrape_company_homepage_content(
+            short_name, company_website, browser_context=browser_context
+        )
+        if scrape.get("error"):
+            transition_company_state(short_name, "CANNOT_READ_WEBSITE")
+            save_company_data(short_name, {"prefilter_company_notes": scrape["error"]})
+            result["error"] = scrape["error"]
+            result["state"] = "CANNOT_READ_WEBSITE"
+            return result
+        company_website = scrape["company_website"]
+        visible_text = scrape["visible_text"]
+        enumerated_nav_links = scrape["enumerated_nav_links"]
+
+        # Step 3: assemble live_content with homepage + nav_links
+        parts = [f"[company_id={short_name}]", f"\n## Homepage Content\n{visible_text}"]
+        if enumerated_nav_links:
+            parts.append(f"\n## Navigation Links\n{enumerated_nav_links}")
+        live_content = "\n".join(parts)
+
+        task_ctx = {
+            **(ctx or {}),
+            "batch_entities": [{"astral_job_id": short_name}],
+            "batch_size": 1,
+            "vector_labels": _vector_labels_from_ctx(ctx),
+        }
+        api_result = await do_task(
+            task_key="prefilter_company",
+            live_content=live_content,
+            index=short_name,
+            ctx=task_ctx,
+            debug=debug,
+        )
+
+        cfg = ROSTER_CONFIG.get("prefilter", {})
+
+        if not api_result.get("success"):
+            return _prefilter_fail(
+                short_name,
+                cfg,
+                result,
+                api_result.get("error", "Unknown API error: prefilter_company " + short_name),
+                api_result=api_result,
+            )
+
+        parsed = api_result.get("parsed_response")
+        if not parsed:
+            return _prefilter_fail(short_name, cfg, result, "No parsed_response from do_task")
+
+        try:
+            flat = _flatten_prefilter_parsed(parsed)
+        except ValueError as shape_err:
+            return _prefilter_fail(short_name, cfg, result, str(shape_err))
+
+        try:
+            new_state = _apply_prefilter_decoded_company_outcome(
+                short_name,
+                flat,
+                cfg,
+                ctx,
+                nav_links_from_data=enumerated_nav_links,
+                debug=debug,
+            )
+        except ValueError as outcome_err:
+            return _prefilter_fail(short_name, cfg, result, str(outcome_err))
+
+        decision = "TO_WATCH" if new_state in ("TO_WATCH", "PREFILTER_PASSED") else "IGNORE"
+        grades = flat.get("grades") or []
+        notes = " | ".join(
+            f"{g['vector']}={g['grade']}: {g['reason']}" for g in grades if g.get("reason")
+        )
+        result["decision"] = decision
+        result["state"] = new_state
+        result["notes"] = notes
+    except Exception as e:
+        error_state = ROSTER_CONFIG.get("prefilter", {}).get("error_state")
+        if error_state:
+            transition_company_state(short_name, error_state)
+            result["state"] = error_state
+        result["error"] = str(e)
+    return result
+
+
+
+async def prefilter_company_batch(
+    batch_id: str,
+    companies: List[Dict[str, Any]],
+    ctx: Optional[Dict[str, Any]] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Batch company prefilter from HOMEPAGE_READY rows (AST-702)."""
+    cfg = ROSTER_CONFIG["prefilter"]
+    ready: List[Dict[str, Any]] = []
+    not_ready: List[Dict[str, Any]] = []
+    for company in companies:
+        if _company_homepage_ready(company):
+            ready.append(company)
+        else:
+            not_ready.append(company)
+
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_detail(
+            f"prefilter_company_batch batch_id={batch_id} ready={len(ready)} not_ready={len(not_ready)}"
+        )
+
+    # Not-ready WFR: leave for fetch_website scrape retry; do not CANNOT_READ.
+    skipped = 0
+    for ni, company in enumerate(not_ready, start=1):
+        short_name = company["short_name"]
+        st = (company.get("state") or "").strip()
+        if st == cfg["retry_state"]:
+            skipped += 1
+            if debug:
+                logger.debug_index(
+                    func="roster.prefilter_company_batch",
+                    index=ni,
+                    total=len(not_ready),
+                    identifier=short_name,
+                    outcome="readiness skip — leave WEBSITE_FOUND_RETRY for fetch_website",
+                )
+            continue
+        transition_company_state(short_name, "CANNOT_READ_WEBSITE")
+        save_company_data(short_name, {"prefilter_company_notes": "No homepage_text in company_data"})
+        skipped += 1
+        if debug:
+            logger.debug_index(
+                func="roster.prefilter_company_batch",
+                index=ni,
+                total=len(not_ready),
+                identifier=short_name,
+                outcome="readiness skip -> CANNOT_READ_WEBSITE",
+            )
+
+    if not ready:
+        return {
+            "passed": 0,
+            "failed": 0,
+            "total": len(companies),
+            "skipped": skipped,
+        }
+
+    batch_result = await _run_batch_company_prefilter(batch_id, ready, ctx=ctx, debug=debug)
+    batch_result["total"] = len(companies)
+    if skipped:
+        batch_result["skipped"] = skipped
+    return batch_result
+
+
+
+async def jobs_found_process_job_site(
+    short_name: str,
+    company_website: str,
+    job_site: str,
+    *,
+    debug: bool = False,
+    ctx: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:  # pragma: no cover — AST-469 JOBS_FOUND path exercised via mocks; roster branch-lock §7.12
+    """AST-469: JOBS_FOUND — fresh scrape of stored job_site; same select→parse chain as TO_WATCH locate (no stale job_list_visible)."""
+    job_site = (job_site or "").strip()
+    if not job_site:
+        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": "", "response_type": "MISSING_JOB_SITE"}
+
+    _strip_company_data_keys(short_name, ("job_list_visible",))
+
+    try:
+        visible_text, final_url = await get_visible_text(job_site, return_final_url=True)
+    except Exception as ex:
+        logger.warning("[%s] jobs_found: initial scrape failed: %s", short_name, ex)
+        err_st = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
+        if err_st:
+            transition_company_state(short_name, err_st)
+        return {"short_name": short_name, "state": err_st or "ERROR_LOCATE_JOB_PAGE", "job_site": job_site, "response_type": "SCRAPE_FAIL"}
+
+    if final_url and final_url != job_site:
+        update_company(short_name, job_site=final_url)
+        job_site = final_url
+
+    nav_links = enumerate_array("", [job_site])
+
+    async with create_browser_context() as browser_context:
+        assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
+            [1], nav_links, browser_context, debug=debug,
+        )
+        if not assembled_content.strip():
+            _save_company(short_name=short_name, company_website=company_website,
+                               state="NO_JOBLIST", page_option_url=company_website,
+                               raw_response={"response_type": "JOBS_FOUND_SCRAPE_EMPTY", "job_site": job_site})
+            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site, "response_type": "JOBS_FOUND_SCRAPE_EMPTY"}
+
+        return await _find_job_page_from_assembled(
+            short_name=short_name,
+            company_website=company_website,
+            assembled_content=assembled_content,
+            page_url_map=page_url_map,
+            page_dom_map=page_dom_map,
+            visible_map=visible_map,
+            nav_links=nav_links,
+            browser_context=browser_context,
+            debug=debug,
+            ctx=ctx,
+        )
+
+
+
+async def get_company_data(company: Dict[str, Any], key: str) -> Any:
+    """Return company_data[key], fetching on-demand if missing (coat-check pattern).
+    Registered keys in ROSTER_CONFIG['company_data_keys'] have fetch-on-missing handlers.
+    Unregistered keys return None if absent. Never stores empty/failed data.
+    """
+    company_data = company.get("company_data") or {}
+    if not isinstance(company_data, dict):
+        company_data = {}
+    if key in company_data and company_data[key] is not None:
+        return company_data[key]
+    registered = ROSTER_CONFIG.get("company_data_keys", {})
+    if key not in registered:
+        return None
+    handler = _COATCHECK_HANDLERS.get(key)
+    if not handler:
+        return None
+    return await handler(company)
+
+
+
+def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
+    """Return {state: count} for all jobs belonging to company."""
+    return get_company_job_counts(short_name)
+
+
+
+# ---- shared helpers ---------------------------------------------------
+
+def _extract_company_name_from_url(url: Optional[str]) -> Optional[str]:
+    """Extract company name (display) from URL/domain."""
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc or parsed.path.split('/')[0]
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        parts = domain.split('.')
+        if len(parts) >= 2:
+            main_domain = parts[-2]
+        else:
+            main_domain = parts[0] if parts else domain
+        return main_domain.capitalize() if main_domain else None
+    except Exception:
+        return None
+
+
+
+def _normalize_job_titles(raw: Any) -> List[str]:
+    """Strip blanks; preserve order from select/company_data."""
+    if not isinstance(raw, list):
+        return []
+    return [str(t).strip() for t in raw if str(t).strip()]
+
+
+
+def _dom_text_covers_titles(dom_html: str, job_titles: List[str]) -> bool:
+    blob = (dom_html or "").lower()
+    return all(t.lower() in blob for t in job_titles if t.strip())
+
+
+
+def _culled_dom_for_parse(
+    dom_html: str, job_titles: List[str]
+) -> Tuple[str, List[str], str]:
+    """Returns (dom_joined, containers, outcome_label).
+    outcome_label: no_titles | full_dom | culled | cull_miss."""
+    titles = _normalize_job_titles(job_titles)
+    if not titles:
+        return ("", [], "no_titles")
+    if len(titles) < 2:
+        dom = (dom_html or "").strip()
+        if not dom:
+            return ("", [], "cull_miss")
+        containers = find_job_containers(dom, titles)
+        joined = "\n".join(containers).strip() if containers else ""
+        if not joined:
+            return ("", containers or [], "cull_miss")
+        return (joined, containers, "full_dom")
+    containers = find_job_containers(dom_html or "", titles)
+    dom_joined = "\n".join(containers).strip()
+    if not dom_joined:
+        return ("", containers, "cull_miss")
+    if _dom_text_covers_titles(dom_joined, titles):
+        return (dom_joined, containers, "culled")
+    # find_job_containers fallback [dom_html] may not cover all titles on partial rescrape
+    if _dom_text_covers_titles(dom_html or "", titles):
+        return ((dom_html or "").strip(), containers, "full_dom")
+    return ("", containers, "cull_miss")
+
+
+
+def _strip_company_data_keys(short_name: str, keys: Tuple[str, ...]) -> None:  # pragma: no cover
+    """Remove keys from merged company_data (AST-469: stale job_list_visible on NO_OPENINGS)."""
+    company = get_company(short_name)
+    if not company:
+        return
+    cd = dict(company.get("company_data") or {})
+    changed = False
+    for k in keys:
+        if k in cd:
+            cd.pop(k, None)
+            changed = True
+    if changed:
+        update_company(short_name, company_data=cd)
+
+
+
+def _derive_shortname_from_url(url: str) -> str:
+    """Extract domain from URL and derive shortname.
+    
+    Args:
+        url: URL string
+        
+    Returns:
+        Lowercase shortname (domain without www. and TLD)
+        
+    Raises:
+        ValueError: If URL cannot be parsed
+    """
+    try:
+        parsed = urlparse(url)
+        domain = parsed.netloc or parsed.path.split('/')[0]
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        parts = domain.split('.')
+        if len(parts) >= 2:
+            main_domain = parts[-2]
+        else:
+            main_domain = parts[0] if parts else domain
+        return main_domain.lower()
+    except Exception as e:
+        raise ValueError(f"Failed to derive shortname from URL '{url}': {e}")
+
+
+
+# ---- inflow discovery helpers -----------------------------------------
+
+_INFLOW_SLUG_RE = re.compile(r"^[a-z0-9_]+$")
+
+
+
+def _normalize_company_url_for_dedupe(url: str) -> str:
+    """Host-level URL key for roster ingest dedupe (strip www. after normalize_url)."""
+    u = (url or "").strip()
+    if not u:
+        return ""
+    try:
+        n = normalize_url(u)
+        parsed = urlparse(n)
+    except ValueError:
+        return ""
+    netloc = parsed.netloc or ""
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    path = parsed.path.rstrip("/") if parsed.path else ""
+    out = f"{parsed.scheme.lower() if parsed.scheme else 'https'}://{netloc}{path}"
+    if parsed.query:
+        out += f"?{parsed.query}"
+    return out
+
+
+
+def _slug_from_discovery_url(url: str) -> str:
+    """Mechanical company slug from a CSE hit URL (hostname-based)."""
+    norm = _normalize_company_url_for_dedupe(url)
+    if not norm:
+        return f"inflow_{hashlib.sha256((url or '').encode()).hexdigest()[:12]}"
+    netloc = urlparse(norm).netloc or ""
+    if netloc.startswith("www."):
+        netloc = netloc[4:]
+    slug = netloc.lower().replace(".", "_")
+    slug = re.sub(r"[^a-z0-9_]", "", slug)
+    if slug:
+        return slug
+    return f"inflow_{hashlib.sha256(norm.encode()).hexdigest()[:12]}"
+
+
+
+def _discovery_blurb_line(hit: dict, *, index: int = 0) -> str:
+    title = hit.get("title") or ""
+    hit_url = hit.get("url") or ""
+    snippet = (hit.get("snippet") or "")[:500]
+    return f"{index:03d}|{title}|{hit_url}|{snippet}"
+
+
+
+def _renumber_vet_blurb_line(blurb: str, batch_index: int) -> str:
+    parts = blurb.split("|", 3)
+    if len(parts) >= 4:
+        return f"{batch_index:03d}|{parts[1]}|{parts[2]}|{parts[3]}"
+    return f"{batch_index:03d}|{blurb}"
+
+
+
+def _apply_vet_inflow_result_row(
+    short_name: str,
+    row: dict,
+    cfg: Dict[str, Any],
+    log: Any,
+    debug: bool,
+    *,
+    index: int,
+    total: int,
+) -> Dict[str, Any]:
+    grade = (row.get("grade") or "").strip().upper()
+    website = (row.get("website") or "").strip()
+    if not website:
+        if debug:
+            log.debug_detail(f"grade={grade!r} missing website")
+        return {"success": False, "state": None, "error": "missing website"}
+    if grade in cfg["fail_grades"]:
+        transition_company_state(short_name, cfg["fail_state"])
+        outcome = f"recorded {cfg['fail_state']} grade={grade} website={website!r}"
+        if debug:
+            log.debug_index(
+                func="roster.vet_inflow_discovery_company",
+                index=index,
+                total=total,
+                identifier=short_name,
+                outcome=outcome,
+            )
+            log.debug_detail(f"grade={grade!r} website={website!r}")
+        return {"success": True, "state": cfg["fail_state"], "error": None}
+    if grade not in cfg["pass_grades"]:
+        logger.warning("[%s] vet_inflow_discovery_company: unknown grade %r", short_name, row.get("grade"))
+        return {"success": False, "state": None, "error": f"unknown grade {grade!r}"}
+    update_company(short_name, company_website=website)
+    transition_company_state(short_name, cfg["pass_state"])
+    if debug:
+        log.debug_index(
+            func="roster.vet_inflow_discovery_company",
+            index=index,
+            total=total,
+            identifier=short_name,
+            outcome=f"recorded {cfg['pass_state']} grade={grade} website={website!r}",
+        )
+        log.debug_detail(f"grade={grade!r} website={website!r}")
+    return {"success": True, "state": cfg["pass_state"], "error": None}
+
+
+
+def _candidate_company_urls(candidate_id: str) -> Set[str]:
+    urls: Set[str] = set()
+    for row in list_companies(candidate_id=candidate_id):
+        for key in ("company_website", "job_site"):
+            raw = (row.get(key) or "").strip()
+            if not raw:
+                continue
+            norm = _normalize_company_url_for_dedupe(raw)
+            if norm:
+                urls.add(norm)
+        data = row.get("company_data") or {}
+        if not isinstance(data, dict):
+            continue
+        notes = (data.get("inflow_discovery_notes") or "").strip()
+        if notes:
+            norm = _normalize_company_url_for_dedupe(notes)
+            if norm:
+                urls.add(norm)
+        blurb = (data.get("inflow_discovery_blurb") or "").strip()
+        if blurb:
+            parts = blurb.split("|", 3)
+            if len(parts) >= 3 and (parts[2] or "").strip():
+                norm = _normalize_company_url_for_dedupe(parts[2])
+                if norm:
+                    urls.add(norm)
+    return urls
+
+
+
+def _ingest_failure_reason(
+    candidate_id: str,
+    slug: str,
+    website: Optional[str],
+) -> Optional[str]:
+    """Return human-readable ingest failure reason, or None if ingest would succeed."""
+    slug = (slug or "").strip().lower()
+    if not slug or not _INFLOW_SLUG_RE.match(slug):
+        return f"invalid slug {slug!r}"
+    existing = get_company(slug)
+    if existing:
+        if (existing.get("candidate_id") or "") != candidate_id:
+            return f"slug {slug!r} owned by another candidate"
+        return f"duplicate slug {slug!r} for candidate {candidate_id}"
+    site = (website or "").strip()
+    if site:
+        norm = _normalize_company_url_for_dedupe(site)
+        if norm and norm in _candidate_company_urls(candidate_id):
+            return f"duplicate URL {site!r} for candidate {candidate_id}"
+    return None
+
+
+
+# ---- parse job list dispatch helpers ----------------------------------
+
+async def _scrape_list_page_dom_for_parse(
+    url: str,
+    browser_context: Optional[BrowserSession] = None,
+    debug: bool = False,
+    *,
+    batch_session=None,
+    short_name: str = "",
+) -> str:
+    """Playwright DOM reload for parse_job_list — careers-list readiness (AST-689)."""
+    try:
+        if batch_session is not None:
+            pg = await get_page(batch_session=batch_session, url=url)
+        else:
+            pg = await get_page(browser_context, url)
+        try:
+            readiness_cfg = roster_scrape_readiness_config()
+            ready_meta = await wait_for_careers_list_readiness(pg, readiness_cfg)
+            if debug:
+                log = logger
+                log.set_debug_flag(True)
+                log.debug_index(
+                    func="roster._scrape_list_page_dom_for_parse",
+                    index=1,
+                    total=1,
+                    identifier=url,
+                    outcome=ready_meta.get("outcome")
+                    or ("ready" if ready_meta.get("ready") else "timeout"),
+                )
+                log.debug_detail(
+                    f"ready={ready_meta.get('ready')} visible_chars={ready_meta.get('visible_chars')} "
+                    f"listing_hits={ready_meta.get('listing_hits')} wait_ms={ready_meta.get('wait_ms')} "
+                    f"load_all_jobs_ran={ready_meta.get('load_all_jobs_ran')}"
+                )
+            return (await extract_page_dom(pg)) or ""
+        finally:
+            await close_page(pg)
+    except Exception as scrape_err:
+        if isinstance(scrape_err, PlaywrightInfraError):
+            fc = scrape_err.failure_class
+            msg = scrape_err.detail
+        else:
+            fc = classify_playwright_failure(scrape_err)
+            msg = str(scrape_err)
+        if is_playwright_infra_failure(fc):
+            logger.warning(
+                "[%s] playwright infra failure failure_class=%s %s",
+                short_name or url,
+                fc,
+                msg,
+            )
+            if isinstance(scrape_err, PlaywrightInfraError):
+                raise
+            raise PlaywrightInfraError(fc, msg) from scrape_err
+        raise
+
+
+
+def _resolve_selected_pjl_url(cdata: dict) -> str:
+    key = ROSTER_CONFIG["parse_job_list"]["selected_pjl_url_key"]
+    return str(cdata.get(key) or "").strip()
+
+
+
+def _parse_dispatch_failure_state(input_state: str) -> str:
+    st = (input_state or "").strip()
+    parse_cfg = ROSTER_CONFIG["parse_job_list"]
+    if st == parse_cfg["dispatch_trigger_state"]:
+        return parse_cfg["retry_state"]
+    if st == parse_cfg["retry_trigger_state"]:
+        return parse_cfg["terminal_fail_state"]
+    return parse_cfg["terminal_fail_state"]
+
+
+
+def _save_parse_dispatch_failure(
+    short_name: str,
+    company_website: str,
+    list_url: str,
+    input_state: str,
+    raw_response: Optional[Dict[str, Any]] = None,
+    notes: Optional[str] = None,
+    response_type: str = "PARSE_DISPATCH_FAIL",
+) -> Dict[str, Any]:
+    fail_state = _parse_dispatch_failure_state(input_state)
+    if notes:
+        save_company_data(short_name, {"parse_job_list_notes": notes})
+    _save_company(
+        short_name=short_name,
+        company_website=company_website,
+        state=fail_state,
+        page_option_url=list_url or company_website,
+        raw_response=raw_response or {"response_type": response_type},
+        pre_run_job_site="",
+    )
+    return {
+        "short_name": short_name,
+        "state": fail_state,
+        "job_site": "",
+        "response_type": response_type,
+    }
+
+
+
+def _finalize_parse_dispatch_success(
+    short_name: str,
+    company_website: str,
+    list_url: str,
+    dom_html: str,
+    parsed: Dict[str, Any],
+    job_titles: List[Any],
+) -> Dict[str, Any]:
+    container = (parsed.get("job_container") or "").strip()
+    job_tag = (parsed.get("job_tag") or "").strip()
+    container_index = _compute_container_index(dom_html, container, job_titles)
+    parse_instructions = {"container": container, "job_tag": job_tag, "container_index": container_index}
+    save_company_data(short_name, {"parse_instructions": parse_instructions})
+    _save_company(
+        short_name=short_name,
+        company_website=company_website,
+        state="WATCH",
+        page_option_url=list_url,
+        raw_response=parsed,
+    )
+    return {
+        "short_name": short_name,
+        "state": "WATCH",
+        "job_site": list_url,
+        "response_type": "PARSE_DISPATCH_OK",
+        "parse_instructions": parse_instructions,
+    }
+
+
+
+# ---- prefilter helpers ------------------------------------------------
+
+def _vector_labels_from_ctx(ctx: Optional[Dict[str, Any]]) -> Dict[str, str]:
+    from src.core.candidate import rubric_criteria_for_task
+
+    candidate_id = str((ctx or {}).get("astral_candidate_id") or "")
+    criteria = rubric_criteria_for_task(candidate_id, "prefilter_company") if candidate_id else []
+    return {item["code"]: item["label"] for item in criteria if item.get("code") and item.get("label")}
+
+
+
+def _flatten_prefilter_parsed(parsed: Any) -> Dict[str, Any]:
+    if isinstance(parsed, dict) and isinstance(parsed.get("jobs"), list) and parsed["jobs"]:
+        first = parsed["jobs"][0]
+        if isinstance(first, dict):
+            return first
+    if isinstance(parsed, dict) and isinstance(parsed.get("grades"), list):
+        return parsed
+    raise ValueError("prefilter_company: unrecognised parsed_response shape")
+
+
+
+def _prefilter_api_failure_is_retryable(api_result: Dict[str, Any]) -> bool:
+    """True when the model call returned a body but decode/validation failed (AST-606)."""
+    if api_result.get("raw_response") is not None:
+        return True
+    return api_result.get("api_response") is not None
+
+
+
+def _prefilter_fail(
+    short_name: str,
+    cfg: Dict[str, Any],
+    result: Dict[str, Any],
+    error: str,
+    *,
+    api_result: Optional[Dict[str, Any]] = None,
+) -> Dict[str, Any]:
+    """Route retryable failures via current state (one retry then ERROR_PREFILTER); hard → error."""
+    company = get_company(short_name) or {}
+    current_state = (company.get("state") or "").strip()
+    # AST-897: provider balance/credit refusal — hold current loop-eligible state
+    if api_result is not None and is_provider_balance_refusal(api_result):
+        result["error"] = error
+        result["state"] = current_state
+        result["decision"] = "HOLD"
+        result["failure_class"] = api_result.get("failure_class")
+        result["state_held"] = True
+        return result
+    retryable = api_result is None or (
+        not api_result.get("success") and _prefilter_api_failure_is_retryable(api_result)
+    )
+    if not retryable:
+        dest = cfg["error_state"]
+    else:
+        dest = _prefilter_batch_fail_dest(current_state, cfg) or cfg["error_state"]
+    transition_company_state(short_name, dest)
+    result["error"] = error
+    result["state"] = dest
+    result["decision"] = "RETRY" if dest == cfg["retry_state"] else "ERROR"
+    return result
+
+
+
+def _company_used_inflow_prefilter(short_name: str) -> bool:
+    company = get_company(short_name)
+    if not company:
+        return False
+    for entry in reversed(company.get("state_history") or []):
+        if entry.get("to_state") == "WEBSITE_FOUND" and entry.get("from_state") == "NEW":
+            return True
+    return False
+
+
+
+def _company_on_decomposed_pjl_path(short_name: str, *, input_state: str = "") -> bool:
+    if _company_used_inflow_prefilter(short_name):
+        return True
+    if input_state == "HOMEPAGE_READY":
+        return True
+    company = get_company(short_name)
+    return (company or {}).get("state") == "HOMEPAGE_READY"
+
+
+
+def _hydrate_prefilter_pjl_urls(link_indices: List[int], nav_links_enumerated: str) -> List[str]:
+    if not link_indices or not (nav_links_enumerated or "").strip():
+        return []
+    url_map = parse_enumerate_array(nav_links_enumerated)
+    out: List[str] = []
+    for idx in link_indices:
+        raw = url_map.get(int(idx)) if isinstance(idx, int) or str(idx).isdigit() else None
+        if not raw and str(idx).startswith("http"):
+            raw = str(idx)
+        if not raw:
+            continue
+        norm = normalize_link(raw)
+        if norm and norm not in out:
+            out.append(norm)
+    return out
+
+
+
+def _has_dealbreaker_f(grades: List[Dict[str, Any]]) -> bool:
+    return any(
+        g.get("grade") == "F"
+        and isinstance(g.get("confidence"), int)
+        and g["confidence"] >= 2
+        for g in (grades or [])
+    )
+
 
 
 def _apply_prefilter_decoded_company_outcome(
@@ -1931,109 +2248,11 @@ def _apply_prefilter_decoded_company_outcome(
     return new_state
 
 
-async def prefilter_company(
-    short_name: str,
-    company_website: str,
-    ctx: Optional[Dict[str, Any]] = None,
-    debug: bool = False,
-    browser_context=None,
-) -> Dict[str, Any]:
-    """Scrape company homepage + nav_links, call Estelle's prefilter task (graded rubric
-    + culture page selection in one API call), persist result.
-    ctx: full candidate raft, forwarded to do_task for token resolution + API key override.
-    debug: forwarded to do_task for AST-538 contract debug on the LLM hop.
-    browser_context: optional shared BrowserSession to reuse across a batch.
-    Returns {decision, state, notes, error}."""
-    result: Dict[str, Any] = {"decision": None, "state": None, "notes": None, "error": None}
-    if not company_website:
-        result["error"] = "No company_website"
-        return result
-    try:
-        scrape = await scrape_company_homepage_content(
-            short_name, company_website, browser_context=browser_context
-        )
-        if scrape.get("error"):
-            transition_company_state(short_name, "CANNOT_READ_WEBSITE")
-            save_company_data(short_name, {"prefilter_company_notes": scrape["error"]})
-            result["error"] = scrape["error"]
-            result["state"] = "CANNOT_READ_WEBSITE"
-            return result
-        company_website = scrape["company_website"]
-        visible_text = scrape["visible_text"]
-        enumerated_nav_links = scrape["enumerated_nav_links"]
-
-        # Step 3: assemble live_content with homepage + nav_links
-        parts = [f"[company_id={short_name}]", f"\n## Homepage Content\n{visible_text}"]
-        if enumerated_nav_links:
-            parts.append(f"\n## Navigation Links\n{enumerated_nav_links}")
-        live_content = "\n".join(parts)
-
-        task_ctx = {
-            **(ctx or {}),
-            "batch_entities": [{"astral_job_id": short_name}],
-            "batch_size": 1,
-            "vector_labels": _vector_labels_from_ctx(ctx),
-        }
-        api_result = await do_task(
-            task_key="prefilter_company",
-            live_content=live_content,
-            index=short_name,
-            ctx=task_ctx,
-            debug=debug,
-        )
-
-        cfg = ROSTER_CONFIG.get("prefilter", {})
-
-        if not api_result.get("success"):
-            return _prefilter_fail(
-                short_name,
-                cfg,
-                result,
-                api_result.get("error", "Unknown API error: prefilter_company " + short_name),
-                api_result=api_result,
-            )
-
-        parsed = api_result.get("parsed_response")
-        if not parsed:
-            return _prefilter_fail(short_name, cfg, result, "No parsed_response from do_task")
-
-        try:
-            flat = _flatten_prefilter_parsed(parsed)
-        except ValueError as shape_err:
-            return _prefilter_fail(short_name, cfg, result, str(shape_err))
-
-        try:
-            new_state = _apply_prefilter_decoded_company_outcome(
-                short_name,
-                flat,
-                cfg,
-                ctx,
-                nav_links_from_data=enumerated_nav_links,
-                debug=debug,
-            )
-        except ValueError as outcome_err:
-            return _prefilter_fail(short_name, cfg, result, str(outcome_err))
-
-        decision = "TO_WATCH" if new_state in ("TO_WATCH", "PREFILTER_PASSED") else "IGNORE"
-        grades = flat.get("grades") or []
-        notes = " | ".join(
-            f"{g['vector']}={g['grade']}: {g['reason']}" for g in grades if g.get("reason")
-        )
-        result["decision"] = decision
-        result["state"] = new_state
-        result["notes"] = notes
-    except Exception as e:
-        error_state = ROSTER_CONFIG.get("prefilter", {}).get("error_state")
-        if error_state:
-            transition_company_state(short_name, error_state)
-            result["state"] = error_state
-        result["error"] = str(e)
-    return result
-
 
 def _company_homepage_ready(company: Dict[str, Any]) -> bool:
     cd = company.get("company_data") or {}
     return len((cd.get("homepage_text") or "").strip()) > 0
+
 
 
 def _prefilter_batch_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any]) -> Optional[str]:
@@ -2046,6 +2265,7 @@ def _prefilter_batch_fail_dest(entity_state: Optional[str], cfg: Dict[str, Any])
     if st == cfg.get("retry_state"):
         return cfg.get("error_state")
     return cfg.get("error_state")
+
 
 
 def _transition_prefilter_batch_failures(
@@ -2075,6 +2295,7 @@ def _transition_prefilter_batch_failures(
                     outcome=f"{fail_class} -> {dest}",
                 )
                 logger.debug_detail(f"fail_class={fail_class}")
+
 
 
 async def _run_batch_company_prefilter(
@@ -2274,72 +2495,8 @@ async def _run_batch_company_prefilter(
     return {"passed": passed, "failed": failed, "total": len(companies)}
 
 
-async def prefilter_company_batch(
-    batch_id: str,
-    companies: List[Dict[str, Any]],
-    ctx: Optional[Dict[str, Any]] = None,
-    debug: bool = False,
-) -> Dict[str, Any]:
-    """Batch company prefilter from HOMEPAGE_READY rows (AST-702)."""
-    cfg = ROSTER_CONFIG["prefilter"]
-    ready: List[Dict[str, Any]] = []
-    not_ready: List[Dict[str, Any]] = []
-    for company in companies:
-        if _company_homepage_ready(company):
-            ready.append(company)
-        else:
-            not_ready.append(company)
 
-    if debug:
-        logger.set_debug_flag(True)
-        logger.debug_detail(
-            f"prefilter_company_batch batch_id={batch_id} ready={len(ready)} not_ready={len(not_ready)}"
-        )
-
-    # Not-ready WFR: leave for fetch_website scrape retry; do not CANNOT_READ.
-    skipped = 0
-    for ni, company in enumerate(not_ready, start=1):
-        short_name = company["short_name"]
-        st = (company.get("state") or "").strip()
-        if st == cfg["retry_state"]:
-            skipped += 1
-            if debug:
-                logger.debug_index(
-                    func="roster.prefilter_company_batch",
-                    index=ni,
-                    total=len(not_ready),
-                    identifier=short_name,
-                    outcome="readiness skip — leave WEBSITE_FOUND_RETRY for fetch_website",
-                )
-            continue
-        transition_company_state(short_name, "CANNOT_READ_WEBSITE")
-        save_company_data(short_name, {"prefilter_company_notes": "No homepage_text in company_data"})
-        skipped += 1
-        if debug:
-            logger.debug_index(
-                func="roster.prefilter_company_batch",
-                index=ni,
-                total=len(not_ready),
-                identifier=short_name,
-                outcome="readiness skip -> CANNOT_READ_WEBSITE",
-            )
-
-    if not ready:
-        return {
-            "passed": 0,
-            "failed": 0,
-            "total": len(companies),
-            "skipped": skipped,
-        }
-
-    batch_result = await _run_batch_company_prefilter(batch_id, ready, ctx=ctx, debug=debug)
-    batch_result["total"] = len(companies)
-    if skipped:
-        batch_result["skipped"] = skipped
-    return batch_result
-
-
-# ---- Find job page ----
+# ---- find job page helpers --------------------------------------------
 
 async def _find_job_page_from_assembled(
     *,
@@ -2517,59 +2674,6 @@ async def _find_job_page_from_assembled(
     )
 
 
-async def jobs_found_process_job_site(
-    short_name: str,
-    company_website: str,
-    job_site: str,
-    *,
-    debug: bool = False,
-    ctx: Optional[Dict[str, Any]] = None,
-) -> Dict[str, Any]:  # pragma: no cover — AST-469 JOBS_FOUND path exercised via mocks; roster branch-lock §7.12
-    """AST-469: JOBS_FOUND — fresh scrape of stored job_site; same select→parse chain as TO_WATCH locate (no stale job_list_visible)."""
-    job_site = (job_site or "").strip()
-    if not job_site:
-        return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": "", "response_type": "MISSING_JOB_SITE"}
-
-    _strip_company_data_keys(short_name, ("job_list_visible",))
-
-    try:
-        visible_text, final_url = await get_visible_text(job_site, return_final_url=True)
-    except Exception as ex:
-        logger.warning("[%s] jobs_found: initial scrape failed: %s", short_name, ex)
-        err_st = ROSTER_CONFIG.get("locate_job_page", {}).get("error_state")
-        if err_st:
-            transition_company_state(short_name, err_st)
-        return {"short_name": short_name, "state": err_st or "ERROR_LOCATE_JOB_PAGE", "job_site": job_site, "response_type": "SCRAPE_FAIL"}
-
-    if final_url and final_url != job_site:
-        update_company(short_name, job_site=final_url)
-        job_site = final_url
-
-    nav_links = enumerate_array("", [job_site])
-
-    async with create_browser_context() as browser_context:
-        assembled_content, page_url_map, page_dom_map, visible_map = await _fetch_job_links_content(
-            [1], nav_links, browser_context, debug=debug,
-        )
-        if not assembled_content.strip():
-            _save_company(short_name=short_name, company_website=company_website,
-                               state="NO_JOBLIST", page_option_url=company_website,
-                               raw_response={"response_type": "JOBS_FOUND_SCRAPE_EMPTY", "job_site": job_site})
-            return {"short_name": short_name, "state": "NO_JOBLIST", "job_site": job_site, "response_type": "JOBS_FOUND_SCRAPE_EMPTY"}
-
-        return await _find_job_page_from_assembled(
-            short_name=short_name,
-            company_website=company_website,
-            assembled_content=assembled_content,
-            page_url_map=page_url_map,
-            page_dom_map=page_dom_map,
-            visible_map=visible_map,
-            nav_links=nav_links,
-            browser_context=browser_context,
-            debug=debug,
-            ctx=ctx,
-        )
-
 
 def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
     return {
@@ -2577,6 +2681,7 @@ def _pjl_scrape_ledger_keys(pjl_scrape_pages: list) -> Set[str]:
         for row in (pjl_scrape_pages or [])
         if row.get("url")
     }
+
 
 
 async def _scrape_pjl_page(
@@ -2621,6 +2726,7 @@ async def _scrape_pjl_page(
     return out
 
 
+
 def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
     if normalize_link(new_record.get("url") or "") in _pjl_scrape_ledger_keys(existing_pages):
         return existing_pages
@@ -2632,6 +2738,7 @@ def _merge_pjl_scrape_record(existing_pages: list, new_record: dict) -> list:
     if enum_nav:
         row["enumerated_nav_links"] = enum_nav
     return list(existing_pages or []) + [row]
+
 
 
 def _merge_pjl_nav_links(existing_enum: str, new_urls: List[str]) -> str:
@@ -2652,6 +2759,7 @@ def _merge_pjl_nav_links(existing_enum: str, new_urls: List[str]) -> str:
     return enumerate_array("", merged) if merged else ""
 
 
+
 def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
     sections: List[str] = []
     for n, row in enumerate(pjl_scrape_pages or [], 1):
@@ -2665,8 +2773,10 @@ def _assemble_pjl_content(pjl_scrape_pages: list) -> str:
     return "\n\n".join(sections)
 
 
+
 def _assembled_has_embedded_nav_links(assembled_content: str) -> bool:
     return "--- NAV LINKS ---" in (assembled_content or "")
+
 
 
 def _build_select_job_page_live_content(assembled_content: str, pjl_nav_links: str) -> str:
@@ -2682,6 +2792,7 @@ def _build_select_job_page_live_content(assembled_content: str, pjl_nav_links: s
     if assembled.strip():
         return f"{assembled.rstrip()}\n\n=== NAV LINKS ===\n{nav}"
     return f"=== NAV LINKS ===\n{nav}"
+
 
 
 def _pjl_maps_from_company_data(
@@ -2705,8 +2816,10 @@ def _pjl_maps_from_company_data(
     return assembled, page_url_map, visible_map
 
 
+
 def _nav_links_for_try_links(cdata: dict) -> str:
     return (cdata.get("pjl_nav_links") or cdata.get("nav_links") or "").strip()
+
 
 
 def _resolve_try_link_normalized(
@@ -2717,6 +2830,7 @@ def _resolve_try_link_normalized(
         raw = url_map.get(int(item))
         return normalize_link(raw or "")
     return normalize_link(str(item))
+
 
 
 def _merge_try_links_into_pjl_ledger(
@@ -2740,6 +2854,7 @@ def _merge_try_links_into_pjl_ledger(
             else:
                 out.append(str(item))
     return out
+
 
 
 async def _fetch_job_links_content(
@@ -2836,6 +2951,7 @@ async def _fetch_job_links_content(
     return "\n\n".join(sections), page_url_map, page_dom_map, page_visible_map
 
 
+
 async def _finalize_joblist_identified(
     select_parsed: Dict[str, Any],
     short_name: str,
@@ -2891,6 +3007,7 @@ async def _finalize_joblist_identified(
         "response_type": response_type,
         "job_titles": job_titles,
     }
+
 
 
 async def _finalize_joblist_titles_after_chain(
@@ -2957,6 +3074,7 @@ async def _finalize_joblist_titles_after_chain(
     _save_company(short_name=short_name, company_website=company_website,
                        state="WATCH", page_option_url=job_site_url, raw_response=parsed)
     return {"short_name": short_name, "state": "WATCH", "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
+
 
 
 async def _finalize_joblist_titles_select_only(
@@ -3026,6 +3144,7 @@ async def _finalize_joblist_titles_select_only(
     return {"short_name": short_name, "state": "WATCH", "job_site": job_site_url, "response_type": response_type, "parse_instructions": parse_instructions}
 
 
+
 async def _fetch_select_job_page(
     assembled_content: str, short_name: str, debug: bool = False, ctx: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
@@ -3035,6 +3154,7 @@ async def _fetch_select_job_page(
     if parsed is None:
         raise ValueError(f"select_job_page failed: {response.get('error', 'no parsed_response')}")
     return parsed
+
 
 
 async def _check_parse_results(
@@ -3103,38 +3223,12 @@ async def _check_parse_results(
 
 
 
-def _derive_shortname_from_url(url: str) -> str:
-    """Extract domain from URL and derive shortname.
-    
-    Args:
-        url: URL string
-        
-    Returns:
-        Lowercase shortname (domain without www. and TLD)
-        
-    Raises:
-        ValueError: If URL cannot be parsed
-    """
-    try:
-        parsed = urlparse(url)
-        domain = parsed.netloc or parsed.path.split('/')[0]
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        parts = domain.split('.')
-        if len(parts) >= 2:
-            main_domain = parts[-2]
-        else:
-            main_domain = parts[0] if parts else domain
-        return main_domain.lower()
-    except Exception as e:
-        raise ValueError(f"Failed to derive shortname from URL '{url}': {e}")
-
-
-
+# ---- persist helpers --------------------------------------------------
 
 _PERSIST_PAGE_OPTION_URL_STATES = frozenset({
     "WATCH", "NO_OPENINGS", "CANNOT_PARSE_JOB_SITE", "JOBSITE_SCRAPE_ISSUE",
 })
+
 
 
 def _job_site_for_persist(
@@ -3152,6 +3246,7 @@ def _job_site_for_persist(
     if pre:
         return pre
     return ""
+
 
 
 def _save_company(
@@ -3223,6 +3318,7 @@ def _save_company(
 
 
 
+# ---- company data fetch helpers ---------------------------------------
 
 async def _fetch_nav_links(company: Dict[str, Any]) -> Optional[str]:
     """Coat-check handler for nav_links. Scrapes homepage link list, saves, returns."""
@@ -3249,6 +3345,7 @@ async def _fetch_nav_links(company: Dict[str, Any]) -> Optional[str]:
     except Exception as e:
         logger.warning(f"[{short_name}] nav_links fetch failed: {e}")
         return None
+
 
 
 async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
@@ -3345,6 +3442,7 @@ async def _fetch_prefilter_notes(company: Dict[str, Any]) -> Optional[str]:
         return None
 
 
+
 async def _fetch_website_content(company: Dict[str, Any]) -> Optional[list]:
     """Coat-check handler for website_content.
     Uses culture_links_to_explore from prefilter to select pages to scrape.
@@ -3412,26 +3510,9 @@ _COATCHECK_HANDLERS = {
     "website_content": _fetch_website_content,
 }
 
-async def get_company_data(company: Dict[str, Any], key: str) -> Any:
-    """Return company_data[key], fetching on-demand if missing (coat-check pattern).
-    Registered keys in ROSTER_CONFIG['company_data_keys'] have fetch-on-missing handlers.
-    Unregistered keys return None if absent. Never stores empty/failed data.
-    """
-    company_data = company.get("company_data") or {}
-    if not isinstance(company_data, dict):
-        company_data = {}
-    if key in company_data and company_data[key] is not None:
-        return company_data[key]
-    registered = ROSTER_CONFIG.get("company_data_keys", {})
-    if key not in registered:
-        return None
-    handler = _COATCHECK_HANDLERS.get(key)
-    if not handler:
-        return None
-    return await handler(company)
 
 
-
+# ---- parse job list validation helpers --------------------------------
 
 def _compute_container_index(full_dom: str, container_selector: str, job_titles: List[str]) -> int:
     """Find which occurrence of container_selector in the full DOM holds the job listings.
@@ -3456,6 +3537,7 @@ def _compute_container_index(full_dom: str, container_selector: str, job_titles:
     return 0
 
 
+
 async def _fetch_parse_job_list(dom_html: str, short_name: str, debug: bool = False, ctx: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """Call parse_job_list task: culled DOM only; returns container, job_tag, job_ids.
     Returns empty dict on failure so caller can fall through to CANNOT_PARSE_JOB_SITE."""
@@ -3471,6 +3553,7 @@ async def _fetch_parse_job_list(dom_html: str, short_name: str, debug: bool = Fa
         save_company_data(short_name, {"parse_job_list_notes": err})
         return {}
     return response.get("parsed_response") or {}
+
 
 
 def _validate_parse_job_list_raw_job_listings(
@@ -3502,13 +3585,3 @@ def _validate_parse_job_list_raw_job_listings(
     if job_ids_not_found:
         return (f"job_id(s) not found in raw_job_listing: {job_ids_not_found}", None, job_ids_not_found)
     return (None, raw_job_listings, [])
-
-
-
-# ---------------------------------------------------------------------------
-# Entity page helpers (AST-329)
-# ---------------------------------------------------------------------------
-
-def get_company_job_state_counts(short_name: str) -> Dict[str, int]:
-    """Return {state: count} for all jobs belonging to company."""
-    return get_company_job_counts(short_name)

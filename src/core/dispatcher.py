@@ -54,51 +54,8 @@ from src.utils.logging import get_logger, log_batch_id, flush_log_buffer
 logger = get_logger(__name__)
 
 
-def _is_inbox_mailbox_task_key(task_key: str) -> bool:
-    """gaze_email + meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282."""
-    tk = (task_key or "").strip()
-    return tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk)
 
-def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
-    """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
-    if entity_type == "job":
-        return str(row.get("astral_job_id") or row.get("company") or "?")
-    if entity_type == "company":
-        return str(row.get("short_name") or row.get("company") or "?")
-    if entity_type == "candidate":
-        return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
-    return str(row.get("id") or "?")
-
-
-def _task_key_scored(task_key: str) -> bool:
-    return dispatch_task_key_is_scored(task_key)
-
-
-def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
-    return dispatch_claim_uses_score_floor(trigger_state)
-
-
-async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
-    """Run the first entity sequentially to warm the cache, wait for cache_warm_delay_seconds,
-    then fire the rest concurrently. Gives Anthropic time to commit the cache entry."""
-    if not entities:
-        return []
-    first = await one_fn(entities[0])
-    if len(entities) == 1:
-        return [first]
-    delay = ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0)
-    if delay > 0:
-        await asyncio.sleep(delay)
-    rest = await asyncio.gather(*[one_fn(e) for e in entities[1:]], return_exceptions=True)
-    cleaned = [first]
-    for i, r in enumerate(rest):
-        if isinstance(r, BaseException):
-            logger.exception("  gather slot %d raised: %s", i + 1, r, exc_info=r)
-            cleaned.append({**zero, "total_processed": 1, "total_errors": 1})
-        else:
-            cleaned.append(r)
-    return cleaned
-
+# ---- public ---------------------------------------------------------------
 
 # ---------------------------------------------------------------------------
 # Thin wrappers (API layer compliance — imports core, not data)
@@ -166,7 +123,6 @@ def set_candidate_dispatch_tasks_from_template(target_candidate_id: str) -> Dict
     template_rows = database.list_dispatch_tasks_for_candidate(template_id)
     stats = database.set_dispatch_tasks_from_template_rows(target, template_rows)
     return {"candidate_id": target, "template_candidate_id": template_id, **stats}
-
 
 
 def ensure_meteorite_dispatch_tasks(candidate_id: str) -> Dict[str, Any]:
@@ -398,11 +354,227 @@ def provision_gaze_email_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
+def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
+    """Spawn a daemon thread for task_id if not already running. Returns True if started."""
+    with _registry_lock:
+        if task_id in _task_registry:
+            return False  # already running
+
+    task = database.get_dispatch_task(task_id)
+    if not task:
+        return False
+
+    # Enrich with available_count for logging
+    task_key = task.get("task_key", "")
+    et = task.get("entity_type")
+    ts = task.get("trigger_state")
+    cid = task.get("candidate_id", "")
+    if _is_inbox_mailbox_task_key(task_key) and str(cid or "").strip():
+        try:
+            from src.core.inbox import count_inbox_messages_bound_to_candidate
+            task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
+        except Exception:
+            _sched_log.warning(
+                "run_task: mailbox available_count failed task_id=%s task_key=%r",
+                task_id,
+                task_key,
+                exc_info=True,
+            )
+            task["available_count"] = 0
+    else:
+        task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
+    task["_ui_initiated"] = ui_initiated
+
+    with _registry_lock:
+        _task_registry[task_id] = {
+            "thread": None, "loop": None, "asyncio_task": None,
+            "task_key": task_key, "candidate_id": cid,
+            "is_auto": bool(task.get("auto_mode")),
+            "drain": False,
+        }
+
+    t = threading.Thread(
+        target=_task_thread_target,
+        args=(task_id, task),
+        daemon=True,
+        name=f"astral-task-{task_id}-{task_key}",
+    )
+    with _registry_lock:
+        _task_registry[task_id]["thread"] = t
+    t.start()
+    return True
+
+
+def drain_task(task_id: int) -> Dict[str, Any]:
+    """Request graceful stop after current batch for task_id. Returns info dict."""
+    with _registry_lock:
+        entry = _task_registry.get(task_id)
+        if not entry:
+            return {"task_id": task_id, "draining": False, "reason": "not_running"}
+        entry["drain"] = True
+    _sched_log.info("drain_task(%s): graceful stop requested for %s/%s",
+                    task_id, entry["task_key"], entry["candidate_id"])
+    return {"task_id": task_id, "task_key": entry["task_key"],
+            "candidate_id": entry["candidate_id"], "draining": True}
+
+
+def cancel_task(task_id: int) -> Dict[str, Any]:
+    """Cancel the running thread for task_id. Returns info about what was killed."""
+    with _registry_lock:
+        entry = _task_registry.get(task_id)
+    if not entry:
+        return {"task_id": task_id, "killed": False, "reason": "not_running"}
+    loop = entry.get("loop")
+    asyncio_task = entry.get("asyncio_task")
+    if not loop or not asyncio_task:
+        # Thread is registered but asyncio_task not yet set — task is still starting up
+        return {"task_id": task_id, "task_key": entry.get("task_key"),
+                "candidate_id": entry.get("candidate_id"), "killed": False, "reason": "not_yet_ready"}
+    if asyncio_task.done():
+        return {"task_id": task_id, "task_key": entry.get("task_key"),
+                "candidate_id": entry.get("candidate_id"), "killed": False, "reason": "already_done"}
+    loop.call_soon_threadsafe(asyncio_task.cancel)
+    _sched_log.warning("cancel_task(%s): cancellation sent to %s/%s",
+                       task_id, entry["task_key"], entry["candidate_id"])
+    return {"task_id": task_id, "task_key": entry["task_key"],
+            "candidate_id": entry["candidate_id"], "killed": True}
+
+
+def cancel_all_tasks() -> List[Dict[str, Any]]:
+    """Cancel all running task threads. Returns list of killed task info."""
+    with _registry_lock:
+        ids = list(_task_registry.keys())
+    return [cancel_task(tid) for tid in ids]
+
+
+def task_status_all() -> Dict[int, Dict[str, Any]]:
+    """Return running status for all registry entries."""
+    with _registry_lock:
+        return {
+            tid: {
+                "running": bool(entry.get("thread") and entry["thread"].is_alive()),
+                "draining": bool(entry.get("drain")),
+                "task_key": entry["task_key"],
+                "candidate_id": entry["candidate_id"],
+                "is_auto": entry["is_auto"],
+            }
+            for tid, entry in _task_registry.items()
+        }
+
+
+def start_scheduler() -> None:
+    """Start the tick daemon thread. Safe to call multiple times."""
+    global _tick_thread
+    if _tick_thread and _tick_thread.is_alive():
+        return
+    n = database.mark_stale_ledger_interrupted(_now_iso())
+    if n:
+        _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
+    try:
+        mstats = provision_meteorite_dispatch_tasks()
+        _sched_log.info(
+            "AST-1054 meteorite dispatch provision template=%s touched=%s added=%s "
+            "skipped=%s skipped_missing_config=%s",
+            mstats.get("template_candidate_id"),
+            mstats.get("candidates_touched"),
+            mstats.get("added"),
+            mstats.get("skipped"),
+            mstats.get("skipped_missing_config"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    try:
+        rstats = retire_candidate_requested_wrapper_dispatch_tasks()
+        _sched_log.info(
+            "AST-1252 candidate_requested_* wrapper retire template=%s "
+            "candidates_scanned=%s retired=%s",
+            rstats.get("template_candidate_id"),
+            rstats.get("candidates_scanned"),
+            rstats.get("retired"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
+    try:
+        gstats = provision_gaze_email_dispatch_tasks()
+        _sched_log.info(
+            "AST-1134 gaze_email dispatch provision task_key=%s retired_null=%s "
+            "candidates_touched=%s added=%s skipped=%s skipped_missing_config=%s",
+            gstats.get("task_key"),
+            gstats.get("retired_null"),
+            gstats.get("candidates_touched"),
+            gstats.get("added"),
+            gstats.get("skipped"),
+            gstats.get("skipped_missing_config"),
+        )
+    except Exception:
+        _sched_log.exception("AST-1134 gaze_email dispatch provision failed")
+    _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
+    _tick_thread.start()
+    _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
+                    ASTRAL_CONFIG.get("tick_rate_minutes", 1),
+                    ASTRAL_CONFIG.get("max_auto_threads", 3))
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # Batch runners call `database` directly (not via _db_ wrappers) because
 # this is core-layer code — the wrappers exist only for API-layer compliance.
 # ---------------------------------------------------------------------------
+
+# ---- shared helpers -------------------------------------------------------
+
+def _is_inbox_mailbox_task_key(task_key: str) -> bool:
+    """gaze_email + meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282."""
+    tk = (task_key or "").strip()
+    return tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk)
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+# ---- unified batch runner helpers -----------------------------------------
+
+def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
+    """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
+    if entity_type == "job":
+        return str(row.get("astral_job_id") or row.get("company") or "?")
+    if entity_type == "company":
+        return str(row.get("short_name") or row.get("company") or "?")
+    if entity_type == "candidate":
+        return str(row.get("astral_candidate_id") or row.get("candidate_id") or "?")
+    return str(row.get("id") or "?")
+
+
+def _task_key_scored(task_key: str) -> bool:
+    return dispatch_task_key_is_scored(task_key)
+
+
+def _trigger_state_scored(trigger_state: Optional[str], task_key: str) -> bool:
+    return dispatch_claim_uses_score_floor(trigger_state)
+
+
+async def _warm_then_gather(one_fn, entities: list, zero: dict) -> list:
+    """Run the first entity sequentially to warm the cache, wait for cache_warm_delay_seconds,
+    then fire the rest concurrently. Gives Anthropic time to commit the cache entry."""
+    if not entities:
+        return []
+    first = await one_fn(entities[0])
+    if len(entities) == 1:
+        return [first]
+    delay = ASTRAL_CONFIG.get("cache_warm_delay_seconds", 1.0)
+    if delay > 0:
+        await asyncio.sleep(delay)
+    rest = await asyncio.gather(*[one_fn(e) for e in entities[1:]], return_exceptions=True)
+    cleaned = [first]
+    for i, r in enumerate(rest):
+        if isinstance(r, BaseException):
+            logger.exception("  gather slot %d raised: %s", i + 1, r, exc_info=r)
+            cleaned.append({**zero, "total_processed": 1, "total_errors": 1})
+        else:
+            cleaned.append(r)
+    return cleaned
+
 
 _SUMMARY_ZERO: Dict[str, int] = {
     "total_processed": 0, "total_passed": 0, "total_failed": 0, "total_errors": 0,
@@ -421,15 +593,6 @@ _CHUNK_EXHAUST_CONSULT_JOB_KEYS = frozenset({
     "meteorite_grade_get",
 })
 
-
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
-
-
-
-# ---------------------------------------------------------------------------
-# Unified batch runner
-# ---------------------------------------------------------------------------
 
 async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Claim a batch for the given task and dispatch to consult.run_consult_task.
@@ -682,9 +845,7 @@ async def _run_unified(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     return s
 
 
-# ---------------------------------------------------------------------------
-# Dispatch orchestration
-# ---------------------------------------------------------------------------
+# ---- circuit breaker helpers ----------------------------------------------
 
 _CIRCUIT_BREAKER_THRESHOLD = 3  # consecutive zero-progress runs before auto-disable
 
@@ -707,6 +868,8 @@ def _check_circuit_breaker(task_key: str, candidate_id: str, task_id: int, debug
         )
         _db_update_dispatch_task(task_id, enabled=False)
 
+
+# ---- task run helpers -----------------------------------------------------
 
 async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     """Run a single batch through the unified runner. Returns summary counts."""
@@ -731,11 +894,7 @@ async def _run_task(task: Dict, ctx: Dict, debug: bool) -> Dict[str, int]:
     return summary
 
 
-
-
-# ---------------------------------------------------------------------------
-# Per-task thread scheduler
-# ---------------------------------------------------------------------------
+# ---- scheduler thread helpers ---------------------------------------------
 
 _sched_log = get_logger("dispatch.scheduler")
 
@@ -746,7 +905,6 @@ _registry_lock = threading.Lock()
 # Tick thread (wakes every tick_rate_minutes to spawn due AUTO tasks)
 _tick_thread: Optional[threading.Thread] = None
 _tick_event = threading.Event()
-
 
 async def _dispatch_one(task: Dict) -> None:
     """Run a single dispatch task to completion inside its own asyncio event loop.
@@ -1120,113 +1278,7 @@ def _task_thread_target(task_id: int, task: Dict) -> None:
         _sched_log.info("[%s] thread exited and cleared from registry", task.get("task_key", task_id))
 
 
-def run_task(task_id: int, *, ui_initiated: bool = False) -> bool:
-    """Spawn a daemon thread for task_id if not already running. Returns True if started."""
-    with _registry_lock:
-        if task_id in _task_registry:
-            return False  # already running
-
-    task = database.get_dispatch_task(task_id)
-    if not task:
-        return False
-
-    # Enrich with available_count for logging
-    task_key = task.get("task_key", "")
-    et = task.get("entity_type")
-    ts = task.get("trigger_state")
-    cid = task.get("candidate_id", "")
-    if _is_inbox_mailbox_task_key(task_key) and str(cid or "").strip():
-        try:
-            from src.core.inbox import count_inbox_messages_bound_to_candidate
-            task["available_count"] = count_inbox_messages_bound_to_candidate(str(cid).strip())
-        except Exception:
-            _sched_log.warning(
-                "run_task: mailbox available_count failed task_id=%s task_key=%r",
-                task_id,
-                task_key,
-                exc_info=True,
-            )
-            task["available_count"] = 0
-    else:
-        task["available_count"] = database.count_eligible_for_dispatch_task(task) if et and ts else 0
-    task["_ui_initiated"] = ui_initiated
-
-    with _registry_lock:
-        _task_registry[task_id] = {
-            "thread": None, "loop": None, "asyncio_task": None,
-            "task_key": task_key, "candidate_id": cid,
-            "is_auto": bool(task.get("auto_mode")),
-            "drain": False,
-        }
-
-    t = threading.Thread(
-        target=_task_thread_target,
-        args=(task_id, task),
-        daemon=True,
-        name=f"astral-task-{task_id}-{task_key}",
-    )
-    with _registry_lock:
-        _task_registry[task_id]["thread"] = t
-    t.start()
-    return True
-
-
-def drain_task(task_id: int) -> Dict[str, Any]:
-    """Request graceful stop after current batch for task_id. Returns info dict."""
-    with _registry_lock:
-        entry = _task_registry.get(task_id)
-        if not entry:
-            return {"task_id": task_id, "draining": False, "reason": "not_running"}
-        entry["drain"] = True
-    _sched_log.info("drain_task(%s): graceful stop requested for %s/%s",
-                    task_id, entry["task_key"], entry["candidate_id"])
-    return {"task_id": task_id, "task_key": entry["task_key"],
-            "candidate_id": entry["candidate_id"], "draining": True}
-
-
-def cancel_task(task_id: int) -> Dict[str, Any]:
-    """Cancel the running thread for task_id. Returns info about what was killed."""
-    with _registry_lock:
-        entry = _task_registry.get(task_id)
-    if not entry:
-        return {"task_id": task_id, "killed": False, "reason": "not_running"}
-    loop = entry.get("loop")
-    asyncio_task = entry.get("asyncio_task")
-    if not loop or not asyncio_task:
-        # Thread is registered but asyncio_task not yet set — task is still starting up
-        return {"task_id": task_id, "task_key": entry.get("task_key"),
-                "candidate_id": entry.get("candidate_id"), "killed": False, "reason": "not_yet_ready"}
-    if asyncio_task.done():
-        return {"task_id": task_id, "task_key": entry.get("task_key"),
-                "candidate_id": entry.get("candidate_id"), "killed": False, "reason": "already_done"}
-    loop.call_soon_threadsafe(asyncio_task.cancel)
-    _sched_log.warning("cancel_task(%s): cancellation sent to %s/%s",
-                       task_id, entry["task_key"], entry["candidate_id"])
-    return {"task_id": task_id, "task_key": entry["task_key"],
-            "candidate_id": entry["candidate_id"], "killed": True}
-
-
-def cancel_all_tasks() -> List[Dict[str, Any]]:
-    """Cancel all running task threads. Returns list of killed task info."""
-    with _registry_lock:
-        ids = list(_task_registry.keys())
-    return [cancel_task(tid) for tid in ids]
-
-
-def task_status_all() -> Dict[int, Dict[str, Any]]:
-    """Return running status for all registry entries."""
-    with _registry_lock:
-        return {
-            tid: {
-                "running": bool(entry.get("thread") and entry["thread"].is_alive()),
-                "draining": bool(entry.get("drain")),
-                "task_key": entry["task_key"],
-                "candidate_id": entry["candidate_id"],
-                "is_auto": entry["is_auto"],
-            }
-            for tid, entry in _task_registry.items()
-        }
-
+# ---- tick loop helpers ----------------------------------------------------
 
 def _debug_log_auto_off_stage_skips() -> None:
     """Style D: stage rows with AUTO off + debug on that would have met min_count (AST-1022)."""
@@ -1335,56 +1387,3 @@ def _tick_loop() -> None:
         # tick_rate_minutes elapsed after every process start).
         _tick_event.wait(timeout=tick_secs)
         _tick_event.clear()
-
-
-def start_scheduler() -> None:
-    """Start the tick daemon thread. Safe to call multiple times."""
-    global _tick_thread
-    if _tick_thread and _tick_thread.is_alive():
-        return
-    n = database.mark_stale_ledger_interrupted(_now_iso())
-    if n:
-        _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
-    try:
-        mstats = provision_meteorite_dispatch_tasks()
-        _sched_log.info(
-            "AST-1054 meteorite dispatch provision template=%s touched=%s added=%s "
-            "skipped=%s skipped_missing_config=%s",
-            mstats.get("template_candidate_id"),
-            mstats.get("candidates_touched"),
-            mstats.get("added"),
-            mstats.get("skipped"),
-            mstats.get("skipped_missing_config"),
-        )
-    except Exception:
-        _sched_log.exception("AST-1054 meteorite dispatch provision failed")
-    try:
-        rstats = retire_candidate_requested_wrapper_dispatch_tasks()
-        _sched_log.info(
-            "AST-1252 candidate_requested_* wrapper retire template=%s "
-            "candidates_scanned=%s retired=%s",
-            rstats.get("template_candidate_id"),
-            rstats.get("candidates_scanned"),
-            rstats.get("retired"),
-        )
-    except Exception:
-        _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
-    try:
-        gstats = provision_gaze_email_dispatch_tasks()
-        _sched_log.info(
-            "AST-1134 gaze_email dispatch provision task_key=%s retired_null=%s "
-            "candidates_touched=%s added=%s skipped=%s skipped_missing_config=%s",
-            gstats.get("task_key"),
-            gstats.get("retired_null"),
-            gstats.get("candidates_touched"),
-            gstats.get("added"),
-            gstats.get("skipped"),
-            gstats.get("skipped_missing_config"),
-        )
-    except Exception:
-        _sched_log.exception("AST-1134 gaze_email dispatch provision failed")
-    _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
-    _tick_thread.start()
-    _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
-                    ASTRAL_CONFIG.get("tick_rate_minutes", 1),
-                    ASTRAL_CONFIG.get("max_auto_threads", 3))
