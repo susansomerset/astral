@@ -113,3 +113,24 @@ Thin authenticated deeplink at `/jobs/detail/<astral_job_id>` that opens the **e
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1481
+**Overall:** APPROVED
+**Publish ref:** `be233e6a8eb1198bfb2906aa3c43e4c6fd0b5989` (`origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`)
+
+## Traceability
+AC1–7 → Stage 1 (AC2 route + SPA boot), Stage 2 (AC1,3–5,7 modal host, prefetch gate, error UI, close navigate), Stage 3 (AC6 admin candidate alignment via company→candidate_id); parent AC6 → AST-1482 out of scope (documented); parent AC9 → honored (reuse modal, no second report shell).
+
+## Findings
+
+**discuss** — `## Estimate` only; no formal **Self-assessment** block (Scope/Conf/Risk). Plan complexity is modest and stages are specific; non-blocking.
+
+**acceptable** — Host prefetch + modal internal fetch duplicates `GET /api/jobs/<id>` by design for early 404/candidate gate; documented in Stage 2.
+
+**acceptable** — `routes.tsx` file-header SYNC comment still says every route needs a `NAV_CONFIG` item; deeplink is intentionally nav-less per parent scope. Config `JOBS_DETAIL_ROUTE_PREFIX` + inline route string matches existing NAV_CONFIG SYNC pattern.
+```
