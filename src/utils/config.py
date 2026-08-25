@@ -44,6 +44,9 @@ Config sections:
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
   METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
   METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals (AST-1089; renamed AST-1212)
+  JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
+  FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
+  METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -495,11 +498,14 @@ TASK_CONFIG = {
                 "type": "list",
                 "required": True,
                 "items_schema": {
-                    "astral_job_id":   {"type": "str", "required": True},
+                    # AST-1469: optional for pre-create land packet enrichment; dispatch still sends id
+                    "astral_job_id":   {"type": "str", "required": False},
                     "company_job_id":  {"type": "str", "required": False},  # AST-1127: omit/null → consult UUID fallback
                     "job_title":       {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
                     "job_link":        {"type": "str", "required": False},  # AST-1195: omit/null must not abort do_task
                     "jd_text":         {"type": "str", "required": True},  # visible JD content
+                    # AST-1469: known employer for job_data[METEORITE_CONFIG employer_name key]
+                    "employer_name":   {"type": "str", "required": False},
                 },
             },
         },
@@ -1019,10 +1025,18 @@ TASK_CONFIG = {
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
     },
+    # AST-1469: fetch_email mailbox-shell seed (runner/ensure = sibling inbox slice).
+    "fetch_email": {
+        "entity_type": None,
+        "requires_candidate_key": False,
+        "trigger_state": None,
+    },
 }
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["astral_job_id"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_job_id"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["employer_name"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
 assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
 
@@ -2442,10 +2456,22 @@ JOB_STATES = {
 }
 
 # ---------------------------------------------------------------------------
+# AST-1469: durable job provenance. gazed = roster/gazer ingest path; meteorite = land path.
+# One-way promotion only: gazed → meteorite allowed; meteorite → gazed forbidden (enforced in tracker).
+# ---------------------------------------------------------------------------
+JOB_SOURCES = ["gazed", "meteorite"]
+JOB_SOURCE_DEFAULT = "gazed"       # backfill + insert default when caller omits source
+JOB_SOURCE_METEORITE = "meteorite"
+
+assert JOB_SOURCE_DEFAULT in JOB_SOURCES
+assert JOB_SOURCE_METEORITE in JOB_SOURCES
+
+# ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
 # Lazy-ensure inserts meteorite-<candidate_id> on demand — never bulk at server start.
 # Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
 # (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
+# AST-1469: land outcomes, source, dedupe match order, employer_name job_data key.
 # ---------------------------------------------------------------------------
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
@@ -2461,10 +2487,25 @@ METEORITE_CONFIG = {
     # AST-1042 / AST-1056 job-create defaults (consumed by create_meteorite_job)
     "job_create_state": "METEORITE_NEW",
     "job_create_latest_score": 10.0,
+    # AST-1469 Tracker land / source
+    "job_source": JOB_SOURCE_METEORITE,
+    "land_outcome_created": "created",
+    "land_outcome_duplicate_skip": "duplicate_skip",
+    "land_outcome_superseded": "superseded",
+    "land_outcome_error": "error",
+    "employer_name_job_data_key": "employer_name",
+    "dedupe_match_order": ("company_job_id", "job_link"),
+    # min_company_job_id_match_chars assigned after METEORITE_EMAIL_INGEST_CONFIG (same int).
 }
 
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
+assert METEORITE_CONFIG["job_source"] == JOB_SOURCE_METEORITE
+assert METEORITE_CONFIG["dedupe_match_order"] == ("company_job_id", "job_link")
+assert isinstance(METEORITE_CONFIG["land_outcome_created"], str) and METEORITE_CONFIG["land_outcome_created"]
+assert isinstance(METEORITE_CONFIG["land_outcome_duplicate_skip"], str) and METEORITE_CONFIG["land_outcome_duplicate_skip"]
+assert isinstance(METEORITE_CONFIG["land_outcome_superseded"], str) and METEORITE_CONFIG["land_outcome_superseded"]
+assert isinstance(METEORITE_CONFIG["land_outcome_error"], str) and METEORITE_CONFIG["land_outcome_error"]
 assert "BOT_BLOCKED" in JOB_STATES  # AST-1197: qualify process destination
 assert "METEORITE_NEW" in JOB_STATES["BOT_BLOCKED"]["prior_states"]
 
@@ -2560,6 +2601,13 @@ METEORITE_EMAIL_INGEST_CONFIG = {
     "promote_bare_http_urls": True,
 }
 
+# AST-1469: same floor as email ingest inverted-id match — single int, not a second magic.
+METEORITE_CONFIG["min_company_job_id_match_chars"] = METEORITE_EMAIL_INGEST_CONFIG[
+    "min_company_job_id_match_chars"
+]
+assert isinstance(METEORITE_CONFIG["min_company_job_id_match_chars"], int)
+assert METEORITE_CONFIG["min_company_job_id_match_chars"] > 0
+
 
 # AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
 # (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
@@ -2603,6 +2651,24 @@ assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"] == "sk
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
 assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
+
+# AST-1469: fetch_email dispatch seed literals (wired by sibling inbox / fetch_email slice).
+# Mailbox-style shell — not an ENTITY_TYPES claim queue. auto_mode stays CLICK (false).
+FETCH_EMAIL_CONFIG = {
+    "task_key": "fetch_email",
+    "auto_mode": False,
+    "min_count": 1,
+    "batch_size": 1,
+    "freq_hrs": 0.1,
+    "entity_type": None,
+    "trigger_state": None,
+    "debug_func": "inbox.fetch_email",
+}
+assert FETCH_EMAIL_CONFIG["task_key"] == "fetch_email"
+assert FETCH_EMAIL_CONFIG["auto_mode"] is False
+assert FETCH_EMAIL_CONFIG["entity_type"] is None
+assert FETCH_EMAIL_CONFIG["trigger_state"] is None
+
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
     not bool(e.get("auto_mode"))
@@ -2796,6 +2862,19 @@ SEED_CONFIG = {
         "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_upshot' "
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
+        ")",
+    ),
+    # AST-1469: null-candidate fetch_email shell stub — not executed here; sibling owns ensure.
+    "dispatch_task-fetch-email": (
+        "INSERT INTO dispatch_task ("
+        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
+        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
+        ") SELECT NULL, 'fetch_email', NULL, NULL, NULL, "
+        "0, 0.1, 1, 1, 0, NULL "
+        "WHERE NOT EXISTS ("
+        "  SELECT 1 FROM dispatch_task "
+        "  WHERE task_key = 'fetch_email' "
+        "    AND (candidate_id IS NULL OR TRIM(candidate_id) = '')"
         ")",
     ),
 }
@@ -5928,3 +6007,31 @@ def validate_value(allowed_list: list, value: object) -> None:
     """Raise ValueError if value is not in allowed_list. Caller supplies the list (e.g. from config)."""
     if value not in allowed_list:
         raise ValueError(f"Value {value!r} not in allowed list: {allowed_list}")
+
+
+def is_valid_job_source(value: object) -> bool:
+    """True when value is a JOB_SOURCES member (AST-1469)."""
+    return isinstance(value, str) and value in JOB_SOURCES
+
+
+def validate_job_source(value: object) -> None:
+    """Raise ValueError if value is not in JOB_SOURCES (AST-1469)."""
+    validate_value(JOB_SOURCES, value)
+
+
+def job_source_transition_allowed(from_source: Optional[str], to_source: str) -> bool:
+    """True when writing to_source is legal given current from_source (AST-1469).
+
+    unset/blank → any JOB_SOURCES value OK; same value OK; gazed → meteorite OK;
+    meteorite → gazed forbidden.
+    """
+    if not is_valid_job_source(to_source):
+        return False
+    cur = (from_source or "").strip()
+    if not cur:
+        return True
+    if cur == to_source:
+        return True
+    if cur == JOB_SOURCE_DEFAULT and to_source == JOB_SOURCE_METEORITE:
+        return True
+    return False
