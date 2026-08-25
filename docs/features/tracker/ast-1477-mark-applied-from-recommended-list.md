@@ -107,3 +107,141 @@ context_tokens≈35000
 | Stage | Commit | Summary |
 |-------|--------|---------|
 | 1–2 | `d47122f23a79` | Applied icon on legal Recommended priors; JobsRecommended onAction comment |
+
+## Radia review
+
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1477
+**Publish ref:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list` @ `44fa5b67ebc3c95e8e60e14b95fe8e82d1eabec4`
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+65 active statutes scored in-session (per `canon/statutes/README.md` harvested corpus). No **violates**.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | ui/docs diff only |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config.py in AST-1477 delta |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets paths |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single AST-1477 issue doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty: bible + tests only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | product `d47122f2` → `src/ui` only |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | ui-only |
+| astral.layers.import-direction | scoped | conforms | no layer violations |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | `PRE_APPLIED_MARK` extends existing module-level set pattern; plan-documented |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no new routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed |
+| astral.seed.define-approved | scoped | not-applicable | no seed |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug= |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses `onAction` → shared hook |
+| astral.standards.in-scope-only | scoped | conforms | product delta = two scoped files |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain state names |
+| astral.standards.no-cross-contamination | scoped | not-applicable | single feature |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `PRE_APPLIED_MARK` mirrors `REVIEW_LIKE`/`POST_APPLIED`; plan-acceptable (Joan straggler — discuss) |
+| astral.standards.public-then-helpers | scoped | not-applicable | no new surface |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils |
+| astral.state.core-decides-transitions | scoped | not-applicable | transitions via existing API (Joan excluded) |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | API enforces; no core touch (Joan excluded) |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run paths |
+| astral.ui.frontend-file-placement | scoped | conforms | correct tree |
+| astral.ui.naming-conventions | scoped | conforms | consistent naming |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests at tip |
+| orch.git.commit-vocabulary | universal | conforms | standard prefixes |
+| orch.git.flow-direction-inviolable | universal | conforms | sub topology |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1464/AST-1477-…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase issues |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | merge only |
+| orch.git.no-dev-agent-branches | universal | conforms | branch naming |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1464 worktree |
+| orch.git.three-permanent-branches | universal | conforms | vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no policy invention |
+| orch.pipeline.plan-is-bible | universal | conforms | matches plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | approved pattern |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Katherine assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no bypass |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.icon-control | conforms | glyph `A`; `title`/`aria-label` Applied; `icon-control` class; after Skip |
+| pattern.ui.shared-button-roles | not cited | plan uses icon-control for list-row Applied (correct) |
+
+## Plan adherence
+
+Product code (`d47122f2`) matches approved plan:
+
+- **`CandidateJobRowActions.tsx`:** `PRE_APPLIED_MARK` set (`RECOMMENDED`, `BUILD_ARTIFACTS`, `CANDIDATE_REVIEW`; excludes `PASSED_LIKE`); Applied `icon-control` after Skip; `onAction("applied")` only — no API calls in component.
+- **`JobsRecommended.tsx`:** existing `useCandidateJobActions` / notes modal / error toast wiring verified; comment only — no `JobAnalysisReportModal` props (AST-1478 boundary honored).
+
+Estimate 2 fits. Betty tests cover icon visibility, success path, and 409 toast.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+**`tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `describe("JobsRecommended")` closes at line 229; AST-1057 cases stranded**
+
+`describe("JobsRecommended")` ends at line 229. AST-1057 `it` blocks (lines 231–284) sit outside the suite and lose `beforeEach` (`localStorage.clear`, `mockedApi.mockReset()`). Vitest still runs them today, but structure regressed vs `origin/dev` (where AST-1057 lived inside the suite). Likely from epic-branch sync / `merge-tests` resolution — same class of issue as AST-1478.
+
+**Fix:** move the closing `})` to after AST-1057 (and optionally nest `describe("AST-1477 …")` inside the main suite for shared `beforeEach`).
+
+### discuss
+
+- **Straggler — `astral.standards.no-hardcoded-sets`:** Joan scored acceptable at plan; sweep scores **conforms** (`PRE_APPLIED_MARK` follows existing `REVIEW_LIKE`/`POST_APPLIED` module pattern). No product fix.
+- **`docs/test-bible/frontend/pages.md`:** no dedicated AST-1477 §6c block — coverage documented in `components.md` only. Minor bible completeness gap; Betty may mirror to `pages.md` if convention requires.
+
+### advisory
+
+- Publish ref carries sibling sync noise (AST-1474 `config.py`, AST-1106 bible drift, etc.) unrelated to AST-1477 product delta. Two-dot scoped `src/ui` diff ≡ `d47122f2` only.
+- Betty’s `test(AST-1477)` commit initially included AST-1478 report tests inside `JobsRecommended` describe; `merge-tests` dropped them — correct sibling boundary, but contributed to describe nesting drift.
+
+## What's solid
+
+- Applied icon on legal priors only; `PASSED_LIKE` excluded.
+- Reuses shared hook / notes modal — no parallel POSTs.
+- AST-1478 boundary clean (no report modal changes on this branch).
+- Component + page tests pass on manifest (`AST-1477` pattern): 5 green.
+- 409 error path covered on list Applied.
+
+## Recommended actions (downstream)
+
+1. **resolve-child:** fix `test_JobsRecommended.test.tsx` describe nesting.
+2. **Optional:** add AST-1477 block to `pages.md` for bible parity.
+3. **merge-child:** reconcile sibling sync drift on epic integration.
+
+## Notes
+
+Joan APPROVED @ `06a60cc2`. Product anchor: `d47122f2` + `080604f2` → tip `44fa5b67`. Spawn **Tests Passed** — trusted.
+
+context_tokens≈48000
