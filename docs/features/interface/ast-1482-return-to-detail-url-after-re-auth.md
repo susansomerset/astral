@@ -101,3 +101,29 @@ When auth is required on a protected in-app URL (including `/jobs/detail/<astral
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+```
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1482
+**Overall:** REVISE
+**Publish ref:** `494ae7e07ae34496d093cc31eafc02564b33d5ad` (`origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth`)
+
+## Traceability
+AC6 (parent AST-1463 AC 6) → Stage 1 (capture/validate/consume helper), Stage 2 (persist path on Login/LogOffScreen gate), Stage 3 (`Authenticate.tsx` consume + navigate); AST-1481 route/modal host out of scope (sibling E2E dependency documented in UAT fitness).
+
+## Findings
+
+**fix-now** — **Stage 2 `useEffect` loading guard contradicts itself.** Bullet 2 requires "Stytch is initialized **or** there is no session," which is true during the existing `!isInitialized && !session` loading branch — the same branch the parenthetical says not to capture in. RequireAuth only exits that loading state when `isInitialized || session`. Stage 2 must gate capture on **`isInitialized || session`** (mirror the loading `return`), then apply the blocked predicates (`logOffReason` or Login `!session`). As written, an implementer can capture too early or misread the guard.
+
+**discuss** — No formal **Self-assessment** block (Scope/Conf/Risk); stages are otherwise specific. Non-blocking.
+
+**acceptable** — `clearSessionAuthMarks()` intentionally does not clear `astral-auth-return-path`; LogOffScreen Refresh → Login re-capture covers the timeout chain as described.
+
+**acceptable** — `no-token` success-path navigation to consumed return path preserves current `Authenticate.tsx` behavior; protected URL without session falls back to Login again.
+
+context_tokens≈48000
+```
