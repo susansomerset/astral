@@ -219,4 +219,182 @@ context_tokens≈118000
 
 ## Radia review
 
+# Radia review — AST-1472
 
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1472  
+**Parent:** AST-1457  
+**Publish ref:** `origin/sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget` @ `43cba47384e7c0eaefa5bea3b180c7e8833f8e99`  
+**Baseline:** `origin/dev`  
+**Overall:** CLEAN
+
+**Diff summary:** 37 files, +4755/−267 vs `origin/dev`. AST-1472 engineer surface: `src/core/inbox.py` (`run_fetch_email`, `_land_bound_inbox_message`, `land_inbox_message_ids`, create retarget), `src/core/dispatcher.py` (`ensure_fetch_email_dispatch_task` + `_dispatch_one`/`run_task` wire), `src/ui/api/api_inbox.py` (create + land-meteorite → inbox land). Publish ref carries AST-1469/1470/1471 foundation. Betty merge tip adds `TestAst1472*` + retargeted inbox/dispatcher/api tests.
+
+**Engineer commits:** `d7b7b6b5` inbox · `8cfdbfbf` dispatcher · `683f8f85` api_inbox  
+**Publish tip:** `43cba473` (merge-tests + Betty `5265ac48`)
+
+**Susan amendment:** honored — no `gaze_email.py` created, `gazer.py` / `meteorite_email.py` untouched.
+
+---
+
+## Statutes checked
+
+64 active statutes scored (retired `astral.config.pass-threshold-vs-score-floor` excluded).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths in 1472 engineer diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade paths |
+| astral.batch.batch-id-first | scoped | not-applicable | fetch_email null-candidate shell — no entity batch claim |
+| astral.batch.batch-id-format | scoped | conforms | dispatcher ledger `fetch_email-{uuid}` per run |
+| astral.batch.claim-process-release | scoped | not-applicable | no entity claim queue on fetch_email shell |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no agent_data changes |
+| astral.config.config-source-of-truth | scoped | conforms | reads `FETCH_EMAIL_CONFIG` / `METEORITE_CONFIG`; no config edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secrets |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no artifacts dir |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/ spikes |
+| astral.dispatch.seed-auto-false | scoped | conforms | `ensure_fetch_email_dispatch_task` inserts `auto_mode=False` |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | fetch_email runner only; no qualify chain |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | issue doc + Susan amendment recorded |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer limited to inbox/dispatcher/api_inbox |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult render |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `@require_admin` on api_inbox routes unchanged |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | inbox→gmail external; land via core meteorite |
+| astral.layers.import-direction | scoped | conforms | ui→core; inbox late-imports `land_meteorite`; gazer import removed |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/ |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | HTTP status from `METEORITE_CONFIG` land keys |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | duplicate idiom |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult render |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | conforms | admin auth on inbox API |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed edits |
+| astral.seed.archie-catalog-wins | scoped | conforms | `FETCH_EMAIL_CONFIG` literals from AST-1469 |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | ensure at scheduler start only |
+| astral.seed.define-approved | scoped | not-applicable | no seed define |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator deletes |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join |
+| astral.standards.data-raises-caller-logs | scoped | conforms | dispatcher logs runner failures; no data edits |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py in 1472 engineer scope |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D gated on `debug=True` in inbox/dispatcher paths |
+| astral.standards.dry-and-focused-functions | scoped | conforms | helpers scoped; fetch runner mirrors mailbox branch |
+| astral.standards.in-scope-only | scoped | conforms | Susan-amended scope; no gazer/gaze_email/meteorite_email |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger throughout |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names (`run_fetch_email`, `land_inbox_message_ids`) |
+| astral.standards.no-cross-contamination | scoped | conforms | inbox land path unified; legacy gazer ingest removed from inbox |
+| astral.standards.no-hardcoded-sets | scoped | conforms | outcomes/skip keys from config catalogs |
+| astral.standards.public-then-helpers | scoped | conforms | public runners; `_land_bound_inbox_message` private |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | utils not edited |
+| astral.state.core-decides-transitions | scoped | conforms | land via `land_meteorite`; no inbox state writes |
+| astral.state.job-prior-states-enforced | scoped | conforms | no shortcut state updates in adapters |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | fetch_email lands only; no qualify transition |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no new UI files |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests tip at one SHA |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1472)` + `test(AST-1472)` |
+| orch.git.flow-direction-inviolable | universal | conforms | sub vs dev |
+| orch.git.ftr-sub-topology | universal | conforms | child sub publish ref |
+| orch.git.merge-on-checkout | universal | conforms | n/a |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase |
+| orch.git.no-dev-agent-branches | universal | conforms | proper sub ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1457 worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | Susan amendment binding in plan |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match amended plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | Meteorite ingress slice scoped |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty landed fetch_email + admin tests |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Katherine |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer honored test-tree ban |
+
+**Straggler (C4):** Joan APPROVED; no Excluded statute list.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.layers.import-discipline | conforms | inbox→external Gmail; late-import `land_meteorite`; gazer import removed |
+| pattern.batch.entity-claim-process-release | discuss | null-candidate fetch_email has ledger + counts but no entity claim — Joan accepted |
+| pattern.config.config-block | conforms | `FETCH_EMAIL_CONFIG` / `METEORITE_CONFIG` / mailbox skip keys read from config |
+| pattern.state.entity-state-transitions | conforms | transitions owned by `land_meteorite` downstream |
+
+---
+
+## Plan adherence
+
+**Stage 1 — inbox:** `gazer` ingest import removed; `_land_bound_inbox_message` (strip → land); `run_fetch_email` (list → matched land, unbound skip-as-passed, four-count summary); `land_inbox_message_ids` (selected-ids with mailbox skip outcomes); `create_meteorite_job_from_inbox_message` retargeted to `land_meteorite` with land-backed return + `created`/`skipped` mirrors; Style D on touched paths.
+
+**Stage 2 — dispatcher:** `ensure_fetch_email_dispatch_task` idempotent null-candidate CLICK shell; `start_scheduler` ensure + log; `_dispatch_one` fetch_email branch before API-key gate (ledger, summary accumulation, COMPLETED/FAILED/INTERRUPTED); `run_task` `available_count` via bound-inbox sum.
+
+**Stage 3 — api_inbox:** `run_meteorite_email_selected_ids` dropped; create-job HTTP maps via `METEORITE_CONFIG` land keys; land-meteorite calls `land_inbox_message_ids`; `@require_admin` unchanged.
+
+**Susan amendment:** no `gaze_email.py`, no `gazer.py` edits — verified in diff.
+
+**Estimate 5:** fits post-amendment ingress slice.
+
+**Related AST-1320 (Discussion):** plan explicitly retires gaze_email retarget; aligns with Susan amendment — no conflict with this implementation.
+
+---
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+1. **`meteorite_email` poller vs CLICK `fetch_email`** — per-candidate `meteorite_email` AUTO runner unchanged; `fetch_email` null-candidate CLICK lands via `land_meteorite`. Joan accepted dual surfaces until a future retarget slice.
+
+2. **`pattern.batch.entity-claim-process-release` partial apply** — fetch_email uses dispatch ledger + summary counts but no entity claim queue (`entity_type`/`trigger_state` None). Directionally fine per Joan.
+
+### advisory
+
+1. **`run_fetch_email` debug** — may emit two `debug_index` headers per unbound message (`found` then `skipped-unbound`). Noisy but gated on `debug=True`; not blocking.
+2. **Nested debug when `debug=True`** — `_land_bound_inbox_message` + `land_meteorite` both emit Style D on matched paths; acceptable for operator traceability.
+3. **Create-path behavior change** — removed `raise ValueError("no meteorite jobs created")`; land error rollup now returned as dict and mapped to HTTP 400 by API (plan-intentional).
+4. **AST-1320 downstream** — if still open on gaze_email retarget, close or note N/A per Susan amendment so dispatch-parent Scope does not resurrect dead work.
+5. **UAT** — exercise CLICK `fetch_email` on staging with bound inbox messages; AUTO `meteorite_email` behavior intentionally unchanged.
+
+---
+
+## What's solid
+
+- Single land path for inbox create, admin land-meteorite, and fetch_email runner — no parallel gazer ingest in inbox.
+- Dispatcher ensure honors `astral.dispatch.seed-auto-false` (`auto_mode=False`).
+- Null-candidate fetch_email bypasses API-key gate correctly (before candidate gate).
+- Admin create JSON adds `outcome`/`outcomes` with thin `created`/`skipped` mirrors for Manage Email compatibility.
+- Betty coverage: `run_fetch_email` rollup, `land_inbox_message_ids` skips, `_land_bound_inbox_message` empty-strip guard, `ensure_fetch_email_dispatch_task`, retargeted AST-1049/1141 API tests.
+
+---
+
+## Frame diff
+
+| Field | Issue doc (build stub) | Publish tip under review |
+|-------|------------------------|--------------------------|
+| Product SHA | `683f8f85` (Stage 3) | `43cba473` (merge-tests) |
+| Tests | engineer ban | `TestAst1472RunFetchEmail`, `TestAst1472LandInboxMessageIds`, `TestAst1472EnsureFetchEmailDispatchTask`, retargeted AST-1049/1141 (`5265ac48`) |
+| Foundation | AST-1469/1470/1471 on ftr | full meteorite stack in three-dot diff vs dev |
+
+---
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append verdict, `docs(AST-1472): Radia review — clean`, push, post slim upshot, → Review Posted → User Testing.
+- Parent UAT: CLICK `fetch_email` + admin create/land on staging inbox with bound candidates.
+- AST-1320: resolve Discussion ticket as superseded by Susan amendment if still tracking gaze_email retarget.
+- Future slice (out of scope): retarget `meteorite_email` poller to `land_meteorite` if dual-mailbox confusion surfaces in ops.
+
+context_tokens≈52000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 43cba473) fetch_email land retarget clean
+```
