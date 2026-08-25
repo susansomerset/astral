@@ -164,3 +164,140 @@ AST-1478 plan approved.
 **Built:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip` @ `d4bfa409acdd473a08d3dd7c27c4500435e3bba9`
 
 Stages 1–2: labeled Skip (`btn secondary`) + Applied (`btn primary`) on report chrome; `JobsRecommended` wires `skipJob` / `requestAction(..., "applied")` and closes the report when the job leaves recommended rows. CLIENT job-link Apply unchanged. Tests deferred to Betty.
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1478
+**Publish ref:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip` @ `43da07a87aa77385f0372cd159d1fd7dabe2f44b`
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+65 active statutes scored in-session. No **violates**. Full table:
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | ui/docs diff only |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config.py in delta |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets paths |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single AST-1478 issue doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty: bible + tests only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | product `d4bfa409` → `src/ui` only |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | ui-only |
+| astral.layers.import-direction | scoped | conforms | no layer violations |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | callback-gated strip |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no new routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed |
+| astral.seed.define-approved | scoped | not-applicable | no seed |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug= |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses parent hook |
+| astral.standards.in-scope-only | scoped | conforms | product delta = two scoped files |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names |
+| astral.standards.no-cross-contamination | scoped | not-applicable | single feature |
+| astral.standards.no-hardcoded-sets | scoped | conforms | callbacks not JOB_STATES (Joan straggler — discuss) |
+| astral.standards.public-then-helpers | scoped | not-applicable | no new surface |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils |
+| astral.state.core-decides-transitions | scoped | not-applicable | API via parent hook |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no prior logic in diff |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run paths |
+| astral.ui.frontend-file-placement | scoped | conforms | correct tree |
+| astral.ui.naming-conventions | scoped | conforms | consistent naming |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests at tip |
+| orch.git.commit-vocabulary | universal | conforms | standard prefixes |
+| orch.git.flow-direction-inviolable | universal | conforms | sub topology |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1464/AST-1478-…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase issues |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | merge only |
+| orch.git.no-dev-agent-branches | universal | conforms | branch naming |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1464 worktree |
+| orch.git.three-permanent-branches | universal | conforms | vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no policy invention |
+| orch.pipeline.plan-is-bible | universal | conforms | matches plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | approved pattern |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Hedy assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no bypass |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.shared-button-roles | conforms | `btn secondary` Skip; `btn primary` + `in-flight` Applied |
+
+## Plan adherence
+
+Product code (`d4bfa409`) matches approved plan: labeled Skip/Applied on report chrome; `JobsRecommended` wires `skipJob` / `requestAction(…, "applied")`; close when `reportId ∉ rows`; no parallel POSTs; CLIENT Apply stays separate. Two scoped files; estimate 3 fits.
+
+## Frame diff
+
+(none)
+
+## Findings
+
+### fix-now
+
+**`tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `describe` closes at line 335**
+
+`merge-tests(AST-1478)` (`43da07a8`) strands AST-1057 `it` blocks outside `describe("JobsRecommended")`; they lose suite `beforeEach`. Move closing `})` below AST-1057.
+
+**Same merge — AST-1477 test block dropped**
+
+`describe("AST-1477 mark applied from Recommended")` removed from incoming tests side. Restore at epic merge or confirm AST-1477 lands separately.
+
+### discuss
+
+- Joan excluded `no-hardcoded-sets`; implementation conforms (callback gating) — straggler note only.
+- AC5: no report-strip 409/error test; success paths only. Optional follow-up.
+
+### advisory
+
+- Three-dot diff vs `origin/dev` inflated (multiple merge bases); scoped product delta = `d4bfa409` only.
+- AST-1106 bible drift on publish ref — epic merge, not AST-1478.
+- Inline padding on strip — plan-documented, acceptable.
+
+## What's solid
+
+Shared-hook wiring, `.btn` roles, AC4 separation, close-via-list-membership, AST-1478 component tests green on manifest.
+
+## Recommended actions (downstream)
+
+1. **resolve-child:** fix test nesting in `test_JobsRecommended.test.tsx`.
+2. **merge-child:** restore AST-1477 tests; reconcile bible drift.
+3. **Optional:** report-path 409 component test.
+
+## Notes
+
+Joan APPROVED @ `4aae3fcf`. Tip unchanged (`43da07a8`). Chuckles: append artifact; post slim upshot; route to **resolve-child**.
+
+context_tokens≈34000
+
+---
+
+```
+[code-rubric] REVIEW (Commit: 43da07a8) test merge nesting fix
