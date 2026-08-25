@@ -212,3 +212,55 @@ save = tracker.save_meteorite_job(
 Confirm Chuckles estimate: 5 — agree
 
 New public orchestration + consult packet enrich path + Playwright link flesh-out + Tracker integration is a real multi-file core slice (new land pattern) without schema work (Ada already landed that). Matches Bang !! / estimate 5. No revise.
+
+## Joan validate
+
+[plan-discuss] round=1 concern
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1470
+**Overall:** REVISE
+**Publish ref:** `sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment` @ `b1bc8382799129fb4342d2641a99904cdac3f196`
+
+## Traceability
+AC1→Stage 3 `land_meteorite` explicit outcomes + `outcomes[]` (callable API only; Contact/inbox wiring→N/A AST-1471/1472 per Boundaries); AC2→Stage 1 scrap/`employer_name` passthrough + Stage 3 `save_meteorite_job(..., employer_name=…)` under `meteorite-{candidate_id}`; AC3→Stage 3 import ban + module docstring (no Gmail in meteorite; Contact/inbox call→N/A siblings); AC4→Stage 1 `do_task(task_key="qualify_meteorite")` separate entry, no `_run_batch_consult` transition; AC5→Stages 1/3 Style D gated on `debug=True`. Parent AC6–10→N/A (ingress retarget/API/inbox). Stages 1–3→child Scope + parent Functional #1/#5/#6/#9/#10 slice.
+
+## Findings
+
+### fix-now — Stage 1 missing `batch_id` / `log_batch_id` before `do_task`
+**Location:** Stage 1 step 5; Stage 2 done-when (“persists prompt/RESPONSE”)  
+**Finding:** `do_task` only stores agent_data when `store_agent_data and batch_id and entity_type` (`batch_id = hop_ledger_batch_id or log_batch_id.get()`). Land enrich calls `do_task` outside dispatch with no `log_batch_id` set — `_should_store` is false, so no prompt/RESPONSE rows despite Stage 2 requiring persistence. Dispatch `qualify_meteorite` uses `do_index = f"{task_key}_batch_{batch_id}"` under an active batch context; land cannot reuse that shape without generating its own id.  
+**Recommendation:** Stage 1 step 5 must mint a land batch id (e.g. `f"qualify_meteorite-land-{uuid4()}"`), `log_batch_id.set(...)` for the call (clear in `finally`), and document the `index` string used — mirror `_run_batch_consult` audit trail.
+
+### fix-now — Top-level `meteorite` → `consult` import will cycle
+**Location:** Stage 3 step 2 (`enrich_meteorite_land_packet` from consult)  
+**Finding:** `consult.py` already imports `is_meteorite_company` from `meteorite` at module load. A module-level `from src.core.consult import enrich_meteorite_land_packet` in `meteorite.py` creates a consult↔meteorite import cycle.  
+**Recommendation:** Late-import `enrich_meteorite_land_packet` inside `land_meteorite` only (same carve-out family as AST-1469 tracker/meteorite note).
+
+### discuss — AC1 / AC3 caller wiring deferred (acceptable partition)
+**Location:** Child AC1 + AC3 vs Boundaries / Execution contract  
+**Finding:** Ticket AC text says Contact/inbox “can call” `land_meteorite`; plan correctly implements the core entry only and defers retarget to AST-1471/1472.  
+**Recommendation:** Add one traceability note in plan Scope gate: AC1/AC3 “callable” half = this ticket; “wired” half = siblings — no scope change needed once batch_id fix lands.
+
+### discuss — `entity_id` tagging with `entity_type=job` + `index=candidate_id`
+**Location:** Stage 1 step 5 / Stage 2 step 2  
+**Finding:** `qualify_meteorite` TASK_CONFIG `entity_type` is `job`; land uses candidate id as index. RESPONSE rows would tag `entity_id=candidate_id` under job entity type — not a valid job row for `list_entity_latest_agent_refs`. May be acceptable for packet-level audit only.  
+**Recommendation:** At build, either document “audit-only, no latest-ref consumers” or tag under candidate entity for land calls — engineer choice once batch_id exists.
+
+### discuss — Cited pattern still `proposed`
+**Location:** Ticket ## Citations — `pattern.agent.prompt-persist-before-provider`  
+**Finding:** Catalog entry is `status: proposed`, not `approved`. Plan relies on existing `do_task` pre-provider `_store_prompt_blocks` (already conforming); no new sequencing work staged.  
+**Recommendation:** Citation hygiene only — implementation path is fine via `do_task`.
+
+### acceptable — Dependency on AST-1469 / ftr
+**Location:** Scope gate **Depends on**  
+**Finding:** `save_meteorite_job` and land outcome keys are on `origin/ftr/AST-1457-meteorite-component`; plan assumes epic sync before build — correct.
+
+### acceptable — Tests row Betty-only
+**Location:** Files Changed `test_meteorite.py`  
+**Finding:** Engineer pre-commit ban honored; qa-child owns contract tests for AC1–5 — consistent with Betty statute and AST-1469 pattern.
+
+## R6 checklist (summary)
+Layer discipline (core→external Playwright, no Gmail in meteorite), config-as-read-only (`TASK_CONFIG` read, no `config.py` edits), no-daisy-chain (enrich without qualify transition), and `do_task` delegation all pass once batch_id + late-import fixes land. Self-assessment (estimate 5, !! orchestration) is honest.
+
+context_tokens≈78000
