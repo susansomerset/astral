@@ -2571,3 +2571,47 @@ class TestAst1135GazeEmailDueTasks:
         assert dispatcher_mod.run_task(55, ui_initiated=True) is True
         assert captured[0]["available_count"] == 4
 
+
+# Branches: add/skip/missing_config; auto_mode false; null candidate (AST-1472).
+# NOTE: AUTO meteorite_email vs CLICK fetch_email intentionally separate (Joan discuss).
+class TestAst1472EnsureFetchEmailDispatchTask:
+    def test_ensure_adds_then_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        from src.utils.config import FETCH_EMAIL_CONFIG
+
+        existing: list[dict] = []
+        saves: list[dict] = []
+        monkeypatch.setattr(
+            dispatcher_mod.database, "list_dispatch_tasks", lambda: list(existing)
+        )
+
+        def _save(**kwargs):
+            saves.append(kwargs)
+            row = {
+                "id": 77,
+                "task_key": kwargs["task_key"],
+                "candidate_id": kwargs.get("candidate_id"),
+            }
+            existing.append(row)
+            return 77
+
+        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
+        first = dispatcher_mod.ensure_fetch_email_dispatch_task()
+        assert first["added"] == 1 and first["skipped"] == 0
+        assert first["skipped_missing_config"] == 0
+        assert first["id"] == 77
+        assert first["task_key"] == FETCH_EMAIL_CONFIG["task_key"]
+        assert saves[0]["candidate_id"] is None
+        assert saves[0]["task_key"] == "fetch_email"
+        assert saves[0]["auto_mode"] is False
+        assert saves[0]["entity_type"] is None
+        assert saves[0]["trigger_state"] is None
+        second = dispatcher_mod.ensure_fetch_email_dispatch_task()
+        assert second["added"] == 0 and second["skipped"] == 1
+        assert second["id"] == 77
+        assert len(saves) == 1
+
+    def test_ensure_skips_missing_task_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", {})
+        out = dispatcher_mod.ensure_fetch_email_dispatch_task()
+        assert out["skipped_missing_config"] == 1
+        assert out["added"] == 0 and out["skipped"] == 0
