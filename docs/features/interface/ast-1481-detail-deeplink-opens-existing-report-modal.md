@@ -142,3 +142,26 @@ AC1–7 → Stage 1 (AC2 route + SPA boot), Stage 2 (AC1,3–5,7 modal host, pre
 **Built:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal` @ `0e7e2d87`
 
 Stages 1–3: `JOBS_DETAIL_ROUTE_PREFIX` + `jobs/detail/:jobId` route; `JobsJobDetail` prefetch gate, error UI, modal host with close → `/jobs/recommended`; admin `alignSelectedCandidateForJobCompany` via company `candidate_id`. Tests deferred to Betty.
+
+## Radia review
+
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1481  
+**Publish ref:** `e17971ef0e20bf3cd10b243ea1d275c1876eeb45`  
+**Overall:** FIX-NOW
+
+### fix-now
+
+**1. Host effect re-runs on candidate context updates → loading flash + duplicate prefetch**  
+`JobsJobDetail.tsx` effect depends on `alignSelectedCandidateForJobCompany`, which changes when `candidates` loads or `setSelectedId` runs. Effect cleanup sets `cancelled` and body `setGate("loading")`, unmounting modal and re-fetching job.
+
+**Recommended:** stabilize `setSelectedId` with `useCallback`; narrow host effect deps to `[jobId]`; or gate `ready` only once per `jobId` with a ref guard.
+
+**2. Admin candidate alignment can silently no-op before candidates hydrate**  
+When `/api/jobs/<id>` returns before `/api/candidates`, `candidates.some(...)` blocks `setSelectedId` with no retry — modal opens under wrong candidate (AC 6).
+
+**Recommended:** await candidate list readiness before `gate = "ready"` for admin sessions; retry alignment when `candidates` transitions empty → populated.
+
+### discuss
+
+**3. `routes.tsx` header SYNC comment vs nav-less deeplink** — optional doc-only comment tweak; not blocking.
