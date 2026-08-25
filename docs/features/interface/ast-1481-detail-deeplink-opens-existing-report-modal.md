@@ -165,3 +165,15 @@ When `/api/jobs/<id>` returns before `/api/candidates`, `candidates.some(...)` b
 ### discuss
 
 **3. `routes.tsx` header SYNC comment vs nav-less deeplink** — optional doc-only comment tweak; not blocking.
+
+---
+
+## Resolution
+
+**2026-08-25 — Radia fix-now (publish @ resolve tip)**
+
+1. **Effect re-run / loading flash:** Split `JobsJobDetail` into job-prefetch effect (`[jobId]` only) and align+ready effect (`[jobId, company, isAdmin, candidatesHydrated]`). Alignment callback held in a ref; `readyJobIdRef` prevents duplicate ready transitions per job id.
+2. **Admin hydration race:** `CandidateContext` exposes `candidatesHydrated` (set in `load()` `finally`); admin deeplink waits for hydration before align + modal mount. `setSelectedId` and `alignSelectedCandidateForJobCompany` stabilized via `useCallback` + refs for `candidates` / `selectedId`.
+3. **Discuss (routes SYNC comment):** Added deeplink exception note to `routes.tsx` header — points at `JOBS_DETAIL_ROUTE_PREFIX`.
+
+**Manifest re-run:** Betty AST-1481 Vitest manifest green after resolve.

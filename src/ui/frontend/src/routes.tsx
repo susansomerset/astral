@@ -1,4 +1,5 @@
 // SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
+//       Deeplink-only routes (e.g. jobs/detail/:jobId) use JOBS_DETAIL_ROUTE_PREFIX — not NAV_CONFIG.
 //       If you add/remove/rename a route, update NAV_CONFIG to match.
 import { Navigate, Outlet, type RouteObject } from "react-router-dom"
 import AdminRoute from "./components/AdminRoute"

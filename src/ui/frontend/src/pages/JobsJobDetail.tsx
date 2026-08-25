@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Link, Navigate, useNavigate, useParams } from "react-router-dom"
 import JobAnalysisReportModal from "../components/JobAnalysisReportModal"
+import { useAuth } from "../contexts/AuthContext"
 import { useCandidate } from "../contexts/CandidateContext"
 import api from "../lib/api"
 
@@ -9,17 +10,25 @@ type Gate = "loading" | "ready" | "error"
 /** AST-1481: deeplink host — opens JobAnalysisReportModal for /jobs/detail/:jobId */
 export default function JobsJobDetail() {
   const navigate = useNavigate()
+  const { isAdmin } = useAuth()
   const { jobId: rawJobId } = useParams()
   const jobId = rawJobId?.trim() ?? ""
-  const { alignSelectedCandidateForJobCompany } = useCandidate()
+  const { alignSelectedCandidateForJobCompany, candidatesHydrated } = useCandidate()
+  const alignRef = useRef(alignSelectedCandidateForJobCompany)
+  alignRef.current = alignSelectedCandidateForJobCompany
+  const readyJobIdRef = useRef<string | null>(null)
   const [gate, setGate] = useState<Gate>("loading")
   const [gateError, setGateError] = useState<string | null>(null)
+  // undefined = job prefetch in flight; string = fetched (may be empty)
+  const [company, setCompany] = useState<string | undefined>(undefined)
 
   useEffect(() => {
     if (!jobId) return
     let cancelled = false
+    readyJobIdRef.current = null
     setGate("loading")
     setGateError(null)
+    setCompany(undefined)
     void (async () => {
       const res = await api(`/api/jobs/${encodeURIComponent(jobId)}`)
       if (cancelled) return
@@ -39,15 +48,28 @@ export default function JobsJobDetail() {
         return
       }
       const data = (await res.json()) as { company?: unknown }
-      const company = typeof data.company === "string" ? data.company.trim() : ""
-      if (company) {
-        await alignSelectedCandidateForJobCompany(company)
-      }
-      if (cancelled) return
-      setGate("ready")
+      const co = typeof data.company === "string" ? data.company.trim() : ""
+      setCompany(co)
     })()
     return () => { cancelled = true }
-  }, [jobId, alignSelectedCandidateForJobCompany])
+  }, [jobId])
+
+  useEffect(() => {
+    if (!jobId || company === undefined) return
+    if (isAdmin && !candidatesHydrated) return
+    if (readyJobIdRef.current === jobId) return
+    let cancelled = false
+    void (async () => {
+      if (company) {
+        await alignRef.current(company)
+      }
+      if (!cancelled) {
+        readyJobIdRef.current = jobId
+        setGate("ready")
+      }
+    })()
+    return () => { cancelled = true }
+  }, [jobId, company, isAdmin, candidatesHydrated])
 
   if (!jobId) {
     return <Navigate to="/jobs/recommended" replace />
