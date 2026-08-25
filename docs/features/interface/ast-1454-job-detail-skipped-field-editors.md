@@ -236,3 +236,10 @@ No `fix-now` findings.
 **Considered (in-session):** Universal orchestration statutes — N/A. Scoped statutes/plan citations (`astral.layers.ui-config-driven-business-logic` via server `fields_editable`/`legal_next_states` only; `astral.ui.frontend-file-placement` flat `components/`/`pages/`; `astral.ui.naming-conventions`; `astral.standards.no-hardcoded-sets` no TS skipped list; `astral.standards.dry-and-focused-functions` draft helpers in-modal; patterns `pattern.ui.shared-button-roles` Modal `btn primary` Save / `btn secondary` Cancel; `pattern.ui.admin-endpoint` thin client over #1 PUT) — all conform. `JobDetailModal` mounts only from `JobsSkipped` / `JobsInReview`; both get `onRefresh`. Files Changed stays inside child scope.
 
 context_tokens≈103000
+
+## Review
+
+- **Commit:** `43129c21f78c405b13115db420f3b4df713a4516`
+- **Publish ref:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`
+- **Stages:** 1–2 (editable Info + Save PUT + list `onRefresh`; JD tab always when editable)
+
