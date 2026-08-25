@@ -366,3 +366,14 @@ context_tokens≈42000
 ```
 [code-rubric] REVIEW (Commit: f150166d) wrong-parent sync on publish ref
 ```
+
+## Resolution
+
+**Date:** 2026-08-25  
+**Driven by:** Radia `[code-rubric] revision=2` FIX-NOW — wrong-parent sync on publish ref (AST-1477/AST-1478 under AST-1464).
+
+**Changes:**
+- Restored non-AST-1474 test/bible paths that landed via wrong-parent `sync(publish-ref)` / merge-tests drift to match `origin/dev` (`meteorite_email` / `repo_admin_json` / `tracker` / `pages` / `api_jobs` bible rows; `test_tracker.py` / `test_api_jobs.py`).
+- Removed orphan `test_AdminScheduledActions_AST1106.test.tsx` (not on `origin/dev`).
+- Confirmed three-dot `origin/dev...HEAD` `src/**` is only the plan Scope trio (`config.py`, `candidate.py`, `api_candidate.py`) with AST-1474 page-break schema intact.
+- Duplicate `is_valid_candidate_batch_claim_state` import in `database.py` is already on `origin/dev` (not introduced by `7c53225a`) — left untouched to avoid expanding this child's Scope.
