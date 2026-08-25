@@ -227,6 +227,112 @@ describe("JobsRecommended", () => {
     })
   })
 
+  describe("AST-1478 report Applied and Skip", () => {
+    // §6c: Recommended page wires shared-hook Skip/Applied into JAR (sibling AST-1477 owns list Applied icon).
+    const reportJob = {
+      ...sectionedJobs[0],
+      astral_job_id: "j-1478-rep",
+      job_title: "Report Applied Role",
+    }
+
+    function installReportList(handlerExtra?: (url: string, init?: RequestInit) => Response | undefined) {
+      const listHandler = jobsViewHandler("recommended", [reportJob])
+      installBaseApiMocks(mockedApi, (url, init) => {
+        const extra = handlerExtra?.(url, init)
+        if (extra) return extra
+        if (url === "/api/jobs/j-1478-rep" && !init) {
+          return jsonResponse({
+            ...reportJob,
+            job_link: "https://jobs.example/apply",
+            job_data: {
+              job_description: "JD",
+              analysis_upshot: {
+                take_get: "x",
+                take_do: "",
+                take_like: "",
+                take_jd: "",
+                whole_jd_upshot: "Summary",
+                segment_upshots: [],
+                candidate_questions: [],
+                caveats: [],
+              },
+            },
+          })
+        }
+        return listHandler(url, init)
+      })
+    }
+
+    async function openReport() {
+      renderWithProviders(<JobsRecommended />)
+      await waitFor(() => expect(screen.getByText("Report Applied Role")).toBeInTheDocument())
+      await userEvent.click(screen.getByText("Report Applied Role"))
+      await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeTruthy())
+    }
+
+    function reportStrip() {
+      return document.querySelector(".recommended-report-header-actions") as HTMLElement
+    }
+
+    it("shows labeled report Skip + Applied; CLIENT Apply stays absent", async () => {
+      installReportList()
+      await openReport()
+      const strip = reportStrip()
+      expect(within(strip).getByRole("button", { name: "Skip" })).toHaveClass("btn", "secondary")
+      expect(within(strip).getByRole("button", { name: "Applied" })).toHaveClass("btn", "primary")
+      expect(screen.queryByRole("button", { name: "Apply" })).not.toBeInTheDocument()
+    })
+
+    it("report Skip POSTs /skip and closes when the job leaves the list", async () => {
+      let listRows: unknown[] = [reportJob]
+      installReportList((url, init) => {
+        if (typeof url === "string" && url.includes("view=recommended") && !init?.method) {
+          return jsonResponse(listRows)
+        }
+        if (url === "/api/jobs/j-1478-rep/skip" && init?.method === "POST") {
+          listRows = []
+          return jsonResponse({ ok: true })
+        }
+        return undefined
+      })
+      await openReport()
+      await userEvent.click(within(reportStrip()).getByRole("button", { name: "Skip" }))
+      await waitFor(() =>
+        expect(mockedApi).toHaveBeenCalledWith("/api/jobs/j-1478-rep/skip", { method: "POST" }),
+      )
+      await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeNull())
+      expect(screen.getByText("No recommended jobs yet")).toBeInTheDocument()
+    })
+
+    it("report Applied opens notes modal and posts candidate_action applied", async () => {
+      let listRows: unknown[] = [reportJob]
+      installReportList((url, init) => {
+        if (typeof url === "string" && url.includes("view=recommended") && !init?.method) {
+          return jsonResponse(listRows)
+        }
+        if (url === "/api/jobs/j-1478-rep/candidate_action" && init?.method === "POST") {
+          listRows = []
+          return jsonResponse({ ok: true })
+        }
+        return undefined
+      })
+      await openReport()
+      await userEvent.click(within(reportStrip()).getByRole("button", { name: "Applied" }))
+      await waitFor(() => expect(screen.getByRole("heading", { name: "Applied" })).toBeInTheDocument())
+      await userEvent.click(screen.getByRole("button", { name: "Save" }))
+      await waitFor(() =>
+        expect(mockedApi).toHaveBeenCalledWith(
+          "/api/jobs/j-1478-rep/candidate_action",
+          expect.objectContaining({
+            method: "POST",
+            body: JSON.stringify({ action: "applied", notes: "" }),
+          }),
+        ),
+      )
+      await waitFor(() => expect(document.querySelector(".recommended-report-tabs")).toBeNull())
+    })
+  })
+
   it("AST-1057: prepends Meteorites for meteorite- company jobs; leaves vetted sections intact", async () => {
     const mixed = [
       ...sectionedJobs,
