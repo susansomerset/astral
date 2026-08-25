@@ -2262,3 +2262,34 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1454 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
+
+`JobsSkipped` / `JobsInReview` pass `onRefresh={load}` into `JobDetailModal` so Save refreshes the list. Editor chrome: **`docs/test-bible/frontend/components.md`** § AST-1454.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skipped list refresh after Save (**§6c**) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1454 onRefresh after skipped-field Save`** |
+| In Review list refresh after Save (**§6c**) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1454 onRefresh wiring`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/frontend/pages/test_JobsSkipped.test.tsx` — **`AST-1454`**
+2. `tests/component/frontend/pages/test_JobsInReview.test.tsx` — **`AST-1454`**
+3. Modal editors: `test_JobDetailModal.test.tsx` — **`AST-1454`** (primary: **components.md**)
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern="AST-1454"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
