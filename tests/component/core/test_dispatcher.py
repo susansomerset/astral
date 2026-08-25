@@ -65,7 +65,7 @@ def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
         )
     _gaze = MagicMock(
         return_value={
-            "task_key": "gaze_email",
+            "task_key": "meteorite_email",
             "retired_null": 0,
             "candidates_touched": 0,
             "added": 0,
@@ -73,8 +73,8 @@ def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
             "skipped_missing_config": 0,
         }
     )
-    if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
-        monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _gaze)
+    if hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"):
+        monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", _gaze)
 
 
 class TestDispatchWrappers:
@@ -1650,7 +1650,7 @@ class TestAst972CandidateStageDispatch:
             ],
             "c2": [
                 {"id": 3, "task_key": "candidate_requested_artifacts"},
-                {"id": 4, "task_key": "gaze_email"},
+                {"id": 4, "task_key": "meteorite_email"},
             ],
         }
         deleted: list[int] = []
@@ -1759,7 +1759,7 @@ class TestAst972CandidateStageDispatch:
         )
         _stub = MagicMock(
             return_value={
-                "task_key": "gaze_email",
+                "task_key": "meteorite_email",
                 "retired_null": 0,
                 "candidates_touched": 0,
                 "added": 0,
@@ -1767,8 +1767,8 @@ class TestAst972CandidateStageDispatch:
                 "skipped_missing_config": 0,
             }
         )
-        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
-            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _stub)
+        if hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"):
+            monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", _stub)
         dispatcher_mod.start_scheduler()
         retire.assert_called_once_with()
 
@@ -2068,7 +2068,7 @@ class TestAst1054MeteoriteDispatchProvision:
         )
         _stub = MagicMock(
             return_value={
-                "task_key": "gaze_email",
+                "task_key": "meteorite_email",
                 "retired_null": 0,
                 "candidates_touched": 0,
                 "added": 0,
@@ -2076,10 +2076,10 @@ class TestAst1054MeteoriteDispatchProvision:
                 "skipped_missing_config": 0,
             }
         )
-        if hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"):
-            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", _stub)
-        elif hasattr(dispatcher_mod, "provision_gaze_email_dispatch_task"):
-            monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_task", _stub)
+        if hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"):
+            monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", _stub)
+        elif hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_task"):
+            monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_task", _stub)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -2097,10 +2097,10 @@ class TestAst1054MeteoriteDispatchProvision:
 
 
 @pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks"),
-    reason="AST-1134 coverage-join gaze_email provision not on this publish tip",
+    not hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"),
+    reason="AST-1466 meteorite_email provision not on this publish tip",
 )
-class TestAst1134GazeEmailDispatchProvision:
+class TestAst1134MeteoriteEmailDispatchProvision:
     """AST-1134: per-candidate ensure; retire null shell; coverage over every candidate."""
 
     def test_ensure_adds_then_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2123,29 +2123,29 @@ class TestAst1134GazeEmailDispatchProvision:
             return 41
 
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
-        first = dispatcher_mod.ensure_gaze_email_dispatch_task("cand-a")
+        first = dispatcher_mod.ensure_meteorite_email_dispatch_task("cand-a")
         assert first["added"] == 1 and first["skipped"] == 0
         assert first["candidate_id"] == "cand-a"
         assert first["id"] == 41
         assert saves[0]["candidate_id"] == "cand-a"
-        assert saves[0]["task_key"] == dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        assert saves[0]["task_key"] == dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         assert saves[0]["auto_mode"] is False
         assert saves[0]["entity_type"] is None
         assert saves[0]["trigger_state"] is None
-        second = dispatcher_mod.ensure_gaze_email_dispatch_task("cand-a")
+        second = dispatcher_mod.ensure_meteorite_email_dispatch_task("cand-a")
         assert second["added"] == 0 and second["skipped"] == 1
         assert second["id"] == 41
         assert len(saves) == 1
 
     def test_ensure_requires_candidate_id(self) -> None:
         with pytest.raises(ValueError, match="candidate_id is required"):
-            dispatcher_mod.ensure_gaze_email_dispatch_task("")
+            dispatcher_mod.ensure_meteorite_email_dispatch_task("")
         with pytest.raises(ValueError, match="candidate_id is required"):
-            dispatcher_mod.ensure_gaze_email_dispatch_task("   ")
+            dispatcher_mod.ensure_meteorite_email_dispatch_task("   ")
 
     def test_ensure_skips_missing_task_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", {})
-        out = dispatcher_mod.ensure_gaze_email_dispatch_task("cand-a")
+        out = dispatcher_mod.ensure_meteorite_email_dispatch_task("cand-a")
         assert out["skipped_missing_config"] == 1
         assert out["added"] == 0 and out["skipped"] == 0
         assert out["candidate_id"] == "cand-a"
@@ -2159,8 +2159,8 @@ class TestAst1134GazeEmailDispatchProvision:
             dispatcher_mod.database,
             "list_dispatch_tasks",
             lambda: [
-                {"id": 1, "task_key": "gaze_email", "candidate_id": None},
-                {"id": 2, "task_key": "gaze_email", "candidate_id": "keep"},
+                {"id": 1, "task_key": "meteorite_email", "candidate_id": None},
+                {"id": 2, "task_key": "meteorite_email", "candidate_id": "keep"},
                 {"id": 3, "task_key": "evaluate_jd", "candidate_id": None},
             ],
         )
@@ -2183,15 +2183,15 @@ class TestAst1134GazeEmailDispatchProvision:
             ensured.append(cid)
             return {
                 "candidate_id": cid,
-                "task_key": "gaze_email",
+                "task_key": "meteorite_email",
                 "added": 1 if cid == "c1" else 0,
                 "skipped": 0 if cid == "c1" else 1,
                 "skipped_missing_config": 0,
                 "id": 10,
             }
 
-        monkeypatch.setattr(dispatcher_mod, "ensure_gaze_email_dispatch_task", _ensure)
-        out = dispatcher_mod.provision_gaze_email_dispatch_tasks()
+        monkeypatch.setattr(dispatcher_mod, "ensure_meteorite_email_dispatch_task", _ensure)
+        out = dispatcher_mod.provision_meteorite_email_dispatch_tasks()
         assert deleted == [1]
         assert ensured == ["c1", "c2"]
         assert out["retired_null"] == 1
@@ -2223,7 +2223,7 @@ class TestAst1134GazeEmailDispatchProvision:
         )
         gprovision = MagicMock(
             return_value={
-                "task_key": "gaze_email",
+                "task_key": "meteorite_email",
                 "retired_null": 1,
                 "candidates_touched": 2,
                 "added": 1,
@@ -2231,7 +2231,7 @@ class TestAst1134GazeEmailDispatchProvision:
                 "skipped_missing_config": 0,
             }
         )
-        monkeypatch.setattr(dispatcher_mod, "provision_gaze_email_dispatch_tasks", gprovision)
+        monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", gprovision)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -2385,17 +2385,17 @@ class TestAst1221AliasChunkExhaust:
 
 
 @pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "GAZE_EMAIL_CONFIG"),
-    reason="AST-1090 gaze_email wiring not on this publish tip",
+    not hasattr(dispatcher_mod, "METEORITE_EMAIL_MAILBOX_CONFIG"),
+    reason="AST-1466 meteorite_email wiring not on this publish tip",
 )
 class TestAst1090GazeEmailDispatchOne:
-    """AST-1090 / AST-1134: _dispatch_one routes gaze_email; ledger uses bound row cid."""
+    """AST-1090 / AST-1134 / AST-1467: _dispatch_one routes meteorite_email; ledger uses bound row cid."""
 
     @pytest.mark.asyncio
     async def test_calls_runner_with_bound_ledger_cid(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        from src.core import gaze_email as ge_mod
+        from src.core import meteorite_email as ge_mod
 
         get_cand = MagicMock(side_effect=AssertionError("must not load candidate"))
         monkeypatch.setattr(dispatcher_mod.database, "get_candidate", get_cand)
@@ -2407,7 +2407,7 @@ class TestAst1090GazeEmailDispatchOne:
                 "total_errors": 0,
             }
         )
-        monkeypatch.setattr(ge_mod, "run_gaze_email", runner)
+        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
@@ -2419,7 +2419,7 @@ class TestAst1090GazeEmailDispatchOne:
         monkeypatch.setattr(dispatcher_mod, "_run_dispatch_loop", loop)
         task = {
             "id": 90,
-            "task_key": dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"],
+            "task_key": dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
             "candidate_id": "cand-bound",
             "auto_mode": 1,
             "debug": 0,
@@ -2437,17 +2437,17 @@ class TestAst1090GazeEmailDispatchOne:
 
     @pytest.mark.asyncio
     async def test_skips_unbound_candidate_id(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.core import gaze_email as ge_mod
+        from src.core import meteorite_email as ge_mod
 
         runner = AsyncMock()
-        monkeypatch.setattr(ge_mod, "run_gaze_email", runner)
+        monkeypatch.setattr(ge_mod, "run_meteorite_email", runner)
         save_ledger = MagicMock()
         monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_ledger", save_ledger)
         monkeypatch.setattr(dispatcher_mod.database, "update_dispatch_ledger", MagicMock())
         monkeypatch.setattr(dispatcher_mod, "_db_update_dispatch_task", MagicMock())
         task = {
             "id": 91,
-            "task_key": dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"],
+            "task_key": dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"],
             "candidate_id": None,
             "auto_mode": 0,
             "debug": 0,
@@ -2460,14 +2460,14 @@ class TestAst1090GazeEmailDispatchOne:
 
 
 @pytest.mark.skipif(
-    not hasattr(dispatcher_mod, "_gaze_email_due_tasks"),
+    not hasattr(dispatcher_mod, "_meteorite_email_due_tasks"),
     reason="AST-1135 gaze due merge not on this publish tip",
 )
 class TestAst1135GazeEmailDueTasks:
     """AST-1135: AUTO gaze due from live bind Avail + freq gate."""
 
     def test_due_when_avail_and_freq_allow(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        tk = dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         rows = [
             {
                 "id": 1,
@@ -2507,14 +2507,14 @@ class TestAst1135GazeEmailDueTasks:
             lambda **kwargs: {"A": 3, "B": 1},
         )
         monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: True)
-        due = dispatcher_mod._gaze_email_due_tasks()
+        due = dispatcher_mod._meteorite_email_due_tasks()
         assert [t["id"] for t in due] == [1]
         assert due[0]["available_count"] == 3
 
     def test_freq_blocks_and_inbox_error_returns_empty(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        tk = dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         rows = [
             {
                 "id": 7,
@@ -2531,19 +2531,19 @@ class TestAst1135GazeEmailDueTasks:
             lambda **kwargs: {"A": 5},
         )
         monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: False)
-        assert dispatcher_mod._gaze_email_due_tasks() == []
+        assert dispatcher_mod._meteorite_email_due_tasks() == []
 
         monkeypatch.setattr(
             "src.core.inbox.count_inbox_bound_by_candidate",
             MagicMock(side_effect=RuntimeError("gmail down")),
         )
         monkeypatch.setattr(dispatcher_mod.database, "dispatch_task_freq_allows", lambda t: True)
-        assert dispatcher_mod._gaze_email_due_tasks() == []
+        assert dispatcher_mod._meteorite_email_due_tasks() == []
 
     def test_run_task_enriches_gaze_available_count(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        tk = dispatcher_mod.GAZE_EMAIL_CONFIG["task_key"]
+        tk = dispatcher_mod.METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
         task = {
             "id": 55,
             "task_key": tk,
@@ -2571,47 +2571,3 @@ class TestAst1135GazeEmailDueTasks:
         assert dispatcher_mod.run_task(55, ui_initiated=True) is True
         assert captured[0]["available_count"] == 4
 
-
-# Branches: add/skip/missing_config; auto_mode false; null candidate (AST-1472).
-# NOTE: AUTO meteorite_email vs CLICK fetch_email intentionally separate (Joan discuss).
-class TestAst1472EnsureFetchEmailDispatchTask:
-    def test_ensure_adds_then_skips(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        from src.utils.config import FETCH_EMAIL_CONFIG
-
-        existing: list[dict] = []
-        saves: list[dict] = []
-        monkeypatch.setattr(
-            dispatcher_mod.database, "list_dispatch_tasks", lambda: list(existing)
-        )
-
-        def _save(**kwargs):
-            saves.append(kwargs)
-            row = {
-                "id": 77,
-                "task_key": kwargs["task_key"],
-                "candidate_id": kwargs.get("candidate_id"),
-            }
-            existing.append(row)
-            return 77
-
-        monkeypatch.setattr(dispatcher_mod.database, "save_dispatch_task", _save)
-        first = dispatcher_mod.ensure_fetch_email_dispatch_task()
-        assert first["added"] == 1 and first["skipped"] == 0
-        assert first["skipped_missing_config"] == 0
-        assert first["id"] == 77
-        assert first["task_key"] == FETCH_EMAIL_CONFIG["task_key"]
-        assert saves[0]["candidate_id"] is None
-        assert saves[0]["task_key"] == "fetch_email"
-        assert saves[0]["auto_mode"] is False
-        assert saves[0]["entity_type"] is None
-        assert saves[0]["trigger_state"] is None
-        second = dispatcher_mod.ensure_fetch_email_dispatch_task()
-        assert second["added"] == 0 and second["skipped"] == 1
-        assert second["id"] == 77
-        assert len(saves) == 1
-
-    def test_ensure_skips_missing_task_config(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setattr(dispatcher_mod, "TASK_CONFIG", {})
-        out = dispatcher_mod.ensure_fetch_email_dispatch_task()
-        assert out["skipped_missing_config"] == 1
-        assert out["added"] == 0 and out["skipped"] == 0

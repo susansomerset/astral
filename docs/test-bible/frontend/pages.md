@@ -1555,21 +1555,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
 
-Originally: Scheduled Actions Avail **gt0** kept rows where API `always_visible_under_avail_gt0` is true (null-candidate `gaze_email` mailbox shell with intentional zero avail). Default remains `gt0` (AST-894). React still honors the generic API flag; mailbox product identity is now `meteorite_email` with real bind-filtered Avail (AST-1134 carve-out retired; AST-1466/1467 retire gaze).
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
 
 | # | Area | Source | Component tests |
 | --- | --- | --- | --- |
-| 1 | ~~Routed page Avail gt0 carve-out (§6c)~~ | `AdminScheduledActions.tsx` | ~~`test_AdminScheduledActions_AST1106.test.tsx`~~ — **retired AST-1467** (carve-out scenario obsolete) |
-| 2 | Regression: default gt0 still hides zero-avail | same | **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
+| 1 | Routed page Avail gt0 carve-out (§6c) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions_AST1106.test.tsx`** — **`AST-1106 gaze_email always visible under Avail gt0`** (2 cases) |
+| 2 | Regression: default gt0 still hides non-flag zero-avail | same | case 2 in that file; re-run **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
 
-**Broken / obsolete (AST-1467 return):** `tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx` deleted — seeded `gaze_email` + always-visible carve-out no longer product behavior; gt0 omit/show covered by AST-887/AST-894.
+**Broken / obsolete:** none (predicate widened via API flag only).
 
 **Integration:** none.
 
 ```bash
 cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
-  --testNamePattern="AST-887|AST-894"
+  --testNamePattern="AST-1106|AST-887|AST-894"
 ```
 
 ### AST-1156 · AST-1150
@@ -2262,6 +2263,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+
 ### AST-1454 · AST-1446
 
 **Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
@@ -2292,3 +2294,24 @@ cd src/ui/frontend && npx vitest run \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1476 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`.
+
+Base Resume Content **Save sections** PUTs `page_break_policy` on each section; header shows catalog-driven Page break control. Primary ArtifactEditor / JAR: **`docs/test-bible/frontend/components.md`** § AST-1476.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) dropdown + Save sections | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1476:`**; revised **AST-1306** PUT asserts policy |
+
+**Broken / obsolete this pass:** AST-1306 catalog/all_sections fixtures lacked page-break fields — extended.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1306"
+```
+

@@ -82,7 +82,7 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
 
 **Parent:** [AST-1129 — Manage Email — select inbox messages and Land Meteorite](https://linear.app/astralcareermatch/issue/AST-1129/manage-email-select-inbox-messages-and-land-meteorite). **Publish:** `origin/sub/AST-1129/AST-1141-admin-land-meteorite-api-selected-message-ids`. **Blocked by:** AST-1140.
 
-`POST /api/admin/inbox/land-meteorite` (`@require_admin`, `ui_llm_debug`): non-empty stripped `message_ids` → `asyncio.run(land_inbox_message_ids(...))` → **200** pass-through (`results` + totals); missing/non-list/empty → **400**; ValueError → **400**; upstream → **502**; never calls `create_meteorite_job_from_inbox_message`. Core: **`docs/test-bible/core/inbox.md`** (**AST-1472**; was gaze selected-ids — Susan retired gaze_email). React: **`docs/test-bible/frontend/pages.md`** (**AST-1142**).
+`POST /api/admin/inbox/land-meteorite` (`@require_admin`, `ui_llm_debug`): non-empty stripped `message_ids` → `asyncio.run(run_gaze_email_selected_ids(...))` → **200** pass-through (`results` + totals); missing/non-list/empty → **400**; ValueError → **400**; upstream → **502**; never calls `create_meteorite_job_from_inbox_message`. Core entrypoint: **`docs/test-bible/core/gaze_email.md`** (**AST-1140**). React consumer: **`docs/test-bible/frontend/pages.md`** (**AST-1142**).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -97,17 +97,3 @@ Create-job JSON includes `created`/`skipped`/`mode`; **201** when any created, *
   tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi \
   -q
 ```
-
-### AST-1472 · AST-1457
-
-**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget`.
-
-Create-job + land-meteorite → inbox land helpers → `land_meteorite`. HTTP create maps land `outcome` (`created`→201, skip/supersede→200, error→400/404). Land endpoint mocks `land_inbox_message_ids` (not gaze selected-ids). Core: **`docs/test-bible/core/inbox.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| create-job + land-meteorite | `src/ui/api/api_inbox.py` | revised **`TestAst1049InboxCreateJobApi`**, **`TestAst1141InboxLandMeteoriteApi`**, **`TestAst1472InboxCreateLandApi`** |
-
-**Broken / obsolete:** AST-1049 create mocks without land `outcome` (HTTP fallthrough 400); AST-1141 `run_gaze_email_selected_ids` — revised to `land_inbox_message_ids`.
-
-**Integration:** none.

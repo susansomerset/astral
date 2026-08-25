@@ -264,23 +264,3 @@ Events/Socket ingress hydrates `debug` from `slack_debug_enabled()` (caller kwar
   tests/component/ui/api/test_api_slack.py::TestAst1207SlackEventsDebugSot \
   -q
 ```
-
-### AST-1471 · AST-1457
-
-**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1471-meteorite-intake-api-contact-land-path`.
-
-`contact_land_meteorite` sync-wraps `land_meteorite`. Estelle turn live_content documents `land_calls`; turn loop invokes wrapper and returns `land_results`. API: **`docs/test-bible/ui/api/api_meteorite.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Wrapper + Estelle land_calls | `src/core/contact.py` | **`TestAst1471ContactLandMeteorite`** |
-
-**Broken / obsolete:** none — additive beside `skill_calls`.
-
-**Integration:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_contact.py::TestAst1471ContactLandMeteorite \
-  -q
-```

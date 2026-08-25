@@ -147,8 +147,30 @@ class TestJobsRoutes:
         states = captured.get("states") or []
         assert "RECOMMENDED" in states
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
-        other = jobs_client.get("/api/jobs?view=applied", headers=auth_headers)
+        # Unknown views still fall through to [].
+        other = jobs_client.get("/api/jobs?view=not_a_real_view", headers=auth_headers)
         assert other.get_json() == []
+
+    def test_list_applied_uses_applied_job_states(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # AST-1479: view=applied lists APPLIED_JOB_STATES (not empty fall-through).
+        captured: dict[str, object] = {}
+
+        def _list_jobs(**kwargs: object) -> list[dict[str, object]]:
+            captured.update(kwargs)
+            return [{"astral_job_id": "job-applied", "job_data": {}}]
+
+        monkeypatch.setattr(jobs_mod, "list_jobs", _list_jobs)
+        resp = jobs_client.get(
+            "/api/jobs?view=applied&candidate_id=cand-1",
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        assert resp.get_json()[0]["astral_job_id"] == "job-applied"
+        assert captured.get("candidate_id") == "cand-1"
+        assert captured.get("order_by") == "state_changed_at"
+        assert list(captured.get("states") or []) == list(cfg.APPLIED_JOB_STATES)
 
     def test_bulk_state_requires_body(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = jobs_client.post("/api/jobs/bulk_state", json={}, headers=auth_headers)

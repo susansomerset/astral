@@ -9,7 +9,6 @@ import pytest
 _SCHEMA_FLAGS = (
     "_company_schema_ensured",
     "_job_schema_ensured",
-    "_job_source_backfill_applied",  # AST-1469: re-run gazed backfill on fresh db
     "_candidate_schema_ensured",
     "_company_candidate_fk_ensured",
     "_company_job_scan_schema_ensured",

@@ -3134,7 +3134,6 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
   -q
 ```
 
-
 ### AST-1479 · AST-1464
 
 **Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
@@ -3147,23 +3146,10 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 
 **Broken / obsolete:** none — additive constant + nav enable.
 
-### AST-1469 · AST-1457
-
-**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save`.
-
-`JOB_SOURCES` + transition helpers; `METEORITE_CONFIG` land outcomes / dedupe order / employer_name key; `FETCH_EMAIL_CONFIG` + `TASK_CONFIG["fetch_email"]` + `SEED_CONFIG` stub; `qualify_meteorite` items_schema `astral_job_id` optional + `employer_name`. Tracker/data: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/data/database/jobs.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Job source + land/fetch_email/qualify schema | `src/utils/config.py` | **`TestAst1469JobSourcesAndMeteoriteLandConfig`** |
-
-**Broken / obsolete:** none — additive literals/schema.
-
 **Integration:** none.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
-  tests/component/utils/test_config.py::TestAst1469JobSourcesAndMeteoriteLandConfig \
   -q
 ```

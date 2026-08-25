@@ -437,17 +437,3 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
   -q
 ```
 
-
-### AST-1472 · AST-1457
-
-**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget`.
-
-`ensure_fetch_email_dispatch_task` inserts one null-`candidate_id` CLICK `fetch_email` row from `FETCH_EMAIL_CONFIG` (idempotent; `auto_mode` false). `start_scheduler` / `_dispatch_one` / `run_task` wire to `inbox.run_fetch_email`. **No gaze_email row creation.** AUTO `meteorite_email` provision left intact — intentionally separate from CLICK `fetch_email` (Joan discuss). Inbox runner: **`docs/test-bible/core/inbox.md`**.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| fetch_email ensure | `src/core/dispatcher.py` | **`TestAst1472EnsureFetchEmailDispatchTask`** |
-
-**Broken / obsolete:** none for ensure — additive beside meteorite_email provision.
-
-**Integration:** none.

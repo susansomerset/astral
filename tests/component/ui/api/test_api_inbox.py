@@ -131,20 +131,11 @@ class TestAst1049InboxCreateJobApi:
             return_value={
                 "astral_job_id": "job-1",
                 "company": "meteorite-cand-1",
-                "state": None,
-                "latest_score": None,
+                "state": "METEORITE_NEW",
+                "latest_score": 10.0,
                 "company_inserted": True,
                 "astral_candidate_id": "cand-1",
-                "outcome": "created",
-                "outcomes": [
-                    {
-                        "outcome": "created",
-                        "astral_job_id": "job-1",
-                        "company": "meteorite-cand-1",
-                    }
-                ],
-                "error": None,
-                "mode": "land_meteorite",
+                "mode": "body",
                 "created": [created_row],
                 "skipped": [],
             }
@@ -160,8 +151,7 @@ class TestAst1049InboxCreateJobApi:
         body = resp.get_json()
         assert body["astral_job_id"] == "job-1"
         assert body["astral_candidate_id"] == "cand-1"
-        assert body["mode"] == "land_meteorite"
-        assert body["outcome"] == "created"
+        assert body["mode"] == "body"
         assert body["created"] == [
             {
                 "astral_job_id": "job-1",
@@ -192,16 +182,7 @@ class TestAst1049InboxCreateJobApi:
                 "latest_score": None,
                 "company_inserted": False,
                 "astral_candidate_id": "cand-1",
-                "outcome": "duplicate_skip",
-                "outcomes": [
-                    {
-                        "outcome": "duplicate_skip",
-                        "astral_job_id": None,
-                        "company": "meteorite-cand-1",
-                    }
-                ],
-                "error": None,
-                "mode": "land_meteorite",
+                "mode": "links",
                 "created": [],
                 "skipped": skipped,
             }
@@ -226,20 +207,11 @@ class TestAst1049InboxCreateJobApi:
             return_value={
                 "astral_job_id": "job-1",
                 "company": "meteorite-cand-1",
-                "state": None,
-                "latest_score": None,
+                "state": "METEORITE_NEW",
+                "latest_score": 10.0,
                 "company_inserted": False,
                 "astral_candidate_id": "cand-1",
-                "outcome": "created",
-                "outcomes": [
-                    {
-                        "outcome": "created",
-                        "astral_job_id": "job-1",
-                        "company": "meteorite-cand-1",
-                    }
-                ],
-                "error": None,
-                "mode": "land_meteorite",
+                "mode": "body",
                 "created": [
                     {
                         "astral_job_id": "job-1",
@@ -329,13 +301,13 @@ class TestAst1049InboxCreateJobApi:
         )
 
 
-# AST-1141: POST land-meteorite → land_inbox_message_ids (no Create strip/extract).
+# AST-1141: POST land-meteorite → run_meteorite_email_selected_ids (no Create strip/extract).
 class TestAst1141InboxLandMeteoriteApi:
     _CORE_OK: dict[str, Any] = {
         "results": [
             {
                 "message_id": "m1",
-                "outcome": "created",
+                "outcome": "archived",
                 "astral_candidate_id": "cand-1",
             },
             {
@@ -356,7 +328,7 @@ class TestAst1141InboxLandMeteoriteApi:
     ) -> None:
         core = AsyncMock(return_value=dict(self._CORE_OK))
         create = MagicMock()
-        monkeypatch.setattr(inbox_mod, "land_inbox_message_ids", core)
+        monkeypatch.setattr(inbox_mod, "run_meteorite_email_selected_ids", core)
         monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
         resp = inbox_client.post(
@@ -373,7 +345,7 @@ class TestAst1141InboxLandMeteoriteApi:
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         core = AsyncMock(return_value=dict(self._CORE_OK))
-        monkeypatch.setattr(inbox_mod, "land_inbox_message_ids", core)
+        monkeypatch.setattr(inbox_mod, "run_meteorite_email_selected_ids", core)
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite?debug=1",
@@ -419,7 +391,7 @@ class TestAst1141InboxLandMeteoriteApi:
     ) -> None:
         monkeypatch.setattr(
             inbox_mod,
-            "land_inbox_message_ids",
+            "run_meteorite_email_selected_ids",
             AsyncMock(side_effect=ValueError("bad selection")),
         )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
@@ -436,7 +408,7 @@ class TestAst1141InboxLandMeteoriteApi:
     ) -> None:
         monkeypatch.setattr(
             inbox_mod,
-            "land_inbox_message_ids",
+            "run_meteorite_email_selected_ids",
             AsyncMock(side_effect=RuntimeError("core boom")),
         )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
@@ -470,35 +442,3 @@ class TestAst1141InboxLandMeteoriteApi:
             ).status_code
             == 403
         )
-
-
-# Branches: create-job HTTP from land outcome; land-meteorite calls land_inbox (AST-1472).
-class TestAst1472InboxCreateLandApi:
-    def test_create_job_error_400(
-        self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        create = MagicMock(
-            return_value={
-                "astral_candidate_id": "cand-1",
-                "outcome": "error",
-                "outcomes": [],
-                "company": None,
-                "company_inserted": False,
-                "error": "stripped email HTML is empty",
-                "astral_job_id": None,
-                "created": [],
-                "skipped": [],
-                "mode": "land_meteorite",
-                "state": None,
-                "latest_score": None,
-            }
-        )
-        monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
-        monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
-        resp = inbox_client.post(
-            "/api/admin/inbox/messages/m1/create-job",
-            headers=auth_headers,
-            json={},
-        )
-        assert resp.status_code == 400
-        assert resp.get_json()["outcome"] == "error"
