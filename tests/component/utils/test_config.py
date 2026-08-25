@@ -5010,3 +5010,22 @@ class TestAst1386ThreeSegmentAdminNav:
             group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
             assert not group.get("admin_only")
 
+
+
+class TestAst1479AppliedJobStatesAndNav:
+    """AST-1479: APPLIED_JOB_STATES + Jobs → Applied nav enabled."""
+
+    def test_applied_job_states_membership(self) -> None:
+        assert cfg.APPLIED_JOB_STATES == [
+            "CANDIDATE_APPLIED",
+            "CANDIDATE_INTERVIEW",
+            "CANDIDATE_REJECTED",
+            "CANDIDATE_GHOSTED",
+        ]
+        assert all(s in cfg.JOB_STATES for s in cfg.APPLIED_JOB_STATES)
+
+    def test_jobs_applied_nav_enabled(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
+        assert applied.get("label") == "Applied"
+        assert applied.get("enabled") is not False
