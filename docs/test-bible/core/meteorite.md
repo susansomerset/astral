@@ -110,3 +110,34 @@ Optional `job_link=` on `create_meteorite_job` for link-sourced ingest; `company
   tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
   -q
 ```
+
+### AST-1470 · AST-1457
+
+**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment`.
+
+Public `land_meteorite`: scraps (link and/or text) → optional Playwright visible-text when body thin → late-import `enrich_meteorite_land_packet` → `tracker.save_meteorite_job` under `meteorite-{candidate_id}` with employer metadata. Explicit created / duplicate_skip / superseded / error rollup — never silent. No Gmail/mailbox imports. Enrich: **`docs/test-bible/core/consult.md`**. Tracker save: **`docs/test-bible/core/tracker.md`** (AST-1469).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land API + no-Gmail + employer + Style D | `src/core/meteorite.py` | **`TestAst1470LandMeteorite`** |
+| Packet enrich via qualify `do_task` | `src/core/consult.py` | **`TestAst1470EnrichMeteoriteLandPacket`** |
+
+**Broken / obsolete:** none — additive; `create_meteorite_job` / ensure suites still hold (retarget → AST-1471/1472).
+
+**Integration:** none revised (do not invent).
+
+## QA test manifest
+
+1. Land: `tests/component/core/test_meteorite.py::TestAst1470LandMeteorite`
+2. Enrich: `tests/component/core/test_consult.py::TestAst1470EnrichMeteoriteLandPacket`
+
+**AST-1470** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_consult.py::TestAst1470EnrichMeteoriteLandPacket \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
