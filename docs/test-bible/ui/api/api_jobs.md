@@ -128,3 +128,24 @@ After stored-trio lift, `_flatten_grades` derives missing `{jd,do,get,like}_scor
   tests/component/core/test_tracker.py::TestAst1420AssembleJobCopySnapshot \
   -q
 ```
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+`GET /api/jobs?view=applied` lists `APPLIED_JOB_STATES` ordered by `state_changed_at`. Page: **`docs/test-bible/frontend/pages.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view list | `src/ui/api/api_jobs.py` | **`test_list_applied_uses_applied_job_states`**; revised **`test_list_recommended_and_default`** (unknown view → `[]`, not `view=applied`) |
+
+**Broken / obsolete:** `test_list_recommended_and_default` asserting `view=applied` → `[]`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  -q
+```
