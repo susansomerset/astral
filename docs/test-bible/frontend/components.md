@@ -997,6 +997,8 @@ cd src/ui/frontend && npm run test:component -- \
 
 ---
 
+---
+
 ### AST-1477 · AST-1464
 
 **Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list`.
@@ -1028,6 +1030,8 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
 
 ---
 
