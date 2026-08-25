@@ -177,3 +177,15 @@ AC6 (parent AST-1463 AC 6) → Stage 1 (sessionStorage capture/validate/consume)
 
 context_tokens≈52000
 ```
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth` @ `5c0906d498490839e256b9c722ab8b23dad791fd`
+
+Stage 1: `sessionAuthMark.ts` — `isSafeAuthReturnPath`, `captureAuthReturnPath`, `peekAuthReturnPath`, `consumeAuthReturnPath` on `astral-auth-return-path` key; `clearSessionAuthMarks` leaves return path intact.
+
+Stage 2: `RequireAuth.tsx` — hoisted `logOffReason` inference; `useEffect` captures pathname+search on Login/LogOffScreen gate (passthrough false, `isInitialized || session`, blocked predicates).
+
+Stage 3: `Authenticate.tsx` — `postAuthNavigate` consumes stored path on success / no-token; passthrough and error paths unchanged.
+
+Tests deferred to Betty (`qa-child`).
