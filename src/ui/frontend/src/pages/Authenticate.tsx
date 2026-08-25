@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import { Link, useNavigate, type NavigateFunction } from "react-router-dom"
 import { useStytch, useStytchSession } from "@stytch/react"
 import { useAuth } from "../contexts/AuthContext"
+import { consumeAuthReturnPath } from "../lib/sessionAuthMark"
 import { completeAuthenticateFromUrl } from "../lib/stytchAuthenticateHandoff"
 
 type Phase = "loading" | "handoff" | "error"
+
+function postAuthNavigate(navigate: NavigateFunction): void {
+  const returnPath = consumeAuthReturnPath()
+  navigate(returnPath ?? "/", { replace: true })
+}
 
 export default function Authenticate() {
   const stytch = useStytch()
@@ -27,7 +33,7 @@ export default function Authenticate() {
       return
     }
     if (session) {
-      navigate("/", { replace: true })
+      postAuthNavigate(navigate)
       return
     }
     if (handoffStarted.current) {
@@ -39,7 +45,7 @@ export default function Authenticate() {
     void (async () => {
       const result = await completeAuthenticateFromUrl(stytch)
       if (result.outcome === "success" || result.outcome === "no-token") {
-        navigate("/", { replace: true })
+        postAuthNavigate(navigate)
         return
       }
       window.history.replaceState({}, document.title, window.location.pathname)
