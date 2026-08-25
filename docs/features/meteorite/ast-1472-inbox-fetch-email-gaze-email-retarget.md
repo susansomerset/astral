@@ -165,3 +165,48 @@ if (task_key or "").strip() == FETCH_EMAIL_CONFIG["task_key"]:
 
 Confirm Chuckles estimate: 5 — agree  
 (Susan cut gaze/gazer surface; remaining fetch_email runner + dispatcher ensure + dual admin retarget still matches a 5-point ingress slice.)
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1472
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget` @ `8871ff580eb049239185cab3f6b37f0eba922338`
+
+## Traceability
+AC6 (inbox `fetch_email` → `land_meteorite`)→Stage 1 `run_fetch_email` + Stage 2 dispatcher ensure/wire; Contact half→N/A AST-1471. AC7 (Land Meteorite / create → `land_meteorite`, not HTML insert)→Stage 1 `create_meteorite_job_from_inbox_message` + `land_inbox_message_ids` retarget + Stage 3 `api_inbox` admin paths; gaze_email half→N/A retired per Susan amendment. Parent AC1 inbox / AC8 admin→this ticket; AC6 Contact / gaze_email→N/A. Stages 1–3→Scope gate “In this plan” set only (`inbox.py`, `dispatcher.py`, `api_inbox.py`).
+
+## Findings
+
+### acceptable — Susan amendment honored
+**Location:** Susan / Archie amendment; Scope gate  
+**Finding:** Plan explicitly forbids creating `gaze_email.py` or editing `gazer.py`; narrows dispatch-parent Scope to inbox `fetch_email` + admin retarget only. Aligns with ticket Description note and existing tree (`gaze_email.py` absent).  
+**Recommendation:** None — proceed.
+
+### discuss — `meteorite_email` poller left on legacy ingest (Scope boundary)
+**Location:** Stage 2 step 3; Execution contract (“Do not edit `meteorite_email.py`”)  
+**Finding:** Per-candidate `meteorite_email` dispatcher runner and `_handle_bound` ingest remain unchanged while `fetch_email` + admin paths land via `land_meteorite`. Susan retired gaze_email, not `meteorite_email`; dual mailbox tasks may coexist until a future slice retargets the poller.  
+**Recommendation:** Accept for this ticket; note in qa-child that AUTO `meteorite_email` vs CLICK `fetch_email` are intentionally separate surfaces.
+
+### discuss — `pattern.batch.entity-claim-process-release` partial apply
+**Location:** Ticket ## Citations; Stage 1 `run_fetch_email`  
+**Finding:** `fetch_email` is a null-candidate shell with no entity claim queue (`entity_type`/`trigger_state` None). Dispatch ledger + summary counts mirror mailbox runners; standard claim/process/release does not apply.  
+**Recommendation:** Citation is directionally fine (dispatch orchestration family); no plan rewrite.
+
+### discuss — Stage 2 `_dispatch_one` branch is template-shaped
+**Location:** Stage 2 step 4  
+**Finding:** Pseudocode comments delegate ledger/COMPLETED mapping to engineer; peer `meteorite_email` branch (lines 770–861) is the explicit template.  
+**Recommendation:** Build should copy that branch structure for `fetch_email` before the API-key gate — already implied.
+
+### discuss — Admin create-job JSON shape change
+**Location:** Stage 1 step 6; Stage 3 step 3  
+**Finding:** Land-backed return adds `outcome`/`outcomes` + thin `created`/`skipped` mirrors; Manage Email may read new fields. Plan documents HTTP mapping via `METEORITE_CONFIG` land keys.  
+**Recommendation:** Betty manifest covers intake + outcome shape; engineer does not edit tests.
+
+## R6 checklist (summary)
+Susan-amended scope faithful; no config/meteorite/gazer/gaze_email edits; layer discipline (inbox→external Gmail, ui→core); `FETCH_EMAIL_CONFIG` seed-auto-false; late-import `land_meteorite`; Style D gated; dependencies on ftr (`land_meteorite`, `FETCH_EMAIL_CONFIG`, SEED stub) documented. Self-assessment (estimate 5, ingress slice post-amendment) honest.
+
+context_tokens≈118000
+
+[plan-rubric] PROCEED (Commit: 8871ff5) fetch_email land retarget
