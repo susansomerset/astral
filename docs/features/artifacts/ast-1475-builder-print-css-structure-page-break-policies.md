@@ -191,3 +191,172 @@ AST-1475 plan approved.
 - **Publish ref:** `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies`
 - **Tip:** `7fb201ea`
 - **Files:** `src/core/builder.py`
+
+## Radia review
+
+# Radia review — AST-1475
+
+`[code-rubric] revision=2`  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1475  
+**Publish ref:** `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies` @ `b9307d4a`  
+**Overall:** CLEAN
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent prompt/confidence surfaces in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | No do_task delegation changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No rubric-vector validation changes |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch claim paths touched |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch-id format changes |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim/release helpers edited |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No entity-agent-responses changes |
+| astral.config.config-source-of-truth | scoped | conforms | AST-1475 consumes `RESUME_STRUCTURE_PAGE_BREAK_*` from config; no new scattered literals |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No env/secret lookups |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No debug artifact paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | No dispatch seeding |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run_next/dispatch runner edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Plan doc matches ticket slug |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Radia read-only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | Product diff is `builder.py` only; Betty owns test/bible commits |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core-only product change; utils config import only |
+| astral.layers.import-direction | scoped | conforms | `builder.py` imports page-break constants from `src.utils.config` at module top |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | No UI layer product changes (AST-1474 api catalog on branch is prerequisite) |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | No coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No route/auth changes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No seed JSON edits |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No seed catalog conflicts |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | No boot/seed hot-path edits |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed work |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No seed row resurrection |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join seed logic |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No data layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | No `database.py` changes |
+| astral.standards.debug-contract-gated | scoped | not-applicable | No new `debug=` emission; existing `_emit_html_document(debug=)` unchanged |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_print_section_page_break_css` is focused; single injection point |
+| astral.standards.in-scope-only | scoped | conforms | Product commit `7fb201ea` touches only `builder.py`; branch also carries documented AST-1474 prerequisite (4 `src/` files total) |
+| astral.standards.logging-via-utils | scoped | conforms | No new `print()` / raw logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Helper name is domain-descriptive |
+| astral.standards.no-cross-contamination | scoped | conforms | Imports stay inside layered `src/` tree |
+| astral.standards.no-hardcoded-sets | scoped | conforms | Policy tuple read from config; no inline token sets |
+| astral.standards.public-then-helpers | scoped | conforms | Private helper placed above `_emit_html_document` per plan |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils→data late imports |
+| astral.state.core-decides-transitions | scoped | not-applicable | No state transition edits |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | Job state machine untouched |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | No dispatch runner changes |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No frontend files in diff |
+| astral.ui.naming-conventions | scoped | conforms | CSS selectors use existing `_html_section_dom_id` conventions |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1475)` at tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `merge-tests` / `docs` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | No wrong-parent product sync on tip (unlike prior AST-1474 contamination) |
+| orch.git.ftr-sub-topology | universal | conforms | Publish ref follows `sub/AST-1462/AST-1475-*` |
+| orch.git.merge-on-checkout | universal | conforms | `sync(ftr)` / `sync(dev)` commits present; merge-base `8aa3197f` |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No evidence of cherry-pick/rebase/force |
+| orch.git.no-dev-agent-branches | universal | conforms | Standard sub publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Review from `astral-AST-1462` worktree |
+| orch.git.three-permanent-branches | universal | conforms | Diff anchored to `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No unresolved product-policy fork |
+| orch.pipeline.plan-is-bible | universal | conforms | Stage 1 mapping, injection point, and golden removal match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-ticket review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Spawn at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | No statute corpus edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | `test(AST-1475)` + bible via Betty path |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code diff |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy remains assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | Radia read-only |
+
+**Notes:** Joan plan-rubric verdict attached (APPROVED @ `740acbe2`); no Excluded statute list in attachment — straggler check N/A.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| `pattern.artifacts.resume-section-print-policy` | conforms | Helper implements plan mapping (`avoid_split`→inside avoid, `page_break_before`→before always, `normal`→omit); docstring cites id; canon file deferred per binding Decision |
+| `pattern.config.config-block` | not-applicable | Not cited in plan Patterns; AST-1475 consumes existing AST-1474 config block rather than adding one |
+
+---
+
+## Plan adherence
+
+**Product commit `7fb201ea` (+26/−3, `builder.py` only)** implements Stage 1 completely:
+
+- Imports `RESUME_STRUCTURE_PAGE_BREAK_POLICIES` / `RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT`
+- `_print_section_page_break_css` iterates `_structure_ordered_body_ids`, resolves policy with soft-default, maps tokens per binding table, uses `_html_section_dom_id`
+- `_emit_html_document` f-string injects dynamic rules; removes hard `#prior-experience { page-break-before: always; }`; retains `h2`, `#competencies`, `.role`, `p, li` golden companions
+- Stale emit comment updated
+- Does **not** read `BUILD_CONFIG["supported_sections"][*]["page_break_policy"]`
+- Cover-letter `@media print` block (≈L891) untouched
+- All three resume emit paths (`build_base_resume`, `build_session_base_resume`, `build_resume_from_job`) already pass `resume_structure=` into `_emit_html_document`
+
+**Branch tip vs `origin/dev`:** 4 `src/**` files — AST-1475 `builder.py` plus AST-1474 prerequisite (`config.py`, `candidate.py`, `api_candidate.py`). Expected epic-stack carry; no AST-1464 sibling product contamination on this ref (contrast AST-1474 prior review).
+
+**Tests (Betty):** `TestAst1475PageBreakPrintCss` covers default `avoid_split`, `page_break_before` + `normal`, missing-policy soft-default + job path; `TestAst1020GoldenStylesheet` revised to assert absence of unconditional prior always-break. Bible manifest in `docs/test-bible/core/builder.md` § AST-1475 aligns.
+
+**Estimate 3:** Fits isolated product + Betty golden flip.
+
+---
+
+## Findings
+
+### discuss — Pattern not yet in canon catalog
+
+- **Location:** `src/core/builder.py` `_print_section_page_break_css` docstring; plan binding Decision
+- **Finding:** `pattern.artifacts.resume-section-print-policy` is cited and implemented but has no `canon/patterns/**` entry yet. Plan explicitly defers catalog file to a follow-up; Joan APPROVED this intro-by-behavior approach.
+- **Recommendation:** Archie/Chuckles add approved pattern markdown when epic closes — not a block for this child.
+
+### advisory — Print rules for enabled-but-empty body sections
+
+- **Location:** `_print_section_page_break_css` vs `_emit_body_sections` skip-empty behavior
+- **Finding:** Joan flagged harmless extra selectors when structure enables a section but body content is empty. Implementation matches plan (structure-driven ids, not emitted_ids).
+- **Recommendation:** Optional follow-up only; no action required for AST-1475 sign-off.
+
+### advisory — Prior Joan discuss items unchanged
+
+- **Location:** issue doc Joan validate findings (assignee, AC4 ArtifactEditor wording, AST-1474 prerequisite timing)
+- **Finding:** All addressed or acceptable; prerequisite AST-1474 constants now on branch.
+- **Recommendation:** None.
+
+---
+
+## What's solid
+
+- Single injection point in `_emit_html_document` covers base, session-base, and job resume paths
+- Soft-default in CSS helper mirrors plan (“best-effort emit; normalize validates on Save”)
+- Golden prior-experience always-break removal is the key parent AC deliverable
+- Mandatory `.role { page-break-inside: avoid; }` preserved
+- Branch hygiene: no wrong-parent product sync; clean 4-file `src/` footprint vs `origin/dev`
+
+## Recommended actions (Chuckles — not Radia)
+
+1. Post upshot; advance to Review Posted → User Testing routing per datt.
+2. (Optional, epic close) Mint `canon/patterns/artifacts/pattern.artifacts.resume-section-print-policy.md` from implemented helper shape.
+
+---
+
+## Frame diff
+
+| Field | Prior (issue doc stub) | This review |
+|-------|------------------------|-------------|
+| Tip SHA | `7fb201ea` | `b9307d4a` |
+| Product files | `builder.py` | unchanged |
+| Tests | stub | `f32da268` + `merge-tests` @ `b9307d4a` |
+| `src/**` vs `origin/dev` | — | 4 files (1475 + 1474 prereq) |
+| Verdict | stub | CLEAN |
+
+context_tokens≈28000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: b9307d4a) structure policy print CSS
+```
