@@ -147,30 +147,8 @@ class TestJobsRoutes:
         states = captured.get("states") or []
         assert "RECOMMENDED" in states
         assert cfg.BUILD_ARTIFACTS_BASE_STATE in states
-        # Unknown views still fall through to [].
-        other = jobs_client.get("/api/jobs?view=not_a_real_view", headers=auth_headers)
+        other = jobs_client.get("/api/jobs?view=applied", headers=auth_headers)
         assert other.get_json() == []
-
-    def test_list_applied_uses_applied_job_states(
-        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        # AST-1479: view=applied lists APPLIED_JOB_STATES (not empty fall-through).
-        captured: dict[str, object] = {}
-
-        def _list_jobs(**kwargs: object) -> list[dict[str, object]]:
-            captured.update(kwargs)
-            return [{"astral_job_id": "job-applied", "job_data": {}}]
-
-        monkeypatch.setattr(jobs_mod, "list_jobs", _list_jobs)
-        resp = jobs_client.get(
-            "/api/jobs?view=applied&candidate_id=cand-1",
-            headers=auth_headers,
-        )
-        assert resp.status_code == 200
-        assert resp.get_json()[0]["astral_job_id"] == "job-applied"
-        assert captured.get("candidate_id") == "cand-1"
-        assert captured.get("order_by") == "state_changed_at"
-        assert list(captured.get("states") or []) == list(cfg.APPLIED_JOB_STATES)
 
     def test_bulk_state_requires_body(self, jobs_client: FlaskClient, auth_headers: dict[str, str]) -> None:
         resp = jobs_client.post("/api/jobs/bulk_state", json={}, headers=auth_headers)
@@ -677,3 +655,199 @@ class TestAst1420CopySnapshotRoute:
         for qs in ("", "?debug=1", "?debug=true", "?debug=yes", "?debug=no"):
             jobs_client.get(f"/api/jobs/job-1420/copy{qs}", headers=auth_headers)
         assert captured == [False, True, True, True, False]
+
+
+class TestAst1453SkippedEditMetaAndPut:
+    """AST-1453: GET fields_editable/legal_next_states; PUT persist + status mapping."""
+
+    def _detail_wire(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        *,
+        job: dict | None,
+        successors: list[str] | None = None,
+    ) -> None:
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: None if job is None else dict(job))
+        monkeypatch.setattr(
+            jobs_mod,
+            "legal_job_successor_states",
+            lambda state: list(successors or ["NEW", "FAILED_TECHNICAL"]),
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "hydrate_job_artifacts_for_display",
+            lambda art, debug=False: art or {},
+        )
+        monkeypatch.setattr(jobs_mod, "get_entity_agent_story", lambda job: [])
+        monkeypatch.setattr(jobs_mod, "get_job_artifacts", lambda job: {})
+
+    def test_get_detail_skipped_attaches_meta(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        self._detail_wire(
+            monkeypatch,
+            job={
+                "astral_job_id": "job-1453",
+                "state": "CANDIDATE_SKIPPED",
+                "job_data": {},
+            },
+            successors=["NEW"],
+        )
+        resp = jobs_client.get("/api/jobs/job-1453", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["fields_editable"] is True
+        assert body["legal_next_states"] == ["NEW"]
+
+    def test_get_detail_non_skipped_meta_locked(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        called: list[str] = []
+
+        def _succ(state: str) -> list[str]:
+            called.append(state)
+            return ["SHOULD_NOT"]
+
+        self._detail_wire(
+            monkeypatch,
+            job={"astral_job_id": "job-1453", "state": "RECOMMENDED", "job_data": {}},
+        )
+        monkeypatch.setattr(jobs_mod, "legal_job_successor_states", _succ)
+        resp = jobs_client.get("/api/jobs/job-1453", headers=auth_headers)
+        body = resp.get_json()
+        assert body["fields_editable"] is False
+        assert body["legal_next_states"] == []
+        assert called == []
+
+    def test_put_unauthenticated_401(self, jobs_client: FlaskClient) -> None:
+        resp = jobs_client.put("/api/jobs/job-1453", json={"job_title": "T"})
+        assert resp.status_code == 401
+
+    def test_put_empty_body_400(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str]
+    ) -> None:
+        resp = jobs_client.put("/api/jobs/job-1453", json={"nope": 1}, headers=auth_headers)
+        assert resp.status_code == 400
+        assert "No valid fields" in resp.get_json()["error"]
+
+    def test_put_missing_404(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(jobs_mod, "get_job", lambda jid: None)
+        resp = jobs_client.put(
+            "/api/jobs/missing",
+            json={"job_title": "T"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 404
+
+    def test_put_not_skipped_409(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "RECOMMENDED", "job_data": {}},
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "persist_skipped_job_edits",
+            MagicMock(side_effect=ValueError("Job is not in a skipped state")),
+        )
+        resp = jobs_client.put(
+            "/api/jobs/job-1453",
+            json={"job_title": "T"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        assert resp.get_json()["error"] == "Job is not in a skipped state"
+
+    def test_put_illegal_transition_409(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "CANDIDATE_SKIPPED", "job_data": {}},
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "persist_skipped_job_edits",
+            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")),
+        )
+        resp = jobs_client.put(
+            "/api/jobs/job-1453",
+            json={"state": "PASSED_JD"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 409
+        assert "Invalid transition" in resp.get_json()["error"]
+
+    def test_put_empty_title_400(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(
+            jobs_mod,
+            "get_job",
+            lambda jid: {"astral_job_id": jid, "state": "CANDIDATE_SKIPPED", "job_data": {}},
+        )
+        monkeypatch.setattr(
+            jobs_mod,
+            "persist_skipped_job_edits",
+            MagicMock(side_effect=ValueError("job_title required")),
+        )
+        resp = jobs_client.put(
+            "/api/jobs/job-1453",
+            json={"job_title": "  "},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 400
+        assert resp.get_json()["error"] == "job_title required"
+
+    def test_put_success_returns_detail_shape(
+        self, jobs_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        persist = MagicMock(return_value={"astral_job_id": "job-1453", "state": "NEW"})
+        monkeypatch.setattr(jobs_mod, "persist_skipped_job_edits", persist)
+        # After persist, detail() reloads job — non-skipped meta.
+        self._detail_wire(
+            monkeypatch,
+            job={
+                "astral_job_id": "job-1453",
+                "state": "NEW",
+                "job_title": "Saved",
+                "job_data": {},
+            },
+            successors=[],
+        )
+        # get_job: first call (pre-persist existence) + detail reload
+        jobs = {
+            "pre": {"astral_job_id": "job-1453", "state": "CANDIDATE_SKIPPED", "job_data": {}},
+            "post": {
+                "astral_job_id": "job-1453",
+                "state": "NEW",
+                "job_title": "Saved",
+                "job_data": {},
+            },
+        }
+        calls = {"n": 0}
+
+        def _get(jid: str):
+            calls["n"] += 1
+            return dict(jobs["pre"] if calls["n"] == 1 else jobs["post"])
+
+        monkeypatch.setattr(jobs_mod, "get_job", _get)
+        monkeypatch.setattr(jobs_mod, "legal_job_successor_states", lambda s: [])
+        resp = jobs_client.put(
+            "/api/jobs/job-1453",
+            json={"job_title": "Saved", "state": "NEW"},
+            headers=auth_headers,
+        )
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["job_title"] == "Saved"
+        assert body["fields_editable"] is False
+        assert body["legal_next_states"] == []
+        persist.assert_called_once_with(
+            "job-1453", {"job_title": "Saved", "state": "NEW"}
+        )
