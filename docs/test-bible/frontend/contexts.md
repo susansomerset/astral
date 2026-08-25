@@ -45,3 +45,34 @@ npm run test:component -- \
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 Local-deploy SPA skip Login / extend: **`docs/test-bible/frontend/lib.md`** § AST-1441.
+
+### AST-1481 · AST-1463
+
+**Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
+
+`alignSelectedCandidateForJobCompany(companyShortName)` — admin-only; `GET /api/companies/<sn>` → `candidate_id`; switches `selectedId` when the owner candidate is loaded and differs. Soft-fail on lookup miss (deeplink still opens). Wired by **`JobsJobDetail`** prefetch before modal mount.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Admin alignment helper | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`AST-1481 alignSelectedCandidateForJobCompany`** |
+| Deeplink host wiring (**§6c**) | `JobsJobDetail.tsx` | **`docs/test-bible/frontend/pages.md`** § AST-1481 — **`test_JobsJobDetail.test.tsx`** prefetch → company alignment |
+
+**Broken / obsolete:** none.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Context helper: `tests/component/frontend/contexts/test_CandidateContext.test.tsx` — **`AST-1481`**
+2. Deeplink host alignment wiring: `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — **`prefetches job and aligns`**
+
+**AST-1481** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  --testNamePattern="AST-1481|prefetches job and aligns"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

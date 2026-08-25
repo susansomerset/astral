@@ -9,6 +9,7 @@ import {
   useCandidate,
 } from "../../../../src/ui/frontend/src/contexts/CandidateContext"
 import { resetStytchTestState } from "../stytchMock"
+import { stubAuthPublicFetches } from "../test-utils"
 
 vi.mock("../../../../src/ui/frontend/src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../../src/ui/frontend/src/lib/api")>()
@@ -264,6 +265,104 @@ describe("CandidateProvider — AST-1311 browser tab title", () => {
     expect(result.current.selectedId).toBe("c1")
     unmount()
     expect(document.title).toBe("Astral")
+  })
+})
+
+describe("CandidateProvider — AST-1481 alignSelectedCandidateForJobCompany", () => {
+  beforeEach(() => {
+    localStorage.clear()
+    document.title = "Astral"
+    setFmtTimezone("UTC")
+    resetStytchTestState()
+    stubAuthPublicFetches(true)
+    mockedApi.mockReset()
+  })
+
+  function alignWrapper(isAdmin: boolean) {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/me") {
+        return {
+          ok: true,
+          json: async () => ({ user_id: "u1", name: "User", is_admin: isAdmin }),
+        } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [
+            { astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} },
+            { astral_candidate_id: "c2", state: "ACTIVE", candidate_data: {} },
+          ],
+        } as Response
+      }
+      if (url === "/api/companies/Globex") {
+        return { ok: true, json: async () => ({ candidate_id: "c2" }) } as Response
+      }
+      throw new Error(url)
+    })
+    return function Wrapper({ children }: { children: ReactNode }) {
+      return (
+        <AuthProvider>
+          <CandidateProvider>{children}</CandidateProvider>
+        </AuthProvider>
+      )
+    }
+  }
+
+  it("switches admin selection when company maps to another loaded candidate", async () => {
+    localStorage.setItem("astral_selected_candidate", "c1")
+    const { result } = renderHook(() => useCandidateState(), { wrapper: alignWrapper(true) })
+    await waitFor(() => expect(result.current.candidates).toHaveLength(2))
+    await waitFor(() => expect(result.current.selectedId).toBe("c1"))
+    await act(async () => {
+      await result.current.alignSelectedCandidateForJobCompany("Globex")
+    })
+    expect(mockedApi.mock.calls.some(([url]) => url === "/api/companies/Globex")).toBe(true)
+    await waitFor(() => expect(result.current.selectedId).toBe("c2"))
+    expect(localStorage.getItem("astral_selected_candidate")).toBe("c2")
+  })
+
+  it("no-ops for non-admin sessions", async () => {
+    const { result } = renderHook(() => useCandidateState(), { wrapper: alignWrapper(false) })
+    await waitFor(() => expect(result.current.selectedId).toBe("c1"))
+    await act(async () => {
+      await result.current.alignSelectedCandidateForJobCompany("Globex")
+    })
+    expect(result.current.selectedId).toBe("c1")
+    expect(mockedApi.mock.calls.some(([url]) => url === "/api/companies/Globex")).toBe(false)
+  })
+
+  it("soft-fails when company lookup fails", async () => {
+    mockedApi.mockImplementation(async (url: string) => {
+      if (url === "/api/me") {
+        return {
+          ok: true,
+          json: async () => ({ user_id: "u1", name: "User", is_admin: true }),
+        } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/companies/Globex") {
+        return { ok: false, status: 404, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    const { result } = renderHook(() => useCandidateState(), {
+      wrapper: function Wrapper({ children }: { children: ReactNode }) {
+        return (
+          <AuthProvider>
+            <CandidateProvider>{children}</CandidateProvider>
+          </AuthProvider>
+        )
+      },
+    })
+    await waitFor(() => expect(result.current.selectedId).toBe("c1"))
+    await act(async () => {
+      await result.current.alignSelectedCandidateForJobCompany("Globex")
+    })
+    expect(result.current.selectedId).toBe("c1")
   })
 })
 
