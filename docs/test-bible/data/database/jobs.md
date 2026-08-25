@@ -122,3 +122,23 @@ Global dedupe helpers for meteorite email ingest: `text_matches_known_company_jo
   -q
 ```
 
+
+### AST-1469 · AST-1457
+
+**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save`.
+
+`job.source` column + one-shot NULL→`gazed` backfill; `save_job` R/W source; candidate-scoped `find_candidate_job_by_company_job_id` / `find_candidate_job_by_job_link` / `find_meteorite_dedupe_match` (order from `METEORITE_CONFIG`). Tracker consumer: **`docs/test-bible/core/tracker.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Source column + dedupe helpers | `src/data/database.py` | **`TestAst1469JobSourceAndMeteoriteDedupe`** |
+
+**Broken / obsolete:** none — additive; existing `TestSaveJob` / ingest suites still hold (INSERT default `gazed`).
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/data/database/test_jobs.py::TestAst1469JobSourceAndMeteoriteDedupe \
+  -q
+```

@@ -5029,3 +5029,58 @@ class TestAst1479AppliedJobStatesAndNav:
         applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
         assert applied.get("label") == "Applied"
         assert applied.get("enabled") is not False
+
+
+# Branches: JOB_SOURCES helpers; METEORITE land keys; FETCH_EMAIL seed; qualify schema (AST-1469).
+class TestAst1469JobSourcesAndMeteoriteLandConfig:
+    """AST-1469: job source + meteorite land config + fetch_email seed + qualify packet fields."""
+
+    def test_job_sources_and_helpers(self) -> None:
+        assert cfg.JOB_SOURCES == ["gazed", "meteorite"]
+        assert cfg.JOB_SOURCE_DEFAULT == "gazed"
+        assert cfg.JOB_SOURCE_METEORITE == "meteorite"
+        assert cfg.is_valid_job_source("gazed") is True
+        assert cfg.is_valid_job_source("meteorite") is True
+        assert cfg.is_valid_job_source("other") is False
+        assert cfg.is_valid_job_source(None) is False
+        cfg.validate_job_source("gazed")
+        with pytest.raises(ValueError):
+            cfg.validate_job_source("gazed-ish")
+        # Transition law: unset/same/gazed→meteorite OK; meteorite→gazed forbidden.
+        assert cfg.job_source_transition_allowed(None, "gazed") is True
+        assert cfg.job_source_transition_allowed("", "meteorite") is True
+        assert cfg.job_source_transition_allowed("gazed", "gazed") is True
+        assert cfg.job_source_transition_allowed("gazed", "meteorite") is True
+        assert cfg.job_source_transition_allowed("meteorite", "meteorite") is True
+        assert cfg.job_source_transition_allowed("meteorite", "gazed") is False
+        assert cfg.job_source_transition_allowed("gazed", "nope") is False
+
+    def test_meteorite_land_and_fetch_email_seed(self) -> None:
+        m = cfg.METEORITE_CONFIG
+        assert m["job_source"] == cfg.JOB_SOURCE_METEORITE
+        assert m["land_outcome_created"] == "created"
+        assert m["land_outcome_duplicate_skip"] == "duplicate_skip"
+        assert m["land_outcome_superseded"] == "superseded"
+        assert m["land_outcome_error"] == "error"
+        assert m["employer_name_job_data_key"] == "employer_name"
+        assert m["dedupe_match_order"] == ("company_job_id", "job_link")
+        assert m["min_company_job_id_match_chars"] == cfg.METEORITE_EMAIL_INGEST_CONFIG[
+            "min_company_job_id_match_chars"
+        ]
+        fe = cfg.FETCH_EMAIL_CONFIG
+        assert fe["task_key"] == "fetch_email"
+        assert fe["auto_mode"] is False
+        assert fe["entity_type"] is None
+        assert fe["trigger_state"] is None
+        assert fe["debug_func"] == "inbox.fetch_email"
+        assert cfg.TASK_CONFIG["fetch_email"] == {
+            "entity_type": None,
+            "requires_candidate_key": False,
+            "trigger_state": None,
+        }
+        assert "dispatch_task-fetch-email" in cfg.SEED_CONFIG
+
+    def test_qualify_meteorite_packet_schema(self) -> None:
+        items = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert items["astral_job_id"]["required"] is False
+        assert items["employer_name"] == {"type": "str", "required": False}
