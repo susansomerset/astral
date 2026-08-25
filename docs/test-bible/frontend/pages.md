@@ -2295,3 +2295,23 @@ cd src/ui/frontend && npx vitest run \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-1476 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`.
+
+Base Resume Content **Save sections** PUTs `page_break_policy` on each section; header shows catalog-driven Page break control. Primary ArtifactEditor / JAR: **`docs/test-bible/frontend/components.md`** § AST-1476.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) dropdown + Save sections | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1476:`**; revised **AST-1306** PUT asserts policy |
+
+**Broken / obsolete this pass:** AST-1306 catalog/all_sections fixtures lacked page-break fields — extended.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1306"
+```
+

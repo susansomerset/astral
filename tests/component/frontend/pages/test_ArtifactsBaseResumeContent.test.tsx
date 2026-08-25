@@ -162,6 +162,13 @@ describe("ArtifactsBaseResumeContent", () => {
       extra_id_pattern: "^[a-z][a-z0-9_]*$",
       reserved_extra_ids: ["content"],
       new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
     }
     const allSections = [
       {
@@ -173,6 +180,7 @@ describe("ArtifactsBaseResumeContent", () => {
         job_agent_editable: true,
         required: true,
         format_locked: false,
+        page_break_policy: "avoid_split",
       },
     ]
     mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
@@ -227,7 +235,90 @@ describe("ArtifactsBaseResumeContent", () => {
     )
     const body = JSON.parse(String(putCall?.[1]?.body))
     expect(body.artifacts.resume_structure.sections.professional_summary.title).toBe("Summary")
+    expect(body.artifacts.resume_structure.sections.professional_summary.page_break_policy).toBe(
+      "avoid_split",
+    )
     expect(body.artifacts.resume_structure.accent_color).toBeUndefined()
+  })
+
+  it("AST-1476: page-break dropdown Save sections persists policy", async () => {
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [],
+      extra_id_pattern: "^[a-z][a-z0-9_]*$",
+      reserved_extra_ids: ["content"],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const allSections = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/me") {
+        return { ok: true, json: async () => ({ user_id: "u1", name: "Test", is_admin: true }) } as Response
+      }
+      if (url === "/api/state_ui_manifest") {
+        return { ok: true, json: async () => STATE_UI_MANIFEST_FIXTURE } as Response
+      }
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (url === "/api/system/ui_config") {
+        return { json: async () => ({ column_types: {}, base_resume_accent_palette: ["#112233"] }) } as Response
+      }
+      if (url === "/api/candidates/c1/resume_structure" && !init) {
+        return {
+          json: async () => ({
+            sections: [{ id: "professional_summary", label: "Summary" }],
+            all_sections: allSections,
+            accent_color: "#112233",
+            catalog,
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: { artifacts: { base_resume: { professional_summary: "Saved summary" } } },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(`unexpected api call: ${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(<ArtifactsBaseResumeContent />)
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
+    fireEvent.click(screen.getByRole("button", { name: "Save sections" }))
+    await waitFor(() => expect(screen.getByText("Resume sections saved")).toBeInTheDocument())
+    const putCall = mockedApi.mock.calls.find(
+      ([url, init]) => url === "/api/candidates/c1/data" && init?.method === "PUT",
+    )
+    const body = JSON.parse(String(putCall?.[1]?.body))
+    expect(body.artifacts.resume_structure.sections.professional_summary.page_break_policy).toBe(
+      "page_break_before",
+    )
   })
 
   it("AST-1323: structure controls on collapsible header with body between", async () => {
