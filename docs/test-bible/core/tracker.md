@@ -295,3 +295,35 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1453 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1453-persist-skipped-job-field-and-state-edits`.
+
+`legal_job_successor_states` lists `JOB_STATES` keys `transition_job_state` would accept from `from_state` (excludes self; includes unrestricted `prior_states is None`). `persist_skipped_job_edits` gates on `SKIPPED_STATES`, writes title/link/`job_description` before optional `transition_job_state`, allows empty JD, rejects empty title/link. API wrap: **`docs/test-bible/ui/api/api_jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Successor list + persist | `src/core/tracker.py` | **`TestAst1453LegalJobSuccessorStates`**, **`TestAst1453PersistSkippedJobEdits`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/core/test_tracker.py::TestAst1453LegalJobSuccessorStates`
+2. `tests/component/core/test_tracker.py::TestAst1453PersistSkippedJobEdits`
+3. `tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut` (API)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1453LegalJobSuccessorStates \
+  tests/component/core/test_tracker.py::TestAst1453PersistSkippedJobEdits \
+  tests/component/ui/api/test_api_jobs.py::TestAst1453SkippedEditMetaAndPut \
+  -q
+```
+
+**Bible shasum (this pass):** `docs/test-bible/core/tracker.md` → `5a6008858dce0f31fcfb6ed75e30a8bf8d2a412f` (pre-line)
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

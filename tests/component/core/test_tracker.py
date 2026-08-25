@@ -1492,3 +1492,145 @@ class TestAst1420AssembleJobCopySnapshot:
         assert "recorded" in outcomes
         dbg.debug_detail_block.assert_called()
         assert "body" in dbg.debug_detail_block.call_args.args[0]
+
+
+class TestAst1453LegalJobSuccessorStates:
+    """AST-1453: successors == JOB_STATES keys transition would accept, minus from_state."""
+
+    def test_excludes_self_includes_unrestricted_and_listed_priors(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # Tiny registry: None prior = unrestricted; listed prior must match current.
+        monkeypatch.setattr(
+            tracker_mod,
+            "JOB_STATES",
+            {
+                "A": {"prior_states": None},
+                "B": {"prior_states": ["A"]},
+                "C": {"prior_states": ["Z"]},
+            },
+        )
+        assert tracker_mod.legal_job_successor_states("A") == ["B"]
+        assert set(tracker_mod.legal_job_successor_states("X")) == {"A"}
+        assert tracker_mod.legal_job_successor_states("B") == ["A"]
+
+
+class TestAst1453PersistSkippedJobEdits:
+    """AST-1453: skipped-only field writes; transition after columns/JD; empty JD ok."""
+
+    _SKIP = "CANDIDATE_SKIPPED"
+    _JD_KEY = "job_description"
+
+    def _job(self, **over: Any) -> Dict[str, Any]:
+        base: Dict[str, Any] = {
+            "astral_job_id": "job-1453",
+            "state": self._SKIP,
+            "job_title": "Old",
+            "job_link": "https://old.example",
+            "state_history": [],
+        }
+        base.update(over)
+        return base
+
+    def test_missing_job_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: None)
+        with pytest.raises(ValueError, match="Job not found"):
+            tracker_mod.persist_skipped_job_edits("missing", {"job_title": "T"})
+
+    def test_non_skipped_raises(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job(state="RECOMMENDED"))
+        with pytest.raises(ValueError, match="not in a skipped state"):
+            tracker_mod.persist_skipped_job_edits("job-1453", {"job_title": "T"})
+
+    def test_empty_title_and_link_rejected(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        with pytest.raises(ValueError, match="job_title required"):
+            tracker_mod.persist_skipped_job_edits("job-1453", {"job_title": "  "})
+        with pytest.raises(ValueError, match="job_link required"):
+            tracker_mod.persist_skipped_job_edits("job-1453", {"job_link": ""})
+
+    def test_writes_title_link_jd_then_transition(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        order: List[str] = []
+        jobs = {"job-1453": self._job()}
+
+        def _get(jid: str) -> Any:
+            return jobs.get(jid)
+
+        def _save(jid: str, **kw: Any) -> bool:
+            order.append("save_job")
+            jobs[jid] = {**jobs[jid], **kw}
+            return True
+
+        def _save_data(jid: str, patch: Dict[str, Any]) -> None:
+            order.append("save_job_data")
+            assert patch == {self._JD_KEY: "pasted JD"}
+
+        def _transition(ids: List[str], to_state: str) -> None:
+            order.append("transition")
+            assert ids == ["job-1453"] and to_state == "NEW"
+            jobs["job-1453"] = {**jobs["job-1453"], "state": to_state}
+
+        monkeypatch.setattr(tracker_mod, "get_job", _get)
+        monkeypatch.setattr(tracker_mod, "save_job", _save)
+        monkeypatch.setattr(tracker_mod, "save_job_data", _save_data)
+        monkeypatch.setattr(tracker_mod, "transition_job_state", _transition)
+        out = tracker_mod.persist_skipped_job_edits(
+            "job-1453",
+            {
+                "job_title": " New Title ",
+                "job_link": " https://new.example ",
+                "job_description": "pasted JD",
+                "state": "NEW",
+            },
+        )
+        # JD write then column save, then hop (plan: fields before transition).
+        assert order == ["save_job_data", "save_job", "transition"]
+        assert out["job_title"] == "New Title"
+        assert out["job_link"] == "https://new.example"
+        assert out["state"] == "NEW"
+
+    def test_empty_jd_persists_without_strip_whole_blob(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        patches: List[Dict[str, Any]] = []
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, patch: patches.append(patch),
+        )
+        monkeypatch.setattr(tracker_mod, "save_job", MagicMock())
+        monkeypatch.setattr(tracker_mod, "transition_job_state", MagicMock())
+        tracker_mod.persist_skipped_job_edits("job-1453", {"job_description": ""})
+        tracker_mod.persist_skipped_job_edits("job-1453", {"job_description": None})
+        assert patches == [{self._JD_KEY: ""}, {self._JD_KEY: ""}]
+
+    def test_same_state_skips_transition(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        transition = MagicMock()
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(tracker_mod, "save_job", MagicMock())
+        monkeypatch.setattr(tracker_mod, "save_job_data", MagicMock())
+        monkeypatch.setattr(tracker_mod, "transition_job_state", transition)
+        tracker_mod.persist_skipped_job_edits("job-1453", {"state": self._SKIP})
+        transition.assert_not_called()
+
+    def test_field_writes_before_illegal_transition_propagates(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        save = MagicMock(return_value=True)
+        monkeypatch.setattr(tracker_mod, "get_job", lambda jid: self._job())
+        monkeypatch.setattr(tracker_mod, "save_job", save)
+        monkeypatch.setattr(tracker_mod, "save_job_data", MagicMock())
+        monkeypatch.setattr(
+            tracker_mod,
+            "transition_job_state",
+            MagicMock(side_effect=ValueError("Invalid transition: CANDIDATE_SKIPPED -> PASSED_JD")),
+        )
+        with pytest.raises(ValueError, match="Invalid transition"):
+            tracker_mod.persist_skipped_job_edits(
+                "job-1453", {"job_title": "Kept", "state": "PASSED_JD"}
+            )
+        save.assert_called_once()
+        assert save.call_args.kwargs["job_title"] == "Kept"
