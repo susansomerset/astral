@@ -181,3 +181,42 @@ for item in land_items:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1471
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1457/AST-1471-meteorite-intake-api-contact-land-path` @ `58c33ffc407f421d891bd40cfb23f242c85b1923`
+
+## Traceability
+AC1 (Contact portion)→Stage 2 `contact_land_meteorite` + Estelle `land_calls` loop; inbox half→N/A AST-1472 (Scope gate AC partition). AC2→Stage 1 `POST …/meteorite/land` + legacy `/meteorite/jobs` retarget via `_land_http_response` land outcome shape (parent AC7). Parent AC1 inbox / AC6 / AC8→N/A siblings. Stages 1–2→child Scope + parent Functional #1 Contact slice + #7 intake API.
+
+## Findings
+
+### discuss — `land_calls` prose-only vs `skill_calls` schema-backed
+**Location:** Stage 2 steps 3–4; `TASK_CONFIG["contact_estelle_turn"]["response_schema"]`  
+**Finding:** Plan injects `land_calls` instructions in live_content only; `skill_calls` is also declared in `response_schema`. Post-validation unwrap puts `agent_payload` on `parsed_response`; extra keys are not rejected, so `land_calls` can work without a config edit — but Estelle has weaker structural enforcement than `skill_calls`. Plan explicitly avoids `config.py` / CONTACT_CONFIG skill (Scope partition).  
+**Recommendation:** Accept for this ticket; qa-child should cover Estelle emitting `land_calls` and Contact invoking `contact_land_meteorite`. If UAT shows missed landings, a follow-on config schema row is the fix — out of this child’s Scope.
+
+### discuss — `pattern.ui.admin-endpoint` partial match
+**Location:** Ticket ## Citations; Stage 1 routes on `meteorite_bp`  
+**Finding:** Pattern canonical ref is `api_admin.py`; this ticket uses authenticated thin wrapper on meteorite blueprint with `@require_auth` (not `@require_admin`), matching existing AST-1042 posture and parent “authenticated listing intake.”  
+**Recommendation:** Citation is directionally correct (auth + thin API); no plan rewrite.
+
+### discuss — Legacy `/meteorite/jobs` response breaking change
+**Location:** Stage 1 step 6  
+**Finding:** Retarget from AST-1042 flat `{astral_job_id, state, …}` to land rollup shape is intentional and documented; parent AC7 requires same outcome shape as `land_meteorite`.  
+**Recommendation:** Betty manifest should update AST-1042 tests for land shape; engineer does not edit tests.
+
+### acceptable — Dependencies and layers
+**Location:** Scope gate **Depends on**; Files Changed  
+**Finding:** `land_meteorite` + `METEORITE_CONFIG` land keys on `origin/ftr/AST-1457-meteorite-component`; ui→core only; `METEORITE_CONFIG` drives HTTP status mapping; Contact late-imports `land_meteorite`; no Gmail/inbox imports; `asyncio.run` matches `api_inbox` pattern.
+
+## R6 checklist (summary)
+Scope gate faithful; no `config.py` / `meteorite.py` / inbox edits; layer/import/auth statutes conform; cited require-auth + ui-config idioms satisfied; self-assessment (estimate 3, ! ingress slice) honest.
+
+context_tokens≈105000
+
+[plan-rubric] PROCEED (Commit: 58c33ff) intake API Contact land
