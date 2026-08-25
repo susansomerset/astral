@@ -17,7 +17,7 @@ Tables used (inventory):
 - agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
@@ -7071,6 +7071,19 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
     conn.commit()
 
+    # AST-1466: retire gaze_email dispatch rows; purge orphans whose task_key is
+    # absent from agent_task — only when agent_task exists and has rows (schema
+    # ensure may run before agent_task is created in unit tests / boot order).
+    conn.execute("DELETE FROM dispatch_task WHERE task_key = 'gaze_email'")
+    agent_task_present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_task'"
+    ).fetchone()
+    if agent_task_present and conn.execute("SELECT 1 FROM agent_task LIMIT 1").fetchone():
+        conn.execute(
+            "DELETE FROM dispatch_task WHERE task_key NOT IN (SELECT task_key FROM agent_task)"
+        )
+    conn.commit()
+
     # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
     # split into explicit NEW + VALID_TITLE_RETRY rows.
     qualify_retry_rows = conn.execute(
@@ -7308,7 +7321,7 @@ def save_dispatch_task(
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
-    candidate_id is required for every task_key (AST-1134 retired null gaze_email shell)."""
+    candidate_id is required for every task_key (AST-1134 retired null mailbox shell)."""
     tk = (task_key or "").strip()
     cid_raw = None if candidate_id is None else str(candidate_id).strip()
     if not cid_raw:
@@ -7318,10 +7331,22 @@ def save_dispatch_task(
         defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
         raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
-    if not (entity_type and str(entity_type).strip()):
-        entity_type = defaults["entity_type"]
-    if not (trigger_state and str(trigger_state).strip()):
-        trigger_state = defaults["trigger_state"]
+    # late: avoid widening module-top config imports
+    from src.utils.config import (
+        METEORITE_EMAIL_MAILBOX_CONFIG,
+        is_meteorite_email_mailbox_task_key,
+    )
+    if is_meteorite_email_mailbox_task_key(tk):
+        # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
+        if not (entity_type and str(entity_type).strip()):
+            entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
+        if not (trigger_state and str(trigger_state).strip()):
+            trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+    else:
+        if not (entity_type and str(entity_type).strip()):
+            entity_type = defaults["entity_type"]
+        if not (trigger_state and str(trigger_state).strip()):
+            trigger_state = defaults["trigger_state"]
     sort_by = defaults["sort_by"]
     batch_call_mode = defaults["batch_call_mode"]
     now = _utc_now()
@@ -7618,7 +7643,7 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     """Return auto_mode claim-queue dispatch_tasks with enough eligible entities.
 
     Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
-    (WATCH respects freq_hrs / last_scan_at). Candidate-bound gaze_email AUTO due is
+    (WATCH respects freq_hrs / last_scan_at). Candidate-bound meteorite_email AUTO due is
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
     """
     def _with_conn() -> List[Dict[str, Any]]:
@@ -7787,7 +7812,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
-    gaze_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
+    meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")

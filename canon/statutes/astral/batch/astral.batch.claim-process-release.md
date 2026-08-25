@@ -39,6 +39,6 @@ Batch locking is the concurrency and audit spine for dispatch. Candidate is an `
 
 ## Notes
 
-Non-`ENTITY_TYPES` pollers (e.g. `gaze_email`, meteorite mailbox shells) are not dispatch claim queues and stay outside this statute’s claim-lock duty. Do not use that exception to skip candidate pool claim.
+Non-`ENTITY_TYPES` pollers (e.g. `meteorite_email` mailbox runners) are not dispatch claim queues and stay outside this statute’s claim-lock duty. Do not use that exception to skip candidate pool claim.
 
 A zero-row claim locks no rows; company's empty-batch early exit without `clear_company_batch` is known-conforming under this Statement.

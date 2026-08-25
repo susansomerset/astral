@@ -43,4 +43,4 @@ Claim a batch with a `batch_id` (first parameter on claim/get/clear helpers), pr
 - One-off admin scripts that intentionally bypass dispatch locking.
 - Read-only queries that never mutate claimed rows.
 - Non-entity work with no batch table.
-- Non-`ENTITY_TYPES` mailbox / null-entity pollers (e.g. `gaze_email`) that are not dispatch claim queues.
+- Non-`ENTITY_TYPES` mailbox / null-entity pollers (e.g. `meteorite_email`) that are not dispatch claim queues.

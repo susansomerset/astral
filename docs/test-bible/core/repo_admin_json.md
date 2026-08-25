@@ -383,9 +383,9 @@ Meteorite-track `agent_task` rows move to **Meteorite Review** (`task_group_orde
 | Meteorite Review membership + no Job Review | `data/admin/agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership`**; revised **`TestAst1218GazeReviewClassicGroupLabel`** (meteorite half) |
 | Fixture grouping lockstep + AST-1211 | `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1219MeteoriteReviewGroupMembership::test_fixture_grouping_lockstep_and_ast1211`** |
 | Per-row group/seq pins | same | revised **`TestAst1055MeteoriteCatalogRows`**, **`TestAst1060QualifyMeteoriteCatalogRow`**, **`TestAst1089ParseMeteoriteEmailCatalogRow`**, **`TestAst1106GazeEmailCatalogRow`** |
-| Scheduled Actions section header mock | frontend pages | revised **`test_AdminScheduledActions_AST1106.test.tsx`** (Job Review → Meteorite Review) |
+| Scheduled Actions section header mock | frontend pages | ~~`test_AdminScheduledActions_AST1106.test.tsx`~~ — **retired AST-1467** (gaze carve-out obsolete) |
 
-**Broken / obsolete:** meteorite **Job Review** / fractional seq asserts (`2.3`…`11`); AST-1218 meteorite-half **Job Review**/`4000`; Scheduled Actions mock/header still **Job Review** for `gaze_email`.
+**Broken / obsolete:** meteorite **Job Review** / fractional seq asserts (`2.3`…`11`); AST-1218 meteorite-half **Job Review**/`4000`; Scheduled Actions mock/header still **Job Review** for `gaze_email`. **AST-1467 return:** frontend AST-1106 carve-out file deleted — see `docs/test-bible/frontend/pages.md` § AST-1106.
 
 **Integration:** none revised.
 
@@ -401,10 +401,12 @@ Meteorite-track `agent_task` rows move to **Meteorite Review** (`task_group_orde
   -q
 ```
 
-Vitest (when running full frontend / this page file):
+Vitest (AST-1106 file retired AST-1467 — gt0 regression via AST-887/AST-894):
 
 ```bash
-cd src/ui/frontend && npx vitest run ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
+  --testNamePattern="AST-887|AST-894"
 ```
 
 ### AST-1222 · AST-1184
