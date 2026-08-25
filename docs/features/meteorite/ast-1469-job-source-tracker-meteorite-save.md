@@ -237,3 +237,41 @@ def set_job_source(astral_job_id: str, source: str) -> None:
 Confirm Chuckles estimate: 5 — agree
 
 Schema + backfill + Tracker three-way save/dedupe with one-way source law is a real multi-layer slice (config/data/core) and a new pattern (job source promotion / meteorite non-clobber); 5 matches Bang !!! foundation work. No revise.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1469
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1457/AST-1469-job-source-tracker-meteorite-save` @ `41118d5fe82a87088ba9fb4d4b9dbd9bddfe41b5`
+
+### Traceability
+AC2→Stage 3 (`save_meteorite_job` dedupe-before-write: duplicate_skip / gazed supersede / create); AC3→Stage 2 (`job.source` column, backfill to `gazed`, `save_job` R/W) + Stage 2 INSERT default; AC4→Stage 1 (`JOB_SOURCES`, `job_source_transition_allowed`) + Stage 3 (`_assert_job_source_write`, optional `set_job_source`); AC4 “test enforced” half→N/A out of this child’s Scope — `tests/component/core/test_meteorite.py` is AST-1470 / qa-child per parent partition. Parent AC1,5–10→N/A (land_meteorite, ingress, API, inbox retarget, debug observability, qualify invoke). Stages 1–3→child ## Scope + parent Functional scope #2–4 + Component scope config/database/tracker slice.
+
+### Findings
+
+#### discuss — AC4 test half unmapped in Stages
+**Location:** Execution contract (“Do not edit `tests/`”) vs child AC4 “config/test enforced”
+**Finding:** Config enforcement is staged; component tests for meteorite→gazed rejection and dedupe branches are explicitly deferred to sibling/qa scope.
+**Recommendation:** Acceptable for this foundation slice — ensure AST-1470 / Betty manifest names AC2–4 cases so UAT does not rely on config asserts alone.
+
+#### discuss — `job_source_transition_allowed` body abbreviated
+**Location:** Stage 1 step 2 code block
+**Finding:** Function spec is prose-complete but the printed snippet omits the body (unset→any, gazed→meteorite, meteorite→gazed forbidden).
+**Recommendation:** Engineer should implement exactly the bullet rules before Stage 2; no plan rewrite required.
+
+#### discuss — Supersede uses direct `save_job`, not `transition_job_state`
+**Location:** Stage 3 Branch B
+**Finding:** Matches existing `create_meteorite_job` carve-out and parent AC2 (“without checking the gazed job’s prior state”); `METEORITE_NEW` has `prior_states: None`. Multi-field supersede (source + landing state + payload) warrants one upsert.
+**Recommendation:** Keep as planned; document in code comment pointing at parent AC + create carve-out.
+
+#### acceptable — Procedural: assignee Ada, not Joan
+**Location:** Linear ticket state
+**Finding:** `validate-plan` §1 expects Joan assignee; ticket is Plan Ready with Ada. Review ran per spawn prompt.
+**Recommendation:** Chuckles restores Joan assignee only when entering Plan Discuss; no plan change.
+
+### R6 checklist (summary)
+Definition fidelity, scope gate, layer/config/placement compliance, and cited patterns (`pattern.config.config-block`, `pattern.state.entity-state-transitions`) all pass. Self-assessment (estimate 5, foundation !!!) is honest. No scope creep beyond ticket ## Scope (fetch_email seed + qualify schema are explicitly in-scope).
+
+context_tokens≈52000
