@@ -1555,21 +1555,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
 
-Originally: Scheduled Actions Avail **gt0** kept rows where API `always_visible_under_avail_gt0` is true (null-candidate `gaze_email` mailbox shell with intentional zero avail). Default remains `gt0` (AST-894). React still honors the generic API flag; mailbox product identity is now `meteorite_email` with real bind-filtered Avail (AST-1134 carve-out retired; AST-1466/1467 retire gaze).
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
 
 | # | Area | Source | Component tests |
 | --- | --- | --- | --- |
-| 1 | ~~Routed page Avail gt0 carve-out (§6c)~~ | `AdminScheduledActions.tsx` | ~~`test_AdminScheduledActions_AST1106.test.tsx`~~ — **retired AST-1467** (carve-out scenario obsolete) |
-| 2 | Regression: default gt0 still hides zero-avail | same | **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
+| 1 | Routed page Avail gt0 carve-out (§6c) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions_AST1106.test.tsx`** — **`AST-1106 gaze_email always visible under Avail gt0`** (2 cases) |
+| 2 | Regression: default gt0 still hides non-flag zero-avail | same | case 2 in that file; re-run **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
 
-**Broken / obsolete (AST-1467 return):** `tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx` deleted — seeded `gaze_email` + always-visible carve-out no longer product behavior; gt0 omit/show covered by AST-887/AST-894.
+**Broken / obsolete:** none (predicate widened via API flag only).
 
 **Integration:** none.
 
 ```bash
 cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
-  --testNamePattern="AST-887|AST-894"
+  --testNamePattern="AST-1106|AST-887|AST-894"
 ```
 
 ### AST-1156 · AST-1150
@@ -2196,3 +2197,68 @@ npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1478 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip`.
+
+Recommended opens JAR with shared-hook **Skip** / **Applied**; report strip uses labeled `.btn` roles; successful Skip/Applied refreshes the list and closes the report when the job leaves rows; CLIENT **Apply** stays absent. Modal unit cases: **`docs/test-bible/frontend/components.md`** § AST-1478.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Recommended → report Skip/Applied (**§6c**) | `JobsRecommended.tsx` + JAR | **`test_JobsRecommended.test.tsx`** — **`AST-1478 report Applied and Skip`** (strip visible; Skip → `/skip` + close; Applied → notes → `candidate_action` applied + close; no **Apply**) |
+
+**Broken / obsolete:** none — additive report wiring; existing open-report / list Skip / AST-1410 / AST-1477 list Applied asserts still hold.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. JAR callbacks: `test_JobAnalysisReportModal.test.tsx` — **`AST-1478`**
+2. Recommended page (**§6c**): `test_JobsRecommended.test.tsx` — **`AST-1478`**
+
+**AST-1478** narrowed run (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1478|sticky header|opens the report|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+Applied list home: `view=applied` rows, empty copy, post-applied R/I/X/G via shared notes + `candidate_action`, error toast on illegal transition. Config/API: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/ui/api/api_jobs.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Applied page (**§6c**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`JobsApplied — AST-1479 applied list home`** (rows + Actions; empty; Interview → notes → `candidate_action`; 409 toast) |
+
+**Broken / obsolete:** prior stub assert `"No records found."` — product empty copy is `"No applied jobs yet"`.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Applied page (**§6c**): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1479`**
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ revised `test_list_recommended_and_default`)
+3. Config states + nav: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**AST-1479** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

@@ -994,3 +994,74 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on the NavigationShell file (AST-1450 + existing shell cases) — not zero-arg harness / branch-lock gate.
+
+---
+
+---
+
+### AST-1477 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list`.
+
+Recommended list rows in legal `CANDIDATE_APPLIED` priors (`RECOMMENDED` / `BUILD_ARTIFACTS` / `CANDIDATE_REVIEW`) show an Applied `icon-control` (`A`) that calls `onAction("applied")`. Notes modal + `POST …/candidate_action` + list refresh already wired on `JobsRecommended` via `useCandidateJobActions`. `PASSED_LIKE` stays Skip-only (not a prior). Report Applied/Skip and Applied list home are siblings.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied icon on legal priors; hide on `PASSED_LIKE` / no `onAction` | `CandidateJobRowActions.tsx` | **`test_CandidateJobRowActions.test.tsx`** — **`CandidateJobRowActions — AST-1477 Applied mark`** |
+| Routed Recommended mark-applied (**§6c**) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1477 mark applied from Recommended`** (icon present; notes → `candidate_action` applied → row gone; 409 toast) |
+
+**Broken / obsolete:** none — additive Applied control; existing Skip / AST-1302 / AST-1410 asserts still hold.
+
+**Integration:** no existing scenario asserts Recommended list Applied mark — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Row Applied icon-control: `tests/component/frontend/components/test_CandidateJobRowActions.test.tsx` — `--testNamePattern="AST-1477"`
+2. Recommended list Applied path (**§6c**): `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1477"`
+3. Regression (same files): **AST-1302** icon-control + **AST-1410** silent Skip refetch — do **not** use bare `Skip` in the Vitest pattern (it also matches sibling **AST-1478** report Skip/Applied cases in the same page file)
+
+**AST-1477** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1477|AST-1302|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+---
+
+### AST-1478 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip`.
+
+Job Analysis Report gains labeled **Skip** (`.btn.secondary`) and **Applied** (`.btn.primary`) when parent passes `onSkip` / `onRequestApplied`. No parallel POSTs in the modal — Recommended wires shared `skipJob` / `requestAction(..., "applied")`. CLIENT job-link **Apply** stays absent. Page close-when-job-leaves-list: **`docs/test-bible/frontend/pages.md`** § AST-1478.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Callback strip; omit when no callbacks; no `window.open` / **Apply** | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1478 Applied and Skip`** |
+
+**Broken / obsolete:** none — additive strip; AST-948 sticky-header **no Apply** (exact name) still holds. List-row Applied is sibling **AST-1477**.
+
+**Integration:** no existing scenario asserts report Applied/Skip — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. JAR labeled Skip/Applied + callback / no job_link: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1478"`
+2. Recommended page wiring (**§6c**): `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1478"` (see **pages.md**)
+3. Regression: sticky header / open-report / AST-1410 Skip in the same files
+
+**AST-1478** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1478|sticky header|opens the report|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
