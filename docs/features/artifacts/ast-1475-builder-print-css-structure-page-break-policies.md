@@ -185,3 +185,9 @@ AST-1475 plan approved.
 ---
 
 **In-session:** Scoped statutes considered — `astral.standards.in-scope-only`, `astral.config.config-source-of-truth` (via AST-1474 imports only), `astral.git.engineer-test-tree-ban` (Betty owns test paths; plan conforms). `pattern.config.config-block` + proposed `pattern.artifacts.resume-section-print-policy` (docstring cite, no canon file) match parent architectural intent. Single `_emit_html_document` injection covers `build_base_resume`, `build_session_base_resume`, and `build_resume_from_job`. Layer compliance: core-only product diff; `_structure_ordered_body_ids` + `_html_section_dom_id` align selectors with existing DOM ids (`core_competencies` → `#competencies`, etc.).
+
+## Review
+
+- **Publish ref:** `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies`
+- **Tip:** `7fb201ea`
+- **Files:** `src/core/builder.py`
