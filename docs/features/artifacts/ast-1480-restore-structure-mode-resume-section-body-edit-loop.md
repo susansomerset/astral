@@ -114,6 +114,16 @@ Confirm Chuckles estimate: 3 — agree
 
 Single shared component vertical slice (load/edit/save) with known patterns; conditional page/CSS only if needed; no schema/API by default.
 
+---
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `b16a93d3`
+
+**Built:** Stage 1 only in `ArtifactEditor.tsx` — diagnosis **(A)** empty/stale bodies from label-churn re-GET + weak dict coerce, plus **(B)** chrome vs body edit split. Stage 2 skipped (no page/CSS/LabeledTextArea/ExperienceJobsEditor edits). Frontend-only (AC6).
+
+**Betty:** Lock `test_ArtifactEditor.test.tsx` structure-mode + jobPersistence body display/edit/Save; include `job_resume` key with `resume_content` sibling if covering JAR pin overlay.
+
 ## Joan validate
 
 [plan-rubric]
