@@ -296,3 +296,36 @@ AC1→Stage 3 `land_meteorite` explicit outcomes + `outcomes[]` (callable API on
 Layer discipline (core→external Playwright, no Gmail in meteorite), config-as-read-only (`TASK_CONFIG` read, no `config.py` edits), no-daisy-chain (enrich without qualify transition), and `do_task` delegation all pass once batch_id + late-import fixes land. Self-assessment (estimate 5, !! orchestration) is honest.
 
 context_tokens≈78000
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1470
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment` @ `26de05c1c9a9df246bccb332ebdee9af9312a599`
+
+## Traceability
+AC1→Stage 3 `land_meteorite` explicit `outcome`/`outcomes[]` rollup (created | duplicate_skip | superseded | error; never silent); Contact/inbox **wiring**→N/A AST-1471/1472 (Scope gate AC1/AC3 partition). AC2→Stage 1 employer passthrough + Stage 3 `save_meteorite_job(..., employer_name=…)` on `meteorite-{candidate_id}`. AC3→Stage 3 import ban + late-import consult (no Gmail in meteorite; caller retarget→N/A siblings). AC4→Stage 1 separate `enrich_meteorite_land_packet` → `do_task(qualify_meteorite)` without `_run_batch_consult`/transition. AC5→Stages 1/8 + Stage 3/10 Style D gated on `debug=True`. Parent AC6–10→N/A. Stages 1–3→child Scope + parent Functional #1/#5/#6/#9/#10.
+
+## Findings
+
+### acceptable — Round-1 fix-now items resolved
+**Location:** Stage 1 step 5; Stage 3 steps 2 + 7; Scope gate  
+**Finding:** Revision 1 addresses both prior fix-now findings: land `batch_id` + `log_batch_id.set`/`finally` clear + `do_index` mirroring `_run_batch_consult`; late-import of `enrich_meteorite_land_packet` inside `land_meteorite`; AC1/AC3 callable-vs-wired note; audit-only agent_data tagging Decision documented.  
+**Recommendation:** None — proceed to build.
+
+### discuss — `_resolve_company_job_id(ai_id, …)` parameter name
+**Location:** Stage 1 step 7  
+**Finding:** Prose names Ruth `company_job_id` field; snippet still says `ai_id`. Intent matches existing `qualify_meteorite` process path.  
+**Recommendation:** Engineer maps response row `company_job_id` at build — no plan rewrite needed.
+
+### discuss — `pattern.agent.prompt-persist-before-provider` still `proposed`
+**Location:** Ticket ## Citations  
+**Finding:** Catalog status unchanged; plan correctly relies on existing `do_task` pre-provider `_store_prompt_blocks` sequencing.  
+**Recommendation:** Citation hygiene only — no implementation gap.
+
+## R6 checklist (summary)
+Definition fidelity, scope gate, layer/import discipline (core→external Playwright; no Gmail in meteorite; consult↔meteorite cycle avoided), config read-only, no-daisy-chain (enrich without qualify transition), `do_task` delegation, and cited approved patterns (`pattern.layers.import-discipline`, `pattern.batch.entity-agent-responses`) all pass. Self-assessment (estimate 5, !! orchestration) honest. Betty-only test row consistent with workflow.
+
+context_tokens≈88000
