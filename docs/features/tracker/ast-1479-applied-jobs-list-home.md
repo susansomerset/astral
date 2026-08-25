@@ -138,3 +138,137 @@ context_tokens≈32000
 
 - Publish ref: `sub/AST-1464/AST-1479-applied-jobs-list-home`
 - Build tip: `81f1c7b189cf709aaa7a235d08c76b91a3cd794f`
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1479
+**Publish ref:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home` @ `5b8728e44df0cb323fef35f6c7752367ea4e89e5`
+**Overall:** PROCEED
+
+## Statutes checked
+
+65 active statutes scored in-session. No **violates**. Full table:
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | utils/ui diff only |
+| astral.agent.do-task-delegation | scoped | not-applicable | no agent paths |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no agent paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | `APPLIED_JOB_STATES` + nav in `config.py` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets paths |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug paths |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug paths |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no dispatch paths |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single AST-1479 issue doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty: bible + tests only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | product `81f1c7b1` → scoped files only |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | API delegates to `list_jobs`; no core edits |
+| astral.layers.import-direction | scoped | conforms | `api_jobs` imports utils config; page imports hooks/components |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | state list in config; flat table per plan decision |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | `list_view` retains `@require_auth` |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed |
+| astral.seed.define-approved | scoped | not-applicable | no seed |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug= |
+| astral.standards.dry-and-focused-functions | scoped | conforms | reuses `useCandidateJobActions` / `CandidateJobRowActions` |
+| astral.standards.in-scope-only | scoped | conforms | product delta = four scoped files |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | `APPLIED_JOB_STATES` domain-shaped |
+| astral.standards.no-cross-contamination | scoped | not-applicable | single feature |
+| astral.standards.no-hardcoded-sets | scoped | conforms | state set in config with `JOB_STATES` assert |
+| astral.standards.public-then-helpers | scoped | conforms | `sortAppliedJobs` helper after component |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils→data |
+| astral.state.core-decides-transitions | scoped | not-applicable | transitions via existing `candidate_action` API (Joan excluded) |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | API enforces (Joan excluded) |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run paths |
+| astral.ui.frontend-file-placement | scoped | conforms | `JobsApplied.tsx` in pages tree |
+| astral.ui.naming-conventions | scoped | conforms | consistent naming |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests at tip |
+| orch.git.commit-vocabulary | universal | conforms | standard prefixes |
+| orch.git.flow-direction-inviolable | universal | conforms | sub topology |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1464/AST-1479-…` |
+| orch.git.merge-on-checkout | universal | conforms | no rebase issues |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | merge only |
+| orch.git.no-dev-agent-branches | universal | conforms | branch naming |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1464 worktree |
+| orch.git.three-permanent-branches | universal | conforms | vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no policy invention |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–3 match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | n/a |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest landed |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Ada assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | no bypass |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.in-place-live-refresh | needs-discussion | `status: proposed` — hook usage matches solution shape; Joan flagged at plan (see discuss) |
+| pattern.ui.icon-control | not cited | post-applied R/I/X/G via existing `CandidateJobRowActions` (out of scope to edit) |
+| pattern.ui.shared-button-roles | not cited | n/a |
+
+## Plan adherence
+
+`81f1c7b1` matches approved plan across all three stages:
+
+- **`config.py`:** `APPLIED_JOB_STATES` (four post-applied states) + `assert all(s in JOB_STATES …)`; Jobs → Applied nav enabled (Responded still disabled).
+- **`api_jobs.py`:** `view=applied` branch calls `list_jobs(states=APPLIED_JOB_STATES, …)` with `_flatten_grades`; auth unchanged.
+- **`JobsApplied.tsx`:** real flat table, `view=applied` fetch, `useInPlaceLiveRefresh`, `useCandidateJobActions`, notes modal, error toast, post-applied `CandidateJobRowActions` only — no report modal / skip / sections.
+
+Sibling boundaries honored (no `JobsRecommended`, `JobAnalysisReportModal`, or `CandidateJobRowActions` edits). `blockedBy` AST-1473 Done — no gate issue. Estimate 3 fits.
+
+## Frame diff
+
+`APPLIED_JOB_STATES` added to `config.py`; Jobs → Applied nav `enabled: False` removed. API `view=applied` now returns rows instead of `[]`. No manifest/schema frame beyond config state list.
+
+## Findings
+
+### discuss
+
+**`pattern.ui.in-place-live-refresh` — proposed, not approved**
+
+Joan plan discuss carries forward. `JobsApplied` correctly uses `useInPlaceLiveRefresh` per sibling list pattern. Not a product fix — track pattern promotion separately; no stage rewrite needed.
+
+**Publish ref vs `origin/dev` — `test_api_jobs.py` missing AST-1453 block**
+
+Branch tip (679 lines) vs dev (853 lines): `TestAst1453SkippedEditMetaAndPut` absent on publish ref (ftr-sync ancestry, not introduced by `d4d152db`). AST-1479's own `test_list_applied_uses_applied_job_states` is correct. Restore at epic merge / `merge-child` — not AST-1479 product scope.
+
+### advisory
+
+- Applied nav badge count still absent in `api_system._get_job_counts` — plan-documented out of scope.
+- Inline `style` on sort indicator / Actions column width — minor; matches informal patterns on sibling pages.
+- Publish ref includes ftr-sync commits from siblings; scoped two-dot product delta ≡ `81f1c7b1` only.
+
+## What's solid
+
+- Config state set matches `CandidateJobRowActions` post-applied branch exactly.
+- API branch mirrors `recommended` / `skipped` shape.
+- Page wiring: load, actions, notes modal, 409 toast — complete.
+- Betty coverage: config (`TestAst1479AppliedJobStatesAndNav`), API (`test_list_applied_uses_applied_job_states`), page (4 cases §6c) — manifest-aligned.
+- No parallel POST logic; no scope smuggling in product commits.
+
+## Recommended actions (downstream)
+
+1. **merge-child:** restore AST-1453 `test_api_jobs.py` block when integrating ftr onto dev.
+2. **Optional:** promote `pattern.ui.in-place-live-refresh` to approved if citation enforcement tightens.
+
+context_tokens≈52000
