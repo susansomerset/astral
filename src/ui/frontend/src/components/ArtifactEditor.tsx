@@ -284,6 +284,7 @@ export default function ArtifactEditor({
         job_agent_editable: true,
         required: false,
         format_locked: false,
+        page_break_policy: structureCatalog.page_break_policy_default || "",
       },
     ]))
     setAddTitle("")
@@ -620,6 +621,7 @@ export default function ArtifactEditor({
             enabled: row.enabled,
             order: index,
             job_agent_editable: row.job_agent_editable,
+            page_break_policy: row.page_break_policy,
           }
           if (row.format) spec.format = row.format
           sections[row.id] = spec
@@ -994,6 +996,28 @@ export default function ArtifactEditor({
                           <option key={f} value={f}>{f}</option>
                         ))}
                       </select>
+                      {structureCatalog!.page_break_policies?.length ? (() => {
+                        const policyValue = (
+                          structureRow.page_break_policy
+                          && structureCatalog!.page_break_policies.includes(structureRow.page_break_policy)
+                        )
+                          ? structureRow.page_break_policy
+                          : structureCatalog!.page_break_policy_default
+                        return (
+                          <select
+                            className="dep-input structure-authoring-style"
+                            aria-label="Page break"
+                            value={policyValue}
+                            onChange={e => patchStructureRow(structureRow.id, { page_break_policy: e.target.value })}
+                          >
+                            {structureCatalog!.page_break_policies.map(token => (
+                              <option key={token} value={token}>
+                                {structureCatalog!.page_break_policy_labels?.[token] ?? token}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      })() : null}
                       <label className="structure-authoring-flag">
                         Enabled:
                         <input

@@ -3119,6 +3119,7 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 
 
 
+
 ### AST-1479 · AST-1464
 
 **Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
@@ -3151,6 +3152,7 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
   tests/component/utils/test_config.py::TestAst1469JobSourcesAndMeteoriteLandConfig \
   -q
 ```
+
 ### AST-1474 · AST-1462
 
 **Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`.
@@ -3168,4 +3170,6 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
   tests/component/utils/test_config.py::TestAst1474PageBreakPolicyCatalog \
   -q
 ```
+
+
 
