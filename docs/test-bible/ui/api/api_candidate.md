@@ -123,23 +123,3 @@ PUT Save stubs / real-DB AST-1353 cases call **`snapshot_saved_base_resume_artif
 | --- | --- | --- |
 | Save snapshot API (retargeted) | `src/ui/api/api_candidate.py` | **`TestAst1353SaveBaseResumeSnapshotApi`** |
 | Mocked PUT base_resume snapshot stub | `src/ui/api/api_candidate.py` | **`TestAst519…`** / **`TestAst1305…`** stub renamed helper |
-
----
-
-### AST-1474 · AST-1462
-
-**Publish:** `origin/sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`.
-
-GET `/resume_structure` catalog exposes page-break policy lists/labels/defaults; each `all_sections` row includes resolved `page_break_policy`; PUT persists via existing normalize. Primary normalize/config: **`docs/test-bible/core/candidate.md`** § AST-1474.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Catalog + all_sections + PUT | `src/ui/api/api_candidate.py` | **`TestAst1474PageBreakPolicyCatalogApi`** |
-
-**Broken / obsolete this pass:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/ui/api/test_api_candidate.py::TestAst1474PageBreakPolicyCatalogApi \
-  -q
-```

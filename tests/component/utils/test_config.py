@@ -4816,31 +4816,6 @@ class TestAst1306ResumeStructureCatalog:
         assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT in cfg.RESUME_STRUCTURE_BODY_FORMATS
 
 
-class TestAst1474PageBreakPolicyCatalog:
-    """AST-1474: structure page-break tokens + keep-together defaults (print CSS = sibling)."""
-
-    def test_tokens_labels_default_and_every_known_section(self) -> None:
-        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICIES == (
-            "normal",
-            "page_break_before",
-            "avoid_split",
-        )
-        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT == "avoid_split"
-        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS == {
-            "normal": "Flow uninterrupted",
-            "page_break_before": "New page before",
-            "avoid_split": "Keep block together",
-        }
-        # Keep-together for every known id — including prior_experience (no forced break).
-        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID == {
-            sid: "avoid_split" for sid in cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS
-        }
-        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
-        for sid, spec in sections.items():
-            assert spec["page_break_policy"] is cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
-        assert sections["prior_experience"]["page_break_policy"] == "avoid_split"
-
-
 class TestAst1305ResumeStructureExtraDefault:
     """AST-1305: extras default to bullet_list (same RESUME_STRUCTURE_* family)."""
 

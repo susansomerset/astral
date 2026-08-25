@@ -3116,21 +3116,3 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
-### AST-1474 · AST-1462
-
-**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`.
-
-`RESUME_STRUCTURE_PAGE_BREAK_*` tokens / labels / default / per-known-id map; every `RESUME_STRUCTURE_DEFAULT` section carries `page_break_policy: avoid_split` (incl. `prior_experience`). Normalize / GET catalog: **`docs/test-bible/core/candidate.md`** § AST-1474.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Page-break catalog literals | `src/utils/config.py` | **`TestAst1474PageBreakPolicyCatalog`** |
-
-**Broken / obsolete this pass:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestAst1474PageBreakPolicyCatalog \
-  -q
-```
-

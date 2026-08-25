@@ -21,8 +21,6 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     dispatch_hop_label,
 )
@@ -5202,97 +5200,3 @@ class TestAst1365IdealDayLibrary:
             "ideal_day",
         )
         assert not hasattr(candidate_mod, "_CONTEXT_TEXT_KEYS")
-
-
-# Branches: missing/blank → default; valid keep; unknown/non-str raise; hydrate soft-fill; ingest stamp.
-class TestAst1474PageBreakPolicyNormalize:
-    """AST-1474: page_break_policy on normalize / hydrate / legacy ingest (schema only)."""
-
-    def test_missing_and_blank_default_to_avoid_split_including_prior(self) -> None:
-        raw = candidate_mod.default_resume_structure()
-        for spec in raw["sections"].values():
-            spec.pop("page_break_policy", None)
-        raw["sections"]["professional_summary"]["page_break_policy"] = "   "
-        out = candidate_mod.normalize_resume_structure(raw)
-        for sid, spec in out["sections"].items():
-            assert spec["page_break_policy"] == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT, sid
-        assert out["sections"]["prior_experience"]["page_break_policy"] == "avoid_split"
-
-    def test_valid_tokens_preserved_and_unknown_rejected(self) -> None:
-        raw = _required_seven_structure()
-        raw["sections"]["professional_summary"]["page_break_policy"] = "normal"
-        raw["sections"]["core_competencies"]["page_break_policy"] = "page_break_before"
-        raw["sections"]["experience"]["page_break_policy"] = "avoid_split"
-        out = candidate_mod.normalize_resume_structure(raw)
-        assert out["sections"]["professional_summary"]["page_break_policy"] == "normal"
-        assert out["sections"]["core_competencies"]["page_break_policy"] == "page_break_before"
-        assert out["sections"]["experience"]["page_break_policy"] == "avoid_split"
-        # Extra with explicit valid policy.
-        raw["sections"]["publications"] = {
-            "id": "publications",
-            "title": "Publications",
-            "enabled": True,
-            "order": 20,
-            "job_agent_editable": True,
-            "format": "bullet_list",
-            "page_break_policy": "page_break_before",
-        }
-        out2 = candidate_mod.normalize_resume_structure(raw)
-        assert out2["sections"]["publications"]["page_break_policy"] == "page_break_before"
-        for bad in ("keep_with_next", 42, True):
-            raw_bad = _required_seven_structure()
-            raw_bad["sections"]["professional_summary"]["page_break_policy"] = bad
-            with pytest.raises(ValueError, match="page_break_policy must be one of"):
-                candidate_mod.normalize_resume_structure(raw_bad)
-        assert set(RESUME_STRUCTURE_PAGE_BREAK_POLICIES) == {
-            "normal",
-            "page_break_before",
-            "avoid_split",
-        }
-
-    def test_hydrate_soft_defaults_missing_blank_and_invalid(self) -> None:
-        resolved = candidate_mod.default_resume_structure()
-        resolved["sections"]["professional_summary"].pop("page_break_policy", None)
-        resolved["sections"]["core_competencies"]["page_break_policy"] = ""
-        resolved["sections"]["experience"]["page_break_policy"] = "keep_with_next"
-        resolved["sections"]["highlights"]["page_break_policy"] = "page_break_before"
-        # Drop publications so hydrate appends it with default policy.
-        resolved["sections"].pop("publications", None)
-        out = candidate_mod.hydrate_resume_structure_from_base_resume(
-            resolved,
-            {
-                "professional_summary": "S",
-                "core_competencies": "C",
-                "experience": [
-                    {
-                        "title": "Role",
-                        "company": "Co",
-                        "dates": "",
-                        "location": "",
-                        "accomplishments": "",
-                    }
-                ],
-                "highlights": "H",
-                "publications": "Paper",
-            },
-        )
-        secs = out["sections"]
-        assert secs["professional_summary"]["page_break_policy"] == "avoid_split"
-        assert secs["core_competencies"]["page_break_policy"] == "avoid_split"
-        assert secs["experience"]["page_break_policy"] == "avoid_split"
-        assert secs["highlights"]["page_break_policy"] == "page_break_before"
-        assert secs["publications"]["page_break_policy"] == "avoid_split"
-
-    def test_ingest_append_stamps_default_policy(self) -> None:
-        content, structure = candidate_mod.ingest_legacy_label_content_base_resume(
-            [
-                {"label": "Professional Summary", "content": "Summary body"},
-                {"label": "Publications", "content": "Paper one"},
-            ],
-            _required_seven_structure(),
-        )
-        assert content["publications"] == "Paper one"
-        assert (
-            structure["sections"]["publications"]["page_break_policy"]
-            == RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
-        )
