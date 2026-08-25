@@ -329,3 +329,18 @@ AC1→Stage 3 `land_meteorite` explicit `outcome`/`outcomes[]` rollup (created |
 Definition fidelity, scope gate, layer/import discipline (core→external Playwright; no Gmail in meteorite; consult↔meteorite cycle avoided), config read-only, no-daisy-chain (enrich without qualify transition), `do_task` delegation, and cited approved patterns (`pattern.layers.import-discipline`, `pattern.batch.entity-agent-responses`) all pass. Self-assessment (estimate 5, !! orchestration) honest. Betty-only test row consistent with workflow.
 
 context_tokens≈88000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment`
+**Plan path:** `docs/features/meteorite/ast-1470-land-meteorite-qualify-enrichment.md`
+
+**Built tip:** `5bf2c0dce8fcadd0d6d260135758342325dc7d9c` (`5bf2c0dc`)
+
+| Stage | Commit | Summary |
+|-------|--------|----------|
+| 1 | `339a545b` | `enrich_meteorite_land_packet` — land batch_id + qualify `do_task` |
+| 2 | `11ff80e5` | agent `do_task` docs for land packet index / audit-only store |
+| 3 | `5bf2c0dc` | public `land_meteorite` — scrape, late-import enrich, Tracker save |
+
+**Betty note:** `tests/component/core/test_meteorite.py` land contracts deferred to qa-child (engineer test-tree ban).
