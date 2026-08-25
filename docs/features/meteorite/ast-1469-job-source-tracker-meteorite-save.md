@@ -290,3 +290,170 @@ context_tokens≈52000
 | 3 | `42bdd5a7` | `tracker.save_meteorite_job` create / gazed-supersede / meteorite non-clobber |
 
 **Betty note:** AC2–4 component coverage (dedupe branches + meteorite→gazed reject) deferred to qa-child / sibling AST-1470 per Joan discuss — not in this child’s Scope.
+
+## Radia review
+
+# Radia review — AST-1469
+
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1469  
+**Parent:** AST-1457  
+**Publish ref:** `origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save` @ `7aedf36f38b3c4c4ba0360b9586de82e59621fad`  
+**Baseline:** `origin/dev`  
+**Overall:** CLEAN
+
+**Diff summary:** 12 files, +1267/−8. Product: `src/utils/config.py`, `src/data/database.py`, `src/core/tracker.py`. Betty pipeline: test-bible + `TestAst1469*` component suites + conftest schema-flag resets. Merge tip `7aedf36` layers Betty tests on engineer stages 1–3 (`42bdd5a7`).
+
+---
+
+## Statutes checked
+
+64 active statutes scored (retired `astral.config.pass-threshold-vs-score-floor` excluded per rubric).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/grade paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch claim paths touched |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id emission |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release edits |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no agent_responses |
+| astral.config.config-source-of-truth | scoped | conforms | JOB_SOURCES, METEORITE land keys, FETCH_EMAIL seed, qualify schema all config-owned |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no repo-root artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/ spikes |
+| astral.dispatch.seed-auto-false | scoped | conforms | FETCH_EMAIL_CONFIG + SEED_CONFIG stub use auto_mode 0/false |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc for AST-1469 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty changes tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits limited to src/; tests via Betty merge |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth changes |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | core/data/utils only; no external |
+| astral.layers.import-direction | scoped | conforms | core→data/utils; data→utils.config; no layer inversions |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/ changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui/ changes |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | duplicate idiom statute; same predicate |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult paths |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | no API paths |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no agent table seed edits |
+| astral.seed.archie-catalog-wins | scoped | conforms | literals in config catalogs |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | SEED_CONFIG fetch_email stub commented not hot-path executed |
+| astral.seed.define-approved | scoped | not-applicable | no seed define paths |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row deletes |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data raises ValueError; tracker logs via get_logger |
+| astral.standards.database-header-inventory | scoped | conforms | database.py header + _job_col_defs updated for source |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D gated on debug=True; debug_index/detail helpers |
+| astral.standards.dry-and-focused-functions | scoped | conforms | helpers scoped; dedupe walk is thin |
+| astral.standards.in-scope-only | scoped | conforms | product diff stays config/database/tracker per scope gate |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger + contract methods only |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain names in API (save_meteorite_job, JOB_SOURCES) |
+| astral.standards.no-cross-contamination | scoped | conforms | meteorite slice isolated; no land_meteorite/dispatcher |
+| astral.standards.no-hardcoded-sets | scoped | conforms | source set + outcomes in config with asserts |
+| astral.standards.public-then-helpers | scoped | conforms | save_meteorite_job/set_job_source public; _assert_* private |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | utils does not import data |
+| astral.state.core-decides-transitions | scoped | conforms | source promotion + METEORITE_NEW write in tracker |
+| astral.state.job-prior-states-enforced | scoped | conforms | gazed supersede is documented AC2/create carve-out; not ad hoc data write |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | single save per branch; no pipeline chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no ui |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge tip publishes tests at one SHA with product |
+| orch.git.commit-vocabulary | universal | conforms | stage commits + merge(AST-1469) vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub branch vs dev; no reverse flow |
+| orch.git.ftr-sub-topology | universal | conforms | child sub/AST-1457/AST-1469-* ref |
+| orch.git.merge-on-checkout | universal | conforms | n/a to review artifact |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | proper sub publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1457 worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy forks needed |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–3 match plan; Betty tests align with deferred AC coverage |
+| orch.pipeline.project-scoped-queues | universal | conforms | Meteorite child scoped correctly |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | tests/bible via Betty merge |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no hook-ban path violations observed |
+
+**Straggler (C4):** Joan plan-rubric attached; no Excluded statute list — nothing to straggle.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | JOB_SOURCES, METEORITE land/dedupe keys, FETCH_EMAIL_CONFIG, TASK_CONFIG/SEED_CONFIG extensions |
+| pattern.state.entity-state-transitions | conforms | core-owned METEORITE_NEW + source writes; supersede carve-out matches create_meteorite_job + parent AC2 |
+
+---
+
+## Plan adherence
+
+Stages 1–3 land as specified:
+
+- **Stage 1:** `JOB_SOURCES` + helpers, `METEORITE_CONFIG` land/outcome/dedupe keys, `FETCH_EMAIL_CONFIG` + `TASK_CONFIG["fetch_email"]` + `SEED_CONFIG` stub, qualify_meteorite `astral_job_id` optional + `employer_name`.
+- **Stage 2:** `job.source` column + one-shot backfill, `save_job` R/W with default `gazed`, candidate-scoped dedupe helpers in config order.
+- **Stage 3:** `save_meteorite_job` three-way branches (create / gazed-supersede / meteorite duplicate_skip), `_assert_job_source_write` + `set_job_source`, Style D when `debug=True`, no `meteorite.py` import.
+
+Scope gate respected: no `land_meteorite`, dispatcher ensure, inbox, Contact, or API. Estimate 5 fits the multi-layer footprint.
+
+Joan’s discuss item on AC4 “test half deferred” is **resolved on this tip**: Betty’s `TestAst1469*` suites cover dedupe branches, one-way source, and Style D — stronger than the plan’s engineer-only deferral to AST-1470.
+
+**C6 lenses (§5a–§5f):** imports at module top; layer direction clean; no silent except/pass; `job_data or {}` is bounded prep only; logging via `get_logger`; batch/claim paths untouched; debug contract correct (index 1/1, detail lines, gated).
+
+---
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+1. **`src/utils/config.py` EOF** — `job_source_transition_allowed` block ends without trailing newline (diff shows `\ No newline at end of file`). Cosmetic; pre-commit may auto-fix.
+2. **`src/data/database.py` `_ensure_job_schema`** — redundant second `global _job_source_backfill_applied` inside the function (harmless duplicate of outer global declaration).
+3. **Insert-bounce duplicate_skip** (`tracker.save_meteorite_job` Branch C) — identity-bounce path returns `duplicate_skip` with `source` taken from the bounced row rather than always `JOB_SOURCE_METEORITE`. Plan does not specify; current behavior is defensible (meteorite-company identity bounce). No action unless land slice wants uniform return shape.
+
+---
+
+## What’s solid
+
+- Config-owned source law with asserts and transition helpers.
+- Data layer validates source values but deliberately leaves one-way promotion to core (per plan).
+- Dedupe helpers candidate-scoped across companies — matches plan decision for gazed-under-roster ↔ meteorite-placeholder matching.
+- Supersede keeps original `company` while flipping source/state/payload — tested.
+- Betty manifest + bible entries trace AC2–4 cleanly on this publish ref.
+
+---
+
+## Frame diff
+
+| Field | Issue doc (build stub) | Publish tip under review |
+|-------|------------------------|--------------------------|
+| Product SHA | `42bdd5a7` (Stage 3) | `7aedf36` (merge: stages + Betty tests) |
+| Tests/bible | engineer contract: no tests | `TestAst1469SaveMeteoriteJob`, `TestAst1469JobSourceAndMeteoriteDedupe`, `TestAst1469JobSourcesAndMeteoriteLandConfig` + bible AST-1469 sections |
+| Built tip table | ends Stage 3 @ `42bdd5a7` | merge commit adds qa-child artifacts — expected pipeline delta |
+
+---
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append this verdict to issue doc, `docs(AST-1469): Radia review — clean`, push, post slim upshot, → Review Posted → User Testing (no resolve-child needed).
+- Optional hygiene in resolve pass only if pre-commit nags: EOF newline on `config.py`.
+
+context_tokens≈48000
+
+---
+
+[code-rubric] PROCEED (Commit: 7aedf36) Foundation clean; Betty tests landed
