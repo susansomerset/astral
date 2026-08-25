@@ -14,6 +14,7 @@ import InReview from "./pages/JobsInReview"
 import Skipped from "./pages/JobsSkipped"
 import Applied from "./pages/JobsApplied"
 import Responded from "./pages/JobsResponded"
+import JobsJobDetail from "./pages/JobsJobDetail"
 
 // --- Companies ---
 import WatchList from "./pages/CompaniesWatchList"
@@ -86,6 +87,7 @@ const routes: RouteObject[] = [
           { path: "jobs/recommended", element: <Recommended /> },
           { path: "jobs/applied", element: <Applied /> },
           { path: "jobs/responded", element: <Responded /> },
+          { path: "jobs/detail/:jobId", element: <JobsJobDetail /> },
 
           // Companies
           { path: "companies/watch_list", element: <WatchList /> },
