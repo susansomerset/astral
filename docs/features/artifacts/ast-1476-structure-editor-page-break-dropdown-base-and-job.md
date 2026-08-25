@@ -134,3 +134,63 @@ Confirm Chuckles estimate: 3 — agree
 ## Execution contract
 
 The plan is binding. Build-child executes stages in order, one commit per stage on the epic worktree, then `git push origin HEAD:sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`. No extra files. Ambiguity or missing catalog fields after sync → stop and comment on **parent** AST-1462 with the Stage blocked template from plan-child. Engineers do **not** edit `tests/**` or `docs/test-bible/**` — wrong/missing coverage → `[qa-handoff]` to Betty.
+
+## Joan validate
+
+## Joan validate-plan — AST-1476
+
+Identity: **Plan Ready**, assignee **Joan Clarke**, parent **AST-1462**. Publish ref `sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job` @ `4fbd80d1`. No `[plan-discuss]` rounds. Prerequisites (AST-1474 catalog fields, API `page_break_*` on worktree) present.
+
+---
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1476
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job` @ `4fbd80d1`
+
+## Traceability
+AC4→Stages 2–3 (always send `page_break_policy` on Base `saveStructure` + JAR `saveStructure` PUT to candidate `resume_structure`; job artifact Save unchanged); AC5→Stages 1–3 (catalog-driven header `<select>` on Base + JAR when `structureAuthoring` wired); AC6 ArtifactEditor tests→Betty qa-child section; AC6 builder tests→AST-1475 Betty scope N/A; parent AC1–3 print defaults/breaks/roles→AST-1474/1475 N/A.
+
+## Findings
+
+### discuss — Missing `## Self-assessment`
+- **Location:** plan doc (ends with Execution contract, no confidence block)
+- **Finding:** No self-assessment section; sibling AST-1475 carried one.
+- **Recommendation:** Optional add before build — stages and binding Decisions are already explicit.
+
+### discuss — Child ticket AC6 names builder tests
+- **Location:** ticket Description AC6 vs Betty notes
+- **Finding:** Ticket AC6 still lists “builder component tests”; this child’s Scope and plan correctly limit Betty work to `test_ArtifactEditor.test.tsx`.
+- **Recommendation:** Optional ticket description trim — plan is already right.
+
+### discuss — Page-break control on contact header rows
+- **Location:** Stage 1 header JSX (all `structureRow` headers)
+- **Finding:** Plan does not skip contact sections; dropdown may appear on contact rows that have no print body section.
+- **Recommendation:** Acceptable — AST-1474 persists policy on all section ids; omitting contact-only would need an explicit rule not in parent AC.
+
+### acceptable — JAR enables full structure authoring, not dropdown-only
+- **Location:** Stage 3 Decision + props list
+- **Finding:** JAR wires full `structureAuthoring` gate (title/format/flags + page-break), not an isolated dropdown mode.
+- **Recommendation:** Matches AC5 and existing ArtifactEditor gate; in Scope.
+
+### acceptable — `jobPersistence` Save does not bundle structure
+- **Location:** Decision on content Save early return
+- **Finding:** Job body Save stays job-artifact-only; policies persist via **Save sections** on JAR.
+- **Recommendation:** Correct; satisfies AC “Save persists without requiring a separate body edit” via Save sections.
+
+context_tokens≈32000
+```
+
+```text
+[plan-rubric] PROCEED (Commit: 4fbd80d1) structure dropdown UI
+```
+
+```text
+AST-1476 plan approved.
+```
+
+---
+
+**In-session:** `astral.standards.no-hardcoded-sets`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only` — conform (catalog-driven options/labels, no new API routes, no config/builder edits). `astral.git.engineer-test-tree-ban` — conform (Betty owns `tests/` + bible). `pattern.ui.admin-endpoint` — conform (existing authenticated candidate routes, thin API already serves catalog). Layer/placement: `components/` + `pages/` flat, no `App.css` edit. `structureAuthoring` gate correctly requires `onStructureSave`; Stage 3 adds missing JAR wiring vs current `JobAnalysisReportModal` (labels-only fetch today).
