@@ -226,7 +226,6 @@ describe("JobsRecommended", () => {
       await waitFor(() => expect(screen.getByText("No recommended jobs yet")).toBeInTheDocument())
     })
   })
-})
 
   it("AST-1057: prepends Meteorites for meteorite- company jobs; leaves vetted sections intact", async () => {
     const mixed = [
@@ -356,4 +355,4 @@ describe("JobsRecommended", () => {
       expect(screen.getByText("Fail Apply")).toBeInTheDocument()
     })
   })
-
+})
