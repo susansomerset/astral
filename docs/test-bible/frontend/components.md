@@ -1016,7 +1016,7 @@ Recommended list rows in legal `CANDIDATE_APPLIED` priors (`RECOMMENDED` / `BUIL
 
 1. Row Applied icon-control: `tests/component/frontend/components/test_CandidateJobRowActions.test.tsx` — `--testNamePattern="AST-1477"`
 2. Recommended list Applied path (**§6c**): `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1477"`
-3. Regression (same files): existing Skip / AST-1302 / AST-1410 cases
+3. Regression (same files): **AST-1302** icon-control + **AST-1410** silent Skip refetch — do **not** use bare `Skip` in the Vitest pattern (it also matches sibling **AST-1478** report Skip/Applied cases in the same page file)
 
 **AST-1477** narrowed run (Vitest — from `src/ui/frontend/`):
 
@@ -1024,7 +1024,7 @@ Recommended list rows in legal `CANDIDATE_APPLIED` priors (`RECOMMENDED` / `BUIL
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
   ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
-  --testNamePattern="AST-1477|AST-1302|AST-1410|Skip"
+  --testNamePattern="AST-1477|AST-1302|AST-1410"
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
