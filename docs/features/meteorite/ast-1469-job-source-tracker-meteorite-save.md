@@ -275,3 +275,18 @@ AC2→Stage 3 (`save_meteorite_job` dedupe-before-write: duplicate_skip / gazed 
 Definition fidelity, scope gate, layer/config/placement compliance, and cited patterns (`pattern.config.config-block`, `pattern.state.entity-state-transitions`) all pass. Self-assessment (estimate 5, foundation !!!) is honest. No scope creep beyond ticket ## Scope (fetch_email seed + qualify schema are explicitly in-scope).
 
 context_tokens≈52000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save`
+**Plan path:** `docs/features/meteorite/ast-1469-job-source-tracker-meteorite-save.md`
+
+**Built tip:** `42bdd5a78468b3bc2f17d0b2476a9d3f1190b8ac` (`42bdd5a7`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `56fbf4b1` | `JOB_SOURCES` + `METEORITE_CONFIG` land keys + `FETCH_EMAIL_CONFIG` seed + qualify schema |
+| 2 | `f55ef14a` | `job.source` column + backfill + `save_job` R/W + dedupe helpers |
+| 3 | `42bdd5a7` | `tracker.save_meteorite_job` create / gazed-supersede / meteorite non-clobber |
+
+**Betty note:** AC2–4 component coverage (dedupe branches + meteorite→gazed reject) deferred to qa-child / sibling AST-1470 per Joan discuss — not in this child’s Scope.
