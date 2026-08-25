@@ -55,13 +55,32 @@ When auth is required on a protected in-app URL (including `/jobs/detail/<astral
 
 2. Read `const location = useLocation()`.
 
-3. Add a `useEffect` that runs when **all** of the following hold:
-   - `localAuthPassthrough === false` (not `null`, not `true` — only capture when real Stytch auth is required),
-   - Stytch is initialized **or** there is no session (match existing gate timing — do not capture while `localAuthPassthrough === null` or initial loading),
-   - User is blocked: either `logOffReason` is set **or** (`!session` and no `logOffReason` — Login path),
-   - Call `captureAuthReturnPath(location.pathname, location.search)`.
+3. Add a `useEffect` with **early returns** that mirror `RequireAuth`'s render order (lines 16–38). Derive `logOffReason` the same way the component already does (including timeout inference from `getHadSession()`):
 
-   Dependencies: `[localAuthPassthrough, session, isInitialized, logOffReason, location.pathname, location.search]` — derive `logOffReason` the same way the component already does (including timeout inference from `getHadSession()`).
+   ```typescript
+   useEffect(() => {
+     if (localAuthPassthrough !== false) return // null = passthrough fetch; true = skip Stytch
+     if (!isInitialized && !session) return // same guard as the Loading… return — do not capture yet
+     const blocked = Boolean(logOffReason) || !session // LogOffScreen or Login
+     if (!blocked) return // authenticated children
+     captureAuthReturnPath(location.pathname, location.search)
+   }, [
+     localAuthPassthrough,
+     session,
+     isInitialized,
+     logOffReason,
+     location.pathname,
+     location.search,
+   ])
+   ```
+
+   **Gate order (mandatory):**
+   1. **`localAuthPassthrough !== false`** — skip while passthrough is unresolved (`null`) or on (`true`).
+   2. **`!isInitialized && !session`** — skip during Stytch bootstrap Loading… (must match the render `return` at `RequireAuth.tsx` lines 23–25). Equivalently: proceed only when **`isInitialized || session`**.
+   3. **Blocked predicates** — `logOffReason` (LogOffScreen, including server-rejection while `session` may still exist) **or** `!session` (Login). Skip when neither applies (authenticated children).
+   4. Call `captureAuthReturnPath` only when steps 1–3 pass.
+
+   Dependencies include `logOffReason` so timeout inference re-runs capture when the gate flips from Loading to LogOffScreen.
 
    ⚠️ **Decision:** Capture on LogOffScreen as well as Login so session-expiry on a deeplink survives the Refresh → Login → `/authenticate` chain (Refresh clears had-session marks but browser URL stays on the deeplink; re-capture on Login is the backup).
 
@@ -101,6 +120,12 @@ When auth is required on a protected in-app URL (including `/jobs/detail/<astral
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Revisions
+
+Revision 1 — 2026-08-25  
+Driven by: Joan `[plan-discuss] round=1 concern` — Stage 2 `useEffect` loading guard contradicts itself.  
+Changes: Stage 2 step 3 rewritten with explicit early-return gate order: passthrough false, then `isInitialized || session` (mirror Loading… return), then blocked predicates (`logOffReason` or `!session`) before capture. Removed ambiguous "initialized or no session" bullet; server-rejection LogOffScreen with session still present must capture.
 
 ## Joan validate
 
