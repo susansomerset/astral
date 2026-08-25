@@ -194,3 +194,16 @@ AST-1476 plan approved.
 ---
 
 **In-session:** `astral.standards.no-hardcoded-sets`, `astral.layers.ui-config-driven-business-logic`, `astral.standards.in-scope-only` — conform (catalog-driven options/labels, no new API routes, no config/builder edits). `astral.git.engineer-test-tree-ban` — conform (Betty owns `tests/` + bible). `pattern.ui.admin-endpoint` — conform (existing authenticated candidate routes, thin API already serves catalog). Layer/placement: `components/` + `pages/` flat, no `App.css` edit. `structureAuthoring` gate correctly requires `onStructureSave`; Stage 3 adds missing JAR wiring vs current `JobAnalysisReportModal` (labels-only fetch today).
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`
+**Tip (pre-review):** `8161bc1f7943483be61593daf3b8dca3e828662a`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `7c09aced` | Catalog/SectionRow page-break types; ArtifactEditor header select + Save/add payloads |
+| 2 | `94201a85` | Base Save sections includes `page_break_policy` |
+| 3 | `8161bc1f` | JAR structure authoring; Save sections → candidate `resume_structure` |
+
+Tests deferred to Betty (`test_ArtifactEditor.test.tsx`).
