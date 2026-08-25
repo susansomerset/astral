@@ -40,10 +40,10 @@ Config sections:
   PROVIDER_CALL_BUDGET — LLM per-call wall budget + timeout failure class (AST-1189)
   PROVIDER_EMPTY_RESPONSE — hollow / unusable LLM response (AST-1190)
   INBOX_CREATE_JOB_CONFIG — Manage Email Create strip/extract + subject wrapper (AST-1049)
-  INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases GAZE_EMAIL_CONFIG["account_address"])
+  INBOX_BIND_CONFIG — From-then-To mailbox bind order + Astral inbox address to ignore on To (AST-1313; inbox_address aliases METEORITE_EMAIL_MAILBOX_CONFIG["account_address"])
   METEORITE_EMAIL_INGEST_CONFIG — gazer email→meteorite link filters / Playwright / dedupe (AST-1061) + paste normalize (AST-1131) + hygiene / non-job skip (AST-1132) + id-match min length (AST-1146) + Ruth payload link excludes (AST-1213)
-  GAZE_EMAIL_CONFIG — candidate-bound gaze_email task key, account expectation, unbound retention, dispatch row seed (AST-1134) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
-  METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals for gaze_email (AST-1089; renamed AST-1212)
+  METEORITE_EMAIL_MAILBOX_CONFIG — candidate-bound meteorite_email mailbox task key, account expectation, unbound retention, dispatch row seed (AST-1134 / AST-1466) + runner literals (AST-1090) + selected-ids Land Meteorite (AST-1140)
+  METEORITE_EMAIL_PARSE_CONFIG — Ruth meteorite-email parse task key (`meteorite_email`) + parse-mode literals (AST-1089; renamed AST-1212)
   SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
@@ -1018,13 +1018,6 @@ TASK_CONFIG = {
         "trigger_state": None,
         "task_type": "CHAT",
         "agent_task": "contact_estelle_turn",
-    },
-    # AST-1134: candidate-bound mailbox dispatch shell (no claim queue; row binds via
-    # dispatch_task.candidate_id). No Ruth prompts — AST-1089; runner — AST-1136.
-    "gaze_email": {
-        "entity_type": None,
-        "requires_candidate_key": False,
-        "trigger_state": None,
     },
 }
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_job_id"]["required"] is False
@@ -2568,16 +2561,17 @@ METEORITE_EMAIL_INGEST_CONFIG = {
 }
 
 
-# AST-1134/AST-1135: candidate-bound gaze_email dispatch rows (one per candidate; no null shell).
-# Live mailbox identity remains GMAIL_USER environ; account_address is the product expectation.
-# entity_type/trigger_state stay None — mailbox poller, not an ENTITY_TYPES claim queue.
-# Avail/eligible count is the live bind-filtered inbox count (core inbox helpers, AST-1135).
-# Runner is candidate-bound (AST-1136): filter From→row candidate_id, stamp last_email_check,
-# unbound Trash hygiene via unbound_retention_days. Ruth parse task is AST-1089
+# AST-1134/AST-1135 / AST-1466: candidate-bound meteorite_email mailbox dispatch rows
+# (one per candidate; no null shell). Live mailbox identity remains GMAIL_USER environ;
+# account_address is the product expectation. entity_type/trigger_state stay None —
+# mailbox poller, not an ENTITY_TYPES claim queue. Avail/eligible count is the live
+# bind-filtered inbox count (core inbox helpers, AST-1135). Runner is candidate-bound
+# (AST-1136): filter From→row candidate_id, stamp last_email_check, unbound Trash
+# hygiene via unbound_retention_days. Ruth parse task is AST-1089
 # (METEORITE_EMAIL_PARSE_CONFIG). Seed auto_mode CLICK (false) — parent seed law;
 # never Auto-true at provision.
-GAZE_EMAIL_CONFIG = {
-    "task_key": "gaze_email",
+METEORITE_EMAIL_MAILBOX_CONFIG = {
+    "task_key": "meteorite_email",
     "account_address": "astral.career.match@gmail.com",
     "unbound_retention_days": 7,
     "auto_mode": False,
@@ -2590,46 +2584,47 @@ GAZE_EMAIL_CONFIG = {
     # Runner — subject-is-URL detection (urlparse.scheme).
     "subject_url_schemes": ("http", "https"),
     # Style D func= string for the runner.
-    "debug_func": "gaze_email.run",
+    "debug_func": "meteorite_email.run",
     # AST-1140 — Style D func= for selected-ids Land Meteorite ingest.
-    "debug_func_selected": "gaze_email.selected_ids",
+    "debug_func_selected": "meteorite_email.selected_ids",
     # Per-id outcome strings returned to AST-1141 / recorded in Style D.
     "selected_outcome_skipped_unbound": "skipped-unbound",
     "selected_outcome_skipped_not_in_inbox": "skipped-not-in-inbox",
     "selected_outcome_skipped_unmatched": "skipped-unmatched",
 }
 
-assert isinstance(GAZE_EMAIL_CONFIG["unbound_retention_days"], int)
-assert GAZE_EMAIL_CONFIG["unbound_retention_days"] > 0
-assert GAZE_EMAIL_CONFIG["task_key"] == "gaze_email"
-assert set(GAZE_EMAIL_CONFIG["subject_url_schemes"]) == {"http", "https"}
-assert GAZE_EMAIL_CONFIG["debug_func"] == "gaze_email.run"
-assert GAZE_EMAIL_CONFIG["debug_func_selected"] == "gaze_email.selected_ids"
-assert GAZE_EMAIL_CONFIG["selected_outcome_skipped_unbound"] == "skipped-unbound"
-assert GAZE_EMAIL_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
-assert GAZE_EMAIL_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
-assert GAZE_EMAIL_CONFIG["auto_mode"] is False
+assert isinstance(METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"], int)
+assert METEORITE_EMAIL_MAILBOX_CONFIG["unbound_retention_days"] > 0
+assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == "meteorite_email"
+assert set(METEORITE_EMAIL_MAILBOX_CONFIG["subject_url_schemes"]) == {"http", "https"}
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func"] == "meteorite_email.run"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["debug_func_selected"] == "meteorite_email.selected_ids"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"] == "skipped-unbound"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
+assert METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
 # AST-1098: stage seed catalogs stay CLICK (auto_mode falsy when present).
 assert all(
     not bool(e.get("auto_mode"))
     for e in CANDIDATE_STAGE_DISPATCH.values()
     if "auto_mode" in e
 )
-# AST-1313: one bind rule for Manage Email / Avail / gaze_email / Land Meteorite / create rematch.
+# AST-1313: one bind rule for Manage Email / Avail / meteorite_email / Land Meteorite / create rematch.
 # header_order is the only allowed sequence (From unique hit wins; To is fallback).
-# inbox_address is the product mailbox identity — same object as GAZE_EMAIL_CONFIG["account_address"].
+# inbox_address is the product mailbox identity — same object as
+# METEORITE_EMAIL_MAILBOX_CONFIG["account_address"].
 # Live OAuth user remains GMAIL_USER environ; do not read os.environ here.
 INBOX_BIND_CONFIG = {
     "header_order": ("from", "to"),
-    "inbox_address": GAZE_EMAIL_CONFIG["account_address"],
+    "inbox_address": METEORITE_EMAIL_MAILBOX_CONFIG["account_address"],
 }
 assert INBOX_BIND_CONFIG["header_order"] == ("from", "to")
-assert INBOX_BIND_CONFIG["inbox_address"] == GAZE_EMAIL_CONFIG["account_address"]
+assert INBOX_BIND_CONFIG["inbox_address"] == METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
 assert isinstance(INBOX_BIND_CONFIG["inbox_address"], str)
 assert "@" in INBOX_BIND_CONFIG["inbox_address"]
 # AST-1087 / AST-1089: Ruth little-brain parse of bound meteorite email HTML.
 # AST-1212: live task_key is meteorite_email (formerly parse_meteorite_email).
-# Callers (AST-1090 gaze_email runner) pass live_content shaped per parse_modes and
+# Callers (AST-1090 meteorite_email runner) pass live_content shaped per parse_modes and
 # must supply ctx with the bound candidate’s candidate_api_key (requires_candidate_key).
 METEORITE_EMAIL_PARSE_CONFIG = {
     "task_key": "meteorite_email",
@@ -2644,6 +2639,7 @@ assert METEORITE_EMAIL_PARSE_CONFIG["task_key"] in TASK_CONFIG
 assert set(METEORITE_EMAIL_PARSE_CONFIG["parse_modes"]) == {"html_links", "subject_body"}
 assert METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"] == "candidate"
 assert METEORITE_EMAIL_PARSE_CONFIG["legacy_agent_task_key"]
+assert METEORITE_EMAIL_MAILBOX_CONFIG["task_key"] == METEORITE_EMAIL_PARSE_CONFIG["task_key"]
 
 
 def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
@@ -2800,18 +2796,6 @@ SEED_CONFIG = {
         "  WHERE d.candidate_id = c.candidate_id "
         "    AND d.task_key = 'meteorite_upshot' "
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
-        ")",
-    ),
-    "dispatch_task-gaze-email": (
-        "INSERT INTO dispatch_task ("
-        "candidate_id, task_key, entity_type, trigger_state, sort_by, "
-        "batch_call_mode, freq_hrs, min_count, batch_size, auto_mode, score_floor"
-        ") SELECT NULL, 'gaze_email', NULL, NULL, NULL, "
-        "0, 0.1, 1, 1, 0, NULL "
-        "WHERE NOT EXISTS ("
-        "  SELECT 1 FROM dispatch_task "
-        "  WHERE task_key = 'gaze_email' "
-        "    AND (candidate_id IS NULL OR TRIM(candidate_id) = '')"
         ")",
     ),
 }
@@ -3234,17 +3218,18 @@ def dispatch_task_admin_defaults(
     if retired:
         raise KeyError(retired)
     # Meteorite mailbox fold (canonical + legacy agent_task key) — before TASK_CONFIG gate.
+    # Canonical meteorite_email: poller seed (MAILBOX_CONFIG entity_type None).
+    # Legacy parse_meteorite_email: AST-1214 admin form meta keeps admin_entity_type candidate.
     if is_meteorite_email_mailbox_task_key(tk):
+        if tk == METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]:
+            return {
+                "entity_type": METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
+                "trigger_state": METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
+                "sort_by": None,
+                "batch_call_mode": 0,
+            }
         return {
             "entity_type": METEORITE_EMAIL_PARSE_CONFIG["admin_entity_type"],
-            "trigger_state": None,
-            "sort_by": None,
-            "batch_call_mode": 0,
-        }
-    # Mailbox poller — no ENTITY_TYPES claim queue (do not use entity/trigger/sort helpers).
-    if tk == GAZE_EMAIL_CONFIG["task_key"]:
-        return {
-            "entity_type": None,
             "trigger_state": None,
             "sort_by": None,
             "batch_call_mode": 0,
