@@ -1065,3 +1065,68 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1454 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
+
+When GET `fields_editable` is true: Info title/link inputs, state `<select>` from `legal_next_states` (+ No change), always-on Job Description textarea (empty JD ok), Modal Save → `PUT /api/jobs/<id>` + `onRefresh`. Non-editable stays display-only (no Save / no empty JD tab). Copy / Skip This Job unchanged. Persist: **AST-1453** / **`docs/test-bible/ui/api/api_jobs.md`**. Page `onRefresh={load}`: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Editors + Save + empty JD + locked | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`JobDetailModal — AST-1454 skipped-field editors`** |
+
+**Broken / obsolete:** none — additive; AST-1421 Copy + Skip suites still hold.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Job Detail editors / Save / locked / 409: `tests/component/frontend/components/test_JobDetailModal.test.tsx` — pattern **`AST-1454`**
+2. Routed Skipped + In Review `onRefresh` after Save (**§6c**): `test_JobsSkipped.test.tsx` + `test_JobsInReview.test.tsx` — **`AST-1454`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  --testNamePattern="AST-1454|loads job details|AST-1421"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1476 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462/create-and-position-page-break). **Publish:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`.
+
+Catalog-driven page-break `<select>` on structure authoring headers (`aria-label="Page break"`); content Save and **Save sections** always include `page_break_policy`. Base page Save sections: **`docs/test-bible/frontend/pages.md`** § AST-1476. Schema/print: **AST-1474** / **AST-1475**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dropdown + content Save + Save sections | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1476:`**; revised **AST-1382** fixture (catalog/rows carry policy) |
+| JAR Job Resume Save sections → candidate | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1476:`** |
+
+**Broken / obsolete this pass:** AST-1382 structure fixture lacked `page_break_*` catalog/row fields — extended so content Save still bundles structure (now with policy).
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. ArtifactEditor dropdown + Saves: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1476"`
+2. JAR structure Save: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1476"`
+3. Base Resume Content (**§6c**): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1476|AST-1306"`
+4. Regression: AST-1382 structure Save still bundles format: same ArtifactEditor file — `--testNamePattern="AST-1382"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1382|AST-1306"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+

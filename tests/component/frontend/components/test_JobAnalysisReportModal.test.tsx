@@ -729,6 +729,86 @@ describe("JobAnalysisReportModal — AST-951 Artifacts tab layouts", () => {
     expect(await screen.findByDisplayValue("Draft text")).toBeInTheDocument()
   })
 
+  it("AST-1476: Job Resume structure authoring page-break Save sections → candidate", async () => {
+    const cid = baseCandidate.astral_candidate_id
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const allSections = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    const putBodies: unknown[] = []
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url === "/api/jobs/j-1476" && !init) {
+        return jsonResponse({
+          astral_job_id: "j-1476",
+          job_title: "Role",
+          company: "Co",
+          state: "CANDIDATE_REVIEW",
+          state_changed_at: null,
+          job_link: "https://jobs.example/apply",
+          job_data: {
+            job_description: "JD",
+            analysis_upshot: fullUpshot(),
+            artifacts: {
+              job_resume: { professional_summary: "Draft text" },
+            },
+          },
+        })
+      }
+      if (url === `/api/candidates/${cid}/resume_structure` && !init) {
+        return jsonResponse({
+          sections: [{ id: "professional_summary", label: "Summary" }],
+          all_sections: allSections,
+          catalog,
+          accent_color: null,
+        })
+      }
+      if (url === `/api/candidates/${cid}/data` && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return jsonResponse({})
+      }
+      return undefined
+    })
+    renderWithProviders(<JobAnalysisReportModal jobId="j-1476" onClose={() => {}} />)
+    await waitForShell()
+    await userEvent.click(within(topTabBar()).getByRole("button", { name: "Artifacts" }))
+    const sectionList = document.querySelector(".recommended-report-section-list") as HTMLElement
+    await userEvent.click(within(sectionList).getAllByRole("button", { name: "Expand section" })[0])
+    await waitFor(() => expect(screen.getByRole("combobox", { name: "Page break" })).toBeInTheDocument())
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Page break" }), "page_break_before")
+    await userEvent.click(screen.getByRole("button", { name: "Save sections" }))
+    await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
+    const body = putBodies.at(-1) as {
+      artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } }
+    }
+    expect(body.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy).toBe(
+      "page_break_before",
+    )
+  })
+
   it("does not show Reset or Regenerate on Artifacts tab", async () => {
     installBaseApiMocks(mockedApi, jobHandler("j948"))
     renderWithProviders(<JobAnalysisReportModal jobId="j948" onClose={() => {}} />)

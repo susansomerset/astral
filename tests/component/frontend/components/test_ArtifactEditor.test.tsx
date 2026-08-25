@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react"
 import userEvent from "@testing-library/user-event"
 import { beforeEach, describe, expect, it, vi } from "vitest"
+import React from "react"
 import api from "../../../../src/ui/frontend/src/lib/api"
 import ArtifactEditor from "../../../../src/ui/frontend/src/components/ArtifactEditor"
 import { STATE_UI_MANIFEST_FIXTURE } from "../fixtures/stateUiManifestFixture"
@@ -1097,7 +1098,7 @@ describe("ArtifactEditor", () => {
   })
 
   it("AST-1382 [bug-repro]: content Save bundles resume_structure format (prior free_prose)", async () => {
-    const putBodies: { artifacts?: { base_resume?: unknown; resume_structure?: { sections?: Record<string, { format?: string }> } } }[] = []
+    const putBodies: { artifacts?: { base_resume?: unknown; resume_structure?: { sections?: Record<string, { format?: string; page_break_policy?: string }> } } }[] = []
     const catalog = {
       body_formats: ["free_prose", "word_cloud", "bullet_list"],
       required_ids: ["prior_experience"],
@@ -1105,6 +1106,13 @@ describe("ArtifactEditor", () => {
       extra_id_pattern: "^extra_",
       reserved_extra_ids: [] as string[],
       new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
     }
     const structureRows = [
       {
@@ -1116,6 +1124,7 @@ describe("ArtifactEditor", () => {
         job_agent_editable: true,
         required: true,
         format_locked: false,
+        page_break_policy: "avoid_split",
       },
     ]
     mockApis("ACTIVE_SEARCH")
@@ -1160,7 +1169,97 @@ describe("ArtifactEditor", () => {
     await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
     const arts = putBodies.at(-1)?.artifacts
     expect(arts?.resume_structure?.sections?.prior_experience?.format).toBe("free_prose")
+    expect(arts?.resume_structure?.sections?.prior_experience?.page_break_policy).toBe("avoid_split")
     expect(arts?.base_resume).toEqual({ prior_experience: "Earlier ops and delivery." })
+  })
+
+  it("AST-1476: page-break dropdown + content Save and Save sections persist policy", async () => {
+    const putBodies: { artifacts?: { resume_structure?: { sections?: Record<string, { page_break_policy?: string }> } } }[] = []
+    const structureSaves: { id: string; page_break_policy: string }[][] = []
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const initialRows = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { professional_summary: "Summary body" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    function Harness() {
+      const [rows, setRows] = React.useState(initialRows)
+      return (
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[{ id: "professional_summary", label: "Summary" }]}
+          structureCatalog={catalog}
+          structureRows={rows}
+          onStructureRowsChange={setRows}
+          onStructureSave={next => {
+            structureSaves.push(next.map(r => ({ id: r.id, page_break_policy: r.page_break_policy })))
+          }}
+        />
+      )
+    }
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByDisplayValue("Summary body")).toBeInTheDocument())
+    const pageBreak = screen.getByRole("combobox", { name: "Page break" })
+    expect(Array.from(pageBreak.querySelectorAll("option")).map(o => o.textContent)).toEqual([
+      "Flow uninterrupted",
+      "New page before",
+      "Keep block together",
+    ])
+    await userEvent.selectOptions(pageBreak, "page_break_before")
+    await userEvent.click(screen.getByRole("button", { name: "Save sections" }))
+    expect(structureSaves.at(-1)?.[0]?.page_break_policy).toBe("page_break_before")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(
+      putBodies.at(-1)?.artifacts?.resume_structure?.sections?.professional_summary?.page_break_policy,
+    ).toBe("page_break_before")
   })
 
   it("AST-1410: no-snapshot Cancel re-GETs last-saved tabs without location.reload", async () => {
