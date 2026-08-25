@@ -316,7 +316,7 @@ context_tokens≈55000
 
 ### fix-now — test-tree (Betty)
 
-- Rubric body type → PUT regression case still needed (engineer test-tree ban). `[qa-handoff]` filed for Betty to add/extend `test_ArtifactEditor.test.tsx` + bible manifest line; stay **Review Posted** until she lands it and Ada re-runs green.
+- Rubric body type → PUT regression: Betty landed `AST-1480: rubric free-form body edit PUTs edited content` + bible line; `merge-tests` @ `c109a45d`. Ada re-ran full AST-1480 manifest — **6 green** (4× AST-1480 + AST-553 job persistence + AST-1410 Cancel).
 
 ### discuss / advisory
 
