@@ -301,3 +301,7 @@ context_tokens≈34000
 
 ```
 [code-rubric] REVIEW (Commit: 43da07a8) test merge nesting fix
+
+## Resolution
+
+**2026-08-25** — Radia Overall **FIX-NOW** is test-tree nesting / AST-1477 restore in `test_JobsRecommended.test.tsx`. Engineer cannot edit `tests/`; posted `[qa-handoff]` @Betty White; status stays **Review Posted**; assignee Betty. Discuss/advisory items need no product change on this tip.
