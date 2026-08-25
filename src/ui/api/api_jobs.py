@@ -25,6 +25,7 @@ from src.core.tracker import (
     transition_job_state,
 )
 from src.utils.config import (
+    APPLIED_JOB_STATES,
     IN_REVIEW_STATES,
     PHASE_SCORE_BREAKDOWN_KEY_SUFFIX,
     RECOMMENDED_JOB_STATES,
@@ -112,6 +113,13 @@ def list_view():
         return jsonify(out)
     elif view == "recommended":
         rows = list_jobs(states=list(RECOMMENDED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")
+        return jsonify([_flatten_grades(r) for r in rows])
+    elif view == "applied":
+        rows = list_jobs(
+            states=list(APPLIED_JOB_STATES),
+            candidate_id=candidate_id,
+            order_by="state_changed_at",
+        )
         return jsonify([_flatten_grades(r) for r in rows])
     else:
         return jsonify([])
