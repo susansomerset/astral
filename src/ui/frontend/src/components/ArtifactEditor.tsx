@@ -294,8 +294,8 @@ export default function ArtifactEditor({
   const fixedFields = shapeFields && shapeFields.length > 0 ? shapeFields : null
   const rubricMode = !fixedFields
   const inReview = snapshot !== null
-  // Structure/shapes/job fixed tabs: bodies stay editable even when tab chrome is locked.
-  const bodiesEditable = !!(fixedFields || jobPersistence) && !inReview
+  // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
+  const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
   // Stable key signature so label-only structure header edits do not re-GET / wipe tabs.
   const fixedFieldKeys = fixedFields ? fixedFields.map(f => f.key).join("\0") : ""
 

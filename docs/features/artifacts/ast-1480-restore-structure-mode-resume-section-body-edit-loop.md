@@ -300,3 +300,25 @@ vs issue doc **Review** stub @ `b16a93d3` (engineer `code()` only):
 - Trust spawn prompt: Tests Passed @ Ada assignee.
 
 context_tokens≈55000
+
+---
+
+## Resolution
+
+**Date:** 2026-08-25  
+**vs Radia review** @ `f899a95d` (`FIX-NOW bodiesEditable`)
+
+### fix-now — addressed (product)
+
+- **`bodiesEditable`** in `ArtifactEditor.tsx` now:  
+  `!inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)`  
+  Restores rubric/free-form body editing while keeping structure-mode chrome locked and bodies on when `fixedFields` / `jobPersistence` are set.
+
+### fix-now — test-tree (Betty)
+
+- Rubric body type → PUT regression case still needed (engineer test-tree ban). `[qa-handoff]` filed for Betty to add/extend `test_ArtifactEditor.test.tsx` + bible manifest line; stay **Review Posted** until she lands it and Ada re-runs green.
+
+### discuss / advisory
+
+- Proposed-pattern citations — no change (Joan already non-blocking).  
+- `eslint-disable` on load deps — kept with existing comment.
