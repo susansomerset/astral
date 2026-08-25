@@ -243,3 +243,165 @@ context_tokens≈103000
 - **Publish ref:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`
 - **Stages:** 1–2 (editable Info + Save PUT + list `onRefresh`; JD tab always when editable)
 
+
+## Radia review
+
+# Radia review — AST-1454
+
+**Publish ref:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors` @ `f396d05c0eb443fa414300e7d61545e3dc163c69`  
+**Baseline:** `origin/dev` · **Status:** Tests Passed (trusted) · **Product:** `43129c21` (+ Betty `9081bc47`)  
+**Prerequisite AST-1453:** `_attach_skipped_edit_meta` + `persist_skipped_edits` present on worktree tip ✓
+
+---
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1454  
+**Publish ref:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors` @ `f396d05c0eb443fa414300e7d61545e3dc163c69`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+64 active rows (`canon/statutes/README.md` § Harvested corpus). Scored against AST-1454 product + Betty test delta.
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatch edits |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | — |
+| astral.batch.claim-process-release | scoped | not-applicable | — |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | — |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config edits |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | — |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | — |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | — |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | — |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | — |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty: tests + bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer excluded tests/ |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | frontend-only delta |
+| astral.layers.import-direction | scoped | conforms | React uses `api()` only; no data/external imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | — |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | editability + successors from GET only; no TS skipped-state list |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | — |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | frontend client; auth via existing `api()` |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | — |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | — |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | — |
+| astral.seed.define-approved | scoped | not-applicable | — |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | — |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | — |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | — |
+| astral.standards.database-header-inventory | scoped | not-applicable | — |
+| astral.standards.debug-contract-gated | scoped | not-applicable | — |
+| astral.standards.dry-and-focused-functions | scoped | conforms | draft helpers in-modal; no new files |
+| astral.standards.in-scope-only | scoped | conforms | JobDetailModal + JobsSkipped + JobsInReview only |
+| astral.standards.logging-via-utils | scoped | not-applicable | — |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain field names |
+| astral.standards.no-cross-contamination | scoped | conforms | no tracker/api/config/copy/skip body edits |
+| astral.standards.no-hardcoded-sets | scoped | conforms | state options from `legal_next_states` only |
+| astral.standards.public-then-helpers | scoped | not-applicable | React module |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | — |
+| astral.state.core-decides-transitions | scoped | conforms | no client prior-state logic; PUT delegates to #1 |
+| astral.state.job-prior-states-enforced | scoped | conforms | select lists API successors only |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | — |
+| astral.ui.frontend-file-placement | scoped | conforms | `components/` + `pages/` only |
+| astral.ui.naming-conventions | scoped | conforms | `dep-input`, `entity-error`, `btn secondary` |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | — |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests at tip |
+| orch.git.commit-vocabulary | universal | conforms | — |
+| orch.git.flow-direction-inviolable | universal | conforms | — |
+| orch.git.ftr-sub-topology | universal | conforms | sub branch OK |
+| orch.git.merge-on-checkout | universal | conforms | sync(dev)/ftr on publish ref |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | — |
+| orch.git.no-dev-agent-branches | universal | conforms | — |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | — |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | plan decisions documented |
+| orch.pipeline.plan-is-bible | universal | conforms | stages 1–2 match plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | — |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | — |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | — |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine assignee |
+| orch.roles.pre-commit-path-bans | universal | conforms | — |
+
+**C4 straggler:** Joan APPROVED @ `3896ae6f`; no Excluded statute table attached.
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.shared-button-roles | conforms | Save via Modal `btn primary`; Copy/Skip remain `btn secondary` |
+| pattern.ui.admin-endpoint | conforms | thin client over AST-1453 PUT; eligibility from GET meta |
+
+## Plan adherence
+
+**Stage 1:** `fields_editable` gate; draft/baseline/dirty; `handleSave` PUT with conditional `state`; 409 reload+error path; `onRefresh={load}` on Skipped/InReview; Modal `dirty`/`onSave`; Copy/Skip handlers/markup unchanged.
+
+**Stage 2:** `showJdTab = fieldsEditable || hasJD`; editable JD textarea; `storyOffset = showJdTab ? 2 : 1`; read-only JD path unchanged.
+
+Estimate **3** fits (~179 LOC product). `JobsRecommended.tsx`, `api_jobs.py`, `tracker.py` untouched. AST-1453 prerequisite satisfied on tip.
+
+**Minor layout note:** state `<select>` lives in a separate **Change to** row rather than under the State value column as plan prose suggested — functionally equivalent; see advisory.
+
+## Frame diff
+
+| Plan frame | Tip |
+|------------|-----|
+| JobDetailModal.tsx | ✓ |
+| JobsSkipped.tsx `onRefresh` | ✓ |
+| JobsInReview.tsx `onRefresh` | ✓ |
+| No backend / Recommended / Modal.tsx | ✓ |
+| Betty tests + bible | expected (`9081bc47`) |
+
+(none)
+
+## Findings
+
+No **fix-now** or **discuss**.
+
+### advisory
+
+- **Location:** `InfoTab` state control layout  
+- **Finding:** Plan step 8 placed the `<select>` under the State row; implementation uses a separate row labeled **Change to**.  
+- **Recommendation:** Accept unless Susan wants exact plan layout; no behavior change needed.
+
+- **Location:** Modal Save during `saving`  
+- **Finding:** Save button not visually disabled while PUT in flight (plan allowed this; `handleSave` guards double-submit).  
+- **Recommendation:** Optional UX polish in AST-1454 resolve or defer; not blocking.
+
+- **Location:** component tests  
+- **Finding:** No test for inline 400 errors (empty title/link from API).  
+- **Recommendation:** Optional Betty lock; handler displays `body.error`.
+
+### acceptable (Joan — unchanged)
+
+- AST-1453 prerequisite stop gate — satisfied on tip.  
+- 409 transition reload path — matches #1 field-before-hop contract.  
+- Editable link replaces click-through — edit-mode tradeoff.
+
+## What's solid
+
+- Server-driven editability; no hardcoded skipped states.  
+- State select sorted + **No change** omits `state` from PUT.  
+- Empty JD tab + textarea when editable.  
+- Betty covers editable/non-editable, PUT+onRefresh, 409 error path, page-level list refresh.
+
+## Notes
+
+- `blockedBy AST-1453 (User Testing)` — prerequisite API present on publish ref; no review blocker.  
+- C7 complete. Chuckles: append, commit docs, post slim upshot, → Review Posted.
+
+context_tokens≈28000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: f396d05c) skipped-field editors clean
+```
