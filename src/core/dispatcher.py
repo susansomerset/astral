@@ -34,7 +34,7 @@ from src.utils.config import (
     INFLOW_CONFIG,
     TASK_CONFIG,
     METEORITE_DISPATCH_TASKS,
-    GAZE_EMAIL_CONFIG,
+    METEORITE_EMAIL_MAILBOX_CONFIG,
     dispatch_claim_uses_score_floor,
     effective_dispatch_score_floor,
     dispatch_claim_states,
@@ -55,9 +55,8 @@ logger = get_logger(__name__)
 
 
 def _is_inbox_mailbox_task_key(task_key: str) -> bool:
-    """gaze_email + meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282."""
-    tk = (task_key or "").strip()
-    return tk == GAZE_EMAIL_CONFIG["task_key"] or is_meteorite_email_mailbox_task_key(tk)
+    """meteorite mailbox fold (parse_meteorite_email / meteorite_email) — AST-1282 / AST-1466."""
+    return is_meteorite_email_mailbox_task_key(task_key)
 
 def _dispatch_entity_identifier(entity_type: str, row: Dict[str, Any]) -> str:
     """Primary debug identifier for a claimed entity row (§1.5.1 style D)."""
@@ -318,12 +317,12 @@ def retire_candidate_requested_wrapper_dispatch_tasks() -> Dict[str, Any]:
     }
 
 
-def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
-    """Idempotent insert of candidate-bound gaze_email dispatch_task (AST-1134)."""
+def ensure_meteorite_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
+    """Idempotent insert of candidate-bound meteorite_email dispatch_task (AST-1134 / AST-1466)."""
     cid = str(candidate_id or "").strip()
     if not cid:
         raise ValueError("candidate_id is required")
-    tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
+    tk = str(METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]).strip()
     if tk not in TASK_CONFIG:
         return {
             "candidate_id": cid,
@@ -350,12 +349,12 @@ def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
     new_id = database.save_dispatch_task(
         candidate_id=cid,
         task_key=tk,
-        min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
-        auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
-        entity_type=GAZE_EMAIL_CONFIG["entity_type"],
-        trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
-        batch_size=GAZE_EMAIL_CONFIG["batch_size"],
-        freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
+        min_count=int(METEORITE_EMAIL_MAILBOX_CONFIG["min_count"]),
+        auto_mode=bool(METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"]),
+        entity_type=METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
+        trigger_state=METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
+        batch_size=METEORITE_EMAIL_MAILBOX_CONFIG["batch_size"],
+        freq_hrs=float(METEORITE_EMAIL_MAILBOX_CONFIG["freq_hrs"] or 0),
     )
     return {
         "candidate_id": cid,
@@ -367,12 +366,18 @@ def ensure_gaze_email_dispatch_task(candidate_id: str) -> Dict[str, Any]:
     }
 
 
-def provision_gaze_email_dispatch_tasks() -> Dict[str, Any]:
-    """Retire null gaze_email shell; ensure gaze_email for every candidate (AST-1134)."""
-    tk = str(GAZE_EMAIL_CONFIG["task_key"]).strip()
+def provision_meteorite_email_dispatch_tasks() -> Dict[str, Any]:
+    """Drop leftover gaze_email rows; ensure meteorite_email for every candidate (AST-1134 / AST-1466)."""
+    tk = str(METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]).strip()
     retired_null = 0
     for row in database.list_dispatch_tasks():
-        if (row.get("task_key") or "").strip() != tk:
+        row_tk = (row.get("task_key") or "").strip()
+        # Migration window: purge retired gaze_email identity if still present.
+        if row_tk == "gaze_email":
+            database.delete_dispatch_task(int(row["id"]))
+            retired_null += 1
+            continue
+        if row_tk != tk:
             continue
         cid = row.get("candidate_id")
         if cid is None or str(cid).strip() == "":
@@ -383,7 +388,7 @@ def provision_gaze_email_dispatch_tasks() -> Dict[str, Any]:
         cid = str((cand or {}).get("astral_candidate_id") or "").strip()
         if not cid:
             continue
-        stats = ensure_gaze_email_dispatch_task(cid)
+        stats = ensure_meteorite_email_dispatch_task(cid)
         added += int(stats.get("added") or 0)
         skipped += int(stats.get("skipped") or 0)
         skipped_missing_config += int(stats.get("skipped_missing_config") or 0)
@@ -764,8 +769,8 @@ async def _dispatch_one(task: Dict) -> None:
 
     # AST-1134 / AST-1282: candidate-bound inbox mailbox — ledger uses row candidate_id.
     if _is_inbox_mailbox_task_key(task_key):
-        # late: keep gaze_email off module-top load (peer late imports in this file)
-        from src.core.gaze_email import run_gaze_email
+        # late: keep meteorite_email off module-top load (peer late imports in this file)
+        from src.core.meteorite_email import run_meteorite_email
 
         entity_batch_id = f"{task_key}-{uuid.uuid4()}"
         ledger_cid = str(candidate_id or "").strip()
@@ -785,7 +790,7 @@ async def _dispatch_one(task: Dict) -> None:
                 outcome="task start",
             )
             logger.debug_detail(
-                f"mailbox runner (gaze_email path) entity_batch_id={entity_batch_id} "
+                f"mailbox runner (meteorite_email path) entity_batch_id={entity_batch_id} "
                 f"candidate_id={ledger_cid} "
                 f"mode={'AUTO' if not is_click else 'CLICK'}"
             )
@@ -806,18 +811,18 @@ async def _dispatch_one(task: Dict) -> None:
         accumulated = dict(_SUMMARY_ZERO)
         final_status = "COMPLETED"
         try:
-            summary = await run_gaze_email(task, debug=debug)
+            summary = await run_meteorite_email(task, debug=debug)
             for k in ("total_processed", "total_passed", "total_failed", "total_errors"):
                 accumulated[k] = int(summary.get(k, 0) or 0)
         except asyncio.CancelledError:
             final_status = "INTERRUPTED"
             failure_reason = "dispatch cancelled by admin"
-            _sched_log.warning("[%s/%s] KILLED by admin — gaze_email", task_key, entity_batch_id)
+            _sched_log.warning("[%s/%s] KILLED by admin — meteorite_email", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         except Exception:
             final_status = "FAILED"
-            failure_reason = "gaze_email runner crashed"
-            _sched_log.exception("[%s/%s] gaze_email crashed", task_key, entity_batch_id)
+            failure_reason = "meteorite_email runner crashed"
+            _sched_log.exception("[%s/%s] meteorite_email crashed", task_key, entity_batch_id)
             accumulated["total_errors"] = accumulated.get("total_errors", 0) + 1
         finally:
             if dispatch_ledger_id:
@@ -1265,7 +1270,7 @@ def _debug_log_auto_off_stage_skips() -> None:
         )
 
 
-def _gaze_email_due_tasks() -> List[Dict[str, Any]]:
+def _meteorite_email_due_tasks() -> List[Dict[str, Any]]:
     """AUTO candidate-bound inbox mailbox rows with live Avail ≥ min_count and freq allowing."""
     # late: keep inbox/Gmail off module-top load (peer late imports in this file)
     from src.core.inbox import count_inbox_bound_by_candidate
@@ -1311,10 +1316,10 @@ def _tick_loop() -> None:
                 database.run_due_scheduled_queries()
             except Exception:
                 _sched_log.exception("Scheduled query tick error")
-            # Claim-queue AUTO rows from data; gaze_email AUTO merged via live bind Avail (AST-1135).
-            due = list(database.get_due_tasks()) + _gaze_email_due_tasks()
+            # Claim-queue AUTO rows from data; meteorite_email AUTO merged via live bind Avail (AST-1135).
+            due = list(database.get_due_tasks()) + _meteorite_email_due_tasks()
             # Note: for claim-queue tasks, freq_hrs is an entity-level filter during batch claim.
-            # gaze_email has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
+            # meteorite_email has no claim queue — AUTO cadence uses dispatch_task_freq_allows on the row.
             _debug_log_auto_off_stage_skips()
             with _registry_lock:
                 running_auto = sum(1 for e in _task_registry.values() if e["is_auto"])
@@ -1370,9 +1375,9 @@ def start_scheduler() -> None:
     except Exception:
         _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
     try:
-        gstats = provision_gaze_email_dispatch_tasks()
+        gstats = provision_meteorite_email_dispatch_tasks()
         _sched_log.info(
-            "AST-1134 gaze_email dispatch provision task_key=%s retired_null=%s "
+            "AST-1134 meteorite_email dispatch provision task_key=%s retired_null=%s "
             "candidates_touched=%s added=%s skipped=%s skipped_missing_config=%s",
             gstats.get("task_key"),
             gstats.get("retired_null"),
@@ -1382,7 +1387,7 @@ def start_scheduler() -> None:
             gstats.get("skipped_missing_config"),
         )
     except Exception:
-        _sched_log.exception("AST-1134 gaze_email dispatch provision failed")
+        _sched_log.exception("AST-1134 meteorite_email dispatch provision failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",
