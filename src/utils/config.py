@@ -5560,6 +5560,22 @@ RESUME_STRUCTURE_BODY_FORMATS = (
     "indented_bold_single",
     "experience_detail",
 )
+# AST-1474: operator page-break policies on structure sections (print CSS is AST-1475).
+RESUME_STRUCTURE_PAGE_BREAK_POLICIES = (
+    "normal",
+    "page_break_before",
+    "avoid_split",
+)
+RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT = "avoid_split"
+RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS = {
+    "normal": "Flow uninterrupted",
+    "page_break_before": "New page before",
+    "avoid_split": "Keep block together",
+}
+RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID = {
+    sid: RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+    for sid in RESUME_STRUCTURE_KNOWN_SECTION_IDS
+}
 RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID = {
     "professional_summary": "free_prose",
     "core_competencies": "word_cloud",
@@ -5586,6 +5602,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 0,
             "job_agent_editable": False,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "candidate_title": {
             "id": "candidate_title",
@@ -5593,6 +5610,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 1,
             "job_agent_editable": False,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "candidate_tagline": {
             "id": "candidate_tagline",
@@ -5600,6 +5618,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 2,
             "job_agent_editable": False,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "candidate_contact_detail": {
             "id": "candidate_contact_detail",
@@ -5607,6 +5626,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "enabled": True,
             "order": 3,
             "job_agent_editable": False,
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "professional_summary": {
             "id": "professional_summary",
@@ -5615,6 +5635,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 4,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["professional_summary"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "core_competencies": {
             "id": "core_competencies",
@@ -5623,6 +5644,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 5,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["core_competencies"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "highlights": {
             "id": "highlights",
@@ -5631,6 +5653,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 6,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["highlights"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "experience": {
             "id": "experience",
@@ -5639,6 +5662,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 7,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["experience"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "prior_experience": {
             "id": "prior_experience",
@@ -5647,6 +5671,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 8,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["prior_experience"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "education_certifications": {
             "id": "education_certifications",
@@ -5655,6 +5680,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 9,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["education_certifications"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
         "technical_skills": {
             "id": "technical_skills",
@@ -5663,6 +5689,7 @@ RESUME_STRUCTURE_DEFAULT = {
             "order": 10,
             "job_agent_editable": True,
             "format": RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID["technical_skills"],
+            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         },
     },
 }
