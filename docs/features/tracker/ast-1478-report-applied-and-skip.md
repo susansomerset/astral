@@ -305,3 +305,8 @@ context_tokens≈34000
 ## Resolution
 
 **2026-08-25** — Radia Overall **FIX-NOW** is test-tree nesting / AST-1477 restore in `test_JobsRecommended.test.tsx`. Engineer cannot edit `tests/`; posted `[qa-handoff]` @Betty White; status stays **Review Posted**; assignee Betty. Discuss/advisory items need no product change on this tip.
+
+
+**2026-08-25 (resume)** — Betty cleared `[qa-handoff]` @ `c6617b48`: `describe("JobsRecommended")` now closes after AST-1057; `AST-1477 mark applied from Recommended` restored under the suite. Re-ran Betty AST-1478 Vitest manifest — **8 passed**. Discuss/advisory (Joan straggler, optional AC5 409 test, AST-1477 product on sibling sub) need no product change on this tip. Proceeding to User Testing after §9a dry-run.
+
+**2026-08-25 (resume)** — Betty cleared `[qa-handoff]` @ `c6617b48`: `describe("JobsRecommended")` now closes after AST-1057 + restored `AST-1477 mark applied from Recommended`. Re-ran Betty AST-1478 Vitest manifest — green (8 passed). AST-1477 cases still fail on this tip until sibling product lands (Radia: restore block or land separately — block restored; product is AST-1477). Discuss/advisory: no product change. Advancing to User Testing after §9a.
