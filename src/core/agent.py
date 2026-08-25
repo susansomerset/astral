@@ -5,6 +5,11 @@ Core agent orchestration module.
 Single entry point for all AI agent interactions. Owns do_task, prompt assembly,
 agent_data storage, and cost calculation. Keeps anthropic.py as a pure API client.
 
+Land packet enrichment (AST-1470): consult.enrich_meteorite_land_packet calls
+do_task(task_key="qualify_meteorite", index="qualify_meteorite_batch_{batch_id}")
+with log_batch_id set to qualify_meteorite-land-{uuid} before a job row exists;
+agent_data for that index is audit-only (no latest-ref consumers until Tracker save).
+
 Layer: core → data, external, utils  (never ← ui)
 """
 
@@ -2065,6 +2070,8 @@ async def do_task(
         task_key: Task name (e.g. "prefilter", "evaluate_jd")
         live_content: Dynamic content for the prompt (the TASK block)
         index: Entity identifier for context and audit (e.g. astral_job_id). Falls back to task_key.
+            Land enrich (AST-1470) may pass ``qualify_meteorite_batch_{batch_id}`` with
+            ``log_batch_id`` set — audit-only entity_id, not a job row UUID.
         candidate_data: Token-resolution dict (optional; ctx supersedes).
         ctx: Full candidate raft dict. Extracts candidate_data + candidate_api_key.
         debug: Emit verbose log lines.
