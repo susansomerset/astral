@@ -245,3 +245,17 @@ Estimate 2 fits. Betty tests cover icon visibility, success path, and 409 toast.
 Joan APPROVED @ `06a60cc2`. Product anchor: `d47122f2` + `080604f2` → tip `44fa5b67`. Spawn **Tests Passed** — trusted.
 
 context_tokens≈48000
+
+## Resolution
+
+**Date:** 2026-08-25
+**Vs Radia review** (`docs(AST-1477): Radia review — FIX-NOW describe nesting`):
+
+| Finding | Disposition |
+|---------|-------------|
+| FIX-NOW — `test_JobsRecommended.test.tsx` describe nesting (AST-1057 / AST-1477 outside suite) | Cleared by Betty `test(AST-1477): nest AST-1057 + Applied mark inside JobsRecommended suite` → `merge-tests` @ `0fc2059d` (engineer `[qa-handoff]`; no product change) |
+| discuss — `no-hardcoded-sets` / `PRE_APPLIED_MARK` | No product change (conforms / Joan-acceptable) |
+| discuss — `pages.md` AST-1477 §6c mirror | Optional Betty bible; not blocking UT |
+| advisory — sibling sync noise | No action on this child |
+
+Manifest re-run after Betty nesting: green (`AST-1477|AST-1302|AST-1410`).
