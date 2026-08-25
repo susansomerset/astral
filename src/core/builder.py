@@ -30,8 +30,6 @@ from src.utils.config import (
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
     RESUME_STRUCTURE_DEFAULT_FORMAT_BY_ID,
     RESUME_STRUCTURE_EMPHASIS_TAG_NAMES,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
     get_cover_letter_render_token,
 )
 from src.utils.formatting import split_to_list
@@ -1146,28 +1144,6 @@ def _emit_bullet_list_html(text: str) -> str:
     return "      <ul>\n" + "\n".join(items) + "\n      </ul>"
 
 
-def _print_section_page_break_css(resume_structure: Optional[dict]) -> str:
-    """Map structure ``page_break_policy`` → print CSS (pattern.artifacts.resume-section-print-policy)."""
-    if not isinstance(resume_structure, dict):
-        return ""
-    sections = resume_structure.get("sections") or {}
-    lines: List[str] = []
-    for sid in _structure_ordered_body_ids(resume_structure):
-        spec = sections.get(sid) if isinstance(sections, dict) else None
-        if not isinstance(spec, dict):
-            spec = {}
-        policy = spec.get("page_break_policy")
-        if not isinstance(policy, str) or policy not in RESUME_STRUCTURE_PAGE_BREAK_POLICIES:
-            policy = RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
-        dom = _html_section_dom_id(sid)
-        if policy == "page_break_before":
-            lines.append(f"  #{dom} {{ page-break-before: always; }}\n")
-        elif policy == "avoid_split":
-            lines.append(f"  #{dom} {{ page-break-inside: avoid; }}\n")
-        # normal → no section page-break rule
-    return "".join(lines)
-
-
 def _emit_html_document(
     render: dict,
     style: dict,
@@ -1197,7 +1173,7 @@ def _emit_html_document(
     text_tertiary = colors.get("text_tertiary", "#666")
     border_light = colors.get("border_light", "#e0e0e0")
     border_medium = colors.get("border_medium", "#ccc")
-    # emit_prior_experience still drives body-section inclusion; print page-breaks come from structure policy.
+    # emit_prior_experience still drives body-section inclusion via callers; print CSS always has the golden prior-experience break.
 
     name_raw = str(render.get("candidate_name") or "").strip()
     title_raw = str(render.get("candidate_title") or "").strip()
@@ -1462,7 +1438,8 @@ section li:last-child, .role li:last-child {{ margin-bottom: 0; }}
   body {{ background: #fff; padding: 0; }}
   h2 {{ page-break-after: avoid; }}
   #competencies {{ page-break-after: avoid; }}
-{_print_section_page_break_css(resume_structure)}  .role {{ page-break-inside: avoid; }}
+  #prior-experience {{ page-break-before: always; }}
+  .role {{ page-break-inside: avoid; }}
   p, li {{ orphans: 3; widows: 3; }}
 }}
 """

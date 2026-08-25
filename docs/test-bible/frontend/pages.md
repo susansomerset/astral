@@ -2196,3 +2196,68 @@ npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1478 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip`.
+
+Recommended opens JAR with shared-hook **Skip** / **Applied**; report strip uses labeled `.btn` roles; successful Skip/Applied refreshes the list and closes the report when the job leaves rows; CLIENT **Apply** stays absent. Modal unit cases: **`docs/test-bible/frontend/components.md`** § AST-1478.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Recommended → report Skip/Applied (**§6c**) | `JobsRecommended.tsx` + JAR | **`test_JobsRecommended.test.tsx`** — **`AST-1478 report Applied and Skip`** (strip visible; Skip → `/skip` + close; Applied → notes → `candidate_action` applied + close; no **Apply**) |
+
+**Broken / obsolete:** none — additive report wiring; existing open-report / list Skip / AST-1410 / AST-1477 list Applied asserts still hold.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. JAR callbacks: `test_JobAnalysisReportModal.test.tsx` — **`AST-1478`**
+2. Recommended page (**§6c**): `test_JobsRecommended.test.tsx` — **`AST-1478`**
+
+**AST-1478** narrowed run (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1478|sticky header|opens the report|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+Applied list home: `view=applied` rows, empty copy, post-applied R/I/X/G via shared notes + `candidate_action`, error toast on illegal transition. Config/API: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/ui/api/api_jobs.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Applied page (**§6c**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`JobsApplied — AST-1479 applied list home`** (rows + Actions; empty; Interview → notes → `candidate_action`; 409 toast) |
+
+**Broken / obsolete:** prior stub assert `"No records found."` — product empty copy is `"No applied jobs yet"`.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Applied page (**§6c**): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1479`**
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ revised `test_list_recommended_and_default`)
+3. Config states + nav: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**AST-1479** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
