@@ -1302,4 +1302,237 @@ describe("ArtifactEditor", () => {
     expect(jobGets).toBe(2)
     vi.unstubAllGlobals()
   })
+
+  // AST-1480: structure-mode body hydrate + edit loop (chrome vs body split; label-churn; JAR overlay)
+  it("AST-1480: structure title rename keeps hydrated body and Save still works", async () => {
+    let candidateGets = 0
+    const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
+    const catalog = {
+      body_formats: ["free_prose", "bullet_list"],
+      required_ids: ["professional_summary"],
+      contact_ids: [] as string[],
+      extra_id_pattern: "^extra_",
+      reserved_extra_ids: [] as string[],
+      new_extra_default_format: "bullet_list",
+      page_break_policies: ["normal", "page_break_before", "avoid_split"],
+      page_break_policy_labels: {
+        normal: "Flow uninterrupted",
+        page_break_before: "New page before",
+        avoid_split: "Keep block together",
+      },
+      page_break_policy_default: "avoid_split",
+    }
+    const initialRows = [
+      {
+        id: "professional_summary",
+        title: "Summary",
+        enabled: true,
+        order: 0,
+        format: "free_prose",
+        job_agent_editable: true,
+        required: true,
+        format_locked: false,
+        page_break_policy: "avoid_split",
+      },
+    ]
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        candidateGets += 1
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { professional_summary: "Persisted summary" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    function Harness() {
+      const [rows, setRows] = React.useState(initialRows)
+      return (
+        <ArtifactEditor
+          title="Base Resume Content"
+          artifactKey="base_resume"
+          taskKey="craft_resume_base"
+          useCandidateResumeStructure
+          structureSections={[{ id: "professional_summary", label: "Summary" }]}
+          structureCatalog={catalog}
+          structureRows={rows}
+          onStructureRowsChange={setRows}
+          onStructureSave={() => {}}
+        />
+      )
+    }
+    renderWithProviders(<Harness />)
+    await waitFor(() => expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument())
+    const getsAfterHydrate = candidateGets
+    // Header name input (structure authoring) — not the body textarea
+    const nameInput = document.querySelector(".structure-authoring-name") as HTMLInputElement
+    expect(nameInput).toBeTruthy()
+    expect(nameInput.value).toBe("Summary")
+    fireEvent.change(nameInput, { target: { value: "Renamed Summary" } })
+    await waitFor(() => expect(nameInput.value).toBe("Renamed Summary"))
+    // Label-only churn must keep body and must not re-GET wipe
+    expect(screen.getByDisplayValue("Persisted summary")).toBeInTheDocument()
+    expect(candidateGets).toBe(getsAfterHydrate)
+    const body = screen.getByDisplayValue("Persisted summary")
+    expect(body).not.toBeDisabled()
+    await userEvent.clear(body)
+    await userEvent.type(body, "Edited after rename")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Edited after rename/)
+  })
+
+  it("AST-1480: job_resume pin overlays resume_content sibling bodies", async () => {
+    const putBodies: { job_resume?: Record<string, string> }[] = []
+    installBaseApiMocks(mockedApi, async (url, init) => {
+      if (url === "/api/jobs/j1" && !init?.method) {
+        return {
+          json: async () => ({
+            astral_job_id: "j1",
+            job_data: {
+              artifacts: {
+                // JAR tab key is job_resume; section dict lives on resume_content sibling
+                job_resume: "",
+                resume_content: { professional_summary: "From sibling" },
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/jobs/j1/artifacts/job_resume" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({ ok: true }) } as Response
+      }
+      throw new Error(`${url} ${init?.method ?? "GET"}`)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Job Resume"
+        artifactKey="job_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Summary" }]}
+        jobPersistence={{ jobId: "j1", artifactKey: "job_resume" }}
+      />,
+    )
+    await waitFor(() => expect(screen.getByText("Job Resume")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Expand section" }))
+    const field = await screen.findByDisplayValue("From sibling")
+    expect(field).not.toBeDisabled()
+    await userEvent.clear(field)
+    await userEvent.type(field, "Edited JAR")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(
+      mockedApi.mock.calls.some(
+        ([u, init]) => u === "/api/jobs/j1/artifacts/job_resume" && init?.method === "PUT",
+      ),
+    ).toBe(true)
+    expect(putBodies.at(-1)?.job_resume?.professional_summary).toMatch(/Edited JAR/)
+  })
+
+  it("AST-1480: structure mode bodies stay editable; tab chrome stays off", async () => {
+    const putBodies: { artifacts?: { base_resume?: Record<string, string> } }[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return { json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }] } as Response
+      }
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: { base_resume: { professional_summary: "Struct body" } },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    renderWithProviders(
+      <ArtifactEditor
+        title="Base Resume Content"
+        artifactKey="base_resume"
+        taskKey="craft_resume_base"
+        useCandidateResumeStructure
+        structureSections={[{ id: "professional_summary", label: "Custom Summary" }]}
+      />,
+    )
+    await waitFor(() => expect(screen.getByDisplayValue("Struct body")).toBeInTheDocument())
+    // Tab chrome locked in structure mode
+    expect(screen.queryByRole("button", { name: "+ Add" })).not.toBeInTheDocument()
+    const body = screen.getByDisplayValue("Struct body")
+    expect(body).not.toBeDisabled()
+    await userEvent.clear(body)
+    await userEvent.type(body, "Bodies editable")
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() => expect(screen.getByText("Saved")).toBeInTheDocument())
+    expect(putBodies.at(-1)?.artifacts?.base_resume?.professional_summary).toMatch(/Bodies editable/)
+  })
+
+  it("AST-1480: rubric free-form body edit PUTs edited content", async () => {
+    // Radia fix-now: bodiesEditable must stay true in rubric chrome mode (not only fixedFields/jobPersistence).
+    const putBodies: { artifacts?: { rubric?: { label?: string; content?: string }[] } }[] = []
+    mockApis("ACTIVE_SEARCH")
+    mockedApi.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url === "/api/state_ui_manifest") return stateUiManifestResponse()
+      if (url === "/api/system/ui_config") return uiConfigResponse()
+      if (url === "/api/candidates") {
+        return {
+          json: async () => [{ astral_candidate_id: "c1", state: "ACTIVE_SEARCH", candidate_data: {} }],
+        } as Response
+      }
+      if (isPendingGenerateUrl(url)) return pendingNotFoundResponse()
+      if (url === "/api/candidates/c1" && !init) {
+        return {
+          json: async () => ({
+            candidate_data: {
+              artifacts: {
+                rubric: [{ label: "Fit", content: "Body", importance: 5 }],
+              },
+            },
+          }),
+        } as Response
+      }
+      if (url === "/api/candidates/c1/data" && init?.method === "PUT") {
+        putBodies.push(JSON.parse(String(init.body)))
+        return { ok: true, json: async () => ({}) } as Response
+      }
+      throw new Error(url)
+    })
+    const { unmount } = renderWithProviders(
+      <ArtifactEditor title="Rubric" artifactKey="rubric" taskKey="craft_rubric" />,
+    )
+    const field = await screen.findByDisplayValue("Body")
+    expect(field).not.toBeDisabled()
+    await userEvent.clear(field)
+    await userEvent.type(field, "Edited free-form body")
+    // Rubric chrome uses autosave / unmount flush (no explicit Save button outside review)
+    unmount()
+    await waitFor(() => expect(putBodies.length).toBeGreaterThan(0))
+    expect(
+      putBodies.some(b =>
+        (b.artifacts?.rubric ?? []).some(r => /Edited free-form body/.test(String(r.content ?? ""))),
+      ),
+    ).toBe(true)
+  })
 })

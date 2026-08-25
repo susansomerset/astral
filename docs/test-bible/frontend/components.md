@@ -1130,3 +1130,36 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+---
+
+### AST-1480 · AST-1459
+
+**Parent:** [AST-1459 — Resume editor is not working properly](https://linear.app/astralcareermatch/issue/AST-1459/resume-editor-is-not-working-properly). **Publish:** `origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop`.
+
+Restores structure-mode section **body** load → edit → Save on shared `ArtifactEditor` (Base Resume Content + JAR Job Resume). Product: chrome vs body editability split (`tabChromeEditable` / `bodiesEditable` — rubric free-form + structure/shapes/job fixed tabs; never during Generate review), stable `fixedFieldKeys` so label-only structure header churn does not re-GET / wipe tabs, dict coerce rejects pin strings, `job_resume` GET overlays empty/pin with `resume_content` sibling. Stage 2 skipped (ArtifactEditor-only) — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Label-churn keeps body + Save | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1480: structure title rename keeps hydrated body and Save still works`** |
+| JAR `job_resume` overlay | same | **`AST-1480: job_resume pin overlays resume_content sibling bodies`** |
+| bodiesEditable / chrome off | same | **`AST-1480: structure mode bodies stay editable; tab chrome stays off`** |
+| Rubric free-form body edit PUT | same | **`AST-1480: rubric free-form body edit PUTs edited content`** (Radia fix-now / resolve) |
+| Regression structure + jobPersistence | same | existing structureSections load; **AST-553** job `resume_content` Save; **AST-1410** Cancel |
+
+**Broken / obsolete this pass:** none — additive repro coverage for failure modes (A)/(B) from Code Complete; queue-C return adds rubric `bodiesEditable` lock after resolve.
+
+**Integration:** none — frontend-only; do not invent new integration coverage.
+
+## QA test manifest
+
+1. ArtifactEditor AST-1480 repro + chrome/body + rubric free-form: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1480"`
+2. Regression structure hydrate + job Save + Cancel: same file — `--testNamePattern="job persistence mode loads|AST-1410"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1480|job persistence mode loads|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
