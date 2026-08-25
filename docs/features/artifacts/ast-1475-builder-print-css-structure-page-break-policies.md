@@ -125,3 +125,63 @@ Confirm Chuckles estimate: 3 — agree
 - **Confidence:** High — single shared emit path already receives `resume_structure`; AST-1474 fixed the token contract; change is localized CSS generation.
 - **Risk:** Medium only for test golden flip (Betty) and ensuring ftr carries AST-1474 before build; product mapping itself is mechanical.
 - **Ambiguity left:** None for build — if ftr lacks 1474 constants at build start, escalate rather than invent tokens.
+
+## Joan validate
+
+## Joan validate-plan — AST-1475
+
+Identity: **Plan Ready**, assignee **Hedy Lamarr** (Joan label on ticket; Chuckles spawn — proceeding). Parent **AST-1462**. Publish ref `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies` @ `740acbe2`. No `[plan-discuss]` rounds.
+
+---
+
+```text
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1475
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies` @ `740acbe2`
+
+## Traceability
+AC1→Stage 1 (policy helper + remove hard `#prior-experience` always-break; default `avoid_split` → inside avoid); AC2→Stage 1 (`page_break_before` → `#<dom-id> { page-break-before: always; }`; `normal` omits rule); AC3→Stage 1 (mandatory `.role { page-break-inside: avoid; }` + section `avoid_split`); AC4 builder tests→Expected Betty section (golden flip + new print assertions); AC4 ArtifactEditor portion + parent AC4/5/6 UI→AST-1476 N/A; persistence/catalog→AST-1474 N/A.
+
+## Findings
+
+### discuss — Assignee is Hedy, not Joan
+- **Location:** Linear assignee
+- **Finding:** `validate-plan` expects Joan assignee during validation; ticket still assigned to Hedy.
+- **Recommendation:** Chuckles restores Hedy after posting upshot (normal handoff).
+
+### discuss — Child ticket AC4 names ArtifactEditor tests
+- **Location:** ticket Description AC4 vs plan Expected Betty notes
+- **Finding:** Ticket AC4 still says “ArtifactEditor structure-mode tests”; plan correctly scopes builder tests to Betty here and defers ArtifactEditor to AST-1476.
+- **Recommendation:** Optional ticket description trim — plan is already right.
+
+### discuss — CSS for enabled-but-empty body sections
+- **Location:** Stage 1 helper vs `_emit_body_sections` skip-empty behavior
+- **Finding:** Helper emits rules for all enabled body ids in structure; empty sections may skip HTML emit but still get print rules.
+- **Recommendation:** Acceptable — harmless extra selectors; tightening to `emitted_ids` is optional follow-up, not required for this slice.
+
+### acceptable — AST-1474 prerequisite not on epic worktree yet
+- **Location:** Prerequisite note; `config.py` lacks `RESUME_STRUCTURE_PAGE_BREAK_*` on current tree
+- **Finding:** Constants come from AST-1474 merge before build-child.
+- **Recommendation:** Plan’s stop-and-escalate rule is correct; not a plan defect.
+
+### acceptable — Golden test flip deferred to Betty
+- **Location:** `TestAst1020GoldenStylesheet` requires unconditional `#prior-experience { page-break-before: always; }`
+- **Finding:** Product change will break golden until qa-child; engineer test-tree ban blocks Ada/Hedy touching `tests/`.
+- **Recommendation:** Matches workflow — Betty revises at qa-child per plan.
+
+context_tokens≈24000
+```
+
+```text
+[plan-rubric] PROCEED (Commit: 740acbe2) builder print CSS
+```
+
+```text
+AST-1475 plan approved.
+```
+
+---
+
+**In-session:** Scoped statutes considered — `astral.standards.in-scope-only`, `astral.config.config-source-of-truth` (via AST-1474 imports only), `astral.git.engineer-test-tree-ban` (Betty owns test paths; plan conforms). `pattern.config.config-block` + proposed `pattern.artifacts.resume-section-print-policy` (docstring cite, no canon file) match parent architectural intent. Single `_emit_html_document` injection covers `build_base_resume`, `build_session_base_resume`, and `build_resume_from_job`. Layer compliance: core-only product diff; `_structure_ordered_body_ids` + `_html_section_dom_id` align selectors with existing DOM ids (`core_competencies` → `#competencies`, etc.).
