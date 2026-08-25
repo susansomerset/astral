@@ -3116,3 +3116,22 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1469 · AST-1457
+
+**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save`.
+
+`JOB_SOURCES` + transition helpers; `METEORITE_CONFIG` land outcomes / dedupe order / employer_name key; `FETCH_EMAIL_CONFIG` + `TASK_CONFIG["fetch_email"]` + `SEED_CONFIG` stub; `qualify_meteorite` items_schema `astral_job_id` optional + `employer_name`. Tracker/data: **`docs/test-bible/core/tracker.md`**, **`docs/test-bible/data/database/jobs.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Job source + land/fetch_email/qualify schema | `src/utils/config.py` | **`TestAst1469JobSourcesAndMeteoriteLandConfig`** |
+
+**Broken / obsolete:** none — additive literals/schema.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1469JobSourcesAndMeteoriteLandConfig \
+  -q
+```
