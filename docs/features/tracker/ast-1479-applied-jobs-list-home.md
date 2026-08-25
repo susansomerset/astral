@@ -136,5 +136,5 @@ context_tokens≈32000
 
 ## Review
 
-(stub — build-child; Radia fills after Tests Passed)
-
+- Publish ref: `sub/AST-1464/AST-1479-applied-jobs-list-home`
+- Build tip: `81f1c7b189cf709aaa7a235d08c76b91a3cd794f`
