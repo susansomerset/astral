@@ -203,3 +203,46 @@ describe("JobsInReview", () => {
     })
   })
 })
+
+describe("AST-1454 onRefresh wiring", () => {
+  it("passes list refresh through Job Detail Save when fields_editable", async () => {
+    const row = {
+      ...jobs[0],
+      job_link: "https://ex.test/a",
+      fields_editable: true,
+      legal_next_states: ["NEW"],
+      job_data: { job_description: "jd" },
+    }
+    let listHits = 0
+    installBaseApiMocks(mockedApi, (url, init) => {
+      if (url.startsWith("/api/jobs?view=in_review") && !init) {
+        listHits += 1
+        return jsonResponse([row, jobs[1]])
+      }
+      if (url === `/api/jobs/${row.astral_job_id}` && !init) {
+        return jsonResponse(row)
+      }
+      if (url === `/api/jobs/${row.astral_job_id}` && init?.method === "PUT") {
+        return jsonResponse({ ...row, job_title: "Alpha Saved" })
+      }
+      return jobsViewHandler("in_review", [row, jobs[1]])(url, init)
+    })
+    renderWithProviders(<JobsInReview />)
+    await waitFor(() => expect(screen.getByText(/Passed Job List/)).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: /Passed Job List/ }))
+    await userEvent.click(screen.getByText("Alpha Role"))
+    await waitFor(() => expect(screen.getByDisplayValue("Alpha Role")).toBeInTheDocument())
+    const title = screen.getByDisplayValue("Alpha Role")
+    await userEvent.clear(title)
+    await userEvent.type(title, "Alpha Saved")
+    const before = listHits
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        `/api/jobs/${row.astral_job_id}`,
+        expect.objectContaining({ method: "PUT" }),
+      ),
+    )
+    await waitFor(() => expect(listHits).toBeGreaterThan(before))
+  })
+})
