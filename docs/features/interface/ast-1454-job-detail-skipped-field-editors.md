@@ -200,3 +200,39 @@ Confirm Chuckles estimate: 3 — agree
 - No new files beyond the Files Changed table.
 - Ambiguity / missing AST-1453 API → stop, comment on **parent** AST-1446 with 🛑 format, wait.
 - No `tests/` or `docs/test-bible/**` edits (Betty).
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1454
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors` @ `3896ae6f835baf45cb9bb1bd1e501fb52e6da445`
+
+**Gates:** Plan Ready · assignee Joan · 0 Plan Discuss rounds · child scope only *(publish tip unchanged this session)*
+
+## Traceability
+AC1→S1+S2 · AC2→S1 (`handleSave` PUT + `onRefresh` on Skipped/In Review) · AC3→S2 · AC4→S1 (state `<select>` from `legal_next_states` + save error reload path) · AC5→S1 (`onRefresh={load}` on `JobsSkipped`) · AC6→S1 (`fields_editable` gate) · AC7→S1 step 8–9 (Copy/Skip markup unchanged; Retry/bulk untouched per do-not-touch)
+
+## Findings
+
+No `fix-now` findings.
+
+### acceptable
+- **Location:** Prerequisite — AST-1453 API on worktree tip
+- **Finding:** Plan requires `_attach_skipped_edit_meta` + `PUT persist_skipped_edits` after `sync-child.sh`; epic worktree may not have #1 merged yet.
+- **Recommendation:** Keep the documented 🛑 stop gate; build #1 first (already approved). Joan does not re-plan persist here.
+
+### acceptable
+- **Location:** Stage 1 — invalid-transition error handling
+- **Finding:** On 409 transition errors, plan reloads + shows inline error; field edits may already have persisted per AST-1453 ordering.
+- **Recommendation:** Matches sibling #1 contract and parent “correct the record” intent; no plan change.
+
+### acceptable
+- **Location:** Stage 1 — editable Link row
+- **Finding:** Editable mode replaces `<a href>` with `<input>`; operator cannot click-through while editing.
+- **Recommendation:** Reasonable edit-mode tradeoff; no change unless Susan wants a separate “open link” control.
+
+**Considered (in-session):** Universal orchestration statutes — N/A. Scoped statutes/plan citations (`astral.layers.ui-config-driven-business-logic` via server `fields_editable`/`legal_next_states` only; `astral.ui.frontend-file-placement` flat `components/`/`pages/`; `astral.ui.naming-conventions`; `astral.standards.no-hardcoded-sets` no TS skipped list; `astral.standards.dry-and-focused-functions` draft helpers in-modal; patterns `pattern.ui.shared-button-roles` Modal `btn primary` Save / `btn secondary` Cancel; `pattern.ui.admin-endpoint` thin client over #1 PUT) — all conform. `JobDetailModal` mounts only from `JobsSkipped` / `JobsInReview`; both get `onRefresh`. Files Changed stays inside child scope.
+
+context_tokens≈103000
