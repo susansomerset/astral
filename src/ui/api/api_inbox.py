@@ -4,7 +4,7 @@ Thin Flask wrappers over src.core.inbox. No Gmail I/O here; no persistence.
 AST-1047: pass ui_llm_debug into list for From→candidate_match enrichment.
 AST-1049: POST create-job — strip/extract + meteorite create orchestration.
 AST-1061: create-job may return multiple created / skipped jobs (gazer ingest).
-AST-1141: POST land-meteorite — selected-ids ingest via run_gaze_email_selected_ids.
+AST-1141: POST land-meteorite — selected-ids ingest via run_meteorite_email_selected_ids.
 """
 
 import asyncio
@@ -12,7 +12,7 @@ import asyncio
 from flask import Blueprint, jsonify, request
 
 from ui.auth import require_admin
-from src.core.gaze_email import run_gaze_email_selected_ids
+from src.core.meteorite_email import run_meteorite_email_selected_ids
 from src.core.inbox import (
     create_meteorite_job_from_inbox_message,
     get_message_html,
@@ -118,7 +118,7 @@ def inbox_land_meteorite():
     debug = ui_llm_debug(explicit_debug=explicit)
     try:
         result = asyncio.run(
-            run_gaze_email_selected_ids(message_ids, debug=debug)
+            run_meteorite_email_selected_ids(message_ids, debug=debug)
         )
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
