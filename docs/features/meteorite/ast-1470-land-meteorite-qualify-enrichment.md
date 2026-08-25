@@ -16,6 +16,8 @@ Ticket **## Scope** (verbatim partition):
 
 All Files Changed / Stages stay inside that set. **Out of scope (siblings):** `config.py` / `database.py` / Tracker save (AST-1469 — already on `origin/ftr/AST-1457-meteorite-component`); intake API + Contact (AST-1471); inbox `fetch_email` / `gaze_email` / gazer email ingest retarget / dispatcher / `api_inbox` (AST-1472). Do **not** retarget existing `create_meteorite_job` callers in this ticket — leave them for #3/#4.
 
+**AC1 / AC3 partition:** This ticket delivers the **callable** core API (`land_meteorite` + no-Gmail module). Contact/inbox **wiring** that actually invokes it is AST-1471 / AST-1472 — Boundaries already say so; no Scope widen.
+
 **Depends on:** AST-1469 `tracker.save_meteorite_job`, `METEORITE_CONFIG` land outcome keys, `JOB_SOURCE_*`, `employer_name_job_data_key`, and `qualify_meteorite` items_schema with optional `astral_job_id` + `employer_name` (present after sync with `origin/ftr/AST-1457-meteorite-component`).
 
 ## Files Changed (planned)
@@ -71,21 +73,34 @@ CONTENT:
 
    Use 0-based zero-padded index (`f"{i:03d}"`). Do **not** put `astral_job_id` in live content (matches current assemble).
 
-5. **Invoke agent** — `from src.core.agent import do_task` then:
+5. **Invoke agent with a land batch id** — `do_task` only stores agent_data when `store_agent_data and batch_id and entity_type`, and `batch_id = hop_ledger_batch_id or log_batch_id.get()`. Land is outside dispatch, so Stage 1 **must** mint and bind a batch id before the call (mirror `_run_batch_consult` audit trail):
 
 ```python
-result = await do_task(
-    task_key="qualify_meteorite",
-    live_content=live_content,
-    index=candidate_id,          # packet-level index; no job id yet
-    ctx=task_ctx,                # must include candidate raft when available
-    debug=debug,
-)
+from uuid import uuid4
+from src.core.agent import do_task
+from src.utils.logging import log_batch_id
+
+task_key = "qualify_meteorite"
+batch_id = f"{task_key}-land-{uuid4()}"
+do_index = f"{task_key}_batch_{batch_id}"   # same shape as _run_batch_consult
+log_batch_id.set(batch_id)
+try:
+    result = await do_task(
+        task_key=task_key,
+        live_content=live_content,
+        index=do_index,            # audit index — not candidate_id, not a job UUID
+        ctx=task_ctx,
+        debug=debug,
+    )
+finally:
+    log_batch_id.set(None)
 ```
 
    Build `task_ctx` from `ctx` or load candidate via existing consult/candidate helpers so `requires_candidate_key` is satisfied (same pattern as other consult entry points that pass `ctx` with `astral_candidate_id` / `candidate_data` / `candidate_api_key`). Set `batch_entities` to a list of stub dicts `{ "job_link": ..., "job_data": { jd_key: content } }` parallel to scraps so any decode helpers that peek batch_entities do not crash — stubs have **no** `astral_job_id`.
 
-6. **On `do_task` failure:** return `{ "success": False, "error": result.get("error") or "do_task failed", "jobs": [], "raw": result }`. No state writes.
+   ⚠️ **Decision — agent_data tagging:** `qualify_meteorite` `entity_type` stays `job`; land RESPONSE rows use `entity_id=do_index` under that type. Treat as **audit-only** for this ticket — no `list_entity_latest_agent_refs` consumers until a real job row exists after Tracker save. Do not retarget `entity_type` to candidate in this ticket.
+
+6. **On `do_task` failure:** return `{ "success": False, "error": result.get("error") or "do_task failed", "jobs": [], "raw": result, "batch_id": batch_id }`. No state writes.
 
 7. **On success:** read `parsed_response["jobs"]` (list). Map by list order to input scraps (AST-1469 made `astral_job_id` optional). For each output row `i`:
 
@@ -95,9 +110,9 @@ result = await do_task(
    - Resolve `company_job_id` with existing `_resolve_company_job_id(ai_id, job_link)` (same as qualify process).
    - Append `{ "company_job_id", "job_title", "job_link", "jd_text", "employer_name", "scrap_index": i }`.
 
-   Return `{ "success": True, "jobs": <list>, "error": None }`.
+   Return `{ "success": True, "jobs": <list>, "error": None, "batch_id": batch_id }`.
 
-8. **Style D** (only `debug=True`): one `debug_index` per scrap row under `func="consult.enrich_meteorite_land_packet"` with outcome `enriched` or `enrich_failed`; `|` detail: link, content chars in, jd_chars out, employer_name present/absent. No new contract lines when `debug=False`.
+8. **Style D** (only `debug=True`): one `debug_index` per scrap row under `func="consult.enrich_meteorite_land_packet"` with outcome `enriched` or `enrich_failed`; `|` detail: `batch_id`, link, content chars in, jd_chars out, employer_name present/absent. No new contract lines when `debug=False`.
 
 9. **Do not** call `tracker.initialize_job`, `_transition_job_state_for_task`, or `_run_batch_consult` from this function. Dispatch `qualify_meteorite` remains the post-create METEORITE_NEW → METEORITE_QUALIFIED path (no daisy-chain in land).
 
@@ -107,11 +122,11 @@ result = await do_task(
 
 ## Stage 2: Agent — land invoke support (minimal)
 
-**Done when:** `do_task(qualify_meteorite, …)` from Stage 1 persists prompt/RESPONSE under the packet `index` without requiring a pre-existing job row; `agent.py` documents the land call shape. No Anthropic client changes. No `config.py` / SEED edits (out of Scope).
+**Done when:** `do_task(qualify_meteorite, …)` from Stage 1 persists prompt/RESPONSE when Stage 1 has set `log_batch_id` and passes `index=do_index` (`{task_key}_batch_{batch_id}`) without requiring a pre-existing job row; `agent.py` documents the land call shape. No Anthropic client changes. No `config.py` / SEED edits (out of Scope).
 
-1. In `src/core/agent.py` module docstring (or the `do_task` docstring), add a short note: land packet enrichment may call `do_task(task_key="qualify_meteorite", index=<candidate_id>, …)` before a job row exists; `entity_id` / RESPONSE tagging uses that index string.
+1. In `src/core/agent.py` module docstring (or the `do_task` docstring), add a short note: land packet enrichment calls `do_task(task_key="qualify_meteorite", index=f"qualify_meteorite_batch_{batch_id}", …)` with `log_batch_id` set to `qualify_meteorite-land-{uuid}` before a job row exists; agent_data is audit-only for that index (Stage 1 Decision).
 
-2. Verify (read-only at build time) that `do_task` already tolerates `index` that is not an `astral_job_id` UUID for fields tasks — existing path stores by `index` / batch_id. **If** a hard assumption rejects non-job indexes (raises or skips store), fix **only** the minimal guard in `agent.py` so land’s candidate_id index is accepted for `qualify_meteorite` when no job row exists. Do **not** broaden unrelated tasks.
+2. Verify (read-only at build time) that `do_task` already stores when `log_batch_id` is set and `index` is the `_run_batch_consult`-shaped `do_index` string (not a job UUID). **If** a hard assumption rejects non-job indexes (raises or skips store), fix **only** the minimal guard in `agent.py` so land’s `do_index` is accepted for `qualify_meteorite`. Do **not** broaden unrelated tasks.
 
 3. **Prompt delta:** Do **not** edit `config.py` SEED. Prefer scrap `employer_name` passthrough (Stage 1 step 7) so Ruth need not invent employer. If build discovers the live `agent_task` prompt for `qualify_meteorite` cannot accept packet content without an `astral_job_id` in the user prompt (runtime failure with a clear prompt mismatch), stop and comment on **parent AST-1457** with the Stage blocked template — do not invent a config SEED change inside this ticket’s Scope.
 
@@ -123,8 +138,14 @@ result = await do_task(
 
 1. Update `src/core/meteorite.py` module docstring: public entry is `land_meteorite`; `create_meteorite_job` remains for legacy callers until AST-1471/1472 retarget; no email I/O in this module.
 
-2. Imports (allowed): `get_candidate`, `ensure` helpers already in file, `tracker.save_meteorite_job`, `TRACKER_CONFIG`, `METEORITE_CONFIG`, logging, `enrich_meteorite_land_packet` from consult, and **`get_visible_text` from `src.external.playwright`** for link flesh-out.  
-   **Forbidden:** any `gmail`, `mailbox`, `inbox`, or `meteorite_email` imports in this file.
+2. Imports (allowed at module top): `get_candidate`, ensure helpers already in file, `tracker.save_meteorite_job` (or `from src.core import tracker`), `TRACKER_CONFIG`, `METEORITE_CONFIG`, logging, and **`get_visible_text` from `src.external.playwright`** for link flesh-out.  
+   **Forbidden:** any `gmail`, `mailbox`, `inbox`, or `meteorite_email` imports in this file.  
+   **Forbidden at module top:** `from src.core.consult import enrich_meteorite_land_packet` — `consult.py` already imports `is_meteorite_company` from `meteorite` at load time; a top-level reverse import cycles. **Late-import** inside `land_meteorite` only (same carve-out family as AST-1469 tracker↔meteorite note):
+
+```python
+# inside land_meteorite, before enrich call:
+from src.core.consult import enrich_meteorite_land_packet
+```
 
 3. Add helper **`async def _land_fetch_link_text(url: str, *, debug: bool = False) -> tuple[str, str]`**  
    Wrap `get_visible_text(url=url, return_final_url=True)` the same way gazer’s private helper does (normalize tuple vs str). On failure return `("", url)` and let enrich/save decide — do not raise for a single bad link when other scraps remain. Do **not** edit `gazer.py` (out of Scope).
@@ -152,7 +173,8 @@ async def land_meteorite(
 
 6. **Optional link scrape before enrich:** For each scrap row with a non-empty `job_link` whose body text is empty or shorter than `TASK_CONFIG["qualify_meteorite"]["min_jd_chars"]`, call `_land_fetch_link_text` and set scrap content to visible text when non-empty; if final_url differs, prefer it as `job_link`. Read the min from `TASK_CONFIG` (existing config — do not add new literals to `config.py`).
 
-7. **Enrich:** `enrich = await enrich_meteorite_land_packet(candidate_id, scraps, ctx=…, debug=debug)`.  
+7. **Enrich:** late-import `enrich_meteorite_land_packet` (step 2), then  
+   `enrich = await enrich_meteorite_land_packet(candidate_id, scraps, ctx=…, debug=debug)`.  
    Build `ctx` with `astral_candidate_id=candidate_id` and candidate raft fields needed for `do_task` (mirror other core callers — e.g. load via `get_candidate` / existing ctx builders; if a shared helper already exists in candidate/consult, reuse it).  
    If `enrich["success"]` is False or `jobs` empty → return top-level  
    `{ "outcome": METEORITE_CONFIG["land_outcome_error"], "error": enrich.get("error") or "enrichment produced no jobs", "outcomes": [], "company": short_name, "company_inserted": … }`.
@@ -211,7 +233,17 @@ save = tracker.save_meteorite_job(
 
 Confirm Chuckles estimate: 5 — agree
 
-New public orchestration + consult packet enrich path + Playwright link flesh-out + Tracker integration is a real multi-file core slice (new land pattern) without schema work (Ada already landed that). Matches Bang !! / estimate 5. No revise.
+New public orchestration + consult packet enrich path + Playwright link flesh-out + Tracker integration is a real multi-file core slice (new land pattern) without schema work (Ada already landed that). Matches Bang !! / estimate 5. No revise. Round-1 Joan fixes (batch_id + late-import) do not change the point estimate.
+
+## Revisions
+
+Revision 1 — 2026-08-25  
+Driven by: Joan `[plan-discuss] round=1 concern` / fix-now — land `do_task` batch_id gap; top-level meteorite→consult import cycle  
+Changes:
+- Stage 1 step 5: mint `qualify_meteorite-land-{uuid}`, `log_batch_id.set` / `finally` clear, `index=do_index` mirroring `_run_batch_consult`; audit-only entity_id Decision.
+- Stage 2 done-when / steps aligned to that index + batch_id persistence contract.
+- Stage 3 steps 2 + 7: late-import `enrich_meteorite_land_packet` inside `land_meteorite` only.
+- Scope gate: AC1/AC3 callable vs wired partition note.
 
 ## Joan validate
 
