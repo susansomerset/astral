@@ -2315,3 +2315,41 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1476|AST-1306"
 ```
 
+### AST-1481 · AST-1463
+
+**Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
+
+Thin deeplink host at `/jobs/detail/:jobId` opens the **existing** `JobAnalysisReportModal` (same shell as Recommended row-click), prefetches job for early 404/candidate gate, admin candidate alignment via company → `candidate_id`, close → `/jobs/recommended`. Does **not** own post-auth return-path (**AST-1482**). **`JobsRecommended.tsx`** unchanged — list regression stays on existing **`opens the report modal from a row click`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed deeplink page (**§6c**) | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`AST-1481`** (modal shell; skipped job; 404 + API error UI + back link; close → recommended; blank id redirect; prefetch then company alignment before modal) |
+| Admin candidate alignment helper | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`AST-1481 alignSelectedCandidateForJobCompany`** (admin switch; non-admin no-op; company lookup soft-fail) |
+| Recommended list regression | `JobsRecommended.tsx` (untouched) | **`test_JobsRecommended.test.tsx`** — **`opens the report modal from a row click`** (existing) |
+
+**Broken / obsolete:** none — additive route/host; JAR component tests unchanged.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Deeplink page (**§6c**): `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — **`AST-1481`**
+2. Candidate alignment: `tests/component/frontend/contexts/test_CandidateContext.test.tsx` — **`AST-1481`**
+3. Recommended list regression: `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — **`opens the report modal from a row click`**
+
+**AST-1481** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1481|opens the report modal"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (publish tip):**
+
+- `docs/test-bible/frontend/pages.md` — `ab00a069b7566ed95635137118159ef65ffbd3d8`
+- `docs/test-bible/frontend/contexts.md` — `839d8fc16fcda5db81fc374b0177717f44d7cc3c`
