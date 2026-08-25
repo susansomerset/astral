@@ -408,7 +408,11 @@ export default function Skipped() {
           )
         })
       )}
-      <JobDetailModal jobId={viewingId} onClose={() => { setViewingId(null); load() }} />
+      <JobDetailModal
+        jobId={viewingId}
+        onClose={() => { setViewingId(null); load() }}
+        onRefresh={load}
+      />
       <CandidateActionNotesModal
         open={!!actions.pending}
         action={actions.pending?.action ?? null}

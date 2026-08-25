@@ -405,3 +405,23 @@ context_tokens≈38000
 ```text
 [code-rubric] REVIEW (Commit: 9a1e1d11) sync regressed dev product
 ```
+
+## Resolution
+
+**Date:** 2026-08-25  
+**Review tip:** `9a1e1d11` (`docs(AST-1476): Radia review — sync regressed origin/dev product`)  
+**Outcome:** findings addressed — publish-ref product tree restored to match `origin/dev` + AST-1476/1474 slice.
+
+### fix-now — Final `sync(publish-ref)` regressed `origin/dev` product code
+
+- Restored all regressed `src/**` paths from `origin/dev` (inbox/meteorite/tracker/dispatcher/database/JobDetailModal/etc.).
+- Re-applied the clean epic slice from `191de65a`: four AST-1476 frontend files + AST-1474 `config.py` / `candidate.py` / `api_candidate.py` page-break catalog.
+- Post-fix `git diff origin/dev -- src/` is again **7 files / +179** (same shape Radia marked clean at `191de65a`).
+
+### fix-now — Scope gate / cross-epic contamination
+
+- Tip no longer carries meteorite/inbox deletions vs `origin/dev`; AST-1476 footprint is the planned frontend + schema prereq only.
+- Discuss (contact-row dropdown) / prior Joan advisories: no product change (accepted).
+
+**fix-now:** all addressed.  
+**Action:** §9a dry-run vs `origin/dev` and `origin/ftr/AST-1462-…`, then User Testing.

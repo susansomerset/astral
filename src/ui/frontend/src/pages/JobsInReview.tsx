@@ -284,7 +284,11 @@ export default function InReview() {
           )
         })
       )}
-      <JobDetailModal jobId={viewingId} onClose={() => { setViewingId(null); load() }} />
+      <JobDetailModal
+        jobId={viewingId}
+        onClose={() => { setViewingId(null); load() }}
+        onRefresh={load}
+      />
     </div>
   )
 }
