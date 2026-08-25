@@ -29,7 +29,7 @@ Null-candidate mailbox runner: From-bind → unbound age→Trash → bound shape
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py \
+  tests/component/core/test_gaze_email.py \
   -q
 ```
 
@@ -50,8 +50,8 @@ Candidate-bound `run_meteorite_email`: requires row `candidate_id`; filters From
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1090RunMeteoriteEmail \
-  tests/component/core/test_meteorite_email.py::TestAst1136CandidateBoundMeteoriteEmail \
+  tests/component/core/test_gaze_email.py::TestAst1090RunMeteoriteEmail \
+  tests/component/core/test_gaze_email.py::TestAst1136CandidateBoundMeteoriteEmail \
   -q
 ```
 
@@ -73,10 +73,10 @@ Candidate-bound `run_meteorite_email`: requires row `candidate_id`; filters From
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
+  tests/component/core/test_gaze_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
   tests/component/utils/test_config.py::TestAst1140GazeEmailSelectedConfig \
-  tests/component/core/test_meteorite_email.py::TestAst1090RunMeteoriteEmail \
-  tests/component/core/test_meteorite_email.py::TestAst1136CandidateBoundMeteoriteEmail \
+  tests/component/core/test_gaze_email.py::TestAst1090RunMeteoriteEmail \
+  tests/component/core/test_gaze_email.py::TestAst1136CandidateBoundMeteoriteEmail \
   -q
 ```
 
@@ -96,7 +96,7 @@ html_links Ruth payload with dict `jobs[].metadata` still scrapes/creates/archiv
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1090RunMeteoriteEmail::test_html_links_dict_metadata_still_creates \
+  tests/component/core/test_gaze_email.py::TestAst1090RunMeteoriteEmail::test_html_links_dict_metadata_still_creates \
   -q
 ```
 
@@ -117,7 +117,7 @@ Ruth `live_content` for `html_links` / `subject_body` is visible text + optional
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1213RuthLivePayload \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload \
   tests/component/utils/test_config.py::TestAst1213RuthPayloadLinkExcludes \
   tests/component/core/test_repo_admin_json.py::TestAst1213MeteoriteEmailVisibleTextPrompts \
   -q
@@ -140,9 +140,9 @@ Post-parse `_ensure_html_links_jobs_complete` on the `html_links` branch: every 
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1294HtmlLinksJobsComplete \
-  tests/component/core/test_meteorite_email.py::TestAst1213RuthLivePayload::test_html_links_live_content_shape \
-  tests/component/core/test_meteorite_email.py::TestAst1213RuthLivePayload::test_debug_true_emits_ruth_payload_detail \
+  tests/component/core/test_gaze_email.py::TestAst1294HtmlLinksJobsComplete \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload::test_html_links_live_content_shape \
+  tests/component/core/test_gaze_email.py::TestAst1213RuthLivePayload::test_debug_true_emits_ruth_payload_detail \
   -q
 ```
 
@@ -159,7 +159,7 @@ Retire `gaze_email` test/bible identity; retarget mailbox runner + config/dispat
 | Mailbox runner (rehomed) | `src/core/meteorite_email.py` | **`test_meteorite_email.py`** (skip until module lands) |
 | Config / admin / inbox / dispatch retargets | various | revised AST-1088/1090/1140/1134/1135/1141/1106 classes |
 
-**Broken / obsolete (Betty):** `tests/component/core/test_gaze_email.py` deleted; `docs/test-bible/core/gaze_email.md` retired into this file. **Return (Review Posted):** bible `run_component_tests` blocks retargeted to `test_meteorite_email.py`; `test_AdminScheduledActions_AST1106.test.tsx` retired (gaze carve-out obsolete — see `docs/test-bible/frontend/pages.md` § AST-1106).
+**Broken / obsolete (Betty):** `tests/component/core/test_gaze_email.py` deleted; `docs/test-bible/core/gaze_email.md` retired into this file.
 
 **Integration:** none — no existing scenario asserts gaze_email retirement; do not invent.
 

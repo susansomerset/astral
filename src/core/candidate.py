@@ -60,8 +60,6 @@ from src.utils.config import (
     RESUME_STRUCTURE_EXTRA_DEFAULT_FORMAT,
     RESUME_STRUCTURE_EXTRA_ID_PATTERN,
     RESUME_STRUCTURE_KNOWN_SECTION_IDS,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICIES,
-    RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
     RESUME_STRUCTURE_REQUIRED_SECTION_IDS,
     RESUME_STRUCTURE_RESERVED_EXTRA_IDS,
     TASK_CONFIG,
@@ -2124,21 +2122,6 @@ def normalize_resume_structure(raw: dict) -> dict:
                     f"section {sid} format must be one of {list(RESUME_STRUCTURE_BODY_FORMATS)}"
                 )
             row["format"] = fmt
-        # AST-1474: coerce/validate page_break_policy (default keep-block-together).
-        raw_policy = spec.get("page_break_policy")
-        if raw_policy is None or (isinstance(raw_policy, str) and not raw_policy.strip()):
-            policy = RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
-        elif (
-            isinstance(raw_policy, str)
-            and raw_policy in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
-        ):
-            policy = raw_policy
-        else:
-            raise ValueError(
-                f"section {sid} page_break_policy must be one of "
-                f"{list(RESUME_STRUCTURE_PAGE_BREAK_POLICIES)}"
-            )
-        row["page_break_policy"] = policy
         out["sections"][sid] = row
     secs = out["sections"]
     if "highlights" in secs and "experience" in secs:
@@ -2192,7 +2175,6 @@ def ingest_legacy_label_content_base_resume(raw_base: Any, structure: dict) -> t
             "order": next_order,
             "job_agent_editable": True,
             "format": fmt,
-            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         }
         used.add(sid)
         next_order += 1
@@ -2426,7 +2408,6 @@ def hydrate_resume_structure_from_base_resume(resolved: dict, base_resume: Any) 
             "enabled": True,
             "order": next_order,
             "job_agent_editable": True,
-            "page_break_policy": RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT,
         }
         if sid not in contact:
             row["format"] = _load_missing_section_format(sid)
@@ -2441,22 +2422,11 @@ def hydrate_resume_structure_from_base_resume(resolved: dict, base_resume: Any) 
         if not isinstance(fmt, str) or fmt not in RESUME_STRUCTURE_BODY_FORMATS:
             spec["format"] = _load_missing_section_format(sid)
 
-    def _fill_page_break_policy(spec: dict) -> None:
-        # Soft-default for pre-epic blobs on read; PUT still validates via normalize.
-        raw = spec.get("page_break_policy")
-        if (
-            raw is None
-            or (isinstance(raw, str) and not raw.strip())
-            or raw not in RESUME_STRUCTURE_PAGE_BREAK_POLICIES
-        ):
-            spec["page_break_policy"] = RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
-
     def _ensure_sid(sid: str, title: str) -> None:
         if sid not in sections:
             _append_missing(sid, title)
         elif isinstance(sections.get(sid), dict):
             _fix_body_format(sid, sections[sid])
-            _fill_page_break_policy(sections[sid])
 
     if isinstance(base_resume, dict):
         for k in base_resume:

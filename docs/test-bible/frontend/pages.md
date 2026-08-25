@@ -1555,21 +1555,22 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1087](https://linear.app/astralcareermatch/issue/AST-1087/add-gaze-email-as-a-dispatch-task). **Publish:** `origin/sub/AST-1087/AST-1106-uat-gaze-email-missing-from-scheduled-actions-default-view`.
 
-Originally: Scheduled Actions Avail **gt0** kept rows where API `always_visible_under_avail_gt0` is true (null-candidate `gaze_email` mailbox shell with intentional zero avail). Default remains `gt0` (AST-894). React still honors the generic API flag; mailbox product identity is now `meteorite_email` with real bind-filtered Avail (AST-1134 carve-out retired; AST-1466/1467 retire gaze).
+Scheduled Actions Avail **gt0** keeps rows where API `always_visible_under_avail_gt0` is true (mailbox shell with intentional zero avail); other zero-avail rows still omitted. Default remains `gt0` (AST-894). Candidate cell is null-safe (`candidate_id || "—"`) so shared mailbox rows do not crash. No React `"gaze_email"` set.
 
 | # | Area | Source | Component tests |
 | --- | --- | --- | --- |
-| 1 | ~~Routed page Avail gt0 carve-out (§6c)~~ | `AdminScheduledActions.tsx` | ~~`test_AdminScheduledActions_AST1106.test.tsx`~~ — **retired AST-1467** (carve-out scenario obsolete) |
-| 2 | Regression: default gt0 still hides zero-avail | same | **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
+| 1 | Routed page Avail gt0 carve-out (§6c) | `AdminScheduledActions.tsx` | **`test_AdminScheduledActions_AST1106.test.tsx`** — **`AST-1106 gaze_email always visible under Avail gt0`** (2 cases) |
+| 2 | Regression: default gt0 still hides non-flag zero-avail | same | case 2 in that file; re-run **`AST-887`/`AST-894`** in **`test_AdminScheduledActions.test.tsx`** |
 
-**Broken / obsolete (AST-1467 return):** `tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx` deleted — seeded `gaze_email` + always-visible carve-out no longer product behavior; gt0 omit/show covered by AST-887/AST-894.
+**Broken / obsolete:** none (predicate widened via API flag only).
 
 **Integration:** none.
 
 ```bash
 cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_AdminScheduledActions_AST1106.test.tsx \
   ../../../tests/component/frontend/pages/test_AdminScheduledActions.test.tsx \
-  --testNamePattern="AST-887|AST-894"
+  --testNamePattern="AST-1106|AST-887|AST-894"
 ```
 
 ### AST-1156 · AST-1150
