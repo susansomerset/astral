@@ -189,5 +189,5 @@ AST-1475 plan approved.
 ## Review
 
 - **Publish ref:** `sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies`
-- **Tip:** `7fb201ea`
+- **Tip:** `4fcf5e80`
 - **Files:** `src/core/builder.py`
