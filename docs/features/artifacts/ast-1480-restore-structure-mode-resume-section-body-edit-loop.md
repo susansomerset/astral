@@ -113,3 +113,30 @@ If the gap is server-side (candidate/job GET omits `base_resume` / `resume_conte
 Confirm Chuckles estimate: 3 — agree
 
 Single shared component vertical slice (load/edit/save) with known patterns; conditional page/CSS only if needed; no schema/API by default.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1480
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `9ca35357`
+
+## Traceability
+AC1–AC2 → Stage 1 (ArtifactEditor hydrate + body/chrome split) + Stage 2 conditional page/modal/CSS only if diagnosis proves (D); AC3 → Stage 1 §1.4 regression (AST-1323 headers + Save sections); AC4 → Stage 1 §1.3.4 Experience path + Stage 2 branch 3 if needed; AC5 → Stage 3 compile/lint + Code Complete handoff to Betty (engineer defers `tests/` per scope gate); AC6 → Explicit scope gate + Stage 2 🛑 stop (no `src/core/` / `src/ui/api/` without Susan).
+
+## Findings
+
+### discuss
+- **Location:** Child Citations / parent Architectural definition — `pattern.ui.in-place-live-refresh`
+- **Finding:** Catalog entry is still `status: proposed`, not `approved`, yet cited under “Patterns to reuse.”
+- **Recommendation:** Not blocking — Stage 1.3 explicitly preserves AST-1410 Cancel re-GET (matches the pattern’s solution shape); plan does not invent new refresh semantics. Archie may approve the pattern id separately; optional hygiene swap to AST-1410 canonical refs only.
+
+### acceptable
+- **Location:** Files Changed — `tests/component/...` rows
+- **Finding:** Test files listed as modified while engineer is barred from touching `tests/` at build-child.
+- **Recommendation:** Correct for this workflow — Betty owns test-tree at qa-child; Stage 3 names failure mode (A/B/C/D) for targeting.
+
+**Considered (in-session):** Universal orch.* statutes — conforms (plan doc only, no git/test-tree violations). Scoped ui-layer statutes (`astral.layers.import-direction`, `astral.ui.frontend-file-placement`, `astral.standards.in-scope-only`, `astral.standards.no-cross-contamination`, `astral.layers.ui-config-driven-business-logic`, `astral.git.engineer-test-tree-ban`) — conforms. `pattern.ui.admin-endpoint` — conforms (existing GET/PUT, no new routes). Proposed patterns (`in-place-live-refresh`, `dirty-leave-save-then-navigate`) — behavior described inline; see discuss above.
+
+context_tokens≈42000
