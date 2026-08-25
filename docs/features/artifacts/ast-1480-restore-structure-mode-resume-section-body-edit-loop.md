@@ -150,3 +150,153 @@ AC1–AC2 → Stage 1 (ArtifactEditor hydrate + body/chrome split) + Stage 2 con
 **Considered (in-session):** Universal orch.* statutes — conforms (plan doc only, no git/test-tree violations). Scoped ui-layer statutes (`astral.layers.import-direction`, `astral.ui.frontend-file-placement`, `astral.standards.in-scope-only`, `astral.standards.no-cross-contamination`, `astral.layers.ui-config-driven-business-logic`, `astral.git.engineer-test-tree-ban`) — conforms. `pattern.ui.admin-endpoint` — conforms (existing GET/PUT, no new routes). Proposed patterns (`in-place-live-refresh`, `dirty-leave-save-then-navigate`) — behavior described inline; see discuss above.
 
 context_tokens≈42000
+
+## Radia review
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1480
+**Publish ref:** `origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop` @ `bcc05032`
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent/LLM paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no dispatcher/do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch layer |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch layer |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch layer |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch layer |
+| astral.config.config-source-of-truth | scoped | not-applicable | no config.py changes |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug/artifacts dir |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/ spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch/seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | issue doc at planned path |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty test/bible commits; engineer `code()` is `src/ui` only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commit `b16a93d3` did not touch `tests/` |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | ui-only diff |
+| astral.layers.import-direction | scoped | conforms | `ArtifactEditor.tsx` stays frontend; no `src.data` / `src.external` imports |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts layer |
+| astral.layers.ui-config-driven-business-logic | scoped | conforms | structure formats/catalog still server-driven; no new inline allowlists |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render_verdict/consult |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | reuses existing authenticated GET/PUT; no new routes |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed tables |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed/catalog edits |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed boot paths |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no seed coverage |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database/migrations |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no backend debug emission |
+| astral.standards.dry-and-focused-functions | scoped | conforms | focused vertical slice; label-sync effect is ticket-scoped |
+| astral.standards.in-scope-only | scoped | conforms | `ArtifactEditor.tsx` + Betty tests/bible; Stage 2 skipped as planned |
+| astral.standards.logging-via-utils | scoped | not-applicable | no logging added |
+| astral.standards.names-not-ticket-ids | scoped | conforms | no ticket-id symbols in product code |
+| astral.standards.no-cross-contamination | scoped | conforms | no `src/core/` or `src/ui/api/` creep |
+| astral.standards.no-hardcoded-sets | scoped | conforms | structure field keys from props/catalog, not new TSX sets |
+| astral.standards.public-then-helpers | scoped | conforms | helpers unchanged; new effect is local |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | no utils layer |
+| astral.state.core-decides-transitions | scoped | not-applicable | no state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state machine |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run/daisy-chain |
+| astral.ui.frontend-file-placement | scoped | conforms | component edit under `components/` |
+| astral.ui.naming-conventions | scoped | conforms | `tabChromeEditable` / `bodiesEditable` naming is clear |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server/worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1480)` at tip |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | child `sub/` off epic parent |
+| orch.git.ftr-sub-topology | universal | conforms | publish ref matches child topology |
+| orch.git.merge-on-checkout | universal | conforms | no rebase; merge-tests pattern |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops in diff |
+| orch.git.no-dev-agent-branches | universal | conforms | `sub/AST-1459/...` publish ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review in `astral-AST-1459/` |
+| orch.git.three-permanent-branches | universal | conforms | diff vs `origin/dev` only |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy invention |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation tracks Stage 1 plan; Stage 2 correctly skipped |
+| orch.pipeline.project-scoped-queues | universal | conforms | scoped child review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty landed tests + bible manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | n/a to code diff |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee; review is read-only |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Active set scored:** 65 / 65 (per `canon/statutes/README.md` harvested corpus).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.ui.dirty-leave-save-then-navigate | needs-discussion | cited in plan; catalog `status: proposed` — behavior matches (explicit Save, autosave gated on `tabChromeEditable`) |
+| pattern.ui.in-place-live-refresh | needs-discussion | Joan carry-forward — proposed; Cancel re-GET preserved, no new refresh hook |
+| pattern.ui.admin-endbound | not cited | — |
+| none other cited | — | Joan noted `pattern.ui.admin-endpoint` intent only |
+
+## Plan adherence
+
+- **Stage 1 delivered:** `ArtifactEditor.tsx` only — chrome/body split (`tabChromeEditable` / `bodiesEditable`), `fixedFieldKeys` load guards, label-only label sync effect, dict coerce hardening, `job_resume` → `resume_content` sibling overlay (JAR). Diagnosis **(A)+(B)** documented in issue doc matches diff.
+- **Stage 2 skipped:** no page/CSS/LabeledTextArea/ExperienceJobsEditor edits — correct per plan.
+- **Estimate 3:** footprint matches (single shared component + Betty tests).
+- **Betty manifest:** three `AST-1480` repro tests + bible block align with Code Complete handoff; regression pointers to AST-553 / AST-1410 reasonable.
+- **Joan:** APPROVED @ `9ca35357`; no Excluded-statute straggler. Proposed-pattern discuss carries forward.
+
+## Findings
+
+### fix-now
+
+- **Location:** `src/ui/frontend/src/components/ArtifactEditor.tsx` ~L298, ~L1204–L1216 (`bodiesEditable`, `LabeledTextArea` / `ExperienceJobsEditor` wiring)
+- **Finding:** `bodiesEditable = !!(fixedFields || jobPersistence) && !inReview` **does not include rubric/free-form mode**. When `fixedFields` is null and `jobPersistence` is absent (e.g. `artifactKey="rubric"`, `joblist_rubric`, criteria pages), `bodiesEditable` is `false` while `tabChromeEditable` is `true`. Prose bodies get `disabled={!bodiesEditable}` and no-op `onChange` — **criterion body editing is locked** outside structure/shapes/job-fixed-field paths. Pre-change code used the same `editable` flag for bodies and chrome, so rubric bodies stayed interactive.
+- **Severity:** B — functional regression on a major shared editor surface; manifest does not assert rubric body edit persistence (existing `joblist_rubric` expand-one test types into a field but does not assert content change).
+- **Recommendation:** Extend the gate, e.g. `const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)` (or equivalent that preserves structure-mode chrome lock while restoring rubric/shapes-adjacent free-form bodies). Add/extend a component test that types into a rubric body and asserts PUT payload.
+
+### discuss
+
+- **Location:** Plan / Joan verdict — `pattern.ui.in-place-live-refresh`, `pattern.ui.dirty-leave-save-then-navigate`
+- **Finding:** Both remain `status: proposed` in catalog while cited under patterns to reuse.
+- **Recommendation:** Joan already accepted behavior inline; optional Archie approval or swap to AST-1410 canonical refs. Not blocking once `bodiesEditable` is fixed.
+
+### advisory
+
+- **Location:** `ArtifactEditor.tsx` load effects ~L578, ~L595 — `eslint-disable-next-line react-hooks/exhaustive-deps`
+- **Finding:** Intentional omission of `fixedFields` from deps in favor of `fixedFieldKeys`; comment explains label-churn rationale. Acceptable if `resolve-child` keeps the comment.
+- **Location:** Betty manifest — `tests/component/frontend/components/test_ArtifactEditor.test.tsx`
+- **Finding:** AST-1480 coverage is strong for structure/job paths; no rubric-body regression guard for the chrome/body split. Recommend one line in manifest after fix.
+
+## Frame diff
+
+vs issue doc **Review** stub @ `b16a93d3` (engineer `code()` only):
+
+| Path | Δ since stub |
+|------|----------------|
+| `src/ui/frontend/src/components/ArtifactEditor.tsx` | unchanged since `b16a93d3` |
+| `tests/component/frontend/components/test_ArtifactEditor.test.tsx` | +186 lines — 3 `AST-1480` tests (label-churn, JAR sibling overlay, chrome off / bodies on) |
+| `docs/test-bible/frontend/components.md` | +32 lines — AST-1480 manifest block |
+| `docs/features/artifacts/ast-1480-…md` | plan/review sections (docs trail) |
+| tip | `bcc05032` merge-tests(AST-1480) |
+
+## What's solid
+
+- Structure-mode fix logic is sound: `fixedFieldKeys` prevents label-only re-GET wipes; label-sync effect preserves `tabs[].content`; dict coerce rejects pin strings; JAR `job_resume`/`resume_content` overlay matches Betty handoff.
+- Scope discipline: ArtifactEditor-only product change; no API/core creep.
+- AST-1480 tests directly exercise the reported failure modes (A)/(B).
+
+## Recommended actions (downstream — not executed here)
+
+1. **resolve-child:** fix `bodiesEditable` formula + rubric regression test.
+2. **Chuckles:** append this artifact to issue doc; post slim upshot; → **Review Posted** after writeback (C7 complete).
+3. **Optional:** Archie pattern-id hygiene per Joan discuss.
+
+## Notes
+
+- Joan plan-rubric verdict attached (APPROVED). No excluded-statute straggler.
+- §5f / §5g not triggered (frontend-only; no `debug=` or LLM external changes).
+- Trust spawn prompt: Tests Passed @ Ada assignee.
+
+context_tokens≈55000
