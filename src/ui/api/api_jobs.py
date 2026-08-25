@@ -14,8 +14,10 @@ from src.core.tracker import (
     get_job_artifacts,
     hydrate_job_artifacts_for_display,
     job_misses_dispatch_score_floor,
+    legal_job_successor_states,
     list_jobs,
     list_jobs_below_dispatch_score_floor,
+    persist_skipped_job_edits,
     save_job_artifact_cover_letter,
     save_job_artifact_resume_content,
     save_job_data,
@@ -74,6 +76,14 @@ def _flatten_grades(job: dict) -> dict:
             job[bk] = _phase_score_breakdown(rubric, grades)
         except (ValueError, TypeError, KeyError):
             pass
+    return job
+
+
+def _attach_skipped_edit_meta(job: dict) -> dict:
+    state = job.get("state") or ""
+    editable = state in SKIPPED_STATES
+    job["fields_editable"] = editable
+    job["legal_next_states"] = legal_job_successor_states(state) if editable else []
     return job
 
 
@@ -145,6 +155,7 @@ def detail(astral_job_id):
     if not job:
         return jsonify({"error": "Not found"}), 404
     job = _flatten_grades(job)
+    _attach_skipped_edit_meta(job)
     # AST-1100: pin-slot strings → resolved bodies for JAR / ArtifactEditor (no persist).
     jd = job.get("job_data") if isinstance(job.get("job_data"), dict) else {}
     art = hydrate_job_artifacts_for_display(get_job_artifacts(job) or jd.get("artifacts"))
@@ -160,6 +171,36 @@ def detail(astral_job_id):
         )
         job["agent_story"] = []
     return jsonify(job)
+
+
+@jobs_bp.route("/<astral_job_id>", methods=["PUT"])
+@require_auth
+def persist_skipped_edits(astral_job_id):
+    """Persist title/link/JD/state for a job currently in SKIPPED_STATES (AST-1453)."""
+    data = request.get_json(force=True) or {}
+    fields = {
+        k: data[k]
+        for k in ("job_title", "job_link", "job_description", "state")
+        if k in data
+    }
+    if not fields:
+        return jsonify({"error": "No valid fields to update"}), 400
+    if not get_job(astral_job_id):
+        return jsonify({"error": "Not found"}), 404
+    try:
+        persist_skipped_job_edits(astral_job_id, fields)
+    except ValueError as exc:
+        msg = str(exc)
+        if (
+            msg == "Job is not in a skipped state"
+            or msg.startswith("Invalid transition")
+            or msg == "job identity collision"
+        ):
+            return jsonify({"error": msg}), 409
+        if "not in allowed list" in msg:
+            return jsonify({"error": msg}), 409
+        return jsonify({"error": msg}), 400
+    return detail(astral_job_id)
 
 
 @jobs_bp.route("/<astral_job_id>/copy")

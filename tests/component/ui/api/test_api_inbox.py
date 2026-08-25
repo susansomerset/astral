@@ -301,7 +301,7 @@ class TestAst1049InboxCreateJobApi:
         )
 
 
-# AST-1141: POST land-meteorite → run_meteorite_email_selected_ids (no Create strip/extract).
+# AST-1141: POST land-meteorite → run_gaze_email_selected_ids (no Create strip/extract).
 class TestAst1141InboxLandMeteoriteApi:
     _CORE_OK: dict[str, Any] = {
         "results": [
@@ -328,7 +328,7 @@ class TestAst1141InboxLandMeteoriteApi:
     ) -> None:
         core = AsyncMock(return_value=dict(self._CORE_OK))
         create = MagicMock()
-        monkeypatch.setattr(inbox_mod, "run_meteorite_email_selected_ids", core)
+        monkeypatch.setattr(inbox_mod, "run_gaze_email_selected_ids", core)
         monkeypatch.setattr(inbox_mod, "create_meteorite_job_from_inbox_message", create)
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
         resp = inbox_client.post(
@@ -345,7 +345,7 @@ class TestAst1141InboxLandMeteoriteApi:
         self, inbox_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch
     ) -> None:
         core = AsyncMock(return_value=dict(self._CORE_OK))
-        monkeypatch.setattr(inbox_mod, "run_meteorite_email_selected_ids", core)
+        monkeypatch.setattr(inbox_mod, "run_gaze_email_selected_ids", core)
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=True))
         resp = inbox_client.post(
             "/api/admin/inbox/land-meteorite?debug=1",
@@ -391,7 +391,7 @@ class TestAst1141InboxLandMeteoriteApi:
     ) -> None:
         monkeypatch.setattr(
             inbox_mod,
-            "run_meteorite_email_selected_ids",
+            "run_gaze_email_selected_ids",
             AsyncMock(side_effect=ValueError("bad selection")),
         )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))
@@ -408,7 +408,7 @@ class TestAst1141InboxLandMeteoriteApi:
     ) -> None:
         monkeypatch.setattr(
             inbox_mod,
-            "run_meteorite_email_selected_ids",
+            "run_gaze_email_selected_ids",
             AsyncMock(side_effect=RuntimeError("core boom")),
         )
         monkeypatch.setattr(inbox_mod, "ui_llm_debug", MagicMock(return_value=False))

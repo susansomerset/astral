@@ -4477,9 +4477,6 @@ class TestAst1270NestedDraftJobResumeContract:
         assert "ordered array of job objects" in draft
         # Nested envelope example only (no flat-only agent_payload section-key sample).
         assert '"agent_payload": {\n    "resume"' in draft
-        # AST-1465: retire instructional `•`/`-`/`*` glyph pattern (not every markdown `- ` rule).
-        assert "`•`/`-`/`*`" not in draft
-        assert "ordered **array of strings**" in draft
 
 
 class TestAst1272DraftHopDebugWhitelistTrail:

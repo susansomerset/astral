@@ -23,6 +23,7 @@ from src.utils.config import (
     JOB_BUILD_ARTIFACT_CLEAR_KEYS,
     JOB_STATES,
     RESUME_STRUCTURE_CONTACT_SECTION_IDS,
+    SKIPPED_STATES,
     TASK_CONFIG,
     TRACKER_CONFIG,
     dispatch_chain_graduation_target,
@@ -845,6 +846,66 @@ def _job_state_matches_prior(current_state: str, prior_states: Optional[List[str
     if legacy_build_artifacts_hop(st) and BUILD_ARTIFACTS_BASE_STATE in prior_states:
         return True
     return False
+
+
+def legal_job_successor_states(from_state: str) -> List[str]:
+    """JOB_STATES keys that transition_job_state would accept from from_state, excluding from_state."""
+    current = (from_state or "").strip()
+    out: List[str] = []
+    for name, cfg in JOB_STATES.items():
+        if name == current:
+            continue
+        if _job_state_matches_prior(current, cfg.get("prior_states")):
+            out.append(name)
+    return out
+
+
+def persist_skipped_job_edits(astral_job_id: str, fields: Dict[str, Any]) -> Dict[str, Any]:
+    """Persist title/link/JD (and optional state hop) only when job.state is in SKIPPED_STATES."""
+    job = get_job(astral_job_id)
+    if not job:
+        raise ValueError(f"Job not found: {astral_job_id}")
+    if (job.get("state") or "") not in SKIPPED_STATES:
+        raise ValueError("Job is not in a skipped state")
+
+    # Column + JD writes first so an illegal hop still keeps field edits
+    col: Dict[str, Any] = {}
+    if "job_title" in fields:
+        title = fields["job_title"] if fields["job_title"] is not None else ""
+        title = str(title).strip()
+        if not title:
+            raise ValueError("job_title required")
+        col["job_title"] = title
+    if "job_link" in fields:
+        link = fields["job_link"] if fields["job_link"] is not None else ""
+        link = str(link).strip()
+        if not link:
+            raise ValueError("job_link required")
+        col["job_link"] = link
+    if "job_description" in fields:
+        text = "" if fields["job_description"] is None else str(fields["job_description"])
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        save_job_data(astral_job_id, {jd_key: text})
+    if col:
+        try:
+            if save_job(astral_job_id, **col) is False:
+                raise ValueError("job identity collision")
+        except sqlite3.IntegrityError as exc:
+            if _is_job_identity_unique_violation(exc):
+                raise ValueError("job identity collision") from exc
+            raise
+
+    if "state" in fields:
+        to_state = str(fields["state"] or "").strip()
+        if not to_state:
+            raise ValueError("state required")
+        if to_state != (job.get("state") or ""):
+            transition_job_state([astral_job_id], to_state)
+
+    out = get_job(astral_job_id)
+    if not out:
+        raise ValueError(f"Job not found: {astral_job_id}")
+    return out
 
 
 def write_job_dispatch_hop_label(job_id: str, trigger_state: str, completed_task_key: str) -> str:
