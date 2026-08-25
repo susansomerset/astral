@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react"
+import { createContext, useCallback, useContext, useEffect, useState, type ReactNode } from "react"
 import api from "../lib/api"
 import { setFmtTimezone } from "../lib/fmt"
 import { browserTabTitle } from "../lib/documentTitle"
@@ -19,11 +19,13 @@ interface CandidateCtx {
   selectedId: string | null
   setSelectedId: (id: string) => void
   refresh: () => void
+  alignSelectedCandidateForJobCompany: (companyShortName: string) => Promise<void>
 }
 
 const CandidateContext = createContext<CandidateCtx>({
   candidates: [], selectedId: null,
   setSelectedId: () => {}, refresh: () => {},
+  alignSelectedCandidateForJobCompany: async () => {},
 })
 
 const STORAGE_KEY = "astral_selected_candidate"
@@ -40,6 +42,19 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
     _setSelectedId(id)
     localStorage.setItem(STORAGE_KEY, id)
   }
+
+  const alignSelectedCandidateForJobCompany = useCallback(async (companyShortName: string) => {
+    if (!isAdmin) return
+    const sn = companyShortName.trim()
+    if (!sn) return
+    const res = await api(`/api/companies/${encodeURIComponent(sn)}`)
+    if (!res.ok) return
+    const data = (await res.json()) as { candidate_id?: unknown }
+    const cid = typeof data.candidate_id === "string" ? data.candidate_id.trim() : ""
+    if (!cid || cid === selectedId) return
+    if (!candidates.some(c => c.astral_candidate_id === cid)) return
+    setSelectedId(cid)
+  }, [isAdmin, selectedId, candidates, setSelectedId])
 
   function load() {
     api("/api/candidates").then(r => r.json()).then(data => {
@@ -81,7 +96,10 @@ export function CandidateProvider({ children }: { children: ReactNode }) {
   }, [])
 
   return (
-    <CandidateContext.Provider value={{ candidates, selectedId, setSelectedId, refresh: load }}>
+    <CandidateContext.Provider value={{
+      candidates, selectedId, setSelectedId, refresh: load,
+      alignSelectedCandidateForJobCompany,
+    }}>
       {children}
     </CandidateContext.Provider>
   )
