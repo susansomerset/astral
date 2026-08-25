@@ -344,3 +344,177 @@ context_tokens≈88000
 | 3 | `5bf2c0dc` | public `land_meteorite` — scrape, late-import enrich, Tracker save |
 
 **Betty note:** `tests/component/core/test_meteorite.py` land contracts deferred to qa-child (engineer test-tree ban).
+
+## Radia review
+
+# Radia review — AST-1470
+
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1470  
+**Parent:** AST-1457  
+**Publish ref:** `origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment` @ `b3a236ce6e2f99dbbaa3e5be14ca519149ef4449`  
+**Baseline:** `origin/dev`  
+**Overall:** CLEAN
+
+**Diff summary:** 20 files, +2622/−63 vs `origin/dev`. AST-1470 product surface: `src/core/consult.py` (+`enrich_meteorite_land_packet`), `src/core/agent.py` (land `do_task` docs), `src/core/meteorite.py` (+`land_meteorite`). Also carries AST-1469 foundation (`config.py`, `database.py`, `tracker.py`) via `merge-resume(AST-1470)` — already reviewed CLEAN (AST-1469 @ `7aedf36`). Betty merge tip adds `TestAst1470*` suites.
+
+**Engineer commits (Stages 1–3):** `339a545b` consult · `11ff80e5` agent docs · `5bf2c0dc` meteorite land  
+**Publish tip:** `b3a236ce` (merge-tests + Betty `fbf834f1`)
+
+---
+
+## Statutes checked
+
+64 active statutes scored (retired `astral.config.pass-threshold-vs-score-floor` excluded).
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no confidence-vector paths in AST-1470 diff |
+| astral.agent.do-task-delegation | scoped | conforms | land enrich delegates to `do_task(qualify_meteorite)`; no new provider client |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector decode in land path |
+| astral.batch.batch-id-first | scoped | not-applicable | no entity batch claim in land enrich |
+| astral.batch.batch-id-format | scoped | conforms | land mints `qualify_meteorite-land-{uuid}` + `log_batch_id` bind/clear |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release edits |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | land uses audit-only `do_index`; plan documents no latest-ref consumers pre-save |
+| astral.config.config-source-of-truth | scoped | conforms | reads `TASK_CONFIG`/`METEORITE_CONFIG`; engineer did not edit `config.py` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | no new secret literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no artifacts dir |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug/ spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed edits in AST-1470 engineer scope |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | land enrich does not chain qualify transition |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | issue doc present |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty changes tests/bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer src limited to agent/consult/meteorite |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render-verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Playwright I/O in external; core orchestrates |
+| astral.layers.import-direction | scoped | conforms | core→external/utils/data; late-import breaks consult↔meteorite cycle |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts/ |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no ui/ |
+| astral.patterns.coat-check-never-store-empty | scoped | not-applicable | duplicate idiom; no coat-check |
+| astral.patterns.render-verdict-orchestrates-consult | scoped | not-applicable | no consult render paths |
+| astral.patterns.require-auth-on-protected-endpoints | scoped | not-applicable | no API |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no agent_task seed edits |
+| astral.seed.archie-catalog-wins | scoped | conforms | config read-only per scope |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no seed execution |
+| astral.seed.define-approved | scoped | not-applicable | no seed define |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row deletes |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed |
+| astral.standards.data-raises-caller-logs | scoped | conforms | data untouched by 1470 engineer; core logs via get_logger |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py edits in 1470 engineer scope |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D gated on `debug=True`; index/detail helpers used |
+| astral.standards.dry-and-focused-functions | scoped | conforms | helpers scoped; enrich separate from `_run_batch_consult` |
+| astral.standards.in-scope-only | scoped | conforms | engineer stayed agent/consult/meteorite; no API/inbox/contact |
+| astral.standards.logging-via-utils | scoped | conforms | get_logger throughout |
+| astral.standards.names-not-ticket-ids | scoped | conforms | domain API names (`land_meteorite`, `enrich_meteorite_land_packet`) |
+| astral.standards.no-cross-contamination | scoped | conforms | no Gmail/inbox in meteorite; wiring deferred to siblings |
+| astral.standards.no-hardcoded-sets | scoped | conforms | outcomes/keys from `METEORITE_CONFIG`; min_jd from `TASK_CONFIG` |
+| astral.standards.public-then-helpers | scoped | conforms | public `land_meteorite` / `enrich_meteorite_land_packet`; `_land_*` private |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | utils not edited by 1470 engineer |
+| astral.state.core-decides-transitions | scoped | conforms | Tracker save in core; enrich has no transition |
+| astral.state.job-prior-states-enforced | scoped | conforms | no illegal state hops in land path; supersede via AST-1469 tracker |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | enrich → save only; no METEORITE_QUALIFIED transition |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no ui |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | merge-tests tip publishes product + tests at one SHA |
+| orch.git.commit-vocabulary | universal | conforms | stage `code(AST-1470)` + `test(AST-1470)` + merge-tests |
+| orch.git.flow-direction-inviolable | universal | conforms | sub vs dev; no reverse flow |
+| orch.git.ftr-sub-topology | universal | conforms | child sub publish ref |
+| orch.git.merge-on-checkout | universal | conforms | n/a to artifact |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no cherry-pick/rebase |
+| orch.git.no-dev-agent-branches | universal | conforms | proper sub ref |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1457 worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy forks |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 match plan + Revision 1 fixes |
+| orch.pipeline.project-scoped-queues | universal | conforms | Meteorite child scoped |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Tests Passed → review-child |
+| orch.roles.archie-approves-statutes | universal | conforms | n/a |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty landed `TestAst1470*` |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee Hedy |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Hedy assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | engineer honored test-tree ban |
+
+**Straggler (C4):** Joan round-2 APPROVED; no Excluded statute list. Round-1 fix-now items (batch_id, late-import) resolved in Revision 1 and implemented.
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.layers.import-discipline | conforms | core→external Playwright; consult↔meteorite cycle avoided via late-import; no Gmail in meteorite |
+| pattern.batch.entity-agent-responses | conforms | land `do_index` audit-only under `entity_type=job`; documented no latest-ref consumers until Tracker save |
+| pattern.config.config-block | conforms | reads config catalogs; no inline magic sets in land path |
+| pattern.state.entity-state-transitions | conforms | core orchestrates; enrich does not transition; Tracker save owns METEORITE_NEW |
+| pattern.agent.prompt-persist-before-provider | discuss | catalog still `proposed`; existing `do_task` pre-provider store path used — citation hygiene only (Joan) |
+
+---
+
+## Plan adherence
+
+**Stage 1 — consult:** `enrich_meteorite_land_packet` implemented with scrap normalization, `METEORITE JOBS:` live_content assembly, `batch_id` mint + `log_batch_id.set`/`finally` clear, `do_index` mirroring `_run_batch_consult`, stub `batch_entities` without `astral_job_id`, Ruth field mapping + scrap fallbacks, `_resolve_company_job_id`, no `initialize_job` / `_run_batch_consult` / transition calls. Style D per scrap when `debug=True`.
+
+**Stage 2 — agent:** `do_task` docstring + module note document land audit index shape. No code change required — existing `_should_store` path works when `log_batch_id` is set (confirmed by component test asserting `index` + `batch_id`).
+
+**Stage 3 — meteorite:** public async `land_meteorite` with scrap normalization, candidate/company ensure, thin-body Playwright fetch via `_land_fetch_link_text`, late-import enrich, per-row `tracker.save_meteorite_job`, rollup outcome logic, partial-row error continuation, Style D found→recorded, `create_meteorite_job` preserved, zero Gmail/mailbox/inbox imports.
+
+**Scope gate:** engineer did not edit `config.py`, `database.py`, `tracker.py`, `gazer.py`, API, inbox, contact. AST-1469 foundation present on publish ref as dependency (blockedBy AST-1469 UT — pipeline ordering, not a code defect).
+
+**Estimate 5:** fits orchestration + consult entry + Playwright flesh-out + Tracker integration.
+
+---
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+1. **`pattern.agent.prompt-persist-before-provider` still `proposed`** — ticket cites it; implementation correctly relies on existing `do_task` store sequencing. Citation hygiene only; no implementation gap (Joan round-2).
+
+### advisory
+
+1. **`_land_fetch_link_text` bare `except Exception`** (`meteorite.py`) — returns `("", url)` on any Playwright failure. Plan step 3 explicitly allows non-raise; docstring documents empty-on-failure. Acceptable; optional inline comment citing plan tradeoff if pre-commit nags D2.
+2. **Import-ban test coverage** — `TestAst1470LandMeteorite.test_module_has_no_gmail_or_mailbox_imports` checks `gmail`/`mailbox` only; plan also bans `inbox`/`meteorite_email`. Module has none (docstring mentions only). Test could widen; not blocking.
+3. **Land supersede rollup untested end-to-end** — Betty covers create + duplicate_skip + enrich-fail + Playwright + Style D; gazed→meteorite supersede through full `land_meteorite` stack not exercised (Tracker supersede covered in AST-1469 `TestAst1469SaveMeteoriteJob`). UAT may want one land→supersede scenario when siblings wire callers.
+4. **Partial multi-row failure** — code continues on per-row `ValueError`/`RuntimeError` (plan step 8); no component test for mixed success/error `outcomes[]`. Low risk given Tracker tests.
+
+---
+
+## What's solid
+
+- Joan round-1 fix-now items fully landed: `batch_id` + `log_batch_id` audit trail; late-import breaks consult↔meteorite cycle.
+- Separate consult entry preserves dispatch `qualify_meteorite` claim/transition law (`astral.state.no-daisy-chain-in-run`).
+- Explicit error returns (never silent no-op) for missing candidate, empty scraps, enrich failure.
+- Employer metadata flows scrap → Ruth fallback → `save_meteorite_job(..., employer_name=…)`.
+- Betty tests lock batch_id/index shape, scrap fallbacks, land create/skip/Playwright/Style D, and no-Gmail imports.
+
+---
+
+## Frame diff
+
+| Field | Issue doc (build stub) | Publish tip under review |
+|-------|------------------------|--------------------------|
+| Product SHA | `5bf2c0dc` (Stage 3) | `b3a236ce` (merge-tests) |
+| Tests | "deferred to qa-child" | `TestAst1470LandMeteorite` + `TestAst1470EnrichMeteoriteLandPacket` landed (`fbf834f1`) |
+| Dependency | AST-1469 on ftr | AST-1469 foundation in three-dot diff vs dev (`merge-resume` + prior 1469 commits) |
+| blockedBy | — | AST-1469 User Testing (sibling ordering; 1470 code includes foundation) |
+
+---
+
+## Recommended actions (downstream — not Radia)
+
+- Chuckles: append verdict to issue doc, `docs(AST-1470): Radia review — clean`, push, post slim upshot, → Review Posted → User Testing (no resolve-child unless findings emerge on re-read).
+- Optional UAT: one `land_meteorite` gazed-supersede scenario when AST-1471/1472 wire callers.
+- Optional test hygiene: widen import-ban assertion to `inbox`/`meteorite_email`.
+
+context_tokens≈52000
+
+---
+
+[code-rubric] PROCEED (Commit: b3a236ce) Land enrich clean; Betty tests landed
