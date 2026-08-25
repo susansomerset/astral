@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom"
 import { beforeEach, afterEach, describe, expect, it, vi } from "vitest"
 import Authenticate from "../../../../src/ui/frontend/src/pages/Authenticate"
 import { AuthProvider } from "../../../../src/ui/frontend/src/contexts/AuthContext"
+import { captureAuthReturnPath } from "../../../../src/ui/frontend/src/lib/sessionAuthMark"
 import { resetStytchTestState, stytchTestState } from "../stytchMock"
 import { stubAuthPublicFetches } from "../test-utils"
 
@@ -35,6 +36,7 @@ describe("Authenticate page (AST-830 / AST-1374 / AST-1441)", () => {
     replaceState = vi.fn()
     vi.spyOn(window.history, "replaceState").mockImplementation(replaceState)
     stubAuthPublicFetches(false)
+    sessionStorage.clear()
   })
 
   afterEach(() => {
@@ -135,5 +137,42 @@ describe("Authenticate page (AST-830 / AST-1374 / AST-1441)", () => {
       expect(navigate).toHaveBeenCalledWith("/", { replace: true }),
     )
     expect(authenticateByUrl).not.toHaveBeenCalled()
+  })
+
+  it("AST-1482: navigates to stored return path when session already exists", async () => {
+    captureAuthReturnPath("/jobs/detail/j-return", "")
+    stytchTestState.session = { user_id: "u1" }
+    renderAuthenticate()
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith("/jobs/detail/j-return", { replace: true }),
+    )
+  })
+
+  it("AST-1482: navigates to stored return path after successful OAuth handoff", async () => {
+    captureAuthReturnPath("/jobs/detail/j-oauth", "")
+    stytchTestState.session = null
+    stytchTestState.parseAuthenticateUrlResult = {
+      token: "abc",
+      tokenType: "oauth",
+      handled: true,
+    }
+    stytchTestState.authenticateByUrlImpl = async () => ({
+      handled: true,
+      tokenType: "oauth",
+    })
+    renderAuthenticate()
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith("/jobs/detail/j-oauth", { replace: true }),
+    )
+  })
+
+  it("AST-1482: navigates to stored return path when URL has no authenticate token", async () => {
+    captureAuthReturnPath("/jobs/detail/j-notoken", "")
+    stytchTestState.session = null
+    stytchTestState.parseAuthenticateUrlResult = null
+    renderAuthenticate()
+    await waitFor(() =>
+      expect(navigate).toHaveBeenCalledWith("/jobs/detail/j-notoken", { replace: true }),
+    )
   })
 })

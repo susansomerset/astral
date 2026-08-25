@@ -4708,6 +4708,10 @@ UI_CONFIG = {
 # SYNC: Every path here must have a matching route in src/ui/frontend/src/routes.tsx.
 #       If you add/remove/rename a nav item, update routes.tsx to match.
 # ---------------------------------------------------------------------------
+# Deeplink-only — not in NAV_CONFIG (no sidebar item).
+# SYNC: src/ui/frontend/src/routes.tsx path "jobs/detail/:jobId"
+JOBS_DETAIL_ROUTE_PREFIX = "/jobs/detail"
+
 NAV_CONFIG = [
     {
         "label": "Jobs",
