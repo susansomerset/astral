@@ -2,6 +2,13 @@ import type { CandidateActionKey } from "../lib/candidateJobActions"
 
 const REVIEW_LIKE = new Set(["CANDIDATE_REVIEW", "BUILD_ARTIFACTS", "PASSED_LIKE", "RECOMMENDED"])
 
+// Legal CANDIDATE_APPLIED priors that appear on Recommended (not PASSED_LIKE).
+const PRE_APPLIED_MARK = new Set([
+  "CANDIDATE_REVIEW",
+  "BUILD_ARTIFACTS",
+  "RECOMMENDED",
+])
+
 const POST_APPLIED = new Set([
   "CANDIDATE_APPLIED",
   "CANDIDATE_INTERVIEW",
@@ -42,6 +49,10 @@ export default function CandidateJobRowActions({
       <div className="job-list-actions" onClick={e => e.stopPropagation()}>
         <button type="button" className="icon-control" title="Skip" aria-label="Skip"
           onClick={onSkip}>S</button>
+        {onAction && PRE_APPLIED_MARK.has(state) && (
+          <button type="button" className="icon-control" title="Applied" aria-label="Applied"
+            onClick={() => onAction("applied")}>A</button>
+        )}
         {showViewAnalysis !== false && onViewAnalysis && (
           <button type="button" className="icon-control" title="View Job Analysis" aria-label="View Job Analysis"
             onClick={onViewAnalysis}>J</button>
