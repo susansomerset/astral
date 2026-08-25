@@ -152,3 +152,28 @@ AC6 (parent AST-1463 AC 6) → Stage 1 (capture/validate/consume helper), Stage 
 
 context_tokens≈48000
 ```
+
+## Joan validate (round 2)
+
+```
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1482
+**Overall:** APPROVED
+**Publish ref:** `f0538c4fb7d3c327e9d43511af14832455b18742` (`origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth`)
+
+## Traceability
+AC6 (parent AST-1463 AC 6) → Stage 1 (sessionStorage capture/validate/consume), Stage 2 (RequireAuth gate capture on Login/LogOffScreen), Stage 3 (Authenticate consume + navigate); AST-1481 deeplink/modal host out of scope (sibling E2E dependency in UAT fitness).
+
+## Findings
+
+**discuss** — Round 1 fix-now resolved: Stage 2 now mirrors render gate order. Implementer must hoist logOffReason derivation to hook scope when adding useEffect — implied by the sample, not spelled out.
+
+**discuss** — No formal Self-assessment block; stages are specific enough. Non-blocking.
+
+**acceptable** — clearSessionAuthMarks() leaves astral-auth-return-path intact; Refresh → Login re-capture covers timeout chain.
+
+**acceptable** — no-token post-auth navigate to consumed path preserves existing behavior.
+
+context_tokens≈52000
+```
