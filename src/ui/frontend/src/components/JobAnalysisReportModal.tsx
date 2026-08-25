@@ -4,6 +4,10 @@ import ArtifactEditor from "./ArtifactEditor"
 import Modal from "./Modal"
 import RecommendedJobReportHeader from "./RecommendedJobReportHeader"
 import ReportSectionList, { type ReportSectionDef } from "./ReportSectionList"
+import {
+  type Catalog,
+  type SectionRow,
+} from "./ResumeStructureEditor"
 import { TabBar } from "./TabbedTextArea"
 import Toast, { type ToastMessage } from "./Toast"
 import { useCandidate } from "../contexts/CandidateContext"
@@ -27,6 +31,14 @@ import {
   printResumeVisible,
   type ReportPrimaryAction,
 } from "../lib/recommendedJobReport"
+
+function catalogFromPayload(data: { catalog?: unknown }): Catalog | null {
+  const raw = data.catalog
+  if (!raw || typeof raw !== "object") return null
+  const c = raw as Catalog
+  if (!Array.isArray(c.body_formats)) return null
+  return c
+}
 
 interface JobDetail {
   astral_job_id: string
@@ -68,6 +80,10 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [activeTopTab, setActiveTopTab] = useState("summary")
   const [structureSections, setStructureSections] = useState<{ id: string; label: string }[] | null>(null)
   const [structureError, setStructureError] = useState(false)
+  const [allSections, setAllSections] = useState<SectionRow[]>([])
+  const [catalog, setCatalog] = useState<Catalog | null>(null)
+  const [structureSaving, setStructureSaving] = useState(false)
+  const [structureSaveError, setStructureSaveError] = useState<string | null>(null)
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
@@ -157,26 +173,81 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
 
   useEffect(() => { load() }, [load])
 
-  // Resume section labels for Job Resume ArtifactEditor (mirrors candidate structure).
+  // Resume section labels + structure authoring (candidate resume_structure as shared defaults).
   useEffect(() => {
     if (!selectedId) {
       setStructureSections(null)
       setStructureError(false)
+      setAllSections([])
+      setCatalog(null)
       return
     }
     setStructureSections(null)
     setStructureError(false)
+    setAllSections([])
+    setCatalog(null)
     api(`/api/candidates/${selectedId}/resume_structure`)
       .then(r => r.json())
       .then(data => {
         const sections = Array.isArray(data.sections) ? data.sections : []
         setStructureSections(sections.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
+        setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
+        setCatalog(catalogFromPayload(data))
       })
       .catch(() => {
         setStructureSections(null)
         setStructureError(true)
+        setAllSections([])
+        setCatalog(null)
       })
   }, [selectedId])
+
+  function handleStructureRowsChange(rows: SectionRow[]) {
+    setAllSections(rows)
+    setStructureSections(rows.map(r => ({ id: r.id, label: r.title })))
+  }
+
+  function saveStructure(rows: SectionRow[]) {
+    if (!selectedId) return
+    const sections: Record<string, Record<string, unknown>> = {}
+    rows.forEach((row, index) => {
+      const spec: Record<string, unknown> = {
+        id: row.id,
+        title: row.title,
+        enabled: row.enabled,
+        order: index,
+        job_agent_editable: row.job_agent_editable,
+        page_break_policy: row.page_break_policy,
+      }
+      if (row.format) spec.format = row.format
+      sections[row.id] = spec
+    })
+    setStructureSaving(true)
+    setStructureSaveError(null)
+    api(`/api/candidates/${selectedId}/data`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
+    })
+      .then(r => {
+        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
+        return r.json()
+      })
+      .then(() => api(`/api/candidates/${selectedId}/resume_structure`).then(r => r.json()))
+      .then(data => {
+        const sectionsList = Array.isArray(data.sections) ? data.sections : []
+        setStructureSections(sectionsList.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
+        setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
+        setCatalog(catalogFromPayload(data))
+        setToast({ text: "Resume sections saved", variant: "success" })
+      })
+      .catch(e => {
+        const msg = e.message || "Save failed"
+        setStructureSaveError(msg)
+        setToast({ text: msg, variant: "error" })
+      })
+      .finally(() => setStructureSaving(false))
+  }
 
   // Reset top tab when opening a different job.
   useEffect(() => {
@@ -401,6 +472,12 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
           taskKey="craft_resume_base"
           useCandidateResumeStructure
           structureSections={structureSections}
+          structureCatalog={catalog}
+          structureRows={allSections}
+          onStructureRowsChange={handleStructureRowsChange}
+          onStructureSave={saveStructure}
+          structureSaving={structureSaving}
+          structureError={structureSaveError}
           jobPersistence={{ jobId, artifactKey: artTab.artifact_key, onSaved: load }}
         />
       )
