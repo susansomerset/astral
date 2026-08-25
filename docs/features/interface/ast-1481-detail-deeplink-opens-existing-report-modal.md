@@ -134,3 +134,11 @@ AC1–7 → Stage 1 (AC2 route + SPA boot), Stage 2 (AC1,3–5,7 modal host, pre
 
 **acceptable** — `routes.tsx` file-header SYNC comment still says every route needs a `NAV_CONFIG` item; deeplink is intentionally nav-less per parent scope. Config `JOBS_DETAIL_ROUTE_PREFIX` + inline route string matches existing NAV_CONFIG SYNC pattern.
 ```
+
+---
+
+## Review (build)
+
+**Built:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal` @ `0e7e2d87`
+
+Stages 1–3: `JOBS_DETAIL_ROUTE_PREFIX` + `jobs/detail/:jobId` route; `JobsJobDetail` prefetch gate, error UI, modal host with close → `/jobs/recommended`; admin `alignSelectedCandidateForJobCompany` via company `candidate_id`. Tests deferred to Betty.
