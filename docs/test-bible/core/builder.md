@@ -180,7 +180,7 @@ Equivalent harness:
 
 ### AST-1020 · AST-1019
 
-**AST-1020:** Shared resume embedded `<style>` matches Take 2 golden rules (contact flex, role/education/skills spacing/type, skills CSS grid, all-caps competencies/skills, unused `.title`/`.specialties`/`.job-title`/`.dates`, mobile + print including always-on `#prior-experience { page-break-before: always }`); `BUILD_CONFIG["default_style"]["colors"]` exposes golden text/border tokens; Astral `.prose-block` / cover / ATS appendages remain; no external stylesheet. Title/meta emit stays sibling **AST-1021**. Markup emit stays **AST-1008** / **AST-1009**.
+**AST-1020:** Shared resume embedded `<style>` matches Take 2 golden rules (contact flex, role/education/skills spacing/type, skills CSS grid, all-caps competencies/skills, unused `.title`/`.specialties`/`.job-title`/`.dates`, mobile + print); **AST-1475** removed always-on `#prior-experience { page-break-before: always }` — print section breaks come from structure `page_break_policy` (default keep-together); `BUILD_CONFIG["default_style"]["colors"]` exposes golden text/border tokens; Astral `.prose-block` / cover / ATS appendages remain; no external stylesheet. Title/meta emit stays sibling **AST-1021**. Markup emit stays **AST-1008** / **AST-1009**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -679,3 +679,38 @@ When `debug=True`, session/base/job emit paths call `candidate.debug_experience_
   tests/component/core/test_builder.py::TestBuildBaseResumeDebugPaths::test_failures_with_debug \
   -q
 ```
+
+---
+
+### AST-1475 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462/create-and-position-page-break). **Publish:** `origin/sub/AST-1462/AST-1475-builder-print-css-structure-page-break-policies`.
+
+Maps structure `page_break_policy` (`normal` / `page_break_before` / `avoid_split` from **AST-1474**) into shared resume `@media print` via `_print_section_page_break_css`; always keeps `.role { page-break-inside: avoid; }`; removes hard-coded `#prior-experience { page-break-before: always; }`. Does **not** own React dropdown (**AST-1476**) or config/schema (**AST-1474**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Policy → print CSS + role keep + no hard prior break | `src/core/builder.py` | **`TestAst1475PageBreakPrintCss`** |
+| Golden stylesheet flip (prior always-break → policy default) | same | revised **`TestAst1020GoldenStylesheet`** |
+
+**Broken / obsolete this pass:** **`TestAst1020GoldenStylesheet`** required unconditional `#prior-experience { page-break-before: always; }` — now asserts absence + default `#summary { page-break-inside: avoid; }` + `.role` keep.
+
+**Integration:** no existing scenario asserts resume print page-break CSS — no revision; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Default avoid_split / role keep / no forced prior: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_default_avoid_split_and_role_keep_no_forced_prior_break`
+2. `page_break_before` + `normal`: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_page_break_before_and_normal_on_session_base`
+3. Missing policy soft-default + job path: `tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss::test_missing_policy_soft_defaults_and_job_resume_path`
+4. Golden three surfaces (revised): `tests/component/core/test_builder.py::TestAst1020GoldenStylesheet`
+
+**AST-1475** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_builder.py::TestAst1475PageBreakPrintCss \
+  tests/component/core/test_builder.py::TestAst1020GoldenStylesheet \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

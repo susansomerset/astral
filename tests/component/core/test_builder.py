@@ -9,6 +9,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.core import builder as builder_mod
+from src.core import candidate as candidate_mod
 
 
 def _resume_blob(**sections: str) -> Dict[str, Any]:
@@ -1962,10 +1963,13 @@ class TestAst1020GoldenStylesheet:
         # Unused-but-present golden selectors
         for sel in (".title {", ".specialties {", ".job-title {", ".dates {"):
             assert sel in style
-        # Mobile + print (prior break always — even without prior body section)
+        # Mobile + print (AST-1475: no hard-coded prior-experience always-break)
         assert "@media (max-width: 600px)" in style
-        assert "#prior-experience { page-break-before: always; }" in style
+        assert "#prior-experience { page-break-before: always; }" not in style
         assert "#competencies { page-break-after: avoid; }" in style
+        assert ".role { page-break-inside: avoid; }" in style
+        # Sole body section in golden fixture → default avoid_split → #summary
+        assert "#summary { page-break-inside: avoid; }" in style
         # Astral-only appendages between skills and mobile
         assert ".prose-block { white-space: pre-wrap; }" in style
         assert ".cover-block" in style
@@ -3810,3 +3814,90 @@ class TestAst1382BugReproBaseResumeIssues:
         assert "<li>Alpha</li>" in html
         assert "<li>Beta</li>" in html
         assert "<li>• Alpha</li>" not in html
+
+
+# Branches: default avoid_split CSS; page_break_before; normal omits; .role always; missing→default.
+class TestAst1475PageBreakPrintCss:
+    """AST-1475: structure page_break_policy → @media print; no hard prior always-break."""
+
+    def _blob(self) -> dict[str, Any]:
+        return {
+            "candidate_name": "Susan Somerset",
+            "candidate_title": "Engineer",
+            "candidate_contact_detail": "hire@example.com",
+            "professional_summary": "Summary body",
+            "core_competencies": "Python • Go",
+            "highlights": "Won awards",
+            "experience": [
+                {
+                    "company": "Acme",
+                    "title": "Engineer",
+                    "dates": "2020-2023",
+                    "location": "",
+                    "accomplishments": ["Shipped"],
+                }
+            ],
+            "prior_experience": "Earlier roles",
+        }
+
+    def _style(self, html: str) -> str:
+        return html.split("<style>", 1)[1].split("</style>", 1)[0]
+
+    def test_default_avoid_split_and_role_keep_no_forced_prior_break(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = candidate_mod.default_resume_structure()
+        html = builder_mod.build_session_base_resume(structure, self._blob())
+        style = self._style(html)
+        assert "#prior-experience { page-break-before: always; }" not in style
+        assert "#prior-experience { page-break-inside: avoid; }" in style
+        assert "#summary { page-break-inside: avoid; }" in style
+        assert "#experience { page-break-inside: avoid; }" in style
+        assert ".role { page-break-inside: avoid; }" in style
+        assert "#competencies { page-break-after: avoid; }" in style
+
+    def test_page_break_before_and_normal_on_session_base(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        monkeypatch.setattr(builder_mod.candidate_mod, "get_candidate", MagicMock())
+        structure = candidate_mod.default_resume_structure()
+        structure["sections"]["experience"]["page_break_policy"] = "page_break_before"
+        structure["sections"]["prior_experience"]["page_break_policy"] = "normal"
+        structure["sections"]["professional_summary"]["page_break_policy"] = "avoid_split"
+        html = builder_mod.build_session_base_resume(structure, self._blob())
+        style = self._style(html)
+        assert "#experience { page-break-before: always; }" in style
+        assert "#experience { page-break-inside: avoid; }" not in style
+        assert "#prior-experience { page-break-before: always; }" not in style
+        assert "#prior-experience { page-break-inside: avoid; }" not in style
+        assert "#summary { page-break-inside: avoid; }" in style
+        assert ".role { page-break-inside: avoid; }" in style
+
+    def test_missing_policy_soft_defaults_and_job_resume_path(self) -> None:
+        structure = candidate_mod.default_resume_structure()
+        for spec in structure["sections"].values():
+            spec.pop("page_break_policy", None)
+        structure["sections"]["prior_experience"]["page_break_policy"] = "page_break_before"
+        job = {
+            "astral_job_id": "job-1475",
+            "job_data": {"artifacts": {"resume_content": self._blob()}},
+        }
+        cd = {
+            "first": "Susan",
+            "last": "Somerset",
+            "full": "Susan Somerset",
+            "candidate_data": {
+                "contact": {},
+                "artifacts": {
+                    "resume_structure": structure,
+                    "base_resume": {"professional_summary": "Base"},
+                },
+            },
+        }
+        html = builder_mod.build_resume_from_job(job, cd)
+        style = self._style(html)
+        assert "#prior-experience { page-break-before: always; }" in style
+        # Missing policy on other body sections → avoid_split default
+        assert "#summary { page-break-inside: avoid; }" in style
+        assert ".role { page-break-inside: avoid; }" in style
