@@ -1108,30 +1108,6 @@ Nested hop contract: normalize unwraps **`agent_payload.resume`** before section
 
 ---
 
-### AST-1465 · AST-1458
-
-**Parent:** [AST-1458 — Job resume draft prompt is asking for bullet chars](https://linear.app/astralcareermatch/issue/AST-1458/job-resume-draft-prompt-is-asking-for-bullet-chars). **Publish:** `origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs`.
-
-Prompt-wording lock: current `draft_job_resume` Manage Tasks `user_prompt` must not reintroduce the instructional glyph pattern `` `•`/`-`/`*` `` while still teaching job-array `experience` and bare-string `accomplishments` (`ordered **array of strings**`). Extends the existing nested-envelope prompt contract test — does **not** weaken AST-1270 / AST-1349 assertions. No integration scenario asserts this seed wording.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Glyph omit + bare-string / job-array wording preserved | `data/admin/agent_task.json` | **`TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`** (AST-1465 asserts) |
-| Existing nested envelope + array-only (regression) | same | **`TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`**, **`TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`** |
-
-**Broken / obsolete this pass:** none — additive glyph assertions only. **`TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits`** is already red on this tip (multi-key catalog↔twin drift beyond this child’s draft wording) — **not** revised here; out of AST-1465 glyph scope.
-
-**Integration:** none — no existing scenario for Manage Tasks draft prompt glyphs.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract \
-  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy \
-  -q
-```
-
----
-
 ### AST-1272 · AST-1268
 
 **Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`.

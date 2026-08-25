@@ -1114,3 +1114,23 @@ Persist `{prefix}_score_breakdown` `{earned, possible, max}` beside Analysis-pha
   tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
   -q
 ```
+
+### AST-1470 · AST-1457
+
+**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1470-land-meteorite-qualify-enrichment`.
+
+`enrich_meteorite_land_packet`: mint `qualify_meteorite-land-{uuid}`, `log_batch_id` + `do_task(qualify_meteorite)` with `_run_batch_consult`-shaped index; map Ruth fields with scrap link/employer fallbacks; no claim/transition. Land consumer: **`docs/test-bible/core/meteorite.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land packet enrich | `src/core/consult.py` | **`TestAst1470EnrichMeteoriteLandPacket`** |
+
+**Broken / obsolete:** none — additive separate entry; dispatch `_run_batch_consult` qualify unchanged.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1470EnrichMeteoriteLandPacket \
+  -q
+```

@@ -11,6 +11,7 @@ AST-1207: Events/Socket ingress hydrates debug from Manage Slack durable SoT
 (`slack_debug_enabled`); Style D found/recorded depth on Contact Slack path.
 AST-1073: Contact Estelle turn loop (`run_contact_estelle_turn`).
 Conversational envelope contract: AST-1072.
+AST-1471: Contact scrap path lands via `contact_land_meteorite` → `land_meteorite`.
 """
 
 from __future__ import annotations
@@ -549,6 +550,30 @@ def run_contact_skill(
     }
 
 
+def contact_land_meteorite(
+    astral_candidate_id: str,
+    *,
+    scraps: Optional[List[Dict[str, Any]]] = None,
+    text: Optional[str] = None,
+    job_link: Optional[str] = None,
+    employer_name: Optional[str] = None,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Contact/Estelle sync entry to land_meteorite (AST-1471)."""
+    from src.core.meteorite import land_meteorite
+
+    return asyncio.run(
+        land_meteorite(
+            astral_candidate_id,
+            scraps=scraps,
+            text=text,
+            job_link=job_link,
+            employer_name=employer_name,
+            debug=debug,
+        )
+    )
+
+
 def _nest_dotted_path(path: str, value: Any) -> Dict[str, Any]:
     """Turn 'a.b.c' + value into {'a': {'b': {'c': value}}}."""
     parts = path.split(".")
@@ -829,6 +854,19 @@ def run_contact_estelle_turn(
         path_s = ", ".join(str(x) for x in paths)
         lines.append(f"- {skill_key}: {desc} | paths: {path_s}")
     lines.append("")
+    lines.append("## Land meteorite (job scraps)")
+    lines.append(
+        "When the candidate shares a job listing (link and/or text), emit land_calls as a"
+    )
+    lines.append("JSON list. Each item may be either:")
+    lines.append(
+        '  - {"scraps": [ {"text": "...", "job_link": "...", "employer_name": "..."}, ... ]}'
+    )
+    lines.append(
+        '  - {"text": "...", "job_link": "...", "employer_name": "..."}  (single scrap)'
+    )
+    lines.append("Omit land_calls when none. Do not invent job content.")
+    lines.append("")
     lines.append("## Conversation")
     messages = list(ctx.get("messages") or [])
     if msg_limit > 0 and len(messages) > msg_limit:
@@ -896,6 +934,41 @@ def run_contact_estelle_turn(
                 {"ok": False, "error": str(exc), "skill_key": skill_key}
             )
 
+    # e2. Optional land_calls → contact_land_meteorite (AST-1471; not ACL skill)
+    land_results: List[Dict[str, Any]] = []
+    raw_land = parsed.get("land_calls") if isinstance(parsed, dict) else None
+    land_items = raw_land if isinstance(raw_land, list) else []
+    for item in land_items:
+        if not isinstance(item, dict):
+            continue
+        if not (isinstance(astral_candidate_id, str) and astral_candidate_id.strip()):
+            land_results.append({"ok": False, "error": "no_candidate"})
+            continue
+        try:
+            if isinstance(item.get("scraps"), list) and item["scraps"]:
+                land_out = contact_land_meteorite(
+                    astral_candidate_id, scraps=item["scraps"], debug=debug
+                )
+            else:
+                land_out = contact_land_meteorite(
+                    astral_candidate_id,
+                    text=item.get("text") if isinstance(item.get("text"), str) else None,
+                    job_link=(
+                        item.get("job_link")
+                        if isinstance(item.get("job_link"), str)
+                        else None
+                    ),
+                    employer_name=(
+                        item.get("employer_name")
+                        if isinstance(item.get("employer_name"), str)
+                        else None
+                    ),
+                    debug=debug,
+                )
+            land_results.append({"ok": True, "result": land_out})
+        except Exception as exc:
+            land_results.append({"ok": False, "error": str(exc)})
+
     # f. Outbound reply — only success/concern with non-empty reply
     reply = turn.get("reply")
     slack_post = None
@@ -936,6 +1009,7 @@ def run_contact_estelle_turn(
         "reply": reply if isinstance(reply, str) else None,
         "admin_aside": aside if isinstance(aside, str) else None,
         "skill_results": skill_results,
+        "land_results": land_results,
         "slack_post": slack_post,
         "error": do_task_error,
     }
@@ -950,6 +1024,7 @@ def run_contact_estelle_turn(
             outcome="recorded",
         )
         skill_ok = sum(1 for r in skill_results if isinstance(r, dict) and r.get("ok"))
+        land_ok = sum(1 for r in land_results if isinstance(r, dict) and r.get("ok"))
         reply_len = len(reply) if isinstance(reply, str) else 0
         aside_len = len(aside) if isinstance(aside, str) else 0
         slack_ok = None
@@ -958,7 +1033,8 @@ def run_contact_estelle_turn(
         log.debug_detail(
             f"outcome={outcome!r} success={bool(turn.get('success'))} "
             f"reply_len={reply_len} admin_aside_len={aside_len} "
-            f"skill_calls={len(calls)} skill_ok={skill_ok} slack_ok={slack_ok}"
+            f"skill_calls={len(calls)} skill_ok={skill_ok} "
+            f"land_calls={len(land_items)} land_ok={land_ok} slack_ok={slack_ok}"
         )
 
     return out

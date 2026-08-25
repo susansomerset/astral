@@ -1463,40 +1463,40 @@ class TestAst1436BoundCandidateAvail:
         assert db.count_eligible_for_dispatch_task(task) == 0
 
 
-class TestAst1088NullCandidateMeteoriteEmail:
-    """AST-1134 / AST-1467: save_dispatch_task rejects null candidate_id for meteorite_email too."""
+class TestAst1088NullCandidateGazeEmail:
+    """AST-1134: save_dispatch_task rejects null candidate_id for gaze_email too."""
 
-    def test_save_null_candidate_rejected_for_meteorite_email(self, sqlite_in_memory) -> None:
-        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+    def test_save_null_candidate_rejected_for_gaze_email(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
-        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        tk = GAZE_EMAIL_CONFIG["task_key"]
         with pytest.raises(ValueError, match="candidate_id is required"):
             db.save_dispatch_task(
                 candidate_id=None,
                 task_key=tk,
-                min_count=int(METEORITE_EMAIL_MAILBOX_CONFIG["min_count"]),
-                auto_mode=bool(METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"]),
-                entity_type=METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
-                trigger_state=METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
-                batch_size=METEORITE_EMAIL_MAILBOX_CONFIG["batch_size"],
-                freq_hrs=float(METEORITE_EMAIL_MAILBOX_CONFIG["freq_hrs"] or 0),
+                min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
+                auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
+                entity_type=GAZE_EMAIL_CONFIG["entity_type"],
+                trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
+                batch_size=GAZE_EMAIL_CONFIG["batch_size"],
+                freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
             )
 
-    def test_bound_meteorite_email_save(self, sqlite_in_memory) -> None:
-        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+    def test_bound_gaze_email_save(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
-        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        tk = GAZE_EMAIL_CONFIG["task_key"]
         tid = db.save_dispatch_task(
             candidate_id="cand-ge",
             task_key=tk,
-            min_count=int(METEORITE_EMAIL_MAILBOX_CONFIG["min_count"]),
-            auto_mode=bool(METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"]),
-            entity_type=METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"],
-            trigger_state=METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"],
-            batch_size=METEORITE_EMAIL_MAILBOX_CONFIG["batch_size"],
-            freq_hrs=float(METEORITE_EMAIL_MAILBOX_CONFIG["freq_hrs"] or 0),
+            min_count=int(GAZE_EMAIL_CONFIG["min_count"]),
+            auto_mode=bool(GAZE_EMAIL_CONFIG["auto_mode"]),
+            entity_type=GAZE_EMAIL_CONFIG["entity_type"],
+            trigger_state=GAZE_EMAIL_CONFIG["trigger_state"],
+            batch_size=GAZE_EMAIL_CONFIG["batch_size"],
+            freq_hrs=float(GAZE_EMAIL_CONFIG["freq_hrs"] or 0),
         )
         row = db.get_dispatch_task(tid)
         assert row is not None
@@ -1529,14 +1529,14 @@ class TestAst1088NullCandidateMeteoriteEmail:
             conn.close()
 
 # Branches: data-layer gaze fake due retired (AST-1135); freq helper public.
-class TestAst1090MeteoriteEmailDue:
-    """AST-1135 / AST-1467: get_due_tasks / count_eligible no special-case for mailbox key."""
+class TestAst1090GazeEmailDue:
+    """AST-1135: get_due_tasks / count_eligible no longer special-case gaze_email."""
 
-    def test_get_due_skips_mailbox_null_shell(self, sqlite_in_memory) -> None:
-        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+    def test_get_due_skips_gaze_email_shell(self, sqlite_in_memory) -> None:
+        from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
-        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        tk = GAZE_EMAIL_CONFIG["task_key"]
         db.save_dispatch_task(
             candidate_id="cand-due",
             task_key=tk,
@@ -1550,10 +1550,10 @@ class TestAst1090MeteoriteEmailDue:
         assert tk not in [t["task_key"] for t in due]
 
     def test_count_eligible_returns_zero_for_gaze(self, sqlite_in_memory) -> None:
-        from src.utils.config import METEORITE_EMAIL_MAILBOX_CONFIG
+        from src.utils.config import GAZE_EMAIL_CONFIG
 
         db = sqlite_in_memory
-        tk = METEORITE_EMAIL_MAILBOX_CONFIG["task_key"]
+        tk = GAZE_EMAIL_CONFIG["task_key"]
         tid = db.save_dispatch_task(
             candidate_id="cand-freq",
             task_key=tk,

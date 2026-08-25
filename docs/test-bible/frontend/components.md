@@ -1065,3 +1065,32 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1454 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
+
+When GET `fields_editable` is true: Info title/link inputs, state `<select>` from `legal_next_states` (+ No change), always-on Job Description textarea (empty JD ok), Modal Save → `PUT /api/jobs/<id>` + `onRefresh`. Non-editable stays display-only (no Save / no empty JD tab). Copy / Skip This Job unchanged. Persist: **AST-1453** / **`docs/test-bible/ui/api/api_jobs.md`**. Page `onRefresh={load}`: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Editors + Save + empty JD + locked | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`JobDetailModal — AST-1454 skipped-field editors`** |
+
+**Broken / obsolete:** none — additive; AST-1421 Copy + Skip suites still hold.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Job Detail editors / Save / locked / 409: `tests/component/frontend/components/test_JobDetailModal.test.tsx` — pattern **`AST-1454`**
+2. Routed Skipped + In Review `onRefresh` after Save (**§6c**): `test_JobsSkipped.test.tsx` + `test_JobsInReview.test.tsx` — **`AST-1454`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  --testNamePattern="AST-1454|loads job details|AST-1421"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.

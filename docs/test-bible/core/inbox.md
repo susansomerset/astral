@@ -149,3 +149,41 @@ From unique hit wins; otherwise To binds only when exactly one remaining address
 ```
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+### AST-1472 · AST-1457
+
+**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1472-inbox-fetch-email-gaze-email-retarget`.
+
+Inbox hosts CLICK `fetch_email`: list → bind → strip → `land_meteorite` (`run_fetch_email`, `_land_bound_inbox_message`, `land_inbox_message_ids`). `create_meteorite_job_from_inbox_message` retargeted off gazer ingest → land (mode `land_meteorite`). **No `gaze_email`** (Susan retired). AUTO `meteorite_email` vs CLICK `fetch_email` intentionally separate (Joan discuss). Dispatcher ensure: **`docs/test-bible/core/dispatcher.md`**. Admin API: **`docs/test-bible/ui/api/api_inbox.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| fetch_email + land helpers + create retarget | `src/core/inbox.py` | **`TestAst1472RunFetchEmail`**, **`TestAst1472LandInboxMessageIds`**, **`TestAst1472LandBoundInboxMessage`**, revised **`TestAst1049CreateMeteoriteJobFromInboxMessage`** / rematch |
+
+**Broken / obsolete:** AST-1049/1061/1313 mocks of `ingest_meteorite_jobs_from_email_html_sync` + Style D `recorded`/`skipped` step-4 — revised to `land_meteorite` + land outcome keys. Do **not** add gaze_email coverage.
+
+**Integration:** none revised.
+
+## QA test manifest
+
+1. Inbox land path: `tests/component/core/test_inbox.py` (`TestAst1472*` + revised create)
+2. Dispatcher ensure: `tests/component/core/test_dispatcher.py::TestAst1472EnsureFetchEmailDispatchTask`
+3. Admin API: `tests/component/ui/api/test_api_inbox.py` (revised create/land + `TestAst1472InboxCreateLandApi`)
+
+**AST-1472** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/core/test_inbox.py::TestAst1472RunFetchEmail \
+  tests/component/core/test_inbox.py::TestAst1472LandInboxMessageIds \
+  tests/component/core/test_inbox.py::TestAst1472LandBoundInboxMessage \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses \
+  tests/component/core/test_dispatcher.py::TestAst1472EnsureFetchEmailDispatchTask \
+  tests/component/ui/api/test_api_inbox.py::TestAst1049InboxCreateJobApi \
+  tests/component/ui/api/test_api_inbox.py::TestAst1141InboxLandMeteoriteApi \
+  tests/component/ui/api/test_api_inbox.py::TestAst1472InboxCreateLandApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

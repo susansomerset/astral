@@ -327,3 +327,37 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 **Bible shasum (this pass):** `docs/test-bible/core/tracker.md` → `5a6008858dce0f31fcfb6ed75e30a8bf8d2a412f` (pre-line)
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1469 · AST-1457
+
+**Parent:** [AST-1457 — Meteorite component](https://linear.app/astralcareermatch/issue/AST-1457/meteorite-component). **Publish:** `origin/sub/AST-1457/AST-1469-job-source-tracker-meteorite-save`.
+
+`save_meteorite_job`: dedupe before write — **created** / **gazed→meteorite superseded** (any prior state; company kept) / **duplicate_skip** (never clobber existing meteorite). `set_job_source` + `_assert_job_source_write` enforce one-way source (meteorite→gazed rejected). Style D only when `debug=True`. Config/data helpers: **`docs/test-bible/utils/config.md`**, **`docs/test-bible/data/database/jobs.md`**. Land orchestration (`land_meteorite`) → sibling AST-1470.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create / supersede / skip + set_job_source + Style D | `src/core/tracker.py` | **`TestAst1469SaveMeteoriteJob`** |
+| JOB_SOURCES + land/fetch_email seed + qualify schema | `src/utils/config.py` | **`TestAst1469JobSourcesAndMeteoriteLandConfig`** |
+| `job.source` + candidate-scoped dedupe helpers | `src/data/database.py` | **`TestAst1469JobSourceAndMeteoriteDedupe`** |
+
+**Broken / obsolete:** none — additive; `create_meteorite_job` / ingest default `source=gazed` unchanged this ticket.
+
+**Integration:** no existing `tests/integration/` scenario asserts job `source` or `save_meteorite_job` — no revision (do not invent).
+
+## QA test manifest
+
+1. Tracker save/dedupe/one-way: `tests/component/core/test_tracker.py::TestAst1469SaveMeteoriteJob`
+2. Config sources + land/fetch_email/qualify: `tests/component/utils/test_config.py::TestAst1469JobSourcesAndMeteoriteLandConfig`
+3. Data source column + dedupe helpers: `tests/component/data/database/test_jobs.py::TestAst1469JobSourceAndMeteoriteDedupe`
+
+**AST-1469** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1469SaveMeteoriteJob \
+  tests/component/utils/test_config.py::TestAst1469JobSourcesAndMeteoriteLandConfig \
+  tests/component/data/database/test_jobs.py::TestAst1469JobSourceAndMeteoriteDedupe \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
