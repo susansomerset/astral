@@ -3211,3 +3211,23 @@ Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`);
   tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema \
   -q
 ```
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+`NAV_CONFIG` Companies group: **Meteorite** → `/companies/meteorite_list` (after Ignored). Core/API: **`docs/test-bible/core/meteorite.md`**, **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Companies → Meteorite nav item | `src/utils/config.py` | **`TestAst1495MeteoriteCompaniesNav`** |
+
+**Broken / obsolete:** none — additive NAV item.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
+  -q
+```
