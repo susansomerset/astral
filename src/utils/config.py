@@ -47,7 +47,7 @@ Config sections:
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
-  SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
+  SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
@@ -2718,6 +2718,7 @@ def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
 # Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
 # AST-1222: Do/Get use alias keys meteorite_grade_do / meteorite_grade_get (not shared grade_*).
+# AST-1496: NOT an executable seed path — catalog/docs/asserts only; do not wire to boot.
 METEORITE_DISPATCH_TASKS = (
     {
         "task_key": "qualify_meteorite",
@@ -2785,11 +2786,13 @@ assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
 # SEED_CONFIG: SQL-first seed register (AST-1108).
 # Keys: "<table>-<seed-purpose>". Each value is a tuple of denormalized INSERT
 # statements — one per seeded row shape, literals inlined, idempotent via
-# WHERE NOT EXISTS (no separate coverage prelude). Not executed yet; Python
-# catalogs still drive provision until a later wire-up step.
+# WHERE NOT EXISTS (no separate coverage prelude).
+# AST-1496: dispatch_task-* entries are Linear copy-paste material ONLY — never
+# wire them to boot, scheduler start, or any auto-execution path.
 # ---------------------------------------------------------------------------
 SEED_CONFIG = {
     # candidate-stage intentionally omitted — intake still larval; add later when ready (AST-1108).
+    # AST-1496: Linear paste only — not an executable seed path.
     "dispatch_task-meteorite": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
@@ -2864,7 +2867,7 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1469: null-candidate fetch_email shell stub — not executed here; sibling owns ensure.
+    # AST-1469 / AST-1496: null-candidate fetch_email SQL — Linear paste only; not executed.
     "dispatch_task-fetch-email": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "

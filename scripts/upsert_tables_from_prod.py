@@ -56,6 +56,17 @@ def _prod_get(path: str, timeout: int = 120) -> dict:
         raise RuntimeError(f"HTTP {e.code} from prod {url}: {body or e.reason}") from e
 
 
+def _refuse_dispatch_task(names: list[str]) -> None:
+    """AST-1496: never push/upsert live dispatch_task rows."""
+    if "dispatch_task" in names:
+        print(
+            "ERROR: dispatch_task is banned from this script (AST-1496). "
+            "Curated schedule rows must not be overwritten; use Linear SQL for Susan.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def upsert_table(conn: sqlite3.Connection, table: str, dry_run: bool) -> str:
     prod_schema = _prod_get(f"/table/{table}?schema_only=1", timeout=60)
     prod_cols = prod_schema["columns"]
@@ -87,16 +98,17 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true", help="Fetch prod data and print counts only")
     args = parser.parse_args()
 
-    if not PROD_URL:
-        print("ERROR: ASTRAL_PROD_URL is not set (checked env and .env).", file=sys.stderr)
-        sys.exit(1)
-
     names = [t.strip() for t in args.tables if t.strip()]
     if not names:
         names = sorted(ALLOWED_CONFIG_TABLES)
+    _refuse_dispatch_task(names)
     bad = [t for t in names if t not in ALLOWED_CONFIG_TABLES]
     if bad:
         print(f"ERROR: unsupported table(s): {bad}. Allowed: {sorted(ALLOWED_CONFIG_TABLES)}", file=sys.stderr)
+        sys.exit(1)
+
+    if not PROD_URL:
+        print("ERROR: ASTRAL_PROD_URL is not set (checked env and .env).", file=sys.stderr)
         sys.exit(1)
 
     if not LOCAL_DB.exists():
