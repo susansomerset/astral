@@ -321,3 +321,128 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1479"
 # 4 passed
 ```
+
+## Bug: AST-1498 — CANDIDATE_APPLIED job missing from Applied screen
+
+### As-is
+
+A job whose `job.state` is `CANDIDATE_APPLIED` does not appear on `/jobs/applied` for the selected candidate, even though AST-1488 re-landed `APPLIED_JOB_STATES` (includes `CANDIDATE_APPLIED`), the `view=applied` API branch, and a real `JobsApplied` page on tip (`origin/dev` @ `ca860885`).
+
+### To-be
+
+For the selected candidate, every job in `APPLIED_JOB_STATES` — including `CANDIDATE_APPLIED` — appears on `/jobs/applied` with the same candidate scoping Susan expects from Recommended (mark-applied → row leaves Recommended → row appears on Applied).
+
+### Repro
+
+Fixture shape (file/JSON — no SQL seed in Astral):
+
+```json
+{
+  "candidate_id": "cand-a",
+  "company": {
+    "short_name": "alice@example.com-cand-a",
+    "candidate_id": null,
+    "state": "METEORITE"
+  },
+  "job": {
+    "astral_job_id": "job-applied-1",
+    "company": "alice@example.com-cand-a",
+    "state": "CANDIDATE_APPLIED",
+    "job_title": "Role A"
+  }
+}
+```
+
+Steps:
+
+1. Select `cand-a` in the candidate picker.
+2. `GET /api/jobs/job-applied-1` (detail) → `state` is `CANDIDATE_APPLIED`.
+3. `GET /api/jobs?view=applied&candidate_id=cand-a` → `[]` (missing row).
+4. `/jobs/applied` UI → “No applied jobs yet”.
+
+Same failure mode for any applied-state job whose `company` row exists but `company.candidate_id` is NULL/empty while `job.company` is not matched by the subquery. Meteorite/stem companies (`{stem}-{candidate_id}` or `meteorite-{candidate_id}` per `METEORITE_CONFIG`) are the highest-risk shape after AST-1495 stem attach; vetted roster companies with NULL `candidate_id` are also excluded.
+
+Secondary UX repro (no bad data): mount `/jobs/applied` before `CandidateContext` hydration finishes — `selectedId` may be null, `load()` returns early, page shows definitive empty copy instead of loading.
+
+### Root cause
+
+**Not** a missing `CANDIDATE_APPLIED` entry in `APPLIED_JOB_STATES` or a missing `view=applied` branch — those are present and component-tested (AST-1479 manifest).
+
+Applied list membership is determined entirely by `database.list_jobs` candidate scoping:
+
+```sql
+company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+```
+
+Jobs have no direct `candidate_id` column (`docs/features/candidate/CANDIDATE_DATA_MODEL.md`). When `company.candidate_id` is NULL/empty or ≠ the picker value, the job is **silently excluded** even though `job.state` is `CANDIDATE_APPLIED`.
+
+`POST /api/jobs/<id>/candidate_action` (mark-applied / post-applied actions) does **not** accept or persist `candidate_id`, so transitions cannot repair stale company linkage at mark-applied time.
+
+`JobsApplied.tsx` does not gate on `candidatesHydrated` (unlike `JobsJobDetail.tsx`), so a pre-hydration fetch skip can flash a false empty state.
+
+### Proposed change
+
+**Stage 1 — `src/ui/api/api_jobs.py` (`list_view` applied branch only)**
+
+Add a private helper in this file, e.g. `_list_applied_jobs_for_candidate(candidate_id: Optional[str]) -> list[dict]`, used only by the `view=applied` branch:
+
+1. **Primary pass (unchanged):** `list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=candidate_id, order_by="state_changed_at")`.
+
+2. **Supplement + repair pass** when `candidate_id` is non-empty after strip:
+   - Import `get_company`, `update_company` from `src.core.roster` (same as `api_companies.py`).
+   - Import `METEORITE_CONFIG` from config.
+   - Compute `default_meteorite = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)` and suffix `f"-{cid}"`.
+   - Iterate `list_jobs(states=list(APPLIED_JOB_STATES), candidate_id=None, order_by="state_changed_at")` (dedupe by `astral_job_id` against primary pass).
+   - For each candidate row whose `job.company` equals `default_meteorite` **or** ends with suffix `f"-{cid}"`:
+     - Load company via `get_company(co_name)`; skip if no row.
+     - Let `existing = (company.get("candidate_id") or "").strip()`.
+     - If `existing == cid`: append job to results.
+     - If `existing == ""`: call `update_company(co_name, candidate_id=cid)` then append (repair-on-read for stem/meteorite companies missing linkage).
+     - If `existing` is another candidate: skip (do not steal).
+   - Re-sort merged rows by `state_changed_at` descending (match skipped branch pattern).
+
+3. Return `[ _flatten_grades(r) for r in rows ]` from `list_view` as today.
+
+Do **not** change `list_jobs` in `database.py` (out of parent Component scope). Do **not** change recommended/skipped/in_review branches.
+
+**Stage 2 — `src/ui/api/api_jobs.py` (`candidate_action`)**
+
+1. Read optional `candidate_id` from JSON body **or** query param `candidate_id` (either form OK — Applied page may use body).
+
+2. After `get_job` succeeds and before `transition_job_state`, when `candidate_id` is provided and action maps to a post-applied state (`applied`, `interview`, `rejected`, `ghosted`) or `applied` from review-like mark:
+   - `co = get_company(job.get("company") or "")`; if missing, proceed unchanged (no new company creation in this bug).
+   - If `co` exists: let `existing = (co.get("candidate_id") or "").strip()`, `cid = candidate_id.strip()`.
+     - If `existing == ""`: `update_company(co["short_name"], candidate_id=cid)`.
+     - Elif `existing != cid`: return `409` with `{"error": "Job belongs to another candidate"}`.
+
+3. Existing `set_candidate_result` + `transition_job_state` logic unchanged.
+
+**Stage 3 — `src/ui/frontend/src/pages/JobsApplied.tsx`**
+
+1. Destructure `candidatesHydrated` from `useCandidate()`.
+
+2. While `!candidatesHydrated`, render loading status (`Loading...`) — do not show “No applied jobs yet”.
+
+3. When calling `actions.requestAction`, ensure post-applied POST includes `candidate_id: selectedId` — implement inline in this file if shared `candidateJobActions.ts` is out of scope: wrap confirm path or extend the existing `useCandidateJobActions` call with a thin local POST that adds `candidate_id` to the JSON body (keep using shared modal/busy/error plumbing).
+
+4. Do **not** add Recommended-style sections, report modal, or nav changes.
+
+⚠️ **Decision:** Repair-on-read + repair-at-action for stem/meteorite `{stem}-{candidate_id}` / `meteorite-{candidate_id}` companies only in the supplement pass — avoids widening Applied list to all NULL-`candidate_id` companies globally (which could cross candidates if slug collision ever existed). If UAT still fails on a vetted slug, escalate with job id — may need a targeted backfill, not a broader list widen.
+
+### Blast radius
+
+| Area | Risk |
+|------|------|
+| `GET view=applied` | Extra unscoped scan + optional `update_company` on read for stem/meteorite NULL linkage; other views untouched |
+| `POST candidate_action` | New optional `candidate_id` validation/repair; 409 when company owned by another candidate |
+| `JobsApplied.tsx` | Hydration gate + POST body delta only |
+| Recommended mark-applied | Still uses shared `useCandidateJobActions` — **make-fix should pass `candidate_id` from Recommended in the same epic pass** via query/body (may require `[scope-gate]` to touch `candidateJobActions.ts` + `JobsRecommended.tsx` if inline wrap is insufficient) |
+| Betty tests | Expect qa-fix `[bug-repro]` for AST-1498: applied job with NULL `company.candidate_id` on stem company appears after fix; existing AST-1479 tests must stay green |
+
+### What must still hold
+
+- Parent AST-1485 AC: Applied nav enabled; `APPLIED_JOB_STATES` unchanged; Responded nav stays disabled; Recommended/Skipped/In Review behavior unchanged.
+- AST-1488 boundaries: no Responded list, no nav badge counts, no Job Analysis Report / Job Detail from Applied page.
+- `candidate_action` still enforces `JOB_STATES` priors via `transition_job_state` (409 + toast on illegal hops).
+- Post-applied row actions remain `CandidateJobRowActions` R/I/X/G via shared notes modal.
+- Do not invent parallel state lists — keep using `APPLIED_JOB_STATES` from config.
