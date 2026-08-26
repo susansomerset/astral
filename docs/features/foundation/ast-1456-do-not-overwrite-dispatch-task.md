@@ -64,3 +64,7 @@ Scheduler boot still treats Python catalogs (`METEORITE_DISPATCH_TASKS`, `METEOR
 - No redesign of Manage Dispatch UI.
 - Curated schedule rows are byte-stable across restart for content fields (aside from the bookkeeping above).
 - Needed new-row SQL is delivered only as Linear comment text for Susan — not as an auto-run script.
+
+## Radia review (AST-1496)
+
+Clean review on `8256593d` — ban auto-writers OK. Discuss items (archie-catalog-wins carve-out, hold-bullet vs retire-delete) owned by sibling gap AST-1501 / wording follow-ups. **docs-acceptance:** component test delivery for this ban lives on sibling gap AST-1500 (Betty qa-fix), not this product sub.
