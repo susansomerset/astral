@@ -47,7 +47,7 @@ Config sections:
   JOB_SOURCES — durable job provenance gazed|meteorite; one-way gazed→meteorite (AST-1469)
   FETCH_EMAIL_CONFIG — fetch_email mailbox-shell seed literals (AST-1469; runner/ensure = sibling)
   METEORITE_CONFIG — placeholder employer + job-create defaults + land/source/dedupe outcomes (AST-1469)
-  SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); Python catalogs stay authoritative until wired (AST-1108)
+  SEED_CONFIG — SQL-first seed register (idempotent INSERT tuples per table-purpose); dispatch_task-* are Linear paste only, never auto-executed (AST-1496)
   CONTACT_CONFIG  — Contact listen + debug flags, Slack env-name contracts, skills ACL (AST-1066 / AST-1206; distinct from TASK_CONFIG)
   CANDIDATE_CONTACT_UNIQUENESS_CONFIG — contact uniqueness / within-candidate dedupe field paths + compare rules (AST-1079; sibling to CANDIDATE_LOOKUP_CONFIG)
 """
@@ -506,6 +506,8 @@ TASK_CONFIG = {
                     "jd_text":         {"type": "str", "required": True},  # visible JD content
                     # AST-1469: known employer for job_data[METEORITE_CONFIG employer_name key]
                     "employer_name":   {"type": "str", "required": False},
+                    # AST-1494: Ruth company short_name stem (sender email / meteorite-self / job-link slug)
+                    "company_stem":    {"type": "str", "required": False},
                 },
             },
         },
@@ -517,6 +519,7 @@ TASK_CONFIG = {
         "error_state": "METEORITE_ERROR_QUALIFY",
         "email_link_prefix": "email-",  # AST-1197: synthesized link; waive http + empty company_job_id gates
         "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
+        "company_stem_response_key": "company_stem",  # AST-1494: RESPONSE + enrich map key
         "context_format": "qualify_meteorite_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
@@ -1037,6 +1040,11 @@ assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["employer_name"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_stem"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] == "company_stem"
+assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in (
+    TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
 assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
 
@@ -1168,6 +1176,7 @@ COMPANY_STATES = {
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
+    "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
     "PREFILTER_UNKNOWN": {},
     "HARD_PARSE": {},
     "NO_OPENINGS": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
@@ -2468,7 +2477,8 @@ assert JOB_SOURCE_METEORITE in JOB_SOURCES
 
 # ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
-# Lazy-ensure inserts meteorite-<candidate_id> on demand — never bulk at server start.
+# Lazy-ensure inserts on demand — never bulk at server start.
+# AST-1493: company_state METEORITE + stem-keyed short_names ({stem}-{candidate_id}).
 # Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
 # (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
 # AST-1469: land outcomes, source, dedupe match order, employer_name job_data key.
@@ -2476,8 +2486,11 @@ assert JOB_SOURCE_METEORITE in JOB_SOURCES
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
     "short_name_template": "meteorite-{candidate_id}",  # format with candidate_id=
+    "stem_short_name_template": "{stem}-{candidate_id}",  # format with stem=, candidate_id=
+    "default_stem": "meteorite",  # Slack/Contact / callers that omit stem
+    "meteorite_self_stem": "meteorite-self",  # literal Ruth may return (AST-1494)
     "company_name": "meteorite",
-    "company_state": "IGNORE",
+    "company_state": "METEORITE",
     "company_data": {
         "note": (
             "The company for this job has not been identified, and cannot be "
@@ -2499,6 +2512,15 @@ METEORITE_CONFIG = {
 }
 
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
+assert METEORITE_CONFIG["stem_short_name_template"].format(
+    stem=METEORITE_CONFIG["default_stem"],
+    candidate_id="{candidate_id}",
+) == METEORITE_CONFIG["short_name_template"]
+assert isinstance(METEORITE_CONFIG["meteorite_self_stem"], str) and METEORITE_CONFIG["meteorite_self_stem"]
+assert METEORITE_CONFIG["meteorite_self_stem"] == "meteorite-self"
+assert isinstance(METEORITE_CONFIG["default_stem"], str) and METEORITE_CONFIG["default_stem"]
+assert "METEORITE" in COMPANY_STATES
+assert COMPANY_STATES["METEORITE"] == {}
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 assert METEORITE_CONFIG["job_source"] == JOB_SOURCE_METEORITE
 assert METEORITE_CONFIG["dedupe_match_order"] == ("company_job_id", "job_link")
@@ -2718,6 +2740,7 @@ def is_meteorite_email_mailbox_task_key(task_key: str) -> bool:
 # score_floor 0 on score-gated triggers — claim never excludes for low latest_score.
 # Twin keys meteorite_like / meteorite_upshot match AST-1055 TASK_CONFIG + agent_task names.
 # AST-1222: Do/Get use alias keys meteorite_grade_do / meteorite_grade_get (not shared grade_*).
+# AST-1496: NOT an executable seed path — catalog/docs/asserts only; do not wire to boot.
 METEORITE_DISPATCH_TASKS = (
     {
         "task_key": "qualify_meteorite",
@@ -2785,11 +2808,13 @@ assert all(e["trigger_state"] in JOB_STATES for e in METEORITE_DISPATCH_TASKS)
 # SEED_CONFIG: SQL-first seed register (AST-1108).
 # Keys: "<table>-<seed-purpose>". Each value is a tuple of denormalized INSERT
 # statements — one per seeded row shape, literals inlined, idempotent via
-# WHERE NOT EXISTS (no separate coverage prelude). Not executed yet; Python
-# catalogs still drive provision until a later wire-up step.
+# WHERE NOT EXISTS (no separate coverage prelude).
+# AST-1496: dispatch_task-* entries are Linear copy-paste material ONLY — never
+# wire them to boot, scheduler start, or any auto-execution path.
 # ---------------------------------------------------------------------------
 SEED_CONFIG = {
     # candidate-stage intentionally omitted — intake still larval; add later when ready (AST-1108).
+    # AST-1496: Linear paste only — not an executable seed path.
     "dispatch_task-meteorite": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
@@ -2864,7 +2889,7 @@ SEED_CONFIG = {
         "    AND d.trigger_state = 'METEORITE_PASSED_LIKE'"
         ")",
     ),
-    # AST-1469: null-candidate fetch_email shell stub — not executed here; sibling owns ensure.
+    # AST-1469 / AST-1496: null-candidate fetch_email SQL — Linear paste only; not executed.
     "dispatch_task-fetch-email": (
         "INSERT INTO dispatch_task ("
         "candidate_id, task_key, entity_type, trigger_state, sort_by, "
@@ -4739,6 +4764,7 @@ NAV_CONFIG = [
             {"label": "New List", "path": "/companies/new_list"},
             {"label": "Inactive List", "path": "/companies/inactive_list"},
             {"label": "Ignored", "path": "/companies/ignored"},
+            {"label": "Meteorite", "path": "/companies/meteorite_list"},
             {"label": "Watch History", "path": "/companies/watch_history"},
         ],
     },

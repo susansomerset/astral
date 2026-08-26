@@ -1961,12 +1961,15 @@ async def enrich_meteorite_land_packet(
         jd_text = (rj.get("jd_text") or "").strip() if isinstance(rj.get("jd_text"), str) else ""
         ruth_emp = (rj.get("employer_name") or "").strip() if isinstance(rj.get("employer_name"), str) else ""
         employer_name = ruth_emp or scrap["employer_name"]
+        stem_key = TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"]
+        ruth_stem = (rj.get(stem_key) or "").strip() if isinstance(rj.get(stem_key), str) else ""
         out_jobs.append({
             "company_job_id": company_job_id,
             "job_title": job_title,
             "job_link": job_link,
             "jd_text": jd_text,
             "employer_name": employer_name,
+            "company_stem": ruth_stem,
             "scrap_index": i,
         })
         if debug:
@@ -1979,7 +1982,8 @@ async def enrich_meteorite_land_packet(
             )
             logger.debug_detail(
                 f"batch_id={batch_id} link={job_link!r} content_chars_in={len(scrap['content'])} "
-                f"jd_chars={len(jd_text)} employer_name={'yes' if employer_name else 'no'}"
+                f"jd_chars={len(jd_text)} employer_name={'yes' if employer_name else 'no'} "
+                f"company_stem={ruth_stem!r}"
             )
 
     return {"success": True, "jobs": out_jobs, "error": None, "batch_id": batch_id}
@@ -2170,6 +2174,10 @@ async def qualify_meteorite(
                     f"jd_chars={len(jd_text)}",
                 ]
             )
+            stem_key = cfg["company_stem_response_key"]
+            ruth_stem = (response_job.get(stem_key) or "").strip() if isinstance(response_job.get(stem_key), str) else ""
+            if ruth_stem:
+                found_bits.append(f"company_stem={ruth_stem!r}")
             logger.debug_detail(
                 f"{' '.join(found_bits)} | "
                 f"recorded company_job_id={recorded.get('company_job_id')!r} "
