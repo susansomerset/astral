@@ -156,3 +156,24 @@ Stage 1 prompt reword + Betty glyph lock match Joan-approved plan; engineer `cod
 
 ### Slim upshot
 [code-rubric] PROCEED (Commit: 9a1bb3aa) prompt glyph lock clean
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/7e8afdeddc037b59f1a443168b9d89e7/220cf190-02d5-44bd-881e-5958e7fe8f6b/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/5b4babb8-d811-4e87-a0b6-bd9d0d27d13b/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/7e8afdeddc037b59f1a443168b9d89e7/c191d6af-c984-41a8-b8d2-749aaf51253b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1458 (parent) | ftr/AST-1458-job-resume-draft-prompt-is-asking-for-bullet-chars |
+| AST-1465 | sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs |
+
+**Epic worktree:** `astral-AST-1458/` — one active sub checked out at a time.

@@ -926,16 +926,16 @@ _(generated from epic registry — do not hand-edit; edits are overwritten)_
 
 | Agent | Role | Thread |
 |--------|-------|--------|
-| Ada | engineer | `/home/susan/.cursor/chats/239c81d3f0245237d5dcb232b9ab33e6/24328bcb-53dc-4db6-b09b-4f01e79d89ff/store.db` |
-| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/b81a5e9f-9f47-42cf-9f48-02e96b72a80b/store.db` |
-| Radia | review | `/home/susan/.cursor/chats/239c81d3f0245237d5dcb232b9ab33e6/6683524c-8455-4de1-af0c-b9722bed2a72/store.db` |
+| Ada | engineer | `/home/susan/.cursor/chats/f1e754be6ffa4c3cfe10adfe0290f5f8/a3d3de92-1c3d-469a-945b-27540354d0a8/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/2be20b36-8d49-4b14-9291-39b983413666/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/f1e754be6ffa4c3cfe10adfe0290f5f8/97cc450a-880b-4a0e-b4f7-094aeee865ee/store.db` |
 
 ### Git
 
 | Ticket | `origin/…` |
 |--------|------------|
-| AST-1387 (parent) | ftr/AST-1387-artifacts-requested-daisy-chain-state |
-| AST-1388 | sub/AST-1387/AST-1388-requested-artifacts-hop-labels |
-| AST-1389 | sub/AST-1387/AST-1389-requested-artifacts-hop-label-tests |
+| AST-1415 (parent) | ftr/AST-1415-candidate-state-validation-bug |
+| AST-1416 | sub/AST-1415/AST-1416-restore-hop-label-membership |
+| AST-1417 | sub/AST-1415/AST-1417-save-candidate-hop-label-coverage |
 
-**Epic worktree:** `astral-AST-1387/` — one active sub checked out at a time.
+**Epic worktree:** `astral-AST-1415/` — one active sub checked out at a time.

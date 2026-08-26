@@ -189,3 +189,17 @@ Stage 2: `RequireAuth.tsx` — hoisted `logOffReason` inference; `useEffect` cap
 Stage 3: `Authenticate.tsx` — `postAuthNavigate` consumes stored path on success / no-token; passthrough and error paths unchanged.
 
 Tests deferred to Betty (`qa-child`).
+
+## Radia review
+
+**Overall:** CLEAN — `[code-rubric] PROCEED (Commit: 8eaaac7f) Auth return-path capture and restore`
+
+Plan adherence: Stages 1–3 implemented as specified. AST-1482 engineer commits touch only the three planned files. Betty manifest covers helper round-trip, RequireAuth capture guards, and Authenticate restore paths.
+
+**discuss:** Auth handoff error recovery — stored deeplink may be overwritten on Try again → `/` → re-capture; acceptable per plan scope.
+
+**discuss:** `setLogOffReason` during render (hoisted for capture effect) — pre-existing pattern; optional future refactor, not blocking.
+
+**advisory:** Branch includes AST-1481 sibling rollup for E2E AC6; no component test for server-rejection LogOffScreen with session present — low risk.
+
+No fix-now items. Recommend advance to User Testing.
