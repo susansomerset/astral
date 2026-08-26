@@ -213,3 +213,63 @@ Rules enforced in prompt + validate (status literals from config):
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1508
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` @ `a138e5a70c41efc96ae4dd46fba9181c4372928e`
+
+## Traceability
+
+AC2→S2–S4; AC3→S3–S4 (metadata via `payload_metadata_keys` + `_resume_payload_body`); AC4→S2 (draft prompt only; COVER LETTER / ASK CANDIDATE not in row); AC5→S3–S4 (Style D validate + persist); AC6→S3–S4 (nest unwrap unchanged; adherence as sibling metadata). Parent AC1 N/A — sibling AST-1507.
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 4 — `agent.py` validate hook  
+  **Finding:** Gate requires truthy `index`; without it, adherence validation is skipped while `advice_adherence_required` is True.  
+  **Recommendation:** Treat missing `index` on `draft_job_resume` as a validation failure (same bar as `get_job_resume_advice_codes` load errors), not a silent skip.
+
+- **Location:** Stage 4 — persist debug pseudo-code  
+  **Finding:** `item_count` line is an ellipsis placeholder.  
+  **Recommendation:** Reuse extract result from `persist_draft_job_resume_advice_adherence` (or return count) — avoid a second parse for Style D.
+
+- **Location:** Stage 1 — `JOB_BUILD_ARTIFACT_CLEAR_KEYS`  
+  **Finding:** Removing `"deviations"` means cancel-build stops clearing legacy `deviations` artifacts on in-flight jobs.  
+  **Recommendation:** Acceptable per parent OQ #3 (replace); note for UAT that old slot may linger until manual cleanup or a later migration ticket.
+
+- **Location:** Parent Architectural definition — new pattern flag  
+  **Finding:** Daisy-chain coded advice → per-code adherence has no `canon/patterns/**` `proposed` file yet; this child is the consumer half.  
+  **Recommendation:** None for build — Archie catalog promotion remains out of band; plan shape matches the flagged contract.
+
+- **Location:** Stage 3 step 3 / Stage 4  
+  **Finding:** Plan grep-fixes `deviations` hardcoding in `candidate.py` only; product `src/` also has deviations in `config.py`, `tracker.py`, `agent.py` (all staged).  
+  **Recommendation:** At build, repo-wide `src/` grep for `deviations` stragglers beyond the six planned files.
+
+### acceptable
+
+- **Location:** Build prerequisite (header)  
+  **Finding:** AST-1507 merge before `build-child` Stage 1 is required for `resume_advice_artifact_key` + artifact shape — explicitly documented, not a plan defect.  
+  **Recommendation:** Chuckles/merge-child enforces ordering; Joan does not block on sibling plan state.
+
+- **Location:** AST-1465 prompt-merge note  
+  **Finding:** Stage 2 step 5 preserves bullet-glyph omit wording when present — good adjacency hygiene.  
+  **Recommendation:** None.
+
+- **Location:** Plan structure  
+  **Finding:** No `## Self-Assessment`; `## Estimate` (`Confirm Chuckles estimate: 3 — agree`) satisfies current `plan-child` gate.  
+  **Recommendation:** None.
+
+- **Location:** Expected codes source  
+  **Finding:** `job_data.artifacts.resume_advice` (not CALLER_RESPONSE re-parse) aligns with `astral.batch.entity-agent-responses-latest-only` and AST-1507 persist contract.  
+  **Recommendation:** None.
+
+## R6 checklist (summary)
+
+Definition fidelity: implements child Scope only; deviations replace matches parent OQ #3; no advise-row re-authoring. Layer/config: utils keys + draft metadata tuple; core validate/persist; seed + fixture twin. Pattern `pattern.config.config-block` followed. DRY: mirrors AST-1271 deviations extract/persist shape. Boundaries: no UI, no `tests/**`, no `run_next`, AST-1465 merge note only.
+
+**Considered (in-session):** 18 universal (orchestration/git — conform); scoped product statutes on touched layers/paths — conform, including cited config/no-hardcoded-sets/in-scope-only/do-task-delegation/seed trio/debug-contract-gated/test-tree ban/entity-agent-responses-latest-only/import-direction/logging.
