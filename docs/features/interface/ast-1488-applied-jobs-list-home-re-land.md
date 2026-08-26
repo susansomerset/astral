@@ -446,3 +446,22 @@ Do **not** change `list_jobs` in `database.py` (out of parent Component scope). 
 - `candidate_action` still enforces `JOB_STATES` priors via `transition_job_state` (409 + toast on illegal hops).
 - Post-applied row actions remain `CandidateJobRowActions` R/I/X/G via shared notes modal.
 - Do not invent parallel state lists — keep using `APPLIED_JOB_STATES` from config.
+
+## Test run (test-fix)
+
+Betty manifest (`docs/test-bible/ui/api/api_jobs.md` + `docs/test-bible/frontend/pages.md` § AST-1498). Tip at run: `bb14f3f4`. No product fixes — make-fix green on first pass.
+
+```bash
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_includes_stem_job_null_company_candidate_id_ast1498 \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  -q
+# 2 passed
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1498"
+# 1 passed
+```
+
+[bug-repro] stem NULL linkage + POST `candidate_id` both green post-`code(AST-1498)`.
