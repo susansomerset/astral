@@ -269,19 +269,20 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 **Parent:** [AST-1491](https://linear.app/astralcareermatch/issue/AST-1491/cover-letter-content-does-not-appear-for-editing). **Publish:** `origin/sub/AST-1491/AST-1504-gap-cover-letter-hydrate-tests`. Product fix: **AST-1499**.
 
-Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap → Subject/Letter/signature, nonempty gate (no all-empty spine overwrite), pin leave-on-miss. Red against pre-fix tree; green after AST-1499 hydrate helper.
+Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap → Subject/Letter/signature, nonempty gate (no all-empty spine overwrite), pin leave-on-miss when resolve returns a nonempty **non-cover** body (must keep `"pin-cover"` — not empty spine). All three nodes red against pre-AST-1499 product; green after AST-1499 hydrate helper.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Nested unwrap / empty spine / pin miss | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** (bug-repro) |
 
-**Broken / obsolete:** none — additive; AST-1116 flat normalize suite still holds.
+**Broken / obsolete:** prior `test_hydrate_leaves_pin_when_resolve_misses` with resolve `None` (already green pre-fix) — strengthened to nonempty non-cover body + assert pin preserved (Radia fix-now / Katherine `[qa-handoff]`).
 
 **Integration:** none — do not invent.
 
 ## QA test manifest
 
 1. Bug-repro (nested unwrap + empty-spine gate + pin leave-on-miss): `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
+   - Pin leave-on-miss red-first: `::test_hydrate_leaves_pin_when_resolve_misses` (resolve `{"unrelated": "meta"}` → keep `"pin-cover"`)
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
@@ -289,7 +290,7 @@ Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap
   -q
 ```
 
-**Pass criterion:** nodes red on pre-fix product; green after AST-1499 `make-fix` — `test-fix` verifies the flip. Not zero-arg harness / branch-lock gate.
+**Pass criterion:** all three nodes red on pre-AST-1499 product; green after AST-1499 hydrate — `test-fix` / resolve verifies the flip. Not zero-arg harness / branch-lock gate.
 
 ---
 

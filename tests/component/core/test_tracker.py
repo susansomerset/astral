@@ -1099,11 +1099,11 @@ class TestAst1504CoverLetterHydrateDisplayGaps:
     def test_hydrate_leaves_pin_when_resolve_misses(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Pin leave-on-miss — resolve None keeps the pin string (coat-check; no empty overwrite)."""
+        """[bug-repro] Pin leave-on-miss — nonempty non-cover resolve body must keep pin (pre-fix: empty spine)."""
         monkeypatch.setattr(
             tracker_mod,
             "resolve_job_artifact_agent_data_body",
-            lambda pin, debug=False: None,
+            lambda pin, debug=False: {"unrelated": "meta"},
         )
         out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
         assert out["cover_letter"] == "pin-cover"
