@@ -273,3 +273,9 @@ AC2→S2–S4; AC3→S3–S4 (metadata via `payload_metadata_keys` + `_resume_pa
 Definition fidelity: implements child Scope only; deviations replace matches parent OQ #3; no advise-row re-authoring. Layer/config: utils keys + draft metadata tuple; core validate/persist; seed + fixture twin. Pattern `pattern.config.config-block` followed. DRY: mirrors AST-1271 deviations extract/persist shape. Boundaries: no UI, no `tests/**`, no `run_next`, AST-1465 merge note only.
 
 **Considered (in-session):** 18 universal (orchestration/git — conform); scoped product statutes on touched layers/paths — conform, including cited config/no-hardcoded-sets/in-scope-only/do-task-delegation/seed trio/debug-contract-gated/test-tree ban/entity-agent-responses-latest-only/import-direction/logging.
+
+## Review
+
+**Publish ref:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` @ `657fc81f`
+**Built:** Stages 1–5 — config adherence keys (replaces deviations); draft prompt + UAT twin; candidate normalize/validate; tracker load/persist; agent validate + persist hooks. Merged AST-1507 prerequisite at build start.
+**Commits:** `a47601d8` config · `accdb801` candidate · `4afa781c` tracker+agent · `657fc81f` prompt+fixture
