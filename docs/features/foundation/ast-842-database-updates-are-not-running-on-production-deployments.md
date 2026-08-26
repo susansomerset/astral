@@ -257,3 +257,11 @@ Hard kill-switch — **no new config flag** (`SEED_CONFIG` is not executed today
 - Runtime paths that intentionally write rows (dispatch claim/release, consult saves, admin UI saves, explicit migration scripts) keep working.
 - No new seed/ops framework; no resurrection of archived AST-842 as a live Linear parent; no edits under `tests/` / `docs/test-bible/**` by the engineer.
 - Citations: `astral.seed.operator-rows-stay-deleted`; `astral.seed.define-approved` (this pass does not define a new seed catalog — it shuts automatic writers off).
+
+## Joan fix-board (AST-1497)
+
+[board-joan]  CANON: REVISE
+What: astral.seed.agent-tables-in-repo-json — boot repo-wins apply disabled — record kill-switch carve-out until explicit ops/seed design
+
+Rationale: Proposed kill-switch aligns with operator-rows-stay-deleted / define-approved / boot-only-not-hot-path, but conflicts with agent-tables-in-repo-json Statement requiring startup repo-wins apply. Gap child owns the carve-out; not ESCALATE.
+
