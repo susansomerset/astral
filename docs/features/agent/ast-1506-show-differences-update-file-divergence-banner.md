@@ -184,6 +184,16 @@ All files and change kinds below are taken from this ticket's **## Scope** only.
 
 Confirm Chuckles estimate: 2 — agree
 
+## Review stub (Katherine / build)
+
+**Publish ref:** `origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner`  
+**Product commits:** `3c43c353` (sync ftr — AST-1505 compare/write API), `02f3aca7` (Stage 1 — Show Differences modal + copy), `01a2f5b3` (Stage 2 — Update file with table version)
+
+**Implemented:**
+- `RepoJsonDivergenceBanner.tsx` — rewritten warning copy; **Show Differences** opens wide `Modal` with `GET /compare/<tableKey>` payload; **Update file with table version** confirm + `POST /write/<tableKey>` + `fetchStatus()` / `onReverted?.()`; **Revert to file** unchanged
+
+**Tests:** Betty at Code Complete (`qa-child`) — engineers do not land test-tree changes.
+
 ## Joan validate
 
 [plan-rubric]
