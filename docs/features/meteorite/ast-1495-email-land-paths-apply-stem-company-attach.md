@@ -217,3 +217,45 @@ AC5→S1 enrich-first per-row `company_stem`→`ensure_meteorite_company(stem=)`
 - **Location:** Depends on (build gate)
 - **Finding:** Publish-ref tip still pre–AST-1493/1494 product APIs; plan documents merge commands before build.
 - **Recommendation:** Engineer must run merge gate — plan blocks correctly if APIs missing.
+
+## Radia review
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1495  
+**Publish ref:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach` @ `776866b590919db420d287786371a090eafe54f1`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.do-task-delegation | scoped | conforms | land still delegates enrich to existing `do_task` / consult path |
+| astral.config.config-source-of-truth | scoped | conforms | METEORITE list uses `METEORITE_CONFIG["company_state"]`; NAV entry in `NAV_CONFIG` |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no new external I/O; land/enrich/tracker flow unchanged in layer shape |
+| astral.layers.import-direction | scoped | conforms | core→consult/tracker; ui/api→roster+utils config |
+| astral.standards.debug-contract-gated | scoped | conforms | inbox `company=` and land `stem=`/`company=` detail only inside existing `debug=True` blocks |
+| astral.standards.dry-and-focused-functions | scoped | conforms | stem attach localized to land save loop + thin API/list additions |
+| astral.standards.in-scope-only | scoped | conforms | engineer footprint matches Files Changed |
+| astral.standards.no-cross-contamination | scoped | conforms | consumes AST-1493 ensure + AST-1494 enrich map |
+| astral.standards.no-hardcoded-sets | scoped | conforms | METEORITE state from `METEORITE_CONFIG` |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `776866b5` is `merge-tests(AST-1495)` |
+| orch.pipeline.plan-is-bible | universal | conforms | three stages match plan |
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Joan validate — `meteorite_email` AUTO dispatch
+- **Finding:** `meteorite_email` path may still call `create_meteorite_job` without Ruth `company_stem` enrich / `land_meteorite`.
+- **Recommendation:** Acceptable child partition (inbox land paths only per AST-1472). Epic follow-on if AUTO mailbox ingest should stem-key — not blocking this ticket.
+
+## What's solid
+
+- Parent AC5 wire is correct: enrich-first → per-row stem ensure → `save_meteorite_job(company=…)` attaches stem-keyed short_name.
+- Empty/missing `company_stem` correctly falls through to `default_stem` via `stem=None`.
+- METEORITE companies list gives UAT provenance without touching `DATA_SHAPES`.
