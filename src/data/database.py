@@ -4084,6 +4084,7 @@ def store_feedback_block(
         block_data=body,
         token_size=len(body) // CHARS_PER_TOKEN if body else 0,
         created_at=created_at,
+        entity_id=index if index else None,
     )
     return agent_data_id
 
