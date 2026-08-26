@@ -424,3 +424,7 @@ Builder emit with a correctly saved reordered structure still produces full body
 - AST-1487 / AST-1476: print CSS and page-break dropdown behavior unchanged.
 - AST-1323 / AST-1306: structure header Up/Down / Save sections UX unchanged.
 - Section add/remove/extra-id mint still triggers reload when the id **set** changes.
+
+## Review (AST-1490)
+
+Radia review-fix @ 0338900a — CLEAN, PROCEED. Sorted fixedFieldKeys + tab reorder sync; [bug-repro] substantive; ## What must still hold intact.
