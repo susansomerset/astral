@@ -396,6 +396,50 @@ def normalize_cover_letter_artifact(cover_letter: Any) -> Dict[str, str]:
     }
 
 
+_COVER_LETTER_FIELD_KEYS = frozenset({"Subject", "re_line", "Letter", "body", "signature"})
+
+
+def _cover_letter_display_nonempty(normalized: Dict[str, str]) -> bool:
+    return any(str(normalized.get(k) or "").strip() for k in ("Subject", "Letter", "signature"))
+
+
+def _cover_letter_dict_for_normalize(raw: dict) -> dict:
+    """Flat cover dict, or one nested dict that carries cover keys (hop envelope)."""
+    if _cover_letter_display_nonempty(normalize_cover_letter_artifact(raw)):
+        return raw
+    # Prefer known nest keys, then a single nested dict that looks like cover fields.
+    for nest_key in ("agent_payload", "cover_letter"):
+        inner = raw.get(nest_key)
+        if isinstance(inner, dict) and _COVER_LETTER_FIELD_KEYS.intersection(inner.keys()):
+            return inner
+    nested = [
+        v for v in raw.values()
+        if isinstance(v, dict) and _COVER_LETTER_FIELD_KEYS.intersection(v.keys())
+    ]
+    if len(nested) == 1:
+        return nested[0]
+    return raw
+
+
+def cover_letter_artifact_for_display(
+    raw: Any,
+    *,
+    debug: bool = False,
+) -> Optional[Dict[str, str]]:
+    """AST-1499: pin or dict → nonempty Subject/Letter/signature for JAR; else None (no empty overlay)."""
+    body: Any = raw
+    if isinstance(raw, str) and raw.strip():
+        body = resolve_job_artifact_agent_data_body(raw, debug=debug)
+        if not isinstance(body, dict):
+            return None
+    elif not isinstance(raw, dict):
+        return None
+    normalized = normalize_cover_letter_artifact(_cover_letter_dict_for_normalize(body))
+    if not _cover_letter_display_nonempty(normalized):
+        return None
+    return normalized
+
+
 def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
     """Merge cover_letter object into job_data.artifacts. AST-309."""
     save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
@@ -531,6 +575,9 @@ def hydrate_job_artifacts_for_display(
             # AST-1428: JAR reads job_resume; overlay sibling blob (disk pin unchanged).
             out[key] = dict(job_resume_blob)
             continue
+        # AST-1499: cover display helper owns pin resolve + nonempty Subject/Letter (no empty overwrite).
+        if key == "cover_letter":
+            continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
             continue
@@ -544,10 +591,10 @@ def hydrate_job_artifacts_for_display(
                 out[key] = unwrapped
             continue
         out[key] = body
-    # AST-1116: Subject/Letter spine for ArtifactEditor (pin body or legacy dict; overlay only).
-    cover = out.get("cover_letter")
-    if isinstance(cover, dict):
-        out["cover_letter"] = normalize_cover_letter_artifact(cover)
+    # AST-1116/1499: Subject/Letter spine for ArtifactEditor only when nonempty (overlay only).
+    display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
+    if display_cover is not None:
+        out["cover_letter"] = display_cover
     return out
 
 
