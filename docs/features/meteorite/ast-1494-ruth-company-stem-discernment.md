@@ -187,3 +187,156 @@ context_tokens≈55000
 | 3 | `317f3dc8` | land enrich map + dispatch debug stem + agent docstring |
 
 **Betty note:** component tests for schema, catalog, enrich map deferred to qa-child.
+
+
+## Radia review
+
+# Radia review — AST-1494
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1494  
+**Publish ref:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment` @ `60f0d40e6b79c177f4252be907ef1aaa96e0b6ac`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no confidence-bound paths touched |
+| astral.agent.do-task-delegation | scoped | conforms | land enrich still delegates to existing `do_task` / schema validation |
+| astral.agent.grade-vector-validation | scoped | not-applicable | `qualify_meteorite` stem field is non-grade extract |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch_id contract changes |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id formatting |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity latest-ref write semantics changed |
+| astral.config.config-source-of-truth | scoped | conforms | `company_stem` schema + `company_stem_response_key` live in `TASK_CONFIG` |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env literals |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed edits |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc for AST-1494 |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commit `e05aca66` touches tests + test-bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits (`bd565711`, `83257745`, `317f3dc8`) touch only planned `src/` + catalog |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | no new external I/O; consult/agent mapping only |
+| astral.layers.import-direction | scoped | conforms | `consult`/`agent` → `utils` config reads; no layer bends |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no UI changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no render-verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth surface |
+| astral.seed.agent-tables-in-repo-json | scoped | conforms | `qualify_meteorite` catalog row updated in `data/admin/agent_task.json` |
+| astral.seed.archie-catalog-wins | scoped | conforms | catalog edit follows repo JSON + AST-756 twin sync |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | no boot seed paths |
+| astral.seed.define-approved | scoped | not-applicable | no define workflow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator-row deletes |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no new data-layer logging |
+| astral.standards.database-header-inventory | scoped | not-applicable | no schema/migration |
+| astral.standards.debug-contract-gated | scoped | conforms | stem detail appended only inside existing `debug=True` blocks |
+| astral.standards.dry-and-focused-functions | scoped | conforms | stem read/map is minimal; key from `TASK_CONFIG` |
+| astral.standards.in-scope-only | scoped | conforms | engineer product footprint matches Files Changed table |
+| astral.standards.logging-via-utils | scoped | conforms | uses existing `get_logger` / `debug_detail` |
+| astral.standards.names-not-ticket-ids | scoped | conforms | runtime field `company_stem` is config-named |
+| astral.standards.no-cross-contamination | scoped | conforms | no ensure/attach/inbox wiring (AST-1493/1495 boundaries held) |
+| astral.standards.no-hardcoded-sets | scoped | conforms | RESPONSE key read via `company_stem_response_key`; asserts lock shape |
+| astral.standards.public-then-helpers | scoped | conforms | enrich output change is inline in public enrich path |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | config diff does not import `data` |
+| astral.state.core-decides-transitions | scoped | conforms | stem not persisted on job row; no ad hoc state writes |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job transition registry edits in this ticket |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no multi-hop runner added |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI naming |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `60f0d40e` is `merge-tests(AST-1494)` |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` / `merge-resume` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | child `sub/AST-1484/AST-1494-…` vs `origin/dev` |
+| orch.git.ftr-sub-topology | universal | conforms | stacked on `ftr/AST-1484` after AST-1493 dependency merge |
+| orch.git.merge-on-checkout | universal | conforms | `merge-resume` + `sync(dev)` present; no violations |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear stage commits |
+| orch.git.no-dev-agent-branches | universal | conforms | publish ref is `sub/…` |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1484 epic pattern |
+| orch.git.three-permanent-branches | universal | conforms | baseline `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy overrides in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | three stages match plan (config → catalog → consult map) |
+| orch.pipeline.project-scoped-queues | universal | conforms | Meteorite child scoped correctly |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authoring |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns tests/bible |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Hedy |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | engineer through Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path product commits |
+
+**Active-set count:** 64 rows from registry § Harvested corpus (header cites 65; no additional active row opened for this diff).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | optional `company_stem` + `company_stem_response_key` added to `TASK_CONFIG["qualify_meteorite"]` with asserts |
+| pattern.batch.entity-agent-responses | conforms | enrich maps RESPONSE field onto packet output; no new entity-ref persistence mechanics |
+| pattern.agent.prompt-persist-before-provider | needs-discussion | cited in plan traceability but catalog `status: proposed` — Joan precedent; no new persist sequencing in this diff |
+
+## Plan adherence
+
+- **Stage 1:** `company_stem` optional str in `items_schema`; `company_stem_response_key` literal; asserts match plan. No `METEORITE_CONFIG` edits in engineer commits.
+- **Stage 2:** `qualify_meteorite` `cache_prompt` gains COMPANY STEM rules (candidate-self → email → slug → empty); `user_prompt` asks for `company_stem`; `updated_at` refreshed; AST-756 twin synced.
+- **Stage 3:** `enrich_meteorite_land_packet` maps stripped Ruth stem onto each `out_jobs` item; land debug detail includes `company_stem={…!r}`; dispatch success debug appends stem when non-empty; `agent.py` docstring documents optional RESPONSE field. No `ensure_meteorite_company` / attach calls.
+- **Scope / siblings:** AST-1493 dependency merged via `merge-resume`; AST-1495 attach wiring correctly deferred.
+- **Estimate (3):** Footprint fits — config + catalog + thin consult/agent map + Betty tests.
+- **Tests:** Betty covers schema asserts, catalog twin, enrich map/strip/debug, dispatch debug stem.
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+- **Location:** Plan traceability — `pattern.agent.prompt-persist-before-provider`
+- **Finding:** Pattern remains `status: proposed`; plan cites it for existing `do_task` sequencing only.
+- **Recommendation:** Citation hygiene / parent catalog follow-up (Joan already flagged). Not blocking — implementation does not claim new persist behavior.
+
+### advisory
+
+- **Location:** `data/admin/agent_task.json` commit `83257745`
+- **Finding:** Git diff shows ~48 hunks, but parsed JSON differs on only the `qualify_meteorite` current row; remainder is `ensure_ascii=True` re-serialize (em-dash/arrow escapes), semantically identical.
+- **Recommendation:** Accept for this ticket; future catalog edits should touch only the target row to keep review noise down.
+
+- **Location:** Three-dot diff vs `origin/dev`
+- **Finding:** Publish ref includes stacked AST-1493 product + docs (Radia PROCEED `cedbfa68`) and unrelated test-only commits (AST-1486/1502/1504) not in AST-1494 scope gate.
+- **Recommendation:** AST-1494 engineer commits are scope-clean; full-branch diff is expected epic-line topology.
+
+- **Location:** Joan validate attachment
+- **Finding:** APPROVED with no `Excluded` statute table.
+- **Recommendation:** Note `no plan-rubric Excluded table attached` — not blocking.
+
+## What's solid
+
+- Config key indirection (`company_stem_response_key`) with asserts prevents schema/map drift.
+- Enrich always emits `company_stem` key (empty string when Ruth omits) — ready for AST-1495 attach.
+- Dispatch debug stem is gated, non-empty only, and does not persist onto job rows (correct partition).
+- Ruth prompt teaches three stem cases without duplicating `meteorite-self` in `TASK_CONFIG`.
+- Betty tests lock map, strip, debug detail, and dispatch debug paths.
+
+## Frame diff
+
+- `qualify_meteorite` RESPONSE schema gains optional `company_stem`.
+- Ruth catalog prompts teach sender / self / slug stem discernment from CONTENT.
+- `enrich_meteorite_land_packet` output jobs carry `company_stem` from Ruth RESPONSE.
+- Dispatch `qualify_meteorite` success debug may include `company_stem` when present.
+
+## Notes
+
+- Engineer product tip: `317f3dc8`; publish tip after merge-tests: `60f0d40e`.
+- C7 complete — Chuckles may append to issue doc, push `docs(AST-1494): Radia review — clean`, post slim upshot, advance to **Review Posted** → **User Testing**.
+
+context_tokens≈62000
+
+---
+
+```
+[code-rubric] PROCEED (Commit: 60f0d40e) Ruth stem discernment clean
+```
