@@ -68,3 +68,7 @@ Scheduler boot still treats Python catalogs (`METEORITE_DISPATCH_TASKS`, `METEOR
 ## Radia review (AST-1496)
 
 Clean review on `8256593d` — ban auto-writers OK. Discuss items (archie-catalog-wins carve-out, hold-bullet vs retire-delete) owned by sibling gap AST-1501 / wording follow-ups. **docs-acceptance:** component test delivery for this ban lives on sibling gap AST-1500 (Betty qa-fix), not this product sub.
+
+## Resolution: AST-1500 — gap dispatcher provision tests
+
+**2026-08-26 (resolve-child):** Radia fix-now on `3a176fe0` — removed AST-1493 test/bible stack (`be1dc566`: meteorite stem/config coverage) from publish ref; retained AST-1500 ban delta (`999cf2d1` + `merge-tests`) and ftr merge for AST-1496 product ban. Bug-repro manifest green; §9a dev/ftr dry-run clean.
