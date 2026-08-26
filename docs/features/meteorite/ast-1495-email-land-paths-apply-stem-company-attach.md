@@ -163,3 +163,41 @@ Re-run `sync-child.sh` after merges; stop if conflicts need Chuckles.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1495
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach` @ `4059b632ca56e81af574c7eb07ef4b61fb3de638`
+
+## Traceability
+AC5→S1 enrich-first per-row `company_stem`→`ensure_meteorite_company(stem=)`→`save_meteorite_job(company=…)`; AC6→S1 empty stem→`default_stem` via `stem=None`; AC7→S1 land debug `stem=`/`company=` + S2 inbox post-land `company=` detail (ensure Style D from AST-1493); parent AC2–AC4 end-to-end→requires AST-1493+1494 merge gate then this wire; parent AC1/AC8 UI trace→S3 optional Meteorite nav/list.
+
+## Findings
+
+### discuss
+- **Location:** Scope gate — `meteorite_email` AUTO dispatch
+- **Finding:** `src/core/meteorite_email.py` still calls `create_meteorite_job` without `land_meteorite` / `company_stem` enrich; not in Files Changed.
+- **Recommendation:** Acceptable child partition (inbox land paths only per AST-1472 retarget); flag for epic completeness if AUTO mailbox ingest should also stem-key — follow-on, not this ticket.
+
+### discuss
+- **Location:** Plan doc (top-level sections)
+- **Finding:** No `## Self-Assessment` (conf / blast-radius).
+- **Recommendation:** Optional add; UAT fitness + scope gate + stage decisions are otherwise explicit.
+
+### acceptable
+- **Location:** Scope gate — `gaze_email.py` / `gazer.py`
+- **Finding:** Ticket lists both; planner correctly resolves gaze_email absent (AST-1472) and gazer ingest has no production callers — stem attach centralized in `land_meteorite`.
+- **Recommendation:** No gazer edits required.
+
+### acceptable
+- **Location:** Stage 3 — `CompaniesMeteorite.tsx`
+- **Finding:** Inline columns instead of `DATA_SHAPES` (differs from `CompaniesIgnored.tsx` shapes fetch).
+- **Recommendation:** Plan explicitly forbids DATA_SHAPES edits — consistent with ticket NAV-only config scope.
+
+### acceptable
+- **Location:** Depends on (build gate)
+- **Finding:** Publish-ref tip still pre–AST-1493/1494 product APIs; plan documents merge commands before build.
+- **Recommendation:** Engineer must run merge gate — plan blocks correctly if APIs missing.
