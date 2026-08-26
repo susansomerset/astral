@@ -5552,6 +5552,161 @@ class TestAst1197QualifyMeteoriteApply:
         ) == "Sales & Marketing Lead"
 
 
+class TestAst1494EnrichMeteoriteCompanyStem:
+    """AST-1494: company_stem map on enrich_meteorite_land_packet + dispatch debug."""
+
+    _JD = "Visible meteorite JD body text. " * 4
+
+    def _scrap(self) -> dict:
+        return {
+            "job_link": "https://jobs.example.com/role",
+            "text": self._JD,
+        }
+
+    def _ruth_job(self, **extra: str) -> dict:
+        base = {
+            "astral_job_id": "000",
+            "company_job_id": "EXT-1",
+            "job_title": "Engineer",
+            "job_link": "https://jobs.example.com/role",
+            "jd_text": self._JD,
+        }
+        base.update(extra)
+        return base
+
+    @pytest.mark.asyncio
+    async def test_enrich_maps_company_stem_from_ruth(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {"jobs": [self._ruth_job(company_stem="alice@example.com")]},
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        out = await consult_mod.enrich_meteorite_land_packet(
+            "somerset", [self._scrap()], debug=False,
+        )
+        assert out["success"] is True
+        assert out["jobs"][0]["company_stem"] == "alice@example.com"
+
+    @pytest.mark.asyncio
+    async def test_enrich_empty_stem_when_ruth_omits(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {"jobs": [self._ruth_job()]},
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        out = await consult_mod.enrich_meteorite_land_packet(
+            "somerset", [self._scrap()], debug=False,
+        )
+        assert out["jobs"][0]["company_stem"] == ""
+
+    @pytest.mark.asyncio
+    async def test_enrich_strips_stem_whitespace(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {
+                    "jobs": [self._ruth_job(company_stem="  meteorite-self  ")],
+                },
+            }
+
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        out = await consult_mod.enrich_meteorite_land_packet(
+            "somerset", [self._scrap()], debug=False,
+        )
+        assert out["jobs"][0]["company_stem"] == "meteorite-self"
+
+    @pytest.mark.asyncio
+    async def test_enrich_debug_detail_includes_company_stem(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        async def _do_task(**_kwargs):
+            return {
+                "success": True,
+                "parsed_response": {
+                    "jobs": [self._ruth_job(company_stem="acme-careers")],
+                },
+            }
+
+        dbg_d = MagicMock()
+        monkeypatch.setattr(consult_mod, "do_task", _do_task)
+        monkeypatch.setattr(consult_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_detail", dbg_d)
+        out = await consult_mod.enrich_meteorite_land_packet(
+            "somerset", [self._scrap()], debug=True,
+        )
+        assert out["success"] is True
+        detail = " ".join(
+            str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list
+        )
+        assert "company_stem='acme-careers'" in detail
+
+    @pytest.mark.asyncio
+    async def test_dispatch_debug_logs_company_stem_when_present(
+        self, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        from src.utils.config import TASK_CONFIG, TRACKER_CONFIG
+
+        if "qualify_meteorite" not in TASK_CONFIG:
+            pytest.skip("qualify_meteorite not on tip")
+        jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
+        transition = MagicMock()
+        monkeypatch.setattr(consult_mod, "_transition_job_state_for_task", transition)
+        monkeypatch.setattr(consult_mod.tracker, "initialize_job", MagicMock(return_value=True))
+        monkeypatch.setattr(
+            consult_mod.tracker,
+            "get_job",
+            MagicMock(return_value={"company_job_id": "EXT-1", "job_title": "Role"}),
+        )
+        monkeypatch.setattr(
+            consult_mod,
+            "do_task",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "jobs": [{
+                            "astral_job_id": "j-stem",
+                            "company_job_id": "EXT-1",
+                            "job_title": "Engineer Role",
+                            "job_link": "https://jobs.example.com/1",
+                            "jd_text": self._JD,
+                            "company_stem": "alice@example.com",
+                        }]
+                    },
+                    "timesheet": {},
+                }
+            ),
+        )
+        dbg_d = MagicMock()
+        monkeypatch.setattr(consult_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_index", MagicMock())
+        monkeypatch.setattr(consult_mod.logger, "debug_detail", dbg_d)
+        job = {
+            "astral_job_id": "j-stem",
+            "state": "METEORITE_NEW",
+            "company": "meteorite-cand-stem",
+            "job_link": "https://jobs.example.com/1",
+            "job_data": {jd_key: self._JD},
+        }
+        out = await consult_mod.qualify_meteorite("batch-1494-stem", [job], {}, debug=True)
+        assert out["passed"] == 1
+        detail = " ".join(
+            str(c.args[0]) if c.args else str(c.kwargs) for c in dbg_d.call_args_list
+        )
+        assert "company_stem='alice@example.com'" in detail
+
+
 class TestAst1155IncompleteGradeRetry:
     """AST-1155: incomplete/extra grade sets → retry holding, never first-touch technical."""
 

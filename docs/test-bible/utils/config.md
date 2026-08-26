@@ -3191,3 +3191,23 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
   tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
   -q
 ```
+
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`); `company_stem_response_key` literal for consult map. Enrich/apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + response key + validate omit/value | `src/utils/config.py` | **`TestAst1494QualifyMeteoriteCompanyStemSchema`** |
+
+**Broken / obsolete:** none — additive optional field.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema \
+  -q
+```

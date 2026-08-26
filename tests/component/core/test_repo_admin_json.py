@@ -434,6 +434,33 @@ class TestAst1055MeteoriteCatalogRows:
         assert by["grade_like"]["task_seq"] == 8
 
 
+class TestAst1494QualifyMeteoriteCompanyStemCatalog:
+    """AST-1494: Ruth company_stem prompts + AST-756 fixture byte lock."""
+
+    def _qm(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return next(
+            r for r in rows
+            if r.get("task_key") == "qualify_meteorite" and r.get("current") == 1
+        )
+
+    def test_cache_and_user_prompt_company_stem_contract(self) -> None:
+        cat = self._qm("data/admin/agent_task.json")
+        cp, up = cat["cache_prompt"], cat["user_prompt"]
+        assert "company_stem" in cp
+        assert "## COMPANY STEM" in cp
+        assert "meteorite-self" in cp
+        assert "original sender email" in cp.lower()
+        assert "job-link slug" in cp.lower()
+        assert "first match wins" in cp.lower()
+        assert "company_stem" in up
+
+    def test_fixture_byte_identical_to_catalog(self) -> None:
+        cat_bytes = Path("data/admin/agent_task.json").read_bytes()
+        fix_bytes = Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_bytes()
+        assert cat_bytes == fix_bytes
+
+
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)
 class TestAst1060QualifyMeteoriteCatalogRow:
     """AST-1060: qualify_meteorite Ruth shell in repo agent_task JSON."""

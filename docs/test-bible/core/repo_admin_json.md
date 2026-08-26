@@ -275,6 +275,26 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   -q
 ```
 
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+`qualify_meteorite` Ruth prompts: **COMPANY STEM** priority rules (candidate `meteorite-self` / sender email / job-link slug); `user_prompt` asks for `company_stem`. Whole-file AST-756 fixture byte-identical to repo `agent_task.json` (build `cp` + `cmp`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt contract + fixture byte lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1494QualifyMeteoriteCompanyStemCatalog`** |
+
+**Broken / obsolete:** none — additive prompt fields on existing row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog \
+  -q
+```
+
 
 ### AST-1211 · AST-1186
 

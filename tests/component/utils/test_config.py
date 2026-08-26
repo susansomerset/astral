@@ -2802,15 +2802,14 @@ class TestAst1333CraftParseHighlightsSchema:
 
 
 class TestAst1041MeteoriteConfig:
-    """AST-1041: METEORITE_CONFIG placeholder template (METEORITE state after AST-1493)."""
+    """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
 
-    def test_required_keys_and_meteorite_company_state(self) -> None:
+    def test_required_keys_and_ignore_state(self) -> None:
         m = cfg.METEORITE_CONFIG
         assert m["short_name_prefix"] == "meteorite-"
         assert m["short_name_template"] == "meteorite-{candidate_id}"
         assert m["company_name"] == "meteorite"
-        # AST-1493: new placeholders land in METEORITE (was IGNORE).
-        assert m["company_state"] == "METEORITE"
+        assert m["company_state"] == "IGNORE"
         assert m["company_state"] in cfg.COMPANY_STATES
         assert "note" in m["company_data"]
         # AST-1056: create landing retargeted to METEORITE_NEW.
@@ -2822,26 +2821,6 @@ class TestAst1041MeteoriteConfig:
         cid = "cand-42"
         built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
         assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
-
-
-class TestAst1493MeteoriteCompanyStateConfig:
-    """AST-1493: COMPANY_STATES METEORITE + stem templates on METEORITE_CONFIG."""
-
-    def test_meteorite_company_state_roster_inert(self) -> None:
-        assert "METEORITE" in cfg.COMPANY_STATES
-        assert cfg.COMPANY_STATES["METEORITE"] == {}
-        assert cfg.METEORITE_CONFIG["company_state"] == "METEORITE"
-
-    def test_stem_templates_and_literals(self) -> None:
-        m = cfg.METEORITE_CONFIG
-        assert m["stem_short_name_template"] == "{stem}-{candidate_id}"
-        assert m["default_stem"] == "meteorite"
-        assert m["meteorite_self_stem"] == "meteorite-self"
-        # default stem + template must equal legacy short_name_template shape
-        assert m["stem_short_name_template"].format(
-            stem=m["default_stem"],
-            candidate_id="{candidate_id}",
-        ) == m["short_name_template"]
 
 
 class TestAst1047CandidateLookupConfig:
@@ -3218,6 +3197,46 @@ class TestAst1127QualifyMeteoriteCompanyJobIdOptional:
             missing_jd, schema, "qualify_meteorite"
         )
         assert err and "jd_text" in err
+
+
+# Branches: optional company_stem schema + response key literal (AST-1494).
+class TestAst1494QualifyMeteoriteCompanyStemSchema:
+    """AST-1494: company_stem optional on qualify_meteorite items_schema."""
+
+    def test_schema_and_response_key(self) -> None:
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        item = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert item["company_stem"]["type"] == "str"
+        assert item["company_stem"]["required"] is False
+        assert cfg.TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] == "company_stem"
+        assert cfg.TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in item
+
+    def test_validate_allows_omit_and_accepts_value(self) -> None:
+        from src.core import agent as agent_mod
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        schema = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]
+        job = {
+            "astral_job_id": "000",
+            "company_job_id": "EXT-1",
+            "job_title": "Engineer",
+            "job_link": "https://jobs.example.com/1",
+            "jd_text": "x" * 50,
+        }
+        base = {"agent_performance": "success", "agent_payload": {"jobs": [job]}}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        with_stem = {**job, "company_stem": "alice@example.com"}
+        base["agent_payload"]["jobs"][0] = with_stem
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        base["agent_payload"]["jobs"][0] = {**with_stem, "company_stem": ""}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
 
 
 # Branches: qualify_meteorite job_link/job_title optional + BOT_BLOCKED rename (AST-1195).
