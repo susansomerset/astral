@@ -303,3 +303,13 @@ Definition fidelity: implements child Scope only; deviations replace matches par
 - **Location:** Tests — no explicit missing-`index` failure test; optional Betty follow-up.
 
 Product implementation matches all five plan stages; Joan discuss items addressed. Boundaries held.
+
+## Resolution
+
+**Date:** 2026-08-26  
+**Review ref:** Radia `[code-rubric] revision=2` @ `8b4c20b6` — **Overall: DISCUSS** (no fix-now).
+
+- **Fix-now:** none — product matches plan; Betty manifest (35 tests) green on publish tip.
+- **Discuss (sibling tests on merge-tests tip):** acknowledged — AST-1498/AST-1505/AST-1489 test deltas bundled on shared `origin/tests` line; not an AST-1508 product defect; merge-child/ftr rollup concern only.
+- **Advisory:** empty-list falsy in `persist_job_artifact_from_parsed`, legacy `deviations` slot on in-flight jobs, optional missing-`index` test — no change this pass.
+- **§9a:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` merges cleanly into `origin/dev` (2026-08-26).
