@@ -87,44 +87,6 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const clearToast = useCallback(() => setToast(null), [])
 
-  // AST-1350: fetch-then-blob so unsupported experience toasts without opening a tab.
-  const handlePrintResume = useCallback(async () => {
-    if (!jobId) return
-    try {
-      const r = await api(`/candidate/resume/${encodeURIComponent(jobId)}`)
-      if (!r.ok) {
-        let msg = `HTTP ${r.status}`
-        try {
-          const data = await r.json()
-          if (typeof data.error === "string" && data.error) msg = data.error
-        } catch { /* non-JSON error body */ }
-        setToast({ text: msg, variant: "error" })
-        return
-      }
-      const html = await r.text()
-      if (!html.trim()) {
-        setToast({ text: "HTML response was empty", variant: "error" })
-        return
-      }
-      const blobUrl = URL.createObjectURL(
-        new Blob([html], { type: "text/html;charset=utf-8" }),
-      )
-      const win = window.open(blobUrl, "_blank", "noopener,noreferrer")
-      if (!win) {
-        setToast({
-          text: "Popup blocked — allow popups to open the HTML tab.",
-          variant: "error",
-        })
-      }
-      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
-    } catch (e) {
-      setToast({
-        text: e instanceof Error ? e.message : "Print failed",
-        variant: "error",
-      })
-    }
-  }, [jobId])
-
   const candidate = useMemo(
     () => candidates.find(c => c.astral_candidate_id === selectedId),
     [candidates, selectedId],
@@ -207,8 +169,8 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     setStructureSections(rows.map(r => ({ id: r.id, label: r.title })))
   }
 
-  function saveStructure(rows: SectionRow[]) {
-    if (!selectedId) return
+  async function persistStructureRows(rows: SectionRow[]): Promise<void> {
+    if (!selectedId) throw new Error("No candidate selected")
     const sections: Record<string, Record<string, unknown>> = {}
     rows.forEach((row, index) => {
       const spec: Record<string, unknown> = {
@@ -224,30 +186,80 @@ export default function JobAnalysisReportModal({ jobId, onClose, onRefresh }: Pr
     })
     setStructureSaving(true)
     setStructureSaveError(null)
-    api(`/api/candidates/${selectedId}/data`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
-    })
-      .then(r => {
-        if (!r.ok) return r.json().then(e => { throw new Error(e.error || "Save failed") })
-        return r.json()
+    try {
+      const r = await api(`/api/candidates/${selectedId}/data`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ artifacts: { resume_structure: { sections } } }),
       })
-      .then(() => api(`/api/candidates/${selectedId}/resume_structure`).then(r => r.json()))
-      .then(data => {
-        const sectionsList = Array.isArray(data.sections) ? data.sections : []
-        setStructureSections(sectionsList.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
-        setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
-        setCatalog(catalogFromPayload(data))
-        setToast({ text: "Resume sections saved", variant: "success" })
-      })
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({})) as { error?: string }
+        throw new Error(e.error || "Save failed")
+      }
+      await r.json()
+      const data = await api(`/api/candidates/${selectedId}/resume_structure`).then(res => res.json())
+      const sectionsList = Array.isArray(data.sections) ? data.sections : []
+      setStructureSections(sectionsList.map((s: { id: string; label: string }) => ({ id: s.id, label: s.label })))
+      setAllSections(Array.isArray(data.all_sections) ? data.all_sections as SectionRow[] : [])
+      setCatalog(catalogFromPayload(data))
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Save failed"
+      setStructureSaveError(msg)
+      throw e instanceof Error ? e : new Error(msg)
+    } finally {
+      setStructureSaving(false)
+    }
+  }
+
+  function saveStructure(rows: SectionRow[]) {
+    void persistStructureRows(rows)
+      .then(() => setToast({ text: "Resume sections saved", variant: "success" }))
       .catch(e => {
-        const msg = e.message || "Save failed"
-        setStructureSaveError(msg)
+        const msg = e instanceof Error ? e.message : "Save failed"
         setToast({ text: msg, variant: "error" })
       })
-      .finally(() => setStructureSaving(false))
   }
+
+  // AST-1350: fetch-then-blob; AST-1489: auto-persist structure rows before resume GET.
+  const handlePrintResume = useCallback(async () => {
+    if (!jobId) return
+    try {
+      if (selectedId) {
+        await persistStructureRows(allSections)
+      }
+      const r = await api(`/candidate/resume/${encodeURIComponent(jobId)}`)
+      if (!r.ok) {
+        let msg = `HTTP ${r.status}`
+        try {
+          const data = await r.json()
+          if (typeof data.error === "string" && data.error) msg = data.error
+        } catch { /* non-JSON error body */ }
+        setToast({ text: msg, variant: "error" })
+        return
+      }
+      const html = await r.text()
+      if (!html.trim()) {
+        setToast({ text: "HTML response was empty", variant: "error" })
+        return
+      }
+      const blobUrl = URL.createObjectURL(
+        new Blob([html], { type: "text/html;charset=utf-8" }),
+      )
+      const win = window.open(blobUrl, "_blank", "noopener,noreferrer")
+      if (!win) {
+        setToast({
+          text: "Popup blocked — allow popups to open the HTML tab.",
+          variant: "error",
+        })
+      }
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60_000)
+    } catch (e) {
+      setToast({
+        text: e instanceof Error ? e.message : "Print failed",
+        variant: "error",
+      })
+    }
+  }, [jobId, selectedId, allSections])
 
   // Reset top tab when opening a different job.
   useEffect(() => {

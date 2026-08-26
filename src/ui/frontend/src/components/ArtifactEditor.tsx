@@ -296,8 +296,10 @@ export default function ArtifactEditor({
   const inReview = snapshot !== null
   // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
   const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
-  // Stable key signature so label-only structure header edits do not re-GET / wipe tabs.
-  const fixedFieldKeys = fixedFields ? fixedFields.map(f => f.key).join("\0") : ""
+  // Stable id-set signature: label-only and reorder-only edits do not re-GET / wipe tabs.
+  const fixedFieldKeys = fixedFields
+    ? [...fixedFields.map(f => f.key)].sort().join("\0")
+    : ""
 
   /** Display order: importance descending (plan); storage order unchanged in `tabs` / payload. */
   const tabsSortedForRail = useMemo(() => {
@@ -482,14 +484,14 @@ export default function ArtifactEditor({
     })))
   }
 
-  /** Same field keys: refresh labels only; keep local body content (structure header edits). */
+  /** Same field key set: refresh labels; reorder tabs to match structure rows without re-GET. */
   useEffect(() => {
     if (!fixedFields) return
     setTabs(prev => {
       if (prev.length === 0) return prev
-      const prevKeys = prev.map(t => t.id).join("\0")
-      const nextKeys = fixedFields.map(f => f.key).join("\0")
-      if (prevKeys !== nextKeys) return prev
+      const prevSet = [...prev.map(t => t.id)].sort().join("\0")
+      const nextSet = [...fixedFields.map(f => f.key)].sort().join("\0")
+      if (prevSet !== nextSet) return prev
       const byId = Object.fromEntries(prev.map(t => [t.id, t]))
       return fixedFields.map(f => {
         const existing = byId[f.key]
@@ -563,6 +565,8 @@ export default function ArtifactEditor({
     setHasChainData(rubricHit || termsHit)
   }
 
+  const jobPersistJobId = jobPersistence?.jobId
+
   // Load artifact data from job (AST-553/565 job persistence mode)
   useEffect(() => {
     if (!jobPersistence) return
@@ -575,9 +579,10 @@ export default function ArtifactEditor({
       setLoaded(true)
       setDirty(false)
     }).catch(() => setJobLoadError(true))
-  // fixedFieldKeys: ignore label-only shapeField churn from structure header edits
+  // jobPersistJobId: parent inline jobPersistence object must not re-GET on reorder churn
+  // fixedFieldKeys: ignore label/reorder shapeField churn
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [jobPersistence, artifactKey, fixedFieldKeys, shapesKey, structureMode])
+  }, [jobPersistJobId, artifactKey, fixedFieldKeys, shapesKey, structureMode])
 
   // Load artifact data from candidate
   useEffect(() => {
