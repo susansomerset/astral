@@ -2424,6 +2424,20 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1498 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1498-candidate-applied-missing-from-applied-screen`.
+
+Fix-lane bug: Applied page must list stem/meteorite jobs with NULL `company.candidate_id`; post-applied `candidate_action` must send `candidate_id` for linkage repair. API repro: **`docs/test-bible/ui/api/api_jobs.md`** § AST-1498.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| POST includes `candidate_id` (**[bug-repro]**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`AST-1498 [bug-repro]: candidate_action POST includes candidate_id`** |
+
+**Broken / obsolete:** **`JobsApplied — AST-1479`** Interview case still asserts body without `candidate_id` — keep for pre-fix regression; AST-1498 repro is separate `it`.
+
+**Integration:** none.
+
 ---
 
 ### AST-1495 · AST-1484

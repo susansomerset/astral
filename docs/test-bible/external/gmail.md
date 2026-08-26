@@ -119,3 +119,23 @@ Raw `to_address` on `list_inbox_messages` / `get_message_html` (empty string whe
 
 **Pass criterion:** pytest green on narrowed args; `src/external/gmail.py` remains **LOCKED_AT_100** branch coverage.
 
+### AST-1512 · AST-1509
+
+**Parent:** [AST-1509 — Suppress gmail discovery_cache log noise](https://linear.app/astralcareermatch/issue/AST-1509/suppress-gmail-discovery-cache-log-noise). **Publish:** `origin/sub/AST-1509/AST-1512-suppress-gmail-discovery-cache-log-noise`.
+
+`_build_service()` passes `cache_discovery=False` to `build()` so googleapiclient skips oauth2client `file_cache` discovery-cache init (deploy log noise only; Gmail I/O unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Discovery cache disabled on build | `src/external/gmail.py` | **`TestAst1512DiscoveryCache::test_build_service_passes_cache_discovery_false`** |
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/external/test_gmail.py::TestAst1512DiscoveryCache \
+  -q
+```
+
+**Pass criterion:** pytest green on narrowed args; `[bug-repro]` test passes after make-fix lands `cache_discovery=False`.
+

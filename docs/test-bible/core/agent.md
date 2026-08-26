@@ -1038,3 +1038,31 @@ Read path only: `list_agent_data_batches` / `list_agent_data_runs` (one row per 
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE (optional Step 4): `_decode_payload` should fail fast when the same two-char vector code appears twice on one encoded line (`…|TPB4|TPB4`). Contingent on make-fix landing Step 4.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Duplicate segment guard on encoded line | `src/core/agent.py` (`_decode_payload`) | **`TestAst1513DuplicateRubricCodes::test_decode_rejects_duplicate_tp_segments_on_one_line`** (**[bug-repro]**, Step 4 optional) |
+
+**Broken / obsolete:** none — additive guard on duplicate segments only.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Decode duplicate guard (bug-repro, Step 4 optional): `tests/component/core/test_agent.py::TestAst1513DuplicateRubricCodes::test_decode_rejects_duplicate_tp_segments_on_one_line`
+
+**Pass criterion:** red pre-fix; green if make-fix lands Step 4 (skip/xfail acceptable if engineer omits optional decode guard).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1513DuplicateRubricCodes \
+  -q
+```

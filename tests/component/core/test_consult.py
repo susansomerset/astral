@@ -325,6 +325,34 @@ class TestRubricHelpers:
             consult_mod._hydrate_grade_reasons_from_rubric(grades, [])
 
 
+class TestAst1513DuplicateRubricCodes:
+    """AST-1513: duplicate rubric codes must not silently last-wins in decode map."""
+
+    _HT_LABEL = "Hands-On Technical Partnership With Engineers"
+    _TP_LABEL = "Speaking Truth to Power With Diplomacy"
+
+    def test_vector_labels_map_first_wins_on_duplicate_tp(self) -> None:
+        criteria = [
+            {"code": "TP", "label": self._HT_LABEL},
+            {"code": "TP", "label": self._TP_LABEL},
+        ]
+        assert consult_mod._vector_labels_map(criteria)["TP"] == self._HT_LABEL
+
+    def test_duplicate_tp_codes_cause_incomplete_grade_set(self) -> None:
+        rubric = [
+            {"code": "TP", "label": self._HT_LABEL, "content": "x\nA=a", "importance": 5},
+            {"code": "TP", "label": self._TP_LABEL, "content": "y\nA=a", "importance": 5},
+        ]
+        labels_map = consult_mod._vector_labels_map(rubric)
+        decoded_vector = labels_map["TP"]
+        grades = [
+            {"vector": decoded_vector, "grade": "B", "confidence": 4},
+            {"vector": decoded_vector, "grade": "B", "confidence": 4},
+        ]
+        with pytest.raises(ValueError, match="missing vectors"):
+            consult_mod._require_complete_grade_set(rubric, grades)
+
+
 class TestImportanceForLabelBranches:
     def test_skips_non_dict_rubric_rows(self) -> None:
         junk: list[Any] = ["not-a-dict-row", {**_rubric_item("fit"), "importance": 5}]
