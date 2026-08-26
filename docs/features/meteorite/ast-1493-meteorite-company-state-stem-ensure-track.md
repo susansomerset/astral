@@ -179,3 +179,145 @@ AC1→S1; AC2–AC4→S2 `ensure_meteorite_company(stem=)` API; AC5→S2 `is_met
 - **Recommendation:** Plan documents deferral; aligns with child partition.
 
 context_tokens≈42000
+
+## Radia review
+
+# Radia review — AST-1493
+
+[code-rubric] revision=1  
+**Rubric:** code-rubric.v1  
+**Ticket:** AST-1493  
+**Publish ref:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track` @ `cedbfa6815506ba49e9af79aa59398e0ca9933a6`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | diff does not touch agent/LLM confidence paths |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task / agent dispatch changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch runner / batch_id emission |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch_id formatting |
+| astral.batch.claim-process-release | scoped | not-applicable | no claim/process/release batch helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no entity agent-responses writes |
+| astral.config.config-source-of-truth | scoped | conforms | METEORITE state + stem literals live in `METEORITE_CONFIG` / `COMPANY_STATES`; callers read config |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets or env-specific config added |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed changes |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next / chain changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single issue doc `docs/features/meteorite/ast-1493-…md` |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty commit `be1dc566` touches tests + test-bible only |
+| astral.git.engineer-test-tree-ban | scoped | conforms | engineer commits `4deacb6c` / `ea0a20ea` are `src/` only; tests landed via Betty |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no new external integration; pre-existing `playwright` import unchanged |
+| astral.layers.import-direction | scoped | conforms | `core` → `data` / `utils` only; no UI or utils→data bend |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no `scripts/` changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no `src/ui/` changes |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check / entity_data paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult render-verdict paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | no API/auth surface |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | no seed JSON changes |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no catalog/seed contention |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | ensure remains lazy on demand, not boot bulk |
+| astral.seed.define-approved | scoped | not-applicable | no define/seed workflow |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | no operator seed rows |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage-join seed paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | no new logging inside `src/data/` |
+| astral.standards.database-header-inventory | scoped | not-applicable | no schema / migration / `database.py` changes |
+| astral.standards.debug-contract-gated | scoped | conforms | Style D index/detail emitted only when `debug=True` via `get_logger` helpers |
+| astral.standards.dry-and-focused-functions | scoped | conforms | stem resolution + track predicate are focused; no duplicate config literals in core |
+| astral.standards.in-scope-only | scoped | conforms | product diff limited to `src/utils/config.py` + `src/core/meteorite.py` per scope gate |
+| astral.standards.logging-via-utils | scoped | conforms | uses `get_logger` / `set_debug_flag`; no `print()` or stdlib logging |
+| astral.standards.names-not-ticket-ids | scoped | conforms | runtime identifiers are config-driven (`METEORITE`, stem templates) |
+| astral.standards.no-cross-contamination | scoped | conforms | no sibling AST-1494/1495 consult/inbox/land wiring smuggled in |
+| astral.standards.no-hardcoded-sets | scoped | conforms | company state and stem shapes read from `METEORITE_CONFIG` / `COMPANY_STATES` |
+| astral.standards.public-then-helpers | scoped | conforms | public ensure/track API unchanged in shape; no helper reorder issues |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | `config.py` diff does not import `data` |
+| astral.state.core-decides-transitions | scoped | conforms | companies created in core via `save_company` with config state; no ad hoc transition map bypass |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job transition registry edits |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no multi-hop runner added |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend files |
+| astral.ui.naming-conventions | scoped | not-applicable | no UI naming surface |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | tip `cedbfa68` is `merge-tests(AST-1493)` atop Betty test SHA |
+| orch.git.commit-vocabulary | universal | conforms | `code` / `test` / `docs` / `merge-tests` vocabulary respected |
+| orch.git.flow-direction-inviolable | universal | conforms | work on `sub/AST-1484/AST-1493-…` vs `origin/dev` |
+| orch.git.ftr-sub-topology | universal | conforms | child publish ref under parent segment |
+| orch.git.merge-on-checkout | universal | conforms | no merge/checkout violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | linear stage commits; merge-tests only |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches in diff |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | AST-1484 epic worktree pattern |
+| orch.git.three-permanent-branches | universal | conforms | diff base `origin/dev` |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no product-policy overrides in diff |
+| orch.pipeline.plan-is-bible | universal | conforms | implementation matches staged plan (config then core) |
+| orch.pipeline.project-scoped-queues | universal | conforms | Meteorite child scoped correctly |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed per pipeline |
+| orch.roles.archie-approves-statutes | universal | conforms | no statute authoring in diff |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns `tests/` + bible revisions |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | assignee remains Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | engineer through Tests Passed; review is Radia recommend-only |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path commits observed |
+
+**Active-set count:** 64 rows scored from registry § Harvested corpus table (registry header cites 65; no additional active row opened for this diff).
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| pattern.config.config-block | conforms | `METEORITE_CONFIG` extended with stem templates, literals, and startup asserts; callers consume config |
+| pattern.state.entity-state-transitions | conforms | `COMPANY_STATES["METEORITE"]` registered roster-inert; creation via ensure/`save_company`, not transition-map edges (plan carve-out mirrors IGNORE) |
+
+## Plan adherence
+
+- **Stage 1 (config):** `COMPANY_STATES["METEORITE"] = {}`; `company_state` flipped to `"METEORITE"`; `stem_short_name_template`, `default_stem`, `meteorite_self_stem` added with asserts tying default stem to legacy `short_name_template`. No out-of-scope config blocks touched.
+- **Stage 2 (core):** `ensure_meteorite_company(..., stem=None, debug=False)` formats `{stem}-{candidate_id}`, inserts into METEORITE, leave-in-place on existing rows. `is_meteorite_company` widened to prefix-first then METEORITE state lookup. `create_meteorite_job` / `land_meteorite` still call ensure without `stem=`.
+- **Scope / siblings:** No AST-1494 Ruth stem units, no AST-1495 inbox/land attach, no `database.py` claim SQL, no Recommended UI partition changes.
+- **Estimate (5):** Footprint matches — two product files, focused API surface, Betty test/bible follow-on.
+- **Tests / bible:** Betty manifest aligns with plan ACs (email/self/slug stems, leave-in-place IGNORE, prefix+state track, Style D stem detail, create path METEORITE honesty).
+
+## Findings
+
+### fix-now
+
+(none)
+
+### discuss
+
+(none)
+
+### advisory
+
+- **Location:** Joan validate attachment (`docs/features/meteorite/ast-1493-…md`)
+- **Finding:** Joan verdict is APPROVED but carries no `Excluded` statute table.
+- **Recommendation:** Straggler check N/A; note `no plan-rubric Excluded table attached` — not blocking.
+
+- **Location:** `src/core/meteorite.py` — `is_meteorite_company`
+- **Finding:** Non-`meteorite-` short_names now incur a `get_company` read on the state path.
+- **Recommendation:** Acceptable for current callers (`consult`, `gazer` batch contexts). If a hot path emerges later, consider caching — out of scope here.
+
+- **Location:** Parent architectural note (issue doc Findings §discuss)
+- **Finding:** “METEORITE company state + stem-keyed placeholders” pattern not yet in approved catalog as `proposed`.
+- **Recommendation:** Parent-tracked Archie catalog follow-up; implementation correctly uses existing approved patterns.
+
+## What's solid
+
+- Config-owned stem shapes with asserts prevent template drift from legacy `meteorite-{candidate_id}`.
+- Leave-in-place IGNORE rows (AC7) is explicit in code and tested.
+- Style D on ensure is properly gated, uses `debug_index` 1/1 + multi-line `debug_detail` (`candidate_id`, `stem`, `company_state` on insert).
+- Cross-ticket boundary held: land/create remain default-stem until AST-1495.
+
+## Frame diff
+
+- New roster-inert company state `METEORITE` in `COMPANY_STATES`.
+- New inserts from `ensure_meteorite_company` land in `METEORITE` (was `IGNORE` for new rows only).
+- `ensure_meteorite_company` accepts optional `stem=`; short_name built from `stem_short_name_template`.
+- `is_meteorite_company` predicate widened: legacy `meteorite-` prefix **or** persisted company state `METEORITE`.
+
+## Notes
+
+- Diff reviewed: `origin/dev...origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track` (7 files; product + Betty tests/bible + issue doc).
+- Engineer product tip: `ea0a20ea`; publish tip after merge-tests: `cedbfa68`.
+- C7 complete — Chuckles may append to issue doc, push `docs(AST-1493): Radia review — clean`, post slim upshot, advance to **Review Posted** → **User Testing** (no fix-now items).
+
+context_tokens≈55000
