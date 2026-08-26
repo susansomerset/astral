@@ -51,14 +51,18 @@ class TestAst1041EnsureMeteoriteCompany:
         assert log.debug_index.call_args.kwargs["outcome"] == "inserted"
         assert log.debug_index.call_args.kwargs["identifier"] == short
         assert log.debug_index.call_args.kwargs["func"] == "meteorite.ensure_meteorite_company"
-        log.debug_detail.assert_called()
-        assert f"candidate_id={cid}" in log.debug_detail.call_args.args[0]
+        detail_args = [c.args[0] for c in log.debug_detail.call_args_list]
+        assert f"candidate_id={cid}" in detail_args
+        assert f"stem={METEORITE_CONFIG['default_stem']}" in detail_args
+        assert f"company_state={METEORITE_CONFIG['company_state']}" in detail_args
 
         log.reset_mock()
         meteorite_mod.ensure_meteorite_company(cid, debug=True)
         log.set_debug_flag.assert_called_with(True)
         assert log.debug_index.call_args.kwargs["outcome"] == "already-present"
-        log.debug_detail.assert_called()
+        detail_args = [c.args[0] for c in log.debug_detail.call_args_list]
+        assert f"candidate_id={cid}" in detail_args
+        assert f"stem={METEORITE_CONFIG['default_stem']}" in detail_args
 
     def test_debug_false_skips_style_d(
         self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
@@ -69,6 +73,103 @@ class TestAst1041EnsureMeteoriteCompany:
         log.set_debug_flag.assert_called_with(False)
         log.debug_index.assert_not_called()
         log.debug_detail.assert_not_called()
+
+
+# Branches: stem shapes; leave-in-place IGNORE; track predicate state+prefix; Style D stem.
+class TestAst1493StemEnsureAndTrack:
+    """AST-1493: stem-keyed ensure into METEORITE + widened is_meteorite_company."""
+
+    def test_email_stem_ensures_meteorite_state(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "somerset"
+        stem = "alice@example.com"
+        out = meteorite_mod.ensure_meteorite_company(cid, stem=stem)
+        short = METEORITE_CONFIG["stem_short_name_template"].format(
+            stem=stem, candidate_id=cid
+        )
+        assert out["inserted"] is True
+        assert out["short_name"] == short == "alice@example.com-somerset"
+        row = db.get_company(short)
+        assert row is not None
+        assert row["state"] == "METEORITE"
+        assert row["candidate_id"] == cid
+        # Idempotent
+        again = meteorite_mod.ensure_meteorite_company(cid, stem=stem)
+        assert again["inserted"] is False
+        assert again["short_name"] == short
+
+    def test_meteorite_self_and_slug_stems(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "somerset"
+        self_stem = METEORITE_CONFIG["meteorite_self_stem"]
+        out_self = meteorite_mod.ensure_meteorite_company(cid, stem=self_stem)
+        assert out_self["short_name"] == f"{self_stem}-{cid}"
+        assert db.get_company(out_self["short_name"])["state"] == "METEORITE"
+
+        slug = "acme-careers"
+        out_slug = meteorite_mod.ensure_meteorite_company(cid, stem=slug)
+        assert out_slug["short_name"] == f"{slug}-{cid}"
+        assert db.get_company(out_slug["short_name"])["state"] == "METEORITE"
+
+    def test_default_stem_matches_legacy_template(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-default"
+        out = meteorite_mod.ensure_meteorite_company(cid)  # no stem=
+        short = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        assert out["short_name"] == short
+        assert db.get_company(short)["state"] == "METEORITE"
+
+    def test_leave_in_place_ignore_row(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-legacy"
+        short = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+        db.save_company(
+            short,
+            state="IGNORE",
+            company_name=METEORITE_CONFIG["company_name"],
+            company_data=dict(METEORITE_CONFIG["company_data"]),
+            candidate_id=cid,
+        )
+        out = meteorite_mod.ensure_meteorite_company(cid)
+        assert out["inserted"] is False
+        assert out["short_name"] == short
+        # AC7: no IGNORE→METEORITE rewrite
+        assert db.get_company(short)["state"] == "IGNORE"
+
+    def test_is_meteorite_company_prefix_and_state(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        # Legacy prefix (no DB needed)
+        assert meteorite_mod.is_meteorite_company("meteorite-cand-x") is True
+        assert meteorite_mod.is_meteorite_company("") is False
+        assert meteorite_mod.is_meteorite_company(None) is False
+
+        # Stem short_name in METEORITE state (no meteorite- prefix)
+        stem_sn = "alice@example.com-somerset"
+        db.save_company(
+            stem_sn,
+            state="METEORITE",
+            company_name=METEORITE_CONFIG["company_name"],
+            candidate_id="somerset",
+        )
+        assert meteorite_mod.is_meteorite_company(stem_sn) is True
+
+        # Non-meteorite company
+        db.save_company("acme", state="NEW", company_name="Acme", candidate_id="somerset")
+        assert meteorite_mod.is_meteorite_company("acme") is False
+        assert meteorite_mod.is_meteorite_company("missing-co") is False
+
+    def test_debug_true_emits_stem_detail(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        log = MagicMock()
+        monkeypatch.setattr(meteorite_mod, "get_logger", lambda _name: log)
+        cid = "cand-stem-dbg"
+        stem = "jobs.example.com/role"
+        meteorite_mod.ensure_meteorite_company(cid, stem=stem, debug=True)
+        detail_args = [c.args[0] for c in log.debug_detail.call_args_list]
+        assert f"candidate_id={cid}" in detail_args
+        assert f"stem={stem}" in detail_args
+        assert f"company_state={METEORITE_CONFIG['company_state']}" in detail_args
 
 
 # Branches: validation; missing candidate; insert job_create_state+score+HTML; second call ensures no-op company + new job.
@@ -108,7 +209,8 @@ class TestAst1042CreateMeteoriteJob:
         assert row["state"] == landing
         assert row["latest_score"] == 10.0
         assert row["job_data"][jd_key] == html
-        assert db.get_company(short)["state"] == "IGNORE"
+        # AST-1493: ensure inserts METEORITE (was IGNORE).
+        assert db.get_company(short)["state"] == METEORITE_CONFIG["company_state"] == "METEORITE"
 
         # Second create: company no-op, new job id
         out2 = meteorite_mod.create_meteorite_job(cid, "<p>second</p>")

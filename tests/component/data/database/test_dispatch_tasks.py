@@ -564,9 +564,13 @@ class TestAst702PrefilterDispatchMigration:
             conn.close()
 
 class TestAst703PrefilterMigrationUniqueCollision:
-    """AST-703 UAT: legacy dual prefilter rows migrate without UNIQUE violation."""
+    """AST-703 / AST-1500: ensure must not rewrite curated prefilter dispatch_task content.
 
-    def test_schema_migrates_when_both_website_found_and_retry_exist(self, sqlite_in_memory) -> None:
+    [bug-repro] AST-1500 — legacy dual rows stay byte-stable across `_ensure_dispatch_task_schema`
+    (no DELETE/UPDATE content migration). Fails while ensure still retargets to HOMEPAGE_READY.
+    """
+
+    def test_schema_leaves_dual_prefilter_rows_unchanged(self, sqlite_in_memory) -> None:
         db = sqlite_in_memory
         db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND")
         db.save_dispatch_task("c703", "prefilter", min_count=1, trigger_state="WEBSITE_FOUND_RETRY")
@@ -574,17 +578,12 @@ class TestAst703PrefilterMigrationUniqueCollision:
         try:
             db._dispatch_task_schema_ensured = False
             db._ensure_dispatch_task_schema(conn)
-            n = conn.execute(
-                "SELECT COUNT(*) FROM dispatch_task WHERE candidate_id = ? AND task_key = 'prefilter'",
+            rows = conn.execute(
+                "SELECT trigger_state FROM dispatch_task "
+                "WHERE candidate_id = ? AND task_key = 'prefilter' ORDER BY trigger_state",
                 ("c703",),
-            ).fetchone()[0]
-            row = conn.execute(
-                "SELECT trigger_state, batch_call_mode FROM dispatch_task "
-                "WHERE candidate_id = ? AND task_key = 'prefilter'",
-                ("c703",),
-            ).fetchone()
-            assert n == 1
-            assert tuple(row) == ("HOMEPAGE_READY", 1)
+            ).fetchall()
+            assert [r[0] for r in rows] == ["WEBSITE_FOUND", "WEBSITE_FOUND_RETRY"]
         finally:
             conn.close()
 

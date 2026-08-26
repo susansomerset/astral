@@ -45,7 +45,11 @@ def _run_one_tick(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Keep start_scheduler unit tests DB-free across meteorite / AST-1252 retire / gaze hooks."""
+    """Keep start_scheduler unit tests DB-free across legacy provision / AST-1252 retire hooks.
+
+    AST-1500 / AST-1496: start_scheduler must not call dispatch_task provision/ensure writers;
+    stubs remain so older tip shapes and wrapper-retire tests stay DB-free.
+    """
     monkeypatch.setattr(
         dispatcher_mod,
         "provision_meteorite_dispatch_tasks",
@@ -75,6 +79,19 @@ def _stub_scheduler_boot_provisions(monkeypatch: pytest.MonkeyPatch) -> None:
     )
     if hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"):
         monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", _gaze)
+    if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+        monkeypatch.setattr(
+            dispatcher_mod,
+            "ensure_fetch_email_dispatch_task",
+            MagicMock(
+                return_value={
+                    "task_key": "fetch_email",
+                    "added": 0,
+                    "skipped": 0,
+                    "skipped_missing_config": 0,
+                }
+            ),
+        )
 
 
 class TestDispatchWrappers:
@@ -1769,6 +1786,19 @@ class TestAst972CandidateStageDispatch:
         )
         if hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks"):
             monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", _stub)
+        if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+            monkeypatch.setattr(
+                dispatcher_mod,
+                "ensure_fetch_email_dispatch_task",
+                MagicMock(
+                    return_value={
+                        "task_key": "fetch_email",
+                        "added": 0,
+                        "skipped": 0,
+                        "skipped_missing_config": 0,
+                    }
+                ),
+            )
         dispatcher_mod.start_scheduler()
         retire.assert_called_once_with()
 
@@ -2037,9 +2067,10 @@ class TestAst1054MeteoriteDispatchProvision:
         assert out["skipped_missing_config"] == 6
         assert out.get("retired", 0) == 0
 
-    def test_start_scheduler_invokes_meteorite_provision(
+    def test_start_scheduler_does_not_invoke_meteorite_provision(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        """[bug-repro] AST-1500 — restart must not auto-write dispatch_task via meteorite provision."""
         dispatcher_mod._tick_thread = None
         monkeypatch.setattr(
             dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
@@ -2080,6 +2111,16 @@ class TestAst1054MeteoriteDispatchProvision:
             monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", _stub)
         elif hasattr(dispatcher_mod, "provision_meteorite_email_dispatch_task"):
             monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_task", _stub)
+        fetch_ensure = MagicMock(
+            return_value={
+                "task_key": "fetch_email",
+                "added": 0,
+                "skipped": 0,
+                "skipped_missing_config": 0,
+            }
+        )
+        if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+            monkeypatch.setattr(dispatcher_mod, "ensure_fetch_email_dispatch_task", fetch_ensure)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -2093,7 +2134,9 @@ class TestAst1054MeteoriteDispatchProvision:
 
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
         dispatcher_mod.start_scheduler()
-        mprovision.assert_called_once_with()
+        mprovision.assert_not_called()
+        if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+            fetch_ensure.assert_not_called()
 
 
 @pytest.mark.skipif(
@@ -2200,7 +2243,8 @@ class TestAst1134MeteoriteEmailDispatchProvision:
         assert out["skipped"] == 1
         assert out["skipped_missing_config"] == 0
 
-    def test_start_scheduler_invokes_gaze_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_start_scheduler_does_not_invoke_gaze_provision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """[bug-repro] AST-1500 — restart must not auto-write dispatch_task via meteorite_email provision."""
         dispatcher_mod._tick_thread = None
         monkeypatch.setattr(
             dispatcher_mod.database, "mark_stale_ledger_interrupted", MagicMock(return_value=0)
@@ -2232,6 +2276,16 @@ class TestAst1134MeteoriteEmailDispatchProvision:
             }
         )
         monkeypatch.setattr(dispatcher_mod, "provision_meteorite_email_dispatch_tasks", gprovision)
+        fetch_ensure = MagicMock(
+            return_value={
+                "task_key": "fetch_email",
+                "added": 0,
+                "skipped": 0,
+                "skipped_missing_config": 0,
+            }
+        )
+        if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+            monkeypatch.setattr(dispatcher_mod, "ensure_fetch_email_dispatch_task", fetch_ensure)
 
         class _Thread:
             def __init__(self, target=None, args=(), kwargs=None, daemon=False, name=None):
@@ -2245,7 +2299,9 @@ class TestAst1134MeteoriteEmailDispatchProvision:
 
         monkeypatch.setattr(dispatcher_mod.threading, "Thread", _Thread)
         dispatcher_mod.start_scheduler()
-        gprovision.assert_called_once_with()
+        gprovision.assert_not_called()
+        if hasattr(dispatcher_mod, "ensure_fetch_email_dispatch_task"):
+            fetch_ensure.assert_not_called()
 
 
 @pytest.mark.skipif(

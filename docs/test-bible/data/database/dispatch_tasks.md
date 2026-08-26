@@ -6,6 +6,11 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 
 ---
 
+
+### AST-1500 · AST-1456
+
+**Parent:** AST-1456. Gap for AST-1496 ban. **`TestAst703PrefilterMigrationUniqueCollision`** now asserts `_ensure_dispatch_task_schema` leaves dual prefilter rows unchanged (no HOMEPAGE_READY content migration). Primary ban coverage: **`docs/test-bible/core/dispatcher.md`** § AST-1500.
+
 ### AST-745 · AST-741
 
 **AST-745:** Remove recurring automatic `INSERT OR IGNORE` of separate `*_RETRY` companion dispatch rows and decommissioned `gaze_board` rows from `_ensure_dispatch_task_schema`. Companion entity claim stays on primary rows via `dispatch_claim_states` in config (no config diff). **`debug/startup_db_inventory.md`** catalogs all `agent_task` / `dispatch_task` mutators.
@@ -14,7 +19,7 @@ _(Coverage map and manifest blocks appended by Betty `qa-child`.)_
 | --- | --- | --- | --- |
 | No retry re-seed | Deleted `*_RETRY` dispatch rows stay absent after schema ensure restart simulation | `src/data/database.py` | **`TestAst745StopAutomaticDispatchRowSeeding::test_schema_ensure_does_not_reinsert_deleted_retry_rows`** |
 | Companion claim intact | Primary `qualify_job_listings` / `VALID_TITLE` row counts jobs in `VALID_TITLE_RETRY` without a retry dispatch row | `src/data/database.py`, `src/utils/config.py` (`dispatch_claim_states`) | **`TestAst745StopAutomaticDispatchRowSeeding::test_primary_row_claims_retry_entities_without_retry_dispatch_row`**; regression **`TestAst641UnionClaimCount`** |
-| One-time migrations unchanged | Prefilter HOMEPAGE_READY cutover still runs | `src/data/database.py` | **`TestAst702PrefilterDispatchMigration`**, **`TestAst703PrefilterMigrationUniqueCollision`** |
+| One-time migrations unchanged | Prefilter HOMEPAGE_READY cutover still runs | `src/data/database.py` | **`TestAst702PrefilterDispatchMigration`**; **`TestAst703`** rewritten **AST-1500** (no ensure content rewrite) |
 | Inventory doc | Checked-in mutator catalog | `debug/startup_db_inventory.md` | Artifact audit (item 5) |
 
 **Broken / obsolete (Betty revised):** **`TestAst701FetchWebsiteRetrySeed`** (asserted retry row auto-insert — removed AST-745); **`TestAst702PrefilterDispatchMigration::test_retry_task_seed_omits_prefilter_website_found_retry`** (`_RETRY_TASK_SEED` symbol deleted).
