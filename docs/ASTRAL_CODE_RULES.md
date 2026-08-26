@@ -193,7 +193,7 @@ Do not select by state (or single-ctx) and process without batch_id. Use claim /
 
 The standalone `agent_responses` **table** is retired (AST-975). Entity-row JSON `agent_responses` columns are retired (AST-984). Latest-per-`task_key` lookup uses `agent_data` RESPONSE rows tagged with `entity_id`.
 
-When an entity index is known, `_store_prompt_blocks` and `_store_response_block` both set `agent_data.entity_id` on the rows they write. `list_entity_latest_agent_refs` still selects RESPONSE rows only and still attaches non-RESPONSE blocks via `get_agent_data_by_batch`.
+When an entity index is known, `_store_prompt_blocks`, `_store_response_block`, and `store_feedback_block` all set `agent_data.entity_id` on the rows they write. `list_entity_latest_agent_refs` still selects RESPONSE rows only and still attaches non-RESPONSE blocks via `get_agent_data_by_batch`.
 
 Readers that need latest-per-task refs call `list_entity_latest_agent_refs(entity_type, entity_id)`:
 
