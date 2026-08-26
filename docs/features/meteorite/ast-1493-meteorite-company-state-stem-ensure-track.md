@@ -135,3 +135,33 @@ f. Style D when `debug=True`: `func="meteorite.ensure_meteorite_company"`, `inde
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1493
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track` @ `fc70680fd29b42cbd8230c109cfba5d211c4a026`
+
+## Traceability
+AC1→S1; AC2–AC4→S2 `ensure_meteorite_company(stem=)` API; AC5→S2 `is_meteorite_company` state+prefix; AC6→S2 default-stem ensure (new inserts METEORITE); AC7→S2 leave-in-place on existing IGNORE rows; AC8→S2 Style D on ensure; parent AC5 (email attach)→AST-1495 out of scope.
+
+## Findings
+
+### discuss
+- **Location:** Plan doc (top-level sections)
+- **Finding:** No `## Self-Assessment` (conf / blast-radius / risk axes) — plan-child usually carries one.
+- **Recommendation:** Optional add before build; not blocking — stages and scope gate are explicit.
+
+### discuss
+- **Location:** Parent Architectural definition — New patterns proposed
+- **Finding:** “METEORITE company state + stem-keyed placeholders” is flagged at parent; no `status: proposed` catalog entry yet.
+- **Recommendation:** Archie catalog follow-up is parent-tracked; child correctly cites `pattern.config.config-block` + `pattern.state.entity-state-transitions` for implementation shape.
+
+### acceptable
+- **Location:** Scope gate — `JOBS_RECOMMENDED_METEORITE_SECTION`
+- **Finding:** Recommended UI partition stays prefix-based; stem-keyed short_names won’t appear there until AST-1495 / follow-on.
+- **Recommendation:** Plan documents deferral; aligns with child partition.
+
+context_tokens≈42000
