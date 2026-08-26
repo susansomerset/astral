@@ -1303,3 +1303,18 @@ FEEDBACK    <index>   # to-be
 - `_store_prompt_blocks` / `_store_response_block` stamps from AST-1429 unchanged.
 - `store_feedback_block` still returns `agent_data_id`; still uses `index` in the content hash when present.
 - No `append_agent_response` / entity JSON columns; no engineer test-tree commits.
+
+## Radia review — AST-1486
+
+**Overall:** CLEAN / PROCEED (`[code-rubric] revision=2`)
+
+Publish ref tip `545900e4`. Diff: `origin/ftr/AST-1423-entity-id-not-populated-for-all-agent-data-rows...origin/sub/AST-1423/AST-1486-feedback-block-type-still-has-null-entity-id`.
+
+**[bug-repro]** OK — `TestAst1486FeedbackEntityIdStamp` asserts FEEDBACK `entity_id` stamp via capture path + direct writer; omitted-index null path held.
+
+**## What must still hold** — OK. RESPONSE-only `list_entity_latest_agent_refs` unchanged; sole FEEDBACK writer stamp; callers already passed `index`.
+
+**Findings:** advisory only — optional `[bug-repro]` docstring tag hygiene.
+
+**Next:** Review Posted → User Testing (§3h clean shortcut; resolve-child skipped).
+
