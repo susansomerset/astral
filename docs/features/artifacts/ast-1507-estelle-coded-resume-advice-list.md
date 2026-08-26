@@ -252,3 +252,26 @@ AC1→S2–S4; AC2→S3–S4 (metadata-only persist); AC3→S2; AC4→S3–S4 (S
 Definition fidelity: files and stages match child `## Scope`; draft keys/rows explicitly out. Layer/config/placement: utils keys, core validate/persist, seed + fixture twin — all conform. Pattern `pattern.config.config-block` cited and followed (AST-1271 deviations mirror). DRY: tracker delegates to `candidate.parse_*` — appropriate. Boundaries: no `run_next`, no `tests/**`, no Judith adherence.
 
 **Considered (in-session):** 18 universal (orchestration/git — conform); scoped product statutes on touched layers/paths — conform, including cited config/no-hardcoded-sets/in-scope-only/do-task-delegation/seed trio/run-next authority/test-tree ban/debug-contract-gated/dry/names-not-ticket-ids/entity-agent-responses-latest-only/import-direction/logging.
+
+## Radia review
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1507  
+**Publish ref:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list` @ `23f3ab795147e61dd5236abc87808708253af505`  
+**Overall:** DISCUSS
+
+## Findings
+
+### discuss
+
+- **Location:** `merge-tests(AST-1507)` publish tip — test tree + bible bundles AST-1505/AST-1498 deltas while product `src/` is AST-1507-only.  
+  **Finding:** Sibling manifests would fail on this tip until sibling product branches land.  
+  **Recommendation:** Flag for merge-child / ftr rollup — not a product defect for AST-1507; manifest-only green is expected.
+
+### advisory
+
+- **Location:** `src/core/candidate.py` — `_advise_coded_line_re(cfg)` recompiled per line — optional cache later.  
+- **Location:** Error strings hardcode `"RESUME BRIEF"` — matches plan wire contract.
+
+Product implementation matches all five plan stages; Joan discuss items addressed. Boundaries held.
