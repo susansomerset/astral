@@ -1162,5 +1162,41 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1480|job persistence mode loads|AST-1410"
 ```
 
+---
+
+### AST-1490 · AST-1483 (bug — Print contact-only after section reorder)
+
+**Parent:** [AST-1483 — Resume page break settings don't work](https://linear.app/astralcareermatch/issue/AST-1483/resume-page-break-settings-dont-work). **Publish:** `origin/sub/AST-1483/AST-1490-print-resume-only-contact-after-section-reorder`. Order-insensitive `fixedFieldKeys` + tab reorder without spurious candidate/job re-GET; Print after Up/Down must emit full body (AST-1489 auto-persist unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Reorder no re-GET guard | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1490: structure reorder does not re-GET candidate artifact`** |
+| Base reorder + Print full body (bug-repro) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1490:`** |
+| JAR reorder + Print full body (bug-repro) | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1490:`** |
+| AST-1480 label-churn regression | `ArtifactEditor.tsx` | **`AST-1480: structure title rename keeps hydrated body and Save still works`** |
+
+**Broken / obsolete this pass:** none — additive repro; AST-1480 rename guard must stay green after sorted-key signature.
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Reorder no re-GET (bug-repro): `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1490: structure reorder"`
+2. Base reorder + Print: `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1490"`
+3. JAR reorder + Print: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1490"`
+4. AST-1480 label-churn regression: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1480: structure title rename"`
+
+**AST-1490** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1490|AST-1480: structure title rename"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
