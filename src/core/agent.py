@@ -10,6 +10,10 @@ do_task(task_key="qualify_meteorite", index="qualify_meteorite_batch_{batch_id}"
 with log_batch_id set to qualify_meteorite-land-{uuid} before a job row exists;
 agent_data for that index is audit-only (no latest-ref consumers until Tracker save).
 
+Company stem (AST-1494): qualify_meteorite RESPONSE items may include optional
+company_stem (TASK_CONFIG schema); land enrich maps it in consult; do_task validation
+uses the existing schema path — no new decode helper.
+
 Layer: core → data, external, utils  (never ← ui)
 """
 
