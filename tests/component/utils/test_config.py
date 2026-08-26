@@ -2802,14 +2802,15 @@ class TestAst1333CraftParseHighlightsSchema:
 
 
 class TestAst1041MeteoriteConfig:
-    """AST-1041: METEORITE_CONFIG placeholder template (IGNORE + ensure/create literals)."""
+    """AST-1041: METEORITE_CONFIG placeholder template (METEORITE state after AST-1493)."""
 
-    def test_required_keys_and_ignore_state(self) -> None:
+    def test_required_keys_and_meteorite_company_state(self) -> None:
         m = cfg.METEORITE_CONFIG
         assert m["short_name_prefix"] == "meteorite-"
         assert m["short_name_template"] == "meteorite-{candidate_id}"
         assert m["company_name"] == "meteorite"
-        assert m["company_state"] == "IGNORE"
+        # AST-1493: new placeholders land in METEORITE (was IGNORE).
+        assert m["company_state"] == "METEORITE"
         assert m["company_state"] in cfg.COMPANY_STATES
         assert "note" in m["company_data"]
         # AST-1056: create landing retargeted to METEORITE_NEW.
@@ -2821,6 +2822,26 @@ class TestAst1041MeteoriteConfig:
         cid = "cand-42"
         built = cfg.METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
         assert built == cfg.METEORITE_CONFIG["short_name_prefix"] + cid
+
+
+class TestAst1493MeteoriteCompanyStateConfig:
+    """AST-1493: COMPANY_STATES METEORITE + stem templates on METEORITE_CONFIG."""
+
+    def test_meteorite_company_state_roster_inert(self) -> None:
+        assert "METEORITE" in cfg.COMPANY_STATES
+        assert cfg.COMPANY_STATES["METEORITE"] == {}
+        assert cfg.METEORITE_CONFIG["company_state"] == "METEORITE"
+
+    def test_stem_templates_and_literals(self) -> None:
+        m = cfg.METEORITE_CONFIG
+        assert m["stem_short_name_template"] == "{stem}-{candidate_id}"
+        assert m["default_stem"] == "meteorite"
+        assert m["meteorite_self_stem"] == "meteorite-self"
+        # default stem + template must equal legacy short_name_template shape
+        assert m["stem_short_name_template"].format(
+            stem=m["default_stem"],
+            candidate_id="{candidate_id}",
+        ) == m["short_name_template"]
 
 
 class TestAst1047CandidateLookupConfig:
@@ -5094,3 +5115,16 @@ class TestAst1479AppliedJobStatesAndNav:
         applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
         assert applied.get("label") == "Applied"
         assert applied.get("enabled") is not False
+
+
+class TestAst1495MeteoriteCompaniesNav:
+    """AST-1495: Companies → Meteorite nav item for meteorite_list view."""
+
+    def test_companies_meteorite_nav_item(self) -> None:
+        companies = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Companies")
+        paths = [it.get("path") for it in companies.get("items", [])]
+        assert "/companies/meteorite_list" in paths
+        meteorite = next(
+            it for it in companies["items"] if it.get("path") == "/companies/meteorite_list"
+        )
+        assert meteorite.get("label") == "Meteorite"
