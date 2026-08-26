@@ -269,3 +269,25 @@ Rationale: Proposed kill-switch aligns with operator-rows-stay-deleted / define-
 
 [code-rubric] REVIEW (Commit: 10f28324) kill-switch clean; canon/tests discuss — zero fix-now; §3h → User Testing. Test bar on sibling AST-1502.
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/fa778a73f82a332a278909140987e6b7/e36bc3d0-3c5a-4987-ad83-aacfdf2a0bab/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/c64dde91-172a-41cb-8891-680b6f7d07ee/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/fa778a73f82a332a278909140987e6b7/1d71b87e-2a2e-454b-81a6-b302622a1e6f/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1492 (parent) | ftr/AST-1492-updates-to-candidate-are-happening-when-we-deploy |
+| AST-1497 | sub/AST-1492/AST-1497-shut-off-automatic-table-content-updates-on-deploy |
+| AST-1502 | sub/AST-1492/AST-1502-cover-bootstrap-kill-switch-test-hole |
+| AST-1503 | sub/AST-1492/AST-1503-carve-out-agent-tables-boot-apply-statute |
+
+**Epic worktree:** `astral-AST-1492/` — one active sub checked out at a time.
