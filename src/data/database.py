@@ -170,7 +170,6 @@ def decrypt_value(ciphertext: str) -> str:
 
 _company_schema_ensured = False
 _job_schema_ensured = False
-_job_source_backfill_applied = False
 _JOB_IDENTITY_UNIQUE_INDEX = "idx_job_identity_unique"
 _BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
@@ -1434,7 +1433,7 @@ def _dedupe_job_identity_triples(conn: sqlite3.Connection) -> int:
 
 def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     """Create job table for raw_job_listing ingest if not present. Idempotent."""
-    global _job_schema_ensured, _job_source_backfill_applied
+    global _job_schema_ensured
     if _job_schema_ensured:
         return
     _apply_board_schema_sunset(conn)
@@ -1471,15 +1470,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     raise
-    # AST-1469: one-shot backfill unset source → gazed (process-level guard).
-    global _job_source_backfill_applied
-    if not _job_source_backfill_applied:
-        conn.execute(
-            "UPDATE job SET source = ? WHERE source IS NULL OR TRIM(source) = ''",
-            (JOB_SOURCE_DEFAULT,),
-        )
-        conn.commit()
-        _job_source_backfill_applied = True
+    # AST-1497: DDL-only — no source content backfill on ensure
     # AST-479: LIKE passes stay PASSED_LIKE for analysis_upshot queue; do not auto-promote to BUILD_ARTIFACTS.
     # AST-732: partial unique index on complete identity triples; NULL/empty company_job_id or job_title excluded.
     idx_row = conn.execute(
@@ -2683,12 +2674,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" not in str(e).lower():
                         raise
-    _migrate_candidate_data_structure(conn)
-    _migrate_pronoun_preference_backfill(conn)
-    _migrate_context_arrays_to_text(conn)
-    _migrate_candidate_library_ast1014(conn)
-    # AST-973: remap legacy states/triggers only (never Phase A hard-delete on ensure)
-    _legacy_candidate_migrate_conn(conn, dry_run=False, phases="BC")
+    # AST-1497: ensure is DDL-only — content migrates/remaps are explicit ops only
     _drop_entity_agent_responses_column(conn, "candidate")
     _candidate_schema_ensured = True
 
@@ -3612,7 +3598,7 @@ def _search_term_lines_from_string(val: str) -> list[str]:
 
 
 def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
-    """Create company_search_terms if missing; one-time artifact import per process."""
+    """Create company_search_terms if missing. Idempotent DDL only."""
     global _company_search_terms_schema_ensured, _company_search_terms_migration_swept
     if _company_search_terms_schema_ensured:
         return
@@ -3634,9 +3620,8 @@ def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
             "CREATE INDEX idx_company_search_terms_candidate ON company_search_terms (candidate_id)"
         )
         conn.commit()
-    if not _company_search_terms_migration_swept:
-        _migrate_company_search_terms_from_artifacts(conn)
-        _company_search_terms_migration_swept = True
+    # AST-1497: DDL-only — artifact→table content import is explicit ops only
+    _company_search_terms_migration_swept = True
     _company_search_terms_schema_ensured = True
 
 
@@ -4919,7 +4904,7 @@ def list_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> List[
 # ---------------------------------------------------------------------------
 
 def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
-    """Create agent table if not present; migrate + seed new columns idempotently."""
+    """Create agent table if not present; add missing columns. Idempotent."""
     global _agent_schema_ensured
     if _agent_schema_ensured:
         return
@@ -4952,28 +4937,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" not in str(e).lower():
                         raise
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(agent)").fetchall()}
-        # Seed existing agents that have no model_code with the Sonnet defaults (legacy reads only).
-        if "model_code" in cols:
-            _seed_key = "claude-sonnet-4-6"
-            _seed = AGENT_CONFIG[_seed_key]
-            conn.execute(
-                "UPDATE agent SET model_code = ?, temperature = ?, max_tokens = ? WHERE model_code IS NULL",
-                (_seed_key, _seed["default_temperature"], _seed["default_max_tokens"]),
-            )
-            conn.execute("UPDATE agent SET model_code = 'claude-sonnet-4-6' WHERE model_code = 'claude-sonnet-4-5'")
-            conn.commit()
-        if "brain_setting" in cols:
-            conn.execute("""
-                UPDATE agent SET brain_setting = CASE COALESCE(TRIM(model_code), '')
-                    WHEN 'claude-haiku-4-5' THEN 'Little'
-                    WHEN 'claude-sonnet-4-6' THEN 'Medium'
-                    WHEN 'claude-opus-4-6' THEN 'Big'
-                    ELSE 'Medium'
-                END
-                WHERE brain_setting IS NULL OR TRIM(COALESCE(brain_setting, '')) = ''
-            """)
-            conn.commit()
+        # AST-1497: DDL-only — no model_code / brain_setting content backfills on ensure
     _agent_schema_ensured = True
 
 
@@ -5487,13 +5451,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
             if _col not in cols:
                 conn.execute(f"ALTER TABLE agent_task ADD COLUMN {_col} {_typ}")
                 conn.commit()
-    _apply_ast469_select_job_page_run_next_migration(conn)
-    _apply_ast834_clear_select_job_page_run_next_migration(conn)
-    _apply_ast1113_craft_run_next_chain_migration(conn)
-    _apply_ast723_rubric_vectors_token_migration(conn)
-    _apply_ast561_analysis_upshot_take_jd_migration(conn)
-    # AST-1108: AST-776/822/880 vet_inflow_discovery prompt migrations retired (repo JSON wins).
-    _apply_ast738_task_grouping_metadata_seed(conn)
+    # AST-1497: DDL-only — prompt/run_next/grouping content migrates are explicit ops only
     _agent_task_schema_ensured = True
 
 
@@ -5943,7 +5901,7 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
                 "CREATE INDEX idx_agent_data_entity_task ON agent_data(entity_type, entity_id, task_key, created_at)"
             )
             conn.commit()
-    _backfill_agent_data_entity_id_from_entity_columns(conn)
+    # AST-1497: DDL-only — entity_id backfill is explicit ops only
     _agent_data_schema_ensured = True
 
 
@@ -6982,54 +6940,6 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" not in str(e).lower():
                         raise
-        # Backfill entity_type, trigger_state, sort_by, batch_call_mode for rows that have them NULL
-        seed_rows = conn.execute(
-            "SELECT id, task_key FROM dispatch_task "
-            "WHERE trigger_state IS NULL OR sort_by IS NULL OR batch_call_mode IS NULL OR entity_type IS NULL"
-        ).fetchall()
-        for row in seed_rows:
-            try:
-                seed = dispatch_task_admin_defaults(row[1])
-            except KeyError:
-                continue
-            conn.execute(
-                "UPDATE dispatch_task SET entity_type = COALESCE(entity_type, ?), "
-                "trigger_state = COALESCE(trigger_state, ?), "
-                "sort_by = COALESCE(sort_by, ?), "
-                "batch_call_mode = COALESCE(batch_call_mode, ?) WHERE id = ?",
-                (seed["entity_type"], seed["trigger_state"], seed["sort_by"], seed["batch_call_mode"], row[0]),
-            )
-        if seed_rows:
-            conn.commit()
-        scored_rows = conn.execute(
-            "SELECT id, task_key, trigger_state, score_floor FROM dispatch_task"
-        ).fetchall()
-        for row in scored_rows:
-            if row[3] is not None:
-                continue
-            task_key = row[1] or ""
-            trigger_state = row[2] or ""
-            if dispatch_claim_uses_score_floor(trigger_state):
-                conn.execute("UPDATE dispatch_task SET score_floor = 1.0 WHERE id = ?", (row[0],))
-        if scored_rows:
-            conn.commit()
-    # Legacy gaze rows used updated_at for claim order; gazer should claim oldest last_scan_at first.
-    conn.execute(
-        "UPDATE dispatch_task SET sort_by = 'last_scan_at' WHERE task_key = 'gaze' AND sort_by = 'updated_at'"
-    )
-    conn.commit()
-    # AST-485: legacy locate_job_page scheduled rows → find_job_page (before NO_OPENINGS find_job_page→recheck below).
-    conn.execute(
-        "UPDATE dispatch_task SET task_key = 'find_job_page' WHERE task_key = 'locate_job_page'"
-    )
-    conn.commit()
-    # Legacy NO_OPENINGS rows used task_key find_job_page + updated_at claim order; roster recheck sorts by last_scan_at.
-    conn.execute(
-        """UPDATE dispatch_task SET task_key = 'recheck_no_openings',
-               sort_by = 'last_scan_at'
-           WHERE trigger_state = 'NO_OPENINGS' AND task_key = 'find_job_page'"""
-    )
-    conn.commit()
     # AST-535: triple unique (candidate_id, task_key, trigger_state) replaces (candidate_id, trigger_state).
     create_sql_row = conn.execute(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='dispatch_task'"
@@ -7086,215 +6996,6 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.execute("DROP TABLE dispatch_task")
         conn.execute("ALTER TABLE dispatch_task_new RENAME TO dispatch_task")
         conn.commit()
-    # AST-702 / AST-703: drop obsolete prefilter retry companions before retargeting base row.
-    conn.execute(
-        "DELETE FROM dispatch_task WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND_RETRY'"
-    )
-    conn.execute(
-        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
-        "WHERE task_key = 'prefilter' AND trigger_state = 'WEBSITE_FOUND'"
-    )
-    # AST-823: legacy prefilter dispatch row retarget (agent key on dispatch row, stale batch mode).
-    conn.execute(
-        """
-        DELETE FROM dispatch_task AS d
-        WHERE d.entity_type = 'company'
-          AND d.task_key = 'prefilter_company'
-          AND EXISTS (
-            SELECT 1 FROM dispatch_task AS g
-            WHERE g.candidate_id = d.candidate_id
-              AND g.task_key = 'prefilter'
-              AND g.trigger_state = 'HOMEPAGE_READY'
-          )
-        """
-    )
-    conn.execute(
-        "UPDATE dispatch_task SET task_key = 'prefilter', trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
-        "WHERE entity_type = 'company' AND task_key = 'prefilter_company'"
-    )
-    conn.execute(
-        "UPDATE dispatch_task SET trigger_state = 'HOMEPAGE_READY', batch_call_mode = 1 "
-        "WHERE task_key = 'prefilter' AND entity_type = 'company' "
-        "AND trigger_state IN ('WEBSITE_FOUND', 'WEBSITE_FOUND_RETRY')"
-    )
-    conn.execute(
-        "UPDATE dispatch_task SET batch_call_mode = 1 "
-        "WHERE task_key = 'prefilter' AND entity_type = 'company' AND batch_call_mode = 0"
-    )
-    conn.execute(
-        "UPDATE dispatch_task SET batch_call_mode = 1 WHERE task_key = 'vet_inflow_discovery'"
-    )
-    conn.commit()
-    # AST-736 / AST-748: retire consult_* dispatch row keys → grade_* (triple-unique safe).
-    _CONSULT_TO_GRADE_DISPATCH_KEYS = (
-        ("consult_do", "grade_do"),
-        ("consult_get", "grade_get"),
-        ("consult_like", "grade_like"),
-    )
-    for retired_key, grade_key in _CONSULT_TO_GRADE_DISPATCH_KEYS:
-        # Drop legacy row when canonical grade_* row already exists for same triple.
-        conn.execute(
-            """
-            DELETE FROM dispatch_task AS d
-            WHERE d.task_key = ?
-              AND EXISTS (
-                SELECT 1 FROM dispatch_task AS g
-                WHERE g.candidate_id = d.candidate_id
-                  AND g.task_key = ?
-                  AND g.trigger_state = d.trigger_state
-              )
-            """,
-            (retired_key, grade_key),
-        )
-        conn.execute(
-            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
-            (grade_key, retired_key),
-        )
-    conn.commit()
-    # AST-794 / AST-797: retire scrape_jd / validate_title / gaze_board dispatch rows.
-    _SCRAPE_TO_FETCH_DISPATCH_KEYS = (("scrape_jd", "fetch_jd"),)
-    for retired_key, canonical_key in _SCRAPE_TO_FETCH_DISPATCH_KEYS:
-        conn.execute(
-            """
-            DELETE FROM dispatch_task AS d
-            WHERE d.task_key = ?
-              AND EXISTS (
-                SELECT 1 FROM dispatch_task AS g
-                WHERE g.candidate_id = d.candidate_id
-                  AND g.task_key = ?
-                  AND g.trigger_state = d.trigger_state
-              )
-            """,
-            (retired_key, canonical_key),
-        )
-        conn.execute(
-            "UPDATE dispatch_task SET task_key = ? WHERE task_key = ?",
-            (canonical_key, retired_key),
-        )
-    conn.commit()
-
-    for purge_key in ("validate_title", "gaze_board"):
-        conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
-    conn.commit()
-
-    # AST-1466: retire gaze_email dispatch rows; purge orphans whose task_key is
-    # absent from agent_task — only when agent_task exists and has rows (schema
-    # ensure may run before agent_task is created in unit tests / boot order).
-    conn.execute("DELETE FROM dispatch_task WHERE task_key = 'gaze_email'")
-    agent_task_present = conn.execute(
-        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_task'"
-    ).fetchone()
-    if agent_task_present and conn.execute("SELECT 1 FROM agent_task LIMIT 1").fetchone():
-        conn.execute(
-            "DELETE FROM dispatch_task WHERE task_key NOT IN (SELECT task_key FROM agent_task)"
-        )
-    conn.commit()
-
-    # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
-    # split into explicit NEW + VALID_TITLE_RETRY rows.
-    qualify_retry_rows = conn.execute(
-        """
-        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
-               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
-               skip_cache, max_runs, score_floor, updated_at
-        FROM dispatch_task
-        WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'
-        """
-    ).fetchall()
-    for r in qualify_retry_rows:
-        conn.execute(
-            """
-            INSERT INTO dispatch_task (
-                candidate_id, task_key, entity_type, trigger_state, sort_by,
-                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
-                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
-            )
-            SELECT ?, 'qualify_job_listings', ?, 'VALID_TITLE_RETRY', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            WHERE NOT EXISTS (
-                SELECT 1 FROM dispatch_task
-                WHERE candidate_id = ? AND task_key = 'qualify_job_listings'
-                  AND trigger_state = 'VALID_TITLE_RETRY'
-            )
-            """,
-            (
-                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
-                r[10], r[11], r[12], r[13], r[14],
-                r[0],
-            ),
-        )
-    conn.execute(
-        "UPDATE dispatch_task SET trigger_state = 'NEW' "
-        "WHERE task_key = 'qualify_job_listings' AND trigger_state = 'VALID_TITLE'"
-    )
-    conn.commit()
-
-    # AST-874: seed fetch_culture_pages @ PASSED_GET; retarget grade_like PASSED_GET → CULTURE_READY.
-    like_passed_get_rows = conn.execute(
-        """
-        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
-               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
-               skip_cache, max_runs, score_floor, updated_at
-        FROM dispatch_task
-        WHERE task_key = 'grade_like' AND trigger_state = 'PASSED_GET'
-        """
-    ).fetchall()
-    for r in like_passed_get_rows:
-        conn.execute(
-            """
-            INSERT INTO dispatch_task (
-                candidate_id, task_key, entity_type, trigger_state, sort_by,
-                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
-                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
-            )
-            SELECT ?, 'fetch_culture_pages', ?, 'PASSED_GET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            WHERE NOT EXISTS (
-                SELECT 1 FROM dispatch_task
-                WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'
-                  AND trigger_state = 'PASSED_GET'
-            )
-            """,
-            (
-                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
-                r[10], r[11], r[12], r[13], r[14],
-                r[0],
-            ),
-        )
-    conn.execute(
-        "UPDATE dispatch_task SET trigger_state = 'CULTURE_READY' "
-        "WHERE task_key = 'grade_like' AND trigger_state = 'PASSED_GET'"
-    )
-    # Re-seed when grade_like already at CULTURE_READY but fetch_culture_pages missing (partial apply).
-    like_culture_ready_rows = conn.execute(
-        """
-        SELECT candidate_id, entity_type, sort_by, batch_call_mode, last_run_at,
-               freq_hrs, min_count, batch_size, batch_id, auto_mode, debug,
-               skip_cache, max_runs, score_floor, updated_at
-        FROM dispatch_task
-        WHERE task_key = 'grade_like' AND trigger_state = 'CULTURE_READY'
-        """
-    ).fetchall()
-    for r in like_culture_ready_rows:
-        conn.execute(
-            """
-            INSERT INTO dispatch_task (
-                candidate_id, task_key, entity_type, trigger_state, sort_by,
-                batch_call_mode, last_run_at, freq_hrs, min_count, batch_size,
-                batch_id, auto_mode, debug, skip_cache, max_runs, score_floor, updated_at
-            )
-            SELECT ?, 'fetch_culture_pages', ?, 'PASSED_GET', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-            WHERE NOT EXISTS (
-                SELECT 1 FROM dispatch_task
-                WHERE candidate_id = ? AND task_key = 'fetch_culture_pages'
-                  AND trigger_state = 'PASSED_GET'
-            )
-            """,
-            (
-                r[0], r[1], r[2], r[3], r[4], r[5], r[6], r[7], r[8], r[9],
-                r[10], r[11], r[12], r[13], r[14],
-                r[0],
-            ),
-        )
-    conn.commit()
     # AST-1088: allow null candidate_id for shared Astral inbox dispatch rows.
     cid_notnull = False
     for _cid_row in conn.execute("PRAGMA table_info(dispatch_task)").fetchall():
