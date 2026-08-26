@@ -352,3 +352,19 @@ Stages 1–3 are implemented on the publish tip:
 
 ---
 
+## Resolution
+
+**2026-08-26 — resolve-child (Ada)**
+
+Radia **DISCUSS** @ `c4936837` — **no fix-now** items. Product tip unchanged.
+
+| Finding | Action |
+|---------|--------|
+| Statute `astral.seed.agent-tables-in-repo-json` stale vs removed boot apply | Deferred to parent AST-1455 / Archie per plan Boundaries — no child canon edit |
+| `diverged` derived from diff lists vs `_repo_admin_json_table_diverged` | Kept implementation — avoids duplicate I/O (Joan discuss); duplicate row keys not valid for current catalog |
+| Bootstrap bible / Betty test coverage gaps | Advisory only — no engineer test-tree edits |
+
+§9a dry-run: publish ref merges cleanly into `origin/dev` and `origin/ftr/AST-1455-show-differences-update-file`.
+
+**Publish ref @ resolve:** `origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write` @ `dde9a333`
+
