@@ -487,6 +487,28 @@ def persist_draft_job_resume_deviations(astral_job_id: str, parsed: Any) -> bool
     return True
 
 
+def extract_advise_job_resume_coded_advice(full_text: str) -> Optional[List[dict]]:
+    """Parse coded resume advice from advise_job_resume text; None when invalid."""
+    return candidate_mod.parse_advise_job_resume_coded_advice(full_text)
+
+
+def save_job_artifact_resume_advice(astral_job_id: str, items: List[dict]) -> None:
+    """Merge coded resume advice list into job_data.artifacts (AST-1507)."""
+    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
+    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
+
+
+def persist_advise_job_resume_coded_advice(
+    astral_job_id: str, full_text: str,
+) -> Optional[List[dict]]:
+    """Extract coded advice from advise text and save; None when parse fails."""
+    items = extract_advise_job_resume_coded_advice(full_text)
+    if items is None:
+        return None
+    save_job_artifact_resume_advice(astral_job_id, items)
+    return items
+
+
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
     """AST-1428: copy unwrapped finalize resume onto resume_content; pin slot untouched."""
     if not parsed_matches_job_resume_content(astral_job_id, parsed):
