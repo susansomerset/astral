@@ -202,3 +202,47 @@ Rules enforced in prompt + validate:
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1507
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list` @ `aed09ec2ed439ed5474bf1a2571336874d66aa44`
+
+## Traceability
+
+AC1→S2–S4; AC2→S3–S4 (metadata-only persist); AC3→S2; AC4→S3–S4 (Style D validate + persist); AC5→S4 + explicit AST-1270 boundary (no draft nest/body change).
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 4 — `agent.py` validate hook  
+  **Finding:** Gate includes `parsed.strip()`; whitespace-only or empty string skips validation while `resume_advice_coded_list` is True.  
+  **Recommendation:** When the gate is on and `isinstance(parsed, str)`, always call `validate_advise_job_resume_coded_list` (let min-items / missing-section errors fail the hop).
+
+- **Location:** Stage 4 — persist debug pseudo-code  
+  **Finding:** `item_count={len(extract…)}` is an ellipsis placeholder.  
+  **Recommendation:** At build, reuse the extract result from `persist_advise_job_resume_coded_advice` (or return count) so debug does not parse twice.
+
+### acceptable
+
+- **Location:** Plan structure  
+  **Finding:** No `## Self-Assessment`; `## Estimate` (`Confirm Chuckles estimate: 3 — agree`) satisfies current `plan-child` gate.  
+  **Recommendation:** None — optional Scope/Conf note for Radia later.
+
+- **Location:** Parent Architectural definition — new pattern flag  
+  **Finding:** Daisy-chain coded advice → per-code adherence is consumer work (sibling AST-1508); this child correctly owns advise emit only.  
+  **Recommendation:** None.
+
+- **Location:** Stage 4 step 2 — `_resume_payload_body`  
+  **Finding:** Confirm-only grep; advise is text → `job_data.artifacts`, not draft body extraction.  
+  **Recommendation:** Grep-and-confirm as staged; no body-path change expected.
+
+## R6 checklist (summary)
+
+Definition fidelity: files and stages match child `## Scope`; draft keys/rows explicitly out. Layer/config/placement: utils keys, core validate/persist, seed + fixture twin — all conform. Pattern `pattern.config.config-block` cited and followed (AST-1271 deviations mirror). DRY: tracker delegates to `candidate.parse_*` — appropriate. Boundaries: no `run_next`, no `tests/**`, no Judith adherence.
+
+**Considered (in-session):** 18 universal (orchestration/git — conform); scoped product statutes on touched layers/paths — conform, including cited config/no-hardcoded-sets/in-scope-only/do-task-delegation/seed trio/run-next authority/test-tree ban/debug-contract-gated/dry/names-not-ticket-ids/entity-agent-responses-latest-only/import-direction/logging.
