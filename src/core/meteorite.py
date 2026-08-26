@@ -1,13 +1,12 @@
 """
-Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493).
+Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493 / AST-1495).
 
 Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
 stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
 short_name_prefix. Public entry is land_meteorite: scraps → optional Playwright
-visible text → qualify_meteorite packet enrich → tracker.save_meteorite_job.
-No email/Gmail/mailbox I/O here — inbox and Contact call land (siblings).
-create_meteorite_job remains for legacy callers until AST-1471/1472 retarget.
-Land/create still default-stem until AST-1495 wires stem attach.
+visible text → qualify_meteorite packet enrich → per-row Ruth company_stem ensure
+→ tracker.save_meteorite_job. No email/Gmail/mailbox I/O here — inbox and Contact
+call land (siblings). create_meteorite_job accepts optional stem= for legacy callers.
 """
 from __future__ import annotations
 
@@ -106,6 +105,7 @@ def create_meteorite_job(
     html_body: str,
     *,
     job_link: Optional[str] = None,
+    stem: Optional[str] = None,
     debug: bool = False,
 ) -> dict[str, Any]:
     """Lazy-ensure meteorite company, then insert a job from raw HTML.
@@ -116,7 +116,8 @@ def create_meteorite_job(
     entry). METEORITE_NEW is unrestricted; this path does not expand normal
     JD_READY priors and does not invent a new job state.
     Optional job_link for link-sourced ingest (AST-1061); company_job_id stays None
-    (Ruth enrichment owns external UUID).
+    (Ruth enrichment owns external UUID). Optional stem= when caller already knows
+    the company short_name stem; email-bound land uses land_meteorite, not this helper.
 
     Returns:
       {
@@ -138,7 +139,7 @@ def create_meteorite_job(
     if not cand:
         raise ValueError(f"candidate not found: {candidate_id}")
 
-    ensured = ensure_meteorite_company(candidate_id, debug=debug)
+    ensured = ensure_meteorite_company(candidate_id, stem=stem, debug=debug)
     short_name = ensured["short_name"]
     jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
     state = METEORITE_CONFIG["job_create_state"]
@@ -283,8 +284,6 @@ async def land_meteorite(
             "company_inserted": False,
         }
 
-    ensured = ensure_meteorite_company(cid, debug=debug)
-    short_name = ensured["short_name"]
     min_jd = int(TASK_CONFIG["qualify_meteorite"]["min_jd_chars"])
 
     # Optional link scrape when body is thin.
@@ -311,8 +310,8 @@ async def land_meteorite(
             "outcome": err_key,
             "error": enrich.get("error") or "enrichment produced no jobs",
             "outcomes": [],
-            "company": short_name,
-            "company_inserted": ensured["inserted"],
+            "company": None,
+            "company_inserted": False,
         }
 
     jd_key = TRACKER_CONFIG["job_data_keys"]["job_description"]
@@ -320,15 +319,23 @@ async def land_meteorite(
     outcomes: List[Dict[str, Any]] = []
     enriched_jobs = enrich["jobs"]
     n = len(enriched_jobs)
+    first_company: Optional[str] = None
+    first_company_inserted = False
     for i, row in enumerate(enriched_jobs, start=1):
         found_link = row.get("job_link") or ""
         found_title = row.get("job_title") or ""
         found_jd = row.get("jd_text") or ""
         found_emp = row.get("employer_name") or ""
+        row_stem = (row.get("company_stem") or "").strip() if isinstance(row.get("company_stem"), str) else ""
         try:
+            ensured_row = ensure_meteorite_company(cid, stem=row_stem or None, debug=debug)
+            row_company = ensured_row["short_name"]
+            if first_company is None:
+                first_company = row_company
+                first_company_inserted = bool(ensured_row["inserted"])
             save = tracker.save_meteorite_job(
                 cid,
-                company=short_name,
+                company=row_company,
                 company_job_id=row.get("company_job_id") or None,
                 job_title=row.get("job_title") or None,
                 job_link=row.get("job_link") or None,
@@ -350,7 +357,8 @@ async def land_meteorite(
                 )
                 log.debug_detail(
                     f"found link={found_link!r} title={found_title!r} jd_chars={len(found_jd)} "
-                    f"employer={found_emp!r} | recorded link={recorded.get('job_link')!r} "
+                    f"employer={found_emp!r} stem={row_stem!r} company={row_company!r} | "
+                    f"recorded link={recorded.get('job_link')!r} "
                     f"title={recorded.get('job_title')!r} jd_chars={rec_jd} employer={rec_emp!r}"
                 )
         except (ValueError, RuntimeError) as e:
@@ -382,8 +390,8 @@ async def land_meteorite(
         top_error = next((o.get("error") for o in outcomes if o.get("error")), "land failed")
 
     return {
-        "company": short_name,
-        "company_inserted": ensured["inserted"],
+        "company": first_company,
+        "company_inserted": first_company_inserted,
         "outcomes": outcomes,
         "outcome": rollup,
         "error": top_error,
