@@ -506,6 +506,8 @@ TASK_CONFIG = {
                     "jd_text":         {"type": "str", "required": True},  # visible JD content
                     # AST-1469: known employer for job_data[METEORITE_CONFIG employer_name key]
                     "employer_name":   {"type": "str", "required": False},
+                    # AST-1494: Ruth company short_name stem (sender email / meteorite-self / job-link slug)
+                    "company_stem":    {"type": "str", "required": False},
                 },
             },
         },
@@ -517,6 +519,7 @@ TASK_CONFIG = {
         "error_state": "METEORITE_ERROR_QUALIFY",
         "email_link_prefix": "email-",  # AST-1197: synthesized link; waive http + empty company_job_id gates
         "bot_blocked_state": "BOT_BLOCKED",  # AST-1197: challenge/Cloudflare JD → universal bot state (AST-1195)
+        "company_stem_response_key": "company_stem",  # AST-1494: RESPONSE + enrich map key
         "context_format": "qualify_meteorite_{index}",
         "entity_type": "job",
         "requires_candidate_key": True,
@@ -1037,6 +1040,11 @@ assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_link"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["job_title"]["required"] is False
 assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["employer_name"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]["company_stem"]["required"] is False
+assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] == "company_stem"
+assert TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in (
+    TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+)
 assert TASK_CONFIG["qualify_meteorite"]["email_link_prefix"] == "email-"
 assert TASK_CONFIG["qualify_meteorite"]["bot_blocked_state"] == "BOT_BLOCKED"
 
