@@ -279,3 +279,27 @@ Definition fidelity: implements child Scope only; deviations replace matches par
 **Publish ref:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` @ `657fc81f`
 **Built:** Stages 1–5 — config adherence keys (replaces deviations); draft prompt + UAT twin; candidate normalize/validate; tracker load/persist; agent validate + persist hooks. Merged AST-1507 prerequisite at build start.
 **Commits:** `a47601d8` config · `accdb801` candidate · `4afa781c` tracker+agent · `657fc81f` prompt+fixture
+
+## Radia review
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1508  
+**Publish ref:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence` @ `8b4c20b67f0df792e42a09efd06fb9613f5a3101`  
+**Overall:** DISCUSS
+
+## Findings
+
+### discuss
+
+- **Location:** `merge-tests(AST-1508)` publish tip — test tree + bible  
+  **Finding:** Betty `merge-tests` bundles AST-1498, AST-1505, and AST-1489 test/bible deltas alongside AST-1508 manifest, but no matching product `src/ui/` changes on this tip. Sibling manifests would fail if run against this product tree.  
+  **Recommendation:** Not an AST-1508 product defect — flag for merge-child / ftr rollup; AST-1508 manifest-only green is expected.
+
+### advisory
+
+- **Location:** `tracker.persist_job_artifact_from_parsed` — empty list `[]` falsy check; harmless given validation requires one row per code.  
+- **Location:** `JOB_BUILD_ARTIFACT_CLEAR_KEYS` — legacy `deviations` artifacts may linger on in-flight jobs; acceptable per parent OQ #3.  
+- **Location:** Tests — no explicit missing-`index` failure test; optional Betty follow-up.
+
+Product implementation matches all five plan stages; Joan discuss items addressed. Boundaries held.
