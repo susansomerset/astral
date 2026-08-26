@@ -376,3 +376,26 @@ Extract/save coded advice list under `job_data.artifacts.resume_advice` (sibling
   tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention \
   -q
 ```
+
+---
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+Extract/save per-code **`advice_adherence`** under `job_data.artifacts.advice_adherence`; **`get_job_resume_advice_codes`** reads expected codes from **`resume_advice`** artifact (**AST-1507**); `_resume_payload_body` skips adherence metadata; cancel clears via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Replaces **AST-1271** deviations helpers. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1508. Config slot: **`docs/test-bible/utils/config.md`** § AST-1508. Live hop path: **`docs/test-bible/core/agent.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Extract/save/body skip/persist/clear + code load | `src/core/tracker.py` | **`TestAst1508AdviceAdherenceMetadataRetention`**; revised **`TestAst1270NestedResumePayloadBody`** |
+
+**Broken / obsolete:** **`TestAst1271DeviationsMetadataRetention`** — retired; stub asserts deviations helpers removed.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1508AdviceAdherenceMetadataRetention \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  -q
+```

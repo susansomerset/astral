@@ -434,24 +434,41 @@ class TestAst594DraftJobResumeSchema:
 
 
 class TestAst1270DraftJobResumeNestConfig:
-    """AST-1270: nest unwrap key + payload metadata (incl. deviations) on TASK_CONFIG."""
+    """AST-1270: nest unwrap key + payload metadata (incl. advice_adherence) on TASK_CONFIG."""
 
-    def test_nested_resume_key_and_metadata_include_deviations(self) -> None:
+    def test_nested_resume_key_and_metadata_include_advice_adherence(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
         assert entry["nested_resume_key"] == "resume"
         meta = set(entry["payload_metadata_keys"])
-        assert "deviations" in meta
+        assert "advice_adherence" in meta
+        assert "deviations" not in meta
         assert {"astral_job_id", "company", "title", "task_success"}.issubset(meta)
 
 
-class TestAst1271DeviationsArtifactConfig:
-    """AST-1271: deviations job-artifact slot + cancel clear-keys."""
+class TestAst1508AdviceAdherenceArtifactConfig:
+    """AST-1508: per-code advice_adherence slot + cancel clear-keys (replaces AST-1271 deviations)."""
 
-    def test_deviations_artifact_key_and_clear_keys(self) -> None:
+    def test_advice_adherence_keys_and_clear_keys(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
-        assert entry["deviations_artifact_key"] == "deviations"
-        assert entry["deviations_artifact_key"] in entry["payload_metadata_keys"]
-        assert "deviations" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert entry["advice_adherence_required"] is True
+        assert entry["advice_adherence_artifact_key"] == "advice_adherence"
+        assert entry["advice_adherence_status_applied"] == "applied"
+        assert entry["advice_adherence_status_skipped"] == "skipped"
+        assert "advice_adherence" in entry["payload_metadata_keys"]
+        assert "deviations" not in entry["payload_metadata_keys"]
+        assert "deviations_artifact_key" not in entry
+        assert "advice_adherence" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "deviations" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+
+
+class TestAst1271DeviationsArtifactConfig:
+    """AST-1271: retired on draft — superseded by AST-1508 advice_adherence."""
+
+    def test_deviations_retired_from_draft_config(self) -> None:
+        entry = cfg.TASK_CONFIG["draft_job_resume"]
+        assert "deviations_artifact_key" not in entry
+        assert "deviations" not in entry["payload_metadata_keys"]
+        assert "deviations" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
 
 
 class TestAst1507ResumeAdviceArtifactConfig:
