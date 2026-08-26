@@ -275,3 +275,14 @@ Definition fidelity: files and stages match child `## Scope`; draft keys/rows ex
 - **Location:** Error strings hardcode `"RESUME BRIEF"` — matches plan wire contract.
 
 Product implementation matches all five plan stages; Joan discuss items addressed. Boundaries held.
+
+## Resolution
+
+**Date:** 2026-08-26  
+**Review ref:** Radia `[code-rubric] revision=2` @ `23f3ab79` — **Overall: DISCUSS** (no fix-now).
+
+- **Fix-now:** none — product matches plan; Betty manifest (17 tests) green on publish tip.
+- **Discuss (sibling tests on merge-tests tip):** acknowledged — AST-1505/AST-1498 test deltas bundled on shared `origin/tests` line; not an AST-1507 product defect; merge-child/ftr rollup concern only.
+- **Advisory:** `_advise_coded_line_re` per-line compile — acceptable; no change this pass.
+- **§9a:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list` merges cleanly into `origin/dev` (2026-08-26).
+
