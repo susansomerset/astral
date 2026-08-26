@@ -173,3 +173,15 @@ AC1–2 → Stage 2 `export_repo_admin_json_table_to_file` + Stage 3 `POST /repo
 - **Location:** Betty / `orch.roles.betty-owns-test-tree`
 - **Finding:** Removing `apply_repo_admin_json_at_startup` will break `tests/component/core/test_repo_admin_json.py` until Betty revises manifest in qa-child (plan acknowledges this).
 - **Recommendation:** Expected pipeline — no Ada test edits.
+
+## Build
+
+**Publish ref:** `origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write` @ `f131f7d45ecbff3b946d58916d004f1cc6e8e5f8`
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `e8a037b2` | `get_repo_admin_json_table_comparison` + `_normalized_row_maps` |
+| 2 | `7ecb2895` | `export_repo_admin_json_table_to_file`; remove `apply_repo_admin_json_at_startup`; config/bootstrap docstrings |
+| 3 | `f131f7d4` | `GET/POST /api/admin/repo_json/compare|write/<table_key>`; revert guard via `get_repo_admin_json_table_keys()` |
+
+Hand-verify: `py_compile` on all touched `.py` files; compare `diverged` invariant checked at import time when env available. Full Flask smoke deferred to Betty manifest.
