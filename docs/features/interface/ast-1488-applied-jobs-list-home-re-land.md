@@ -105,3 +105,52 @@ Confirm Chuckles estimate: 3 — agree
 ## Traceability
 
 AC1→St1+St3 (nav omit `enabled` + real `JobsApplied`); AC2→St2+St3 (`view=applied` list + empty copy); AC3→St3 (`CandidateJobRowActions` + `useCandidateJobActions` + notes modal + live refresh); AC4→St3 (Toast on `actions.error`; API 409 via `postCandidateAction`); AC5→St1 (Responded stays disabled; Recommended/Skipped/In Review untouched); AC6→all stages (restore product so existing AST-1479 tests pass).
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1488
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land` @ `f9d38262827744b317e0173e68bd8be96c3ad366`
+
+## Traceability
+
+AC1→St1+St3; AC2→St2+St3; AC3→St3; AC4→St3; AC5→St1; AC6→all — parent AC fully mapped; St1→config/nav (AC1, AC5); St2→`view=applied` API (AC2, AC6); St3→`JobsApplied` restore (AC1–AC4, AC6); no orphan stages.
+
+## Findings
+
+### acceptable — procedural
+
+- **Location:** Linear assignee at fetch (`Ada Lovelace`, not Joan).
+- **Finding:** Skill §1 expects Joan assignee; Chuckles spawn is authoritative for this pass.
+- **Recommendation:** None blocking — proceed.
+
+### discuss — pattern citation
+
+- **Location:** Parent Architectural definition + plan Stage 3 (`pattern.ui.in-place-live-refresh`).
+- **Finding:** Pattern catalog entry is `status: proposed`, not `approved`.
+- **Recommendation:** Accept for this re-land — hook exists on dev, plan matches `# Solution shape`, AUTHORING note permits pre-approval use; inherited from parent definition. No plan rewrite required.
+
+### acceptable — self-assessment
+
+- **Location:** Plan `## Estimate` only (no conf/risk block).
+- **Finding:** Missing formal self-assessment axes.
+- **Recommendation:** Acceptable — byte-faithful AST-1479 restore (`81f1c7b1`), explicit scope gate, Betty tests already on dev define the bar.
+
+## R6 checklist (summary)
+
+- **Definition fidelity:** Plan implements exactly the AST-1485/AST-1488 child slice — three scoped files only; boundaries respected (no Responded, badge counts, mark-applied, analysis/detail).
+- **Scope gate:** Files Changed matches ticket `## Scope`; no out-of-scope files.
+- **Layer compliance:** `ui` → `utils` imports only; no business logic in wrong layer; page uses shared hooks/components, not duplicated transition policy.
+- **Config compliance:** `APPLIED_JOB_STATES` + nav enablement in `config.py`; API imports config constant; no inline state sets in API/page steps.
+- **File placement:** `JobsApplied.tsx` stays in `src/pages/` (flat); no new subdirectories.
+- **Pattern compliance:** `pattern.ui.icon-control` (`approved`) — restore keeps `CandidateJobRowActions` icon-controls; in-place refresh via existing hook matches sibling list pages.
+- **DRY / scope:** Prior-art restore strategy avoids reinventing page shape; explicit stop-if-drift guard in Stage 3.
+- **Tests alignment:** Plan names the three AST-1479 component tests on dev; staged changes satisfy `TestAst1479AppliedJobStatesAndNav`, `test_list_applied_uses_applied_job_states`, and `JobsApplied — AST-1479 applied list home` expectations verified against current test tree.
+
+No `fix-now` findings. R1–R5 pass for this scoped re-land.
+
+context_tokens≈52000
+
+[plan-rubric] PROCEED (Commit: f9d38262827744b317e0173e68bd8be96c3ad366) faithful AST-1479 re-land
