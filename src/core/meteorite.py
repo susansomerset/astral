@@ -1,11 +1,13 @@
 """
-Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470).
+Meteorite placeholder company ensure, legacy create, and public land_meteorite (AST-1470 / AST-1493).
 
-Lazy-insert meteorite-<candidate_id> from METEORITE_CONFIG. Public entry is
-land_meteorite: scraps → optional Playwright visible text → qualify_meteorite
-packet enrich → tracker.save_meteorite_job. No email/Gmail/mailbox I/O here —
-inbox and Contact call land (siblings). create_meteorite_job remains for
-legacy callers until AST-1471/1472 retarget.
+Lazy-insert stem-keyed companies into METEORITE from METEORITE_CONFIG (default
+stem → meteorite-<candidate_id>). Track = company state METEORITE or legacy
+short_name_prefix. Public entry is land_meteorite: scraps → optional Playwright
+visible text → qualify_meteorite packet enrich → tracker.save_meteorite_job.
+No email/Gmail/mailbox I/O here — inbox and Contact call land (siblings).
+create_meteorite_job remains for legacy callers until AST-1471/1472 retarget.
+Land/create still default-stem until AST-1495 wires stem attach.
 """
 from __future__ import annotations
 
@@ -22,13 +24,29 @@ from src.utils.logging import get_logger
 
 
 def is_meteorite_company(short_name: Optional[str]) -> bool:
-    """True when company short_name is on the meteorite placeholder track (AST-1152)."""
+    """True on METEORITE-state companies or legacy meteorite- prefix (AST-1152 / AST-1493)."""
+    if not short_name:
+        return False
+    sn = str(short_name)
     prefix = METEORITE_CONFIG["short_name_prefix"]
-    return bool(short_name) and str(short_name).startswith(prefix)
+    if sn.startswith(prefix):
+        return True
+    row = get_company(sn)
+    if row is None:
+        return False
+    return (row.get("state") or "") == METEORITE_CONFIG["company_state"]
 
 
-def ensure_meteorite_company(candidate_id: str, *, debug: bool = False) -> dict[str, Any]:
-    """Ensure meteorite-<candidate_id> exists in IGNORE. Idempotent.
+def ensure_meteorite_company(
+    candidate_id: str,
+    *,
+    stem: Optional[str] = None,
+    debug: bool = False,
+) -> dict[str, Any]:
+    """Ensure {stem}-{candidate_id} exists in METEORITE. Idempotent.
+
+    Omitting stem uses METEORITE_CONFIG default_stem (meteorite-{candidate_id}).
+    Existing rows are left as-is (no IGNORE→METEORITE rewrite).
 
     Returns:
       {"short_name": str, "inserted": bool, "company": dict}
@@ -37,7 +55,11 @@ def ensure_meteorite_company(candidate_id: str, *, debug: bool = False) -> dict[
     if not candidate_id:
         raise ValueError("candidate_id is required")
 
-    short_name = METEORITE_CONFIG["short_name_template"].format(candidate_id=candidate_id)
+    resolved_stem = (stem or "").strip() or METEORITE_CONFIG["default_stem"]
+    short_name = METEORITE_CONFIG["stem_short_name_template"].format(
+        stem=resolved_stem,
+        candidate_id=candidate_id,
+    )
     log = get_logger(__name__)
     log.set_debug_flag(debug)
 
@@ -52,6 +74,7 @@ def ensure_meteorite_company(candidate_id: str, *, debug: bool = False) -> dict[
                 outcome="already-present",
             )
             log.debug_detail(f"candidate_id={candidate_id}")
+            log.debug_detail(f"stem={resolved_stem}")
         return {"short_name": short_name, "inserted": False, "company": existing}
 
     save_company(
@@ -73,6 +96,8 @@ def ensure_meteorite_company(candidate_id: str, *, debug: bool = False) -> dict[
             outcome="inserted",
         )
         log.debug_detail(f"candidate_id={candidate_id}")
+        log.debug_detail(f"stem={resolved_stem}")
+        log.debug_detail(f"company_state={METEORITE_CONFIG['company_state']}")
     return {"short_name": short_name, "inserted": True, "company": row}
 
 
