@@ -72,3 +72,14 @@ Clean review on `8256593d` — ban auto-writers OK. Discuss items (archie-catalo
 ## Resolution: AST-1500 — gap dispatcher provision tests
 
 **2026-08-26 (resolve-child):** Radia fix-now on `3a176fe0` — removed AST-1493 test/bible stack (`be1dc566`: meteorite stem/config coverage) from publish ref; retained AST-1500 ban delta (`999cf2d1` + `merge-tests`) and ftr merge for AST-1496 product ban. Bug-repro manifest green; §9a dev/ftr dry-run clean.
+
+## Bug: AST-1500 — gap revise dispatcher provision tests
+
+### As-is
+Provision-on-start asserts and ensure content migrations expect automatic dispatch_task writers; no ban coverage for restart no-write / script hard-fail.
+
+### To-be
+Bible + component tests match the AST-1496 ban (Betty qa-fix [bug-repro]).
+
+### Notes
+Radia fix-now addressed: AST-1493 stack file content reverted on tip (`resolve` cb803834).
