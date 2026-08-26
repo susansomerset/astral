@@ -22,6 +22,7 @@ import WatchList from "./pages/CompaniesWatchList"
 import NewList from "./pages/CompaniesNewList"
 import InactiveList from "./pages/CompaniesInactiveList"
 import Ignored from "./pages/CompaniesIgnored"
+import Meteorite from "./pages/CompaniesMeteorite"
 import WatchHistory from "./pages/CompaniesWatchHistory"
 
 // --- Artifacts ---
@@ -95,6 +96,7 @@ const routes: RouteObject[] = [
           { path: "companies/new_list", element: <NewList /> },
           { path: "companies/inactive_list", element: <InactiveList /> },
           { path: "companies/ignored", element: <Ignored /> },
+          { path: "companies/meteorite_list", element: <Meteorite /> },
           { path: "companies/watch_history", element: <WatchHistory /> },
 
           // Artifacts

@@ -4764,6 +4764,7 @@ NAV_CONFIG = [
             {"label": "New List", "path": "/companies/new_list"},
             {"label": "Inactive List", "path": "/companies/inactive_list"},
             {"label": "Ignored", "path": "/companies/ignored"},
+            {"label": "Meteorite", "path": "/companies/meteorite_list"},
             {"label": "Watch History", "path": "/companies/watch_history"},
         ],
     },
