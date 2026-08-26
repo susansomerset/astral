@@ -753,6 +753,40 @@ On successful `do_task("draft_job_resume")`, best-effort `persist_draft_job_resu
   -q
 ```
 
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+On successful `do_task("advise_job_resume")`, validate coded RESUME BRIEF text (post-unwrap) then best-effort `persist_advise_job_resume_coded_advice(index, parsed)`; validation failure fails hop before persist. Tracker extract/save: **`docs/test-bible/core/tracker.md`** § AST-1507. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate gate + success persist / failure skip | `src/core/agent.py` | **`TestAst1507DoTaskResumeAdvicePersist`** |
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1507DoTaskResumeAdvicePersist \
+  -q
+```
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+On successful `do_task("draft_job_resume")`, validate per-code **`advice_adherence`** against **`get_job_resume_advice_codes`** (post resume whitelist) then best-effort **`persist_draft_job_resume_advice_adherence`**. Replaces **AST-1271** deviations persist. Tracker extract/save: **`docs/test-bible/core/tracker.md`** § AST-1508. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate gate + success persist / failure skip | `src/core/agent.py` | **`TestAst1508DoTaskAdviceAdherencePersist`** |
+
+**Broken / obsolete:** **`TestAst1271DoTaskDeviationsPersist`** — retired; stub asserts persist helper removed.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1508DoTaskAdviceAdherencePersist \
+  -q
+```
+
 ### AST-1252 · AST-1243
 
 **Parent:** [AST-1243](https://linear.app/astralcareermatch/issue/AST-1243/candidate-artifacts-now-daisy-chain). **Publish:** `origin/sub/AST-1243/AST-1252-artifacts-dispatch-chain`.

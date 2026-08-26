@@ -17,7 +17,7 @@ Repo-owned **`data/admin/agent.json`** and **`data/admin/agent_task.json`**: bar
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Missing / malformed file handling | `src/core/repo_admin_json.py` | `TestLoadRepoAdminJsonFile` |
-| Boot-time apply removed (AST-1505); revert-only JSON→DB | `src/core/repo_admin_json.py` | `TestAst1505RepoAdminJsonCompareAndWrite::test_startup_apply_entry_point_removed` |
+| Boot-time apply no-op (all deploy envs) | `src/core/repo_admin_json.py` | `TestApplyRepoAdminJsonAtStartup::test_startup_apply_is_noop_on_all_deploy_envs` (**AST-1502**) |
 | Export UTF-8 round-trip files | `src/core/repo_admin_json.py` | `TestExportRepoAdminJsonToFiles` |
 
 Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks.md`**. Bootstrap wire: **`docs/test-bible/core/bootstrap.md`**.
@@ -546,41 +546,4 @@ Gap sibling of **AST-1399** (`[board-betty] TESTS: REVISE`). Pins Estelle repo c
 
 ### AST-1502 · AST-1492 (gap — bootstrap kill-switch)
 
-Primary: **`docs/test-bible/core/bootstrap.md`** § AST-1502. **`TestApplyRepoAdminJsonAtStartup`** (no-op kill-switch) **superseded by AST-1505** — entry point removed, not merely no-op. Export / divergence / catalog seed tests unchanged.
-
-### AST-1505 · AST-1455
-
-**Parent:** [AST-1455 — Show Differences and Update file with table version](https://linear.app/astralcareermatch/issue/AST-1455). **Publish:** `origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write`.
-
-Structured row/field comparison per table; per-table DB→file export; **`apply_repo_admin_json_at_startup`** removed (AST-1455 permanent boot behavior). Admin **`GET /api/admin/repo_json/compare/<table_key>`**, **`POST /api/admin/repo_json/write/<table_key>`**. Sibling **AST-1506** wires UI. **`revert_repo_admin_json_table`** + existing revert route unchanged.
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| Compare invariant + per-table export | `src/core/repo_admin_json.py` | **`TestAst1505RepoAdminJsonCompareAndWrite`** |
-| Compare + write + revert guard | `src/ui/api/api_admin.py` | revised **`TestAst783RepoJsonApi`** (compare/write routes; revert 400 message) |
-
-**Broken / obsolete this pass:** **`TestApplyRepoAdminJsonAtStartup`** (function deleted — **AST-1502** no-op class); **`TestAst783RepoJsonApi::test_repo_json_revert_invalid_table_key`** expected `"agent or agent_task"` error text.
-
-**Integration:** none revised; do not invent new integration coverage.
-
-## QA test manifest
-
-1. Boot apply removed + structured compare + per-table export: `tests/component/core/test_repo_admin_json.py::TestAst1505RepoAdminJsonCompareAndWrite`
-2. Admin compare/write routes + revert guard: `tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi`
-
-**Bible shasums (post-publish):**
-
-- `docs/test-bible/core/repo_admin_json.md` — record on publish tip
-- `docs/test-bible/ui/api/api_admin.md` — record on publish tip
-
-**AST-1505** narrowed run:
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_repo_admin_json.py::TestAst1505RepoAdminJsonCompareAndWrite \
-  tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi \
-  -q
-```
-
-**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
-
+Primary: **`docs/test-bible/core/bootstrap.md`** § AST-1502. **`TestApplyRepoAdminJsonAtStartup`** rewritten: `apply_repo_admin_json_at_startup` is a no-op on staging/production/local (AST-1497 kill-switch). Export / divergence / catalog seed tests unchanged.
