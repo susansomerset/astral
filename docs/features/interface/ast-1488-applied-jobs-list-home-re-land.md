@@ -303,3 +303,21 @@ context_tokens≈18000
 ```
 [code-rubric] PROCEED (Commit: e883c0db843951c98605eb0fea5f3e11245eddf8) faithful AST-1479 re-land
 ```
+
+## Test run (test-child)
+
+Betty manifest (`docs/test-bible/frontend/pages.md` § AST-1488). Tip at run: `e883c0db`. No product fixes.
+
+```bash
+ASTRAL_PYTHON=/home/susan/astral/.venv/bin/python ./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+# 4 passed
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+# 4 passed
+```
