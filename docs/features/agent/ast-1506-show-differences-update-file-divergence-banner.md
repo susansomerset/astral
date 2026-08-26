@@ -183,3 +183,41 @@ All files and change kinds below are taken from this ticket's **## Scope** only.
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1506
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner` @ `744bf4a51fae6cac5031de432a60dc446469fd82`
+
+### Traceability
+
+AC1–2 → Stage 1 `openDiff()` + `GET /compare/${tableKey}` modal (props `tableKey` isolates agent vs agent_task); AC3–4 → Stage 2 `handleUpdateFile()` + `POST /write/${tableKey}` then `fetchStatus()`; AC5 → Stage 2 confirm early-return (no POST on cancel); AC6 → Stage 1 rewritten warning span (no restart/deploy/CLI export copy); parent Revert AC → unchanged `handleRevert` per Boundaries.
+
+### Findings
+
+#### discuss
+
+- **Location:** Stage 2 decision note / `pattern.ui.in-place-live-refresh`
+- **Finding:** Ticket cites `pattern.ui.in-place-live-refresh`, which remains `status: proposed` in canon — not approved catalog law. Plan does not import `useInPlaceLiveRefresh`; it mirrors the existing revert path (`fetchStatus` + `onReverted?.()`).
+- **Recommendation:** Fine to build as written. Optionally soften the pattern citation to "same refresh contract as revert" so Joan/Radia do not treat a proposed id as mandatory hook adoption.
+
+- **Location:** Stage 1 `ROW_KEY_FIELD` / `astral.standards.no-hardcoded-sets`
+- **Finding:** Row-key column names (`agent_id`, `task_key`) are duplicated in React for `rowLabel`, parallel to core `_REPO_JSON_ROW_KEY`.
+- **Recommendation:** Acceptable for this two-table banner with a `TableKey` union and per-page `tableKey` prop. Optional future: expose key column from compare payload if a third admin table joins the warning.
+
+- **Location:** Plan structure / R6 self-assessment
+- **Finding:** No `## Self-Assessment` section (Estimate confirm line present).
+- **Recommendation:** Optional add before build; stages and hand-verify pre-flight are otherwise explicit.
+
+#### acceptable
+
+- **Location:** Stage 2 button order / `pattern.ui.shared-button-roles`
+- **Finding:** **Revert to file** stays `btn secondary` (not `danger`) per "do not change Revert" boundary; confirm dialog still uses `variant: "danger"`.
+- **Recommendation:** Matches ticket Boundaries; destructive styling on the labeled button itself is out of scope.
+
+- **Location:** Pre-flight / sibling AST-1505
+- **Finding:** Plan requires Ada compare/write routes on the epic line before build; ticket Notes say "after #1."
+- **Recommendation:** `build-child` pre-flight grep is the right gate; Katherine should not re-implement API in this ticket.
