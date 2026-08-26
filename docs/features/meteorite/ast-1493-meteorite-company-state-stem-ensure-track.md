@@ -136,6 +136,20 @@ f. Style D when `debug=True`: `func="meteorite.ensure_meteorite_company"`, `inde
 
 Confirm Chuckles estimate: 5 — agree
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`
+**Plan path:** `docs/features/meteorite/ast-1493-meteorite-company-state-stem-ensure-track.md`
+
+**Built tip:** `ea0a20ea2fdfd6c84081455efb8192c7d1aa5e37` (`ea0a20ea`)
+
+| Stage | Commit | Summary |
+|-------|--------|----------|
+| 1 | `4deacb6c` | COMPANY_STATES METEORITE + stem templates / company_state flip |
+| 2 | `ea0a20ea` | stem `ensure_meteorite_company` + state/prefix `is_meteorite_company` + Style D |
+
+**Betty note:** ensure/track + METEORITE-state carve-outs for `tests/component/core/test_meteorite.py` (and any prefix-only track tests) deferred to qa-child (engineer test-tree ban).
+
 ## Joan validate
 
 [plan-rubric]
