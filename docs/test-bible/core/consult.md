@@ -1135,3 +1135,33 @@ Persist `{prefix}_score_breakdown` `{earned, possible, max}` beside Analysis-pha
   tests/component/ui/api/test_api_jobs.py::TestFlattenGrades \
   -q
 ```
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE: `_vector_labels_map` HT/TP duplicate-code collision (last-wins drops Hands-On label → incomplete grade set). Product fix lands on AST-1513 Step 3; this gap owns the [bug-repro] bar.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Decode map first-wins on duplicate codes | `src/core/consult.py` (`_vector_labels_map`) | **`TestAst1513DuplicateRubricCodes::test_vector_labels_map_first_wins_on_duplicate_tp`** (**[bug-repro]**) |
+| Symptom: incomplete grade set with duplicate TP decode | same + `_require_complete_grade_set` | **`TestAst1513DuplicateRubricCodes::test_duplicate_tp_codes_cause_incomplete_grade_set`** |
+
+**Broken / obsolete:** none — `TestRubricHelpers::test_maps_vector_labels` single-code happy path unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. First-wins map (bug-repro): `tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes::test_vector_labels_map_first_wins_on_duplicate_tp`
+2. Incomplete-grade symptom (documents collision): `tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes::test_duplicate_tp_codes_cause_incomplete_grade_set`
+
+**Pass criterion:** (1) red pre-fix, green after make-fix Step 3; (2) passes on both trees (symptom documentation).
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1513DuplicateRubricCodes \
+  -q
+```

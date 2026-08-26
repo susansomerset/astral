@@ -1577,3 +1577,31 @@ Judith **`draft_job_resume`** replaces freeform **`deviations: string[]`** (**AS
 ```
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1513 · AST-1510
+
+**Parent:** [AST-1510 — meteorite_grade_do incomplete grade set (duplicate Do rubric TP codes)](https://linear.app/astralcareermatch/issue/AST-1510). **Publish:** `origin/sub/AST-1510/AST-1513-reject-duplicate-do-rubric-codes`.
+
+Board REVISE: no save-time duplicate rubric-code guard. Product fix lands on AST-1513; this gap owns the [bug-repro] bar for Step 2.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Save-time duplicate-code guard | `src/core/candidate.py` (`normalize_rubric_artifacts_on_save`) | **`TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`** (**[bug-repro]**) |
+
+**Broken / obsolete:** none — additive guard; existing `TestNormalizeRubricArtifactsOnSaveExtended` unique-code paths unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Save guard (bug-repro): `tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes::test_normalize_rejects_duplicate_do_rubric_codes`
+
+**Pass criterion:** pytest red on pre-fix tree; green after make-fix Step 2.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1513DuplicateRubricCodes \
+  -q
+```

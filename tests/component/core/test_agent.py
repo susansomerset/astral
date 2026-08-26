@@ -252,6 +252,18 @@ class TestDecodePayload:
         assert job["job_title"] == "Sr Job Role"
 
 
+class TestAst1513DuplicateRubricCodes:
+    """AST-1513: fail fast when model emits duplicate vector codes on one encoded line."""
+
+    def test_decode_rejects_duplicate_tp_segments_on_one_line(self) -> None:
+        ctx = {
+            "batch_entities": [{"astral_job_id": "job-1"}],
+            "vector_labels": {"TP": "Speaking Truth to Power With Diplomacy"},
+        }
+        with pytest.raises(ValueError, match="duplicate vector code"):
+            agent_mod._decode_payload("grade_do", "grades", "0|TPB4|TPB4", ctx)
+
+
 class TestAst880GradesEncodedVetMetaDecode:
     """AST-880: grades_encoded_vet_meta → results[{hit_index, grade, website, confidence}]."""
 

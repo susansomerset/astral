@@ -294,6 +294,25 @@ class TestNormalizeRubricArtifactsOnSaveExtended:
         assert item["importance"] == 7
 
 
+class TestAst1513DuplicateRubricCodes:
+    """AST-1513: reject duplicate rubric vector codes on save (somerset Do TP collision)."""
+
+    _HT_LABEL = "Hands-On Technical Partnership With Engineers"
+    _TP_LABEL = "Speaking Truth to Power With Diplomacy"
+
+    def _duplicate_tp_do_rubric(self) -> list:
+        return [
+            _criterion(code="TP", label=self._HT_LABEL),
+            _criterion(code="TP", label=self._TP_LABEL),
+        ]
+
+    def test_normalize_rejects_duplicate_do_rubric_codes(self) -> None:
+        with pytest.raises(ValueError, match=r"duplicate code.*TP"):
+            candidate_mod.normalize_rubric_artifacts_on_save(
+                {"do_rubric": self._duplicate_tp_do_rubric()}
+            )
+
+
 class TestNormalizeImportanceValue:
     @pytest.mark.parametrize(
         ("raw", "expected"),
