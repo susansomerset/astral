@@ -608,3 +608,8 @@ Surgical fix at the right layer: one public helper, pin-loop skip prevents doubl
 | Gate | Parent shape | Next action |
 |------|--------------|-------------|
 | **PROCEED** (clean, C7 complete) | Normal (AST-1491 ftr live) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+
+## Bug: AST-1504 — cover letter hydrate display gap tests
+
+Test-gap sibling of AST-1499. Betty board REVISE: hydrate empty-overwrite / nested unwrap / pin leave-on-miss uncovered. qa-fix + strengthen landed \`[bug-repro]\`; product carve-out is AST-1499. This child is test-only (docs-acceptance).
