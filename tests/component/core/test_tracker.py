@@ -1058,6 +1058,57 @@ class TestAst1116HydrateCoverLetterNormalize:
         assert saved == []
 
 
+class TestAst1504CoverLetterHydrateDisplayGaps:
+    """AST-1504 [bug-repro]: nested unwrap / empty-spine overwrite / pin leave-on-miss (AST-1499 fix)."""
+
+    def test_hydrate_unwraps_nested_cover_hop_to_subject_letter(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Nested cover keys must become Subject/Letter for JAR tabs (pre-fix: all-empty)."""
+        monkeypatch.setattr(
+            tracker_mod,
+            "resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {
+                "hop": {
+                    "re_line": "Re: Nest",
+                    "body": "Nested letter body",
+                    "signature": "Ada",
+                },
+            },
+        )
+        out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
+        assert out["cover_letter"] == {
+            "Subject": "Re: Nest",
+            "Letter": "Nested letter body",
+            "signature": "Ada",
+        }
+
+    def test_hydrate_does_not_install_empty_spine_when_resolve_has_no_cover_fields(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Nonempty gate — do not blank the overlay to an all-empty Subject/Letter/signature spine."""
+        monkeypatch.setattr(
+            tracker_mod,
+            "resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {"unrelated": "meta"},
+        )
+        out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
+        empty_spine = {"Subject": "", "Letter": "", "signature": ""}
+        assert out["cover_letter"] != empty_spine
+
+    def test_hydrate_leaves_pin_when_resolve_misses(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """[bug-repro] Pin leave-on-miss — nonempty non-cover resolve body must keep pin (pre-fix: empty spine)."""
+        monkeypatch.setattr(
+            tracker_mod,
+            "resolve_job_artifact_agent_data_body",
+            lambda pin, debug=False: {"unrelated": "meta"},
+        )
+        out = tracker_mod.hydrate_job_artifacts_for_display({"cover_letter": "pin-cover"})
+        assert out["cover_letter"] == "pin-cover"
+
+
 class TestAst1270NestedResumePayloadBody:
     """AST-1270: _resume_payload_body prefers nested resume; ignores deviations envelope."""
 
