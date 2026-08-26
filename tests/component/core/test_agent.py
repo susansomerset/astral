@@ -5742,6 +5742,94 @@ class TestAst862CleanParseFeedbackBlock:
             conn.close()
 
 
+class TestAst1486FeedbackEntityIdStamp:
+    """AST-1486: FEEDBACK agent_data rows stamp entity_id when index is known."""
+
+    def test_capture_feedback_block_stamps_entity_id_when_index_known(
+        self, seeded_db
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_like", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "somerset",
+            "grade_like",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_like",
+            owner_task_key="grade_like",
+            candidate_id="somerset",
+            batch_id="batch-1486-stamp",
+            entity_type="candidate",
+            index="somerset",
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        rows = db.get_agent_data_by_batch("batch-1486-stamp", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert rows[0].get("entity_id") == "somerset"
+
+    def test_capture_feedback_block_entity_id_null_when_index_omitted(
+        self, seeded_db
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-1486-null",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        rows = db.get_agent_data_by_batch("batch-1486-null", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert not rows[0].get("entity_id")
+
+    def test_store_feedback_block_stamps_entity_id_when_index_known(
+        self, seeded_db
+    ) -> None:
+        # Direct data-layer writer (fix site); capture paths above exercise the call chain.
+        db = seeded_db
+        fb_id = database_mod.store_feedback_block(
+            "candidate",
+            "grade_get",
+            "batch-1486-direct",
+            '["G1RACOVK"]',
+            index="somerset",
+        )
+        rows = db.get_agent_data_by_batch("batch-1486-direct", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert rows[0]["agent_data_id"] == fb_id
+        assert rows[0].get("entity_id") == "somerset"
+
+        fb_null = database_mod.store_feedback_block(
+            "candidate",
+            "grade_get",
+            "batch-1486-direct-null",
+            '["raw"]',
+        )
+        rows_null = db.get_agent_data_by_batch(
+            "batch-1486-direct-null", block_type="FEEDBACK"
+        )
+        assert len(rows_null) == 1
+        assert rows_null[0]["agent_data_id"] == fb_null
+        assert not rows_null[0].get("entity_id")
+
+
 class TestAst897DoTaskBalanceDebug:
     """AST-897: do_task debug_detail when provider result is tagged balance refusal."""
 
