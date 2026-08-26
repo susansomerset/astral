@@ -1247,3 +1247,59 @@ context_tokens≈42000
 ```
 [code-rubric] REVIEW (Commit: 917d9145) prompt entity_id tests OK
 ```
+
+## Bug: AST-1486 — FEEDBACK block_type still has null entity_id
+
+UAT follow-on after AST-1429 / AST-1431. Parent AST-1423 To-be: every `agent_data` row in the batch carries the same `entity_id` as the RESPONSE. AST-1429 stamped SYSTEM / CACHE_* / TASK / NO_CACHE / RESPONSE via `_store_prompt_blocks` / `_store_response_block`; FEEDBACK is a separate write path and was left untagged. Do not rewrite AST-1429 / AST-1431 sections.
+
+### As-is
+
+After AST-1429, a batch that also stores a FEEDBACK row (vector-feedback / rubric review capture) still has `entity_id` null on that FEEDBACK row while SYSTEM / CACHE_* / TASK / NO_CACHE / RESPONSE carry the entity index. UAT: `[bug] still null on 'FEEDBACK' block_type.`
+
+### To-be
+
+When the entity index is known, FEEDBACK rows written in the same batch carry the same `entity_id` as the other prompt/response blocks. Omitted / empty index → FEEDBACK `entity_id` stays null (same truthiness as RESPONSE / prompt stamps). `list_entity_latest_agent_refs` remains RESPONSE-only.
+
+### Repro
+
+1. Run a `do_task` that hits `_capture_rubric_vector_feedback` with a truthy `index` (any vector-feedback task that stores FEEDBACK via `store_feedback_block(..., index=index)`).
+2. `get_agent_data_by_batch(batch_id)` includes a FEEDBACK row with `entity_id` null while RESPONSE (and, post-AST-1429, other prompt rows) have `entity_id=<index>`.
+
+To-be: that FEEDBACK row’s `entity_id` equals the RESPONSE’s.
+
+Fixture shape:
+
+```
+block_type  entity_id
+SYSTEM      <index>
+…
+RESPONSE    <index>
+FEEDBACK    null      # as-is
+FEEDBACK    <index>   # to-be
+```
+
+### Root cause
+
+`src/data/database.py` `store_feedback_block` already accepts `index` and folds it into the FEEDBACK content hash / `agent_data_id`, but its `save_agent_data(...)` call omits `entity_id`. Callers in `src/core/agent.py` `_capture_rubric_vector_feedback` already pass `index=index` into `store_feedback_block` on both the unparseable and success paths. AST-1429 only extended `_store_prompt_blocks` / `_store_response_block`; FEEDBACK never went through those helpers.
+
+### Proposed change
+
+1. **`src/data/database.py` `store_feedback_block`:** pass `entity_id=index if index else None` into `save_agent_data`, matching `_store_response_block`. Do not change id generation, hash formula, block_type, or callers. Empty/omitted `index` → NULL column.
+
+2. **`docs/ASTRAL_CODE_RULES.md` §2.4.1:** extend the write-rule sentence so FEEDBACK is named with the stamped block types — e.g. when an entity index is known, `_store_prompt_blocks`, `_store_response_block`, and `store_feedback_block` all set `agent_data.entity_id` on the rows they write. Keep RESPONSE-only `list_entity_latest_agent_refs`. No statute/pattern amend (additive write; Joan CANON: OK pattern from AST-1429 still applies unless the board says otherwise).
+
+3. **Out of scope:** no change to `_capture_rubric_vector_feedback` call sites (they already pass `index`); no historical backfill of old FEEDBACK rows; no `list_entity_latest_agent_refs` / `ensure_batch_response_entity_ids` change; engineer does not commit `tests/` or `docs/test-bible/**` (Betty owns any FEEDBACK stamp coverage if the board asks).
+
+### Blast radius
+
+- `store_feedback_block` is the sole FEEDBACK writer (AST-724); both `_capture_rubric_vector_feedback` call sites pick up the stamp via the existing `index=` kwarg.
+- Hop / story / latest-ref readers stay RESPONSE-only — tagging FEEDBACK cannot enter that index.
+- AST-1429 / AST-1431 prompt-row tests remain; may need a Betty gap for FEEDBACK if board REVISE’s tests.
+
+### What must still hold
+
+- Parent AST-1423 / AST-1429 contract: when index is known, every new `agent_data` row in the batch shares that `entity_id` (now including FEEDBACK).
+- `list_entity_latest_agent_refs` RESPONSE-only; hop/story unchanged.
+- `_store_prompt_blocks` / `_store_response_block` stamps from AST-1429 unchanged.
+- `store_feedback_block` still returns `agent_data_id`; still uses `index` in the content hash when present.
+- No `append_agent_response` / entity JSON columns; no engineer test-tree commits.
