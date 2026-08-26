@@ -379,3 +379,102 @@ context_tokens≈38000
 
 - **fix-now:** none — Radia overall CLEAN.
 - **discuss / advisory:** none.
+
+## Bug: AST-1499 — Fix cover letter content edit hydrate on job details
+
+Orphaned-bug mini-parent **AST-1491** (fresh `ftr` off `origin/dev`). Ancestor plan above (AST-1116 field defs + hydrate normalize) stays; this block is the fix delta only. Do not re-parent under AST-1116.
+
+### As-is
+
+On the job details (JAR) Cover Letter artifact tabs, Subject / Letter / Signature open as empty text blocks, so the operator cannot see or edit the letter. Print Cover Letter for the same job still renders letter content.
+
+### To-be
+
+Opening Cover Letter content on the job details page shows the same letter body Print uses (Subject / Letter / Signature populated from the job's cover-letter artifact after display hydrate), and the operator can edit and Save those fields. Print still renders after the hydrate/edit path.
+
+### Repro
+
+Fixture-shaped (no SQL seed — file/JSON persistence):
+
+1. Job with `job_data.artifacts.cover_letter` set to a finalize pin string whose `agent_data` RESPONSE body is a cover hop payload Print accepts (nonempty `re_line`/`body` or `Subject`/`Letter` after the same field map Print uses) — **or** the live UAT job Susan used when filing AST-1491.
+2. Confirm Print Cover Letter for that job returns HTML with visible letter body (not the "No cover letter content" error).
+3. `GET /api/jobs/<astral_job_id>` and inspect `job_data.artifacts.cover_letter` after `hydrate_job_artifacts_for_display`.
+4. Open JAR → Cover Letter artifact tabs (`shapes_key=cover_letter` / `ArtifactEditor` + `jobPersistence`).
+
+**Broken observation (any one):** hydrated value is still a pin **string**, or a dict whose `Subject`/`Letter`/`signature` are all `""`, while Print still shows a letter. Editor tabs bind empty placeholders.
+
+**Passing observation after fix:** hydrated `cover_letter` is `{"Subject": "<nonempty or empty>", "Letter": "<nonempty>", "signature": "..."}` with at least one nonempty body field matching Print's letter; tabs show that text; Save PUT round-trips the spine; Print still works.
+
+### Root cause
+
+JAR Cover Letter tabs bind only a **dict** of Subject / Letter / signature from `GET /api/jobs` after `hydrate_job_artifacts_for_display`. Print does **not** use that overlay — `builder._resolve_cover_letter` re-reads on-disk `artifacts.cover_letter` (nonempty dict → pin resolve via `resolve_job_artifact_agent_data_body` → else candidate `context.raw_sample`).
+
+Two gaps leave the editor empty while Print still renders:
+
+1. **Pin string / empty spine on the GET overlay.** After AST-1480, `ArtifactEditor.mapFixedFieldsFromRaw` rejects non-object pin strings (avoids garbage). If hydrate leaves the pin string (resolve miss) or installs `normalize_cover_letter_artifact(...)` → all-empty Subject/Letter/signature (unconditional normalize on any dict, including blank or alias-mismatched hop bodies), the tabs stay empty placeholders.
+2. **Divergent read rules vs Print.** Hydrate pin-resolves then always normalizes a dict; it does not share Print's `_cover_letter_nonempty` / `_cover_letter_fields_for_read` gate, does not unwrap a nested cover hop body the way `job_resume` uses `_resume_payload_body`, and must not overwrite a usable pin with an empty normalized dict (`coat-check-never-store-empty` on the display overlay). Print can still emit HTML from a successful pin read or from `raw_sample` for the same job.
+
+AST-1116 already added `DATA_SHAPES...cover_letter` and flat normalize-after-pin; this bug is the remaining hydrate↔Print↔editor contract hole, not missing field defs.
+
+### Proposed change
+
+Implement only inside Explicit scope (tracker primary; FE / api_jobs / builder only if the step-0 probe says so).
+
+**0. Probe (make-fix, before editing product code)** — on a job that Prints a letter, compare:
+- on-disk `artifacts.cover_letter` (pin string vs dict),
+- `hydrate_job_artifacts_for_display(...)` result,
+- what `_resolve_cover_letter` returns (and whether source is pin/dict vs `raw_sample`).
+
+Branch on the probe (do not guess):
+
+| Probe result | Fix path |
+|--------------|----------|
+| Pin/dict has printable fields but hydrate overlay is pin string or all-empty Subject/Letter | **A — tracker hydrate** (default) |
+| Hydrate overlay already nonempty Subject/Letter/signature but tabs still empty | **B — ArtifactEditor** mapping only |
+| Detail skips / drops hydrate for the cover slot | **C — api_jobs.detail** attach only |
+| Print letter is **only** `raw_sample` (job slot empty/unusable) | **Stop / `[scope-gate]`** — do **not** silently copy sample onto the job artifact overlay without Susan; AC text says job cover-letter artifact. Comment `[scope-gate]` naming the sample-only finding. |
+
+**A — `src/core/tracker.py` (expected happy path)**
+
+1. Add a focused public helper used by hydrate (name e.g. `cover_letter_artifact_for_display(raw) -> Optional[Dict[str, str]]`):
+   - If `raw` is a nonempty pin string: `body = resolve_job_artifact_agent_data_body(raw)`; if not a `dict`, return `None` (leave pin in place — no empty overwrite).
+   - If `raw` / `body` is a `dict`: if top-level normalize would be all-empty, try **one** nested unwrap when a single nested dict carries cover keys (`Subject`/`re_line`/`Letter`/`body`/`signature`) — same intent as job_resume `_resume_payload_body`, cover-shaped only; do not invent new key names.
+   - `normalized = normalize_cover_letter_artifact(...)`.
+   - Return `normalized` only if any of `Subject` / `Letter` / `signature` is nonempty; else `None`.
+2. In `hydrate_job_artifacts_for_display`, **replace** the current unconditional block:
+   ```python
+   cover = out.get("cover_letter")
+   if isinstance(cover, dict):
+       out["cover_letter"] = normalize_cover_letter_artifact(cover)
+   ```
+   with: after the pin-key loop, `display = cover_letter_artifact_for_display(out.get("cover_letter"))`; if `display is not None`, set `out["cover_letter"] = display`; if `None`, do **not** replace a pin string with an empty Subject/Letter/signature dict.
+3. Optional DRY (in scope): extract shared nonempty field map with `builder._cover_letter_fields_for_read` / `_cover_letter_nonempty` so Print and hydrate cannot drift — builder keeps emit `re_line`/`body`; hydrate still exposes Subject/Letter/signature via `normalize_cover_letter_artifact`. Do **not** change print CSS / Somerset emit layout unless required for the shared read helper.
+
+**B — `src/ui/frontend/src/components/ArtifactEditor.tsx` (only if probe says API is already good)**
+
+- In `applyJobArtifactResponse` / `mapFixedFieldsFromRaw` for `shapesKey` cover / `jobPersistence.artifactKey === "cover_letter"`: bind Subject/Letter/signature from the hydrated dict (accept `re_line`→Subject and `body`→Letter only if server normalize was skipped). Do not re-introduce pin-string-as-tab-content.
+
+**C — `src/ui/api/api_jobs.py` (only if probe says detail mishandles attach)**
+
+- Keep calling `hydrate_job_artifacts_for_display` and attaching `job_data.artifacts`; fix only a missed call / wrong artifacts source — no new persistence.
+
+**Out of scope:** print HTML/CSS redesign; resume structure-mode behavior except shared hydrate consistency; writing empty cover dicts; replacing pin-on-job with full cover JSON as the stored pin; new plan doc; `tests/` / bible (Betty).
+
+### Blast radius
+
+- **GET `/api/jobs/<id>`** overlay shape for `artifacts.cover_letter` (JAR ArtifactEditor + any other consumer of hydrated job detail).
+- **Print** if shared read helper is extracted from `builder._resolve_cover_letter` / `_cover_letter_fields_for_read` — emit keys must remain `re_line`/`body`/`signature` for Somerset map.
+- **Save PUT** `/api/jobs/.../artifacts/cover_letter` — still expects Subject/Letter/signature spine (`save_job_artifact_cover_letter` / normalize on write); hydrate must not force empty overlays that operators then Save over a good pin.
+- **Siblings / contracts:** AST-1099 pin write, AST-1100 pin→body resolve, AST-1116 field defs + flat normalize — must still hold; pin stays id on disk.
+- **FE:** AST-1480 pin-string reject remains; cover tabs rely on nonempty hydrated dict.
+- **Tests:** AST-1116 hydrate normalize + AST-1100 pin suites; Betty may extend for nested/empty-overwrite cases after Plan Ready board.
+
+### What must still hold
+
+- Pin-on-job: `job_data.artifacts.cover_letter` on disk remains the RESPONSE `agent_data_id` string after finalize (AST-1099); hydrate is overlay-only — no `save_job_data` from hydrate.
+- Pin→body resolve entry (`resolve_job_artifact_agent_data_body`) unchanged in contract (AST-1100).
+- `DATA_SHAPES.candidates.detail.cover_letter` Subject / Letter / signature field defs remain; tab keeps `shapes_key: "cover_letter"` (AST-1116).
+- Never store / overlay an all-empty cover dict in place of a usable pin (`astral.patterns.coat-check-never-store-empty`).
+- Print Cover Letter still renders for jobs that printed before the fix.
+- Operator Save still persists Subject/Letter/signature and reload shows saved values.
+- No change to resume structure-mode editing or unrelated JAR tabs beyond cover_letter fixed fields.
