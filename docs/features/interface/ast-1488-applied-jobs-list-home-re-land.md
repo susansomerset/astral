@@ -154,3 +154,8 @@ No `fix-now` findings. R1–R5 pass for this scoped re-land.
 context_tokens≈52000
 
 [plan-rubric] PROCEED (Commit: f9d38262827744b317e0173e68bd8be96c3ad366) faithful AST-1479 re-land
+
+## Review
+
+- Publish ref: `sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`
+- Build tip: `632a73daf80ddae40033c4934a4c93ef3c301081`
