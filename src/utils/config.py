@@ -2882,6 +2882,15 @@ SEED_CONFIG = {
 # Recommended jobs list + nav counts — post-synthesis / review surfaces (AST-479); not pre-upshot PASSED_LIKE.
 RECOMMENDED_JOB_STATES = ["RECOMMENDED", BUILD_ARTIFACTS_BASE_STATE, "CANDIDATE_REVIEW"]
 
+# Applied jobs list + nav — post-applied candidate outcomes (AST-1488 re-land of AST-1479).
+APPLIED_JOB_STATES = [
+    "CANDIDATE_APPLIED",
+    "CANDIDATE_INTERVIEW",
+    "CANDIDATE_REJECTED",
+    "CANDIDATE_GHOSTED",
+]
+assert all(s in JOB_STATES for s in APPLIED_JOB_STATES)
+
 JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "resume_content",
     "cover_letter",
@@ -4719,7 +4728,7 @@ NAV_CONFIG = [
             {"label": "In Review", "path": "/jobs/in_review"},
             {"label": "Skipped", "path": "/jobs/skipped"},
             {"label": "Recommended", "path": "/jobs/recommended"},
-            {"label": "Applied", "path": "/jobs/applied", "enabled": False},
+            {"label": "Applied", "path": "/jobs/applied"},
             {"label": "Responded", "path": "/jobs/responded", "enabled": False},
         ],
     },
