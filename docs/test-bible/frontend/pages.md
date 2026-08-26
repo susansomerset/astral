@@ -2323,6 +2323,7 @@ cd src/ui/frontend && npm run test:component -- \
 | --- | --- | --- |
 | Base Print without Save sections (bug-repro) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1489:`** |
 | JAR Print Resume without Save sections | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1489:`** |
+| Reorder + Print full body (AST-1490) | `ArtifactEditor.tsx`, Base/JAR pages | **`docs/test-bible/frontend/components.md`** § AST-1490 |
 | Print mock handlers (AST-1337 / AST-1350) | same | revised **`AST-1337:`** / **`AST-1350:`** — tolerate structure PUT before resume GET |
 
 **Broken / obsolete this pass:** AST-1337 Print mocks lacked structure PUT handler — extended for make-fix blast radius.
