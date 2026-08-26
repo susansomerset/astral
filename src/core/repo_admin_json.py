@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
-"""Repo-owned admin JSON for ``agent`` and ``agent_task`` (AST-782).
+"""Repo-owned admin JSON for ``agent`` and ``agent_task`` (AST-782 / AST-1455).
 
-Boot-time apply is disabled (AST-1497 kill-switch). Export / load helpers remain
-for operator use and future explicit apply. AST-381 admin snapshot export/import
+Boot-time JSON→database apply is removed (AST-1455). Export, compare, load,
+revert, and per-table file write remain. AST-381 admin snapshot export/import
 remains cancelled.
 """
 
@@ -19,10 +19,9 @@ from src.utils.config import (
     get_repo_admin_json_path,
     get_repo_admin_json_table_keys,
 )
-from src.utils.logging import get_logger
 
 __all__ = [
-    "apply_repo_admin_json_at_startup",
+    "export_repo_admin_json_table_to_file",
     "export_repo_admin_json_to_files",
     "get_repo_admin_json_divergence_status",
     "get_repo_admin_json_table_comparison",
@@ -32,8 +31,6 @@ __all__ = [
 ]
 
 _REPO_JSON_ROW_KEY = {"agent": "agent_id", "agent_task": "task_key"}
-
-logger = get_logger(__name__)
 
 
 def _repo_root() -> Path:
@@ -221,13 +218,26 @@ def load_repo_admin_json_file(table_key: str) -> List[Dict[str, Any]]:
     return rows
 
 
-def apply_repo_admin_json_at_startup() -> None:
-    """Boot-time repo JSON apply disabled (AST-1497 kill-switch).
-
-    Export and row loaders stay for operator use / future explicit apply.
-    """
-    logger.info("repo_admin_json boot apply disabled (AST-1497)")
-    return
+def export_repo_admin_json_table_to_file(table_key: str) -> dict[str, Any]:
+    """Write one table's DB export rows to its repo JSON path (AST-1505)."""
+    if table_key not in get_repo_admin_json_table_keys():
+        raise ValueError(f"unknown repo admin JSON table: {table_key!r}")
+    conn = database._get_connection()
+    try:
+        rows = _fetch_db_repo_json_rows(conn, table_key)
+    finally:
+        conn.close()
+    path = get_repo_admin_json_path(table_key)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(rows, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    return {
+        "table_key": table_key,
+        "row_count": len(rows),
+        "repo_relative_path": REPO_ADMIN_JSON_CONFIG["tables"][table_key]["repo_relative_path"],
+    }
 
 
 def export_repo_admin_json_to_files() -> Dict[str, int]:

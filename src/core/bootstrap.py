@@ -1,4 +1,4 @@
-"""Process runtime bootstrap (AST-654 / AST-782 / AST-1497).
+"""Process runtime bootstrap (AST-654 / AST-782 / AST-1455).
 
 Called once from ``src/ui/server.py`` after Flask blueprints register.
 
@@ -6,8 +6,8 @@ Order: ``_validate_runtime_coupling()``
 → ``database.ensure_all_upsert_registry_schemas_at_startup()``
 → ``start_scheduler()``.
 
-Boot no longer applies repo admin JSON or ``sync_agent_tasks`` blank inserts
-(AST-1497 kill-switch — schema ensure only).
+Boot does not apply repo admin JSON or ``sync_agent_tasks`` blank inserts
+(AST-1455 — schema ensure only; explicit Revert to file applies JSON→DB).
 
 Does not run AST-381 admin snapshot export/import/preview.
 """
