@@ -171,3 +171,19 @@ AC2→S2 priority #2 + S3 map; AC3→S2 priority #1 + S1 key (`meteorite-self` v
 - **Recommendation:** Correct partition — attach/ensure wiring is AST-1495; dispatch path jobs already have a `company` row.
 
 context_tokens≈55000
+
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`
+**Plan path:** `docs/features/meteorite/ast-1494-ruth-company-stem-discernment.md`
+
+**Built tip:** `317f3dc8660bb12a94def58976dffa0ba7ed4e75` (`317f3dc8`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| — | `merge-resume` | stack on `origin/ftr/AST-1484` (AST-1493 dependency) |
+| 1 | `bd565711` | `company_stem` schema + `company_stem_response_key` |
+| 2 | `83257745` | Ruth `qualify_meteorite` prompts + AST-756 fixture twin |
+| 3 | `317f3dc8` | land enrich map + dispatch debug stem + agent docstring |
+
+**Betty note:** component tests for schema, catalog, enrich map deferred to qa-child.
