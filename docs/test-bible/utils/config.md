@@ -3167,3 +3167,47 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 **Broken / obsolete:** none.
 
 **Integration:** none.
+
+### AST-1493 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`.
+
+`COMPANY_STATES["METEORITE"] = {}` (roster-inert); `METEORITE_CONFIG["company_state"]` → **METEORITE**; stem template keys (`stem_short_name_template` / `default_stem` / `meteorite_self_stem`). Ensure/track: **`docs/test-bible/core/meteorite.md`** (**AST-1493**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| METEORITE state + stem template asserts | `src/utils/config.py` | **`TestAst1493MeteoriteCompanyStateConfig`**; revised **`TestAst1041MeteoriteConfig`** |
+
+**Broken / obsolete:** AST-1041 `company_state == "IGNORE"`.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  -q
+```
+
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`); `company_stem_response_key` literal for consult map. Enrich/apply: **`docs/test-bible/core/consult.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Schema + response key + validate omit/value | `src/utils/config.py` | **`TestAst1494QualifyMeteoriteCompanyStemSchema`** |
+
+**Broken / obsolete:** none — additive optional field.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1494QualifyMeteoriteCompanyStemSchema \
+  -q
+```

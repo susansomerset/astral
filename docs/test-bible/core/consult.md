@@ -1026,6 +1026,27 @@ ANALYSIS_* job-token formatting: shared `_find_rubric_criterion` (label-or-code,
   -q
 ```
 
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+`enrich_meteorite_land_packet` maps Ruth `company_stem` via `company_stem_response_key`; dispatch `qualify_meteorite` Style D logs stem on success when present (not persisted on job row — attach is **AST-1495**). Config schema: **`docs/test-bible/utils/config.md`**. Catalog prompts: **`docs/test-bible/core/repo_admin_json.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Land enrich map + strip + debug detail | `src/core/consult.py` | **`TestAst1494EnrichMeteoriteCompanyStem`** |
+| Dispatch debug stem on pass | `src/core/consult.py` | **`TestAst1494EnrichMeteoriteCompanyStem::test_dispatch_debug_logs_company_stem_when_present`** |
+
+**Broken / obsolete:** none — additive map on enrich output.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_consult.py::TestAst1494EnrichMeteoriteCompanyStem \
+  -q
+```
+
 ### AST-1210 · AST-1186
 
 **Parent:** [AST-1186 — evaluate_meteorite: fold recent work into tests + statute/pattern check](https://linear.app/astralcareermatch/issue/AST-1186/evaluate-meteorite-fold-recent-work-into-tests-statutepattern-check). **Publish:** `origin/sub/AST-1186/AST-1210-bible-component-tests-lock-twin-contract`.

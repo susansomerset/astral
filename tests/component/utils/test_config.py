@@ -3199,6 +3199,46 @@ class TestAst1127QualifyMeteoriteCompanyJobIdOptional:
         assert err and "jd_text" in err
 
 
+# Branches: optional company_stem schema + response key literal (AST-1494).
+class TestAst1494QualifyMeteoriteCompanyStemSchema:
+    """AST-1494: company_stem optional on qualify_meteorite items_schema."""
+
+    def test_schema_and_response_key(self) -> None:
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        item = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]["jobs"]["items_schema"]
+        assert item["company_stem"]["type"] == "str"
+        assert item["company_stem"]["required"] is False
+        assert cfg.TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] == "company_stem"
+        assert cfg.TASK_CONFIG["qualify_meteorite"]["company_stem_response_key"] in item
+
+    def test_validate_allows_omit_and_accepts_value(self) -> None:
+        from src.core import agent as agent_mod
+        from src.utils import config as cfg
+
+        if "qualify_meteorite" not in cfg.TASK_CONFIG:
+            import pytest
+            pytest.skip("qualify_meteorite not on tip")
+        schema = cfg.TASK_CONFIG["qualify_meteorite"]["response_schema"]
+        job = {
+            "astral_job_id": "000",
+            "company_job_id": "EXT-1",
+            "job_title": "Engineer",
+            "job_link": "https://jobs.example.com/1",
+            "jd_text": "x" * 50,
+        }
+        base = {"agent_performance": "success", "agent_payload": {"jobs": [job]}}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        with_stem = {**job, "company_stem": "alice@example.com"}
+        base["agent_payload"]["jobs"][0] = with_stem
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+        base["agent_payload"]["jobs"][0] = {**with_stem, "company_stem": ""}
+        assert agent_mod._validate_response_schema(base, schema, "qualify_meteorite") is None
+
+
 # Branches: qualify_meteorite job_link/job_title optional + BOT_BLOCKED rename (AST-1195).
 class TestAst1195SchemaNullsAndBotBlocked:
     def test_job_link_title_schema_optional(self) -> None:
