@@ -84,3 +84,25 @@ Bible + component tests match the AST-1496 ban (Betty qa-fix [bug-repro]).
 ### Notes
 Radia fix-now addressed: AST-1493 stack file content reverted on tip (`resolve` cb803834).
 
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Hedy | engineer | `/home/susan/.cursor/chats/0d2c08e5d1935d9efdab86887f440265/39fa4286-03b0-4a21-9850-81366ca09ad5/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/f08258b4-6c23-4682-88f1-097e2e20f6cf/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/0d2c08e5d1935d9efdab86887f440265/683c3b5c-e811-4b01-aa01-3f6a4a055902/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1456 (parent) | ftr/AST-1456-do-not-overwrite-dispatch-task |
+| AST-1496 | sub/AST-1456/AST-1496-fix-ban-dispatch-task-auto-writers |
+| AST-1500 | sub/AST-1456/AST-1500-gap-dispatcher-provision-tests |
+| AST-1501 | sub/AST-1456/AST-1501-gap-seed-statute-carveout |
+
+**Epic worktree:** `astral-AST-1456/` — one active sub checked out at a time.

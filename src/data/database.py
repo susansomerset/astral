@@ -170,7 +170,6 @@ def decrypt_value(ciphertext: str) -> str:
 
 _company_schema_ensured = False
 _job_schema_ensured = False
-_job_source_backfill_applied = False
 _JOB_IDENTITY_UNIQUE_INDEX = "idx_job_identity_unique"
 _BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
@@ -1434,7 +1433,7 @@ def _dedupe_job_identity_triples(conn: sqlite3.Connection) -> int:
 
 def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     """Create job table for raw_job_listing ingest if not present. Idempotent."""
-    global _job_schema_ensured, _job_source_backfill_applied
+    global _job_schema_ensured
     if _job_schema_ensured:
         return
     _apply_board_schema_sunset(conn)
@@ -1471,15 +1470,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     raise
-    # AST-1469: one-shot backfill unset source → gazed (process-level guard).
-    global _job_source_backfill_applied
-    if not _job_source_backfill_applied:
-        conn.execute(
-            "UPDATE job SET source = ? WHERE source IS NULL OR TRIM(source) = ''",
-            (JOB_SOURCE_DEFAULT,),
-        )
-        conn.commit()
-        _job_source_backfill_applied = True
+    # AST-1497: DDL-only — no source content backfill on ensure
     # AST-479: LIKE passes stay PASSED_LIKE for analysis_upshot queue; do not auto-promote to BUILD_ARTIFACTS.
     # AST-732: partial unique index on complete identity triples; NULL/empty company_job_id or job_title excluded.
     idx_row = conn.execute(
@@ -2683,12 +2674,7 @@ def _ensure_candidate_schema(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" not in str(e).lower():
                         raise
-    _migrate_candidate_data_structure(conn)
-    _migrate_pronoun_preference_backfill(conn)
-    _migrate_context_arrays_to_text(conn)
-    _migrate_candidate_library_ast1014(conn)
-    # AST-973: remap legacy states/triggers only (never Phase A hard-delete on ensure)
-    _legacy_candidate_migrate_conn(conn, dry_run=False, phases="BC")
+    # AST-1497: ensure is DDL-only — content migrates/remaps are explicit ops only
     _drop_entity_agent_responses_column(conn, "candidate")
     _candidate_schema_ensured = True
 
@@ -3612,7 +3598,7 @@ def _search_term_lines_from_string(val: str) -> list[str]:
 
 
 def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
-    """Create company_search_terms if missing; one-time artifact import per process."""
+    """Create company_search_terms if missing. Idempotent DDL only."""
     global _company_search_terms_schema_ensured, _company_search_terms_migration_swept
     if _company_search_terms_schema_ensured:
         return
@@ -3634,9 +3620,8 @@ def _ensure_company_search_terms_table(conn: sqlite3.Connection) -> None:
             "CREATE INDEX idx_company_search_terms_candidate ON company_search_terms (candidate_id)"
         )
         conn.commit()
-    if not _company_search_terms_migration_swept:
-        _migrate_company_search_terms_from_artifacts(conn)
-        _company_search_terms_migration_swept = True
+    # AST-1497: DDL-only — artifact→table content import is explicit ops only
+    _company_search_terms_migration_swept = True
     _company_search_terms_schema_ensured = True
 
 
@@ -4919,7 +4904,7 @@ def list_stale_company_search_terms(candidate_id: str, freq_hrs: float) -> List[
 # ---------------------------------------------------------------------------
 
 def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
-    """Create agent table if not present; migrate + seed new columns idempotently."""
+    """Create agent table if not present; add missing columns. Idempotent."""
     global _agent_schema_ensured
     if _agent_schema_ensured:
         return
@@ -4952,28 +4937,7 @@ def _ensure_agent_schema(conn: sqlite3.Connection) -> None:
                 except sqlite3.OperationalError as e:
                     if "duplicate column name" not in str(e).lower():
                         raise
-        cols = {row[1] for row in conn.execute("PRAGMA table_info(agent)").fetchall()}
-        # Seed existing agents that have no model_code with the Sonnet defaults (legacy reads only).
-        if "model_code" in cols:
-            _seed_key = "claude-sonnet-4-6"
-            _seed = AGENT_CONFIG[_seed_key]
-            conn.execute(
-                "UPDATE agent SET model_code = ?, temperature = ?, max_tokens = ? WHERE model_code IS NULL",
-                (_seed_key, _seed["default_temperature"], _seed["default_max_tokens"]),
-            )
-            conn.execute("UPDATE agent SET model_code = 'claude-sonnet-4-6' WHERE model_code = 'claude-sonnet-4-5'")
-            conn.commit()
-        if "brain_setting" in cols:
-            conn.execute("""
-                UPDATE agent SET brain_setting = CASE COALESCE(TRIM(model_code), '')
-                    WHEN 'claude-haiku-4-5' THEN 'Little'
-                    WHEN 'claude-sonnet-4-6' THEN 'Medium'
-                    WHEN 'claude-opus-4-6' THEN 'Big'
-                    ELSE 'Medium'
-                END
-                WHERE brain_setting IS NULL OR TRIM(COALESCE(brain_setting, '')) = ''
-            """)
-            conn.commit()
+        # AST-1497: DDL-only — no model_code / brain_setting content backfills on ensure
     _agent_schema_ensured = True
 
 
@@ -5487,13 +5451,7 @@ def _ensure_agent_task_schema(conn: sqlite3.Connection) -> None:
             if _col not in cols:
                 conn.execute(f"ALTER TABLE agent_task ADD COLUMN {_col} {_typ}")
                 conn.commit()
-    _apply_ast469_select_job_page_run_next_migration(conn)
-    _apply_ast834_clear_select_job_page_run_next_migration(conn)
-    _apply_ast1113_craft_run_next_chain_migration(conn)
-    _apply_ast723_rubric_vectors_token_migration(conn)
-    _apply_ast561_analysis_upshot_take_jd_migration(conn)
-    # AST-1108: AST-776/822/880 vet_inflow_discovery prompt migrations retired (repo JSON wins).
-    _apply_ast738_task_grouping_metadata_seed(conn)
+    # AST-1497: DDL-only — prompt/run_next/grouping content migrates are explicit ops only
     _agent_task_schema_ensured = True
 
 
@@ -5943,7 +5901,7 @@ def _ensure_agent_data_schema(conn: sqlite3.Connection) -> None:
                 "CREATE INDEX idx_agent_data_entity_task ON agent_data(entity_type, entity_id, task_key, created_at)"
             )
             conn.commit()
-    _backfill_agent_data_entity_id_from_entity_columns(conn)
+    # AST-1497: DDL-only — entity_id backfill is explicit ops only
     _agent_data_schema_ensured = True
 
 

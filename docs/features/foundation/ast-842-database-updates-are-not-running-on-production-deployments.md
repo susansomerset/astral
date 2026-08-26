@@ -173,3 +173,99 @@ Local `dev` merged via prep-uat. Staging should reflect the fixes above.
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
+
+
+## Bug: AST-1497 — Shut off automatic table content updates on deploy
+
+### As-is
+
+On staging deploy / server restart, `bootstrap_runtime()` still chains automatic **table content** writers: non-local `apply_repo_admin_json_at_startup()` (repo-wins rewrite of `agent` / `agent_task`), `ensure_all_upsert_registry_schemas_at_startup()` which invokes registry `_ensure_*_schema` handlers that embed UPDATE/INSERT/DELETE data migrates (including `_ensure_candidate_schema` → candidate_data/library migrates + `_legacy_candidate_migrate_conn(phases="BC")`), and `sync_agent_tasks(...)` blank `agent_task` INSERTs. Operator-managed rows do not stay put across deploy — Susan observed `somerset.state` forced to `NEW_CANDIDATE` after it had been `ARTIFACTS_READY` / `ACTIVE_SEARCH`.
+
+### To-be
+
+Deploy and process bootstrap do **not** automatically mutate table **content**. Operator-managed rows (candidate state included) survive restart unchanged. Idempotent **schema** ensure (CREATE TABLE / ALTER ADD COLUMN / structural rebuilds that only reshape storage) may remain on boot. Content inserts/updates/remaps on boot are off until a later explicit seed/ops design lands. Runtime business writes (dispatch/consult/admin saves) are unchanged.
+
+### Repro
+
+1. On staging (or a persistent SQLite file used as the app DB), set `candidate.astral_candidate_id = 'somerset'` to `state = 'ARTIFACTS_READY'` (or `'ACTIVE_SEARCH'`) with a non-empty `candidate_data` payload; note `updated_at`.
+2. Restart the server process so `bootstrap_runtime()` runs (Railway deploy/restart, or local non-`ASTRAL_DEPLOY_ENV=local` boot that currently applies repo JSON).
+3. Re-read `somerset`: **broken today** — `state` becomes `NEW_CANDIDATE` (and/or related boot content writers mutate operator tables). **After fix** — `state` (and other live candidate fields) match the pre-restart values; boot does not INSERT/UPDATE operator content for the writers listed under Proposed change.
+
+### Root cause
+
+AST-842 / AST-843 correctly added bootstrap **schema** ensure (`ensure_all_upsert_registry_schemas_at_startup` before the scheduler), with Susan's original contract: schema only — do not replace data. The ensure handlers and adjacent boot steps still run **content** migrations and seeds on every process start:
+
+- `_ensure_candidate_schema` always runs `_migrate_candidate_data_structure`, `_migrate_pronoun_preference_backfill`, `_migrate_context_arrays_to_text`, `_migrate_candidate_library_ast1014`, and `_legacy_candidate_migrate_conn(..., phases="BC")`. Phase B uses `remap_legacy_candidate_state`, which maps empty/unknown labels (and legacy `NEW` / `PROFILE_READY` / `CONTEXT_READY`) onto `NEW_CANDIDATE`.
+- Non-local boot applies repo JSON via `apply_agent_repo_json_startup` / `apply_agent_task_repo_json_startup` (repo wins; can delete/retire rows absent from files).
+- `sync_agent_tasks` INSERTs blank `current=1` `agent_task` rows for missing `TASK_CONFIG` keys and re-runs grouping metadata seed.
+- Other registry ensures embed further content UPDATEs/INSERTs/DELETEs (`_ensure_agent_schema` model/brain backfills, `_ensure_agent_task_schema` prompt/`run_next`/grouping migrates, `_ensure_job_schema` `source` backfill, `_ensure_dispatch_task_schema` legacy retargets / catalog inserts / orphan deletes, `_ensure_company_search_terms_table` → `_migrate_company_search_terms_from_artifacts`, `_ensure_agent_data_schema` → entity_id backfill).
+
+Boot therefore still mutates operator table content on every deploy/restart, violating the AST-842 schema-only intent and Susan's kill-switch ask.
+
+### Proposed change
+
+Hard kill-switch — **no new config flag** (`SEED_CONFIG` is not executed today; do not invent a boot content switch beside it). Leave functions callable for explicit ops/scripts where they already exist; stop wiring them into automatic boot/ensure.
+
+1. **`src/core/bootstrap.py` — `bootstrap_runtime`**
+   - Keep: `_validate_runtime_coupling()` → `database.ensure_all_upsert_registry_schemas_at_startup()` → `start_scheduler()`.
+   - Remove the calls to `apply_repo_admin_json_at_startup()` and `database.sync_agent_tasks(get_task_keys())` (and drop unused imports).
+   - Update the module docstring order to match.
+
+2. **`src/core/repo_admin_json.py` — `apply_repo_admin_json_at_startup`**
+   - Make the function an unconditional no-op (all deploy envs), logging that boot-time repo JSON apply is disabled. Keep `export_repo_admin_json_to_files` and row loaders intact for operator export / future explicit apply. Do not invent a new seed system.
+
+3. **`src/data/database.py` — `_ensure_candidate_schema`**
+   - Keep CREATE TABLE / ALTER ADD missing columns / `_drop_entity_agent_responses_column`.
+   - Remove ensure-time calls to: `_migrate_candidate_data_structure`, `_migrate_pronoun_preference_backfill`, `_migrate_context_arrays_to_text`, `_migrate_candidate_library_ast1014`, `_legacy_candidate_migrate_conn`.
+   - Leave public `migrate_legacy_candidate_states` (and the migrate helpers themselves) available for **explicit** operator/script use — they must not run as a side effect of schema ensure or boot.
+
+4. **`src/data/database.py` — registry ensure handlers (DDL-only on ensure)**  
+   Keep CREATE / ALTER / structural table rebuilds that only copy existing rows into a new shape. Remove or skip **content** blocks that UPDATE/INSERT/DELETE business values or invent rows when these handlers run (boot via `ensure_all_upsert_registry_schemas_at_startup` **and** lazy first-touch ensure):
+
+   | Handler | Strip / stop on ensure |
+   | -- | -- |
+   | `_ensure_agent_schema` | UPDATE backfills for `model_code` / temperature / max_tokens; `claude-sonnet-4-5`→`4-6` rename; `brain_setting` CASE fill |
+   | `_ensure_agent_task_schema` | Calls to `_apply_ast469_*`, `_apply_ast834_*`, `_apply_ast1113_*`, `_apply_ast723_*`, `_apply_ast561_*`, `_apply_ast738_task_grouping_metadata_seed` (keep v1→versioned structural rebuild + ADD COLUMN) |
+   | `_ensure_job_schema` | `UPDATE job SET source = …` NULL/empty backfill |
+   | `_ensure_dispatch_task_schema` | Post-DDL content: COALESCE default fills; score_floor backfill; legacy task_key/trigger_state/sort_by remaps; companion DELETEs; catalog coverage INSERTs; orphan `task_key NOT IN (SELECT … agent_task)` deletes — keep only CREATE/ALTER/structural rebuild copy |
+   | `_ensure_company_search_terms_table` | Call to `_migrate_company_search_terms_from_artifacts` |
+   | `_ensure_agent_data_schema` | Call to `_backfill_agent_data_entity_id_from_entity_columns` |
+
+   `ensure_all_upsert_registry_schemas_at_startup` itself stays (still the AST-843 entrypoint); it must only exercise DDL-safe ensure bodies after the above. Keep `_apply_agent_responses_table_sunset` (schema drop of retired table).
+
+5. **`src/data/database.py` — `sync_agent_tasks`**
+   - With the bootstrap call removed, boot no longer INSERTs blank `agent_task` rows. Do not re-introduce a boot caller. Leave the function body for any explicit/script use unless a residual in-process caller appears during make-fix (none on current tree besides bootstrap).
+
+6. **`src/utils/config.py`**
+   - No change this pass.
+
+**Documented remaining boot exception (out of this child's file scope):** `start_scheduler()` may still run meteorite / meteorite_email `provision_*_dispatch_tasks` (dispatch_task catalog coverage). Not modified here; if that path alone still mutates operator rows undesirably after this kill-switch, file a follow-up — do not expand into `dispatcher.py` under AST-1497 scope.
+
+### Blast radius
+
+- **AST-842 / AST-843:** Schema-ensure-on-boot remains; content side effects that currently ride inside those ensures are removed — aligns with archived “DO NOT REPLACE DATA, JUST ENSURE SCHEMA.”
+- **AST-782 repo JSON:** Boot apply stops; staging/prod will no longer repo-win `agent` / `agent_task` on every deploy. Export path remains. Operators must apply JSON explicitly later (future seed/ops).
+- **AST-973 legacy candidate migrate:** No longer auto on ensure; explicit `migrate_legacy_candidate_states` still exists for one-shot ops.
+- **AST-745 / dispatch_task:** Ensure-time legacy retargets and auto-inserts stop; deleting operator `dispatch_task` rows must continue to stay deleted across restart (stronger than today for catalog auto-insert paths inside ensure).
+- **Tests / bible:** Existing bootstrap ordering and ensure-idempotency tests that assert content migrates or repo-json/sync steps will need Betty's fix-board / qa-fix attention — engineer does not patch `tests/` or the bible.
+- **Scheduler provision:** Unchanged; see exception above.
+
+### What must still hold
+
+- From AST-842 / AST-843: after restart, registry tables still receive idempotent **schema** ensure before the scheduler starts; already-canonical DBs no-op on DDL; no parallel migration invention outside existing ensure entrypoints.
+- Candidate (and other operator) **content** is not rewritten solely because the process restarted.
+- Runtime paths that intentionally write rows (dispatch claim/release, consult saves, admin UI saves, explicit migration scripts) keep working.
+- No new seed/ops framework; no resurrection of archived AST-842 as a live Linear parent; no edits under `tests/` / `docs/test-bible/**` by the engineer.
+- Citations: `astral.seed.operator-rows-stay-deleted`; `astral.seed.define-approved` (this pass does not define a new seed catalog — it shuts automatic writers off).
+
+## Joan fix-board (AST-1497)
+
+[board-joan]  CANON: REVISE
+What: astral.seed.agent-tables-in-repo-json — boot repo-wins apply disabled — record kill-switch carve-out until explicit ops/seed design
+
+Rationale: Proposed kill-switch aligns with operator-rows-stay-deleted / define-approved / boot-only-not-hot-path, but conflicts with agent-tables-in-repo-json Statement requiring startup repo-wins apply. Gap child owns the carve-out; not ESCALATE.
+
+## Radia review (AST-1497)
+
+[code-rubric] REVIEW (Commit: 10f28324) kill-switch clean; canon/tests discuss — zero fix-now; §3h → User Testing. Test bar on sibling AST-1502.
+
