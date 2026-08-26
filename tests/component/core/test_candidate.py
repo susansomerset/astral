@@ -2662,6 +2662,27 @@ class TestAst1349ExperienceArrayContract:
         assert "Brief Judith **per role**" in advise
         assert "never rewrite company/title/dates/location" in advise
 
+    def test_advise_prompt_coded_resume_brief_contract(self) -> None:
+        import re
+
+        advise = self._current("advise_job_resume").get("user_prompt") or ""
+        assert "One line per advised resume change" in advise
+        assert "[R1], [R2]" in advise
+        assert ' — cite: "' in advise
+        headers = [
+            m.group(1)
+            for m in re.finditer(
+                r"^(RESUME BRIEF|COVER LETTER DIRECTION|ASK CANDIDATE)",
+                advise,
+                re.MULTILINE,
+            )
+        ]
+        assert headers == ["RESUME BRIEF", "COVER LETTER DIRECTION", "ASK CANDIDATE"]
+        cl_i = advise.find("COVER LETTER DIRECTION\n")
+        ask_i = advise.find("ASK CANDIDATE\n")
+        assert cl_i >= 0 and ask_i > cl_i
+        assert "[R1]" not in advise[cl_i:ask_i]
+
     def test_validate_rejects_string_experience_contract_message(self) -> None:
         base = {
             "artifacts": {
@@ -4482,6 +4503,85 @@ class TestAst1270NestedDraftJobResumeContract:
         # AST-1465: retire instructional `•`/`-`/`*` glyph pattern (not every markdown `- ` rule).
         assert "`•`/`-`/`*`" not in draft
         assert "ordered **array of strings**" in draft
+
+
+_AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF
+[R1] Promote cloud migration win — cite: "Led AWS migration"
+[R2] Cut outdated PHP bullet
+
+COVER LETTER DIRECTION
+Ratify thesis with one line of reasoning.
+
+ASK CANDIDATE
+Nothing further.
+"""
+
+
+class TestAst1507AdviseCodedResumeAdvice:
+    """AST-1507: parse/validate coded RESUME BRIEF from advise_job_resume text."""
+
+    def test_parse_returns_coded_items_with_citation(self) -> None:
+        items = candidate_mod.parse_advise_job_resume_coded_advice(_AST1507_VALID_ADVISE_TEXT)
+        assert items == [
+            {
+                "code": "R1",
+                "instruction": "Promote cloud migration win",
+                "citation": "Led AWS migration",
+            },
+            {"code": "R2", "instruction": "Cut outdated PHP bullet", "citation": ""},
+        ]
+
+    def test_validate_accepts_well_formed_section(self) -> None:
+        assert (
+            candidate_mod.validate_advise_job_resume_coded_list(_AST1507_VALID_ADVISE_TEXT)
+            is None
+        )
+
+    def test_validate_rejects_missing_section(self) -> None:
+        err = candidate_mod.validate_advise_job_resume_coded_list("COVER LETTER DIRECTION\nx")
+        assert err == "RESUME BRIEF section missing or incomplete"
+
+    def test_validate_rejects_unparseable_line(self) -> None:
+        text = """RESUME BRIEF
+not a coded line
+COVER LETTER DIRECTION
+x"""
+        err = candidate_mod.validate_advise_job_resume_coded_list(text)
+        assert err and err.startswith("RESUME BRIEF line is not a coded advice item:")
+
+    def test_validate_rejects_duplicate_code(self) -> None:
+        text = """RESUME BRIEF
+[R1] first item
+[R1] duplicate
+COVER LETTER DIRECTION
+x"""
+        err = candidate_mod.validate_advise_job_resume_coded_list(text)
+        assert err == "Duplicate resume advice code: R1"
+
+    def test_validate_rejects_empty_coded_section(self) -> None:
+        text = """RESUME BRIEF
+
+COVER LETTER DIRECTION
+x"""
+        err = candidate_mod.validate_advise_job_resume_coded_list(text)
+        assert err == "RESUME BRIEF must include at least one coded advice item"
+
+    def test_validate_debug_emits_style_d_trail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        assert (
+            candidate_mod.validate_advise_job_resume_coded_list(
+                _AST1507_VALID_ADVISE_TEXT, debug=True
+            )
+            is None
+        )
+        assert idx.call_args.kwargs["func"] == "candidate.validate_advise_job_resume_coded_list"
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert any("found section=RESUME BRIEF item_count=2" in m for m in msgs)
+        assert any("found code=R1 instruction_chars=" in m for m in msgs)
 
 
 class TestAst1272DraftHopDebugWhitelistTrail:
