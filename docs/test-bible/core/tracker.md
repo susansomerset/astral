@@ -353,6 +353,26 @@ Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap
   -q
 ```
 
-**Bible shasum (this pass):** `docs/test-bible/core/tracker.md` → `5a6008858dce0f31fcfb6ed75e30a8bf8d2a412f` (pre-line)
-
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+Extract/save coded advice list under `job_data.artifacts.resume_advice` (sibling metadata — not resume body); `clear_job_build_artifacts` drops slot via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1507. Config slot: **`docs/test-bible/utils/config.md`** § AST-1507. Live hop path: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Extract/save/cancel clear | `src/core/tracker.py` | **`TestAst1507ResumeAdviceMetadataRetention`** |
+
+**Broken / obsolete:** none — `_resume_payload_body` already skips draft metadata keys only; advise is text → artifacts path.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention \
+  -q
+```

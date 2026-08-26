@@ -454,6 +454,20 @@ class TestAst1271DeviationsArtifactConfig:
         assert "deviations" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
 
 
+class TestAst1507ResumeAdviceArtifactConfig:
+    """AST-1507: coded resume_advice slot on advise_job_resume + cancel clear-keys."""
+
+    def test_resume_advice_keys_and_clear_keys(self) -> None:
+        entry = cfg.TASK_CONFIG["advise_job_resume"]
+        assert entry["resume_advice_coded_list"] is True
+        assert entry["resume_advice_artifact_key"] == "resume_advice"
+        assert entry["resume_advice_section_header"] == "RESUME BRIEF"
+        assert entry["resume_advice_section_end_header"] == "COVER LETTER DIRECTION"
+        assert entry["resume_advice_code_prefix"] == "R"
+        assert entry["resume_advice_min_items"] >= 1
+        assert "resume_advice" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+
+
 class TestAst520AnticipateScanTaskKey:
     """AST-520: tenth Phase E key; non-dispatch hop (AST-740: no config phase/seq)."""
 

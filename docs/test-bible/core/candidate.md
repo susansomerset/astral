@@ -1477,3 +1477,44 @@ Config-owned structure `page_break_policy` tokens (`normal` / `page_break_before
 - `docs/test-bible/core/candidate.md`
 - `docs/test-bible/utils/config.md`
 - `docs/test-bible/ui/api/api_candidate.md`
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+Parse/validate coded `[R<n>]` lines from Estelle **text** RESUME BRIEF section (prompt-enforced; metadata only — never resume body). Style D when `debug=True`. Manage Tasks prompt + AST-756 twin: revised **`TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract`**. Config keys: **`docs/test-bible/utils/config.md`** § AST-1507. Persist/cancel: **`docs/test-bible/core/tracker.md`** § AST-1507. `do_task` hooks: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Text parse/validate + Style D | `src/core/candidate.py` | **`TestAst1507AdviseCodedResumeAdvice`** |
+| Coded RESUME BRIEF prompt + fixture twin | `data/admin/agent_task.json` | **`TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract`**, existing **`test_uat_fixture_twin_matches_catalog_after_prompt_edits`** |
+
+**Broken / obsolete:** none — additive advise contract; AST-1270 nest/draft paths unchanged.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Config coded-advice keys + clear slot: `tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig`
+2. Parse/validate/errors + debug trail: `tests/component/core/test_candidate.py::TestAst1507AdviseCodedResumeAdvice`
+3. Coded RESUME BRIEF prompt contract: `tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract`
+4. UAT fixture twin (existing): `tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits`
+5. Tracker extract/persist/cancel clear: `tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention`
+6. `do_task` validate gate + persist hook: `tests/component/core/test_agent.py::TestAst1507DoTaskResumeAdvicePersist`
+
+**AST-1507** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig \
+  tests/component/core/test_candidate.py::TestAst1507AdviseCodedResumeAdvice \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_advise_prompt_coded_resume_brief_contract \
+  tests/component/core/test_candidate.py::TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits \
+  tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention \
+  tests/component/core/test_agent.py::TestAst1507DoTaskResumeAdvicePersist \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.

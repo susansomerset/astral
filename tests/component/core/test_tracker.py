@@ -1269,6 +1269,94 @@ class TestAst1271DeviationsMetadataRetention:
         assert art["analysis_upshot"] == {"summary": "keep"}
 
 
+_AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF
+[R1] Promote cloud migration win — cite: "Led AWS migration"
+[R2] Cut outdated PHP bullet
+
+COVER LETTER DIRECTION
+Ratify thesis with one line of reasoning.
+
+ASK CANDIDATE
+Nothing further.
+"""
+
+
+class TestAst1507ResumeAdviceMetadataRetention:
+    """AST-1507: extract/save resume_advice metadata; cancel clears slot."""
+
+    def test_extract_parses_coded_items_from_text(self) -> None:
+        items = tracker_mod.extract_advise_job_resume_coded_advice(
+            _AST1507_VALID_ADVISE_TEXT
+        )
+        assert items and items[0]["code"] == "R1"
+
+    def test_extract_invalid_text_returns_none(self) -> None:
+        assert tracker_mod.extract_advise_job_resume_coded_advice("no section") is None
+
+    def test_persist_saves_under_artifact_key(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list[dict] = []
+        monkeypatch.setattr(
+            tracker_mod,
+            "save_job_data",
+            lambda jid, payload: saved.append({"jid": jid, **payload}),
+        )
+        items = tracker_mod.persist_advise_job_resume_coded_advice(
+            "job-1507", _AST1507_VALID_ADVISE_TEXT
+        )
+        assert items and len(items) == 2
+        assert saved == [
+            {
+                "jid": "job-1507",
+                "artifacts": {
+                    "resume_advice": [
+                        {
+                            "code": "R1",
+                            "instruction": "Promote cloud migration win",
+                            "citation": "Led AWS migration",
+                        },
+                        {
+                            "code": "R2",
+                            "instruction": "Cut outdated PHP bullet",
+                            "citation": "",
+                        },
+                    ]
+                },
+            }
+        ]
+
+    def test_persist_invalid_text_returns_none(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        saved: list = []
+        monkeypatch.setattr(tracker_mod, "save_job_data", lambda *a, **k: saved.append(1))
+        assert tracker_mod.persist_advise_job_resume_coded_advice("job-1507", "bad") is None
+        assert saved == []
+
+    def test_clear_job_build_artifacts_removes_resume_advice(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        saved: list[tuple[str, dict, bool]] = []
+
+        def _save(jid: str, payload: dict, replace: bool = False) -> None:
+            saved.append((jid, payload, replace))
+
+        monkeypatch.setattr(
+            tracker_mod,
+            "get_job",
+            lambda jid: {
+                "job_data": {
+                    "artifacts": {
+                        "resume_advice": [{"code": "R1", "instruction": "x", "citation": ""}],
+                        "analysis_upshot": {"summary": "keep"},
+                    }
+                }
+            },
+        )
+        monkeypatch.setattr(tracker_mod, "save_job_data", _save)
+        tracker_mod.clear_job_build_artifacts("job-1507")
+        art = saved[0][1]["artifacts"]
+        assert "resume_advice" not in art
+        assert art["analysis_upshot"] == {"summary": "keep"}
+
+
 class TestAst1305JobResumeExtras:
     """AST-1305: job persist keeps base-derived extras; invented keys stay out."""
 
