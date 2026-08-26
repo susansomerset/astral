@@ -180,3 +180,17 @@ GET detail attaches `fields_editable` + `legal_next_states` (empty when not skip
   tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
   -q
 ```
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** — same `view=applied` list branch. **Existing coverage — no new tests.** Full manifest: **`docs/test-bible/frontend/pages.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied view list | `src/ui/api/api_jobs.py` | **`test_list_applied_uses_applied_job_states`**; **`test_list_recommended_and_default`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
