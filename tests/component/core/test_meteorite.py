@@ -232,6 +232,99 @@ class TestAst1042CreateMeteoriteJob:
         assert row["job_link"] == link
         assert row["company_job_id"] is None
 
+    def test_optional_stem_forwards_to_ensure(self, sqlite_in_memory) -> None:
+        db = sqlite_in_memory
+        cid = "cand-stem-create"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+        stem = "alice@example.com"
+        out = meteorite_mod.create_meteorite_job(
+            cid, "<p>" + ("x" * 50) + "</p>", stem=stem
+        )
+        short = METEORITE_CONFIG["stem_short_name_template"].format(
+            stem=stem, candidate_id=cid
+        )
+        assert out["company"] == short
+        assert db.get_job(out["astral_job_id"])["company"] == short
+        assert db.get_company(short)["state"] == "METEORITE"
+
+
+# AST-1495: enrich-first per-row Ruth company_stem → ensure → save attach.
+class TestAst1495LandStemAttach:
+    """AST-1495: land_meteorite stem attach after enrich (no pre-enrich ensure)."""
+
+    @pytest.mark.asyncio
+    async def test_ruth_stem_attaches_stem_keyed_company(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import JOB_SOURCE_METEORITE, METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "somerset"
+        stem = "alice@example.com"
+        short = METEORITE_CONFIG["stem_short_name_template"].format(
+            stem=stem, candidate_id=cid
+        )
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "S"})
+
+        async def _enrich(_cid, scraps, **_k):
+            return {
+                "success": True,
+                "jobs": [{
+                    "company_job_id": "STEMJOB1",
+                    "job_title": "Eng",
+                    "job_link": "",
+                    "jd_text": "d" * 50,
+                    "employer_name": "Acme",
+                    "company_stem": stem,
+                    "scrap_index": 0,
+                }],
+            }
+
+        monkeypatch.setattr(
+            "src.core.consult.enrich_meteorite_land_packet", _enrich
+        )
+        out = await meteorite_mod.land_meteorite(cid, text="z" * 50)
+        assert out["outcome"] == METEORITE_CONFIG["land_outcome_created"]
+        assert out["company"] == short == "alice@example.com-somerset"
+        save = out["outcomes"][0]
+        row = db.get_job(save["astral_job_id"])
+        assert row is not None
+        assert row["company"] == short
+        assert row["source"] == JOB_SOURCE_METEORITE
+        assert db.get_company(short)["state"] == "METEORITE"
+
+    @pytest.mark.asyncio
+    async def test_empty_stem_uses_default_meteorite_bucket(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        from src.utils.config import METEORITE_CONFIG
+
+        db = sqlite_in_memory
+        cid = "cand-default-stem"
+        db.save_candidate(cid, state="NEW_CANDIDATE", candidate_data={"name": "D"})
+        short = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
+
+        async def _enrich(*_a, **_k):
+            return {
+                "success": True,
+                "jobs": [{
+                    "company_job_id": "DEFJOB01",
+                    "job_title": "Role",
+                    "job_link": "",
+                    "jd_text": "e" * 50,
+                    "employer_name": "",
+                    "company_stem": "",
+                    "scrap_index": 0,
+                }],
+            }
+
+        monkeypatch.setattr(
+            "src.core.consult.enrich_meteorite_land_packet", _enrich
+        )
+        out = await meteorite_mod.land_meteorite(cid, text="f" * 50)
+        assert out["company"] == short
+        assert db.get_job(out["outcomes"][0]["astral_job_id"])["company"] == short
+
 
 # Branches: validation errors; enrich fail; create+employer; skip/supersede rollup;
 # Playwright thin-body fetch; Style D; no Gmail imports (AST-1470).
@@ -290,9 +383,8 @@ class TestAst1470LandMeteorite:
         out = await meteorite_mod.land_meteorite(cid, text="x" * 50)
         assert out["outcome"] == METEORITE_CONFIG["land_outcome_error"]
         assert out["error"] == "do_task failed"
-        assert out["company"] == METEORITE_CONFIG["short_name_template"].format(
-            candidate_id=cid
-        )
+        assert out["company"] is None
+        assert out["company_inserted"] is False
 
     @pytest.mark.asyncio
     async def test_create_with_employer_on_meteorite_company(
@@ -460,6 +552,9 @@ class TestAst1470LandMeteorite:
             c.kwargs.get("func") == "meteorite.land_meteorite"
             for c in log.debug_index.call_args_list
         )
+        detail_args = [c.args[0] for c in log.debug_detail.call_args_list]
+        assert any("stem=" in d for d in detail_args)
+        assert any("company=" in d for d in detail_args)
         log.reset_mock()
         await meteorite_mod.land_meteorite(
             cid, text="e" * 50, job_link="https://other.example/j", debug=False

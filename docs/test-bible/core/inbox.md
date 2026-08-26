@@ -149,3 +149,26 @@ From unique hit wins; otherwise To binds only when exactly one remaining address
 ```
 
 **Pass criterion:** pytest green on narrowed args — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+Email create/land paths: `create_meteorite_job_from_inbox_message` → `land_meteorite` (AST-1472); post-land Style D `company={land.get('company')!r}` when `debug=True`. Core land stem attach: **`docs/test-bible/core/meteorite.md`** (**AST-1495**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Create rematch + land + company debug detail | `src/core/inbox.py` | revised **`TestAst1049CreateMeteoriteJobFromInboxMessage`**; revised **`TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses`** |
+
+**Broken / obsolete:** AST-1061 gazer ingest mocks / `mode=body` return shape — revised **AST-1495** to `land_meteorite` + `mode=land_meteorite`.
+
+**Integration:** none revised.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses \
+  -q
+```

@@ -2391,3 +2391,25 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+Read-only **Meteorite** companies list (`CompaniesMeteorite.tsx`): inline columns; fetches `view=meteorite_list`; row click → `CompanyDetailModal`; no bulk actions. API: **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page load + modal (§6c) | `CompaniesMeteorite.tsx` | **`test_CompaniesMeteorite.test.tsx`** |
+| Non-array payload empty state | same | **`test_CompaniesMeteorite.test.tsx`** |
+
+**Broken / obsolete:** none — new page.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
+```
