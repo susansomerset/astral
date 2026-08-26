@@ -135,3 +135,41 @@ Document pass/fail in the Stage 3 Linear completion comment only (no prompt bodi
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree. Startup wire is already gone; remaining work is comparison logic, per-table export, API surface, and config/doc cleanup — fits 5 points with Betty manifest on compare/write/revert invariants.
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1505
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write` @ `b14c091c45a50a4969c535660728f817cccd3c48`
+
+## Traceability
+
+AC1–2 → Stage 2 `export_repo_admin_json_table_to_file` + Stage 3 `POST /repo_json/write/<table_key>` (sibling AST-1506 wires UI); AC3 → N/A this child (cancel is Katherine confirm-only); AC4 → Stage 2 preserves `revert_repo_admin_json_table` + existing revert route; AC5 → Stage 2 removes `apply_repo_admin_json_at_startup` + bootstrap docstring; parent Show Differences → Stage 1 `GET /repo_json/compare/<table_key>` for AST-1506.
+
+## Findings
+
+### discuss
+
+- **Location:** Stage 1 `get_repo_admin_json_table_comparison` / `astral.standards.dry-and-focused-functions`
+- **Finding:** After building `file_rows`/`db_rows` and normalized maps, the stage calls `_repo_admin_json_table_diverged(conn, table_key)`, which reloads file and DB rows again.
+- **Recommendation:** Optional implement-time tweak: derive `diverged` from the maps already built (or pass pre-fetched rows into a narrowed helper) to avoid duplicate I/O. Not blocking — correctness is sound.
+
+- **Location:** Stage 2 / `astral.seed.agent-tables-in-repo-json`
+- **Finding:** Canon statute still documents kill-switch no-op as the conforming boot path; this plan permanently removes `apply_repo_admin_json_at_startup`. Parent AST-1455 and child Boundaries correctly defer statute amendment to Archie.
+- **Recommendation:** Track Archie canon update on parent; do not block build on statute file edit in this child.
+
+- **Location:** Plan structure / R6 self-assessment checklist
+- **Finding:** No `## Self-Assessment` section (Estimate confirm line is present).
+- **Recommendation:** Optional add before build if Ada wants explicit conf/risk flags; not required for approval given detailed stages and hand-verify checklist.
+
+### acceptable
+
+- **Location:** Stage 3 optional `repo_json_revert` guard alignment
+- **Finding:** Plan leaves existing hardcoded `("agent", "agent_task")` tuple on revert unless adjacent one-line change is convenient; new routes correctly use `get_repo_admin_json_table_keys()`.
+- **Recommendation:** Aligning revert in Stage 3 is nice consistency; skipping is fine within child scope.
+
+- **Location:** Betty / `orch.roles.betty-owns-test-tree`
+- **Finding:** Removing `apply_repo_admin_json_at_startup` will break `tests/component/core/test_repo_admin_json.py` until Betty revises manifest in qa-child (plan acknowledges this).
+- **Recommendation:** Expected pipeline — no Ada test edits.
