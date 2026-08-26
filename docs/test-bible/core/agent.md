@@ -574,6 +574,24 @@ Workbench Test success path stringifies the extracted body via **`_caller_respon
   -q
 ```
 
+### AST-1486 · AST-1423
+
+**Scope:** Gap from AST-1486 `[board-betty] TESTS: REVISE` — `store_feedback_block` / FEEDBACK rows stamp `entity_id` when index is known (AST-724/862 only asserted block presence).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Capture path stamps FEEDBACK `entity_id` | `src/core/agent.py` → `store_feedback_block` | `TestAst1486FeedbackEntityIdStamp::test_capture_feedback_block_stamps_entity_id_when_index_known` |
+| Omitted index → null | same | `TestAst1486FeedbackEntityIdStamp::test_capture_feedback_block_entity_id_null_when_index_omitted` |
+| Direct `store_feedback_block` writer | `src/data/database.py` | `TestAst1486FeedbackEntityIdStamp::test_store_feedback_block_stamps_entity_id_when_index_known` |
+
+**AST-1486** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_agent.py::TestAst1486FeedbackEntityIdStamp \
+  -q
+```
+
 ---
 
 ### AST-1005 · AST-994
