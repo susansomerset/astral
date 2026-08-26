@@ -423,3 +423,7 @@ AST-1475 product commit `7fb201ea` landed and passed review on `sub/AST-1462/AST
 - AST-1474/1476 on dev: catalog tokens and structure Save persistence continue to work without modification.
 - Cover-letter `@media print` block untouched.
 - Body HTML emit order and DOM ids (`prior_experience` → `#prior-experience`, `education_certifications` → `#education`) unchanged.
+
+## Review (AST-1487)
+
+Radia review-fix @ f2d3a0d0 — CLEAN, PROCEED. §3h shortcut: no resolve-child; structure print CSS restore matches plan-fix patch; [bug-repro] substantive.
