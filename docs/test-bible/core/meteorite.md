@@ -174,4 +174,3 @@ Stem-keyed `ensure_meteorite_company(stem=)` into **METEORITE**; leave-in-place 
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
 ```
-

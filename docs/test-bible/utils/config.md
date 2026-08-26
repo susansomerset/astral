@@ -3231,3 +3231,25 @@ Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`);
   tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
   -q
 ```
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+`TASK_CONFIG["advise_job_resume"]` coded-advice keys + `resume_advice` in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary parse/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1507. Tracker persist + cancel clear: **`docs/test-bible/core/tracker.md`** § AST-1507. `do_task` validate/persist hooks: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Artifact slot + clear-keys | `src/utils/config.py` | **`TestAst1507ResumeAdviceArtifactConfig`** |
+
+**Broken / obsolete:** none — additive advise metadata slot (AST-1271 deviations mirror).
+
+**Integration:** none — advise hop is component-layer; no existing integration scenario asserts coded resume advice.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig \
+  -q
+```

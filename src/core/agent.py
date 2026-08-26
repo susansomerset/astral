@@ -2830,6 +2830,43 @@ async def do_task(
             parsed = "\n".join(str(item) for item in parsed)
         result["parsed_response"] = parsed
 
+    # AST-1507: validate coded RESUME BRIEF list on advise text response (post-unwrap).
+    if (
+        task_key == "advise_job_resume"
+        and task_config.get("resume_advice_coded_list")
+        and isinstance(parsed, str)
+    ):
+        from src.core.candidate import validate_advise_job_resume_coded_list
+
+        advice_err = validate_advise_job_resume_coded_list(parsed, debug=debug)
+        if advice_err:
+            logger.error("do_task validation failed. task_key=%r error=%s", task_key, advice_err)
+            if log_batch_id.get():
+                flush_log_buffer()
+            if _should_store:
+                try:
+                    _store_response_block(
+                        entity_type,
+                        task_key,
+                        batch_id,
+                        _failure_response_block_data(
+                            index, _validation_failure_audit_body(advice_err, raw_text, parsed)
+                        ),
+                        index=index,
+                        debug=debug,
+                    )
+                except Exception:
+                    logger.debug("_store_response_block failed", exc_info=True)
+            _close_hop_ledger(success=False, clear_log=True, failure_error=str(advice_err))
+            return {
+                "success": False,
+                "api_response": result.get("api_response"),
+                "parsed_response": None,
+                "error": advice_err,
+                "raw_response": parsed,
+                "timesheet": result.get("timesheet", {}),
+            }
+
     output_type = task_config.get("output_type", "")
     if debug and "_encoded" in output_type:
         literal = parsed if isinstance(parsed, str) else raw_text
@@ -3074,6 +3111,26 @@ async def do_task(
         except Exception as persist_err:
             logger.error(
                 "persist_draft_job_resume_deviations failed task=%s index=%s err=%s",
+                task_key,
+                index,
+                persist_err,
+            )
+
+    # AST-1507: persist coded resume advice as job artifact metadata (best-effort after success).
+    if task_key == "advise_job_resume" and result.get("success") and index:
+        try:
+            from src.core.tracker import persist_advise_job_resume_coded_advice
+
+            advice_text = parsed if isinstance(parsed, str) else ""
+            saved_items = persist_advise_job_resume_coded_advice(index, advice_text)
+            if debug and saved_items:
+                art_key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
+                _do_task_debug_logger(debug).debug_detail(
+                    f"recorded artifact_key={art_key} item_count={len(saved_items)}"
+                )
+        except Exception as persist_err:
+            logger.error(
+                "persist_advise_job_resume_coded_advice failed task=%s index=%s err=%s",
                 task_key,
                 index,
                 persist_err,

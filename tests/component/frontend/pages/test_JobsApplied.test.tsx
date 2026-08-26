@@ -64,6 +64,24 @@ describe("JobsApplied — AST-1479 applied list home", () => {
     )
   })
 
+  it("AST-1498 [bug-repro]: candidate_action POST includes candidate_id", async () => {
+    installBaseApiMocks(mockedApi, jobsViewHandler("applied", [appliedJob]))
+    renderWithProviders(<JobsApplied />)
+    await waitFor(() => expect(screen.getByText("Applied Role")).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Interview" }))
+    await waitFor(() => expect(screen.getByRole("heading", { name: "Interview" })).toBeInTheDocument())
+    await userEvent.click(screen.getByRole("button", { name: "Save" }))
+    await waitFor(() =>
+      expect(mockedApi).toHaveBeenCalledWith(
+        "/api/jobs/j-applied-1/candidate_action",
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringMatching(/"candidate_id"\s*:/),
+        }),
+      ),
+    )
+  })
+
   it("failed candidate_action toasts the API error", async () => {
     installBaseApiMocks(mockedApi, (url, init) => {
       if (
