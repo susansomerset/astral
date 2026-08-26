@@ -2690,6 +2690,114 @@ def validate_advise_job_resume_coded_list(full_text: str, *, debug: bool = False
     return None
 
 
+def _draft_advice_adherence_task_cfg() -> dict:
+    return TASK_CONFIG["draft_job_resume"]
+
+
+def _draft_job_resume_envelope(parsed: dict) -> Optional[dict]:
+    if not isinstance(parsed, dict):
+        return None
+    payload = parsed.get("agent_payload")
+    if isinstance(payload, dict):
+        return payload
+    return parsed
+
+
+def normalize_draft_job_resume_advice_adherence(parsed: dict) -> None:
+    """Coerce advice_adherence list on draft payload envelope (AST-1508)."""
+    inner = _draft_job_resume_envelope(parsed)
+    if inner is None:
+        return
+    cfg = _draft_advice_adherence_task_cfg()
+    meta_key = cfg["advice_adherence_artifact_key"]
+    if meta_key not in inner:
+        return
+    raw = inner.get(meta_key)
+    if not isinstance(raw, list):
+        return
+    code_k = cfg["advice_adherence_code_key"]
+    status_k = cfg["advice_adherence_status_key"]
+    note_k = cfg["advice_adherence_note_key"]
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        row = {
+            code_k: str(item.get(code_k) or "").strip(),
+            status_k: str(item.get(status_k) or "").strip(),
+            note_k: str(item.get(note_k) or "").strip(),
+        }
+        out.append(row)
+    inner[meta_key] = out
+
+
+def validate_draft_job_resume_advice_adherence(
+    parsed: dict, expected_codes: list[str], *, debug: bool = False,
+) -> Optional[str]:
+    """Validate per-code advice adherence on draft_job_resume; None when OK."""
+    normalize_draft_job_resume_advice_adherence(parsed)
+    inner = _draft_job_resume_envelope(parsed)
+    cfg = _draft_advice_adherence_task_cfg()
+    meta_key = cfg["advice_adherence_artifact_key"]
+    code_k = cfg["advice_adherence_code_key"]
+    status_k = cfg["advice_adherence_status_key"]
+    note_k = cfg["advice_adherence_note_key"]
+    applied = cfg["advice_adherence_status_applied"]
+    skipped = cfg["advice_adherence_status_skipped"]
+    allowed_status = {applied, skipped}
+
+    if inner is None or meta_key not in inner:
+        return "advice_adherence is required on draft_job_resume"
+    raw = inner.get(meta_key)
+    if not isinstance(raw, list):
+        return "advice_adherence must be a list"
+
+    seen: set[str] = set()
+    returned: set[str] = set()
+    for item in raw:
+        if not isinstance(item, dict):
+            return "advice_adherence items must be objects"
+        code = str(item.get(code_k) or "").strip()
+        status = str(item.get(status_k) or "").strip()
+        note = str(item.get(note_k) or "").strip()
+        if not code:
+            return "advice_adherence item missing code"
+        if code in seen:
+            return f"Duplicate advice adherence code: {code}"
+        seen.add(code)
+        returned.add(code)
+        if status not in allowed_status:
+            return f"Invalid advice adherence status for code {code}"
+        if not note:
+            return f"advice_adherence note required for code {code}"
+
+    expected_set = set(expected_codes)
+    for code in expected_set:
+        if code not in returned:
+            return f"Missing advice adherence for code: {code}"
+    for code in returned:
+        if code not in expected_set:
+            return f"Unknown advice adherence code: {code}"
+
+    if debug and raw:
+        logger.set_debug_flag(debug)
+        logger.debug_index(
+            func="candidate.validate_draft_job_resume_advice_adherence",
+            index=1,
+            total=1,
+            identifier="",
+            outcome="validated",
+        )
+        logger.debug_detail(f"found expected_codes={','.join(expected_codes)}")
+        for row in raw:
+            if isinstance(row, dict):
+                logger.debug_detail(
+                    f"found code={row.get(code_k)} status={row.get(status_k)} "
+                    f"note_chars={len(str(row.get(note_k) or ''))}"
+                )
+    return None
+
+
 def draft_job_resume_allowed_section_keys(candidate_data: dict) -> list[str]:
     """Section keys from artifacts.base_resume (including extras); not ∩ KNOWN."""
     cd = candidate_data if isinstance(candidate_data, dict) else {}
@@ -2770,6 +2878,7 @@ def normalize_draft_job_resume_agent_payload(parsed: dict, *, debug: bool = Fals
             if text:
                 inner[key] = text
     _apply_draft_job_resume_section_aliases(inner)
+    normalize_draft_job_resume_advice_adherence(parsed)
 
 
 def pin_experience_job_facts_from_base(payload: dict, candidate_data: dict) -> None:
