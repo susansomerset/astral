@@ -62,3 +62,7 @@ No product code in this gap (AST-1496 owns the ban). Canon only:
 - Runtime bookkeeping (`last_run_at`, max_runs disable) remains allowed.
 - `SEED_CONFIG` / `METEORITE_DISPATCH_TASKS` may remain in-repo as Linear paste / documentation shapes — statutes must not require deleting those literals, only ban treating them as boot ensure authority for live rows.
 - Sibling product ban AST-1496 (and mini-epic AST-1456 purpose) stay the behavioral source of truth for code.
+
+## Radia review (AST-1501)
+
+PROCEED on de9f11ae — dispatch_task seed carve-out OK. **docs-acceptance:** canon-only gap; no test-tree delivery.
