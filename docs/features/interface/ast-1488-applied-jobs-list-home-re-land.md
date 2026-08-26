@@ -465,3 +465,19 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 [bug-repro] stem NULL linkage + POST `candidate_id` both green post-`code(AST-1498)`.
+
+## Joan validate (fix board)
+
+[board-joan] CANON: OK — repair-on-read linkage fix stays within existing layer law; no statute/pattern update required before make-fix.
+
+## Radia review (review-fix)
+
+[code-rubric]
+**Overall:** PROCEED
+**Publish ref:** `origin/sub/AST-1485/AST-1498-candidate-applied-missing-from-applied-screen` @ `f350306285181e3af00f1707769568a8cabb7cc7`
+
+Applied repair-on-read for stem/meteorite companies with NULL `company.candidate_id`, optional `candidate_id` on `candidate_action`, and `JobsApplied` hydration gate. [bug-repro] tests assert the right symptom. `## What must still hold` intact. Advisory only: Recommended list still omits `candidate_id` on POST (repair-on-read covers this bug scope).
+
+```
+[code-rubric] PROCEED (Commit: f350306285181e3af00f1707769568a8cabb7cc7) stem linkage repair clean
+```
