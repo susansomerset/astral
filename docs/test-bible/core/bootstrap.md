@@ -101,7 +101,7 @@ Board REVISE on AST-1497 (copied to this gap): revise bootstrap order + `TestApp
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Boot order without repo-JSON / sync | `src/core/bootstrap.py` | **`TestBootstrapRuntime::test_runs_validation_schema_ensure_and_scheduler_in_order`** (patches only validate / schema_ensure / scheduler — no setattr on removed boot imports) |
-| Startup apply unconditional no-op | `src/core/repo_admin_json.py` | **`TestApplyRepoAdminJsonAtStartup::test_startup_apply_is_noop_on_all_deploy_envs`** — see **`docs/test-bible/core/repo_admin_json.md`** |
+| Startup apply removed (AST-1505) | `src/core/repo_admin_json.py` | **`TestAst1505RepoAdminJsonCompareAndWrite::test_startup_apply_entry_point_removed`** — see **`docs/test-bible/core/repo_admin_json.md`** § AST-1505 |
 | Ensure leaves live candidate content | `src/data/database.py` (`_ensure_candidate_schema`) | **`TestAst1502EnsureLeavesLiveCandidateContent::test_ensure_candidate_schema_leaves_artifacts_ready_without_content_migrates`** (**[bug-repro]**) — see **`docs/test-bible/data/database/candidates.md`** |
 
 **Broken / obsolete this pass:** `test_runs_validation_sync_and_scheduler_in_order`; `TestApplyRepoAdminJsonAtStartup::test_applies_agent_then_agent_task_on_one_connection` (+ local-only skip as sole no-op case).

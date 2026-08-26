@@ -7945,6 +7945,81 @@ class TestAst1271DoTaskDeviationsPersist:
         persist.assert_not_called()
 
 
+_AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF
+[R1] Promote cloud migration win — cite: "Led AWS migration"
+[R2] Cut outdated PHP bullet
+
+COVER LETTER DIRECTION
+Ratify thesis with one line of reasoning.
+
+ASK CANDIDATE
+Nothing further.
+"""
+
+
+class TestAst1507DoTaskResumeAdvicePersist:
+    """AST-1507: advise_job_resume validates coded RESUME BRIEF and persists metadata."""
+
+    @pytest.mark.asyncio
+    async def test_success_persists_resume_advice(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=[{"code": "R1"}])
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": _AST1507_VALID_ADVISE_TEXT},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1507", ctx={})
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[0] == "job-1507"
+        assert isinstance(persist.call_args.args[1], str)
+        assert "RESUME BRIEF" in persist.call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_validation_failure_does_not_persist_resume_advice(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=None)
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_payload": "RESUME BRIEF\nbad line\nCOVER LETTER DIRECTION\nx"
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1507", ctx={})
+        assert out["success"] is False
+        persist.assert_not_called()
+
+
 class TestAst1293SoftCoerceNumericSchemaStrings:
     """AST-1293: pre-validate int→str soft-coerce on schema-str fields (nested items_schema)."""
 
