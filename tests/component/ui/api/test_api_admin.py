@@ -2301,7 +2301,73 @@ class TestAst783RepoJsonApi:
     ) -> None:
         resp = admin_client.post("/api/admin/repo_json/revert/nope", headers=auth_headers)
         assert resp.status_code == 400
-        assert "agent or agent_task" in resp.get_json()["error"]
+        assert "unknown repo admin JSON table" in resp.get_json()["error"]
+
+    def test_repo_json_compare_returns_structured_diff(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "get_repo_admin_json_table_comparison",
+            lambda key: {
+                "table_key": key,
+                "diverged": True,
+                "repo_relative_path": "data/admin/agent.json",
+                "only_in_database": [],
+                "only_in_file": [],
+                "changed_rows": [{"row_key": "agent_a", "fields": []}],
+            },
+        )
+        resp = admin_client.get("/api/admin/repo_json/compare/agent", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["table_key"] == "agent"
+        assert body["diverged"] is True
+        assert body["changed_rows"][0]["row_key"] == "agent_a"
+
+    def test_repo_json_compare_invalid_table_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str],
+    ) -> None:
+        resp = admin_client.get("/api/admin/repo_json/compare/nope", headers=auth_headers)
+        assert resp.status_code == 400
+        assert "unknown repo admin JSON table" in resp.get_json()["error"]
+
+    def test_repo_json_compare_surfaces_core_errors(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        def _boom(_key: str) -> dict:
+            raise RuntimeError("repo admin JSON missing")
+
+        monkeypatch.setattr(admin_mod, "get_repo_admin_json_table_comparison", _boom)
+        resp = admin_client.get("/api/admin/repo_json/compare/agent", headers=auth_headers)
+        assert resp.status_code == 500
+        assert "missing" in resp.get_json()["error"]
+
+    def test_repo_json_write_success(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        monkeypatch.setattr(
+            admin_mod,
+            "export_repo_admin_json_table_to_file",
+            lambda key: {
+                "table_key": key,
+                "row_count": 6,
+                "repo_relative_path": "data/admin/agent.json",
+            },
+        )
+        resp = admin_client.post("/api/admin/repo_json/write/agent", headers=auth_headers)
+        assert resp.status_code == 200
+        body = resp.get_json()
+        assert body["ok"] is True
+        assert body["table_key"] == "agent"
+        assert body["row_count"] == 6
+
+    def test_repo_json_write_invalid_table_key(
+        self, admin_client: FlaskClient, auth_headers: dict[str, str],
+    ) -> None:
+        resp = admin_client.post("/api/admin/repo_json/write/nope", headers=auth_headers)
+        assert resp.status_code == 400
+        assert "unknown repo admin JSON table" in resp.get_json()["error"]
 
     def test_repo_json_revert_success(
         self, admin_client: FlaskClient, auth_headers: dict[str, str], monkeypatch: pytest.MonkeyPatch,
