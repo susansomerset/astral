@@ -185,3 +185,170 @@ AC1–2 → Stage 2 `export_repo_admin_json_table_to_file` + Stage 3 `POST /repo
 | 3 | `f131f7d4` | `GET/POST /api/admin/repo_json/compare|write/<table_key>`; revert guard via `get_repo_admin_json_table_keys()` |
 
 Hand-verify: `py_compile` on all touched `.py` files; compare `diverged` invariant checked at import time when env available. Full Flask smoke deferred to Betty manifest.
+
+## Radia review
+
+# Radia review — AST-1505
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1505  
+**Publish ref:** `origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write` @ `c49368370d433a775de41f2bd266b69c10723744`  
+**Overall:** DISCUSS  
+**Diff:** `origin/dev...origin/sub/AST-1455/AST-1505-stop-startup-apply-structured-diff-per-table-file-write` — 10 files, +532/−45 (core compare/write + boot-apply removal, admin routes, Betty test manifest merge, plan doc)
+
+---
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | no agent dispatch / confidence paths in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | no do_task changes |
+| astral.agent.grade-vector-validation | scoped | not-applicable | no grade vector changes |
+| astral.batch.batch-id-first | scoped | not-applicable | no batch paths |
+| astral.batch.batch-id-format | scoped | not-applicable | no batch paths |
+| astral.batch.claim-process-release | scoped | not-applicable | no batch paths |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | no batch paths |
+| astral.config.config-source-of-truth | scoped | conforms | `REPO_ADMIN_JSON_CONFIG` comment only; table defs unchanged |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | no secrets/env reads |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | no debug artifacts |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | no debug spikes |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | no dispatch seed paths |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | no run_next changes |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | single child plan doc in diff |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty paths only in tests/test-bible |
+| astral.git.engineer-test-tree-ban | scoped | conforms | test-tree edits via Betty `merge-tests` SHA, not engineer product commits |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | no external layer |
+| astral.layers.import-direction | scoped | conforms | core→data/utils; ui→core/utils; no layer violations |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | no scripts |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | no frontend; API uses config table keys |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | no coat-check paths |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | no consult/render paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | conforms | compare/write routes use `@require_admin` (existing admin pattern) |
+| astral.seed.agent-tables-in-repo-json | scoped | needs-discussion | product removes boot apply entry point; statute still documents kill-switch no-op as conforming |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | no seed catalog changes |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | bootstrap docstring: schema ensure only, no boot JSON apply |
+| astral.seed.define-approved | scoped | not-applicable | no new seed catalog |
+| astral.seed.operator-rows-stay-deleted | scoped | conforms | boot does not re-apply repo JSON; operator DB edits survive restart |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | no coverage join paths |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | no data layer changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | no database.py / migration changes |
+| astral.standards.debug-contract-gated | scoped | not-applicable | no debug logging added |
+| astral.standards.dry-and-focused-functions | scoped | conforms | `_normalized_row_maps` shared; removed dead logger with apply removal |
+| astral.standards.in-scope-only | scoped | conforms | no frontend, no statute files, no sibling-table smuggling |
+| astral.standards.logging-via-utils | scoped | conforms | removed unused `get_logger` import with apply removal |
+| astral.standards.names-not-ticket-ids | scoped | conforms | public helpers named by behavior |
+| astral.standards.no-cross-contamination | scoped | conforms | repo JSON surface only |
+| astral.standards.no-hardcoded-sets | scoped | conforms | routes/revert use `get_repo_admin_json_table_keys()` |
+| astral.standards.public-then-helpers | scoped | conforms | new public helpers precede private maps in module |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | utils change is comment-only |
+| astral.state.core-decides-transitions | scoped | not-applicable | no job/state transitions |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | no job state paths |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | no run chain changes |
+| astral.ui.frontend-file-placement | scoped | not-applicable | no frontend |
+| astral.ui.naming-conventions | scoped | conforms | route names match existing `repo_json_*` pattern |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | no server worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | `merge-tests(AST-1505)` lands Betty manifest at publish tip |
+| orch.git.commit-vocabulary | universal | conforms | stage commits follow vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | sub-branch topology respected |
+| orch.git.ftr-sub-topology | universal | conforms | child on `sub/AST-1455/...` |
+| orch.git.merge-on-checkout | universal | conforms | no checkout violations in diff |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | no forbidden git ops |
+| orch.git.no-dev-agent-branches | universal | conforms | no agent-named branches |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | review on AST-1455 epic worktree |
+| orch.git.three-permanent-branches | universal | conforms | diff vs origin/dev baseline |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | no unresolved product forks |
+| orch.pipeline.plan-is-bible | universal | conforms | Stages 1–3 delivered per plan |
+| orch.pipeline.project-scoped-queues | universal | conforms | scoped child ticket |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | reviewed at Tests Passed |
+| orch.roles.archie-approves-statutes | universal | conforms | statute amendment deferred to parent per Joan/plan |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty owns merged test manifest |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | N/A to code diff |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Ada assignee at Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | no banned-path engineer commits in product stages |
+
+Registry table: 63 active rows scored (README cites 65 corpus; 2 not in harvested table).
+
+---
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| none cited | — | plan / parent cite no catalog patterns |
+
+---
+
+## Plan adherence
+
+Stages 1–3 are implemented on the publish tip:
+
+- **`get_repo_admin_json_table_comparison`** + **`_normalized_row_maps`** — structured diff with empty lists when aligned; field-level `changed_rows` on DB edit (tested).
+- **`export_repo_admin_json_table_to_file`** — writes one table’s JSON only (tested); sibling file untouched.
+- **`apply_repo_admin_json_at_startup`** removed from module and `__all__` (tested).
+- Bootstrap + `REPO_ADMIN_JSON_CONFIG` comments updated to AST-1455 permanent semantics.
+- Admin **`GET /repo_json/compare/<table_key>`** and **`POST /repo_json/write/<table_key>`** — thin wrappers, `@require_admin`, config-driven `table_key` guard, 400/500 handling matching revert pattern.
+- **`repo_json_revert`** guard aligned to `get_repo_admin_json_table_keys()` (plan optional item — done).
+- No `RepoJsonDivergenceBanner.tsx` / frontend scope (AST-1506).
+- Hand-verify Flask smoke deferred to Betty manifest per plan; Betty manifest merged at tip.
+
+**Estimate (5):** footprint matches — core helpers, two routes, doc cleanup, Betty tests; no scope creep.
+
+**Joan:** plan-rubric APPROVED attached; no Excluded statute list in artifact → no straggler callouts.
+
+---
+
+## Findings
+
+### discuss
+
+- **Location:** `astral.seed.agent-tables-in-repo-json` / parent AST-1455 canon track  
+- **Finding:** Statute still lists `apply_repo_admin_json_at_startup` no-op as a conforming kill-switch path. This diff permanently deletes that entry point — correct product behavior per plan, but statute corpus is stale.  
+- **Recommendation:** Track Archie statute amendment on parent AST-1455 (already noted in Joan plan review); do not block this child on canon file edits.
+
+- **Location:** `src/core/repo_admin_json.py` — `get_repo_admin_json_table_comparison` `diverged` field (~line 138)  
+- **Finding:** Plan text specified returning `diverged` from `_repo_admin_json_table_diverged(conn, table_key)`; implementation derives `diverged` from `only_in_*` / `changed_rows`. Joan flagged duplicate I/O as optional optimization — implementation avoids re-read. For normal single-key-per-row data this matches status endpoint logic. Edge case: duplicate row keys in file/DB collapse in `_normalized_row_maps` but still appear in `_sorted_normalized_rows` — `compare.diverged` could disagree with `GET /status` `diverged`.  
+- **Recommendation:** Optional resolve-child tweak: call `_repo_admin_json_table_diverged` with already-fetched rows (narrowed helper) for guaranteed parity with status, or document duplicate-key as invalid input. Not blocking for current two-table catalog.
+
+### advisory
+
+- **Location:** `docs/test-bible/core/bootstrap.md`  
+- **Finding:** Historical § still references AST-1502 kill-switch narrative; AST-1505 section notes supersession but full bootstrap bible sweep not done.  
+- **Recommendation:** Betty or parent close-out can tighten bootstrap bible prose.
+
+- **Location:** `tests/component/core/test_repo_admin_json.py`  
+- **Finding:** Compare tests cover aligned + `changed_rows` paths; no explicit `only_in_file` / `only_in_database` cases.  
+- **Recommendation:** Betty may add if she wants fuller diff-list coverage.
+
+- **Location:** `tests/component/ui/api/test_api_admin.py`  
+- **Finding:** Write route success + 400 covered; no 500 surfacing test for write (compare has 500 test).  
+- **Recommendation:** Optional Betty addition.
+
+---
+
+## What’s solid
+
+- Thin admin API layer: validate table key from config → delegate to core → consistent error JSON.
+- Per-table file write isolation tested (`task_path` stays `["unchanged"]` when exporting `agent`).
+- Dead boot-apply stub and unused logger removed cleanly.
+- Revert route hardcoded tuple replaced — consistent with new routes.
+- Betty manifest at tip exercises compare invariant, export isolation, route wiring, and apply removal.
+
+---
+
+## Frame diff
+
+`(none)` — diff matches planned scope: core compare/write + boot-apply removal, admin routes, config/bootstrap comments, Betty test manifest, plan doc. No frontend (AST-1506), no `data/admin/**` edits, no `database.py` changes.
+
+---
+
+## Notes
+
+- Joan plan-rubric verdict attached (APPROVED @ `b14c091c`).
+- No plan Excluded statutes → no straggler rows.
+- C7 artifact complete for Chuckles writeback.
+
+`context_tokens≈95000`
+
+---
+
