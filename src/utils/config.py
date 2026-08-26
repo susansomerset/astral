@@ -1168,6 +1168,7 @@ COMPANY_STATES = {
     "TO_WATCH": {"batch_criteria": {"limit": 10, "sort_by": "updated_at"}},
     "WATCH": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
     "IGNORE": {},
+    "METEORITE": {},  # AST-1493: roster-inert meteorite placeholders (stem-keyed); no batch_criteria
     "PREFILTER_UNKNOWN": {},
     "HARD_PARSE": {},
     "NO_OPENINGS": {"batch_criteria": {"limit": 10, "sort_by": "last_scan_at", "scan_interval_hours": 24}},
@@ -2468,7 +2469,8 @@ assert JOB_SOURCE_METEORITE in JOB_SOURCES
 
 # ---------------------------------------------------------------------------
 # METEORITE_CONFIG: per-candidate placeholder employer (AST-1034 / AST-1041).
-# Lazy-ensure inserts meteorite-<candidate_id> on demand — never bulk at server start.
+# Lazy-ensure inserts on demand — never bulk at server start.
+# AST-1493: company_state METEORITE + stem-keyed short_names ({stem}-{candidate_id}).
 # Job-create defaults (METEORITE_NEW + score) are consumed by create_meteorite_job
 # (AST-1042 / AST-1056); literals stay config-owned (parent Architectural definition).
 # AST-1469: land outcomes, source, dedupe match order, employer_name job_data key.
@@ -2476,8 +2478,11 @@ assert JOB_SOURCE_METEORITE in JOB_SOURCES
 METEORITE_CONFIG = {
     "short_name_prefix": "meteorite-",
     "short_name_template": "meteorite-{candidate_id}",  # format with candidate_id=
+    "stem_short_name_template": "{stem}-{candidate_id}",  # format with stem=, candidate_id=
+    "default_stem": "meteorite",  # Slack/Contact / callers that omit stem
+    "meteorite_self_stem": "meteorite-self",  # literal Ruth may return (AST-1494)
     "company_name": "meteorite",
-    "company_state": "IGNORE",
+    "company_state": "METEORITE",
     "company_data": {
         "note": (
             "The company for this job has not been identified, and cannot be "
@@ -2499,6 +2504,15 @@ METEORITE_CONFIG = {
 }
 
 assert METEORITE_CONFIG["company_state"] in COMPANY_STATES
+assert METEORITE_CONFIG["stem_short_name_template"].format(
+    stem=METEORITE_CONFIG["default_stem"],
+    candidate_id="{candidate_id}",
+) == METEORITE_CONFIG["short_name_template"]
+assert isinstance(METEORITE_CONFIG["meteorite_self_stem"], str) and METEORITE_CONFIG["meteorite_self_stem"]
+assert METEORITE_CONFIG["meteorite_self_stem"] == "meteorite-self"
+assert isinstance(METEORITE_CONFIG["default_stem"], str) and METEORITE_CONFIG["default_stem"]
+assert "METEORITE" in COMPANY_STATES
+assert COMPANY_STATES["METEORITE"] == {}
 assert METEORITE_CONFIG["job_create_state"] in JOB_STATES
 assert METEORITE_CONFIG["job_source"] == JOB_SOURCE_METEORITE
 assert METEORITE_CONFIG["dedupe_match_order"] == ("company_job_id", "job_link")
