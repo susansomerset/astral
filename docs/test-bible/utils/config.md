@@ -3153,3 +3153,17 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
   tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
   -q
 ```
+
+### AST-1488 · AST-1485
+
+**Parent:** [AST-1485 — Enable Applied job list in nav](https://linear.app/astralcareermatch/issue/AST-1485). **Publish:** `origin/sub/AST-1485/AST-1488-applied-jobs-list-home-re-land`.
+
+**Re-land of AST-1479** — same `APPLIED_JOB_STATES` + Applied nav enablement. **Existing coverage — no new tests.** Full manifest: **`docs/test-bible/frontend/pages.md`** § AST-1488.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied state set + nav | `src/utils/config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
