@@ -1203,13 +1203,13 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-973. **`CANDIDA
 
 **Parent:** [AST-1034 — Support meteorite jobs](https://linear.app/astralcareermatch/issue/AST-1034/support-meteorite-jobs). **Publish:** `origin/sub/AST-1034/AST-1041-meteorite-company-config-lazy-ensure`.
 
-`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, company state **METEORITE** after **AST-1493** (was IGNORE), unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
+`METEORITE_CONFIG` seed template after `JOB_STATES`: `meteorite-{candidate_id}` shape, **IGNORE**, unidentified-employer note, plus AST-1042 job-create defaults (landing state + score; landing retargeted **METEORITE_NEW** in **AST-1056**). Ensure path: **`docs/test-bible/core/meteorite.md`**. Claim exclusion: **`docs/test-bible/data/database/companies.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Template keys + company_state/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing **AST-1056**; company_state **AST-1493**) |
+| Template keys + IGNORE/`job_create_state` registry asserts + prefix/template shape | `src/utils/config.py` | **`TestAst1041MeteoriteConfig`** (landing assert revised **AST-1056**) |
 
-**Broken / obsolete:** AST-1041 `company_state == "IGNORE"` — revised **AST-1493**.
+**Broken / obsolete:** none — additive config block.
 
 **Integration:** no existing scenario asserts METEORITE_CONFIG — no revision.
 
@@ -3167,27 +3167,3 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 **Broken / obsolete:** none.
 
 **Integration:** none.
-
-### AST-1493 · AST-1484
-
-**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`.
-
-`COMPANY_STATES["METEORITE"] = {}` (roster-inert); `METEORITE_CONFIG["company_state"]` → **METEORITE**; stem template keys (`stem_short_name_template` / `default_stem` / `meteorite_self_stem`). Ensure/track: **`docs/test-bible/core/meteorite.md`** (**AST-1493**).
-
-| Area | Source | Component tests |
-| --- | --- | --- |
-| METEORITE state + stem template asserts | `src/utils/config.py` | **`TestAst1493MeteoriteCompanyStateConfig`**; revised **`TestAst1041MeteoriteConfig`** |
-
-**Broken / obsolete:** AST-1041 `company_state == "IGNORE"`.
-
-**Integration:** none.
-
-```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
-  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
-  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
-  tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack \
-  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
-  -q
-```

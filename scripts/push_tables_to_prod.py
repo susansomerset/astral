@@ -3,7 +3,7 @@
 Push selected config tables from the local SQLite DB to production (merge, not full replace).
 
 Reads local rows, then POSTs them to the deployed app, which applies the same upsert rules as
-src.data.database (dispatch_task by natural key preserving prod id on update;
+src.data.database (dispatch_task BANNED (AST-1496);
 agent_task / candidate INSERT OR REPLACE).
 
 Requires:
@@ -15,7 +15,7 @@ Deploy the version of Astral that includes POST /api/admin/data/upsert_config_ta
 
 Usage:
     python3 scripts/push_tables_to_prod.py
-    python3 scripts/push_tables_to_prod.py dispatch_task agent_task
+    python3 scripts/push_tables_to_prod.py agent_task candidate
     python3 scripts/push_tables_to_prod.py --dry-run
 """
 
@@ -75,6 +75,17 @@ def _post_json(path: str, payload: dict, timeout: int = 180) -> dict:
         raise RuntimeError(f"HTTP {e.code} {url}: {detail}") from e
 
 
+def _refuse_dispatch_task(names: list[str]) -> None:
+    """AST-1496: never push/upsert live dispatch_task rows."""
+    if "dispatch_task" in names:
+        print(
+            "ERROR: dispatch_task is banned from this script (AST-1496). "
+            "Curated schedule rows must not be overwritten; use Linear SQL for Susan.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+
 def push_table(conn: sqlite3.Connection, table: str, dry_run: bool) -> str:
     cols = table_columns(conn, table)
     rows = [list(r) for r in conn.execute(f"SELECT * FROM {table}").fetchall()]
@@ -105,16 +116,17 @@ def main() -> None:
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args()
 
-    if not PROD_URL:
-        print("ERROR: ASTRAL_PROD_URL is not set (checked env and .env).", file=sys.stderr)
-        sys.exit(1)
-
     names = [t.strip() for t in args.tables if t.strip()]
     if not names:
         names = sorted(ALLOWED_CONFIG_TABLES)
+    _refuse_dispatch_task(names)
     bad = [t for t in names if t not in ALLOWED_CONFIG_TABLES]
     if bad:
         print(f"ERROR: unsupported table(s): {bad}. Allowed: {sorted(ALLOWED_CONFIG_TABLES)}", file=sys.stderr)
+        sys.exit(1)
+
+    if not PROD_URL:
+        print("ERROR: ASTRAL_PROD_URL is not set (checked env and .env).", file=sys.stderr)
         sys.exit(1)
 
     if not LOCAL_DB.exists():

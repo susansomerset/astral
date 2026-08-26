@@ -214,10 +214,10 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Ensure GDL + twin skip/insert; provision; scheduler hook | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (counts/trigger + retire revised **AST-1060**) |
+| Ensure GDL + twin skip/insert; provision helpers | `src/core/dispatcher.py` | **`TestAst1054MeteoriteDispatchProvision`** (counts/trigger + retire revised **AST-1060**; scheduler hook flipped **AST-1500**) |
 | Stage scheduler stub | `src/core/dispatcher.py` | revised **`TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision`** (stubs meteorite provision) |
 
-**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB; insert-count / evaluate_jd@METEORITE_NEW asserts revised by **AST-1060**.
+**Broken / obsolete:** AST-972 start_scheduler test — stub `provision_meteorite_dispatch_tasks` so the new try-path does not hit live DB; insert-count / evaluate_jd@METEORITE_NEW asserts revised by **AST-1060**. **AST-1500:** `test_start_scheduler_invokes_meteorite_provision` → `test_start_scheduler_does_not_invoke_meteorite_provision` (ban auto writers).
 
 **Integration:** none.
 
@@ -271,7 +271,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Ensure add/skip; missing config; provision wrapper; scheduler hook | `src/core/dispatcher.py` | **`TestAst1088GazeEmailDispatchProvision`** |
-| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised **`TestAst972…::test_start_scheduler_invokes_stage_provision`**, **`TestAst1054…::test_start_scheduler_invokes_meteorite_provision`** (stub gaze provision) |
+| Stage / meteorite scheduler stubs | `src/core/dispatcher.py` | revised **`TestAst972…::test_start_scheduler_invokes_stage_provision`**, **`TestAst1054…::test_start_scheduler_does_not_invoke_meteorite_provision`** (**AST-1500** ban) |
 
 **Broken / obsolete:** start_scheduler unit helpers must stub `provision_gaze_email_dispatch_task` so the new try-path does not hit live DB.
 
@@ -280,7 +280,7 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_dispatcher.py::TestAst1088GazeEmailDispatchProvision \
-  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_invokes_meteorite_provision \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_does_not_invoke_meteorite_provision \
   tests/component/core/test_dispatcher.py::TestAst972CandidateStageDispatch::test_start_scheduler_invokes_stage_provision \
   -q
 ```
@@ -437,3 +437,28 @@ Primary manifest: **`docs/test-bible/core/candidate.md`** § AST-972 / **AST-125
   -q
 ```
 
+### AST-1500 · AST-1456
+
+**Parent:** [AST-1456 — Do not overwrite dispatch_task](https://linear.app/astralcareermatch/issue/AST-1456). **Publish:** `origin/sub/AST-1456/AST-1500-gap-dispatcher-provision-tests`. Gap child for AST-1496 board REVISE.
+
+Ban automatic `dispatch_task` writers on scheduler start; script hard-fail on `dispatch_task`. Product ban lands on sibling **AST-1496**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| start_scheduler no meteorite / fetch_email provision | `src/core/dispatcher.py` | revised **`TestAst1054…::test_start_scheduler_does_not_invoke_meteorite_provision`** |
+| start_scheduler no meteorite_email provision | same | revised **`TestAst1134…::test_start_scheduler_does_not_invoke_gaze_provision`** (ex-AST-1088) |
+| push/upsert CLI hard-fail | `scripts/push_tables_to_prod.py`, `scripts/upsert_tables_from_prod.py` | **`TestAst1500DispatchTaskScriptBan`** |
+| ensure content migrations left alone | `src/data/database.py` | revised **`TestAst703…::test_schema_leaves_dual_prefilter_rows_unchanged`** — see **`docs/test-bible/data/database/dispatch_tasks.md`** |
+
+**Broken / obsolete:** `test_start_scheduler_invokes_meteorite_provision`, `test_start_scheduler_invokes_gaze_provision`; TestAst703 HOMEPAGE_READY migration assert.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_dispatcher.py::TestAst1054MeteoriteDispatchProvision::test_start_scheduler_does_not_invoke_meteorite_provision \
+  tests/component/core/test_dispatcher.py::TestAst1134MeteoriteEmailDispatchProvision::test_start_scheduler_does_not_invoke_gaze_provision \
+  tests/component/scripts/test_ast1500_dispatch_task_script_ban.py::TestAst1500DispatchTaskScriptBan \
+  tests/component/data/database/test_dispatch_tasks.py::TestAst703PrefilterMigrationUniqueCollision \
+  -q
+```

@@ -379,3 +379,237 @@ context_tokens≈38000
 
 - **fix-now:** none — Radia overall CLEAN.
 - **discuss / advisory:** none.
+
+## Bug: AST-1499 — Fix cover letter content edit hydrate on job details
+
+Orphaned-bug mini-parent **AST-1491** (fresh `ftr` off `origin/dev`). Ancestor plan above (AST-1116 field defs + hydrate normalize) stays; this block is the fix delta only. Do not re-parent under AST-1116.
+
+### As-is
+
+On the job details (JAR) Cover Letter artifact tabs, Subject / Letter / Signature open as empty text blocks, so the operator cannot see or edit the letter. Print Cover Letter for the same job still renders letter content.
+
+### To-be
+
+Opening Cover Letter content on the job details page shows the same letter body Print uses (Subject / Letter / Signature populated from the job's cover-letter artifact after display hydrate), and the operator can edit and Save those fields. Print still renders after the hydrate/edit path.
+
+### Repro
+
+Fixture-shaped (no SQL seed — file/JSON persistence):
+
+1. Job with `job_data.artifacts.cover_letter` set to a finalize pin string whose `agent_data` RESPONSE body is a cover hop payload Print accepts (nonempty `re_line`/`body` or `Subject`/`Letter` after the same field map Print uses) — **or** the live UAT job Susan used when filing AST-1491.
+2. Confirm Print Cover Letter for that job returns HTML with visible letter body (not the "No cover letter content" error).
+3. `GET /api/jobs/<astral_job_id>` and inspect `job_data.artifacts.cover_letter` after `hydrate_job_artifacts_for_display`.
+4. Open JAR → Cover Letter artifact tabs (`shapes_key=cover_letter` / `ArtifactEditor` + `jobPersistence`).
+
+**Broken observation (any one):** hydrated value is still a pin **string**, or a dict whose `Subject`/`Letter`/`signature` are all `""`, while Print still shows a letter. Editor tabs bind empty placeholders.
+
+**Passing observation after fix:** hydrated `cover_letter` is `{"Subject": "<nonempty or empty>", "Letter": "<nonempty>", "signature": "..."}` with at least one nonempty body field matching Print's letter; tabs show that text; Save PUT round-trips the spine; Print still works.
+
+### Root cause
+
+JAR Cover Letter tabs bind only a **dict** of Subject / Letter / signature from `GET /api/jobs` after `hydrate_job_artifacts_for_display`. Print does **not** use that overlay — `builder._resolve_cover_letter` re-reads on-disk `artifacts.cover_letter` (nonempty dict → pin resolve via `resolve_job_artifact_agent_data_body` → else candidate `context.raw_sample`).
+
+Two gaps leave the editor empty while Print still renders:
+
+1. **Pin string / empty spine on the GET overlay.** After AST-1480, `ArtifactEditor.mapFixedFieldsFromRaw` rejects non-object pin strings (avoids garbage). If hydrate leaves the pin string (resolve miss) or installs `normalize_cover_letter_artifact(...)` → all-empty Subject/Letter/signature (unconditional normalize on any dict, including blank or alias-mismatched hop bodies), the tabs stay empty placeholders.
+2. **Divergent read rules vs Print.** Hydrate pin-resolves then always normalizes a dict; it does not share Print's `_cover_letter_nonempty` / `_cover_letter_fields_for_read` gate, does not unwrap a nested cover hop body the way `job_resume` uses `_resume_payload_body`, and must not overwrite a usable pin with an empty normalized dict (`coat-check-never-store-empty` on the display overlay). Print can still emit HTML from a successful pin read or from `raw_sample` for the same job.
+
+AST-1116 already added `DATA_SHAPES...cover_letter` and flat normalize-after-pin; this bug is the remaining hydrate↔Print↔editor contract hole, not missing field defs.
+
+### Proposed change
+
+Implement only inside Explicit scope (tracker primary; FE / api_jobs / builder only if the step-0 probe says so).
+
+**0. Probe (make-fix, before editing product code)** — on a job that Prints a letter, compare:
+- on-disk `artifacts.cover_letter` (pin string vs dict),
+- `hydrate_job_artifacts_for_display(...)` result,
+- what `_resolve_cover_letter` returns (and whether source is pin/dict vs `raw_sample`).
+
+Branch on the probe (do not guess):
+
+| Probe result | Fix path |
+|--------------|----------|
+| Pin/dict has printable fields but hydrate overlay is pin string or all-empty Subject/Letter | **A — tracker hydrate** (default) |
+| Hydrate overlay already nonempty Subject/Letter/signature but tabs still empty | **B — ArtifactEditor** mapping only |
+| Detail skips / drops hydrate for the cover slot | **C — api_jobs.detail** attach only |
+| Print letter is **only** `raw_sample` (job slot empty/unusable) | **Stop / `[scope-gate]`** — do **not** silently copy sample onto the job artifact overlay without Susan; AC text says job cover-letter artifact. Comment `[scope-gate]` naming the sample-only finding. |
+
+**A — `src/core/tracker.py` (expected happy path)**
+
+1. Add a focused public helper used by hydrate (name e.g. `cover_letter_artifact_for_display(raw) -> Optional[Dict[str, str]]`):
+   - If `raw` is a nonempty pin string: `body = resolve_job_artifact_agent_data_body(raw)`; if not a `dict`, return `None` (leave pin in place — no empty overwrite).
+   - If `raw` / `body` is a `dict`: if top-level normalize would be all-empty, try **one** nested unwrap when a single nested dict carries cover keys (`Subject`/`re_line`/`Letter`/`body`/`signature`) — same intent as job_resume `_resume_payload_body`, cover-shaped only; do not invent new key names.
+   - `normalized = normalize_cover_letter_artifact(...)`.
+   - Return `normalized` only if any of `Subject` / `Letter` / `signature` is nonempty; else `None`.
+2. In `hydrate_job_artifacts_for_display`, **replace** the current unconditional block:
+   ```python
+   cover = out.get("cover_letter")
+   if isinstance(cover, dict):
+       out["cover_letter"] = normalize_cover_letter_artifact(cover)
+   ```
+   with: after the pin-key loop, `display = cover_letter_artifact_for_display(out.get("cover_letter"))`; if `display is not None`, set `out["cover_letter"] = display`; if `None`, do **not** replace a pin string with an empty Subject/Letter/signature dict.
+3. Optional DRY (in scope): extract shared nonempty field map with `builder._cover_letter_fields_for_read` / `_cover_letter_nonempty` so Print and hydrate cannot drift — builder keeps emit `re_line`/`body`; hydrate still exposes Subject/Letter/signature via `normalize_cover_letter_artifact`. Do **not** change print CSS / Somerset emit layout unless required for the shared read helper.
+
+**B — `src/ui/frontend/src/components/ArtifactEditor.tsx` (only if probe says API is already good)**
+
+- In `applyJobArtifactResponse` / `mapFixedFieldsFromRaw` for `shapesKey` cover / `jobPersistence.artifactKey === "cover_letter"`: bind Subject/Letter/signature from the hydrated dict (accept `re_line`→Subject and `body`→Letter only if server normalize was skipped). Do not re-introduce pin-string-as-tab-content.
+
+**C — `src/ui/api/api_jobs.py` (only if probe says detail mishandles attach)**
+
+- Keep calling `hydrate_job_artifacts_for_display` and attaching `job_data.artifacts`; fix only a missed call / wrong artifacts source — no new persistence.
+
+**Out of scope:** print HTML/CSS redesign; resume structure-mode behavior except shared hydrate consistency; writing empty cover dicts; replacing pin-on-job with full cover JSON as the stored pin; new plan doc; `tests/` / bible (Betty).
+
+### Blast radius
+
+- **GET `/api/jobs/<id>`** overlay shape for `artifacts.cover_letter` (JAR ArtifactEditor + any other consumer of hydrated job detail).
+- **Print** if shared read helper is extracted from `builder._resolve_cover_letter` / `_cover_letter_fields_for_read` — emit keys must remain `re_line`/`body`/`signature` for Somerset map.
+- **Save PUT** `/api/jobs/.../artifacts/cover_letter` — still expects Subject/Letter/signature spine (`save_job_artifact_cover_letter` / normalize on write); hydrate must not force empty overlays that operators then Save over a good pin.
+- **Siblings / contracts:** AST-1099 pin write, AST-1100 pin→body resolve, AST-1116 field defs + flat normalize — must still hold; pin stays id on disk.
+- **FE:** AST-1480 pin-string reject remains; cover tabs rely on nonempty hydrated dict.
+- **Tests:** AST-1116 hydrate normalize + AST-1100 pin suites; Betty may extend for nested/empty-overwrite cases after Plan Ready board.
+
+### What must still hold
+
+- Pin-on-job: `job_data.artifacts.cover_letter` on disk remains the RESPONSE `agent_data_id` string after finalize (AST-1099); hydrate is overlay-only — no `save_job_data` from hydrate.
+- Pin→body resolve entry (`resolve_job_artifact_agent_data_body`) unchanged in contract (AST-1100).
+- `DATA_SHAPES.candidates.detail.cover_letter` Subject / Letter / signature field defs remain; tab keeps `shapes_key: "cover_letter"` (AST-1116).
+- Never store / overlay an all-empty cover dict in place of a usable pin (`astral.patterns.coat-check-never-store-empty`).
+- Print Cover Letter still renders for jobs that printed before the fix.
+- Operator Save still persists Subject/Letter/signature and reload shows saved values.
+- No change to resume structure-mode editing or unrelated JAR tabs beyond cover_letter fixed fields.
+
+## Radia review (AST-1499)
+
+Clean review. Product hydrate fix; [bug-repro] / docs-acceptance for tests lives on sibling AST-1504.
+
+[code-rubric] revision=2
+**Rubric:** code-rubric.v2
+**Ticket:** AST-1499
+**Publish ref:** `origin/sub/AST-1491/AST-1499-fix-cover-letter-content-edit-hydrate` @ `435cd11ac21a4e92cfcd3c85177f22a315a59819`
+**Diff base:** `origin/ftr/AST-1491-cover-letter-content-does-not-appear-for-editing...origin/sub/AST-1491/AST-1499-fix-cover-letter-content-edit-hydrate`
+**Overall:** CLEAN
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | conforms | No agent confidence / grading changes in `tracker.py` hydrate path |
+| astral.agent.do-task-delegation | scoped | conforms | No AI delegation; display hydrate only |
+| astral.agent.grade-vector-validation | scoped | conforms | No grade-vector logic touched |
+| astral.batch.batch-id-first | scoped | conforms | No batch claim API signature changes |
+| astral.batch.batch-id-format | scoped | conforms | No batch_id formatting |
+| astral.batch.claim-process-release | scoped | conforms | No claim/process/release lifecycle edits |
+| astral.batch.entity-agent-responses-latest-only | scoped | conforms | Pin string on disk unchanged; overlay-only hydrate |
+| astral.config.config-source-of-truth | scoped | conforms | No new field defs or config drift; reuses existing normalize/resolve |
+| astral.config.secrets-and-env-specific-from-environ | scoped | conforms | No secrets or env reads added |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No `artifacts/**` path in diff |
+| astral.debug.spikes-under-debug-dir | scoped | conforms | Plan-fix patch in existing feature doc, not a spike |
+| astral.dispatch.run-next-is-chain-authority | scoped | conforms | No dispatch chain edits |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | Diff paths exclude `dispatcher.py` / `config.py` seed targets |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Bug patch appended to existing `ast-1116-cover-letter-field-defs.md` |
+| astral.git.betty-no-src-or-features | scoped | not-applicable | Betty role path-ban; engineer product commit |
+| astral.git.engineer-test-tree-ban | scoped | conforms | No `tests/` or test-bible paths in diff |
+| astral.idioms.coat-check-never-store-empty | scoped | conforms | `cover_letter_artifact_for_display` returns `None` on empty; hydrate never overlays all-empty Subject/Letter/signature |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | conforms | No consult/render_verdict changes |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No `src/ui/**` in diff |
+| astral.layers.core-vs-external-bright-line | scoped | conforms | Core-only change; no external I/O introduced |
+| astral.layers.import-direction | scoped | conforms | No layer violations; reuses in-module resolve/normalize |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No `scripts/**` in diff |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | Diff layers `{core, docs}` — no `ui` layer |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | `tracker.py` not in seed path list |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No dispatcher/config/admin seed paths |
+| astral.seed.boot-only-not-hot-path | scoped | conforms | Hydrate helper is display hot-path overlay, not boot/seed |
+| astral.seed.define-approved | scoped | conforms | Fix implementation only; not a define ticket |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No dispatcher/data seed paths |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No dispatcher/data seed paths |
+| astral.standards.data-raises-caller-logs | scoped | conforms | No new data-layer exception swallowing |
+| astral.standards.database-header-inventory | scoped | not-applicable | No `src/data/**` in diff |
+| astral.standards.debug-contract-gated | scoped | conforms | `debug` kwarg forwarded to resolve helper |
+| astral.standards.dry-and-focused-functions | scoped | conforms | Reuses `normalize_cover_letter_artifact` / `resolve_job_artifact_agent_data_body`; focused public helper |
+| astral.standards.in-scope-only | scoped | conforms | Path A tracker hydrate only; no FE/api_jobs/builder edits |
+| astral.standards.logging-via-utils | scoped | conforms | No ad-hoc logging; existing debug_detail contract |
+| astral.standards.names-not-ticket-ids | scoped | conforms | Domain names in API; ticket id only in AST comment |
+| astral.standards.no-cross-contamination | scoped | conforms | Cover-letter hydrate scoped; resume/proposed_answers paths untouched |
+| astral.standards.no-hardcoded-sets | scoped | conforms | `_COVER_LETTER_FIELD_KEYS` mirrors existing alias set (Subject/re_line/Letter/body/signature) |
+| astral.standards.public-then-helpers | scoped | conforms | `cover_letter_artifact_for_display` public; `_cover_letter_*` helpers private |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No `src/utils/**` in diff |
+| astral.state.core-decides-transitions | scoped | conforms | No state transition logic |
+| astral.state.job-prior-states-enforced | scoped | conforms | No job state machine edits |
+| astral.state.no-daisy-chain-in-run | scoped | conforms | No dispatch-run daisy-chain |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No `src/ui/frontend/**` in diff |
+| astral.ui.naming-conventions | scoped | not-applicable | No `src/ui/**` in diff |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No ui/scripts worker config in diff |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single product commit on sub; test gap routed to sibling |
+| orch.git.commit-vocabulary | universal | conforms | `code(AST-1499): …` vocabulary |
+| orch.git.flow-direction-inviolable | universal | conforms | Forward on `origin/sub/...` stacked on ftr |
+| orch.git.ftr-sub-topology | universal | conforms | `sub/AST-1491/AST-1499-…` on live mini-parent ftr |
+| orch.git.merge-on-checkout | universal | conforms | No illegal merge recipe in ticket commits |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | None observed |
+| orch.git.no-dev-agent-branches | universal | conforms | Standard sub branch only |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Reviewed in `astral-AST-1491` |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No scope-gate / raw_sample copy; path A only |
+| orch.pipeline.plan-is-bible | universal | conforms | Implementation matches plan-fix Path A |
+| orch.pipeline.project-scoped-queues | universal | conforms | Single-ticket fix-lane review |
+| orch.pipeline.status-gates-skill-entry | universal | conforms | Entered from Tests Passed per spawn prompt |
+| orch.roles.archie-approves-statutes | universal | conforms | No `canon/statutes/**` edits |
+| orch.roles.betty-owns-test-tree | universal | conforms | Engineer did not commit tests; Betty REVISE → AST-1504 |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Katherine assignee |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Katherine through Tests Passed |
+| orch.roles.pre-commit-path-bans | universal | conforms | No role-path-ban violations in diff |
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| astral.patterns.coat-check-never-store-empty | conforms | Cited in plan-fix `## What must still hold`; behavior delivered via `astral.idioms.coat-check-never-store-empty` (idiom supersedes retired pattern catalog entry) |
+
+## Plan adherence
+
+Path **A — tracker hydrate** implemented as proposed. `cover_letter_artifact_for_display` pin-resolves, optionally unwraps one nested hop envelope (`agent_payload` / `cover_letter` / single ambiguous nested dict), normalizes to Subject/Letter/signature, and returns `None` when all fields empty. `hydrate_job_artifacts_for_display` skips cover in the generic pin loop and applies the helper only when nonempty — fixing the AST-1116 unconditional normalize that installed empty tabs while Print still rendered. Optional DRY with `builder._cover_letter_fields_for_read` explicitly deferred (plan marked optional). Paths B/C correctly not taken. No `save_job_data` from hydrate. `builder._resolve_cover_letter` / print emit untouched.
+
+**C6 judgment aids (§5a–§5g):** imports/layers clean; `None` return is explicit contract not silent failure; debug forwarded; no UI/config/batch/external concerns in diff.
+
+**C4 stragglers:** `no plan-rubric verdict attached` — not a block.
+
+## Fix-specific checks
+
+**[bug-repro]:** not applicable — `[board-betty] TESTS: REVISE` routed repro to sibling **AST-1504**; no `[bug-repro]` expected on this ticket per board opt-out design.
+
+**`## What must still hold`:** OK
+
+| hold item | verdict |
+|-----------|---------|
+| Pin-on-job disk string; hydrate overlay-only, no `save_job_data` | OK — helper/hydrate read-only |
+| `resolve_job_artifact_agent_data_body` contract unchanged | OK — called, not modified |
+| AST-1116 DATA_SHAPES / `shapes_key: cover_letter` | OK — no shape or FE edits |
+| Never overlay all-empty dict over usable pin | OK — core fix |
+| Print still renders pre-fix jobs | OK — builder print path not in diff |
+| Operator Save round-trip | OK — `save_job_artifact_cover_letter` unchanged |
+| No resume structure-mode / unrelated JAR tab changes | OK — cover slot only |
+
+## Findings
+
+- **fix-now:** none
+- **discuss:** none
+- **advisory:** Plan-fix prose still cites retired pattern id `astral.patterns.coat-check-never-store-empty`; idiom statute is the live check. Optional DRY with builder read helpers left for a follow-up if Print/hydrate drift becomes a concern.
+
+## What's solid
+
+Surgical fix at the right layer: one public helper, pin-loop skip prevents double-resolve, nonempty gate closes the hydrate↔editor gap without touching disk pins or print emit. Existing AST-1116 hydrate tests remain compatible (nonempty pin/dict paths unchanged).
+
+## Frame diff
+
+(none)
+
+## Chuckles branching
+
+| Gate | Parent shape | Next action |
+|------|--------------|-------------|
+| **PROCEED** (clean, C7 complete) | Normal (AST-1491 ftr live) | → **Review Posted** → `do-all-the-things` §3h clean-review shortcut → **User Testing** directly (`resolve-child` skipped) |
+
+
+## Bug: AST-1504 — cover letter hydrate display gap tests
+
+Test-gap sibling of AST-1499. Betty board REVISE: hydrate empty-overwrite / nested unwrap / pin leave-on-miss uncovered. qa-fix + strengthen landed \`[bug-repro]\`; product carve-out is AST-1499. This child is test-only (docs-acceptance).
