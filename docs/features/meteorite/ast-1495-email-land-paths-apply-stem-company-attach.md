@@ -164,6 +164,22 @@ Re-run `sync-child.sh` after merges; stop if conflicts need Chuckles.
 
 Confirm Chuckles estimate: 5 — agree
 
+## Review (build stub)
+
+**Publish ref:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`
+**Plan path:** `docs/features/meteorite/ast-1495-email-land-paths-apply-stem-company-attach.md`
+
+**Built tip:** `a49319ffb4af6ce024838b21f62632a596e67a00` (`a49319ff`)
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| merge | `94ca7657` | stack AST-1493 + AST-1494 dependency merges |
+| 1 | `625acfa7` | `land_meteorite` per-row stem ensure+attach; `create_meteorite_job` optional `stem=` |
+| 2 | `787ad5c2` | inbox debug `company=` on email land paths |
+| 3 | `a49319ff` | METEORITE companies API view, nav, read-only list page |
+
+**Betty note:** component tests for land stem attach, inbox debug, meteorite_list API deferred to qa-child.
+
 ## Joan validate
 
 [plan-rubric]
