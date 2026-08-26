@@ -3116,3 +3116,40 @@ Five named `TOKEN_SOURCES` rows (`GET_RUBRIC`, `DO_RUBRIC`, `LIKE_RUBRIC`, `JD_R
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1474 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`.
+
+`RESUME_STRUCTURE_PAGE_BREAK_*` tokens / labels / default / per-known-id map; every `RESUME_STRUCTURE_DEFAULT` section carries `page_break_policy: avoid_split` (incl. `prior_experience`). Normalize / GET catalog: **`docs/test-bible/core/candidate.md`** § AST-1474.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Page-break catalog literals | `src/utils/config.py` | **`TestAst1474PageBreakPolicyCatalog`** |
+
+**Broken / obsolete this pass:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1474PageBreakPolicyCatalog \
+  -q
+```
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+**`APPLIED_JOB_STATES`** (four post-applied outcomes) + Jobs → Applied nav item enabled (no `enabled: False`). API/page: **`docs/test-bible/ui/api/api_jobs.md`** / **`docs/test-bible/frontend/pages.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied state set + nav | `src/utils/config.py` | **`TestAst1479AppliedJobStatesAndNav`** |
+
+**Broken / obsolete:** none — additive constant + nav enable.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+```

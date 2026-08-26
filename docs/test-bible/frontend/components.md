@@ -994,3 +994,172 @@ cd src/ui/frontend && npm run test:component -- \
 ```
 
 **Pass criterion:** Vitest green on the NavigationShell file (AST-1450 + existing shell cases) — not zero-arg harness / branch-lock gate.
+
+---
+
+---
+
+### AST-1477 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1477-mark-applied-from-recommended-list`.
+
+Recommended list rows in legal `CANDIDATE_APPLIED` priors (`RECOMMENDED` / `BUILD_ARTIFACTS` / `CANDIDATE_REVIEW`) show an Applied `icon-control` (`A`) that calls `onAction("applied")`. Notes modal + `POST …/candidate_action` + list refresh already wired on `JobsRecommended` via `useCandidateJobActions`. `PASSED_LIKE` stays Skip-only (not a prior). Report Applied/Skip and Applied list home are siblings.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Applied icon on legal priors; hide on `PASSED_LIKE` / no `onAction` | `CandidateJobRowActions.tsx` | **`test_CandidateJobRowActions.test.tsx`** — **`CandidateJobRowActions — AST-1477 Applied mark`** |
+| Routed Recommended mark-applied (**§6c**) | `JobsRecommended.tsx` | **`test_JobsRecommended.test.tsx`** — **`AST-1477 mark applied from Recommended`** (icon present; notes → `candidate_action` applied → row gone; 409 toast) |
+
+**Broken / obsolete:** none — additive Applied control; existing Skip / AST-1302 / AST-1410 asserts still hold.
+
+**Integration:** no existing scenario asserts Recommended list Applied mark — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. Row Applied icon-control: `tests/component/frontend/components/test_CandidateJobRowActions.test.tsx` — `--testNamePattern="AST-1477"`
+2. Recommended list Applied path (**§6c**): `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1477"`
+3. Regression (same files): **AST-1302** icon-control + **AST-1410** silent Skip refetch — do **not** use bare `Skip` in the Vitest pattern (it also matches sibling **AST-1478** report Skip/Applied cases in the same page file)
+
+**AST-1477** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_CandidateJobRowActions.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1477|AST-1302|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+---
+
+### AST-1478 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip`.
+
+Job Analysis Report gains labeled **Skip** (`.btn.secondary`) and **Applied** (`.btn.primary`) when parent passes `onSkip` / `onRequestApplied`. No parallel POSTs in the modal — Recommended wires shared `skipJob` / `requestAction(..., "applied")`. CLIENT job-link **Apply** stays absent. Page close-when-job-leaves-list: **`docs/test-bible/frontend/pages.md`** § AST-1478.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Callback strip; omit when no callbacks; no `window.open` / **Apply** | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`JobAnalysisReportModal — AST-1478 Applied and Skip`** |
+
+**Broken / obsolete:** none — additive strip; AST-948 sticky-header **no Apply** (exact name) still holds. List-row Applied is sibling **AST-1477**.
+
+**Integration:** no existing scenario asserts report Applied/Skip — no revision. Do not invent new integration coverage.
+
+## QA test manifest
+
+1. JAR labeled Skip/Applied + callback / no job_link: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1478"`
+2. Recommended page wiring (**§6c**): `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — `--testNamePattern="AST-1478"` (see **pages.md**)
+3. Regression: sticky header / open-report / AST-1410 Skip in the same files
+
+**AST-1478** narrowed run (Vitest — from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1478|sticky header|opens the report|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1454 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
+
+When GET `fields_editable` is true: Info title/link inputs, state `<select>` from `legal_next_states` (+ No change), always-on Job Description textarea (empty JD ok), Modal Save → `PUT /api/jobs/<id>` + `onRefresh`. Non-editable stays display-only (no Save / no empty JD tab). Copy / Skip This Job unchanged. Persist: **AST-1453** / **`docs/test-bible/ui/api/api_jobs.md`**. Page `onRefresh={load}`: **`docs/test-bible/frontend/pages.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Editors + Save + empty JD + locked | `JobDetailModal.tsx` | **`test_JobDetailModal.test.tsx`** — **`JobDetailModal — AST-1454 skipped-field editors`** |
+
+**Broken / obsolete:** none — additive; AST-1421 Copy + Skip suites still hold.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Job Detail editors / Save / locked / 409: `tests/component/frontend/components/test_JobDetailModal.test.tsx` — pattern **`AST-1454`**
+2. Routed Skipped + In Review `onRefresh` after Save (**§6c**): `test_JobsSkipped.test.tsx` + `test_JobsInReview.test.tsx` — **`AST-1454`**
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  --testNamePattern="AST-1454|loads job details|AST-1421"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1476 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462/create-and-position-page-break). **Publish:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`.
+
+Catalog-driven page-break `<select>` on structure authoring headers (`aria-label="Page break"`); content Save and **Save sections** always include `page_break_policy`. Base page Save sections: **`docs/test-bible/frontend/pages.md`** § AST-1476. Schema/print: **AST-1474** / **AST-1475**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Dropdown + content Save + Save sections | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1476:`**; revised **AST-1382** fixture (catalog/rows carry policy) |
+| JAR Job Resume Save sections → candidate | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1476:`** |
+
+**Broken / obsolete this pass:** AST-1382 structure fixture lacked `page_break_*` catalog/row fields — extended so content Save still bundles structure (now with policy).
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. ArtifactEditor dropdown + Saves: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1476"`
+2. JAR structure Save: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1476"`
+3. Base Resume Content (**§6c**): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1476|AST-1306"`
+4. Regression: AST-1382 structure Save still bundles format: same ArtifactEditor file — `--testNamePattern="AST-1382"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1382|AST-1306"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1480 · AST-1459
+
+**Parent:** [AST-1459 — Resume editor is not working properly](https://linear.app/astralcareermatch/issue/AST-1459/resume-editor-is-not-working-properly). **Publish:** `origin/sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop`.
+
+Restores structure-mode section **body** load → edit → Save on shared `ArtifactEditor` (Base Resume Content + JAR Job Resume). Product: chrome vs body editability split (`tabChromeEditable` / `bodiesEditable` — rubric free-form + structure/shapes/job fixed tabs; never during Generate review), stable `fixedFieldKeys` so label-only structure header churn does not re-GET / wipe tabs, dict coerce rejects pin strings, `job_resume` GET overlays empty/pin with `resume_content` sibling. Stage 2 skipped (ArtifactEditor-only) — §6c routed-page rule N/A.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Label-churn keeps body + Save | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1480: structure title rename keeps hydrated body and Save still works`** |
+| JAR `job_resume` overlay | same | **`AST-1480: job_resume pin overlays resume_content sibling bodies`** |
+| bodiesEditable / chrome off | same | **`AST-1480: structure mode bodies stay editable; tab chrome stays off`** |
+| Rubric free-form body edit PUT | same | **`AST-1480: rubric free-form body edit PUTs edited content`** (Radia fix-now / resolve) |
+| Regression structure + jobPersistence | same | existing structureSections load; **AST-553** job `resume_content` Save; **AST-1410** Cancel |
+
+**Broken / obsolete this pass:** none — additive repro coverage for failure modes (A)/(B) from Code Complete; queue-C return adds rubric `bodiesEditable` lock after resolve.
+
+**Integration:** none — frontend-only; do not invent new integration coverage.
+
+## QA test manifest
+
+1. ArtifactEditor AST-1480 repro + chrome/body + rubric free-form: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1480"`
+2. Regression structure hydrate + job Save + Cancel: same file — `--testNamePattern="job persistence mode loads|AST-1410"`
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  --testNamePattern="AST-1480|job persistence mode loads|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+

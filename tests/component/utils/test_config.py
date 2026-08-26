@@ -3888,45 +3888,35 @@ class TestAst1084EvaluateJdCriteria:
         assert "Gut Check — is this even plausible for this candidate?" in gc["content"]
 
 
-# Branches: GAZE_EMAIL_CONFIG + gaze_email TASK_CONFIG shell + admin defaults
-# (AST-1088 null shell; AST-1134 candidate-bound — no dispatch_ledger_candidate_id).
+# Branches: METEORITE_EMAIL_MAILBOX_CONFIG (AST-1467 rehome of AST-1088/1134 gaze shell).
 @pytest.mark.skipif(
-    not hasattr(cfg, "GAZE_EMAIL_CONFIG"),
-    reason="AST-1088 GAZE_EMAIL_CONFIG not on this publish tip",
+    not hasattr(cfg, "METEORITE_EMAIL_MAILBOX_CONFIG"),
+    reason="AST-1466 METEORITE_EMAIL_MAILBOX_CONFIG not on this publish tip",
 )
 class TestAst1088GazeEmailConfig:
-    """AST-1134: candidate-bound gaze_email shell (null entity/trigger; bound via row cid)."""
+    """AST-1467: mailbox shell literals live on METEORITE_EMAIL_MAILBOX_CONFIG; gaze gone."""
 
     def test_gaze_email_config_and_task_shell(self) -> None:
-        g = cfg.GAZE_EMAIL_CONFIG
-        assert g["task_key"] == "gaze_email"
+        assert not hasattr(cfg, "GAZE_EMAIL_CONFIG")
+        assert "gaze_email" not in cfg.TASK_CONFIG
+        g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
+        assert g["task_key"] == "meteorite_email"
         assert g["account_address"] == "astral.career.match@gmail.com"
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
-        # AST-1098: seed law CLICK (was True on AST-1088 tip).
         assert g["auto_mode"] is False
         assert g["min_count"] == 1
         assert g["batch_size"] == 1
         assert g["freq_hrs"] == 0.1
         assert g["entity_type"] is None
         assert g["trigger_state"] is None
-        # AST-1134: ledger placeholder retired — row candidate_id is authority.
         assert "dispatch_ledger_candidate_id" not in g
 
-        tc = cfg.TASK_CONFIG["gaze_email"]
-        assert tc["entity_type"] is None
-        assert tc["requires_candidate_key"] is False
-        assert tc["trigger_state"] is None
-        assert "agent_task" not in tc
-        assert "response_schema" not in tc
-
     def test_admin_defaults_null_claim_queue(self) -> None:
-        d = cfg.dispatch_task_admin_defaults("gaze_email")
-        assert d == {
-            "entity_type": None,
-            "trigger_state": None,
-            "sort_by": None,
-            "batch_call_mode": 0,
-        }
+        # Mailbox admin defaults via meteorite fold / is_meteorite_email_mailbox_task_key.
+        d = cfg.dispatch_task_admin_defaults("meteorite_email")
+        assert d["entity_type"] is None
+        assert d["trigger_state"] is None
+        assert d["batch_call_mode"] == 0
 
     def test_not_company_batch_or_retired(self) -> None:
         assert "gaze_email" not in cfg._DISPATCH_COMPANY_ENTITY_TASK_KEYS
@@ -3935,14 +3925,14 @@ class TestAst1088GazeEmailConfig:
         assert all(e["task_key"] != "gaze_email" for e in cfg.METEORITE_DISPATCH_TASKS)
 
 
-# Branches: gaze_email seed CLICK + catalog seed locks (AST-1098).
+# Branches: meteorite mailbox seed CLICK + catalog seed locks (AST-1098 / AST-1467).
 @pytest.mark.skipif(
-    getattr(cfg, "GAZE_EMAIL_CONFIG", {}).get("auto_mode") is not False,
-    reason="AST-1098 GAZE_EMAIL_CONFIG auto_mode CLICK not on this publish tip",
+    getattr(cfg, "METEORITE_EMAIL_MAILBOX_CONFIG", {}).get("auto_mode") is not False,
+    reason="AST-1098 METEORITE_EMAIL_MAILBOX_CONFIG auto_mode CLICK not on this publish tip",
 )
 class TestAst1098GazeEmailSeedClick:
     def test_gaze_and_catalog_seeds_are_click(self) -> None:
-        assert cfg.GAZE_EMAIL_CONFIG["auto_mode"] is False
+        assert cfg.METEORITE_EMAIL_MAILBOX_CONFIG["auto_mode"] is False
         assert all(not bool(e.get("auto_mode")) for e in cfg.METEORITE_DISPATCH_TASKS)
         assert all(
             not bool(e.get("auto_mode"))
@@ -3967,39 +3957,36 @@ class TestAst1098GazeEmailSeedClick:
         assert "AST-1098" in harvest
 
 
-# Branches: GAZE_EMAIL_CONFIG runner literals (AST-1090).
+# Branches: METEORITE_EMAIL_MAILBOX_CONFIG runner literals (AST-1090 / AST-1467).
 @pytest.mark.skipif(
-    "subject_url_schemes" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
-    reason="AST-1090 GAZE_EMAIL_CONFIG runner keys not on this publish tip",
+    "subject_url_schemes" not in getattr(cfg, "METEORITE_EMAIL_MAILBOX_CONFIG", {}),
+    reason="AST-1090 METEORITE_EMAIL_MAILBOX_CONFIG runner keys not on this publish tip",
 )
 class TestAst1090GazeEmailRunnerConfig:
     def test_runner_literals(self) -> None:
-        g = cfg.GAZE_EMAIL_CONFIG
+        g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
         assert set(g["subject_url_schemes"]) == {"http", "https"}
-        assert g["debug_func"] == "gaze_email.run"
-        # AST-1134: dispatch_ledger_candidate_id removed (bound row cid).
+        assert g["debug_func"] == "meteorite_email.run"
         assert "dispatch_ledger_candidate_id" not in g
-        # Shell keys from AST-1088 remain.
-        assert g["task_key"] == "gaze_email"
+        assert g["task_key"] == "meteorite_email"
         assert isinstance(g["unbound_retention_days"], int) and g["unbound_retention_days"] > 0
 
 
-# Branches: selected-ids Style D func + skip outcome vocabulary (AST-1140).
+# Branches: selected-ids Style D func + skip outcome vocabulary (AST-1140 / AST-1467).
 @pytest.mark.skipif(
-    "debug_func_selected" not in getattr(cfg, "GAZE_EMAIL_CONFIG", {}),
-    reason="AST-1140 selected-ids GAZE_EMAIL_CONFIG keys not on this publish tip",
+    "debug_func_selected" not in getattr(cfg, "METEORITE_EMAIL_MAILBOX_CONFIG", {}),
+    reason="AST-1140 selected-ids METEORITE_EMAIL_MAILBOX_CONFIG keys not on this publish tip",
 )
 class TestAst1140GazeEmailSelectedConfig:
-    """AST-1140: Land Meteorite selected-ids literals on GAZE_EMAIL_CONFIG (no parallel block)."""
+    """AST-1140 / AST-1467: Land Meteorite selected-ids literals on mailbox config."""
 
     def test_selected_ids_debug_and_skip_outcomes(self) -> None:
-        g = cfg.GAZE_EMAIL_CONFIG
-        assert g["debug_func_selected"] == "gaze_email.selected_ids"
+        g = cfg.METEORITE_EMAIL_MAILBOX_CONFIG
+        assert g["debug_func_selected"] == "meteorite_email.selected_ids"
         assert g["selected_outcome_skipped_unbound"] == "skipped-unbound"
         assert g["selected_outcome_skipped_not_in_inbox"] == "skipped-not-in-inbox"
         assert g["selected_outcome_skipped_unmatched"] == "skipped-unmatched"
-        # Dispatcher Style D func unchanged.
-        assert g["debug_func"] == "gaze_email.run"
+        assert g["debug_func"] == "meteorite_email.run"
 
 
 # Branches: METEORITE_EMAIL_PARSE_CONFIG + meteorite_email TASK_CONFIG (AST-1089; key AST-1212).
@@ -4166,7 +4153,7 @@ class TestAst1106AlwaysVisibleUnderAvailGt0:
         keys = cfg.admin_always_visible_under_avail_gt0_dispatch_task_keys()
         assert isinstance(keys, frozenset)
         assert keys == frozenset()
-        assert cfg.GAZE_EMAIL_CONFIG["task_key"] not in keys
+        assert "gaze_email" not in keys
         raw = cfg.ADMIN_CONFIG.get("always_visible_under_avail_gt0_dispatch_task_keys") or ()
         assert tuple(raw) == ()
 
@@ -4829,6 +4816,31 @@ class TestAst1306ResumeStructureCatalog:
         assert cfg.RESUME_STRUCTURE_NEW_EXTRA_DEFAULT_FORMAT in cfg.RESUME_STRUCTURE_BODY_FORMATS
 
 
+class TestAst1474PageBreakPolicyCatalog:
+    """AST-1474: structure page-break tokens + keep-together defaults (print CSS = sibling)."""
+
+    def test_tokens_labels_default_and_every_known_section(self) -> None:
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICIES == (
+            "normal",
+            "page_break_before",
+            "avoid_split",
+        )
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT == "avoid_split"
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_LABELS == {
+            "normal": "Flow uninterrupted",
+            "page_break_before": "New page before",
+            "avoid_split": "Keep block together",
+        }
+        # Keep-together for every known id — including prior_experience (no forced break).
+        assert cfg.RESUME_STRUCTURE_PAGE_BREAK_DEFAULT_BY_ID == {
+            sid: "avoid_split" for sid in cfg.RESUME_STRUCTURE_KNOWN_SECTION_IDS
+        }
+        sections = cfg.RESUME_STRUCTURE_DEFAULT["sections"]
+        for sid, spec in sections.items():
+            assert spec["page_break_policy"] is cfg.RESUME_STRUCTURE_PAGE_BREAK_POLICY_DEFAULT
+        assert sections["prior_experience"]["page_break_policy"] == "avoid_split"
+
+
 class TestAst1305ResumeStructureExtraDefault:
     """AST-1305: extras default to bullet_list (same RESUME_STRUCTURE_* family)."""
 
@@ -4844,7 +4856,7 @@ class TestAst1313InboxBindConfig:
     def test_header_order_and_inbox_address_alias(self) -> None:
         bind = cfg.INBOX_BIND_CONFIG
         assert bind["header_order"] == ("from", "to")
-        assert bind["inbox_address"] == cfg.GAZE_EMAIL_CONFIG["account_address"]
+        assert bind["inbox_address"] == cfg.METEORITE_EMAIL_MAILBOX_CONFIG["account_address"]
         assert isinstance(bind["inbox_address"], str)
         assert "@" in bind["inbox_address"]
 
@@ -5023,3 +5035,22 @@ class TestAst1386ThreeSegmentAdminNav:
             group = next(g for g in cfg.NAV_CONFIG if g.get("label") == name)
             assert not group.get("admin_only")
 
+
+
+class TestAst1479AppliedJobStatesAndNav:
+    """AST-1479: APPLIED_JOB_STATES + Jobs → Applied nav enabled."""
+
+    def test_applied_job_states_membership(self) -> None:
+        assert cfg.APPLIED_JOB_STATES == [
+            "CANDIDATE_APPLIED",
+            "CANDIDATE_INTERVIEW",
+            "CANDIDATE_REJECTED",
+            "CANDIDATE_GHOSTED",
+        ]
+        assert all(s in cfg.JOB_STATES for s in cfg.APPLIED_JOB_STATES)
+
+    def test_jobs_applied_nav_enabled(self) -> None:
+        jobs = next(g for g in cfg.NAV_CONFIG if g.get("label") == "Jobs")
+        applied = next(it for it in jobs["items"] if it.get("path") == "/jobs/applied")
+        assert applied.get("label") == "Applied"
+        assert applied.get("enabled") is not False

@@ -1,27 +1,32 @@
 """
-Inbox read orchestration for Meteorite seed (AST-1032).
+Inbox read orchestration + fetch_email → land_meteorite (AST-1472).
 
-Thin core wrapper over src.external.gmail list/get. No persistence, no admin HTTP.
+Thin core wrapper over src.external.gmail list/get. No gaze_email.
 AST-1033 owns the Read email admin surface and calls these functions.
 AST-1047 / AST-1313: From-then-To → candidate_match enrichment on list payloads.
-AST-1049: strip/extract + Create orchestration.
-AST-1061: Create routes through gazer email ingest (Playwright + dedupe) → multi create.
+AST-1049 / AST-1472: strip/extract + create/land via land_meteorite (not gazer ingest).
 """
 
 from __future__ import annotations
 
+import asyncio
 import html as html_module
 from email.utils import getaddresses, parseaddr
-from typing import Dict
+from typing import Any, Dict, List, Optional
 
 from src.core.candidate import get_candidate_id_for_query
-from src.core.gazer import ingest_meteorite_jobs_from_email_html_sync
 from src.external.gmail import (
     GmailMessageHtml,
     get_message_html as external_get_message_html,
     list_inbox_messages as external_list_inbox_messages,
 )
-from src.utils.config import INBOX_BIND_CONFIG, INBOX_CREATE_JOB_CONFIG, METEORITE_CONFIG
+from src.utils.config import (
+    FETCH_EMAIL_CONFIG,
+    INBOX_BIND_CONFIG,
+    INBOX_CREATE_JOB_CONFIG,
+    METEORITE_CONFIG,
+    METEORITE_EMAIL_MAILBOX_CONFIG,
+)
 from src.utils.formatting import normalize_pasted_list_email_html
 from src.utils.logging import get_logger, truncate_debug_content
 
@@ -210,12 +215,220 @@ def strip_extract_email_html(subject: str, html_body: str) -> str:
     )
 
 
+async def _land_bound_inbox_message(
+    message_id: str,
+    candidate_id: str,
+    *,
+    debug: bool = False,
+) -> dict:
+    """Fetch + strip one bound message, then land_meteorite (AST-1472)."""
+    mid = (message_id or "").strip()
+    cid = (candidate_id or "").strip()
+    err_key = METEORITE_CONFIG["land_outcome_error"]
+    dbg_func = FETCH_EMAIL_CONFIG.get("debug_func") or "inbox.land_bound_message"
+
+    payload = get_message_html(mid)
+    subject = payload.get("subject") or ""
+    raw_html = payload.get("html_body") or ""
+    html = strip_extract_email_html(subject, raw_html)
+    if not html.strip():
+        if debug:
+            logger.set_debug_flag(True)
+            logger.debug_index(
+                func=dbg_func,
+                index=1,
+                total=1,
+                identifier=mid[:80],
+                outcome=err_key,
+            )
+            logger.debug_detail(f"message_id={mid[:80]}")
+            logger.debug_detail(f"astral_candidate_id={cid}")
+            logger.debug_detail("html_len=0")
+        return {
+            "outcome": err_key,
+            "error": "stripped email HTML is empty",
+            "outcomes": [],
+            "company": None,
+            "company_inserted": False,
+        }
+
+    from src.core.meteorite import land_meteorite
+
+    land = await land_meteorite(cid, text=html, debug=debug)
+    if debug:
+        logger.set_debug_flag(True)
+        logger.debug_index(
+            func=dbg_func,
+            index=1,
+            total=1,
+            identifier=mid[:80],
+            outcome=str(land.get("outcome") or err_key),
+        )
+        logger.debug_detail(f"message_id={mid[:80]}")
+        logger.debug_detail(f"astral_candidate_id={cid}")
+        logger.debug_detail(f"html_len={len(html)}")
+    return land
+
+
+async def run_fetch_email(
+    task: Optional[dict] = None,
+    *,
+    debug: bool = False,
+) -> dict:
+    """Null-candidate fetch_email shell: list → bind → land matched (AST-1472)."""
+    _ = task  # shell row — no entity claim queue
+    if debug:
+        logger.set_debug_flag(True)
+
+    messages = list_inbox_messages(debug=debug)
+    created_k = METEORITE_CONFIG["land_outcome_created"]
+    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
+    super_k = METEORITE_CONFIG["land_outcome_superseded"]
+    err_k = METEORITE_CONFIG["land_outcome_error"]
+
+    total_processed = total_passed = total_failed = total_errors = 0
+    n = len(messages)
+    dbg_func = FETCH_EMAIL_CONFIG.get("debug_func") or "inbox.fetch_email"
+
+    for i, msg in enumerate(messages, start=1):
+        mid = (msg.get("id") or "").strip()
+        match = msg.get("candidate_match") or {}
+        cid = str(match.get("astral_candidate_id") or "").strip()
+        if debug:
+            logger.debug_index(
+                func=dbg_func,
+                index=i,
+                total=n,
+                identifier=mid[:80] or "?",
+                outcome="found",
+            )
+        if not match.get("matched") or not cid:
+            total_processed += 1
+            total_passed += 1
+            if debug:
+                logger.debug_index(
+                    func=dbg_func,
+                    index=i,
+                    total=n,
+                    identifier=mid[:80] or "?",
+                    outcome="skipped-unbound",
+                )
+            continue
+
+        land = await _land_bound_inbox_message(mid, cid, debug=debug)
+        outcome = land.get("outcome") or err_k
+        total_processed += 1
+        if outcome in (created_k, skip_k, super_k):
+            total_passed += 1
+        elif outcome == err_k:
+            total_failed += 1
+            if land.get("error"):
+                total_errors += 1
+        else:
+            total_failed += 1
+
+    return {
+        "total_processed": total_processed,
+        "total_passed": total_passed,
+        "total_failed": total_failed,
+        "total_errors": total_errors,
+    }
+
+
+async def land_inbox_message_ids(
+    message_ids: list[str],
+    *,
+    debug: bool = False,
+) -> dict:
+    """Admin Land Meteorite: selected inbox ids → land_meteorite (AST-1472)."""
+    if debug:
+        logger.set_debug_flag(True)
+
+    normalized_ids = [raw.strip() for raw in (message_ids or []) if (raw or "").strip()]
+    by_id = {(m.get("id") or ""): m for m in list_inbox_messages(debug=debug)}
+
+    skip_missing = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_not_in_inbox"]
+    skip_unbound = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unbound"]
+    skip_unmatched = METEORITE_EMAIL_MAILBOX_CONFIG["selected_outcome_skipped_unmatched"]
+    created_k = METEORITE_CONFIG["land_outcome_created"]
+    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
+    super_k = METEORITE_CONFIG["land_outcome_superseded"]
+    err_k = METEORITE_CONFIG["land_outcome_error"]
+
+    results: list[dict] = []
+    total_processed = total_passed = total_failed = total_errors = total_skipped = 0
+
+    for mid in normalized_ids:
+        if mid not in by_id:
+            results.append(
+                {"message_id": mid, "outcome": skip_missing, "astral_candidate_id": None}
+            )
+            total_skipped += 1
+            total_processed += 1
+            continue
+
+        msg = by_id[mid]
+        match = msg.get("candidate_match") or {}
+        cid = str(match.get("astral_candidate_id") or "").strip()
+        if not match.get("matched"):
+            results.append(
+                {
+                    "message_id": mid,
+                    "outcome": skip_unbound,
+                    "astral_candidate_id": None,
+                }
+            )
+            total_skipped += 1
+            total_processed += 1
+            continue
+        if not cid:
+            results.append(
+                {
+                    "message_id": mid,
+                    "outcome": skip_unmatched,
+                    "astral_candidate_id": None,
+                }
+            )
+            total_skipped += 1
+            total_processed += 1
+            continue
+
+        land = await _land_bound_inbox_message(mid, cid, debug=debug)
+        land_outcome = land.get("outcome") or err_k
+        results.append(
+            {
+                "message_id": mid,
+                "outcome": land_outcome,
+                "astral_candidate_id": cid,
+                "land": land,
+            }
+        )
+        total_processed += 1
+        if land_outcome in (created_k, skip_k, super_k):
+            total_passed += 1
+        elif land_outcome == err_k:
+            total_failed += 1
+            if land.get("error"):
+                total_errors += 1
+        else:
+            total_failed += 1
+
+    return {
+        "results": results,
+        "total_processed": total_processed,
+        "total_passed": total_passed,
+        "total_failed": total_failed,
+        "total_errors": total_errors,
+        "total_skipped": total_skipped,
+    }
+
+
 def create_meteorite_job_from_inbox_message(
     message_id: str,
     *,
     debug: bool = False,
 ) -> dict:
-    """Fetch message, rematch From-then-To→candidate, strip/extract, gazer ingest → meteorite jobs."""
+    """Fetch message, rematch From-then-To→candidate, strip/extract, land_meteorite."""
     mid = (message_id or "").strip()
     if not mid:
         raise ValueError("message_id is required")
@@ -273,11 +486,17 @@ def create_meteorite_job_from_inbox_message(
         for line in truncate_debug_content(html):
             logger.debug_detail(line)
 
-    ingest = ingest_meteorite_jobs_from_email_html_sync(cid, html, debug=debug)
-    created = ingest.get("created") or []
-    skipped = ingest.get("skipped") or []
-    if not created and not skipped:
-        raise ValueError("no meteorite jobs created")
+    # Late-import: land already strip-validated above — skip second Gmail get.
+    from src.core.meteorite import land_meteorite
+
+    land = asyncio.run(land_meteorite(cid, text=html, debug=debug))
+    created_k = METEORITE_CONFIG["land_outcome_created"]
+    skip_k = METEORITE_CONFIG["land_outcome_duplicate_skip"]
+    super_k = METEORITE_CONFIG["land_outcome_superseded"]
+    outcomes = land.get("outcomes") or []
+    created = [o for o in outcomes if o.get("outcome") == created_k]
+    skipped = [o for o in outcomes if o.get("outcome") in (skip_k, super_k)]
+    first_id = outcomes[0].get("astral_job_id") if outcomes else None
 
     if debug:
         logger.debug_index(
@@ -285,24 +504,25 @@ def create_meteorite_job_from_inbox_message(
             index=4,
             total=4,
             identifier=mid[:80],
-            outcome="recorded" if created else "skipped",
+            outcome=str(land.get("outcome") or "recorded"),
         )
         logger.debug_detail(
-            f"created={len(created)} skipped={len(skipped)} mode={ingest.get('mode')}"
+            f"created={len(created)} skipped={len(skipped)} mode=land_meteorite"
         )
-        if created:
-            logger.debug_detail(f"astral_job_id={created[0].get('astral_job_id')}")
+        if first_id:
+            logger.debug_detail(f"astral_job_id={first_id}")
 
-    company_fallback = METEORITE_CONFIG["short_name_template"].format(candidate_id=cid)
-    first = created[0] if created else None
     return {
         "astral_candidate_id": cid,
-        "mode": ingest.get("mode"),
+        "outcome": land.get("outcome"),
+        "outcomes": outcomes,
+        "company": land.get("company"),
+        "company_inserted": bool(land.get("company_inserted")),
+        "error": land.get("error"),
+        "astral_job_id": first_id,
         "created": created,
         "skipped": skipped,
-        "astral_job_id": first["astral_job_id"] if first else None,
-        "company": first["company"] if first else company_fallback,
-        "state": first["state"] if first else None,
-        "latest_score": first["latest_score"] if first else None,
-        "company_inserted": any(c.get("company_inserted") for c in created),
+        "mode": "land_meteorite",
+        "state": None,
+        "latest_score": None,
     }

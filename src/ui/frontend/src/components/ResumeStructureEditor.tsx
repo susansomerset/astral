@@ -5,6 +5,10 @@ export type Catalog = {
   extra_id_pattern: string
   reserved_extra_ids: string[]
   new_extra_default_format: string
+  page_break_policies: string[]
+  page_break_policy_labels: Record<string, string>
+  page_break_policy_default: string
+  page_break_policy_defaults?: Record<string, string>
 }
 
 export type SectionRow = {
@@ -16,4 +20,5 @@ export type SectionRow = {
   job_agent_editable: boolean
   required: boolean
   format_locked: boolean
+  page_break_policy: string
 }

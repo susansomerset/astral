@@ -2162,3 +2162,194 @@ npm run test:component -- \
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
+### AST-1452 · AST-1439
+
+**Parent:** [AST-1439](https://linear.app/astralcareermatch/issue/AST-1439). **Publish:** `origin/sub/AST-1439/AST-1452-ad-hoc-import-picker-and-load`.
+
+Agent Ad Hoc import picker table (`GET /api/admin/adhoc/runs` on mount — sibling **AST-1451**), row select, **Load** into seven editors from `GET /api/agent_data/<batch_id>` (TASK → User; missing slots empty), `BatchAgentDataPanes` on imported `batch_id`, one leading `adhoc-` strip on workbench task key with `skipCatalogFetchRef` (no catalog fetch-from-task), `importEntityLock` for Preview/Test `entity_id`, dirty-editor replace confirm matching fetch-from-task. Does **not** own list query implementation or Test persist prefix (**AST-1451**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page + import list on mount (**§6c**) | `AdminAnthropicAdHoc.tsx` | **`test_AdminAnthropicAdHoc.test.tsx`** — **`AST-1452: mount loads import runs into the table`** |
+| Load → editors + panes (**AC2**) | same | **`AST-1452: Load fills editors and mounts panes for the imported batch`** |
+| Strip `adhoc-`; skip catalog fetch (**AC4**) | same | **`AST-1452: Load strips one adhoc- prefix without catalog fetch-from-task`** |
+| `importEntityLock` + orphan entity option (**AC5**) | same | **`AST-1452: importEntityLock sends restored entity_id on Preview`** |
+| Dirty replace confirm (**AC6**) | same | **`AST-1452: dirty editors confirm Load; Cancel leaves content unchanged`**; **`AST-1452: dirty confirm Yes replaces editor content`** |
+| List/load GET contracts | **AST-1451** | **`docs/test-bible/core/agent.md`** § AST-1451 (no duplicate API tests here) |
+| Preview modal / post-Test panes baseline | **AST-1413** | existing **`AST-1413`** cases (unchanged) |
+
+**Broken / obsolete this pass:** all `mockApi` paths must stub **`GET /api/admin/adhoc/runs`** on mount (empty array default) — added to shared handler + AST-1215 inline mock.
+
+**Integration:** no existing scenario covers Ad Hoc import picker/load — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Routed Agent Ad Hoc page + import picker/load (**§6c**): `tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx` — pattern **`AST-1452`**
+2. Regression: existing **`AST-1413`** / **`AST-1412`** / kitchen-sink cases in the same file (full file run)
+
+**AST-1452** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_AdminAnthropicAdHoc.test.tsx \
+  --testNamePattern="AST-1452|AST-1413|previews, tests, fetches|AST-1215|AST-1394|AST-1412"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1478 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1478-report-applied-and-skip`.
+
+Recommended opens JAR with shared-hook **Skip** / **Applied**; report strip uses labeled `.btn` roles; successful Skip/Applied refreshes the list and closes the report when the job leaves rows; CLIENT **Apply** stays absent. Modal unit cases: **`docs/test-bible/frontend/components.md`** § AST-1478.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Recommended → report Skip/Applied (**§6c**) | `JobsRecommended.tsx` + JAR | **`test_JobsRecommended.test.tsx`** — **`AST-1478 report Applied and Skip`** (strip visible; Skip → `/skip` + close; Applied → notes → `candidate_action` applied + close; no **Apply**) |
+
+**Broken / obsolete:** none — additive report wiring; existing open-report / list Skip / AST-1410 / AST-1477 list Applied asserts still hold.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. JAR callbacks: `test_JobAnalysisReportModal.test.tsx` — **`AST-1478`**
+2. Recommended page (**§6c**): `test_JobsRecommended.test.tsx` — **`AST-1478`**
+
+**AST-1478** narrowed run (from `src/ui/frontend/`):
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1478|sticky header|opens the report|AST-1410"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+### AST-1479 · AST-1464
+
+**Parent:** [AST-1464 — Add means to mark job as applied for](https://linear.app/astralcareermatch/issue/AST-1464). **Publish:** `origin/sub/AST-1464/AST-1479-applied-jobs-list-home`.
+
+Applied list home: `view=applied` rows, empty copy, post-applied R/I/X/G via shared notes + `candidate_action`, error toast on illegal transition. Config/API: **`docs/test-bible/utils/config.md`** / **`docs/test-bible/ui/api/api_jobs.md`** § AST-1479.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed Applied page (**§6c**) | `JobsApplied.tsx` | **`test_JobsApplied.test.tsx`** — **`JobsApplied — AST-1479 applied list home`** (rows + Actions; empty; Interview → notes → `candidate_action`; 409 toast) |
+
+**Broken / obsolete:** prior stub assert `"No records found."` — product empty copy is `"No applied jobs yet"`.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Applied page (**§6c**): `tests/component/frontend/pages/test_JobsApplied.test.tsx` — **`AST-1479`**
+2. API `view=applied`: `tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states` (+ revised `test_list_recommended_and_default`)
+3. Config states + nav: `tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav`
+
+**AST-1479** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_applied_uses_applied_job_states \
+  tests/component/ui/api/test_api_jobs.py::TestJobsRoutes::test_list_recommended_and_default \
+  tests/component/utils/test_config.py::TestAst1479AppliedJobStatesAndNav \
+  -q
+
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsApplied.test.tsx \
+  --testNamePattern="AST-1479"
+```
+
+**Pass criterion:** pytest + Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+
+### AST-1454 · AST-1446
+
+**Parent:** [AST-1446 — When a job is in a Skipped state, make all fields editable](https://linear.app/astralcareermatch/issue/AST-1446/when-a-job-is-in-a-skipped-state-make-all-fields-editable). **Publish:** `origin/sub/AST-1446/AST-1454-job-detail-skipped-field-editors`.
+
+`JobsSkipped` / `JobsInReview` pass `onRefresh={load}` into `JobDetailModal` so Save refreshes the list. Editor chrome: **`docs/test-bible/frontend/components.md`** § AST-1454.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Skipped list refresh after Save (**§6c**) | `JobsSkipped.tsx` | **`test_JobsSkipped.test.tsx`** — **`AST-1454 onRefresh after skipped-field Save`** |
+| In Review list refresh after Save (**§6c**) | `JobsInReview.tsx` | **`test_JobsInReview.test.tsx`** — **`AST-1454 onRefresh wiring`** |
+
+**Broken / obsolete:** none.
+
+**Integration:** none.
+
+## QA test manifest
+
+1. `tests/component/frontend/pages/test_JobsSkipped.test.tsx` — **`AST-1454`**
+2. `tests/component/frontend/pages/test_JobsInReview.test.tsx` — **`AST-1454`**
+3. Modal editors: `test_JobDetailModal.test.tsx` — **`AST-1454`** (primary: **components.md**)
+
+```bash
+cd src/ui/frontend && npx vitest run \
+  ../../../tests/component/frontend/pages/test_JobsSkipped.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsInReview.test.tsx \
+  ../../../tests/component/frontend/components/test_JobDetailModal.test.tsx \
+  --testNamePattern="AST-1454"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1476 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462). **Publish:** `origin/sub/AST-1462/AST-1476-structure-editor-page-break-dropdown-base-and-job`.
+
+Base Resume Content **Save sections** PUTs `page_break_policy` on each section; header shows catalog-driven Page break control. Primary ArtifactEditor / JAR: **`docs/test-bible/frontend/components.md`** § AST-1476.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page (**§6c**) dropdown + Save sections | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1476:`**; revised **AST-1306** PUT asserts policy |
+
+**Broken / obsolete this pass:** AST-1306 catalog/all_sections fixtures lacked page-break fields — extended.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  --testNamePattern="AST-1476|AST-1306"
+```
+
+### AST-1481 · AST-1463
+
+**Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
+
+Thin deeplink host at `/jobs/detail/:jobId` opens the **existing** `JobAnalysisReportModal` (same shell as Recommended row-click), prefetches job for early 404/candidate gate, admin candidate alignment via company → `candidate_id`, close → `/jobs/recommended`. Does **not** own post-auth return-path (**AST-1482**). **`JobsRecommended.tsx`** unchanged — list regression stays on existing **`opens the report modal from a row click`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed deeplink page (**§6c**) | `JobsJobDetail.tsx` | **`test_JobsJobDetail.test.tsx`** — **`AST-1481`** (modal shell; skipped job; 404 + API error UI + back link; close → recommended; blank id redirect; prefetch then company alignment before modal) |
+| Admin candidate alignment helper | `CandidateContext.tsx` | **`test_CandidateContext.test.tsx`** — **`AST-1481 alignSelectedCandidateForJobCompany`** (admin switch; non-admin no-op; company lookup soft-fail) |
+| Recommended list regression | `JobsRecommended.tsx` (untouched) | **`test_JobsRecommended.test.tsx`** — **`opens the report modal from a row click`** (existing) |
+
+**Broken / obsolete:** none — additive route/host; JAR component tests unchanged.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Deeplink page (**§6c**): `tests/component/frontend/pages/test_JobsJobDetail.test.tsx` — **`AST-1481`**
+2. Candidate alignment: `tests/component/frontend/contexts/test_CandidateContext.test.tsx` — **`AST-1481`**
+3. Recommended list regression: `tests/component/frontend/pages/test_JobsRecommended.test.tsx` — **`opens the report modal from a row click`**
+
+**AST-1481** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_JobsJobDetail.test.tsx \
+  ../../../tests/component/frontend/contexts/test_CandidateContext.test.tsx \
+  ../../../tests/component/frontend/pages/test_JobsRecommended.test.tsx \
+  --testNamePattern="AST-1481|opens the report modal"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (publish tip):**
+
+- `docs/test-bible/frontend/pages.md` — `ab00a069b7566ed95635137118159ef65ffbd3d8`
+- `docs/test-bible/frontend/contexts.md` — `839d8fc16fcda5db81fc374b0177717f44d7cc3c`

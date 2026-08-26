@@ -190,7 +190,8 @@ export default function ArtifactEditor({
   }, [])
 
   const structureMode = !!useCandidateResumeStructure
-  const editable = !shapesKey && !structureMode
+  // Tab chrome (rename/add/remove/rubric) stays off in structure/shapes mode; bodies use bodiesEditable.
+  const tabChromeEditable = !shapesKey && !structureMode
   const structureAuthoring = !!(
     structureMode
     && structureCatalog
@@ -284,6 +285,7 @@ export default function ArtifactEditor({
         job_agent_editable: true,
         required: false,
         format_locked: false,
+        page_break_policy: structureCatalog.page_break_policy_default || "",
       },
     ]))
     setAddTitle("")
@@ -292,6 +294,10 @@ export default function ArtifactEditor({
   const fixedFields = shapeFields && shapeFields.length > 0 ? shapeFields : null
   const rubricMode = !fixedFields
   const inReview = snapshot !== null
+  // Bodies editable in rubric chrome mode OR structure/shapes/job fixed tabs; never during Generate review.
+  const bodiesEditable = !inReview && (tabChromeEditable || !!fixedFields || !!jobPersistence)
+  // Stable key signature so label-only structure header edits do not re-GET / wipe tabs.
+  const fixedFieldKeys = fixedFields ? fixedFields.map(f => f.key).join("\0") : ""
 
   /** Display order: importance descending (plan); storage order unchanged in `tabs` / payload. */
   const tabsSortedForRail = useMemo(() => {
@@ -409,9 +415,20 @@ export default function ArtifactEditor({
     }).catch(() => setShapeError(true))
   }, [shapesKey])
 
-  // Per-candidate structure from parent prop
+  // Per-candidate structure: prefer authoring rows (all sections) so Enabled toggles stay visible;
+  // otherwise parent structureSections or internal fetch.
   useEffect(() => {
-    if (!structureMode || structureSections === undefined) return
+    if (!structureMode) return
+    if (structureAuthoring && structureRows && structureRows.length > 0) {
+      setShapeError(false)
+      setShapeFields(structureRows.map(r => ({
+        key: r.id,
+        label: r.title,
+        ...(r.id === "experience" ? { type: "experience_jobs" as const } : {}),
+      })))
+      return
+    }
+    if (structureSections === undefined) return
     if (structureSections === null) {
       setShapeFields(null)
       return
@@ -426,11 +443,12 @@ export default function ArtifactEditor({
         ...(s.id === "experience" ? { type: "experience_jobs" as const } : {}),
       })))
     }
-  }, [structureMode, structureSections])
+  }, [structureMode, structureSections, structureAuthoring, structureRows])
 
   // Per-candidate structure fetch when page does not pass sections
   useEffect(() => {
     if (!structureMode || structureSections !== undefined || !selectedId) return
+    if (structureAuthoring) return
     setShapeFields(null)
     setShapeError(false)
     api(`/api/candidates/${selectedId}/resume_structure`).then(r => r.json()).then(data => {
@@ -442,10 +460,11 @@ export default function ArtifactEditor({
         ...(s.id === "experience" ? { type: "experience_jobs" as const } : {}),
       })))
     }).catch(() => setShapeError(true))
-  }, [structureMode, structureSections, selectedId])
+  }, [structureMode, structureSections, selectedId, structureAuthoring])
 
   function mapFixedFieldsFromRaw(raw: unknown) {
     if (!fixedFields) return
+    // Dict or legacy [{label,content}]; reject pin strings / non-objects so bodies stay empty not garbage.
     const dict = Array.isArray(raw)
       ? Object.fromEntries(
           (raw as { label: string; content: string }[]).map(v => {
@@ -453,13 +472,37 @@ export default function ArtifactEditor({
             return [field ? field.key : v.label, v.content ?? ""]
           }),
         )
-      : ((raw ?? {}) as Record<string, unknown>)
+      : (raw && typeof raw === "object"
+        ? (raw as Record<string, unknown>)
+        : {})
     setTabs(fixedFields.map(f => ({
       id: f.key,
       label: f.label,
       content: sectionValueToTabContent(dict[f.key]),
     })))
   }
+
+  /** Same field keys: refresh labels only; keep local body content (structure header edits). */
+  useEffect(() => {
+    if (!fixedFields) return
+    setTabs(prev => {
+      if (prev.length === 0) return prev
+      const prevKeys = prev.map(t => t.id).join("\0")
+      const nextKeys = fixedFields.map(f => f.key).join("\0")
+      if (prevKeys !== nextKeys) return prev
+      const byId = Object.fromEntries(prev.map(t => [t.id, t]))
+      return fixedFields.map(f => {
+        const existing = byId[f.key]
+        return {
+          id: f.key,
+          label: f.label,
+          content: existing?.content ?? "",
+          code: existing?.code,
+          importance: existing?.importance,
+        }
+      })
+    })
+  }, [fixedFields])
 
   function mapJobDictArtifactFromRaw(raw: unknown) {
     if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
@@ -478,7 +521,15 @@ export default function ArtifactEditor({
   function applyJobArtifactResponse(job: { job_data?: { artifacts?: Record<string, unknown> } }) {
     const persistKey = jobPersistence!.artifactKey
     const artifacts = (job.job_data?.artifacts ?? {}) as Record<string, unknown>
-    const raw = artifacts[persistKey]
+    let raw = artifacts[persistKey]
+    // AST-1428: JAR tab key is job_resume; section bodies live on resume_content (GET hydrate overlays).
+    if (
+      persistKey === "job_resume"
+      && (raw == null || typeof raw === "string" || (typeof raw === "object" && !Array.isArray(raw) && Object.keys(raw as object).length === 0))
+    ) {
+      const sibling = artifacts.resume_content
+      if (sibling && typeof sibling === "object" && !Array.isArray(sibling)) raw = sibling
+    }
     if (fixedFields) mapFixedFieldsFromRaw(raw)
     else mapJobDictArtifactFromRaw(raw)
   }
@@ -515,7 +566,7 @@ export default function ArtifactEditor({
   // Load artifact data from job (AST-553/565 job persistence mode)
   useEffect(() => {
     if (!jobPersistence) return
-    if ((shapesKey || structureMode) && !fixedFields) return
+    if ((shapesKey || structureMode) && !fixedFieldKeys) return
     setLoaded(false)
     setSnapshot(null)
     setJobLoadError(false)
@@ -524,12 +575,14 @@ export default function ArtifactEditor({
       setLoaded(true)
       setDirty(false)
     }).catch(() => setJobLoadError(true))
-  }, [jobPersistence, artifactKey, fixedFields, shapesKey, structureMode])
+  // fixedFieldKeys: ignore label-only shapeField churn from structure header edits
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobPersistence, artifactKey, fixedFieldKeys, shapesKey, structureMode])
 
   // Load artifact data from candidate
   useEffect(() => {
     if (jobPersistence) return
-    if (!selectedId || ((shapesKey || structureMode) && !fixedFields)) return
+    if (!selectedId || ((shapesKey || structureMode) && !fixedFieldKeys)) return
     setLoaded(false)
     // Don't let a stale loaded render claim seedKey for the new page/candidate (Radia / Joan).
     didSeedCriteriaExpandRef.current = ""
@@ -539,7 +592,8 @@ export default function ArtifactEditor({
       setLoaded(true)
       setDirty(false)
     })
-  }, [jobPersistence, selectedId, artifactKey, fixedFields, shapesKey, structureMode, chainArtifactKeys])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [jobPersistence, selectedId, artifactKey, fixedFieldKeys, shapesKey, structureMode, chainArtifactKeys])
 
   // Build the payload from current tabs
   function buildPayload(t: SideTab[]) {
@@ -620,6 +674,7 @@ export default function ArtifactEditor({
             enabled: row.enabled,
             order: index,
             job_agent_editable: row.job_agent_editable,
+            page_break_policy: row.page_break_policy,
           }
           if (row.format) spec.format = row.format
           sections[row.id] = spec
@@ -661,7 +716,7 @@ export default function ArtifactEditor({
     setTabs(next)
     setDirty(true)
     // Skip auto-save while reviewing generated content
-    if (editable && !inReview) {
+    if (tabChromeEditable && !inReview) {
       if (timerRef.current) clearTimeout(timerRef.current)
       timerRef.current = setTimeout(() => doSave(next), AUTOSAVE_MS)
     }
@@ -891,14 +946,14 @@ export default function ArtifactEditor({
       return
     }
     if (jobPersistence) {
-      if ((shapesKey || structureMode) && !fixedFields) return
+      if ((shapesKey || structureMode) && !fixedFieldKeys) return
       api(`/api/jobs/${encodeURIComponent(jobPersistence.jobId)}`).then(r => r.json()).then(job => {
         applyJobArtifactResponse(job)
         setDirty(false)
       }).catch(() => setJobLoadError(true))
       return
     }
-    if (!selectedId || ((shapesKey || structureMode) && !fixedFields)) return
+    if (!selectedId || ((shapesKey || structureMode) && !fixedFieldKeys)) return
     api(`/api/candidates/${selectedId}`).then(r => r.json()).then(c => {
       applyCandidateArtifactResponse(c)
       setDirty(false)
@@ -994,6 +1049,28 @@ export default function ArtifactEditor({
                           <option key={f} value={f}>{f}</option>
                         ))}
                       </select>
+                      {structureCatalog!.page_break_policies?.length ? (() => {
+                        const policyValue = (
+                          structureRow.page_break_policy
+                          && structureCatalog!.page_break_policies.includes(structureRow.page_break_policy)
+                        )
+                          ? structureRow.page_break_policy
+                          : structureCatalog!.page_break_policy_default
+                        return (
+                          <select
+                            className="dep-input structure-authoring-style"
+                            aria-label="Page break"
+                            value={policyValue}
+                            onChange={e => patchStructureRow(structureRow.id, { page_break_policy: e.target.value })}
+                          >
+                            {structureCatalog!.page_break_policies.map(token => (
+                              <option key={token} value={token}>
+                                {structureCatalog!.page_break_policy_labels?.[token] ?? token}
+                              </option>
+                            ))}
+                          </select>
+                        )
+                      })() : null}
                       <label className="structure-authoring-flag">
                         Enabled:
                         <input
@@ -1031,7 +1108,7 @@ export default function ArtifactEditor({
                         </button>
                       )}
                     </div>
-                  ) : editable && editingId === tab.id ? (
+                  ) : tabChromeEditable && editingId === tab.id ? (
                     <input
                       className="side-tab-rename"
                       value={tab.label}
@@ -1046,7 +1123,7 @@ export default function ArtifactEditor({
                   ) : (
                     <span
                       className="side-tab-label"
-                      onDoubleClick={editable ? () => setEditingId(tab.id) : undefined}
+                      onDoubleClick={tabChromeEditable ? () => setEditingId(tab.id) : undefined}
                     >
                       {rubricMode
                         ? formatRubricVectorHeader(tab.importance, tab.label, tab.code)
@@ -1055,7 +1132,7 @@ export default function ArtifactEditor({
                   )
                 }
                 actions={
-                  structureRow ? undefined : editable ? (
+                  structureRow ? undefined : tabChromeEditable ? (
                     <span className="side-tab-controls">
                       {!rubricMode && (
                         <>
@@ -1095,7 +1172,12 @@ export default function ArtifactEditor({
                         <ExperienceJobsEditor
                           fields={experienceJobFields}
                           value={parsed.jobs}
-                          onChange={jobs => updateTab(tab.id, { content: JSON.stringify(jobs) })}
+                          onChange={
+                            bodiesEditable
+                              ? jobs => updateTab(tab.id, { content: JSON.stringify(jobs) })
+                              : () => {}
+                          }
+                          disabled={!bodiesEditable}
                         />
                       )
                     }
@@ -1119,18 +1201,19 @@ export default function ArtifactEditor({
                     <LabeledTextArea
                       label={tab.label}
                       value={tab.content}
-                      onChange={v => updateTab(tab.id, { content: v })}
+                      onChange={bodiesEditable ? v => updateTab(tab.id, { content: v }) : () => {}}
                       onLabelChange={undefined}
                       code={tab.code}
-                      onCodeChange={editable ? v => updateTab(tab.id, { code: v }) : undefined}
+                      onCodeChange={tabChromeEditable ? v => updateTab(tab.id, { code: v }) : undefined}
                       importance={tab.importance}
                       onImportanceChange={
-                        editable && rubricMode ? n => updateTab(tab.id, { importance: n }) : undefined
+                        tabChromeEditable && rubricMode ? n => updateTab(tab.id, { importance: n }) : undefined
                       }
                       onImportanceFocus={
-                        editable && rubricMode ? () => setRailOrderFreeze(tabsSortedForRail.map(t => t.id)) : undefined
+                        tabChromeEditable && rubricMode ? () => setRailOrderFreeze(tabsSortedForRail.map(t => t.id)) : undefined
                       }
-                      onImportanceBlur={editable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
+                      onImportanceBlur={tabChromeEditable && rubricMode ? () => setRailOrderFreeze(null) : undefined}
+                      disabled={!bodiesEditable}
                       hideTitle
                     />
                   )
@@ -1168,7 +1251,7 @@ export default function ArtifactEditor({
               {structureError ? <div>{structureError}</div> : null}
             </div>
           )}
-          {editable && tabs.length < MAX_ARTIFACT_TABS && (
+          {tabChromeEditable && tabs.length < MAX_ARTIFACT_TABS && (
             <button type="button" className="side-tab-add artifact-editor-add-criterion" onClick={addCriterionTab}>
               + Add
             </button>

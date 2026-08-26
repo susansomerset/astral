@@ -321,3 +321,42 @@ npm run test:component -- \
 cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/lib/test_copyJobSnapshot.test.ts
 ```
+
+### AST-1482 · AST-1463
+
+**Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1482-return-to-detail-url-after-re-auth`.
+
+Auth return-path: `sessionAuthMark.ts` capture/validate/consume on `astral-auth-return-path`; `RequireAuth` stores pathname+search on Login/LogOffScreen gate (not during bootstrap Loading, not when authenticated, not passthrough); `Authenticate` consumes stored path on success (passthrough still `/`). Does **not** own deeplink route/modal (**AST-1481**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Return-path helper | `sessionAuthMark.ts` | **`test_sessionAuthMark.test.ts`** — **`AST-1482 auth return path`** |
+| Capture on auth gate | `RequireAuth.tsx` | **`test_RequireAuth.test.tsx`** — **`AST-1482:*`** (Login + LogOffScreen capture; skip Loading/authed/passthrough) |
+| Restore after authenticate (§6c) | `Authenticate.tsx` | **`test_Authenticate.test.tsx`** — **`AST-1482:*`** (existing session / OAuth success / no-token → stored path; AST-1441 passthrough unchanged) |
+
+**Broken / obsolete:** none — existing AST-625/830/1441 asserts hold; success paths revised from always `/` when return path stored.
+
+**Integration:** no existing scenario — no revision.
+
+## QA test manifest
+
+1. Return-path helper: `tests/component/frontend/lib/test_sessionAuthMark.test.ts` — **`AST-1482`**
+2. RequireAuth capture: `tests/component/frontend/components/test_RequireAuth.test.tsx` — **`AST-1482`**
+3. Authenticate restore (§6c): `tests/component/frontend/pages/test_Authenticate.test.tsx` — **`AST-1482`**
+
+**AST-1482** narrowed run (from `src/ui/frontend/`):
+
+```bash
+npm run test:component -- \
+  ../../../tests/component/frontend/lib/test_sessionAuthMark.test.ts \
+  ../../../tests/component/frontend/components/test_RequireAuth.test.tsx \
+  ../../../tests/component/frontend/pages/test_Authenticate.test.tsx \
+  --testNamePattern="AST-1482|navigates home when|navigates home after|AST-1441"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums (publish tip):**
+
+- `docs/test-bible/frontend/lib.md` — `7be9f2eaeb94e425f4f8e6bd1dca957c1c3753c3`
+

@@ -8,16 +8,16 @@ Per code organization rules: `src/astral_database.py` -> `src/data/database.py`
 
 Tables used (inventory):
 - company   — Roster: company state, state_history, batch_id, company_data, job_site, candidate_id (FK to candidate), originating_search_term (nullable TEXT; denormalized CSE discovery origin string; AST-877), etc. (entity agent_responses JSON retired AST-984)
-- job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, etc.
+- job       — Tracker: astral_job_id, company, company_job_id, job_title, job_link, job_data, state, state_history, batch_id, source (gazed|meteorite; AST-1469), etc.
 - candidate — Candidate: state, state_history JSON array, candidate_data JSON (contact/context/artifacts + meta), first/last/full/pronouns TEXT columns, candidate_api_key TEXT (Fernet-encrypted Anthropic key), batch_id, batch_created_at (null/empty = unclaimed; AST-1258).
 - agent    — Agent: agent_id TEXT PK, content TEXT, model_code TEXT (legacy/read-only), brain_setting TEXT (Little|Medium|Big), temperature REAL, max_tokens INTEGER, updated_at TIMESTAMP.
 - agent_task — Task prompt config with versioning: task_key_uuid TEXT PK, task_key TEXT, current INTEGER (1=active), agent_id TEXT, seven prompt segments (`user_prompt`; `cache_prompt` = Anthropic cache block A; `cache_prompt_b|c|d` = blocks B–D; `nocache_prompt`; `system_prompt` per-task override, empty = use agent content at runtime), `run_next`, `task_group_order TEXT`, `task_group_name TEXT`, `task_seq REAL`, `task_name TEXT` (UI grouping metadata, global per task_key), `updated_at`. Any segment edit (all seven) retires prior row + inserts new `current=1`.
 - anthropic_timesheets — Anthropic-only token/cost ledger mirror: anthropic_req_id TEXT UNIQUE, same metric columns as agent_timesheets (batch_id, token counts, calc_cost_*, agent_performance, failure_note, created_at).
 - agent_timesheets — Unified token/cost ledger for all LLM providers: agent_req_id TEXT UNIQUE (vendor request id), same metric columns as anthropic_timesheets.
-- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
+- agent_data — Prompt/response content blocks keyed by batch_id (save_agent_data, get_agent_data_by_batch, list_agent_data_batches, get_agent_data, list_entity_latest_agent_refs); entity_id on RESPONSE rows for latest-per-task lookup (AST-984); nullable self-ref ref_agent_data_id points at earliest identical content row when set (AST-974 / AST-977).
 - scheduled_query — Admin Scheduled Queries (AST-1122): named SQL rows with active flag, interval_hours cadence, last_run_at / last_rows_affected; tick runner in dispatcher.
 - company_job_scan — Gazer: scan outcome per company per batch (insert-only).
-- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); gaze_email live Avail is core (AST-1135), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
+- dispatch_task — Dispatcher scheduling config (save/get/list/update_dispatch_task, get_due_tasks). candidate_id required on save (AST-1134); meteorite_email live Avail is core (AST-1135 / AST-1466), not this module. Primary rows only; companion *_RETRY entities claimed via dispatch_claim_states (config), not separate dispatch rows.
 - dispatch_ledger — Dispatcher run history (save/update/get/list_dispatch_ledger).
 - app_log — Application log storage (add_log_entry, list_log_entries); id INTEGER PRIMARY KEY AUTOINCREMENT (writers omit id).
 - company_search_terms — Per-candidate Google discovery queries (candidate_id, search_term TEXT, nullable last_scan_at,
@@ -83,6 +83,8 @@ from src.utils.config import (
     COMPANY_STATES,
     METEORITE_CONFIG,
     METEORITE_EMAIL_INGEST_CONFIG,
+    JOB_SOURCE_DEFAULT,
+    validate_job_source,
     ENTITY_TYPES,
     INFLOW_CONFIG,
     ROSTER_CONFIG,
@@ -168,6 +170,7 @@ def decrypt_value(ciphertext: str) -> str:
 
 _company_schema_ensured = False
 _job_schema_ensured = False
+_job_source_backfill_applied = False
 _JOB_IDENTITY_UNIQUE_INDEX = "idx_job_identity_unique"
 _BOARD_PLACEHOLDER_COMPANY_LIKE = "__board__%"
 _candidate_schema_ensured = False
@@ -1431,7 +1434,7 @@ def _dedupe_job_identity_triples(conn: sqlite3.Connection) -> int:
 
 def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     """Create job table for raw_job_listing ingest if not present. Idempotent."""
-    global _job_schema_ensured
+    global _job_schema_ensured, _job_source_backfill_applied
     if _job_schema_ensured:
         return
     _apply_board_schema_sunset(conn)
@@ -1459,6 +1462,7 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
     for col, col_def in [
         ("job_link", "TEXT"),
         ("latest_score", "REAL"),            # AST-350: latest numeric score for batch priority sorting
+        ("source", "TEXT"),                  # AST-1469: gazed|meteorite provenance
     ]:
         if col not in cols:
             try:
@@ -1467,6 +1471,15 @@ def _ensure_job_schema(conn: sqlite3.Connection) -> None:
             except sqlite3.OperationalError as e:
                 if "duplicate column name" not in str(e).lower():
                     raise
+    # AST-1469: one-shot backfill unset source → gazed (process-level guard).
+    global _job_source_backfill_applied
+    if not _job_source_backfill_applied:
+        conn.execute(
+            "UPDATE job SET source = ? WHERE source IS NULL OR TRIM(source) = ''",
+            (JOB_SOURCE_DEFAULT,),
+        )
+        conn.commit()
+        _job_source_backfill_applied = True
     # AST-479: LIKE passes stay PASSED_LIKE for analysis_upshot queue; do not auto-promote to BUILD_ARTIFACTS.
     # AST-732: partial unique index on complete identity triples; NULL/empty company_job_id or job_title excluded.
     idx_row = conn.execute(
@@ -1616,11 +1629,13 @@ def save_job(
     state_history: Optional[List[Dict[str, Any]]] = None,
     state_changed_at: Optional[str] = None,
     latest_score: Optional[float] = None,
+    source: Optional[str] = None,
     ) -> bool:
     """Upsert a job row. Insert if new (company and state required); update provided fields if exists.
     job_data: merge=True deep-merges with existing; merge=False overwrites.
     state_history: always overwrites (caller manages append via get_job + append + save_job).
     latest_score: most recent numeric grade score (0-10); written through for batch priority sorting (AST-350).
+    source: gazed|meteorite (AST-1469); INSERT defaults to JOB_SOURCE_DEFAULT when omitted.
     Returns True on insert/update; False when new-row insert bounces on identity duplicate (complete triple).
     Raises ValueError if inserting without company/state."""
     now = _utc_now()
@@ -1640,6 +1655,9 @@ def save_job(
                     raise ValueError("company required for new job")
                 if not state:
                     raise ValueError("state required for new job")
+                # AST-1469: omit source → gazed default; validate when caller supplies
+                insert_source = JOB_SOURCE_DEFAULT if source is None else source
+                validate_job_source(insert_source)
                 jdata_str = json.dumps(job_data) if job_data else "{}"
                 hist_str = json.dumps(state_history) if state_history else "[]"
                 try:
@@ -1647,10 +1665,10 @@ def save_job(
                         """INSERT INTO job (
                             astral_job_id, company, company_job_id, job_title, job_link, job_data,
                             state, state_history, batch_id, batch_created_at,
-                            created_at, updated_at, state_changed_at
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)""",
+                            created_at, updated_at, state_changed_at, source
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?)""",
                         (astral_job_id, company, company_job_id, job_title, job_link, jdata_str,
-                         state, hist_str, now, now, state_changed_at or now),
+                         state, hist_str, now, now, state_changed_at or now, insert_source),
                     )
                 except sqlite3.IntegrityError as e:
                     if _is_job_identity_unique_violation(e):
@@ -1661,11 +1679,14 @@ def save_job(
                 # UPDATE: only set provided (non-None) fields
                 sets: List[str] = []
                 params: List[Any] = []
+                if source is not None:
+                    validate_job_source(source)
                 for col, val in [
                     ("company", company), ("state", state),
                     ("company_job_id", company_job_id), ("job_title", job_title),
                     ("job_link", job_link), ("state_changed_at", state_changed_at),
                     ("latest_score", latest_score),
+                    ("source", source),
                 ]:
                     if val is not None:
                         sets.append(f"{col} = ?")
@@ -1864,6 +1885,90 @@ def text_matches_known_company_job_id_for_candidate(
         return _do(conn)
     finally:
         conn.close()
+
+
+def find_candidate_job_by_company_job_id(
+    candidate_id: str, company_job_id: str
+) -> Optional[Dict[str, Any]]:
+    """Exact company_job_id match scoped to candidate companies (AST-1469 land dedupe)."""
+    cid = (candidate_id or "").strip()
+    cid_job = (company_job_id or "").strip()
+    if not cid or not cid_job:
+        return None
+    min_chars = int(METEORITE_CONFIG["min_company_job_id_match_chars"])
+    if len(cid_job) < min_chars:
+        return None
+
+    def _do(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
+        _ensure_job_schema(c)
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
+        row = c.execute(
+            """SELECT * FROM job
+               WHERE company_job_id = ?
+                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+               LIMIT 1""",
+            (cid_job, cid),
+        ).fetchone()
+        return _job_row_to_dict(row) if row else None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
+def find_candidate_job_by_job_link(
+    candidate_id: str, job_link: str
+) -> Optional[Dict[str, Any]]:
+    """Exact job_link match scoped to candidate companies (AST-1469 land dedupe)."""
+    cid = (candidate_id or "").strip()
+    link = (job_link or "").strip()
+    if not cid or not link:
+        return None
+
+    def _do(c: sqlite3.Connection) -> Optional[Dict[str, Any]]:
+        _ensure_job_schema(c)
+        _ensure_company_schema(c)
+        _ensure_company_candidate_fk(c)
+        row = c.execute(
+            """SELECT * FROM job
+               WHERE job_link = ?
+                 AND job_link IS NOT NULL AND TRIM(job_link) != ''
+                 AND company IN (SELECT short_name FROM company WHERE candidate_id = ?)
+               LIMIT 1""",
+            (link, cid),
+        ).fetchone()
+        return _job_row_to_dict(row) if row else None
+
+    conn = _get_connection()
+    try:
+        return _do(conn)
+    finally:
+        conn.close()
+
+
+def find_meteorite_dedupe_match(
+    candidate_id: str,
+    *,
+    company_job_id: Optional[str] = None,
+    job_link: Optional[str] = None,
+) -> Optional[Dict[str, Any]]:
+    """Walk METEORITE_CONFIG dedupe_match_order; return first hit or None (AST-1469)."""
+    cid = (candidate_id or "").strip()
+    if not cid:
+        raise ValueError("candidate_id is required")
+    for strategy in METEORITE_CONFIG["dedupe_match_order"]:
+        if strategy == "company_job_id":
+            hit = find_candidate_job_by_company_job_id(cid, company_job_id or "")
+            if hit is not None:
+                return hit
+        elif strategy == "job_link":
+            hit = find_candidate_job_by_job_link(cid, job_link or "")
+            if hit is not None:
+                return hit
+    return None
 
 
 def claim_job_batch(
@@ -3477,6 +3582,7 @@ def _apply_board_schema_sunset(conn: sqlite3.Connection) -> None:
         ("updated_at", "TEXT"),
         ("state_changed_at", "TEXT"),
         ("latest_score", "REAL"),
+        ("source", "TEXT"),  # AST-1469
     ]
     copy_cols = [name for name, _ in _job_col_defs if name in cols and name != "board_search_id"]
     col_defs = ", ".join(f"{name} {typedef}" for name, typedef in _job_col_defs if name in copy_cols)
@@ -6141,6 +6247,29 @@ def get_agent_data_by_batch(
     return _run_with_retry(_with_conn)
 
 
+def list_agent_data_batches() -> List[Dict[str, Any]]:
+    """One metadata row per agent_data.batch_id, newest batch first. No filter, no cap."""
+    def _with_conn() -> List[Dict[str, Any]]:
+        conn = _get_connection()
+        try:
+            _ensure_agent_data_schema(conn)
+            rows = conn.execute(
+                """
+                SELECT batch_id,
+                       MAX(created_at) AS created_at,
+                       MAX(task_key) AS task_key,
+                       MAX(entity_id) AS entity_id
+                FROM agent_data
+                GROUP BY batch_id
+                ORDER BY created_at DESC
+                """
+            ).fetchall()
+            return [_row_to_dict(row) for row in rows]
+        finally:
+            conn.close()
+    return _run_with_retry(_with_conn)
+
+
 def get_agent_data(agent_data_id: str) -> Optional[Dict[str, Any]]:
     """Return a single agent_data row by primary key. block_data is resolved plain text."""
     def _with_conn() -> Optional[Dict[str, Any]]:
@@ -7048,6 +7177,19 @@ def _ensure_dispatch_task_schema(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM dispatch_task WHERE task_key = ?", (purge_key,))
     conn.commit()
 
+    # AST-1466: retire gaze_email dispatch rows; purge orphans whose task_key is
+    # absent from agent_task — only when agent_task exists and has rows (schema
+    # ensure may run before agent_task is created in unit tests / boot order).
+    conn.execute("DELETE FROM dispatch_task WHERE task_key = 'gaze_email'")
+    agent_task_present = conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='agent_task'"
+    ).fetchone()
+    if agent_task_present and conn.execute("SELECT 1 FROM agent_task LIMIT 1").fetchone():
+        conn.execute(
+            "DELETE FROM dispatch_task WHERE task_key NOT IN (SELECT task_key FROM agent_task)"
+        )
+    conn.commit()
+
     # qualify @ VALID_TITLE claimed VALID_TITLE + VALID_TITLE_RETRY via dispatch_claim_states;
     # split into explicit NEW + VALID_TITLE_RETRY rows.
     qualify_retry_rows = conn.execute(
@@ -7285,7 +7427,7 @@ def save_dispatch_task(
 ) -> int:
     """Insert a new dispatch_task. Returns the new row id.
     Fills entity_type, trigger_state, sort_by, batch_call_mode from config defaults when omitted.
-    candidate_id is required for every task_key (AST-1134 retired null gaze_email shell)."""
+    candidate_id is required for every task_key (AST-1134 retired null mailbox shell)."""
     tk = (task_key or "").strip()
     cid_raw = None if candidate_id is None else str(candidate_id).strip()
     if not cid_raw:
@@ -7295,10 +7437,22 @@ def save_dispatch_task(
         defaults = dispatch_task_admin_defaults(tk, trigger_state=trigger_state)
     except KeyError as e:
         raise ValueError(f"dispatch_task task_key rejected: {task_key!r}") from e
-    if not (entity_type and str(entity_type).strip()):
-        entity_type = defaults["entity_type"]
-    if not (trigger_state and str(trigger_state).strip()):
-        trigger_state = defaults["trigger_state"]
+    # late: avoid widening module-top config imports
+    from src.utils.config import (
+        METEORITE_EMAIL_MAILBOX_CONFIG,
+        is_meteorite_email_mailbox_task_key,
+    )
+    if is_meteorite_email_mailbox_task_key(tk):
+        # Poller row seed (AST-1466): MAILBOX_CONFIG wins over admin form meta.
+        if not (entity_type and str(entity_type).strip()):
+            entity_type = METEORITE_EMAIL_MAILBOX_CONFIG["entity_type"]
+        if not (trigger_state and str(trigger_state).strip()):
+            trigger_state = METEORITE_EMAIL_MAILBOX_CONFIG["trigger_state"]
+    else:
+        if not (entity_type and str(entity_type).strip()):
+            entity_type = defaults["entity_type"]
+        if not (trigger_state and str(trigger_state).strip()):
+            trigger_state = defaults["trigger_state"]
     sort_by = defaults["sort_by"]
     batch_call_mode = defaults["batch_call_mode"]
     now = _utc_now()
@@ -7595,7 +7749,7 @@ def get_due_tasks() -> List[Dict[str, Any]]:
     """Return auto_mode claim-queue dispatch_tasks with enough eligible entities.
 
     Each returned dict includes 'available_count' from count_eligible_for_dispatch_task
-    (WATCH respects freq_hrs / last_scan_at). Candidate-bound gaze_email AUTO due is
+    (WATCH respects freq_hrs / last_scan_at). Candidate-bound meteorite_email AUTO due is
     merged in core dispatcher (AST-1135) — this helper skips null entity/trigger shells.
     """
     def _with_conn() -> List[Dict[str, Any]]:
@@ -7764,7 +7918,7 @@ def count_eligible_for_dispatch_task(task: Dict[str, Any]) -> int:
     For company WATCH, rows must satisfy the same last_scan_at staleness as set_company_batch:
     uses dispatch_task.freq_hrs when > 0, else COMPANY_STATES[state].batch_criteria.scan_interval_hours for company.
     Other company states and all job states use count_entities_in_state (no per-task freq filter).
-    gaze_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
+    meteorite_email has no claim queue — live bind Avail is core (AST-1135); null entity/trigger → 0 here.
     """
     entity_type = task.get("entity_type")
     state = task.get("trigger_state")

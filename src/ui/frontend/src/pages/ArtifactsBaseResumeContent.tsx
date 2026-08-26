@@ -106,6 +106,7 @@ export default function BaseResumeContent() {
         enabled: row.enabled,
         order: index,
         job_agent_editable: row.job_agent_editable,
+        page_break_policy: row.page_break_policy,
       }
       if (row.format) spec.format = row.format
       sections[row.id] = spec

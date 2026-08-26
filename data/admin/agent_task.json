@@ -361,25 +361,6 @@
     "user_prompt": "Please follow all seven steps to qualify these job listings. These instructions are intended to minimize output size at this first stage of evaluation. Your response is handled by downstream software, so you need to comply with your instructions.\n<!-- AST-723_RUBRIC_VECTORS_TOKEN -->"
   },
   {
-    "agent_id": "n/a",
-    "cache_prompt": "",
-    "cache_prompt_b": "",
-    "cache_prompt_c": "",
-    "cache_prompt_d": "",
-    "current": 1,
-    "nocache_prompt": "",
-    "run_next": "",
-    "system_prompt": "",
-    "task_group_name": "Job Review",
-    "task_group_order": "4000",
-    "task_key": "gaze_email",
-    "task_key_uuid": "519eba14-091c-45d2-9fa7-ff94b42bf9cf",
-    "task_name": "gaze_email",
-    "task_seq": 2.3,
-    "updated_at": "2026-07-31 17:50:00",
-    "user_prompt": ""
-  },
-  {
     "agent_id": "college_intern_ruth",
     "cache_prompt": "## INSTRUCTIONS\n\nThis is a **meteorite email parse** for a bound candidate's inbound mail — mechanical extract only (not qualify, grade, or rewrite).\n\nLive CONTENT always starts with a line `PARSE_MODE: html_links` or `PARSE_MODE: subject_body` (literals from METEORITE_EMAIL_PARSE_CONFIG[\"parse_modes\"]). Echo that exact value into response `parse_mode`.\n\n### html_links\nHTML body is the job source (often no useful subject). Extract every distinct http(s) meteorite **job** link worth scraping as its own JD. Skip obvious non-job noise (unsubscribe, mailto, tracking) when clearly not a job posting. For each kept link return `{job_link, job_title?, metadata?}` in `jobs` where optional `metadata` is an object with optional string fields `company` / `location` (omit `metadata` when unknown). Prefer empty `jd_link` / `content_text`.\n\n### subject_body\nCONTENT includes a `SUBJECT:` line and HTML/body after. Return `content_text` = usable subject + body text the runner may use as JD text when no link exists. If the message includes one likely job-description URL, set `jd_link` to that URL; otherwise omit/empty. Prefer `jobs: []` on this mode (runner uses `jd_link` / `content_text`).\n\nAlways return valid JSON only (no markdown fences). Do not invent employer culture, company sites, or links absent from the email HTML.\n\nDo **not** copy qualify_meteorite's astral_job_id / company_job_id / jd_text enrichment contract — create/scrape/dedupe belong to the gaze_email runner.\n",
     "cache_prompt_b": "",
@@ -681,7 +662,7 @@
     "task_name": "draft_job_resume",
     "task_seq": 4,
     "updated_at": "2026-08-05 00:00:00",
-    "user_prompt": "## AGENT MESSAGE\n\n{$SELECTED_AGENT}\n\n## INSTRUCTIONS\n\nHi Judith,\n\nTime to revise the resume. You have the base resume, Estelle's brief, Atlas's read, and your own coffee-chat thinking.\n\nFollow Estelle's brief, except where it conflicts with these rules, which always win:\n- Every claim traces to {$FIRST_NAME}'s actual materials. Same company names, same titles, same dates, same metrics. \"Built onboarding for 12 engineering teams\" never becomes \"designed enterprise onboarding systems.\"\n- If a brief instruction lacks support in {$FIRST_NAME}'s materials, skip it and record it under deviations. Do not improvise a compromise claim.\n- When in doubt, understate.\n- The WRITING INSTRUCTIONS provided in your context apply to every word of resume prose.\n\nExperience (shared job-array contract with the base resume):\n- `experience` is an ordered array of job objects: `company`, `title`, `dates`, `location`, `accomplishments` (`accomplishments` is an ordered **array of strings** — bare text, no `•`/`-`/`*` prefixes).\n- You may reframe/reorder/emphasize **`accomplishments`** (the string array) for the target job (every claim still traces to {$FIRST_NAME}'s materials).\n- Do **not** change `company`, `title`, `dates`, or `location` from the base role.\n- Do **not** emit experience as a prose string.\n\nThe professional summary is prose with a voice: let your coffee-chat THESIS shape its through-line. The rest is bullets: active voice, strong verbs, concrete details, no buzzword soup.\n\nOutput one JSON object, nothing else:\n{\n  \"agent_performance\": {\"status\": \"success | failure\", \"failure_note\": \"\"},\n  \"agent_payload\": {\n    \"resume\": { ...exactly the same keys and value types as the provided base resume; `experience` is an ordered array of job objects with `company`, `title`, `dates`, `location`, `accomplishments`... },\n    \"deviations\": [\"instruction skipped and why\"]\n  }\n}\nNo new keys, no restructuring. A changed structure fails validation and your work is lost."
+    "user_prompt": "## AGENT MESSAGE\n\n{$SELECTED_AGENT}\n\n## INSTRUCTIONS\n\nHi Judith,\n\nTime to revise the resume. You have the base resume, Estelle's brief, Atlas's read, and your own coffee-chat thinking.\n\nFollow Estelle's brief, except where it conflicts with these rules, which always win:\n- Every claim traces to {$FIRST_NAME}'s actual materials. Same company names, same titles, same dates, same metrics. \"Built onboarding for 12 engineering teams\" never becomes \"designed enterprise onboarding systems.\"\n- If a brief instruction lacks support in {$FIRST_NAME}'s materials, skip it and record it under deviations. Do not improvise a compromise claim.\n- When in doubt, understate.\n- The WRITING INSTRUCTIONS provided in your context apply to every word of resume prose.\n\nExperience (shared job-array contract with the base resume):\n- `experience` is an ordered array of job objects: `company`, `title`, `dates`, `location`, `accomplishments` (`accomplishments` is an ordered **array of strings** — bare text, no list-marker prefixes).\n- You may reframe/reorder/emphasize **`accomplishments`** (the string array) for the target job (every claim still traces to {$FIRST_NAME}'s materials).\n- Do **not** change `company`, `title`, `dates`, or `location` from the base role.\n- Do **not** emit experience as a prose string.\n\nThe professional summary is prose with a voice: let your coffee-chat THESIS shape its through-line. The rest is bullets: active voice, strong verbs, concrete details, no buzzword soup.\n\nOutput one JSON object, nothing else:\n{\n  \"agent_performance\": {\"status\": \"success | failure\", \"failure_note\": \"\"},\n  \"agent_payload\": {\n    \"resume\": { ...exactly the same keys and value types as the provided base resume; `experience` is an ordered array of job objects with `company`, `title`, `dates`, `location`, `accomplishments`... },\n    \"deviations\": [\"instruction skipped and why\"]\n  }\n}\nNo new keys, no restructuring. A changed structure fails validation and your work is lost."
   },
   {
     "agent_id": "job_analyst_grace",

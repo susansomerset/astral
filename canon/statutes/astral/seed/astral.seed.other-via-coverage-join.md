@@ -36,4 +36,4 @@ Environments differ; naming people in config under-seeds and lies about who is c
 
 ## Notes
 
-Product-global shells with null `candidate_id` (e.g. `gaze_email`) are not candidate-coverage rows; they still need Archie naming under define-approved and catalog-wins. `template_candidate_id` may remain for other product uses but must not define seed coverage.
+Candidate-bound mailbox dispatch (`meteorite_email`, one row per `candidate` via coverage join) is not a null-`candidate_id` shell. Any product-global shells with null `candidate_id` are not candidate-coverage rows; they still need Archie naming under define-approved and catalog-wins. `template_candidate_id` may remain for other product uses but must not define seed coverage.

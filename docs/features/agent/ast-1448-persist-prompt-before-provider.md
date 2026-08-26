@@ -218,3 +218,24 @@ context_tokens≈48000
 **advisory:** Pre-await persist dropped the old "non-blocking; best-effort" comment — matches plan "verbatim" snippet.
 
 **What's solid:** Call-order only, same kwargs, RESPONSE/timesheets/external untouched, catalog proposed with no runtime id lookup.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/28986dcb8aa0b05dd3cbc597098f0878/44f7e36b-5c91-4faf-809b-7693f77d7399/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/fd24db40-ab19-4f51-a863-46b00b2dd549/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/28986dcb8aa0b05dd3cbc597098f0878/a0e4c02e-db8d-49a1-8995-7cc0dc8205c1/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1442 (parent) | ftr/AST-1442-write-to-agent-data-before-calling-the-prompt |
+| AST-1448 | sub/AST-1442/AST-1448-persist-prompt-before-provider |
+
+**Epic worktree:** `astral-AST-1442/` — one active sub checked out at a time.

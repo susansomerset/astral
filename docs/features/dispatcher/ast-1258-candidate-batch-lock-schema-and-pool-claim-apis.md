@@ -547,3 +547,25 @@ Test-only sibling of AST-1432. Lands `TestAst1436BoundCandidateAvail` (two-candi
 ### Review (AST-1436)
 
 **Radia [code-rubric] REVIEW** — owned work OK (no fix-now). Discuss: `ftr…sub` three-dot diff included sibling origin/tests collateral; Chuckles restacked this sub on ftr so merge-child does not attribute AST-1430/1431/1435/1437 tests to this epic.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Katherine | engineer | `/home/susan/.cursor/chats/af7bea7a71ae76c24e283f52665ff593/953d292c-8359-48d4-83c6-4c15e9676b5c/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/31a73770-f1e8-4fac-8f18-666e9041bd3b/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/af7bea7a71ae76c24e283f52665ff593/290d7f6d-9abb-4fba-aff2-fd1a8a33296b/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1425 (parent) | ftr/AST-1425-candidate-dispatch-avail-filter |
+| AST-1432 | sub/AST-1425/AST-1432-scope-candidate-avail-to-bound-candidate |
+| AST-1436 | sub/AST-1425/AST-1436-gap-tests-bound-candidate-avail |
+
+**Epic worktree:** `astral-AST-1425/` — one active sub checked out at a time.

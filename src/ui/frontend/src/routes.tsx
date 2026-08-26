@@ -1,4 +1,5 @@
 // SYNC: Every route here must have a matching nav item in src/utils/config.py NAV_CONFIG.
+//       Deeplink-only routes (e.g. jobs/detail/:jobId) use JOBS_DETAIL_ROUTE_PREFIX — not NAV_CONFIG.
 //       If you add/remove/rename a route, update NAV_CONFIG to match.
 import { Navigate, Outlet, type RouteObject } from "react-router-dom"
 import AdminRoute from "./components/AdminRoute"
@@ -14,6 +15,7 @@ import InReview from "./pages/JobsInReview"
 import Skipped from "./pages/JobsSkipped"
 import Applied from "./pages/JobsApplied"
 import Responded from "./pages/JobsResponded"
+import JobsJobDetail from "./pages/JobsJobDetail"
 
 // --- Companies ---
 import WatchList from "./pages/CompaniesWatchList"
@@ -86,6 +88,7 @@ const routes: RouteObject[] = [
           { path: "jobs/recommended", element: <Recommended /> },
           { path: "jobs/applied", element: <Applied /> },
           { path: "jobs/responded", element: <Responded /> },
+          { path: "jobs/detail/:jobId", element: <JobsJobDetail /> },
 
           // Companies
           { path: "companies/watch_list", element: <WatchList /> },

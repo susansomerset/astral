@@ -1108,6 +1108,30 @@ Nested hop contract: normalize unwraps **`agent_payload.resume`** before section
 
 ---
 
+### AST-1465 · AST-1458
+
+**Parent:** [AST-1458 — Job resume draft prompt is asking for bullet chars](https://linear.app/astralcareermatch/issue/AST-1458/job-resume-draft-prompt-is-asking-for-bullet-chars). **Publish:** `origin/sub/AST-1458/AST-1465-draft-job-resume-prompt-omit-bullet-marker-glyphs`.
+
+Prompt-wording lock: current `draft_job_resume` Manage Tasks `user_prompt` must not reintroduce the instructional glyph pattern `` `•`/`-`/`*` `` while still teaching job-array `experience` and bare-string `accomplishments` (`ordered **array of strings**`). Extends the existing nested-envelope prompt contract test — does **not** weaken AST-1270 / AST-1349 assertions. No integration scenario asserts this seed wording.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Glyph omit + bare-string / job-array wording preserved | `data/admin/agent_task.json` | **`TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`** (AST-1465 asserts) |
+| Existing nested envelope + array-only (regression) | same | **`TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract`**, **`TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy`** |
+
+**Broken / obsolete this pass:** none — additive glyph assertions only. **`TestAst1349ExperienceArrayContract::test_uat_fixture_twin_matches_catalog_after_prompt_edits`** is already red on this tip (multi-key catalog↔twin drift beyond this child’s draft wording) — **not** revised here; out of AST-1465 glyph scope.
+
+**Integration:** none — no existing scenario for Manage Tasks draft prompt glyphs.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1270NestedDraftJobResumeContract::test_manage_tasks_prompt_nested_contract \
+  tests/component/core/test_candidate.py::TestAst997JobTailoredExperience::test_tailor_hop_prompts_teach_job_array_and_pin_policy \
+  -q
+```
+
+---
+
 ### AST-1272 · AST-1268
 
 **Parent:** [AST-1268 — draft_job_resume response schema is wrong](https://linear.app/astralcareermatch/issue/AST-1268/draft-job-resume-response-schema-is-wrong). **Publish:** `origin/sub/AST-1268/AST-1272-draft-hop-debug-whitelist-trail`.
@@ -1411,3 +1435,45 @@ Retargets AST-1353 helper/call-site names to `snapshot_saved_base_resume_artifac
 ### AST-1367 · AST-1360
 
 `validate_topic` accepts `informs: ["ideal_day"]` via closed `TOPIC_MENU_CONFIG["informs"]`. Primary config + seed map: **`docs/test-bible/utils/config.md`** § AST-1367 — revised **`TestAst1074TopicMenuPersistence`**.
+
+---
+
+### AST-1474 · AST-1462
+
+**Parent:** [AST-1462 — Create and position page break](https://linear.app/astralcareermatch/issue/AST-1462/create-and-position-page-break). **Publish:** `origin/sub/AST-1462/AST-1474-page-break-policy-config-resume-structure-schema`.
+
+Config-owned structure `page_break_policy` tokens (`normal` / `page_break_before` / `avoid_split`); default **`avoid_split`** on every known section including `prior_experience`; `normalize_resume_structure` coerce/validate; hydrate soft-default for pre-epic blobs; legacy ingest stamps default; GET `/resume_structure` catalog + `all_sections` expose policies. Does **not** emit print CSS (**AST-1475**) or React dropdown (**AST-1476**).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Tokens / labels / DEFAULT / DEFAULT_BY_ID | `src/utils/config.py` | **`TestAst1474PageBreakPolicyCatalog`** |
+| Normalize / hydrate / ingest | `src/core/candidate.py` | **`TestAst1474PageBreakPolicyNormalize`** |
+| GET catalog + PUT persist/reject | `src/ui/api/api_candidate.py` | **`TestAst1474PageBreakPolicyCatalogApi`** |
+
+**Broken / obsolete this pass:** none — existing structure normalize / catalog fixtures already carry defaults via `default_resume_structure()`; no assertion assumed absence of `page_break_policy`.
+
+**Integration:** none — no existing scenario pins page-break structure fields; do not invent print/UI integration coverage (siblings).
+
+## QA test manifest
+
+1. Config tokens + keep-together defaults (incl. `prior_experience`): `tests/component/utils/test_config.py::TestAst1474PageBreakPolicyCatalog`
+2. Normalize missing/blank → `avoid_split`; valid keep; unknown reject; hydrate soft-fill; ingest stamp: `tests/component/core/test_candidate.py::TestAst1474PageBreakPolicyNormalize`
+3. GET catalog/`all_sections` page-break fields; soft-default invalid stored; PUT persist `page_break_before` / reject unknown: `tests/component/ui/api/test_api_candidate.py::TestAst1474PageBreakPolicyCatalogApi`
+
+**AST-1474** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1474PageBreakPolicyCatalog \
+  tests/component/core/test_candidate.py::TestAst1474PageBreakPolicyNormalize \
+  tests/component/ui/api/test_api_candidate.py::TestAst1474PageBreakPolicyCatalogApi \
+  -q
+```
+
+**Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+**Bible shasums** (after publish — fill in §9):
+
+- `docs/test-bible/core/candidate.md`
+- `docs/test-bible/utils/config.md`
+- `docs/test-bible/ui/api/api_candidate.md`
