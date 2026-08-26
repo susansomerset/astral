@@ -203,6 +203,12 @@ Rules enforced in prompt + validate:
 
 Confirm Chuckles estimate: 3 — agree
 
+## Review (build stub)
+
+- **Publish ref:** `sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`
+- **Tip:** `5e9759306cccef89e510de944df810f37f0c6c82`
+- **Stages:** S1 config keys + clear slot; S2 coded RESUME BRIEF prompt; S3 text parse/validate; S4 tracker persist + do_task validate/persist hooks; S5 UAT fixture twin
+
 ## Joan validate
 
 [plan-rubric]
