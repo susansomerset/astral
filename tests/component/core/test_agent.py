@@ -7872,17 +7872,21 @@ class TestAst1264CandidateCraftSuccession:
         assert (child_contexts[0].get("CALLER_RESPONSE") or "").strip() == "from-get-hop"
 
 
-class TestAst1271DoTaskDeviationsPersist:
-    """AST-1271: successful draft_job_resume retains deviations via tracker persist helper."""
+class TestAst1508DoTaskAdviceAdherencePersist:
+    """AST-1508: draft_job_resume validates per-code adherence and persists metadata."""
 
     @pytest.mark.asyncio
-    async def test_success_persists_deviations(
+    async def test_success_persists_advice_adherence(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        persist = MagicMock(return_value=True)
-        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        persist = MagicMock(return_value=_AST1508_ADVICE_ADHERENCE_ROWS)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_advice_adherence", persist)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job_resume_advice_codes",
+            lambda index: (["R1", "R2"], None),
+        )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
@@ -7897,7 +7901,7 @@ class TestAst1271DoTaskDeviationsPersist:
                                 "professional_summary": "Seasoned engineer.",
                                 "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
                             },
-                            "deviations": ["Skipped UAT claim."],
+                            "advice_adherence": list(_AST1508_ADVICE_ADHERENCE_ROWS),
                         }
                     },
                     "api_response": _api_response(),
@@ -7907,22 +7911,24 @@ class TestAst1271DoTaskDeviationsPersist:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         out = await agent_mod.do_task(
-            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+            "draft_job_resume", index="job-1508", ctx=_draft_job_resume_ctx()
         )
         assert out["success"] is True
         persist.assert_called_once()
-        assert persist.call_args.args[0] == "job-1271"
-        parsed_arg = persist.call_args.args[1]
-        assert isinstance(parsed_arg, dict)
+        assert persist.call_args.args[0] == "job-1508"
 
     @pytest.mark.asyncio
-    async def test_validation_failure_does_not_persist_deviations(
+    async def test_validation_failure_does_not_persist_advice_adherence(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        persist = MagicMock(return_value=True)
-        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        persist = MagicMock(return_value=None)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_advice_adherence", persist)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job_resume_advice_codes",
+            lambda index: (["R1"], None),
+        )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
@@ -7931,7 +7937,18 @@ class TestAst1271DoTaskDeviationsPersist:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": {"agent_payload": {"bogus_section": "x", "deviations": ["n"]}},
+                    "parsed_response": {
+                        "agent_payload": {
+                            "resume": {
+                                "professional_summary": "Seasoned engineer.",
+                                "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
+                            },
+                            "advice_adherence": [
+                                {"code": "R1", "status": "applied", "note": "ok"},
+                                {"code": "R2", "status": "applied", "note": "extra code"},
+                            ],
+                        }
+                    },
                     "api_response": _api_response(),
                     "timesheet": {},
                 }
@@ -7939,10 +7956,25 @@ class TestAst1271DoTaskDeviationsPersist:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         out = await agent_mod.do_task(
-            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+            "draft_job_resume", index="job-1508", ctx=_draft_job_resume_ctx()
         )
         assert out["success"] is False
         persist.assert_not_called()
+
+
+_AST1508_ADVICE_ADHERENCE_ROWS = [
+    {"code": "R1", "status": "applied", "note": "Promoted cloud win in summary."},
+    {"code": "R2", "status": "skipped", "note": "PHP bullet unsupported in materials."},
+]
+
+
+class TestAst1271DoTaskDeviationsPersist:
+    """AST-1271: retired — persist hook replaced by AST-1508 advice_adherence."""
+
+    def test_deviations_persist_helper_removed(self) -> None:
+        import src.core.tracker as tracker_mod
+
+        assert not hasattr(tracker_mod, "persist_draft_job_resume_deviations")
 
 
 _AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF

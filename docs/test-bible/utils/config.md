@@ -3253,3 +3253,27 @@ Optional `company_stem` on `qualify_meteorite` items_schema (`required: False`);
   tests/component/utils/test_config.py::TestAst1507ResumeAdviceArtifactConfig \
   -q
 ```
+
+---
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+`TASK_CONFIG["draft_job_resume"]` per-code adherence keys (`advice_adherence_*`); **`deviations`** removed from draft metadata/artifact/clear-keys; **`advice_adherence`** in `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Primary normalize/validate/prompt coverage: **`docs/test-bible/core/candidate.md`** § AST-1508. Tracker persist: **`docs/test-bible/core/tracker.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Adherence slot + clear-keys | `src/utils/config.py` | **`TestAst1508AdviceAdherenceArtifactConfig`**; revised **`TestAst1270DraftJobResumeNestConfig`**, **`TestAst1271DeviationsArtifactConfig`** |
+
+**Broken / obsolete:** AST-1271 deviations slot on draft — superseded; **`TestAst1271DeviationsArtifactConfig`** revised to assert retirement.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1508AdviceAdherenceArtifactConfig \
+  tests/component/utils/test_config.py::TestAst1270DraftJobResumeNestConfig \
+  tests/component/utils/test_config.py::TestAst1271DeviationsArtifactConfig \
+  -q
+```
