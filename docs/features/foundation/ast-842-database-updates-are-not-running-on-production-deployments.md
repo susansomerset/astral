@@ -265,3 +265,7 @@ What: astral.seed.agent-tables-in-repo-json — boot repo-wins apply disabled �
 
 Rationale: Proposed kill-switch aligns with operator-rows-stay-deleted / define-approved / boot-only-not-hot-path, but conflicts with agent-tables-in-repo-json Statement requiring startup repo-wins apply. Gap child owns the carve-out; not ESCALATE.
 
+## Radia review (AST-1497)
+
+[code-rubric] REVIEW (Commit: 10f28324) kill-switch clean; canon/tests discuss — zero fix-now; §3h → User Testing. Test bar on sibling AST-1502.
+
