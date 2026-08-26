@@ -238,6 +238,14 @@ In `src/external/gmail.py`:
 - `require_controlled_external_io(...)` gates on all public Gmail entrypoints remain.
 - External-layer rule: no business logic added to `gmail.py`; Gmail modify scope and env validation at import unchanged.
 
+### Resolution
+
+**Date:** 2026-08-26  
+**Review ref:** Radia `[code-rubric] PROCEED` @ `d2a68e99` — clean, no fix-now.
+
+- **Fix-now:** none — `_build_service()` passes `cache_discovery=False`; `googleapiclient.discovery_cache` logger quieted at WARNING; Betty `[bug-repro]` `TestAst1512DiscoveryCache` green on tip.
+- **§9a:** `origin/sub/AST-1509/AST-1512-suppress-gmail-discovery-cache-log-noise` merges cleanly into `origin/dev` and `origin/ftr/AST-1509-suppress-gmail-discovery-cache-log-noise` (2026-08-26).
+
 ---
 
 _Implementation detail may live in git history on `origin/dev`._
