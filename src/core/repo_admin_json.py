@@ -25,6 +25,7 @@ __all__ = [
     "apply_repo_admin_json_at_startup",
     "export_repo_admin_json_to_files",
     "get_repo_admin_json_divergence_status",
+    "get_repo_admin_json_table_comparison",
     "load_repo_admin_json_file",
     "repo_admin_json_paths",
     "revert_repo_admin_json_table",
@@ -80,6 +81,74 @@ def _repo_admin_json_table_diverged(conn, table_key: str) -> bool:
     file_rows = load_repo_admin_json_file(table_key)
     db_rows = _fetch_db_repo_json_rows(conn, table_key)
     return _sorted_normalized_rows(table_key, db_rows) != _sorted_normalized_rows(table_key, file_rows)
+
+
+def _normalized_row_maps(
+    table_key: str,
+    file_rows: list[dict[str, Any]],
+    db_rows: list[dict[str, Any]],
+) -> tuple[
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+    dict[str, dict[str, Any]],
+]:
+    key_col = _REPO_JSON_ROW_KEY[table_key]
+    file_by_key: dict[str, dict[str, Any]] = {}
+    db_by_key: dict[str, dict[str, Any]] = {}
+    file_norm_by_key: dict[str, dict[str, Any]] = {}
+    db_norm_by_key: dict[str, dict[str, Any]] = {}
+    for row in file_rows:
+        k = str(row.get(key_col) or "")
+        file_by_key[k] = row
+        file_norm_by_key[k] = _normalize_repo_json_row(table_key, row)
+    for row in db_rows:
+        k = str(row.get(key_col) or "")
+        db_by_key[k] = row
+        db_norm_by_key[k] = _normalize_repo_json_row(table_key, row)
+    return file_by_key, db_by_key, file_norm_by_key, db_norm_by_key
+
+
+def get_repo_admin_json_table_comparison(table_key: str) -> dict[str, Any]:
+    """Structured row/field diff for one repo admin JSON table (AST-1505)."""
+    if table_key not in get_repo_admin_json_table_keys():
+        raise ValueError(f"unknown repo admin JSON table: {table_key!r}")
+    conn = database._get_connection()
+    try:
+        file_rows = load_repo_admin_json_file(table_key)
+        db_rows = _fetch_db_repo_json_rows(conn, table_key)
+        file_by_key, db_by_key, file_norm_by_key, db_norm_by_key = _normalized_row_maps(
+            table_key, file_rows, db_rows,
+        )
+        file_keys = set(file_by_key)
+        db_keys = set(db_by_key)
+        only_in_database = [db_by_key[k] for k in sorted(db_keys - file_keys)]
+        only_in_file = [file_by_key[k] for k in sorted(file_keys - db_keys)]
+        changed_rows: list[dict[str, Any]] = []
+        for k in sorted(file_keys & db_keys):
+            file_norm = file_norm_by_key[k]
+            db_norm = db_norm_by_key[k]
+            fields: list[dict[str, Any]] = []
+            for name in sorted(set(file_norm) | set(db_norm)):
+                if file_norm.get(name) != db_norm.get(name):
+                    fields.append({
+                        "field": name,
+                        "file_value": file_by_key[k].get(name),
+                        "database_value": db_by_key[k].get(name),
+                    })
+            if fields:
+                changed_rows.append({"row_key": k, "fields": fields})
+        diverged = bool(only_in_database or only_in_file or changed_rows)
+        return {
+            "table_key": table_key,
+            "diverged": diverged,
+            "repo_relative_path": REPO_ADMIN_JSON_CONFIG["tables"][table_key]["repo_relative_path"],
+            "only_in_database": only_in_database,
+            "only_in_file": only_in_file,
+            "changed_rows": changed_rows,
+        }
+    finally:
+        conn.close()
 
 
 def get_repo_admin_json_divergence_status() -> dict[str, dict[str, Any]]:
