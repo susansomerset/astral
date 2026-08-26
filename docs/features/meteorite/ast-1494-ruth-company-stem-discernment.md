@@ -136,3 +136,38 @@ Confirm Chuckles estimate: 3 — agree
 - Parent AC4 (slug stem) → Stage 2 priority #3 + Stage 3 map.
 - Parent AC5 (land attach) → out of scope → AST-1495.
 - Schema / prompt persist → Stages 1–2 (`pattern.agent.prompt-persist-before-provider` via existing `do_task`); RESPONSE map → Stage 3 (`pattern.batch.entity-agent-responses`).
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1494
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1484/AST-1494-ruth-company-stem-discernment` @ `bf82f210ddde37aac5bb2111b9bc0bc80041a2ca`
+
+## Traceability
+AC2→S2 priority #2 + S3 map; AC3→S2 priority #1 + S1 key (`meteorite-self` via AST-1493 literal, not TASK_CONFIG); AC4→S2 priority #3 + S3 map; parent AC5 (land attach under ensured company)→AST-1495 out of scope; ensure/track→AST-1493 dependency noted in Scope gate.
+
+## Findings
+
+### discuss
+- **Location:** Plan traceability — `pattern.agent.prompt-persist-before-provider`
+- **Finding:** Catalog entry is still `status: proposed` (not `approved`); plan cites it via existing `do_task` sequencing only.
+- **Recommendation:** Citation hygiene — same precedent as AST-1470 Joan pass; no new persist work required in this child.
+
+### discuss
+- **Location:** Plan doc (top-level sections)
+- **Finding:** No `## Self-Assessment` (conf / blast-radius).
+- **Recommendation:** Optional add; stages, scope gate, and AC partition are explicit enough to build.
+
+### acceptable
+- **Location:** Files Changed — `docs/uat-fixtures/AST-756/expected-agent_task.json`
+- **Finding:** Not verbatim in ticket `## Scope`, but follows established AST-786 catalog-twin pattern for `agent_task.json` edits.
+- **Recommendation:** Keep — matches repo convention and `test_repo_admin_json` expectations.
+
+### acceptable
+- **Location:** Stage 3 — dispatch `qualify_meteorite` `process`
+- **Finding:** Stem logged on debug success only; not persisted on `parsed_job` / `initialize_job`.
+- **Recommendation:** Correct partition — attach/ensure wiring is AST-1495; dispatch path jobs already have a `company` row.
+
+context_tokens≈55000
