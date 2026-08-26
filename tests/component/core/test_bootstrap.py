@@ -57,9 +57,10 @@ class TestValidateRuntimeCoupling:
 
 
 class TestBootstrapRuntime:
-    def test_runs_validation_sync_and_scheduler_in_order(
+    def test_runs_validation_schema_ensure_and_scheduler_in_order(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        # AST-1502 / AST-1497 kill-switch: boot must not wire repo-JSON apply or sync_agent_tasks.
         calls: list[str] = []
 
         monkeypatch.setattr(
@@ -93,8 +94,6 @@ class TestBootstrapRuntime:
 
         assert calls == [
             "validate",
-            "repo_json",
             "schema_ensure",
-            "sync:['craft_resume_base']",
             "scheduler",
         ]

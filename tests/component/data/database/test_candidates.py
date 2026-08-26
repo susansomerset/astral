@@ -421,3 +421,65 @@ class TestAst1258CandidateBatchClaim:
         ids = {r["astral_candidate_id"] for r in db.get_candidate_batch("batch-1258-union")}
         assert ids == {"c1258p", "c1258r"}
 
+
+
+class TestAst1502EnsureLeavesLiveCandidateContent:
+    """AST-1502 bug-repro (gap for AST-1497): ensure must not run content migrates on boot."""
+
+    def test_ensure_candidate_schema_leaves_artifacts_ready_without_content_migrates(
+        self, sqlite_in_memory, monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        db = sqlite_in_memory
+        # Live operator row (plan ## Repro): ARTIFACTS_READY must survive schema ensure.
+        db.save_candidate(
+            "somerset",
+            state="ARTIFACTS_READY",
+            candidate_data={
+                "contact": {"first": "Susan", "last": "Somerset"},
+                "context": {"bio_summary": "ops"},
+                "artifacts": {"base_resume": {"professional_summary": "ready"}},
+            },
+        )
+        before = db.get_candidate("somerset")
+        assert before is not None
+        assert before["state"] == "ARTIFACTS_READY"
+
+        content_calls: list[str] = []
+        monkeypatch.setattr(
+            db,
+            "_migrate_candidate_data_structure",
+            lambda _c: content_calls.append("data_structure"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_migrate_pronoun_preference_backfill",
+            lambda _c: content_calls.append("pronoun_backfill"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_migrate_context_arrays_to_text",
+            lambda _c: content_calls.append("context_arrays"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_migrate_candidate_library_ast1014",
+            lambda _c: content_calls.append("library_ast1014"),
+        )
+        monkeypatch.setattr(
+            db,
+            "_legacy_candidate_migrate_conn",
+            lambda *_a, **_k: content_calls.append("legacy_migrate") or {},
+        )
+
+        db._candidate_schema_ensured = False
+        conn = db._get_connection()
+        try:
+            db._ensure_candidate_schema(conn)
+        finally:
+            conn.close()
+
+        after = db.get_candidate("somerset")
+        assert after is not None
+        assert after["state"] == "ARTIFACTS_READY"
+        # Kill-switch: content migrates must not ride inside schema ensure (AST-1497).
+        assert content_calls == []

@@ -59,60 +59,28 @@ class TestLoadRepoAdminJsonFile:
 
 
 class TestApplyRepoAdminJsonAtStartup:
-    def test_applies_agent_then_agent_task_on_one_connection(
-        self, monkeypatch: pytest.MonkeyPatch,
+    @pytest.mark.parametrize("deploy_env", ["staging", "production", "local"])
+    def test_startup_apply_is_noop_on_all_deploy_envs(
+        self, monkeypatch: pytest.MonkeyPatch, deploy_env: str,
     ) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
-        calls: list[str] = []
-        conn = MagicMock()
-        monkeypatch.setattr(repo_json_mod.database, "_get_connection", lambda: conn)
-        monkeypatch.setattr(
-            repo_json_mod,
-            "load_repo_admin_json_file",
-            lambda table_key: calls.append(f"load:{table_key}") or [],
-        )
-        monkeypatch.setattr(
-            repo_json_mod.database,
-            "apply_agent_repo_json_startup",
-            lambda _c, _rows: calls.append("apply:agent"),
-        )
-        monkeypatch.setattr(
-            repo_json_mod.database,
-            "apply_agent_task_repo_json_startup",
-            lambda _c, _rows: calls.append("apply:agent_task"),
-        )
-
-        repo_json_mod.apply_repo_admin_json_at_startup()
-
-        assert calls == [
-            "load:agent",
-            "apply:agent",
-            "load:agent_task",
-            "apply:agent_task",
-        ]
-        conn.execute.assert_any_call("PRAGMA foreign_keys=ON")
-        conn.execute.assert_any_call("BEGIN IMMEDIATE")
-        conn.commit.assert_called_once()
-        conn.close.assert_called_once()
-
-    def test_skips_apply_when_deploy_env_is_local(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        # AST-1502 / AST-1497 kill-switch: boot-time repo JSON apply disabled in every env.
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", deploy_env)
         conn = MagicMock()
         load = MagicMock()
+        apply_agent = MagicMock()
+        apply_task = MagicMock()
         monkeypatch.setattr(repo_json_mod.database, "_get_connection", lambda: conn)
         monkeypatch.setattr(repo_json_mod, "load_repo_admin_json_file", load)
+        monkeypatch.setattr(repo_json_mod.database, "apply_agent_repo_json_startup", apply_agent)
         monkeypatch.setattr(
-            repo_json_mod.database, "apply_agent_repo_json_startup", MagicMock(),
-        )
-        monkeypatch.setattr(
-            repo_json_mod.database, "apply_agent_task_repo_json_startup", MagicMock(),
+            repo_json_mod.database, "apply_agent_task_repo_json_startup", apply_task,
         )
 
         repo_json_mod.apply_repo_admin_json_at_startup()
 
         load.assert_not_called()
+        apply_agent.assert_not_called()
+        apply_task.assert_not_called()
         conn.execute.assert_not_called()
         conn.commit.assert_not_called()
         conn.close.assert_not_called()
