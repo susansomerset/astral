@@ -515,3 +515,7 @@ AST-1337 deliberately wired Print to **saved** server content only (`handlePrint
 - Content **Save** and JAR job-artifact body Save remain separate from structure Save.
 - **Save sections** button continues to work with “Resume sections saved” success toast.
 - No new config tokens or API contracts.
+
+## Review (AST-1489)
+
+Radia review-fix @ d119eb2c — CLEAN, PROCEED. Auto-persist structure before Print on Base + JAR; [bug-repro] substantive; ## What must still hold intact.
