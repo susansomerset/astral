@@ -231,3 +231,24 @@ AC1–2 → Stage 1 `openDiff()` + `GET /compare/${tableKey}` modal (props `tabl
 - **Location:** Pre-flight / sibling AST-1505
 - **Finding:** Plan requires Ada compare/write routes on the epic line before build; ticket Notes say "after #1."
 - **Recommendation:** `build-child` pre-flight grep is the right gate; Katherine should not re-implement API in this ticket.
+
+## Radia review
+
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1506  
+**Publish ref:** `origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner` @ `0bc099bf5c3f9d4ac4264b125eec58d321a087b5`  
+**Overall:** CLEAN  
+**Diff:** `origin/dev...origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner` — AST-1506 product commits (`02f3aca7`, `01a2f5b3`): `RepoJsonDivergenceBanner.tsx` only (+212/−23).
+
+### Plan adherence
+
+Stages 1–2 delivered: warning copy rewritten; Show Differences modal via GET compare; Update file with confirm + POST write + fetchStatus/onReverted; Revert unchanged; per-table isolation via props `tableKey`.
+
+### Findings (advisory only)
+
+- `ROW_KEY_FIELD` duplicates core row-key columns — acceptable for two-table banner (Joan acceptable).
+- Betty tests omit explicit only_in_database/only_in_file modal rendering — optional addition, not blocking.
+- Modal list keys could collide in edge cases — optional index suffix if UAT surfaces.
+- Statute `astral.seed.agent-tables-in-repo-json` lag on sibling AST-1505 — parent close-out, not AST-1506 blocking.
+
+**No fix-now or discuss findings on Katherine's banner implementation.**
