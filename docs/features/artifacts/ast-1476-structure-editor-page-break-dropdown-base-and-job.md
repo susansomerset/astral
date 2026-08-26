@@ -425,3 +425,93 @@ context_tokens≈38000
 
 **fix-now:** all addressed.  
 **Action:** §9a dry-run vs `origin/dev` and `origin/ftr/AST-1462-…`, then User Testing.
+
+## Bug: AST-1489 — Print Resume ignores unsaved page-break dropdown
+
+### As-is
+
+After AST-1487, builder emit honors **saved** `page_break_policy` on `artifacts.resume_structure.sections[*]`, but Base Resume Content and JAR Job Resume **Print Resume** handlers only `GET` resume HTML built from the persisted candidate snapshot. Unsaved page-break dropdown edits live in page state (`allSections` / structure rows from `ArtifactEditor`) and never reach print until the operator clicks **Save sections**.
+
+### To-be
+
+Clicking **Print Resume** applies the operator’s current page-break dropdown choices (Keep block together / New page before / Flow uninterrupted) even when **Save sections** has not been clicked since the last edit — by auto-persisting the current structure rows (including `page_break_policy`) immediately before the existing validate-then-blob print `GET`. Susan approved widen-to-UI Option 1 on 2026-08-26.
+
+### Repro
+
+1. Open Artifacts → Base Resume Content for a candidate with printable saved base resume content and at least one enabled body section (e.g. Prior Experience).
+2. Expand structure authoring; on a section header, change **Page break** from default to **New page before** (`page_break_before`). Do **not** click **Save sections**.
+3. Click **Print Resume** (validate-then-blob opens HTML tab).
+4. Inspect embedded `@media print` CSS in the returned HTML: section still uses prior persisted policy (e.g. `#prior-experience { page-break-inside: avoid; }` for default `avoid_split`) — not `#prior-experience { page-break-before: always; }`.
+5. Repeat on JAR → Job Resume artifact tab: change page-break dropdown without Save sections → **Print Resume** → same mismatch.
+
+Fixture-level check (no browser): with `allSections` holding `page_break_policy: "page_break_before"` for `prior_experience`, `handlePrint` issues `GET /candidate/resume/base?…` without a preceding `PUT /api/candidates/{id}/data` whose body includes that policy.
+
+### Root cause
+
+AST-1337 deliberately wired Print to **saved** server content only (`handlePrint` comment: “saved base via GET … (not editor buffer)”). AST-1476 added catalog-driven dropdown + **Save sections** PUT persistence but did not connect live structure rows to Print. `handlePrint` / `handlePrintResume` never read `allSections` and never PUT `resume_structure` before the resume HTML `GET`, so AST-1487’s builder fix is invisible until explicit Save sections.
+
+### Proposed change
+
+**Approach:** auto-save structure before print (no new API route, no builder change). Reuse the existing PUT shape from `saveStructure`; refactor to a shared async persist step both Save and Print can await.
+
+**`src/ui/frontend/src/pages/ArtifactsBaseResumeContent.tsx` — Hedy at make-fix:**
+
+1. Extract page-local `persistStructureRows(rows: SectionRow[]): Promise<void>` from today’s `saveStructure` (~L99–136):
+   - Guard: if `!selectedId`, reject with `Error("No candidate selected")`.
+   - Build `sections` map exactly as today (`id`, `title`, `enabled`, `order`, `job_agent_editable`, `page_break_policy`, optional `format`).
+   - `PUT /api/candidates/${selectedId}/data` with `{ artifacts: { resume_structure: { sections } } }`.
+   - On `!r.ok`, parse JSON `error` and throw.
+   - `GET /api/candidates/${selectedId}/resume_structure`, call existing `applyStructurePayload(data)` to refresh `allSections` / catalog from server.
+   - Manage `structureSaving` / `structureError` in `.finally` / `.catch` (same as today).
+   - **Do not** toast on success inside this helper.
+
+2. Rewrite `saveStructure(rows)` to `void persistStructureRows(rows).then(() => setToast({ text: "Resume sections saved", variant: "success" })).catch(…)` — preserve today’s error toast + `structureError` behavior.
+
+3. In `handlePrint` (~L139), after `selectedId` / `printing` guards and before the resume `GET`:
+   - `await persistStructureRows(allSections)`.
+   - On failure: set `printError`, error toast, `return` (no blob tab) — same failure posture as print fetch errors.
+   - On success: proceed with existing validate-then-blob `GET /candidate/resume/base?candidate_id=…` flow unchanged.
+
+4. Update the stale comment at ~L138: print **content** still comes from saved `base_resume`; **structure page-break policies** are auto-persisted from current editor rows immediately before the GET.
+
+**`src/ui/frontend/src/components/JobAnalysisReportModal.tsx` — same pattern:**
+
+1. Extract `persistStructureRows(rows: SectionRow[]): Promise<void>` mirroring Base (uses `selectedId`, same PUT + GET refresh, updates `allSections` / `structureSections` / `catalog` as today’s `saveStructure` ~L210–249).
+
+2. Rewrite `saveStructure` to wrap persist + success toast.
+
+3. In `handlePrintResume` (~L91), before `GET /candidate/resume/${jobId}`:
+   - When `selectedId` is set, `await persistStructureRows(allSections)`; on failure toast and return without opening tab.
+   - When `selectedId` is missing, skip persist (print uses server structure as today).
+
+4. Add `selectedId` and `allSections` to the `useCallback` dependency array for `handlePrintResume`.
+
+**`src/ui/frontend/src/components/ArtifactEditor.tsx` — optional:**
+
+- **No change required** if both pages keep duplicate `persistStructureRows` (preferred — stays within minimal diff).
+- Only touch if make-fix extracts a shared exported helper to avoid copy-paste; do **not** change dropdown UX, **Save sections** wiring, or content Save paths.
+
+**Out of scope:** `src/core/builder.py`, `api_resume_html.py`, `config.py`, `candidate.py`, new routes, passing live structure in the print GET query/body.
+
+**Tests (Betty at qa-fix / fix-board):**
+
+- **Base:** In `test_ArtifactsBaseResumeContent.test.tsx`, add case: change page-break combobox to `page_break_before`, click **Print Resume** without **Save sections**; assert a structure `PUT` occurred with the new policy before the resume `GET`; optionally assert returned HTML print CSS reflects `page_break_before` (mock GET body).
+- **JAR:** Parallel case in `test_JobAnalysisReportModal.test.tsx`.
+- Update `docs/test-bible/frontend/pages.md` / component bible rows if manifest text references AST-1337 “saved only” for structure (content-only invariant remains).
+
+### Blast radius
+
+- **Extra PUT on every Print:** lightweight structure-only write; also persists any other unsaved structure row fields (title, order, enabled, format) — acceptable and keeps print aligned with the visible structure editor.
+- **AST-1337 content invariant:** Print still uses saved **body** content (`base_resume` / job resume content), not the ArtifactEditor text buffer — only structure policies are auto-persisted pre-print.
+- **Explicit Save sections:** unchanged UX + success toast; operators who Save then Print get two PUTs (harmless idempotent shape).
+- **AST-1487:** builder already maps persisted policies; this bug completes the operator-facing loop.
+- **Session / Cover Letter print paths:** untouched.
+
+### What must still hold
+
+- AST-1487 binding: structure-driven `@media print` CSS from `page_break_policy`; no hard-coded prior always-break.
+- AST-1476: catalog-driven dropdown tokens/labels; invalid policy coerced to default in UI; JAR structure Save still targets candidate `resume_structure` (not job artifact).
+- AST-1337 / AST-1350: validate-then-blob; no blank tab on print failure; auth `GET` routes unchanged; unsupported-experience API errors toast without tab.
+- Content **Save** and JAR job-artifact body Save remain separate from structure Save.
+- **Save sections** button continues to work with “Resume sections saved” success toast.
+- No new config tokens or API contracts.
