@@ -322,3 +322,24 @@ context_tokens≈55000
 
 - Proposed-pattern citations — no change (Joan already non-blocking).  
 - `eslint-disable` on load deps — kept with existing comment.
+
+## Threads (generated — epic_registry mirror)
+
+_(generated from epic registry — do not hand-edit; edits are overwritten)_
+
+### Team
+
+| Agent | Role | Thread |
+|--------|-------|--------|
+| Ada | engineer | `/home/susan/.cursor/chats/8988639e5c4a792e44df3cc01f98d553/c257fbde-dbf6-48b7-b2b6-5dc1ccc0cec1/store.db` |
+| Betty | qa | `/home/susan/.cursor/chats/2d0fa47271e47a831e103b336fb3fbc8/3d4b688a-ff4c-4d02-a06a-f2593def0f9d/store.db` |
+| Radia | review | `/home/susan/.cursor/chats/8988639e5c4a792e44df3cc01f98d553/8aaddc49-079d-4ab7-ba91-3e3305120e43/store.db` |
+
+### Git
+
+| Ticket | `origin/…` |
+|--------|------------|
+| AST-1459 (parent) | ftr/AST-1459-resume-editor-is-not-working-properly |
+| AST-1480 | sub/AST-1459/AST-1480-restore-structure-mode-resume-section-body-edit-loop |
+
+**Epic worktree:** `astral-AST-1459/` — one active sub checked out at a time.
