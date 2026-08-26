@@ -265,6 +265,34 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 ---
 
+### AST-1504 · AST-1491 (gap — cover letter hydrate display)
+
+**Parent:** [AST-1491](https://linear.app/astralcareermatch/issue/AST-1491/cover-letter-content-does-not-appear-for-editing). **Publish:** `origin/sub/AST-1491/AST-1504-gap-cover-letter-hydrate-tests`. Product fix: **AST-1499**.
+
+Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap → Subject/Letter/signature, nonempty gate (no all-empty spine overwrite), pin leave-on-miss. Red against pre-fix tree; green after AST-1499 hydrate helper.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nested unwrap / empty spine / pin miss | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** (bug-repro) |
+
+**Broken / obsolete:** none — additive; AST-1116 flat normalize suite still holds.
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Bug-repro (nested unwrap + empty-spine gate + pin leave-on-miss): `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps \
+  -q
+```
+
+**Pass criterion:** nodes red on pre-fix product; green after AST-1499 `make-fix` — `test-fix` verifies the flip. Not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1420 · AST-1419
 
 **Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`.
