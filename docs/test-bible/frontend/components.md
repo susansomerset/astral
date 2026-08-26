@@ -411,13 +411,51 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-783 · AST-756
 
-**`RepoJsonDivergenceBanner`:** fetches **`/api/admin/repo_json/status`**, shows gold warning when `diverged`, **Revert to file** via **`useUserConfirm`** danger dialog → **`POST /api/admin/repo_json/revert/<tableKey>`**; refetches on `refreshToken` prop from parent pages.
+**`RepoJsonDivergenceBanner`:** fetches **`/api/admin/repo_json/status`**, shows gold warning when `diverged`, **Revert to file** via **`useUserConfirm`** danger dialog → **`POST /api/admin/repo_json/revert/<tableKey>`**; refetches on `refreshToken` prop from parent pages. **AST-1506** adds **Show Differences** (`GET /compare/<tableKey>` modal) and **Update file with table version** (`POST /write/<tableKey>` + status refetch / `onReverted`).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` |
+| Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` (**AST-783**) |
+| Show Differences + Update file + copy rewrite | same | same (**AST-1506** describe block) |
+
+Routed pages (unchanged wiring — regression only): **`docs/test-bible/frontend/pages.md`** § AST-783.
 
 ---
+
+### AST-1506 · AST-1455
+
+**Parent:** [AST-1455 — Show Differences and Update file with table version](https://linear.app/astralcareermatch/issue/AST-1455). **Publish:** `origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner`. **Depends:** sibling **AST-1505** compare/write admin routes.
+
+Wires **Show Differences** modal and **Update file with table version** confirm/write into shared **`RepoJsonDivergenceBanner`**; rewrites warning copy (no restart/deploy overwrite claim). **`AdminAgentPrompts`** / **`AdminTaskPrompts`** unchanged — `tableKey` prop isolates agent vs agent_task.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Copy + compare modal + write/cancel | `RepoJsonDivergenceBanner.tsx` | **`test_RepoJsonDivergenceBanner.test.tsx`** — **`RepoJsonDivergenceBanner — AST-1506`** |
+| Routed page banner mount (regression) | `AdminAgentPrompts.tsx`, `AdminTaskPrompts.tsx` | **`test_AdminAgentPrompts.test.tsx`**, **`test_AdminTaskPrompts.test.tsx`** — existing **AST-783** nodes |
+
+**Broken / obsolete this pass:** none — **AST-783** revert test still valid; page tests unchanged.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Banner Show/Update/copy: `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` — **`RepoJsonDivergenceBanner — AST-1506`**
+2. Revert regression: `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` — **`AST-783`** nodes
+3. Routed page banner regression: `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — **`AST-783: shows agent repo JSON divergence banner on routed page`**; `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — **`AST-783: shows task repo JSON divergence banner on routed page`**
+
+**AST-1506** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  -t "AST-783|AST-1506"
+```
+
+**Pass criterion:** Vitest green on manifest lines + `tsc -b --noEmit` — not zero-arg harness / branch-lock gate.
+
 
 ### AST-948 · AST-858
 
