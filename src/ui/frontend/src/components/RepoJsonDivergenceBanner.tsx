@@ -82,6 +82,7 @@ export default function RepoJsonDivergenceBanner({
   const confirm = useUserConfirm()
   const [status, setStatus] = useState<TableStatus | null>(null)
   const [reverting, setReverting] = useState(false)
+  const [updating, setUpdating] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [diffOpen, setDiffOpen] = useState(false)
   const [diffLoading, setDiffLoading] = useState(false)
@@ -153,6 +154,34 @@ export default function RepoJsonDivergenceBanner({
     }
   }
 
+  async function handleUpdateFile() {
+    const path = status?.repo_relative_path || COPY[tableKey].label
+    const meta = COPY[tableKey]
+    const ok = await confirm(
+      `Write the current live ${meta.label} to ${path}? This overwrites the checked-in repo JSON file on this host. Committing in git is a separate step.`,
+      {
+        title: "Update file with table version",
+        confirmLabel: "Update file with table version",
+        cancelLabel: "Cancel",
+        variant: "default",
+      },
+    )
+    if (!ok) return
+    setUpdating(true)
+    setError(null)
+    try {
+      const r = await api(`/api/admin/repo_json/write/${tableKey}`, { method: "POST" })
+      const data = await r.json()
+      if (!r.ok) throw new Error(typeof data.error === "string" ? data.error : "Update failed")
+      fetchStatus()
+      onReverted?.()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Update failed")
+    } finally {
+      setUpdating(false)
+    }
+  }
+
   if (error && !status?.diverged) {
     return (
       <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--error, #f87171)" }}>
@@ -165,6 +194,7 @@ export default function RepoJsonDivergenceBanner({
 
   const path = status.repo_relative_path || COPY[tableKey].label
   const meta = COPY[tableKey]
+  const busy = updating || reverting
   return (
     <>
       <div style={{ marginBottom: 12, padding: 12, borderRadius: 4, background: "var(--bg-card)", border: "1px solid var(--accent-gold)" }}>
@@ -178,15 +208,23 @@ export default function RepoJsonDivergenceBanner({
           <button
             type="button"
             className="btn secondary"
-            disabled={reverting}
+            disabled={busy}
             onClick={() => void openDiff()}
           >
             Show Differences
           </button>
           <button
             type="button"
+            className={updating ? "btn primary in-flight" : "btn primary"}
+            disabled={busy}
+            onClick={() => void handleUpdateFile()}
+          >
+            {updating ? "Updating…" : "Update file with table version"}
+          </button>
+          <button
+            type="button"
             className="btn secondary"
-            disabled={reverting}
+            disabled={busy}
             onClick={() => void handleRevert()}
           >
             {reverting ? "Reverting…" : "Revert to file"}
