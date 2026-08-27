@@ -492,7 +492,6 @@ After the branch, always `_finalize_archive(mid, outcomes, ...)` when the branch
 - Layer rules: core orchestrates; Gmail archive/trash via `external.gmail`; Playwright via existing gazer fetch helper; no ui/data imports from this module beyond current database stamp/dedupe helpers.  
 - AST-1472 inbox `fetch_email` / admin land paths remain as shipped — this bug does not regress them.
 
-<<<<<<< HEAD
 ## Resolution — AST-1522 (2026-08-27)
 
 Gap child [AST-1522](https://linear.app/astralcareermatch/issue/AST-1522) cleared Radia’s Review Posted fix-now (test-tree only; engineer `[qa-handoff]` → Betty).
@@ -505,7 +504,7 @@ Gap child [AST-1522](https://linear.app/astralcareermatch/issue/AST-1522) cleare
 | advisory — broader board coverage | Deferred — primary repro + 1140 retarget satisfy Review Posted bar; further matrix stays Betty backlog |
 
 Product tip still carries AST-1521 merge (`224b882b`). No further product edits this resolve pass.
-=======
+
 ## Radia review — AST-1521 (clean §3h)
 
 **Overall:** CLEAN / PROCEED. No fix-now. [bug-repro] coverage lives on sibling gap AST-1522.
@@ -514,7 +513,10 @@ Product tip still carries AST-1521 merge (`224b882b`). No further product edits 
 ## docs-acceptance — AST-1521
 
 Test/bible delivery for meteorite_email land+archive is owned by sibling gap **AST-1522** (Betty qa-fix / merge-tests). This product sub is docs-acceptance for merge-child — no fabricated `test(AST-1521)` / `merge-tests(AST-1521)`.
->>>>>>> origin/sub/AST-1520/AST-1521-meteorite-email-land-routing
+
+## Plan — AST-1522 (gap test coverage)
+
+Gap child for AST-1520 / AST-1521: Betty lands `docs/test-bible/core/meteorite_email.md` + component `[bug-repro]` / return suite for no-subject JD→`land_meteorite`+archive and retargeted selected-ids. No product redesign on this sub.
 
 ## Radia review — AST-1522 (after Betty return)
 
