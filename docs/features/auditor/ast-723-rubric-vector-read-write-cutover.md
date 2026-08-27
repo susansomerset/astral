@@ -529,3 +529,7 @@ Every `grade_do` vector for somerset has a **unique two-letter code** (`HT` and 
 - **`_require_complete_grade_set` / `_grade_set_vector_diff`:** Still require exact set match of rubric labels vs decoded vectors for complete grade sets — do not weaken to allow duplicates.
 - **Embedded merges:** `_merge_embedded_evaluate_jd_criteria` / prefilter embedded criteria behavior unchanged (embedded-wins-on-code remains intentional for JD/prefilter only).
 - **`parse_vector_reviews_diagnostic`:** Existing `duplicate_code` failure reason in `rubric_feedback.py` unchanged.
+
+### Review (Radia) — AST-1513
+
+**Publish tip:** `3d8eae67` — **CLEAN / PROCEED**. Steps 2–4 match plan; Step 1 correctly operational (Somerset HT reassignment via Artifacts before staging AC). `[bug-repro]` tests assert save guard, first-wins map, decode duplicate guard. No fix-now items. UAT: run Step 1 data fix before expecting green `meteorite_grade_do` on staging.
