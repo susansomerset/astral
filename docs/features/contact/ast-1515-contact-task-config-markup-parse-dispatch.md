@@ -257,3 +257,27 @@ AC1→S1,S2,S3; AC2→S3,S4; AC3→S2,S3; parent AC2–6→N/A (sibling handlers
 Files Changed and stages stay inside ticket **## Scope**; no sibling file edits; `CONTACT_TASK_CONFIG` + collision asserts mirror existing `CONTACT_CONFIG` / `TASK_CONFIG` discipline; Style D dispatch logging is `debug=True`-gated; follow-up uses `do_task` (not direct Anthropic I/O); `land_calls` / `skill_calls` paths preserved.
 
 context_tokens≈32000
+
+## Joan validate (round 2)
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1515
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1414/AST-1515-contact-task-config-markup-parse-dispatch` @ `79aebd465e4e0fdc635d3bfec7f6c08c19c31177`
+
+## Traceability
+AC1→S1,S2,S3; AC2→S3,S4; AC3→S2,S3; parent AC2–6→N/A (sibling handlers); all stages map to parent Purpose/Functional scope slice for markup/dispatch framework.
+
+## Findings
+
+### acceptable — Revision 1 (handler assert)
+Stage 1 step 3 now matches Stage 2 `_resolve_contact_task_handler`: at least one `.`, split on last dot, non-empty module/attr, `module_path.startswith("src.core.")`. Prior fix-now closed.
+
+### acceptable — `pattern.core.contact-task-markup` (proposed)
+No `canon/patterns/**` draft yet; parent epic explicitly assigns child #1 to introduce it. Plan shape is documented inline; does not block framework build.
+
+### acceptable — Scope, layers, config, debug
+Files Changed and stages stay inside ticket **## Scope**; no sibling file edits; `CONTACT_TASK_CONFIG` + collision asserts mirror `CONTACT_CONFIG` / `TASK_CONFIG` discipline; Style D dispatch logging is `debug=True`-gated; follow-up uses `do_task`; `land_calls` / `skill_calls` preserved.
+
+context_tokens≈38000
