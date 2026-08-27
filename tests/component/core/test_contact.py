@@ -1407,9 +1407,10 @@ class TestAst1515ContactTaskMarkup:
     def test_dispatch_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         log = MagicMock()
         monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        # create_contact_meteorite still unavailable until AST-1517 (AST-1518 lands reads).
         contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("gazer_scrape", "u")],
+            markup_spans=[("create_contact_meteorite", "u")],
             debug=True,
         )
         log.set_debug_flag.assert_called_with(True)
@@ -1468,7 +1469,8 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Sure! ~~/gazer_scrape https://jobs.example/1~~",
+                        # create_contact_meteorite still unavailable until AST-1517
+                        "reply": "Sure! ~~/create_contact_meteorite https://jobs.example/1~~",
                     },
                 }
             return {
@@ -1518,7 +1520,7 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Checking ~~/gazer_scrape https://x.example~~",
+                        "reply": "Checking ~~/get_job_data job-9~~",
                     },
                 }
             captured["live"] = kwargs.get("live_content") or ""
