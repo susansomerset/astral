@@ -155,3 +155,18 @@ context_tokens≈45000
 ---
 
 [plan-rubric] PROCEED (Commit: 072cf5a3) scrape handler ready
+
+## Review (build stub)
+
+| Field | Value |
+|-------|-------|
+| Status | Code Complete |
+| Publish ref | `origin/sub/AST-1414/AST-1516-gazer-scrape-contact-task` |
+| Tip | `73ef792f` |
+| Branch | `sub/AST-1414/AST-1516-gazer-scrape-contact-task` |
+
+| Stage | Commit | Summary |
+|-------|--------|---------|
+| 1 | `73ef792f` | `contact_task_gazer_scrape` — Playwright scrape + `_classify_jd` → page_status |
+
+**Betty note:** component tests for handler payload shape, cookie/bot→blocked map, Style D on debug=True, and no job create deferred to qa-child.
