@@ -2683,12 +2683,15 @@ class TestAst1349ExperienceArrayContract:
         assert "Brief Judith **per role**" in advise
         assert "never rewrite company/title/dates/location" in advise
 
-    def test_advise_prompt_freeform_resume_brief_contract(self) -> None:
+    def test_advise_prompt_soft_numbered_resume_brief_contract(self) -> None:
         advise = self._current("advise_job_resume").get("user_prompt") or ""
-        assert "Enumerated, concrete instructions" in advise
         assert "RESUME BRIEF" in advise
+        assert "Label each line A." in advise
+        assert "B., C.," in advise
+        assert 'cite: "<verbatim quote>"' in advise
         assert "[R1]" not in advise
-        assert "One line per advised resume change" not in advise
+        assert "advice_adherence" not in advise
+        assert "Enumerated, concrete instructions" not in advise
 
     def test_validate_rejects_string_experience_contract_message(self) -> None:
         base = {
@@ -2726,6 +2729,32 @@ class TestAst1349ExperienceArrayContract:
         catalog = Path("data/admin/agent_task.json").read_bytes()
         twin = Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_bytes()
         assert catalog == twin
+
+
+class TestAst1524SoftNumberedProsePrompts:
+    """AST-1524: soft numbered-prose RESUME BRIEF + draft notes response (prompt-only)."""
+
+    def _current(self, task_key: str) -> dict[str, Any]:
+        from pathlib import Path
+
+        rows = json.loads(Path("data/admin/agent_task.json").read_text(encoding="utf-8"))
+        return next(r for r in rows if r.get("task_key") == task_key and r.get("current") == 1)
+
+    def test_draft_prompt_lettered_notes_contract(self) -> None:
+        draft = self._current("draft_job_resume").get("user_prompt") or ""
+        assert "lettered item in Estelle's RESUME BRIEF (A., B., C.," in draft
+        assert "existing `notes` string array" in draft
+        assert "freeform prose entries, not a structured adherence object" in draft
+        assert '"notes": ["A: how incorporated or why skipped"' in draft
+        assert "advice_adherence" not in draft
+
+    def test_cover_letter_and_ask_candidate_stay_uncoded(self) -> None:
+        advise = self._current("advise_job_resume").get("user_prompt") or ""
+        assert "COVER LETTER DIRECTION" in advise
+        assert "ASK CANDIDATE" in advise
+        assert "Ratify or veto Judith's THESIS" in advise
+        assert "direct question {$FIRST_NAME} can answer" in advise
+        assert "[R1]" not in advise
 
 
 class TestAst1005FalseMissingCandidateName:

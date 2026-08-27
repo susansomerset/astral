@@ -897,16 +897,6 @@ TASK_CONFIG = {
             "company": {"type": "str", "required": False},
             "title": {"type": "str", "required": False},
         },
-        # AST-1507: coded RESUME BRIEF list → job_data.artifacts metadata (text parse, not JSON schema).
-        "resume_advice_coded_list": True,
-        "resume_advice_section_header": "RESUME BRIEF",
-        "resume_advice_section_end_header": "COVER LETTER DIRECTION",
-        "resume_advice_code_prefix": "R",
-        "resume_advice_bracket_open": "[",
-        "resume_advice_bracket_close": "]",
-        "resume_advice_cite_separator": " — cite:",
-        "resume_advice_artifact_key": "resume_advice",
-        "resume_advice_min_items": 1,
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
@@ -922,23 +912,17 @@ TASK_CONFIG = {
         },
         "response_format": "json",
         "resume_section_payload": True,
-        # AST-1270: nested agent_payload.resume + sibling metadata (advice_adherence).
+        # AST-1270: nested agent_payload.resume + sibling metadata (notes).
         "nested_resume_key": "resume",
         "payload_metadata_keys": (
             "astral_job_id",
             "company",
             "title",
             "task_success",
-            "advice_adherence",
+            "notes",
         ),
-        # AST-1508: per-code adherence answers (replaces AST-1271 deviations).
-        "advice_adherence_required": True,
-        "advice_adherence_artifact_key": "advice_adherence",
-        "advice_adherence_status_applied": "applied",
-        "advice_adherence_status_skipped": "skipped",
-        "advice_adherence_code_key": "code",
-        "advice_adherence_status_key": "status",
-        "advice_adherence_note_key": "note",
+        # AST-1523: freeform draft notes (Archie rename from deviations; replaces advice_adherence)
+        "notes_artifact_key": "notes",
         "entity_type": "job",
         "requires_candidate_key": True,
         "trigger_state": None,
@@ -2966,22 +2950,16 @@ JOB_BUILD_ARTIFACT_CLEAR_KEYS = (
     "application_responses",
     "job_resume",
     "proposed_answers",
-    "advice_adherence",  # AST-1508: same literal as draft_job_resume.advice_adherence_artifact_key
-    "resume_advice",  # AST-1507: same literal as advise_job_resume.resume_advice_artifact_key
+    "notes",  # AST-1523: same literal as draft_job_resume.notes_artifact_key
 )
 
-_ajr = TASK_CONFIG["advise_job_resume"]
-assert _ajr["resume_advice_artifact_key"] == "resume_advice"
-assert _ajr["resume_advice_code_prefix"] == "R"
-assert isinstance(_ajr["resume_advice_min_items"], int) and _ajr["resume_advice_min_items"] >= 1
-assert "resume_advice" in JOB_BUILD_ARTIFACT_CLEAR_KEYS
-
 _djr = TASK_CONFIG["draft_job_resume"]
-assert _djr["advice_adherence_artifact_key"] == "advice_adherence"
-assert "deviations" not in _djr["payload_metadata_keys"]
-assert "advice_adherence" in _djr["payload_metadata_keys"]
-assert "advice_adherence" in JOB_BUILD_ARTIFACT_CLEAR_KEYS
-assert "deviations" not in JOB_BUILD_ARTIFACT_CLEAR_KEYS
+assert _djr["notes_artifact_key"] == "notes"
+assert "notes" in _djr["payload_metadata_keys"]
+assert "advice_adherence" not in _djr["payload_metadata_keys"]
+assert "notes" in JOB_BUILD_ARTIFACT_CLEAR_KEYS
+assert "resume_advice" not in JOB_BUILD_ARTIFACT_CLEAR_KEYS
+assert "advice_adherence" not in JOB_BUILD_ARTIFACT_CLEAR_KEYS
 
 # AST-1099: do_task pins RESPONSE agent_data_id under job_data.artifacts[<slot>] (pointer only).
 JOB_ARTIFACT_AGENT_DATA_PIN_BY_TASK = {
