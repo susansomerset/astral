@@ -200,3 +200,164 @@ No async coat-check `get_job_data` / `roster.get_company_data`; hydrates via `ge
 context_tokens≈52000
 
 ---
+
+## Radia review
+
+# AST-1518 — Radia code review
+
+**Status gate:** Spawn prompt `Tests Passed` — accepted without re-fetch.
+
+**Publish ref under review:** `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `b85a8e37d2fa0dc0f7e91a2f8b8c2d865dd82ce0`
+
+**Diff baseline:** `git diff origin/dev...origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` (19 paths, +1836/−11 cumulative). **`src/core/tracker.py`: zero diff vs `origin/dev`.**
+
+---
+
+[code-rubric] revision=1
+**Rubric:** code-rubric.v1
+**Ticket:** AST-1518
+**Publish ref:** `sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `b85a8e37d2fa0dc0f7e91a2f8b8c2d865dd82ce0`
+**Overall:** FIX-NOW
+
+## Statutes checked
+
+| id | tier | verdict | one-line |
+|----|------|---------|----------|
+| astral.agent.confidence-bounds | scoped | not-applicable | No agent-confidence surfaces in diff |
+| astral.agent.do-task-delegation | scoped | not-applicable | No new AI delegation paths in reviewed SHA |
+| astral.agent.grade-vector-validation | scoped | not-applicable | No grade-vector paths |
+| astral.batch.batch-id-first | scoped | not-applicable | No batch claim/clear |
+| astral.batch.batch-id-format | scoped | not-applicable | No batch_id emission |
+| astral.batch.claim-process-release | scoped | not-applicable | No claim/process/release helpers |
+| astral.batch.entity-agent-responses-latest-only | scoped | not-applicable | No entity agent-response writes |
+| astral.config.config-source-of-truth | scoped | conforms | Sibling AST-1515 `CONTACT_TASK_CONFIG` on branch stack |
+| astral.config.secrets-and-env-specific-from-environ | scoped | not-applicable | No secrets/env wiring |
+| astral.debug.no-repo-root-artifacts-dir | scoped | not-applicable | No artifact dir usage |
+| astral.debug.spikes-under-debug-dir | scoped | not-applicable | No spike files |
+| astral.dispatch.seed-auto-false | scoped | not-applicable | Dispatcher untouched |
+| astral.dispatch.run-next-is-chain-authority | scoped | not-applicable | No run_next edits |
+| astral.docs.features-single-file-per-ticket | scoped | conforms | Dedicated `ast-1518-…md` plan doc |
+| astral.git.betty-no-src-or-features | scoped | conforms | Betty merge-tests only on tip |
+| astral.git.engineer-test-tree-ban | scoped | conforms | No engineer test-tree commits attributed to AST-1518 product stage on tip |
+| astral.layers.core-vs-external-bright-line | scoped | not-applicable | No AST-1518 product diff at reviewed SHA |
+| astral.layers.import-direction | scoped | not-applicable | No AST-1518 product diff at reviewed SHA |
+| astral.layers.scripts-exempt-from-layer-rules | scoped | not-applicable | No scripts/ changes |
+| astral.layers.ui-config-driven-business-logic | scoped | not-applicable | No UI product changes for AST-1518 |
+| astral.idioms.coat-check-never-store-empty | scoped | not-applicable | Handlers not present at reviewed SHA |
+| astral.idioms.render-verdict-orchestrates-consult | scoped | not-applicable | No render/consult paths |
+| astral.idioms.require-auth-on-protected-endpoints | scoped | not-applicable | No API auth surfaces |
+| astral.seed.agent-tables-in-repo-json | scoped | not-applicable | No agent_task edits for AST-1518 |
+| astral.seed.archie-catalog-wins | scoped | not-applicable | No seed catalog override |
+| astral.seed.boot-only-not-hot-path | scoped | not-applicable | N/A at reviewed SHA |
+| astral.seed.define-approved | scoped | not-applicable | No define/seed bootstrap |
+| astral.seed.operator-rows-stay-deleted | scoped | not-applicable | No operator-row resurrection |
+| astral.seed.other-via-coverage-join | scoped | not-applicable | No coverage-join seed edits |
+| astral.standards.data-raises-caller-logs | scoped | not-applicable | No `src/data/**` AST-1518 changes |
+| astral.standards.database-header-inventory | scoped | not-applicable | No schema/migration changes |
+| astral.standards.debug-contract-gated | scoped | not-applicable | Product handlers absent at reviewed SHA |
+| astral.standards.dry-and-focused-functions | scoped | not-applicable | Product absent at reviewed SHA |
+| astral.standards.in-scope-only | scoped | violates | Plan Files Changed = `tracker.py` only; publish ref tip has Betty tests for handlers with **no** matching product commit |
+| astral.standards.in-scope-only | scoped | violates | (see finding — tests reference symbols not shipped at SHA) |
+| astral.standards.logging-via-utils | scoped | not-applicable | Product absent at reviewed SHA |
+| astral.standards.names-not-ticket-ids | scoped | not-applicable | Product absent at reviewed SHA |
+| astral.standards.no-cross-contamination | scoped | conforms | No tracker edits smuggled into sibling files on tip |
+| astral.standards.no-hardcoded-sets | scoped | not-applicable | Product absent at reviewed SHA |
+| astral.standards.public-then-helpers | scoped | not-applicable | Product absent at reviewed SHA |
+| astral.standards.utils-data-late-import-only | scoped | not-applicable | No utils→data late-import changes |
+| astral.state.core-decides-transitions | scoped | not-applicable | No transition edits at reviewed SHA |
+| astral.state.job-prior-states-enforced | scoped | not-applicable | No job state logic |
+| astral.state.no-daisy-chain-in-run | scoped | not-applicable | Read-only handlers not present |
+| astral.ui.frontend-file-placement | scoped | not-applicable | No AST-1518 UI product |
+| astral.ui.naming-conventions | scoped | not-applicable | No AST-1518 UI product |
+| astral.ui.single-gunicorn-worker | scoped | not-applicable | No worker config |
+| orch.git.betty-merge-tests-one-sha | universal | conforms | Single merge-tests SHA on tip |
+| orch.git.commit-vocabulary | universal | violates | `Tests Passed` / review gate with no `code(AST-1518)` on publish ref |
+| orch.git.flow-direction-inviolable | universal | conforms | Sub-branch topology correct |
+| orch.git.ftr-sub-topology | universal | conforms | Child sub under AST-1414 |
+| orch.git.merge-on-checkout | universal | conforms | Branch stacks prerequisite siblings |
+| orch.git.no-cherry-pick-rebase-force | universal | conforms | No destructive git in reviewed history |
+| orch.git.no-dev-agent-branches | universal | conforms | Publish ref is sub/ |
+| orch.git.one-epic-worktree-per-parent | universal | conforms | Epic worktree path |
+| orch.git.three-permanent-branches | universal | conforms | No new permanent branches |
+| orch.pipeline.call-susan-for-product-decisions | universal | conforms | No product-policy forks |
+| orch.pipeline.plan-is-bible | universal | violates | Approved plan Stages 1–2 require `tracker.py` handlers; **absent** at reviewed publish SHA |
+| orch.pipeline.project-scoped-queues | universal | conforms | N/A to code |
+| orch.pipeline.status-gates-skill-entry | universal | needs-discussion | `Tests Passed` premature — product not on `origin/sub/…` tip |
+| orch.roles.archie-approves-statutes | universal | conforms | No new statutes |
+| orch.roles.betty-owns-test-tree | universal | conforms | Betty landed tests (`bc87508c`, `2b96f16f`) |
+| orch.roles.chuckles-never-ticket-assignee | universal | conforms | Assignee Ada |
+| orch.roles.engineer-assignee-through-resolve | universal | conforms | Expected path once product publishes |
+| orch.roles.pre-commit-path-bans | universal | conforms | No banned-path commits on tip |
+
+*(Note: duplicate `in-scope-only` row in table above is a rendering error — single verdict: **violates**.)*
+
+## Pattern conformance
+
+| id | verdict | one-line |
+|----|---------|----------|
+| *(none cited)* | — | Plan has no “Patterns to reuse” section |
+
+## Plan adherence
+
+**At reviewed publish SHA (`b85a8e37`): FAIL**
+
+| Plan requirement | On `origin/sub/…` tip |
+|------------------|----------------------|
+| Stage 1: `get_job_by_pattern`, `_job_owned_by_candidate`, `_contact_task_hydrate_job` | **Missing** — `tracker.py` unchanged vs `origin/dev` |
+| Stage 2: four `contact_task_*` handlers + Style D helper | **Missing** |
+| Single file `src/core/tracker.py` | **No engineer product commit on publish ref** |
+| Betty tests (`TestAst1518ContactTaskReads`) | **Present** — reference `tracker_mod.get_job_by_pattern`, `contact_task_get_*` |
+
+**Unpushed local commit (not on publish ref):** `61cd64ee` `code(AST-1518): contact-task read handlers + get_job_by_pattern` (+403 lines `tracker.py`) exists on local `sub/AST-1414/AST-1518-…` but is **not an ancestor** of `origin/sub/AST-1414/AST-1518-…` @ `b85a8e37`. Branch diverged after Joan APPROVED (`7af985db`): origin tip absorbed merge-tests / sibling sync without this product commit.
+
+**Pending-publish code assessment (`61cd64ee`, not gated on this review):** Implementation appears to match approved plan — `_job_owned_by_candidate` via company→`candidate_id`; `_match_jobs_by_pattern` for exact ambiguous/unmatched counts; no async coat-check `get_job_data` / roster fetch; company `short_name` only; company scope fallback via `list_jobs`; candidate dotted path; dual-index Style D. Re-review after push.
+
+## Frame diff
+
+| Planned (AST-1518 product) | `origin/sub/…` @ `b85a8e37` |
+|----------------------------|-----------------------------|
+| `src/core/tracker.py` | **absent** (0-line diff vs dev) |
+
+| Pipeline on tip (not AST-1518 product) | Present |
+|----------------------------------------|---------|
+| `docs/features/contact/ast-1518-…md` | ✓ plan + Joan APPROVED |
+| `tests/component/core/test_tracker.py` (`TestAst1518ContactTaskReads`) | ✓ Betty |
+| Sibling stack (AST-1515 contact/config, AST-1516 gazer) | ✓ prerequisite commits |
+
+## Findings
+
+### fix-now — Product not on publish ref (review blocker)
+
+**Location:** `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` @ `b85a8e37`
+
+**Finding:** Three-dot diff vs `origin/dev` includes **no** `src/core/tracker.py` changes. Betty tests on the same tip import/call `get_job_by_pattern`, `contact_task_get_job_by_pattern`, `contact_task_get_job_data`, `contact_task_get_company_data`, and `contact_task_get_candidate_data` — symbols that **do not exist** in `tracker.py` at this SHA. Engineer product commit `61cd64ee` (+403 lines) is **not reachable** from the reviewed publish tip (diverged history after `7af985db`).
+
+**Reasoning:** Radia reviews `origin/<publish-ref>` per review-child §4. `Tests Passed` cannot be validated against product at this SHA; manifest would fail on missing attributes. Plan Stages 1–2 are unshipped on origin.
+
+**Recommended downstream (Chuckles / Ada — not Radia):**
+1. Push or replay `61cd64ee` onto `origin/sub/AST-1414/AST-1518-job-company-candidate-contact-task-reads` (reconcile divergence with merge-tests/sync commits so product precedes or follows Betty tip cleanly).
+2. Re-run `test-child` manifest green against publish ref **with** product present.
+3. Re-spawn Radia review on updated tip SHA.
+
+### discuss — `Tests Passed` status vs publish ref integrity
+
+**Finding:** Linear status `Tests Passed` with assignee Ada, but publish ref tip is tests-only + sibling stack without AST-1518 product.
+
+**Recommendation:** Chuckles verify pipeline state — regress to **Code Complete** or **Tests Ready** until `code(AST-1518)` lands on origin publish ref and manifest is green at that SHA.
+
+### advisory — When `61cd64ee` publishes (pre-assessed, not gated)
+
+Skim of unpushed commit suggests **likely CLEAN** on re-review: ownership helper, ambiguous-pattern refuse, coat-check bypass, Style D dual index, error literal set match plan. Minor style: handlers use local `get_logger(__name__)` while module already exposes `logger` — advisory only.
+
+## Notes
+
+- Joan plan-rubric round 2 APPROVED attached; Revision 1 ownership fix reflected in `61cd64ee` (unpushed).
+- §5f / §5g N/A at reviewed SHA (no product diff).
+- No plan-rubric Excluded-statute stragglers.
+- **Do not set Review Posted** on current publish SHA — C7 incomplete for product review.
+
+context_tokens≈40000
+
+---
+
+```
