@@ -116,3 +116,55 @@ cmp -s data/admin/agent_task.json docs/uat-fixtures/AST-756/expected-agent_task.
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1523
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence` @ `238501d481a2043ed25363897c6f665e62f6c716`
+
+### Traceability
+
+AC1→S1–S2,S4–S5 (strip advise validate/persist + pre-epic advise prompt); AC2→S1,S3–S5 (`notes` metadata restore, no adherence gate); AC3→S6; AC4→Betty-owned bible/tests retire (engineer flags at Code Complete per plan header).
+
+### Findings
+
+#### discuss
+
+- **Location:** Stage 4 step 1  
+  **Finding:** Plan names `_validate_draft_advice_adherence_for_do_task`; tip has `_draft_job_resume_adherence_validation_err` with call sites ~2797 and ~3035.  
+  **Recommendation:** Grep `advice_adherence` / `resume_advice` / `get_job_resume_advice_codes` across `src/core/agent.py` and delete all hooks (both pre- and post-decode paths).
+
+- **Location:** Stage 2 / Stage 4  
+  **Finding:** Grep gate is scoped to `candidate.py` only; epic symbols also live in `agent.py` and `tracker.py`.  
+  **Recommendation:** Add a final repo-wide `src/` grep for `resume_advice`, `advice_adherence`, `validate_advise`, `parse_advise` after Stage 4 before Code Complete.
+
+- **Location:** Stage 1 — `JOB_BUILD_ARTIFACT_CLEAR_KEYS`  
+  **Finding:** Dropping `resume_advice` / `advice_adherence` clear slots leaves stale artifacts on in-flight jobs until manual cleanup or a new cancel cycle.  
+  **Recommendation:** Acceptable for revert; note in UAT that pre-revert job rows may still carry old artifact keys.
+
+#### acceptable
+
+- **Location:** Decision block — `notes` vs `deviations`  
+  **Finding:** Archie rename to `notes` is explicit; `payload_metadata_keys` / `notes_artifact_key` / prompt example aligned.  
+  **Recommendation:** None.
+
+- **Location:** Betty-owned tests/bible  
+  **Finding:** Ticket Scope lists `tests/**` but `astral.git.engineer-test-tree-ban` holds; plan correctly assigns AC4 to Betty with engineer handoff comment.  
+  **Recommendation:** None.
+
+- **Location:** Stage 1 — `resume_advice_json_key`  
+  **Finding:** "If present" covers AST-1514 residue not on current epic tip.  
+  **Recommendation:** None.
+
+### R6 checklist (summary)
+
+Definition fidelity: child Scope matches six engineer stages + Betty AC4; no soft-prose sibling work; canceled children not revived. Layer/config: strip epic keys, restore `notes` via config block. Pattern `pattern.config.config-block` still governs metadata naming. DRY: AST-1271 deviations shape reused under `notes`. Boundaries: no UI, `run_next`, or soft prompt rewrite.
+
+**Considered (in-session):** 18 universal (orchestration/git — conform); scoped product statutes on touched layers/paths — conform, including config/no-hardcoded-sets/in-scope-only/do-task-delegation/seed trio/test-tree ban (Betty split).
+
+context_tokens≈62000
+
+[plan-rubric] PROCEED (Commit: 238501d4) revert hard contract plan
