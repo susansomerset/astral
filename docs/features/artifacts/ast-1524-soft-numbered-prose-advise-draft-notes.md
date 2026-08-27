@@ -121,3 +121,53 @@ Rules in prompt (not enforced in code):
 ## Estimate
 
 Confirm Chuckles estimate: 2 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric.v1
+**Ticket:** AST-1524
+**Overall:** APPROVED
+**Publish ref:** `origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes` @ `ba19403ccc9032e1bd757fc093b668659f94cd2e`
+
+## Traceability
+
+AC3→S1; AC4→S2; AC5→S1–S2 (COVER LETTER / ASK CANDIDATE untouched); AC6→S3. Parent AC1–2 N/A — sibling AST-1523 revert.
+
+## Findings
+
+### discuss
+
+- **Location:** Build prerequisite (header)  
+  **Finding:** Plan assumes AST-1523 baseline prompts (`notes`, no hard keys); epic tip still carries `advice_adherence` / coded-contract wording.  
+  **Recommendation:** Chuckles/merge-child must land AST-1523 before build-child; engineer should verify Stage 2 “replace” target text matches post-1523 baseline, not current tip.
+
+- **Location:** Wire contract / Stage 2  
+  **Finding:** Prompt asks Judith to address every A./B./C. item, but decision correctly states no new validation — hop success stays on existing whitelist only.  
+  **Recommendation:** None for build; ensure prompt prose does not imply machine rejection of incomplete `notes` (already flagged in plan).
+
+- **Location:** Out of scope — `tests/**`  
+  **Finding:** AST-1507/1508 prompt-assertion tests on ftr may still expect hard-contract or pre-soft RESUME BRIEF copy after this lands.  
+  **Recommendation:** Betty alignment on ftr rollup if manifest fails — not engineer scope; optional Code Complete flag if grep hits `test_advise_prompt` / AST-1349 contract classes.
+
+### acceptable
+
+- **Location:** Files Changed  
+  **Finding:** Prompt-only footprint (`agent_task.json` + UAT twin) matches child Scope and “no new schema/validation/artifact keys” boundary.  
+  **Recommendation:** None.
+
+- **Location:** Stage 2 step 5 — AST-1465  
+  **Finding:** Bare-string accomplishments / no bullet-glyph instruction preserved — adjacency with Done AST-1465.  
+  **Recommendation:** None.
+
+- **Location:** Decision — A./B./C. vs `[R#]`  
+  **Finding:** Explicitly avoids withdrawn hard-code contract; aligns with parent “numbered in prose” direction.  
+  **Recommendation:** None.
+
+## R6 checklist (summary)
+
+Definition fidelity: implements soft prompt child only; no core/config creep. Layer compliance: data/admin + docs only. Seed statutes: repo JSON + fixture twin whole-file `cp` — conform. In-scope-only: no `src/**` touch. Pattern: no config-block changes needed (prompt-only). DRY/scope: two rows, three stages — proportionate.
+
+**Considered (in-session):** 18 universal (orchestration/git — conform); cited scoped seed/in-scope/run-next/test-tree-ban — conform.
+
+context_tokens≈68000
