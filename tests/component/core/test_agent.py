@@ -8064,6 +8064,82 @@ class TestAst1507DoTaskResumeAdvicePersist:
         persist.assert_not_called()
 
 
+# AST-1514 bug-repro fixtures (mirror candidate TestAst1514AdviseResumeBriefJsonPayload).
+_AST1514_RESUME_BRIEF_BODY = (
+    '[R1] Promote cloud migration win — cite: "Led AWS migration"\n'
+    "[R2] Cut outdated PHP bullet"
+)
+_AST1514_PAYLOAD_DICT = {
+    "resume_brief": _AST1514_RESUME_BRIEF_BODY,
+    "cover_letter_direction": "Ratify thesis with one line of reasoning.",
+    "ask_candidate": "Nothing further.",
+}
+_AST1514_PAYLOAD_JSON = json.dumps(_AST1514_PAYLOAD_DICT)
+
+
+class TestAst1514DoTaskResumeBriefJsonPersist:
+    """AST-1514: advise_job_resume accepts JSON-string/dict resume_brief and persists."""
+
+    @pytest.mark.asyncio
+    async def test_json_string_payload_succeeds_and_persists(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # Pre-fix: validate fails — RESUME BRIEF section missing or incomplete.
+        persist = MagicMock(return_value=[{"code": "R1"}, {"code": "R2"}])
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": _AST1514_PAYLOAD_JSON},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={})
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[0] == "job-1514"
+        assert persist.call_args.args[1] == _AST1514_PAYLOAD_JSON
+
+    @pytest.mark.asyncio
+    async def test_dict_payload_validates_and_persists(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        # Pre-fix: str-only validate gate skips; persist gets "" instead of the dict.
+        persist = MagicMock(return_value=[{"code": "R1"}, {"code": "R2"}])
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": dict(_AST1514_PAYLOAD_DICT)},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1514", ctx={})
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[1] == _AST1514_PAYLOAD_DICT
+
+
 class TestAst1293SoftCoerceNumericSchemaStrings:
     """AST-1293: pre-validate int→str soft-coerce on schema-str fields (nested items_schema)."""
 

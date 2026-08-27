@@ -1521,6 +1521,37 @@ Parse/validate coded `[R<n>]` lines from Estelle **text** RESUME BRIEF section (
 
 ---
 
+### AST-1514 · AST-1460 (bug-repro)
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1514-advise-resume-brief-validation`. **Bug of:** AST-1507.
+
+Estelle emits coded advice as JSON `agent_payload` with `resume_brief` (string of `[R…]` lines) — not plain-text `RESUME BRIEF` headers. Pre-fix validate/parse only header-scan strings; `do_task` str-only gate skips dicts and persist gets `""`. Bug-repro must be **red** on pre-fix tree; green after make-fix JSON coerce + dict validate/persist.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Validate/parse JSON-string + dict | `src/core/candidate.py` | **`TestAst1514AdviseResumeBriefJsonPayload`** (bug-repro) |
+| `do_task` success + persist both shapes | `src/core/agent.py` | **`TestAst1514DoTaskResumeBriefJsonPersist`** (bug-repro) |
+
+**Broken / obsolete:** none — AST-1507 plain-text suites must still hold (`What must still hold`).
+
+**Integration:** none.
+
+## QA test manifest
+
+1. Candidate JSON/dict coerce (bug-repro): `tests/component/core/test_candidate.py::TestAst1514AdviseResumeBriefJsonPayload`
+2. Agent hop JSON-string + dict persist (bug-repro): `tests/component/core/test_agent.py::TestAst1514DoTaskResumeBriefJsonPersist`
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_candidate.py::TestAst1514AdviseResumeBriefJsonPayload \
+  tests/component/core/test_agent.py::TestAst1514DoTaskResumeBriefJsonPersist \
+  -q
+```
+
+**Pass criterion:** all six nodes red on pre-fix product; green after make-fix — `test-fix` verifies the flip. Not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1508 · AST-1460
 
 **Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.

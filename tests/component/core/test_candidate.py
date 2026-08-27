@@ -4692,6 +4692,57 @@ x"""
         assert any("found code=R1 instruction_chars=" in m for m in msgs)
 
 
+# AST-1514 bug-repro: Estelle JSON agent_payload.resume_brief (no RESUME BRIEF headers).
+_AST1514_RESUME_BRIEF_BODY = (
+    '[R1] Promote cloud migration win — cite: "Led AWS migration"\n'
+    "[R2] Cut outdated PHP bullet"
+)
+_AST1514_PAYLOAD_DICT = {
+    "resume_brief": _AST1514_RESUME_BRIEF_BODY,
+    "cover_letter_direction": "Ratify thesis with one line of reasoning.",
+    "ask_candidate": "Nothing further.",
+}
+_AST1514_PAYLOAD_JSON = json.dumps(_AST1514_PAYLOAD_DICT)
+_AST1514_EXPECTED_ITEMS = [
+    {
+        "code": "R1",
+        "instruction": "Promote cloud migration win",
+        "citation": "Led AWS migration",
+    },
+    {"code": "R2", "instruction": "Cut outdated PHP bullet", "citation": ""},
+]
+
+
+class TestAst1514AdviseResumeBriefJsonPayload:
+    """AST-1514: validate/parse coded list from JSON-string or dict agent_payload.resume_brief."""
+
+    def test_validate_accepts_json_string_resume_brief(self) -> None:
+        # Pre-fix: header scan on raw JSON → "RESUME BRIEF section missing or incomplete".
+        assert (
+            candidate_mod.validate_advise_job_resume_coded_list(_AST1514_PAYLOAD_JSON)
+            is None
+        )
+
+    def test_validate_accepts_dict_resume_brief(self) -> None:
+        # Pre-fix: non-str input rejected as missing section.
+        assert (
+            candidate_mod.validate_advise_job_resume_coded_list(_AST1514_PAYLOAD_DICT)
+            is None
+        )
+
+    def test_parse_returns_items_from_json_string(self) -> None:
+        assert (
+            candidate_mod.parse_advise_job_resume_coded_advice(_AST1514_PAYLOAD_JSON)
+            == _AST1514_EXPECTED_ITEMS
+        )
+
+    def test_parse_returns_items_from_dict(self) -> None:
+        assert (
+            candidate_mod.parse_advise_job_resume_coded_advice(_AST1514_PAYLOAD_DICT)
+            == _AST1514_EXPECTED_ITEMS
+        )
+
+
 class TestAst1272DraftHopDebugWhitelistTrail:
     """AST-1272: Style D unwrap + whitelist/accept/reject trails when debug=True."""
 
