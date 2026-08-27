@@ -144,3 +144,27 @@ async def create_contact_meteorite(
 ## Estimate
 
 Confirm Chuckles estimate: 3 — agree
+
+## Joan validate
+
+[plan-rubric]
+**Rubric:** plan-rubric
+**Ticket:** AST-1517
+**Overall:** APPROVED
+**Publish ref:** `sub/AST-1414/AST-1517-create-contact-meteorite` @ `2e8da9268e503b9ffba5dda08f875f5098a50305`
+
+## Traceability
+AC3 (parent AC3)→S1 link mode; AC4 (parent AC4)→S1 text mode; AC5 (parent AC8)→S1 Style D; parent AC1–2,6–8→N/A (siblings); stage maps to child Purpose / create wrapper slice only.
+
+## Findings
+
+### acceptable — URL vs text split
+`_contact_param_looks_like_url` rejects whitespace/newlines so pasted prose stays text mode (AC4); single-token URL shapes route through `contact_task_gazer_scrape` with late import (avoids `gazer`↔`meteorite` cycle at module load).
+
+### acceptable — Create path and landing state
+Calls `create_meteorite_job` (not `land_meteorite` / `save_meteorite_job`); lands `METEORITE_NEW` via existing carve-out; `qualify_meteorite` on `METEORITE_NEW` satisfies parent AC3 analysis queue; blocked/closed/missing `page_status` does not block create when scrape succeeds with visible text.
+
+### acceptable — Boundaries, errors, debug
+Single-file scope; scrape hard-fail / empty visible text return `ok=False` without raising into Contact; handler signature matches AST-1515 dispatch; Style D gated on `debug=True`; does not edit config/contact/gazer/tracker.
+
+context_tokens≈58000
