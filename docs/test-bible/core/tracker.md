@@ -265,6 +265,35 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
 
 ---
 
+### AST-1504 · AST-1491 (gap — cover letter hydrate display)
+
+**Parent:** [AST-1491](https://linear.app/astralcareermatch/issue/AST-1491/cover-letter-content-does-not-appear-for-editing). **Publish:** `origin/sub/AST-1491/AST-1504-gap-cover-letter-hydrate-tests`. Product fix: **AST-1499**.
+
+Extends AST-1116 hydrate coverage for board REVISE gaps: nested cover-hop unwrap → Subject/Letter/signature, nonempty gate (no all-empty spine overwrite), pin leave-on-miss when resolve returns a nonempty **non-cover** body (must keep `"pin-cover"` — not empty spine). All three nodes red against pre-AST-1499 product; green after AST-1499 hydrate helper.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Nested unwrap / empty spine / pin miss | `src/core/tracker.py` | **`TestAst1504CoverLetterHydrateDisplayGaps`** (bug-repro) |
+
+**Broken / obsolete:** prior `test_hydrate_leaves_pin_when_resolve_misses` with resolve `None` (already green pre-fix) — strengthened to nonempty non-cover body + assert pin preserved (Radia fix-now / Katherine `[qa-handoff]`).
+
+**Integration:** none — do not invent.
+
+## QA test manifest
+
+1. Bug-repro (nested unwrap + empty-spine gate + pin leave-on-miss): `tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps`
+   - Pin leave-on-miss red-first: `::test_hydrate_leaves_pin_when_resolve_misses` (resolve `{"unrelated": "meta"}` → keep `"pin-cover"`)
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1504CoverLetterHydrateDisplayGaps \
+  -q
+```
+
+**Pass criterion:** all three nodes red on pre-AST-1499 product; green after AST-1499 hydrate — `test-fix` / resolve verifies the flip. Not zero-arg harness / branch-lock gate.
+
+---
+
 ### AST-1420 · AST-1419
 
 **Parent:** [AST-1419 — Create a Copy button on the Job Modal](https://linear.app/astralcareermatch/issue/AST-1419/create-a-copy-button-on-the-job-modal). **Publish:** `origin/sub/AST-1419/AST-1420-job-copy-snapshot-payload`.
@@ -324,6 +353,49 @@ Persist `deviations` under `job_data.artifacts.deviations` (sibling of `resume_c
   -q
 ```
 
-**Bible shasum (this pass):** `docs/test-bible/core/tracker.md` → `5a6008858dce0f31fcfb6ed75e30a8bf8d2a412f` (pre-line)
-
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate.
+
+---
+
+### AST-1507 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1507-estelle-coded-resume-advice-list`.
+
+Extract/save coded advice list under `job_data.artifacts.resume_advice` (sibling metadata — not resume body); `clear_job_build_artifacts` drops slot via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1507. Config slot: **`docs/test-bible/utils/config.md`** § AST-1507. Live hop path: **`docs/test-bible/core/agent.md`** § AST-1507.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Extract/save/cancel clear | `src/core/tracker.py` | **`TestAst1507ResumeAdviceMetadataRetention`** |
+
+**Broken / obsolete:** none — `_resume_payload_body` already skips draft metadata keys only; advise is text → artifacts path.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1507ResumeAdviceMetadataRetention \
+  -q
+```
+
+---
+
+### AST-1508 · AST-1460
+
+**Parent:** [AST-1460 — Advise resume needs a coded list for clear adherence](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1508-judith-per-code-advice-adherence`.
+
+Extract/save per-code **`advice_adherence`** under `job_data.artifacts.advice_adherence`; **`get_job_resume_advice_codes`** reads expected codes from **`resume_advice`** artifact (**AST-1507**); `_resume_payload_body` skips adherence metadata; cancel clears via `JOB_BUILD_ARTIFACT_CLEAR_KEYS`. Replaces **AST-1271** deviations helpers. Parse/validate: **`docs/test-bible/core/candidate.md`** § AST-1508. Config slot: **`docs/test-bible/utils/config.md`** § AST-1508. Live hop path: **`docs/test-bible/core/agent.md`** § AST-1508.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Extract/save/body skip/persist/clear + code load | `src/core/tracker.py` | **`TestAst1508AdviceAdherenceMetadataRetention`**; revised **`TestAst1270NestedResumePayloadBody`** |
+
+**Broken / obsolete:** **`TestAst1271DeviationsMetadataRetention`** — retired; stub asserts deviations helpers removed.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1508AdviceAdherenceMetadataRetention \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  -q
+```

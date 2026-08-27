@@ -1492,19 +1492,8 @@ def start_scheduler() -> None:
     n = database.mark_stale_ledger_interrupted(_now_iso())
     if n:
         _sched_log.warning("Marked %d stale RUNNING ledger row(s) as INTERRUPTED on startup", n)
-    try:
-        mstats = provision_meteorite_dispatch_tasks()
-        _sched_log.info(
-            "AST-1054 meteorite dispatch provision template=%s touched=%s added=%s "
-            "skipped=%s skipped_missing_config=%s",
-            mstats.get("template_candidate_id"),
-            mstats.get("candidates_touched"),
-            mstats.get("added"),
-            mstats.get("skipped"),
-            mstats.get("skipped_missing_config"),
-        )
-    except Exception:
-        _sched_log.exception("AST-1054 meteorite dispatch provision failed")
+    # AST-1496: no scheduler-start save_dispatch_task provision (meteorite /
+    # meteorite_email / fetch_email). Helpers remain in-module but unused from boot.
     try:
         rstats = retire_candidate_requested_wrapper_dispatch_tasks()
         _sched_log.info(
@@ -1516,32 +1505,6 @@ def start_scheduler() -> None:
         )
     except Exception:
         _sched_log.exception("AST-1252 candidate_requested_* wrapper retire failed")
-    try:
-        gstats = provision_meteorite_email_dispatch_tasks()
-        _sched_log.info(
-            "AST-1134 meteorite_email dispatch provision task_key=%s retired_null=%s "
-            "candidates_touched=%s added=%s skipped=%s skipped_missing_config=%s",
-            gstats.get("task_key"),
-            gstats.get("retired_null"),
-            gstats.get("candidates_touched"),
-            gstats.get("added"),
-            gstats.get("skipped"),
-            gstats.get("skipped_missing_config"),
-        )
-    except Exception:
-        _sched_log.exception("AST-1134 meteorite_email dispatch provision failed")
-    try:
-        festats = ensure_fetch_email_dispatch_task()
-        _sched_log.info(
-            "AST-1472 fetch_email dispatch ensure task_key=%s added=%s skipped=%s "
-            "skipped_missing_config=%s",
-            festats.get("task_key"),
-            festats.get("added"),
-            festats.get("skipped"),
-            festats.get("skipped_missing_config"),
-        )
-    except Exception:
-        _sched_log.exception("AST-1472 fetch_email dispatch ensure failed")
     _tick_thread = threading.Thread(target=_tick_loop, daemon=True, name="astral-tick")
     _tick_thread.start()
     _sched_log.info("Scheduler started — tick every %dmin, max_auto_threads=%d",

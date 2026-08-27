@@ -252,6 +252,18 @@ class TestDecodePayload:
         assert job["job_title"] == "Sr Job Role"
 
 
+class TestAst1513DuplicateRubricCodes:
+    """AST-1513: fail fast when model emits duplicate vector codes on one encoded line."""
+
+    def test_decode_rejects_duplicate_tp_segments_on_one_line(self) -> None:
+        ctx = {
+            "batch_entities": [{"astral_job_id": "job-1"}],
+            "vector_labels": {"TP": "Speaking Truth to Power With Diplomacy"},
+        }
+        with pytest.raises(ValueError, match="duplicate vector code"):
+            agent_mod._decode_payload("grade_do", "grades", "0|TPB4|TPB4", ctx)
+
+
 class TestAst880GradesEncodedVetMetaDecode:
     """AST-880: grades_encoded_vet_meta → results[{hit_index, grade, website, confidence}]."""
 
@@ -5742,6 +5754,94 @@ class TestAst862CleanParseFeedbackBlock:
             conn.close()
 
 
+class TestAst1486FeedbackEntityIdStamp:
+    """AST-1486: FEEDBACK agent_data rows stamp entity_id when index is known."""
+
+    def test_capture_feedback_block_stamps_entity_id_when_index_known(
+        self, seeded_db
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_like", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "somerset",
+            "grade_like",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_like",
+            owner_task_key="grade_like",
+            candidate_id="somerset",
+            batch_id="batch-1486-stamp",
+            entity_type="candidate",
+            index="somerset",
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        rows = db.get_agent_data_by_batch("batch-1486-stamp", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert rows[0].get("entity_id") == "somerset"
+
+    def test_capture_feedback_block_entity_id_null_when_index_omitted(
+        self, seeded_db
+    ) -> None:
+        db = seeded_db
+        db.save_agent_task("grade_get", agent_id="a1", user_prompt="p")
+        db.sync_rubric_vectors_from_criteria(
+            "cand-1",
+            "grade_get",
+            [{"code": "G1", "label": "G1", "content": "body\nA = one\nB = two", "importance": 5}],
+        )
+        prompt_blocks: List[Dict[str, str]] = []
+        agent_mod._capture_rubric_vector_feedback(
+            task_key="grade_get",
+            owner_task_key="grade_get",
+            candidate_id="cand-1",
+            batch_id="batch-1486-null",
+            entity_type="candidate",
+            index=None,
+            perf={"status": "success", "vector_reviews": ["G1RACOVK"]},
+            debug=False,
+            prompt_blocks=prompt_blocks,
+            batch_size=1,
+        )
+        rows = db.get_agent_data_by_batch("batch-1486-null", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert not rows[0].get("entity_id")
+
+    def test_store_feedback_block_stamps_entity_id_when_index_known(
+        self, seeded_db
+    ) -> None:
+        # Direct data-layer writer (fix site); capture paths above exercise the call chain.
+        db = seeded_db
+        fb_id = database_mod.store_feedback_block(
+            "candidate",
+            "grade_get",
+            "batch-1486-direct",
+            '["G1RACOVK"]',
+            index="somerset",
+        )
+        rows = db.get_agent_data_by_batch("batch-1486-direct", block_type="FEEDBACK")
+        assert len(rows) == 1
+        assert rows[0]["agent_data_id"] == fb_id
+        assert rows[0].get("entity_id") == "somerset"
+
+        fb_null = database_mod.store_feedback_block(
+            "candidate",
+            "grade_get",
+            "batch-1486-direct-null",
+            '["raw"]',
+        )
+        rows_null = db.get_agent_data_by_batch(
+            "batch-1486-direct-null", block_type="FEEDBACK"
+        )
+        assert len(rows_null) == 1
+        assert rows_null[0]["agent_data_id"] == fb_null
+        assert not rows_null[0].get("entity_id")
+
+
 class TestAst897DoTaskBalanceDebug:
     """AST-897: do_task debug_detail when provider result is tagged balance refusal."""
 
@@ -7784,17 +7884,21 @@ class TestAst1264CandidateCraftSuccession:
         assert (child_contexts[0].get("CALLER_RESPONSE") or "").strip() == "from-get-hop"
 
 
-class TestAst1271DoTaskDeviationsPersist:
-    """AST-1271: successful draft_job_resume retains deviations via tracker persist helper."""
+class TestAst1508DoTaskAdviceAdherencePersist:
+    """AST-1508: draft_job_resume validates per-code adherence and persists metadata."""
 
     @pytest.mark.asyncio
-    async def test_success_persists_deviations(
+    async def test_success_persists_advice_adherence(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        persist = MagicMock(return_value=True)
-        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        persist = MagicMock(return_value=_AST1508_ADVICE_ADHERENCE_ROWS)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_advice_adherence", persist)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job_resume_advice_codes",
+            lambda index: (["R1", "R2"], None),
+        )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
@@ -7809,7 +7913,7 @@ class TestAst1271DoTaskDeviationsPersist:
                                 "professional_summary": "Seasoned engineer.",
                                 "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
                             },
-                            "deviations": ["Skipped UAT claim."],
+                            "advice_adherence": list(_AST1508_ADVICE_ADHERENCE_ROWS),
                         }
                     },
                     "api_response": _api_response(),
@@ -7819,22 +7923,24 @@ class TestAst1271DoTaskDeviationsPersist:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         out = await agent_mod.do_task(
-            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+            "draft_job_resume", index="job-1508", ctx=_draft_job_resume_ctx()
         )
         assert out["success"] is True
         persist.assert_called_once()
-        assert persist.call_args.args[0] == "job-1271"
-        parsed_arg = persist.call_args.args[1]
-        assert isinstance(parsed_arg, dict)
+        assert persist.call_args.args[0] == "job-1508"
 
     @pytest.mark.asyncio
-    async def test_validation_failure_does_not_persist_deviations(
+    async def test_validation_failure_does_not_persist_advice_adherence(
         self,
         monkeypatch: pytest.MonkeyPatch,
         batch_token: Any,
     ) -> None:
-        persist = MagicMock(return_value=True)
-        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_deviations", persist)
+        persist = MagicMock(return_value=None)
+        monkeypatch.setattr("src.core.tracker.persist_draft_job_resume_advice_adherence", persist)
+        monkeypatch.setattr(
+            "src.core.tracker.get_job_resume_advice_codes",
+            lambda index: (["R1"], None),
+        )
         _patch_strict_batch_anthropic(monkeypatch)
         monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
         monkeypatch.setattr(
@@ -7843,7 +7949,18 @@ class TestAst1271DoTaskDeviationsPersist:
             AsyncMock(
                 return_value={
                     "success": True,
-                    "parsed_response": {"agent_payload": {"bogus_section": "x", "deviations": ["n"]}},
+                    "parsed_response": {
+                        "agent_payload": {
+                            "resume": {
+                                "professional_summary": "Seasoned engineer.",
+                                "experience": [dict(job) for job in _DRAFT_EXPERIENCE_JOBS],
+                            },
+                            "advice_adherence": [
+                                {"code": "R1", "status": "applied", "note": "ok"},
+                                {"code": "R2", "status": "applied", "note": "extra code"},
+                            ],
+                        }
+                    },
                     "api_response": _api_response(),
                     "timesheet": {},
                 }
@@ -7851,8 +7968,98 @@ class TestAst1271DoTaskDeviationsPersist:
         )
         monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
         out = await agent_mod.do_task(
-            "draft_job_resume", index="job-1271", ctx=_draft_job_resume_ctx()
+            "draft_job_resume", index="job-1508", ctx=_draft_job_resume_ctx()
         )
+        assert out["success"] is False
+        persist.assert_not_called()
+
+
+_AST1508_ADVICE_ADHERENCE_ROWS = [
+    {"code": "R1", "status": "applied", "note": "Promoted cloud win in summary."},
+    {"code": "R2", "status": "skipped", "note": "PHP bullet unsupported in materials."},
+]
+
+
+class TestAst1271DoTaskDeviationsPersist:
+    """AST-1271: retired — persist hook replaced by AST-1508 advice_adherence."""
+
+    def test_deviations_persist_helper_removed(self) -> None:
+        import src.core.tracker as tracker_mod
+
+        assert not hasattr(tracker_mod, "persist_draft_job_resume_deviations")
+
+
+_AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF
+[R1] Promote cloud migration win — cite: "Led AWS migration"
+[R2] Cut outdated PHP bullet
+
+COVER LETTER DIRECTION
+Ratify thesis with one line of reasoning.
+
+ASK CANDIDATE
+Nothing further.
+"""
+
+
+class TestAst1507DoTaskResumeAdvicePersist:
+    """AST-1507: advise_job_resume validates coded RESUME BRIEF and persists metadata."""
+
+    @pytest.mark.asyncio
+    async def test_success_persists_resume_advice(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=[{"code": "R1"}])
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {"agent_payload": _AST1507_VALID_ADVISE_TEXT},
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1507", ctx={})
+        assert out["success"] is True
+        persist.assert_called_once()
+        assert persist.call_args.args[0] == "job-1507"
+        assert isinstance(persist.call_args.args[1], str)
+        assert "RESUME BRIEF" in persist.call_args.args[1]
+
+    @pytest.mark.asyncio
+    async def test_validation_failure_does_not_persist_resume_advice(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+        batch_token: Any,
+    ) -> None:
+        persist = MagicMock(return_value=None)
+        monkeypatch.setattr("src.core.tracker.persist_advise_job_resume_coded_advice", persist)
+        _patch_strict_batch_anthropic(monkeypatch)
+        monkeypatch.setattr(agent_mod, "_resolve_task_prompts", lambda key: _agent_rows())
+        monkeypatch.setattr(
+            agent_mod,
+            "send_to_anthropic",
+            AsyncMock(
+                return_value={
+                    "success": True,
+                    "parsed_response": {
+                        "agent_payload": "RESUME BRIEF\nbad line\nCOVER LETTER DIRECTION\nx"
+                    },
+                    "api_response": _api_response(),
+                    "timesheet": {},
+                }
+            ),
+        )
+        monkeypatch.setattr(agent_mod, "save_agent_data", MagicMock(return_value="id"))
+        out = await agent_mod.do_task("advise_job_resume", index="job-1507", ctx={})
         assert out["success"] is False
         persist.assert_not_called()
 

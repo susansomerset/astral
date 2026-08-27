@@ -294,6 +294,25 @@ class TestNormalizeRubricArtifactsOnSaveExtended:
         assert item["importance"] == 7
 
 
+class TestAst1513DuplicateRubricCodes:
+    """AST-1513: reject duplicate rubric vector codes on save (somerset Do TP collision)."""
+
+    _HT_LABEL = "Hands-On Technical Partnership With Engineers"
+    _TP_LABEL = "Speaking Truth to Power With Diplomacy"
+
+    def _duplicate_tp_do_rubric(self) -> list:
+        return [
+            _criterion(code="TP", label=self._HT_LABEL),
+            _criterion(code="TP", label=self._TP_LABEL),
+        ]
+
+    def test_normalize_rejects_duplicate_do_rubric_codes(self) -> None:
+        with pytest.raises(ValueError, match=r"duplicate code.*TP"):
+            candidate_mod.normalize_rubric_artifacts_on_save(
+                {"do_rubric": self._duplicate_tp_do_rubric()}
+            )
+
+
 class TestNormalizeImportanceValue:
     @pytest.mark.parametrize(
         ("raw", "expected"),
@@ -2621,7 +2640,8 @@ class TestAst997JobTailoredExperience:
         by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
         draft = by_key["draft_job_resume"]["user_prompt"]
         assert '"resume":' in draft
-        assert '"deviations"' in draft
+        assert '"advice_adherence"' in draft
+        assert "deviations" not in draft
         assert "ordered array of job objects" in draft
         assert "prose string or job array" not in draft
         assert "experience remains a single string" not in draft
@@ -2661,6 +2681,27 @@ class TestAst1349ExperienceArrayContract:
         advise = self._current("advise_job_resume").get("user_prompt") or ""
         assert "Brief Judith **per role**" in advise
         assert "never rewrite company/title/dates/location" in advise
+
+    def test_advise_prompt_coded_resume_brief_contract(self) -> None:
+        import re
+
+        advise = self._current("advise_job_resume").get("user_prompt") or ""
+        assert "One line per advised resume change" in advise
+        assert "[R1], [R2]" in advise
+        assert ' — cite: "' in advise
+        headers = [
+            m.group(1)
+            for m in re.finditer(
+                r"^(RESUME BRIEF|COVER LETTER DIRECTION|ASK CANDIDATE)",
+                advise,
+                re.MULTILINE,
+            )
+        ]
+        assert headers == ["RESUME BRIEF", "COVER LETTER DIRECTION", "ASK CANDIDATE"]
+        cl_i = advise.find("COVER LETTER DIRECTION\n")
+        ask_i = advise.find("ASK CANDIDATE\n")
+        assert cl_i >= 0 and ask_i > cl_i
+        assert "[R1]" not in advise[cl_i:ask_i]
 
     def test_validate_rejects_string_experience_contract_message(self) -> None:
         base = {
@@ -4344,7 +4385,7 @@ class TestAst1259CandidateBatchApi:
 
 
 class TestAst1270NestedDraftJobResumeContract:
-    """AST-1270: unwrap agent_payload.resume; whitelist base_resume keys; deviations metadata."""
+    """AST-1270: unwrap agent_payload.resume; whitelist base_resume keys; advice_adherence metadata."""
 
     # Parent brief sample keys (subset) — enough to prove nest + whitelist without full prose dump.
     _BASE_SECTIONS = {
@@ -4391,14 +4432,15 @@ class TestAst1270NestedDraftJobResumeContract:
         ]
 
     def test_nested_envelope_validates_and_unwraps_resume(self) -> None:
-        # Nested sample shape from parent AST-1268 — resume body + sibling deviations.
+        # Nested sample shape — resume body + sibling advice_adherence metadata (AST-1508).
         resume_body = {k: f"tailored-{k}" for k in self._BASE_SECTIONS}
         resume_body["experience"] = [dict(job) for job in _SAMPLE_EXPERIENCE_JOBS]
+        adherence = [{"code": "R1", "status": "skipped", "note": "Unsupported in materials."}]
         parsed: dict[str, Any] = {
             "agent_performance": {"status": "success", "failure_note": ""},
             "agent_payload": {
                 "resume": resume_body,
-                "deviations": ["Skipped UAT claim — not confirmed in materials."],
+                "advice_adherence": adherence,
             },
         }
         err = candidate_mod.validate_draft_job_resume_payload(parsed, self._cd())
@@ -4406,13 +4448,13 @@ class TestAst1270NestedDraftJobResumeContract:
         ap = parsed["agent_payload"]
         assert "resume" not in ap
         assert ap["professional_summary"] == "tailored-professional_summary"
-        assert ap["deviations"] == ["Skipped UAT claim — not confirmed in materials."]
+        assert ap["advice_adherence"] == adherence
 
     def test_unknown_key_inside_resume_still_fails(self) -> None:
         parsed = {
             "agent_payload": {
                 "resume": {"professional_summary": "ok", "bogus_section": "nope"},
-                "deviations": [],
+                "advice_adherence": [],
             }
         }
         err = candidate_mod.validate_draft_job_resume_payload(parsed, self._cd())
@@ -4472,7 +4514,8 @@ class TestAst1270NestedDraftJobResumeContract:
         by_key = {r["task_key"]: r for r in rows if r.get("task_key")}
         draft = by_key["draft_job_resume"]["user_prompt"]
         assert '"resume":' in draft
-        assert '"deviations"' in draft
+        assert '"advice_adherence"' in draft
+        assert "deviations" not in draft
         assert "experience remains a single string" not in draft
         # AST-1349: array-only (retired "prose string or job array").
         assert "prose string or job array" not in draft
@@ -4482,6 +4525,171 @@ class TestAst1270NestedDraftJobResumeContract:
         # AST-1465: retire instructional `•`/`-`/`*` glyph pattern (not every markdown `- ` rule).
         assert "`•`/`-`/`*`" not in draft
         assert "ordered **array of strings**" in draft
+
+
+_AST1508_ADVICE_ADHERENCE_ROWS = [
+    {"code": "R1", "status": "applied", "note": "Promoted cloud win in summary."},
+    {"code": "R2", "status": "skipped", "note": "PHP bullet unsupported in materials."},
+]
+
+
+class TestAst1508DraftAdviceAdherenceValidate:
+    """AST-1508: normalize/validate per-code advice_adherence on draft_job_resume."""
+
+    def test_validate_accepts_one_row_per_expected_code(self) -> None:
+        parsed = {"agent_payload": {"advice_adherence": list(_AST1508_ADVICE_ADHERENCE_ROWS)}}
+        assert (
+            candidate_mod.validate_draft_job_resume_advice_adherence(
+                parsed, ["R1", "R2"]
+            )
+            is None
+        )
+
+    def test_validate_rejects_missing_key(self) -> None:
+        err = candidate_mod.validate_draft_job_resume_advice_adherence(
+            {"agent_payload": {"professional_summary": "S"}}, ["R1"]
+        )
+        assert err == "advice_adherence is required on draft_job_resume"
+
+    def test_validate_rejects_missing_expected_code(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "advice_adherence": [
+                    {"code": "R1", "status": "applied", "note": "Done"},
+                ]
+            }
+        }
+        err = candidate_mod.validate_draft_job_resume_advice_adherence(parsed, ["R1", "R2"])
+        assert err == "Missing advice adherence for code: R2"
+
+    def test_validate_rejects_unknown_code(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "advice_adherence": [
+                    {"code": "R1", "status": "applied", "note": "Done"},
+                    {"code": "R9", "status": "applied", "note": "Extra"},
+                ]
+            }
+        }
+        err = candidate_mod.validate_draft_job_resume_advice_adherence(parsed, ["R1"])
+        assert err == "Unknown advice adherence code: R9"
+
+    def test_validate_rejects_empty_note(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "advice_adherence": [{"code": "R1", "status": "applied", "note": "  "}]
+            }
+        }
+        err = candidate_mod.validate_draft_job_resume_advice_adherence(parsed, ["R1"])
+        assert err == "advice_adherence note required for code R1"
+
+    def test_normalize_strips_string_fields(self) -> None:
+        parsed = {
+            "agent_payload": {
+                "advice_adherence": [
+                    {"code": " R1 ", "status": " applied ", "note": " note "},
+                ]
+            }
+        }
+        candidate_mod.normalize_draft_job_resume_advice_adherence(parsed)
+        row = parsed["agent_payload"]["advice_adherence"][0]
+        assert row == {"code": "R1", "status": "applied", "note": "note"}
+
+    def test_validate_debug_emits_style_d_trail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        parsed = {"agent_payload": {"advice_adherence": list(_AST1508_ADVICE_ADHERENCE_ROWS)}}
+        assert (
+            candidate_mod.validate_draft_job_resume_advice_adherence(
+                parsed, ["R1", "R2"], debug=True
+            )
+            is None
+        )
+        assert idx.call_args.kwargs["func"] == "candidate.validate_draft_job_resume_advice_adherence"
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert any("found expected_codes=R1,R2" in m for m in msgs)
+
+
+_AST1507_VALID_ADVISE_TEXT = """RESUME BRIEF
+[R1] Promote cloud migration win — cite: "Led AWS migration"
+[R2] Cut outdated PHP bullet
+
+COVER LETTER DIRECTION
+Ratify thesis with one line of reasoning.
+
+ASK CANDIDATE
+Nothing further.
+"""
+
+
+class TestAst1507AdviseCodedResumeAdvice:
+    """AST-1507: parse/validate coded RESUME BRIEF from advise_job_resume text."""
+
+    def test_parse_returns_coded_items_with_citation(self) -> None:
+        items = candidate_mod.parse_advise_job_resume_coded_advice(_AST1507_VALID_ADVISE_TEXT)
+        assert items == [
+            {
+                "code": "R1",
+                "instruction": "Promote cloud migration win",
+                "citation": "Led AWS migration",
+            },
+            {"code": "R2", "instruction": "Cut outdated PHP bullet", "citation": ""},
+        ]
+
+    def test_validate_accepts_well_formed_section(self) -> None:
+        assert (
+            candidate_mod.validate_advise_job_resume_coded_list(_AST1507_VALID_ADVISE_TEXT)
+            is None
+        )
+
+    def test_validate_rejects_missing_section(self) -> None:
+        err = candidate_mod.validate_advise_job_resume_coded_list("COVER LETTER DIRECTION\nx")
+        assert err == "RESUME BRIEF section missing or incomplete"
+
+    def test_validate_rejects_unparseable_line(self) -> None:
+        text = """RESUME BRIEF
+not a coded line
+COVER LETTER DIRECTION
+x"""
+        err = candidate_mod.validate_advise_job_resume_coded_list(text)
+        assert err and err.startswith("RESUME BRIEF line is not a coded advice item:")
+
+    def test_validate_rejects_duplicate_code(self) -> None:
+        text = """RESUME BRIEF
+[R1] first item
+[R1] duplicate
+COVER LETTER DIRECTION
+x"""
+        err = candidate_mod.validate_advise_job_resume_coded_list(text)
+        assert err == "Duplicate resume advice code: R1"
+
+    def test_validate_rejects_empty_coded_section(self) -> None:
+        text = """RESUME BRIEF
+
+COVER LETTER DIRECTION
+x"""
+        err = candidate_mod.validate_advise_job_resume_coded_list(text)
+        assert err == "RESUME BRIEF must include at least one coded advice item"
+
+    def test_validate_debug_emits_style_d_trail(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        idx = MagicMock()
+        detail = MagicMock()
+        monkeypatch.setattr(candidate_mod.logger, "set_debug_flag", MagicMock())
+        monkeypatch.setattr(candidate_mod.logger, "debug_index", idx)
+        monkeypatch.setattr(candidate_mod.logger, "debug_detail", detail)
+        assert (
+            candidate_mod.validate_advise_job_resume_coded_list(
+                _AST1507_VALID_ADVISE_TEXT, debug=True
+            )
+            is None
+        )
+        assert idx.call_args.kwargs["func"] == "candidate.validate_advise_job_resume_coded_list"
+        msgs = [c.args[0] for c in detail.call_args_list]
+        assert any("found section=RESUME BRIEF item_count=2" in m for m in msgs)
+        assert any("found code=R1 instruction_chars=" in m for m in msgs)
 
 
 class TestAst1272DraftHopDebugWhitelistTrail:

@@ -14,6 +14,7 @@ from src.core.roster import (
     save_company,
     update_company,
 )
+from src.utils.config import METEORITE_CONFIG
 
 companies_bp = Blueprint("companies", __name__, url_prefix="/api/companies")
 
@@ -49,6 +50,11 @@ def list_view():
         rows = list_companies(exclude_states=exclude, candidate_id=candidate_id)
     elif view == "ignored":
         rows = list_companies(states=["IGNORE"], candidate_id=candidate_id)
+    elif view == "meteorite_list":
+        rows = list_companies(
+            states=[METEORITE_CONFIG["company_state"]],
+            candidate_id=candidate_id,
+        )
     else:
         rows = list_companies(candidate_id=candidate_id)
 
@@ -81,6 +87,10 @@ def counts():
         "/companies/new_list": count_companies(states=pipeline_states, candidate_id=candidate_id) if pipeline_states else 0,
         "/companies/inactive_list": count_companies(exclude_states=exclude, candidate_id=candidate_id),
         "/companies/ignored": count_companies(states=["IGNORE"], candidate_id=candidate_id),
+        "/companies/meteorite_list": count_companies(
+            states=[METEORITE_CONFIG["company_state"]],
+            candidate_id=candidate_id,
+        ),
         "/companies/watch_history": len(list_company_job_scans(candidate_id=candidate_id)),
     })
 

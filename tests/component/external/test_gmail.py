@@ -516,3 +516,17 @@ class TestAst1088ArchiveTrash:
         monkeypatch.setattr(gmail_mod, "build", MagicMock(side_effect=RuntimeError("trash boom")))
         with pytest.raises(RuntimeError, match="trash boom"):
             gmail_mod.trash_message("m1")
+
+
+# Branches: discovery build kwargs — skip oauth2client file_cache log noise (AST-1512).
+class TestAst1512DiscoveryCache:
+    def test_build_service_passes_cache_discovery_false(self, monkeypatch, fake_gmail_service) -> None:
+        captured: dict = {}
+
+        def _build(_api, _version, credentials=None, **kwargs):
+            captured.update(kwargs)
+            return fake_gmail_service["service"]
+
+        monkeypatch.setattr(gmail_mod, "build", _build)
+        gmail_mod._build_service()
+        assert captured.get("cache_discovery") is False

@@ -267,6 +267,7 @@ async def _land_bound_inbox_message(
         logger.debug_detail(f"message_id={mid[:80]}")
         logger.debug_detail(f"astral_candidate_id={cid}")
         logger.debug_detail(f"html_len={len(html)}")
+        logger.debug_detail(f"company={land.get('company')!r}")
     return land
 
 
@@ -509,6 +510,7 @@ def create_meteorite_job_from_inbox_message(
         logger.debug_detail(
             f"created={len(created)} skipped={len(skipped)} mode=land_meteorite"
         )
+        logger.debug_detail(f"company={land.get('company')!r}")
         if first_id:
             logger.debug_detail(f"astral_job_id={first_id}")
 

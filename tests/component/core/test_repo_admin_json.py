@@ -59,60 +59,28 @@ class TestLoadRepoAdminJsonFile:
 
 
 class TestApplyRepoAdminJsonAtStartup:
-    def test_applies_agent_then_agent_task_on_one_connection(
-        self, monkeypatch: pytest.MonkeyPatch,
+    @pytest.mark.parametrize("deploy_env", ["staging", "production", "local"])
+    def test_startup_apply_is_noop_on_all_deploy_envs(
+        self, monkeypatch: pytest.MonkeyPatch, deploy_env: str,
     ) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "staging")
-        calls: list[str] = []
-        conn = MagicMock()
-        monkeypatch.setattr(repo_json_mod.database, "_get_connection", lambda: conn)
-        monkeypatch.setattr(
-            repo_json_mod,
-            "load_repo_admin_json_file",
-            lambda table_key: calls.append(f"load:{table_key}") or [],
-        )
-        monkeypatch.setattr(
-            repo_json_mod.database,
-            "apply_agent_repo_json_startup",
-            lambda _c, _rows: calls.append("apply:agent"),
-        )
-        monkeypatch.setattr(
-            repo_json_mod.database,
-            "apply_agent_task_repo_json_startup",
-            lambda _c, _rows: calls.append("apply:agent_task"),
-        )
-
-        repo_json_mod.apply_repo_admin_json_at_startup()
-
-        assert calls == [
-            "load:agent",
-            "apply:agent",
-            "load:agent_task",
-            "apply:agent_task",
-        ]
-        conn.execute.assert_any_call("PRAGMA foreign_keys=ON")
-        conn.execute.assert_any_call("BEGIN IMMEDIATE")
-        conn.commit.assert_called_once()
-        conn.close.assert_called_once()
-
-    def test_skips_apply_when_deploy_env_is_local(
-        self, monkeypatch: pytest.MonkeyPatch,
-    ) -> None:
-        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", "local")
+        # AST-1502 / AST-1497 kill-switch: boot-time repo JSON apply disabled in every env.
+        monkeypatch.setenv("ASTRAL_DEPLOY_ENV", deploy_env)
         conn = MagicMock()
         load = MagicMock()
+        apply_agent = MagicMock()
+        apply_task = MagicMock()
         monkeypatch.setattr(repo_json_mod.database, "_get_connection", lambda: conn)
         monkeypatch.setattr(repo_json_mod, "load_repo_admin_json_file", load)
+        monkeypatch.setattr(repo_json_mod.database, "apply_agent_repo_json_startup", apply_agent)
         monkeypatch.setattr(
-            repo_json_mod.database, "apply_agent_repo_json_startup", MagicMock(),
-        )
-        monkeypatch.setattr(
-            repo_json_mod.database, "apply_agent_task_repo_json_startup", MagicMock(),
+            repo_json_mod.database, "apply_agent_task_repo_json_startup", apply_task,
         )
 
         repo_json_mod.apply_repo_admin_json_at_startup()
 
         load.assert_not_called()
+        apply_agent.assert_not_called()
+        apply_task.assert_not_called()
         conn.execute.assert_not_called()
         conn.commit.assert_not_called()
         conn.close.assert_not_called()
@@ -464,6 +432,33 @@ class TestAst1055MeteoriteCatalogRows:
         assert "culture visibility" in prompt
         assert by["analysis_upshot"]["task_seq"] == 9
         assert by["grade_like"]["task_seq"] == 8
+
+
+class TestAst1494QualifyMeteoriteCompanyStemCatalog:
+    """AST-1494: Ruth company_stem prompts + AST-756 fixture byte lock."""
+
+    def _qm(self, path: str) -> dict:
+        rows = json.loads(Path(path).read_text(encoding="utf-8"))
+        return next(
+            r for r in rows
+            if r.get("task_key") == "qualify_meteorite" and r.get("current") == 1
+        )
+
+    def test_cache_and_user_prompt_company_stem_contract(self) -> None:
+        cat = self._qm("data/admin/agent_task.json")
+        cp, up = cat["cache_prompt"], cat["user_prompt"]
+        assert "company_stem" in cp
+        assert "## COMPANY STEM" in cp
+        assert "meteorite-self" in cp
+        assert "original sender email" in cp.lower()
+        assert "job-link slug" in cp.lower()
+        assert "first match wins" in cp.lower()
+        assert "company_stem" in up
+
+    def test_fixture_byte_identical_to_catalog(self) -> None:
+        cat_bytes = Path("data/admin/agent_task.json").read_bytes()
+        fix_bytes = Path("docs/uat-fixtures/AST-756/expected-agent_task.json").read_bytes()
+        assert cat_bytes == fix_bytes
 
 
 @pytest.mark.skip(reason=_AST1269_SEED_WIPE_SKIP)

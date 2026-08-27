@@ -1887,7 +1887,7 @@ cd src/ui/frontend && npm run test:component -- \
 
 **Parent:** [AST-1314 — Add a Print button to Base Resume Content](https://linear.app/astralcareermatch/issue/AST-1314/add-a-print-button-to-base-resume-content). **Publish:** `origin/sub/AST-1314/AST-1337-print-control-on-base-resume-content`.
 
-**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved base, not editor buffer / session admin POST / job Print). `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
+**Print** on Artifacts → Base Resume Content: Session-style validate-then-blob via `api()` `GET /candidate/resume/base?candidate_id=…` (saved **body** content, not editor buffer / session admin POST / job Print). **AST-1489:** structure `page_break_policy` auto-persisted from editor rows immediately before print GET. `btn secondary`; disabled without candidate or while in-flight (`Opening…`). Failed / empty HTML → on-page error + toast; **no** `window.open`.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
@@ -2315,6 +2315,38 @@ cd src/ui/frontend && npm run test:component -- \
   --testNamePattern="AST-1476|AST-1306"
 ```
 
+### AST-1489 · AST-1483 (bug — Print ignores unsaved page-break)
+
+**Parent:** [AST-1483 — Resume page break settings don't work](https://linear.app/astralcareermatch/issue/AST-1483/resume-page-break-settings-dont-work). **Publish:** `origin/sub/AST-1483/AST-1489-page-break-settings-still-ignored-on-print`. Auto-save structure rows (incl. `page_break_policy`) before validate-then-blob print GET on Base Resume Content and JAR Job Resume. **Body content** still from saved artifacts — not editor buffer.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Base Print without Save sections (bug-repro) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1489:`** |
+| JAR Print Resume without Save sections | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1489:`** |
+| Reorder + Print full body (AST-1490) | `ArtifactEditor.tsx`, Base/JAR pages | **`docs/test-bible/frontend/components.md`** § AST-1490 |
+| Print mock handlers (AST-1337 / AST-1350) | same | revised **`AST-1337:`** / **`AST-1350:`** — tolerate structure PUT before resume GET |
+
+**Broken / obsolete this pass:** AST-1337 Print mocks lacked structure PUT handler — extended for make-fix blast radius.
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Base print-before-PUT (bug-repro): `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1489"`
+2. JAR print-before-PUT (bug-repro): `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1489"`
+3. Print regression mocks: same files — `--testNamePattern="AST-1337|AST-1350"`
+
+**AST-1489** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1489|AST-1337|AST-1350"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
+
 ### AST-1481 · AST-1463
 
 **Parent:** [AST-1463 — Candidate single page job report](https://linear.app/astralcareermatch/issue/AST-1463). **Publish:** `origin/sub/AST-1463/AST-1481-detail-deeplink-opens-existing-report-modal`.
@@ -2405,3 +2437,25 @@ Fix-lane bug: Applied page must list stem/meteorite jobs with NULL `company.cand
 **Broken / obsolete:** **`JobsApplied — AST-1479`** Interview case still asserts body without `candidate_id` — keep for pre-fix regression; AST-1498 repro is separate `it`.
 
 **Integration:** none.
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+Read-only **Meteorite** companies list (`CompaniesMeteorite.tsx`): inline columns; fetches `view=meteorite_list`; row click → `CompanyDetailModal`; no bulk actions. API: **`docs/test-bible/ui/api/api_companies.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Routed page load + modal (§6c) | `CompaniesMeteorite.tsx` | **`test_CompaniesMeteorite.test.tsx`** |
+| Non-array payload empty state | same | **`test_CompaniesMeteorite.test.tsx`** |
+
+**Broken / obsolete:** none — new page.
+
+**Integration:** none.
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
+```

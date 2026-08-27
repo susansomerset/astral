@@ -411,13 +411,51 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-783 · AST-756
 
-**`RepoJsonDivergenceBanner`:** fetches **`/api/admin/repo_json/status`**, shows gold warning when `diverged`, **Revert to file** via **`useUserConfirm`** danger dialog → **`POST /api/admin/repo_json/revert/<tableKey>`**; refetches on `refreshToken` prop from parent pages.
+**`RepoJsonDivergenceBanner`:** fetches **`/api/admin/repo_json/status`**, shows gold warning when `diverged`, **Revert to file** via **`useUserConfirm`** danger dialog → **`POST /api/admin/repo_json/revert/<tableKey>`**; refetches on `refreshToken` prop from parent pages. **AST-1506** adds **Show Differences** (`GET /compare/<tableKey>` modal) and **Update file with table version** (`POST /write/<tableKey>` + status refetch / `onReverted`).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` |
+| Banner hide/show + revert flow | `src/ui/frontend/src/components/RepoJsonDivergenceBanner.tsx` | `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` (**AST-783**) |
+| Show Differences + Update file + copy rewrite | same | same (**AST-1506** describe block) |
+
+Routed pages (unchanged wiring — regression only): **`docs/test-bible/frontend/pages.md`** § AST-783.
 
 ---
+
+### AST-1506 · AST-1455
+
+**Parent:** [AST-1455 — Show Differences and Update file with table version](https://linear.app/astralcareermatch/issue/AST-1455). **Publish:** `origin/sub/AST-1455/AST-1506-show-differences-update-file-divergence-banner`. **Depends:** sibling **AST-1505** compare/write admin routes.
+
+Wires **Show Differences** modal and **Update file with table version** confirm/write into shared **`RepoJsonDivergenceBanner`**; rewrites warning copy (no restart/deploy overwrite claim). **`AdminAgentPrompts`** / **`AdminTaskPrompts`** unchanged — `tableKey` prop isolates agent vs agent_task.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Copy + compare modal + write/cancel | `RepoJsonDivergenceBanner.tsx` | **`test_RepoJsonDivergenceBanner.test.tsx`** — **`RepoJsonDivergenceBanner — AST-1506`** |
+| Routed page banner mount (regression) | `AdminAgentPrompts.tsx`, `AdminTaskPrompts.tsx` | **`test_AdminAgentPrompts.test.tsx`**, **`test_AdminTaskPrompts.test.tsx`** — existing **AST-783** nodes |
+
+**Broken / obsolete this pass:** none — **AST-783** revert test still valid; page tests unchanged.
+
+**Integration:** none revised; do not invent new integration coverage.
+
+## QA test manifest
+
+1. Banner Show/Update/copy: `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` — **`RepoJsonDivergenceBanner — AST-1506`**
+2. Revert regression: `tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx` — **`AST-783`** nodes
+3. Routed page banner regression: `tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx` — **`AST-783: shows agent repo JSON divergence banner on routed page`**; `tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx` — **`AST-783: shows task repo JSON divergence banner on routed page`**
+
+**AST-1506** narrowed run:
+
+```bash
+cd src/ui/frontend && npx tsc -b --noEmit
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_RepoJsonDivergenceBanner.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminAgentPrompts.test.tsx \
+  ../../../tests/component/frontend/pages/test_AdminTaskPrompts.test.tsx \
+  -t "AST-783|AST-1506"
+```
+
+**Pass criterion:** Vitest green on manifest lines + `tsc -b --noEmit` — not zero-arg harness / branch-lock gate.
+
 
 ### AST-948 · AST-858
 
@@ -811,11 +849,12 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-1350 · AST-1345
 
-**AST-1350:** JAR **Print Resume** fetch-then-blob + toast exact API `error` (no `window.open` on failure). Cover Letter print unchanged. Base Resume / Session Open HTML already toast API errors — **`test_ArtifactsBaseResumeContent`** / **`test_AdminSessionResumePaste`**. Core/API: **`docs/test-bible/core/builder.md`**.
+**AST-1350:** JAR **Print Resume** fetch-then-blob + toast exact API `error` (no `window.open` on failure). **AST-1489:** structure auto-persist before resume GET when candidate selected. Cover Letter print unchanged. Base Resume / Session Open HTML already toast API errors — **`test_ArtifactsBaseResumeContent`** / **`test_AdminSessionResumePaste`**. Core/API: **`docs/test-bible/core/builder.md`**.
 
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Fetch-then-blob success + unsupported toast | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **Print Resume fetch-then-blob…**, **AST-1350: Print Resume unsupported toast — no tab** |
+| Print without Save sections (bug-repro) | same | **`AST-1489:`** — structure PUT before resume GET |
 
 ```bash
 cd src/ui/frontend && npm run test:component -- \
@@ -1160,6 +1199,42 @@ cd src/ui/frontend && npm run test:component -- \
   ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
   --testNamePattern="AST-1480|job persistence mode loads|AST-1410"
 ```
+
+---
+
+### AST-1490 · AST-1483 (bug — Print contact-only after section reorder)
+
+**Parent:** [AST-1483 — Resume page break settings don't work](https://linear.app/astralcareermatch/issue/AST-1483/resume-page-break-settings-dont-work). **Publish:** `origin/sub/AST-1483/AST-1490-print-resume-only-contact-after-section-reorder`. Order-insensitive `fixedFieldKeys` + tab reorder without spurious candidate/job re-GET; Print after Up/Down must emit full body (AST-1489 auto-persist unchanged).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Reorder no re-GET guard | `ArtifactEditor.tsx` | **`test_ArtifactEditor.test.tsx`** — **`AST-1490: structure reorder does not re-GET candidate artifact`** |
+| Base reorder + Print full body (bug-repro) | `ArtifactsBaseResumeContent.tsx` | **`test_ArtifactsBaseResumeContent.test.tsx`** — **`AST-1490:`** |
+| JAR reorder + Print full body (bug-repro) | `JobAnalysisReportModal.tsx` | **`test_JobAnalysisReportModal.test.tsx`** — **`AST-1490:`** |
+| AST-1480 label-churn regression | `ArtifactEditor.tsx` | **`AST-1480: structure title rename keeps hydrated body and Save still works`** |
+
+**Broken / obsolete this pass:** none — additive repro; AST-1480 rename guard must stay green after sorted-key signature.
+
+**Integration:** none — do not invent new integration coverage.
+
+## QA test manifest
+
+1. Reorder no re-GET (bug-repro): `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1490: structure reorder"`
+2. Base reorder + Print: `tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx` — `--testNamePattern="AST-1490"`
+3. JAR reorder + Print: `tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx` — `--testNamePattern="AST-1490"`
+4. AST-1480 label-churn regression: `tests/component/frontend/components/test_ArtifactEditor.test.tsx` — `--testNamePattern="AST-1480: structure title rename"`
+
+**AST-1490** narrowed run:
+
+```bash
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/components/test_ArtifactEditor.test.tsx \
+  ../../../tests/component/frontend/pages/test_ArtifactsBaseResumeContent.test.tsx \
+  ../../../tests/component/frontend/components/test_JobAnalysisReportModal.test.tsx \
+  --testNamePattern="AST-1490|AST-1480: structure title rename"
+```
+
+**Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 
 **Pass criterion:** Vitest green on manifest lines — not zero-arg harness / branch-lock gate.
 

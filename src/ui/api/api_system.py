@@ -15,6 +15,7 @@ from src.core.candidate import (
 from src.utils.config import (
     NAV_CONFIG,
     DATA_SHAPES,
+    METEORITE_CONFIG,
     CANDIDATE_STATES,
     CANDIDATE_STAGE_DISPATCH,
     IN_REVIEW_STATES,
@@ -63,6 +64,9 @@ def _get_company_counts(candidate_id: Optional[str]) -> dict:
         exclude = list(set(active) | {"IGNORE"})
         counts["/companies/inactive_list"] = len(list_companies(exclude_states=exclude, candidate_id=candidate_id))
         counts["/companies/ignored"] = len(list_companies(states=["IGNORE"], candidate_id=candidate_id))
+        counts["/companies/meteorite_list"] = len(
+            list_companies(states=[METEORITE_CONFIG["company_state"]], candidate_id=candidate_id)
+        )
         counts["/companies/watch_history"] = len(list_company_job_scans(candidate_id=candidate_id))
         return counts
     except Exception:

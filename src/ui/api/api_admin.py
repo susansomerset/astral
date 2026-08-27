@@ -40,7 +40,9 @@ from src.core.candidate import (
 from src.core.builder import build_session_base_resume, build_session_cover_letter
 from src.core.table_copy_upsert import apply_copy_output_table_upsert
 from src.core.repo_admin_json import (
+    export_repo_admin_json_table_to_file,
     get_repo_admin_json_divergence_status,
+    get_repo_admin_json_table_comparison,
     revert_repo_admin_json_table,
 )
 from src.utils.config import (
@@ -50,6 +52,7 @@ from src.utils.config import (
     DEEPSEEK_MODEL_PRICING,
     get_manage_agents_tokens,
     get_manage_tasks_chain_tokens,
+    get_repo_admin_json_table_keys,
     get_tokens,
     resolve_tokens,
     get_model,
@@ -312,13 +315,37 @@ def repo_json_status():
 @admin_bp.route("/repo_json/revert/<table_key>", methods=["POST"])
 @require_admin
 def repo_json_revert(table_key: str):
-    if table_key not in ("agent", "agent_task"):
-        return jsonify({"error": "table_key must be agent or agent_task"}), 400
+    if table_key not in get_repo_admin_json_table_keys():
+        return jsonify({"error": "unknown repo admin JSON table"}), 400
     try:
         count = revert_repo_admin_json_table(table_key)
     except (RuntimeError, ValueError) as exc:
         return jsonify({"error": str(exc)}), 500
     return jsonify({"ok": True, "table_key": table_key, "row_count": count})
+
+
+@admin_bp.route("/repo_json/compare/<table_key>")
+@require_admin
+def repo_json_compare(table_key: str):
+    if table_key not in get_repo_admin_json_table_keys():
+        return jsonify({"error": "unknown repo admin JSON table"}), 400
+    try:
+        comparison = get_repo_admin_json_table_comparison(table_key)
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify(comparison)
+
+
+@admin_bp.route("/repo_json/write/<table_key>", methods=["POST"])
+@require_admin
+def repo_json_write(table_key: str):
+    if table_key not in get_repo_admin_json_table_keys():
+        return jsonify({"error": "unknown repo admin JSON table"}), 400
+    try:
+        result = export_repo_admin_json_table_to_file(table_key)
+    except (RuntimeError, ValueError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    return jsonify({"ok": True, **result})
 
 
 # ---------------------------------------------------------------------------

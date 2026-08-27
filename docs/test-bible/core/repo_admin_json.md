@@ -17,7 +17,7 @@ Repo-owned **`data/admin/agent.json`** and **`data/admin/agent_task.json`**: bar
 | Area | Source | Component tests |
 | --- | --- | --- |
 | Missing / malformed file handling | `src/core/repo_admin_json.py` | `TestLoadRepoAdminJsonFile` |
-| Transactional apply order (agent → agent_task) | `src/core/repo_admin_json.py` | `TestApplyRepoAdminJsonAtStartup::test_applies_agent_then_agent_task_on_one_connection` |
+| Boot-time apply no-op (all deploy envs) | `src/core/repo_admin_json.py` | `TestApplyRepoAdminJsonAtStartup::test_startup_apply_is_noop_on_all_deploy_envs` (**AST-1502**) |
 | Export UTF-8 round-trip files | `src/core/repo_admin_json.py` | `TestExportRepoAdminJsonToFiles` |
 
 Data-layer SQL: **`docs/test-bible/data/database/agents.md`** and **`agent_tasks.md`**. Bootstrap wire: **`docs/test-bible/core/bootstrap.md`**.
@@ -275,6 +275,26 @@ Temporary UAT clarity: every current `agent_task.task_name` equals that row’s 
   -q
 ```
 
+### AST-1494 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1494-ruth-company-stem-discernment`.
+
+`qualify_meteorite` Ruth prompts: **COMPANY STEM** priority rules (candidate `meteorite-self` / sender email / job-link slug); `user_prompt` asks for `company_stem`. Whole-file AST-756 fixture byte-identical to repo `agent_task.json` (build `cp` + `cmp`).
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Prompt contract + fixture byte lock | `data/admin/agent_task.json`, `docs/uat-fixtures/AST-756/expected-agent_task.json` | **`TestAst1494QualifyMeteoriteCompanyStemCatalog`** |
+
+**Broken / obsolete:** none — additive prompt fields on existing row.
+
+**Integration:** none.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_repo_admin_json.py::TestAst1494QualifyMeteoriteCompanyStemCatalog \
+  -q
+```
+
 
 ### AST-1211 · AST-1186
 
@@ -522,3 +542,8 @@ Gap sibling of **AST-1399** (`[board-betty] TESTS: REVISE`). Pins Estelle repo c
 
 **Pass criterion:** pytest green on manifest lines — not zero-arg harness / branch-lock gate. `[bug-repro]` node is red against pre-AST-1399 (`origin/dev`) seed and green on this tip.
 
+
+
+### AST-1502 · AST-1492 (gap — bootstrap kill-switch)
+
+Primary: **`docs/test-bible/core/bootstrap.md`** § AST-1502. **`TestApplyRepoAdminJsonAtStartup`** rewritten: `apply_repo_admin_json_at_startup` is a no-op on staging/production/local (AST-1497 kill-switch). Export / divergence / catalog seed tests unchanged.

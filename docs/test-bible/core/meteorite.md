@@ -110,3 +110,68 @@ Optional `job_link=` on `create_meteorite_job` for link-sourced ingest; `company
   tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
   -q
 ```
+
+---
+
+### AST-1493 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1493-meteorite-company-state-stem-ensure-track`.
+
+Stem-keyed `ensure_meteorite_company(stem=)` into **METEORITE**; leave-in-place for legacy IGNORE `meteorite-{candidate}` rows; `is_meteorite_company` = prefix **or** company state METEORITE; Style D includes `stem=`. Config: **`docs/test-bible/utils/config.md`** (**AST-1493**). Ruth/inbox stem wiring = siblings AST-1494 / AST-1495.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Email / self / slug / default stem ensure + leave-in-place + track predicate + Style D stem | `src/core/meteorite.py` | **`TestAst1493StemEnsureAndTrack`** |
+| Default ensure / Style D multi-detail (stem + company_state) | `src/core/meteorite.py` | revised **`TestAst1041EnsureMeteoriteCompany`** |
+| Create path company state honesty | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** (IGNORE → METEORITE) |
+
+**Broken / obsolete:** AST-1041 Style D last-`call_args` `candidate_id=` (product now emits multiple `debug_detail` lines ending in `stem=` / `company_state=`); AST-1042 hard `state == "IGNORE"` on ensured company.
+
+**Integration:** no existing scenario asserts ensure/track — none revised; do not invent new integration coverage.
+
+**AST-1493** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/utils/test_config.py::TestAst1041MeteoriteConfig \
+  tests/component/utils/test_config.py::TestAst1493MeteoriteCompanyStateConfig \
+  tests/component/core/test_meteorite.py::TestAst1041EnsureMeteoriteCompany \
+  tests/component/core/test_meteorite.py::TestAst1493StemEnsureAndTrack \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob \
+  -q
+```
+
+---
+
+### AST-1495 · AST-1484
+
+**Parent:** [AST-1484 — Create meteorite companies per email address](https://linear.app/astralcareermatch/issue/AST-1484/create-meteorite-companies-per-email-address). **Publish:** `origin/sub/AST-1484/AST-1495-email-land-paths-apply-stem-company-attach`.
+
+`land_meteorite`: enrich-first (no pre-enrich default); per-row Ruth `company_stem` → `ensure_meteorite_company(stem=…)` → `save_meteorite_job(company=…)`; empty stem → `default_stem`; enrich failure → `company: None`. `create_meteorite_job` optional `stem=`. Inbox email paths: post-land Style D `company=`. Optional METEORITE companies list: **`docs/test-bible/ui/api/api_companies.md`**, **`docs/test-bible/frontend/pages.md`**, NAV **`docs/test-bible/utils/config.md`**.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Per-row stem attach + default stem + enrich-fail company None + land debug stem/company | `src/core/meteorite.py` | **`TestAst1495LandStemAttach`**; revised **`TestAst1470LandMeteorite`** |
+| Optional `stem=` on create | `src/core/meteorite.py` | revised **`TestAst1042CreateMeteoriteJob`** (`test_optional_stem_forwards_to_ensure`) |
+| Inbox create → land + post-land `company=` debug | `src/core/inbox.py` | revised **`TestAst1049CreateMeteoriteJobFromInboxMessage`**; revised **`TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses`** |
+
+**Broken / obsolete:** AST-1470 enrich-failure asserted pre-enrich default `company` (revised **AST-1495**); AST-1049/1061 mocks of `ingest_meteorite_jobs_from_email_html_sync` / `mode=body` (product **AST-1472**/**AST-1495** uses `land_meteorite` + `mode=land_meteorite`).
+
+**Integration:** no existing scenario asserts stem attach — none revised; do not invent new integration coverage.
+
+**AST-1495** narrowed run:
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite.py::TestAst1495LandStemAttach \
+  tests/component/core/test_meteorite.py::TestAst1470LandMeteorite \
+  tests/component/core/test_meteorite.py::TestAst1042CreateMeteoriteJob::test_optional_stem_forwards_to_ensure \
+  tests/component/core/test_inbox.py::TestAst1049CreateMeteoriteJobFromInboxMessage \
+  tests/component/core/test_inbox.py::TestAst1313FromThenToBind::test_create_rematch_uses_to_when_from_misses \
+  tests/component/ui/api/test_api_companies.py::TestCompaniesRoutes \
+  tests/component/utils/test_config.py::TestAst1495MeteoriteCompaniesNav \
+  -q
+cd src/ui/frontend && npm run test:component -- \
+  ../../../tests/component/frontend/pages/test_CompaniesMeteorite.test.tsx
+```
+

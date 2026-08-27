@@ -396,51 +396,135 @@ def normalize_cover_letter_artifact(cover_letter: Any) -> Dict[str, str]:
     }
 
 
+_COVER_LETTER_FIELD_KEYS = frozenset({"Subject", "re_line", "Letter", "body", "signature"})
+
+
+def _cover_letter_display_nonempty(normalized: Dict[str, str]) -> bool:
+    return any(str(normalized.get(k) or "").strip() for k in ("Subject", "Letter", "signature"))
+
+
+def _cover_letter_dict_for_normalize(raw: dict) -> dict:
+    """Flat cover dict, or one nested dict that carries cover keys (hop envelope)."""
+    if _cover_letter_display_nonempty(normalize_cover_letter_artifact(raw)):
+        return raw
+    # Prefer known nest keys, then a single nested dict that looks like cover fields.
+    for nest_key in ("agent_payload", "cover_letter"):
+        inner = raw.get(nest_key)
+        if isinstance(inner, dict) and _COVER_LETTER_FIELD_KEYS.intersection(inner.keys()):
+            return inner
+    nested = [
+        v for v in raw.values()
+        if isinstance(v, dict) and _COVER_LETTER_FIELD_KEYS.intersection(v.keys())
+    ]
+    if len(nested) == 1:
+        return nested[0]
+    return raw
+
+
+def cover_letter_artifact_for_display(
+    raw: Any,
+    *,
+    debug: bool = False,
+) -> Optional[Dict[str, str]]:
+    """AST-1499: pin or dict → nonempty Subject/Letter/signature for JAR; else None (no empty overlay)."""
+    body: Any = raw
+    if isinstance(raw, str) and raw.strip():
+        body = resolve_job_artifact_agent_data_body(raw, debug=debug)
+        if not isinstance(body, dict):
+            return None
+    elif not isinstance(raw, dict):
+        return None
+    normalized = normalize_cover_letter_artifact(_cover_letter_dict_for_normalize(body))
+    if not _cover_letter_display_nonempty(normalized):
+        return None
+    return normalized
+
+
 def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, Any]) -> None:
     """Merge cover_letter object into job_data.artifacts. AST-309."""
     save_job_data(astral_job_id, {"artifacts": {"cover_letter": normalize_cover_letter_artifact(cover_letter)}})
 
 
 
-def extract_draft_job_resume_deviations(parsed: Any) -> Optional[List[str]]:
-    """Normalize deviations from nested or flat draft payload; None if key absent."""
+def get_job_resume_advice_codes(astral_job_id: str) -> tuple[Optional[List[str]], Optional[str]]:
+    """Expected resume-advice codes from job artifact (AST-1508)."""
+    job = get_job(astral_job_id)
+    if not job:
+        return None, "Job not found"
+    artifacts = get_job_artifacts(job)
+    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
+    raw = artifacts.get(key)
+    if not isinstance(raw, list) or not raw:
+        return None, "No coded resume advice on job; advise_job_resume must run first"
+    codes: List[str] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            return None, "resume_advice artifact has invalid item"
+        code = str(item.get("code") or "").strip()
+        if not code:
+            return None, "resume_advice artifact has invalid item"
+        codes.append(code)
+    return codes, None
+
+
+def extract_draft_job_resume_advice_adherence(parsed: Any) -> Optional[List[dict]]:
+    """Normalize advice_adherence from nested or flat draft payload; None if key absent."""
     if not isinstance(parsed, dict):
         return None
+    candidate_mod.normalize_draft_job_resume_advice_adherence(parsed)
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
     if not isinstance(body, dict):
         return None
-    task_cfg = TASK_CONFIG["draft_job_resume"]
-    meta_key = task_cfg["deviations_artifact_key"]
-    # Nested resume body is a sibling of deviations — always read meta from the outer envelope.
+    meta_key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
     if meta_key not in body:
         return None
     raw = body.get(meta_key)
     if raw is None:
         return []
-    if isinstance(raw, str):
-        text = raw.strip()
-        return [text] if text else []
-    if isinstance(raw, list):
-        return [str(item) for item in raw if str(item).strip()]
-    text = str(raw).strip()
-    return [text] if text else []
+    if not isinstance(raw, list):
+        return None
+    return [dict(item) for item in raw if isinstance(item, dict)]
 
 
-def save_job_artifact_deviations(astral_job_id: str, deviations: List[str]) -> None:
-    """Merge deviations list into job_data.artifacts (AST-1271)."""
+def save_job_artifact_advice_adherence(astral_job_id: str, items: List[dict]) -> None:
+    """Merge per-code advice adherence into job_data.artifacts (AST-1508)."""
     if not astral_job_id or not str(astral_job_id).strip():
         return
-    key = TASK_CONFIG["draft_job_resume"]["deviations_artifact_key"]
-    save_job_data(astral_job_id, {"artifacts": {key: list(deviations)}})
+    key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
+    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
 
 
-def persist_draft_job_resume_deviations(astral_job_id: str, parsed: Any) -> bool:
-    """Extract deviations from parsed draft response and save when the key is present."""
-    extracted = extract_draft_job_resume_deviations(parsed)
+def persist_draft_job_resume_advice_adherence(
+    astral_job_id: str, parsed: Any,
+) -> Optional[List[dict]]:
+    """Extract advice_adherence from parsed draft response and save when the key is present."""
+    extracted = extract_draft_job_resume_advice_adherence(parsed)
     if extracted is None:
-        return False
-    save_job_artifact_deviations(astral_job_id, extracted)
-    return True
+        return None
+    save_job_artifact_advice_adherence(astral_job_id, extracted)
+    return extracted
+
+
+def extract_advise_job_resume_coded_advice(full_text: str) -> Optional[List[dict]]:
+    """Parse coded resume advice from advise_job_resume text; None when invalid."""
+    return candidate_mod.parse_advise_job_resume_coded_advice(full_text)
+
+
+def save_job_artifact_resume_advice(astral_job_id: str, items: List[dict]) -> None:
+    """Merge coded resume advice list into job_data.artifacts (AST-1507)."""
+    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
+    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
+
+
+def persist_advise_job_resume_coded_advice(
+    astral_job_id: str, full_text: str,
+) -> Optional[List[dict]]:
+    """Extract coded advice from advise text and save; None when parse fails."""
+    items = extract_advise_job_resume_coded_advice(full_text)
+    if items is None:
+        return None
+    save_job_artifact_resume_advice(astral_job_id, items)
+    return items
 
 
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
@@ -531,6 +615,9 @@ def hydrate_job_artifacts_for_display(
             # AST-1428: JAR reads job_resume; overlay sibling blob (disk pin unchanged).
             out[key] = dict(job_resume_blob)
             continue
+        # AST-1499: cover display helper owns pin resolve + nonempty Subject/Letter (no empty overwrite).
+        if key == "cover_letter":
+            continue
         raw = out.get(key)
         if not isinstance(raw, str) or not raw.strip():
             continue
@@ -544,10 +631,10 @@ def hydrate_job_artifacts_for_display(
                 out[key] = unwrapped
             continue
         out[key] = body
-    # AST-1116: Subject/Letter spine for ArtifactEditor (pin body or legacy dict; overlay only).
-    cover = out.get("cover_letter")
-    if isinstance(cover, dict):
-        out["cover_letter"] = normalize_cover_letter_artifact(cover)
+    # AST-1116/1499: Subject/Letter spine for ArtifactEditor only when nonempty (overlay only).
+    display_cover = cover_letter_artifact_for_display(out.get("cover_letter"), debug=debug)
+    if display_cover is not None:
+        out["cover_letter"] = display_cover
     return out
 
 
@@ -697,8 +784,8 @@ def persist_job_artifact_from_parsed(
             )
             save_job_artifact_resume_content(astral_job_id, filtered)
             wrote = True
-    # AST-1271: sibling metadata (manual/API defense-in-depth; live path is do_task Stage 3).
-    if persist_draft_job_resume_deviations(astral_job_id, parsed):
+    # AST-1508: sibling metadata (manual/API defense-in-depth; live path is do_task).
+    if persist_draft_job_resume_advice_adherence(astral_job_id, parsed):
         wrote = True
     return wrote
 
