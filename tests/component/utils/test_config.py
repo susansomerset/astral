@@ -434,55 +434,53 @@ class TestAst594DraftJobResumeSchema:
 
 
 class TestAst1270DraftJobResumeNestConfig:
-    """AST-1270: nest unwrap key + payload metadata (incl. advice_adherence) on TASK_CONFIG."""
+    """AST-1270: nest unwrap key + payload metadata (incl. notes) on TASK_CONFIG."""
 
-    def test_nested_resume_key_and_metadata_include_advice_adherence(self) -> None:
+    def test_nested_resume_key_and_metadata_include_notes(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
         assert entry["nested_resume_key"] == "resume"
         meta = set(entry["payload_metadata_keys"])
-        assert "advice_adherence" in meta
+        assert "notes" in meta
+        assert "advice_adherence" not in meta
         assert "deviations" not in meta
         assert {"astral_job_id", "company", "title", "task_success"}.issubset(meta)
 
 
-class TestAst1508AdviceAdherenceArtifactConfig:
-    """AST-1508: per-code advice_adherence slot + cancel clear-keys (replaces AST-1271 deviations)."""
+class TestAst1523NotesArtifactConfig:
+    """AST-1523: freeform notes slot; hard coded-advice / adherence keys retired."""
 
-    def test_advice_adherence_keys_and_clear_keys(self) -> None:
+    def test_notes_keys_and_clear_keys(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
-        assert entry["advice_adherence_required"] is True
-        assert entry["advice_adherence_artifact_key"] == "advice_adherence"
-        assert entry["advice_adherence_status_applied"] == "applied"
-        assert entry["advice_adherence_status_skipped"] == "skipped"
-        assert "advice_adherence" in entry["payload_metadata_keys"]
+        assert entry["notes_artifact_key"] == "notes"
+        assert "notes" in entry["payload_metadata_keys"]
+        assert "advice_adherence" not in entry["payload_metadata_keys"]
         assert "deviations" not in entry["payload_metadata_keys"]
-        assert "deviations_artifact_key" not in entry
-        assert "advice_adherence" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
-        assert "deviations" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "advice_adherence_required" not in entry
+        assert "advice_adherence_artifact_key" not in entry
+        assert "notes" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "advice_adherence" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert "resume_advice" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+
+    def test_advise_has_no_coded_list_keys(self) -> None:
+        entry = cfg.TASK_CONFIG["advise_job_resume"]
+        for key in (
+            "resume_advice_coded_list",
+            "resume_advice_artifact_key",
+            "resume_advice_section_header",
+            "resume_advice_json_key",
+        ):
+            assert key not in entry
 
 
 class TestAst1271DeviationsArtifactConfig:
-    """AST-1271: retired on draft — superseded by AST-1508 advice_adherence."""
+    """AST-1271: deviations retired — AST-1523 restores freeform notes."""
 
-    def test_deviations_retired_from_draft_config(self) -> None:
+    def test_deviations_and_epic_adherence_retired(self) -> None:
         entry = cfg.TASK_CONFIG["draft_job_resume"]
         assert "deviations_artifact_key" not in entry
         assert "deviations" not in entry["payload_metadata_keys"]
         assert "deviations" not in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
-
-
-class TestAst1507ResumeAdviceArtifactConfig:
-    """AST-1507: coded resume_advice slot on advise_job_resume + cancel clear-keys."""
-
-    def test_resume_advice_keys_and_clear_keys(self) -> None:
-        entry = cfg.TASK_CONFIG["advise_job_resume"]
-        assert entry["resume_advice_coded_list"] is True
-        assert entry["resume_advice_artifact_key"] == "resume_advice"
-        assert entry["resume_advice_section_header"] == "RESUME BRIEF"
-        assert entry["resume_advice_section_end_header"] == "COVER LETTER DIRECTION"
-        assert entry["resume_advice_code_prefix"] == "R"
-        assert entry["resume_advice_min_items"] >= 1
-        assert "resume_advice" in cfg.JOB_BUILD_ARTIFACT_CLEAR_KEYS
+        assert entry["notes_artifact_key"] == "notes"
 
 
 class TestAst520AnticipateScanTaskKey:

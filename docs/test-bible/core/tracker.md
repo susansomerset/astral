@@ -421,3 +421,25 @@ Four `contact_task_*` read handlers + `get_job_by_pattern`: candidate-scoped pat
   tests/component/core/test_contact.py::TestAst1515ContactEstelleTurnMarkup \
   -q
 ```
+
+---
+
+### AST-1523 · AST-1460
+
+**Parent:** [AST-1460](https://linear.app/astralcareermatch/issue/AST-1460/advise-resume-needs-a-coded-list-for-clear-adherence). **Publish:** `origin/sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence`.
+
+Freeform **`notes`** extract/save/cancel clear (AST-1271 shape, renamed); epic **`resume_advice`** / **`advice_adherence`** helpers removed. Primary: **`docs/test-bible/core/candidate.md`** § AST-1523.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| Notes extract/persist/clear + body skip | `src/core/tracker.py` | **`TestAst1523NotesMetadataRetention`**; revised **`TestAst1270NestedResumePayloadBody`**; **`TestAst1523EpicHelpersRemoved`** |
+
+**Broken / obsolete:** **`TestAst1507ResumeAdviceMetadataRetention`**, **`TestAst1508AdviceAdherenceMetadataRetention`** — retired.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_tracker.py::TestAst1523NotesMetadataRetention \
+  tests/component/core/test_tracker.py::TestAst1270NestedResumePayloadBody \
+  tests/component/core/test_tracker.py::TestAst1523EpicHelpersRemoved \
+  -q
+```
