@@ -5,6 +5,7 @@ In-scope: ingest_jobs, save_meteorite_job, save_job_data, get_job_data, initiali
 transition_job_state, get_new_job_batch, get_job_batch, clear_job_batch, assemble_job_copy_snapshot.
 All writes go through database.save_job (upsert); state transition logic lives here, not in data layer.
 get_job_data: coat-check pattern — return value if present, self-heal if missing (e.g. fetch JD via playwright).
+AST-1518: contact-task read wrappers + get_job_by_pattern (candidate-scoped; no coat-check scrape).
 """
 
 from __future__ import annotations
@@ -39,7 +40,7 @@ from src.utils.config import (
     validate_job_source,
     validate_value,
 )
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, truncate_debug_content
 from src.utils.formatting import parse_text
 
 logger = get_logger(__name__)
@@ -1372,3 +1373,404 @@ def count_jobs_below_dispatch_score_floor(candidate_id: str) -> int:
 
 def list_jobs_below_dispatch_score_floor(candidate_id: str) -> List[Dict[str, Any]]:
     return database.list_jobs_below_dispatch_score_floor(candidate_id)
+
+
+# ---- AST-1518: contact-task reads (pattern resolve + hydrated getters) ----
+
+
+def _contact_task_hydrate_job(job: Dict[str, Any]) -> Dict[str, Any]:
+    """Shallow-copy job and attach agent_story (no coat-check / gazer)."""
+    out = dict(job)
+    from src.core.agent import get_entity_agent_story
+
+    out["agent_story"] = get_entity_agent_story(out)
+    return out
+
+
+def _job_owned_by_candidate(job: Dict[str, Any], cid: str) -> bool:
+    """True when job's company.candidate_id matches cid (not job['candidate_id'])."""
+    company_key = job.get("company")
+    if not isinstance(company_key, str) or not company_key.strip():
+        return False
+    company = get_company(company_key.strip())
+    if not company:
+        return False
+    owner = company.get("candidate_id")
+    return isinstance(owner, str) and bool(owner.strip()) and owner.strip() == cid
+
+
+def _match_jobs_by_pattern(cid: str, pat: str) -> List[Dict[str, Any]]:
+    """Candidate-scoped jobs whose title/company/link/id match pattern (casefold)."""
+    pat_cf = pat.casefold()
+    matches: List[Dict[str, Any]] = []
+    for job in list_jobs(candidate_id=cid):
+        if not isinstance(job, dict):
+            continue
+        for field in ("astral_job_id", "job_title", "company", "job_link"):
+            raw = job.get(field)
+            if not isinstance(raw, str) or not raw:
+                continue
+            if raw == pat or raw.casefold() == pat_cf or pat_cf in raw.casefold():
+                matches.append(job)
+                break
+    return matches
+
+
+def get_job_by_pattern(
+    astral_candidate_id: str, pattern: str
+) -> Optional[Dict[str, Any]]:
+    """Return the single candidate-scoped job matching pattern, or None if 0/many."""
+    cid = (astral_candidate_id or "").strip()
+    pat = (pattern or "").strip()
+    if not cid or not pat:
+        return None
+    matches = _match_jobs_by_pattern(cid, pat)
+    if len(matches) != 1:
+        return None
+    return matches[0]
+
+
+def _contact_task_style_d(
+    log,
+    *,
+    func: str,
+    identifier: str,
+    found_detail: str,
+    recorded_detail: str,
+    debug: bool,
+) -> None:
+    if not debug:
+        return
+    log.set_debug_flag(True)
+    log.debug_index(func=func, index=1, total=2, identifier=identifier, outcome="found")
+    for line in truncate_debug_content(found_detail):
+        log.debug_detail(line)
+    log.debug_index(
+        func=func, index=2, total=2, identifier=identifier, outcome="recorded"
+    )
+    for line in truncate_debug_content(recorded_detail):
+        log.debug_detail(line)
+
+
+def contact_task_get_job_by_pattern(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: resolve one hydrated job by text pattern."""
+    log = get_logger(__name__)
+    task_key = "get_job_by_pattern"
+    cid = (astral_candidate_id or "").strip()
+    pat = (param or "").strip()
+    found = f"param={pat!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+    if not pat:
+        row = {"ok": False, "error": "unmatched_pattern", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=unmatched_pattern",
+            debug=debug,
+        )
+        return row
+
+    matches = _match_jobs_by_pattern(cid, pat)
+    if len(matches) == 0:
+        row = {"ok": False, "error": "unmatched_pattern", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=unmatched_pattern",
+            debug=debug,
+        )
+        return row
+    if len(matches) > 1:
+        row = {"ok": False, "error": "ambiguous_pattern", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=ambiguous_pattern",
+            debug=debug,
+        )
+        return row
+
+    job = matches[0]
+    if not _job_owned_by_candidate(job, cid):
+        row = {"ok": False, "error": "refused_cross_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_by_pattern",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=refused_cross_candidate",
+            debug=debug,
+        )
+        return row
+
+    hydrated = _contact_task_hydrate_job(job)
+    row = {"ok": True, "task_key": task_key, "result": hydrated}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_job_by_pattern",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True astral_job_id={hydrated.get('astral_job_id')!r}",
+        debug=debug,
+    )
+    return row
+
+
+def contact_task_get_job_data(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: hydrated job by id (candidate-owned only)."""
+    log = get_logger(__name__)
+    task_key = "get_job_data"
+    cid = (astral_candidate_id or "").strip()
+    jid = (param or "").strip()
+    found = f"param={jid!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+    if not jid:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    job = get_job(jid)
+    if not job:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+    if not _job_owned_by_candidate(job, cid):
+        row = {"ok": False, "error": "refused_cross_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_job_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=refused_cross_candidate",
+            debug=debug,
+        )
+        return row
+
+    hydrated = _contact_task_hydrate_job(job)
+    row = {"ok": True, "task_key": task_key, "result": hydrated}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_job_data",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True astral_job_id={hydrated.get('astral_job_id')!r}",
+        debug=debug,
+    )
+    return row
+
+
+def contact_task_get_company_data(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: company by short_name (candidate-scoped)."""
+    log = get_logger(__name__)
+    task_key = "get_company_data"
+    cid = (astral_candidate_id or "").strip()
+    sn = (param or "").strip()
+    found = f"param={sn!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+    if not sn:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    company = get_company(sn)
+    if not company:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    owner = company.get("candidate_id")
+    if isinstance(owner, str) and owner.strip():
+        scoped = owner.strip() == cid
+    else:
+        short = company.get("short_name") or sn
+        scoped = any(
+            isinstance(j, dict) and j.get("company") == short
+            for j in list_jobs(candidate_id=cid)
+        )
+    if not scoped:
+        row = {"ok": False, "error": "refused_cross_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_company_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=refused_cross_candidate",
+            debug=debug,
+        )
+        return row
+
+    from src.core.agent import get_entity_agent_story
+
+    out = dict(company)
+    out["agent_story"] = get_entity_agent_story(out)
+    row = {"ok": True, "task_key": task_key, "result": out}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_company_data",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True short_name={out.get('short_name')!r}",
+        debug=debug,
+    )
+    return row
+
+
+def contact_task_get_candidate_data(
+    astral_candidate_id: str, param: str, *, debug: bool = False
+) -> dict:
+    """CONTACT_TASK_CONFIG handler: candidate row or dotted candidate_data path."""
+    log = get_logger(__name__)
+    task_key = "get_candidate_data"
+    cid = (astral_candidate_id or "").strip()
+    path = (param or "").strip()
+    found = f"param={path!r}"
+
+    if not cid:
+        row = {"ok": False, "error": "no_candidate", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_candidate_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=no_candidate",
+            debug=debug,
+        )
+        return row
+
+    cand = candidate_mod.get_candidate(cid)
+    if not cand:
+        row = {"ok": False, "error": "not_found", "task_key": task_key}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_candidate_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail="ok=False error=not_found",
+            debug=debug,
+        )
+        return row
+
+    if path:
+        cur: Any = cand.get("candidate_data")
+        if not isinstance(cur, dict):
+            row = {"ok": False, "error": "not_found", "task_key": task_key}
+            _contact_task_style_d(
+                log,
+                func="tracker.contact_task_get_candidate_data",
+                identifier=task_key,
+                found_detail=found,
+                recorded_detail="ok=False error=not_found",
+                debug=debug,
+            )
+            return row
+        for part in path.split("."):
+            if not isinstance(cur, dict) or part not in cur:
+                row = {"ok": False, "error": "not_found", "task_key": task_key}
+                _contact_task_style_d(
+                    log,
+                    func="tracker.contact_task_get_candidate_data",
+                    identifier=task_key,
+                    found_detail=found,
+                    recorded_detail="ok=False error=not_found",
+                    debug=debug,
+                )
+                return row
+            cur = cur[part]
+        row = {"ok": True, "task_key": task_key, "result": cur}
+        _contact_task_style_d(
+            log,
+            func="tracker.contact_task_get_candidate_data",
+            identifier=task_key,
+            found_detail=found,
+            recorded_detail=f"ok=True path={path!r}",
+            debug=debug,
+        )
+        return row
+
+    from src.core.agent import get_entity_agent_story
+
+    out = dict(cand)
+    out["agent_story"] = get_entity_agent_story(out)
+    row = {"ok": True, "task_key": task_key, "result": out}
+    _contact_task_style_d(
+        log,
+        func="tracker.contact_task_get_candidate_data",
+        identifier=task_key,
+        found_detail=found,
+        recorded_detail=f"ok=True astral_candidate_id={cid!r}",
+        debug=debug,
+    )
+    return row
