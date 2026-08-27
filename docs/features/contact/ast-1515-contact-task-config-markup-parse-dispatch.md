@@ -61,7 +61,7 @@ Ticket **## Scope** (verbatim partition):
    - `CONTACT_TASK_CONFIG` is a non-empty `dict`.
    - Every key is a non-empty `str`; every value is a `dict` with non-empty `str` fields `handler`, `description`, `param_hint`; `requires_candidate` is `bool`.
    - For each `task_key` in `CONTACT_TASK_CONFIG`: `task_key not in TASK_CONFIG` and `task_key not in CONTACT_CONFIG["skills"]`.
-   - Handler strings contain exactly one `.` separating module path from attribute (e.g. `src.core.gazer.contact_task_gazer_scrape`).
+   - Each `handler` is a non-empty `str` containing at least one `.`. Split on the **last** `.` → non-empty `module_path` and non-empty `attr_name` (same rule as Stage 2 `_resolve_contact_task_handler`). Assert `module_path.startswith("src.core.")`.
 
 4. Do **not** add runtime config helpers in `config.py` beyond the block — accessors live in `contact.py` (mirrors `contact_skills()` pattern).
 
@@ -224,6 +224,12 @@ Do not put markup in skill_calls or other JSON fields. skill_calls remain for AC
 ## Estimate
 
 Confirm Chuckles estimate: 5 — agree
+
+## Revisions
+
+Revision 1 — 2026-08-27  
+Driven by: Joan `[plan-discuss] round=1 concern` — fix-now on Stage 1 step 3 handler assert bullet  
+Changes: Replaced "exactly one `.`" assert with last-dot split + non-empty module/attr + `module_path.startswith("src.core.")` to match Stage 2 `_resolve_contact_task_handler`.
 
 ## Joan validate
 
