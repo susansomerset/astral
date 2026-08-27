@@ -298,11 +298,11 @@ cd src/ui/frontend && npm run test:component -- \
 
 ### AST-783 · AST-756
 
-**Repo JSON divergence API:** **`GET /api/admin/repo_json/status`** returns per-table `{ diverged, repo_relative_path }`; **`POST /api/admin/repo_json/revert/<table_key>`** restores one table from checked-in JSON (400 for invalid `table_key`). **AST-1505:** **`GET /api/admin/repo_json/compare/<table_key>`** structured diff; **`POST /api/admin/repo_json/write/<table_key>`** writes one table's DB export to disk.
+**Repo JSON divergence API:** **`GET /api/admin/repo_json/status`** returns per-table `{ diverged, repo_relative_path }`; **`POST /api/admin/repo_json/revert/<table_key>`** restores one table from checked-in JSON (400 for invalid `table_key`).
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Status + revert + compare + write routes | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi` |
+| Status + revert routes | `src/ui/api/api_admin.py` | `tests/component/ui/api/test_api_admin.py::TestAst783RepoJsonApi` |
 
 Core compare/revert: **`docs/test-bible/core/repo_admin_json.md`**. UI banner: **`docs/test-bible/frontend/components.md`** (**AST-783**).
 

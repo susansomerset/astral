@@ -1238,6 +1238,23 @@ def opt_out_surfer_consent(candidate_id: str, *, debug: bool = False) -> dict:
     return surfer_consent_dto(candidate_id)
 
 
+def _assert_unique_rubric_codes(criteria: list, artifact_key: str) -> None:
+    """Reject duplicate two-letter codes within one rubric artifact list (AST-1513)."""
+    seen: Dict[str, str] = {}
+    for idx, item in enumerate(criteria):
+        if not isinstance(item, dict):
+            continue
+        label = (item.get("label") or item.get("code") or "").strip() or f"#{idx + 1}"
+        code = (item.get("code") or "").strip() or f"V{idx + 1:02d}"
+        code_key = code.upper()
+        if code_key in seen:
+            raise ValueError(
+                f"Rubric {artifact_key!r}: duplicate code {code!r} on vectors "
+                f"{seen[code_key]!r} and {label!r}"
+            )
+        seen[code_key] = label
+
+
 def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
     """For each rubric criteria artifact in ``artifacts``, parse trailing grade tables, set
     ``grade_descriptions``, and coerce ``importance`` (1–10). Mutates criterion dicts in place.
@@ -1264,6 +1281,7 @@ def normalize_rubric_artifacts_on_save(artifacts: dict) -> None:
                 item["importance"] = _normalize_importance_value(item.get("importance"), ci)
             except ValueError as e:
                 raise ValueError(f"Rubric {key!r}, vector {label!r}: {e}") from e
+        _assert_unique_rubric_codes(val, key)
 
 
 def _rubric_rows_to_criteria(rows: list) -> list:

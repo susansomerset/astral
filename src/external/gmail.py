@@ -31,6 +31,10 @@ from googleapiclient.discovery import build
 
 from src.utils.integration_io import require_controlled_external_io
 
+import logging as _logging
+
+_logging.getLogger("googleapiclient.discovery_cache").setLevel(_logging.WARNING)
+
 __all__ = [
     "GmailInboxMessage",
     "GmailMessageHtml",
@@ -196,7 +200,7 @@ def _build_credentials() -> Credentials:
 
 
 def _build_service():
-    return build("gmail", "v1", credentials=_build_credentials())
+    return build("gmail", "v1", credentials=_build_credentials(), cache_discovery=False)
 
 
 def _header_map(payload_headers) -> dict[str, str]:

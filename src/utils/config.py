@@ -3893,7 +3893,9 @@ MERGE_TICKET_LOG_CONFIG = {
     "uat_state_name": "User Testing",
 }
 
-# Repo-owned admin tables — checked-in JSON applied at startup (AST-782).
+# Repo-owned admin tables — durable seed under data/admin/ (AST-782).
+# Explicit Revert to file (and future scripted apply) loads repo-wins into the DB.
+# Server start does not apply these files (AST-1455).
 REPO_ADMIN_JSON_CONFIG = {
     "schema_version": 1,
     "tables": {

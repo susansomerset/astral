@@ -287,6 +287,13 @@ def _decode_payload(task_key: str, output_type: str, payload: str, ctx: Dict[str
         if meta and not with_meta and not with_notes:
             raise ValueError(f"[{task_key}] unexpected trailing content in grades-only line: {line!r}")
 
+        codes = [seg[:2] for seg in grade_segs]
+        if len(codes) != len(set(codes)):
+            dupes = sorted({c for c in codes if codes.count(c) > 1})
+            raise ValueError(
+                f"[{task_key}] duplicate vector code {','.join(dupes)} in encoded line: {line!r}"
+            )
+
         grade_rows: List[Dict[str, Any]] = []
         for seg in grade_segs:
             code, letter, conf_ch = seg[:2], seg[2], seg[3]
