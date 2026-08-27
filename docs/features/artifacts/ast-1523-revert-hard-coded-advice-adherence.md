@@ -168,3 +168,9 @@ Definition fidelity: child Scope matches six engineer stages + Betty AC4; no sof
 context_tokens≈62000
 
 [plan-rubric] PROCEED (Commit: 238501d4) revert hard contract plan
+
+## Review
+
+**Branch:** `sub/AST-1460/AST-1523-revert-hard-coded-advice-adherence`  
+**Tip:**   
+**Notes for Betty:** retire AST-1507 / AST-1508 / AST-1514 hard-contract tests + bible (AC4); product tip no longer emits/validates `[R#]` / `advice_adherence`.
