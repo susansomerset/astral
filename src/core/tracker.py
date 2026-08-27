@@ -447,85 +447,44 @@ def save_job_artifact_cover_letter(astral_job_id: str, cover_letter: Dict[str, A
 
 
 
-def get_job_resume_advice_codes(astral_job_id: str) -> tuple[Optional[List[str]], Optional[str]]:
-    """Expected resume-advice codes from job artifact (AST-1508)."""
-    job = get_job(astral_job_id)
-    if not job:
-        return None, "Job not found"
-    artifacts = get_job_artifacts(job)
-    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
-    raw = artifacts.get(key)
-    if not isinstance(raw, list) or not raw:
-        return None, "No coded resume advice on job; advise_job_resume must run first"
-    codes: List[str] = []
-    for item in raw:
-        if not isinstance(item, dict):
-            return None, "resume_advice artifact has invalid item"
-        code = str(item.get("code") or "").strip()
-        if not code:
-            return None, "resume_advice artifact has invalid item"
-        codes.append(code)
-    return codes, None
-
-
-def extract_draft_job_resume_advice_adherence(parsed: Any) -> Optional[List[dict]]:
-    """Normalize advice_adherence from nested or flat draft payload; None if key absent."""
+def extract_draft_job_resume_notes(parsed: Any) -> Optional[List[str]]:
+    """Normalize notes from nested or flat draft payload; None if key absent."""
     if not isinstance(parsed, dict):
         return None
-    candidate_mod.normalize_draft_job_resume_advice_adherence(parsed)
     body: Any = parsed.get("agent_payload") if isinstance(parsed.get("agent_payload"), dict) else parsed
     if not isinstance(body, dict):
         return None
-    meta_key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
+    meta_key = TASK_CONFIG["draft_job_resume"]["notes_artifact_key"]
+    # Nested resume body is a sibling of notes — always read meta from the outer envelope.
     if meta_key not in body:
         return None
     raw = body.get(meta_key)
     if raw is None:
         return []
-    if not isinstance(raw, list):
-        return None
-    return [dict(item) for item in raw if isinstance(item, dict)]
+    if isinstance(raw, str):
+        text = raw.strip()
+        return [text] if text else []
+    if isinstance(raw, list):
+        return [str(item) for item in raw if str(item).strip()]
+    text = str(raw).strip()
+    return [text] if text else []
 
 
-def save_job_artifact_advice_adherence(astral_job_id: str, items: List[dict]) -> None:
-    """Merge per-code advice adherence into job_data.artifacts (AST-1508)."""
+def save_job_artifact_notes(astral_job_id: str, notes: List[str]) -> None:
+    """Merge freeform notes list into job_data.artifacts (AST-1523 / AST-1271 shape)."""
     if not astral_job_id or not str(astral_job_id).strip():
         return
-    key = TASK_CONFIG["draft_job_resume"]["advice_adherence_artifact_key"]
-    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
+    key = TASK_CONFIG["draft_job_resume"]["notes_artifact_key"]
+    save_job_data(astral_job_id, {"artifacts": {key: list(notes)}})
 
 
-def persist_draft_job_resume_advice_adherence(
-    astral_job_id: str, parsed: Any,
-) -> Optional[List[dict]]:
-    """Extract advice_adherence from parsed draft response and save when the key is present."""
-    extracted = extract_draft_job_resume_advice_adherence(parsed)
+def persist_draft_job_resume_notes(astral_job_id: str, parsed: Any) -> bool:
+    """Extract notes from parsed draft response and save when the key is present."""
+    extracted = extract_draft_job_resume_notes(parsed)
     if extracted is None:
-        return None
-    save_job_artifact_advice_adherence(astral_job_id, extracted)
-    return extracted
-
-
-def extract_advise_job_resume_coded_advice(full_text: str) -> Optional[List[dict]]:
-    """Parse coded resume advice from advise_job_resume text; None when invalid."""
-    return candidate_mod.parse_advise_job_resume_coded_advice(full_text)
-
-
-def save_job_artifact_resume_advice(astral_job_id: str, items: List[dict]) -> None:
-    """Merge coded resume advice list into job_data.artifacts (AST-1507)."""
-    key = TASK_CONFIG["advise_job_resume"]["resume_advice_artifact_key"]
-    save_job_data(astral_job_id, {"artifacts": {key: list(items)}})
-
-
-def persist_advise_job_resume_coded_advice(
-    astral_job_id: str, full_text: str,
-) -> Optional[List[dict]]:
-    """Extract coded advice from advise text and save; None when parse fails."""
-    items = extract_advise_job_resume_coded_advice(full_text)
-    if items is None:
-        return None
-    save_job_artifact_resume_advice(astral_job_id, items)
-    return items
+        return False
+    save_job_artifact_notes(astral_job_id, extracted)
+    return True
 
 
 def persist_finalize_job_resume_content(astral_job_id: str, parsed: Any) -> bool:
@@ -785,8 +744,8 @@ def persist_job_artifact_from_parsed(
             )
             save_job_artifact_resume_content(astral_job_id, filtered)
             wrote = True
-    # AST-1508: sibling metadata (manual/API defense-in-depth; live path is do_task).
-    if persist_draft_job_resume_advice_adherence(astral_job_id, parsed):
+    # AST-1523: sibling notes metadata (manual/API defense-in-depth; live path is do_task).
+    if persist_draft_job_resume_notes(astral_job_id, parsed):
         wrote = True
     return wrote
 

@@ -7,6 +7,7 @@ short_name_prefix. Public entry is land_meteorite: scraps → optional Playwrigh
 visible text → qualify_meteorite packet enrich → per-row Ruth company_stem ensure
 → tracker.save_meteorite_job. No email/Gmail/mailbox I/O here — inbox and Contact
 call land (siblings). create_meteorite_job accepts optional stem= for legacy callers.
+create_contact_meteorite (AST-1517 contact-task create) wraps scrape-or-text → create.
 """
 from __future__ import annotations
 
@@ -19,7 +20,7 @@ from src.core import tracker
 from src.data.database import get_company, get_job, save_company, save_job
 from src.external.playwright import get_visible_text
 from src.utils.config import METEORITE_CONFIG, TASK_CONFIG, TRACKER_CONFIG
-from src.utils.logging import get_logger
+from src.utils.logging import get_logger, truncate_debug_content
 
 
 def is_meteorite_company(short_name: Optional[str]) -> bool:
@@ -183,6 +184,203 @@ def create_meteorite_job(
         "company_inserted": ensured["inserted"],
         "job": row,
     }
+
+
+def _contact_param_looks_like_url(param: str) -> bool:
+    """True when param is a single-line URL / bare host-path (link mode)."""
+    s = (param or "").strip()
+    if not s:
+        return False
+    if "\n" in s or "\r" in s:
+        return False
+    if " " in s or "\t" in s:
+        return False
+    if "://" in s:
+        return True
+    return "." in s and not s.startswith(".")
+
+
+# ---- Contact-task create (AST-1517) ----
+
+async def create_contact_meteorite(
+    astral_candidate_id: str,
+    param: str,
+    *,
+    debug: bool = False,
+) -> Dict[str, Any]:
+    """Contact-task: land meteorite from URL (scrape-first) or pasted page text."""
+    log = get_logger(__name__)
+    log.set_debug_flag(debug)
+
+    def _style_d(
+        *,
+        identifier: str,
+        mode: str,
+        param_for_detail: str,
+        error: Optional[str] = None,
+        created: Optional[Dict[str, Any]] = None,
+        job_link: Optional[str] = None,
+        page_status: Optional[str] = None,
+    ) -> None:
+        if not debug:
+            return
+        log.debug_index(
+            func="meteorite.create_contact_meteorite",
+            index=1,
+            total=2,
+            identifier=identifier[:80],
+            outcome="found",
+        )
+        log.debug_detail(f"mode={mode}")
+        for line in truncate_debug_content(f"param={param_for_detail}"):
+            log.debug_detail(line)
+        if error:
+            log.debug_index(
+                func="meteorite.create_contact_meteorite",
+                index=2,
+                total=2,
+                identifier=identifier[:80],
+                outcome=f"failed error={error}",
+            )
+            return
+        log.debug_index(
+            func="meteorite.create_contact_meteorite",
+            index=2,
+            total=2,
+            identifier=identifier[:80],
+            outcome=(
+                f"recorded astral_job_id={(created or {}).get('astral_job_id')} "
+                f"state={(created or {}).get('state')}"
+            ),
+        )
+        log.debug_detail(f"company={(created or {}).get('company')}")
+        log.debug_detail(f"job_link={job_link}")
+        if page_status is not None:
+            log.debug_detail(f"page_status={page_status}")
+
+    cid = (astral_candidate_id or "").strip()
+    if not cid:
+        out: Dict[str, Any] = {
+            "ok": False,
+            "error": "no_candidate",
+            "task_key": "create_contact_meteorite",
+        }
+        _style_d(
+            identifier="no_candidate",
+            mode="",
+            param_for_detail=(param or ""),
+            error="no_candidate",
+        )
+        return out
+
+    raw = (param or "").strip()
+    if not raw:
+        out = {
+            "ok": False,
+            "error": "param_required",
+            "task_key": "create_contact_meteorite",
+        }
+        _style_d(
+            identifier=cid,
+            mode="",
+            param_for_detail="",
+            error="param_required",
+        )
+        return out
+
+    ident = raw[:80]
+    scrape: Optional[Dict[str, Any]] = None
+    if _contact_param_looks_like_url(raw):
+        mode = "link"
+        # Late-import: gazer imports create_meteorite_job at module top.
+        from src.core.gazer import contact_task_gazer_scrape
+
+        scrape = await contact_task_gazer_scrape(cid, raw, debug=debug)
+        if not isinstance(scrape, dict) or not scrape.get("ok"):
+            err = (
+                (scrape.get("error") if isinstance(scrape, dict) else "scrape_failed")
+                or "scrape_failed"
+            )
+            out = {
+                "ok": False,
+                "error": err,
+                "task_key": "create_contact_meteorite",
+                "mode": mode,
+                "scrape": scrape if isinstance(scrape, dict) else None,
+            }
+            _style_d(
+                identifier=ident,
+                mode=mode,
+                param_for_detail=raw,
+                error=err,
+            )
+            return out
+        visible = (scrape.get("visible_text") or "").strip()
+        if not visible:
+            out = {
+                "ok": False,
+                "error": "empty_visible_text",
+                "task_key": "create_contact_meteorite",
+                "mode": mode,
+                "scrape": scrape,
+            }
+            _style_d(
+                identifier=ident,
+                mode=mode,
+                param_for_detail=raw,
+                error="empty_visible_text",
+                page_status=scrape.get("page_status"),
+            )
+            return out
+        html_body = visible
+        job_link = (scrape.get("final_url") or scrape.get("url") or raw).strip()
+    else:
+        mode = "text"
+        html_body = raw
+        job_link = None
+
+    try:
+        created = create_meteorite_job(
+            cid,
+            html_body,
+            job_link=job_link,
+            debug=debug,
+        )
+    except Exception as exc:
+        out = {
+            "ok": False,
+            "error": str(exc),
+            "task_key": "create_contact_meteorite",
+            "mode": mode,
+        }
+        _style_d(
+            identifier=ident,
+            mode=mode,
+            param_for_detail=raw,
+            error=str(exc),
+        )
+        return out
+
+    out = {
+        "ok": True,
+        "task_key": "create_contact_meteorite",
+        "mode": mode,
+        "astral_candidate_id": cid,
+        "result": created,
+    }
+    if mode == "link" and isinstance(scrape, dict):
+        out["url"] = scrape.get("url")
+        out["final_url"] = scrape.get("final_url")
+        out["page_status"] = scrape.get("page_status")
+    _style_d(
+        identifier=ident,
+        mode=mode,
+        param_for_detail=raw,
+        created=created,
+        job_link=job_link,
+        page_status=out.get("page_status"),
+    )
+    return out
 
 
 async def _land_fetch_link_text(url: str, *, debug: bool = False) -> tuple[str, str]:

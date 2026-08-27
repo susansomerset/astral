@@ -109,15 +109,15 @@ Ruth `live_content` for `html_links` / `subject_body` is visible text + optional
 
 | Area | Source | Component tests |
 | --- | --- | --- |
-| Helpers + both shapes + Style D ruth_payload | `src/core/meteorite_email.py` | **`TestAst1213RuthLivePayload`** |
+| Ruth payload link-exclude config | `src/utils/config.py` | **`TestAst1213RuthPayloadLinkExcludes`** |
+| Visible-text prompts | `data/admin/agent_task.json` | **`TestAst1213MeteoriteEmailVisibleTextPrompts`** |
 
-**Broken / obsolete:** none — additive payload assembly; existing AST-1090 create/archive paths still green.
+**Broken / obsolete (AST-1522 return):** **`TestAst1213RuthLivePayload`** removed — `_ruth_live_parts` / `_format_ruth_live_body` deleted with Ruth-first `_handle_bound` (AST-1521).
 
 **Integration:** none revised.
 
 ```bash
 ./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1213RuthLivePayload \
   tests/component/utils/test_config.py::TestAst1213RuthPayloadLinkExcludes \
   tests/component/core/test_repo_admin_json.py::TestAst1213MeteoriteEmailVisibleTextPrompts \
   -q
@@ -134,16 +134,12 @@ Post-parse `_ensure_html_links_jobs_complete` on the `html_links` branch: every 
 | Helper UAT 34→34 + normalize + Style D + junk/extras | `src/core/meteorite_email.py` | **`TestAst1294HtmlLinksJobsComplete`** |
 | html_links call site ingests stubs | `src/core/meteorite_email.py` | **`TestAst1294HtmlLinksJobsComplete::test_html_links_call_site_ingests_stubbed_links`** |
 
-**Broken / obsolete (Betty revision):** AST-1213 `test_html_links_live_content_shape` / `test_debug_true_emits_ruth_payload_detail` — empty Ruth `jobs` + payload links now reconcile-stub then ingest; mock `_ingest_link` so those cases stay on live_content / ruth_payload Style D (no real Playwright).
+**Broken / obsolete (Betty revision):** AST-1213 live_content Style D cases that mocked `_ingest_link` — retired with **`TestAst1213RuthLivePayload`** (AST-1522). Entire **`TestAst1294HtmlLinksJobsComplete`** removed when Ruth-first html_links path dropped (AST-1521 / AST-1522).
 
 **Integration:** no existing scenarios assert html_links completeness / gaze_email reconcile — none revised; do not invent new integration coverage.
 
 ```bash
-./scripts/testing/run_component_tests.sh \
-  tests/component/core/test_meteorite_email.py::TestAst1294HtmlLinksJobsComplete \
-  tests/component/core/test_meteorite_email.py::TestAst1213RuthLivePayload::test_html_links_live_content_shape \
-  tests/component/core/test_meteorite_email.py::TestAst1213RuthLivePayload::test_debug_true_emits_ruth_payload_detail \
-  -q
+# AST-1294 suite retired — no live pytest node; historical note only.
 ```
 
 
@@ -166,5 +162,28 @@ Retire `gaze_email` test/bible identity; retarget mailbox runner + config/dispat
 ```bash
 ./scripts/testing/run_component_tests.sh \
   tests/component/core/test_ast1467_gaze_email_retire.py \
+  -q
+```
+
+
+### AST-1522 · AST-1520
+
+**Parent:** [AST-1520 — Emailed job description parsed as HTML](https://linear.app/astralcareermatch/issue/AST-1520/emailed-job-description-parsed-as-html). **Publish:** `origin/sub/AST-1520/AST-1522-gap-meteorite-email-tests`. **Fix:** AST-1521.
+
+`[bug-repro]` no-subject plain JD body → `land_meteorite(text=visible)` + Gmail archive (not Ruth `html_links` / `ignored-empty` pass-without-ingest). Green after AST-1521 make-fix.
+
+| Area | Source | Component tests |
+| --- | --- | --- |
+| No-subject JD → land + archive | `src/core/meteorite_email.py` | **`TestAst1522NoSubjectJdLandsAndArchives::test_no_subject_jd_text_lands_and_archives`** |
+| Selected-ids bound land (retarget) | `src/core/meteorite_email.py` | revised **`TestAst1140RunMeteoriteEmailSelectedIds`** (`land_meteorite`) |
+
+**Broken / obsolete (this pass + return):** Ruth `html_links` / `subject_body` / `_ingest_link` / `ignored-empty` runner expectations — removed `TestAst1090` subject_url+html_links create cases, entire **`TestAst1213RuthLivePayload`**, entire **`TestAst1294HtmlLinksJobsComplete`**. **Return (Review Posted):** `TestAst1140` create→`land_meteorite`; bible AST-1213/1294 rows cleaned.
+
+**Integration:** none — do not invent new integration coverage.
+
+```bash
+./scripts/testing/run_component_tests.sh \
+  tests/component/core/test_meteorite_email.py::TestAst1522NoSubjectJdLandsAndArchives::test_no_subject_jd_text_lands_and_archives \
+  tests/component/core/test_meteorite_email.py::TestAst1140RunMeteoriteEmailSelectedIds \
   -q
 ```
