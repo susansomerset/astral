@@ -175,3 +175,79 @@ Definition fidelity: implements soft prompt child only; no core/config creep. La
 **Considered (in-session):** 18 universal (orchestration/git — conform); cited scoped seed/in-scope/run-next/test-tree-ban — conform.
 
 context_tokens≈68000
+
+## Radia review
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1524  
+**Publish ref:** `origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes` @ `2ceb2cff69c1371789e25e58b7745a50bc3f99da`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+Full statute sweep — all scoped/universal statutes conform or not-applicable. Prompt-only ticket; no `src/**` changes on AST-1524 commits.
+
+## Pattern conformance
+
+none cited — prompt-only ticket
+
+## Plan adherence
+
+All three stages delivered (S1 Estelle A./B./C., S2 Judith notes, S3 UAT twin). AST-1523 prerequisite merged.
+
+## Findings
+
+### advisory
+
+- Draft prompt asks Judith to address each lettered item — soft wording, no machine rejection implied.
+- Publish ref composite bundles AST-1523 revert + AST-1524 prompts — expected for epic rollup.
+
+No fix-now / discuss findings.
+
+## What's solid
+
+- Surgical prompt edit: one commit, two files.
+- Advise: A./B./C. labels, no `[R#]` / `advice_adherence`.
+- Draft: lettered-notes contract, `notes` string array.
+- Betty manifest aligned; COVER LETTER / ASK CANDIDATE uncoded.
+
+context_tokens≈75000
+
+## Radia review
+
+[code-rubric] revision=2  
+**Rubric:** code-rubric.v2  
+**Ticket:** AST-1524  
+**Publish ref:** `origin/sub/AST-1460/AST-1524-soft-numbered-prose-advise-draft-notes` @ `2ceb2cff69c1371789e25e58b7745a50bc3f99da`  
+**Overall:** CLEAN
+
+## Statutes checked
+
+Full statute sweep — all scoped/universal statutes conform or not-applicable. Prompt-only ticket; no `src/**` changes on AST-1524 commits.
+
+## Pattern conformance
+
+none cited — prompt-only ticket
+
+## Plan adherence
+
+All three stages delivered (S1 Estelle A./B./C., S2 Judith notes, S3 UAT twin). AST-1523 prerequisite merged.
+
+## Findings
+
+### advisory
+
+- Draft prompt asks Judith to address each lettered item — soft wording, no machine rejection implied.
+- Publish ref composite bundles AST-1523 revert + AST-1524 prompts — expected for epic rollup.
+
+No fix-now / discuss findings.
+
+## What's solid
+
+- Surgical prompt edit: one commit, two files.
+- Advise: A./B./C. labels, no `[R#]` / `advice_adherence`.
+- Draft: lettered-notes contract, `notes` string array.
+- Betty manifest aligned; COVER LETTER / ASK CANDIDATE uncoded.
+
+context_tokens≈75000
