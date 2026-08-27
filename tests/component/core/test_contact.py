@@ -1373,15 +1373,21 @@ class TestAst1515ContactTaskMarkup:
         )
         assert results == []
 
-    def test_dispatch_handler_unavailable_for_listed_key(self) -> None:
+    def test_dispatch_handler_unavailable_for_listed_key(
+        self, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        # All six handlers resolve after AST-1517 — mock missing import path.
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
         results = contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("gazer_scrape", "https://x.example/jd")],
+            markup_spans=[("create_contact_meteorite", "https://x.example/jd")],
         )
         assert len(results) == 1
         assert results[0]["ok"] is False
         assert results[0]["error"] == "handler_unavailable"
-        assert results[0]["task_key"] == "gazer_scrape"
+        assert results[0]["task_key"] == "create_contact_meteorite"
 
     def test_dispatch_no_candidate_when_required(self) -> None:
         results = contact_mod.run_contact_task_dispatch(
@@ -1407,9 +1413,12 @@ class TestAst1515ContactTaskMarkup:
     def test_dispatch_debug_style_d(self, monkeypatch: pytest.MonkeyPatch) -> None:
         log = MagicMock()
         monkeypatch.setattr(contact_mod, "get_logger", lambda _n: log)
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
         contact_mod.run_contact_task_dispatch(
             astral_candidate_id="c1",
-            markup_spans=[("gazer_scrape", "u")],
+            markup_spans=[("create_contact_meteorite", "u")],
             debug=True,
         )
         log.set_debug_flag.assert_called_with(True)
@@ -1461,6 +1470,10 @@ class TestAst1515ContactEstelleTurnMarkup:
         return post, calls
 
     def test_strips_markup_before_slack_post(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
+
         def side(idx, _kwargs):
             if idx == 0:
                 return {
@@ -1468,7 +1481,7 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Sure! ~~/gazer_scrape https://jobs.example/1~~",
+                        "reply": "Sure! ~~/create_contact_meteorite https://jobs.example/1~~",
                     },
                 }
             return {
@@ -1509,6 +1522,9 @@ class TestAst1515ContactEstelleTurnMarkup:
     def test_follow_up_turn_includes_task_results_in_live_content(
         self, monkeypatch: pytest.MonkeyPatch
     ) -> None:
+        monkeypatch.setattr(
+            contact_mod, "_resolve_contact_task_handler", lambda _h: None
+        )
         captured: dict = {}
 
         def side(idx, kwargs):
@@ -1518,7 +1534,7 @@ class TestAst1515ContactEstelleTurnMarkup:
                     "conversational_outcome": "success",
                     "agent_performance": {"status": "success"},
                     "parsed_response": {
-                        "reply": "Checking ~~/gazer_scrape https://x.example~~",
+                        "reply": "Checking ~~/create_contact_meteorite https://x.example~~",
                     },
                 }
             captured["live"] = kwargs.get("live_content") or ""

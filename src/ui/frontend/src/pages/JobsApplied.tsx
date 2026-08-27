@@ -37,11 +37,13 @@ function sortAppliedJobs(jobs: Job[], col: string, asc: boolean): Job[] {
 
 /** AST-1488 (re-land of AST-1479): Applied jobs list — post-applied rows + shared R/I/X/G actions. */
 export default function Applied() {
-  const { selectedId } = useCandidate()
+  const { selectedId, candidatesHydrated } = useCandidate()
   const [rows, setRows] = useState<Job[]>([])
   const { loading, beginRefresh, endRefresh } = useInPlaceLiveRefresh()
   const [toast, setToast] = useState<ToastMessage | null>(null)
   const [sort, setSort] = useState<SortState>({ col: "state_changed_at", asc: false })
+  const [confirmBusy, setConfirmBusy] = useState(false)
+  const [confirmError, setConfirmError] = useState<string | null>(null)
 
   const load = useCallback((showSpinner = false) => {
     if (!selectedId) return
@@ -54,9 +56,38 @@ export default function Applied() {
 
   const actions = useCandidateJobActions(load)
 
+  const confirmPending = useCallback(async (notes: string) => {
+    const pending = actions.pending
+    if (!pending || confirmBusy || !selectedId) return
+    setConfirmBusy(true)
+    setConfirmError(null)
+    try {
+      const res = await api(`/api/jobs/${encodeURIComponent(pending.jobId)}/candidate_action`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: pending.action,
+          notes: notes ?? "",
+          candidate_id: selectedId,
+        }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}))
+        throw new Error((body as { error?: string }).error || "Action failed")
+      }
+      actions.closePending()
+      load()
+    } catch (e) {
+      setConfirmError(e instanceof Error ? e.message : "Action failed")
+    } finally {
+      setConfirmBusy(false)
+    }
+  }, [actions.pending, actions.closePending, confirmBusy, selectedId, load])
+
   useEffect(() => {
-    if (actions.error) setToast({ text: actions.error, variant: "error" })
-  }, [actions.error])
+    const err = confirmError || actions.error
+    if (err) setToast({ text: err, variant: "error" })
+  }, [actions.error, confirmError])
 
   useEffect(() => { load(true) }, [load])
 
@@ -69,6 +100,17 @@ export default function Applied() {
   }
 
   const sorted = sortAppliedJobs(rows, sort.col, sort.asc)
+
+  if (!candidatesHydrated) {
+    return (
+      <div className="page-container">
+        <div className="list-page-header">
+          <h1 className="list-page-title">Applied</h1>
+        </div>
+        <div className="list-page-status">Loading...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="page-container">
@@ -121,9 +163,9 @@ export default function Applied() {
       <CandidateActionNotesModal
         open={!!actions.pending}
         action={actions.pending?.action ?? null}
-        busy={actions.busy}
+        busy={actions.busy || confirmBusy}
         onClose={actions.closePending}
-        onConfirm={actions.confirmPending}
+        onConfirm={confirmPending}
       />
       <Toast message={toast} onDone={() => setToast(null)} />
     </div>
